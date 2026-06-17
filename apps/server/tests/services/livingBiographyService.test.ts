@@ -57,15 +57,15 @@ function makeBio(overrides: Partial<BiographyOutput> = {}): BiographyOutput {
     facts: {
       identity: { name: 'Abel Mendoza', location: 'Los Angeles', education: null, employment: null, sourceEntryIds: [] },
       relationships: [
-        { name: 'Abuela', type: 'family', status: 'active', characterId: 'c1', relationshipId: 'r1', sourceMemoryIds: ['m1', 'm2', 'm3'] },
-        { name: 'Sol', type: 'partner', status: 'active', characterId: 'c2', relationshipId: 'r2', sourceMemoryIds: ['m4', 'm5'] },
+        { name: 'Grandma Rose', type: 'family', status: 'active', characterId: 'c1', relationshipId: 'r1', sourceMemoryIds: ['m1', 'm2', 'm3'] },
+        { name: 'Sam Chen', type: 'partner', status: 'active', characterId: 'c2', relationshipId: 'r2', sourceMemoryIds: ['m4', 'm5'] },
         { name: 'Old Friend', type: 'friend', status: 'ended', characterId: 'c3', relationshipId: 'r3', sourceMemoryIds: ['m6'] },
       ],
       keyEvents: [
-        { title: 'Started at LoreBook', eventType: 'career_event', date: '2026-05-01', connection: null, confidence: 0.9, sourceEntryIds: [] },
-        { title: 'Moved in with Abuela', eventType: 'living_event', date: '2026-04-01', connection: 'Abuela', confidence: 0.9, sourceEntryIds: [] },
+        { title: 'Started at LifeLedger', eventType: 'career_event', date: '2026-05-01', connection: null, confidence: 0.9, sourceEntryIds: [] },
+        { title: 'Moved in with Grandma Rose', eventType: 'living_event', date: '2026-04-01', connection: 'Grandma Rose', confidence: 0.9, sourceEntryIds: [] },
       ],
-      livingSituation: 'Living with Abuela',
+      livingSituation: 'Living with Grandma Rose',
       upcomingEvents: ['Preparing for Epirus interview'],
       sourceEntryCount: 42,
     },
@@ -132,7 +132,7 @@ describe('getLivingBiographyCard', () => {
     const card = await getLivingBiographyCard('user-1');
 
     const names = card.keyPeople.map(p => p.name);
-    expect(names).toEqual(['Abuela', 'Sol']);
+    expect(names).toEqual(['Grandma Rose', 'Sam Chen']);
     expect(names).not.toContain('Old Friend');
   });
 
@@ -144,8 +144,8 @@ describe('getLivingBiographyCard', () => {
 
     const card = await getLivingBiographyCard('user-1');
 
-    expect(card.recentDevelopments[0]).toContain('Started at LoreBook');
-    expect(card.recentDevelopments[1]).toContain('Moved in with Abuela (with Abuela)');
+    expect(card.recentDevelopments[0]).toContain('Started at LifeLedger');
+    expect(card.recentDevelopments[1]).toContain('Moved in with Grandma Rose (with Grandma Rose)');
   });
 });
 
@@ -243,15 +243,15 @@ describe('getBiographyChanges', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     const since = '2026-03-01T00:00:00.000Z';
-    tableResults.characters = { data: [{ name: 'Sol', created_at: '2026-04-15T00:00:00.000Z' }], error: null };
+    tableResults.characters = { data: [{ name: 'Sam Chen', created_at: '2026-04-15T00:00:00.000Z' }], error: null };
     tableResults.journal_entries = { data: [], error: null };
 
     const changes = await getBiographyChanges('user-1', since);
 
     expect(changes).toContainEqual({ kind: 'new_chapter', label: 'New life chapter: Career Rebuilding Era' });
-    expect(changes).toContainEqual({ kind: 'new_milestone', label: 'New milestone: Started at LoreBook' });
-    expect(changes).toContainEqual({ kind: 'new_milestone', label: 'New milestone: Moved in with Abuela' });
-    expect(changes).toContainEqual({ kind: 'new_person', label: 'New important person: Sol' });
+    expect(changes).toContainEqual({ kind: 'new_milestone', label: 'New milestone: Started at LifeLedger' });
+    expect(changes).toContainEqual({ kind: 'new_milestone', label: 'New milestone: Moved in with Grandma Rose' });
+    expect(changes).toContainEqual({ kind: 'new_person', label: 'New important person: Sam Chen' });
   });
 
   it('does not flag chapters or milestones that predate the cutoff', async () => {

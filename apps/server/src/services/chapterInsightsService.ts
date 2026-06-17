@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 
-import type { ChapterCandidate, ChapterFacet, ChapterProfile, MemoryEntry, MonthGroup } from '../types';
+import type { Chapter, ChapterCandidate, ChapterFacet, ChapterProfile, MemoryEntry, MonthGroup } from '../types';
 
 import { chapterService } from './chapterService';
 import { correctionService } from './correctionService';
@@ -89,7 +89,10 @@ class ChapterInsightsService {
     return { tagCounts, moodCounts, people, places };
   }
 
-  async buildProfiles(userId: string): Promise<ChapterProfile[]> {
+  async buildProfiles(
+    userId: string,
+    options?: { entries?: MemoryEntry[]; chapters?: Chapter[] }
+  ): Promise<ChapterProfile[]> {
     try {
       // Try to get cached insights first
       const { chapterInsightsCacheService } = await import('./chapterInsightsCacheService');
@@ -99,8 +102,12 @@ class ChapterInsightsService {
       }
 
       const [chapters, entries] = await Promise.all([
-        chapterService.listChapters(userId),
-        memoryService.searchEntries(userId, { limit: 400 })
+        options?.chapters
+          ? Promise.resolve(options.chapters)
+          : chapterService.listChapters(userId),
+        options?.entries
+          ? Promise.resolve(options.entries)
+          : memoryService.searchEntries(userId, { limit: 400 }),
       ]);
       const resolved = correctionService.applyCorrectionsToEntries(entries);
 
@@ -135,9 +142,13 @@ class ChapterInsightsService {
     }
   }
 
-  async detectCandidates(userId: string): Promise<ChapterCandidate[]> {
+  async detectCandidates(
+    userId: string,
+    options?: { entries?: MemoryEntry[] }
+  ): Promise<ChapterCandidate[]> {
     try {
-      const entries = await memoryService.searchEntries(userId, { limit: 400 });
+      const entries =
+        options?.entries ?? (await memoryService.searchEntries(userId, { limit: 400 }));
       const resolved = correctionService.applyCorrectionsToEntries(entries).sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       );

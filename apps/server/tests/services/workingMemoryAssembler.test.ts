@@ -25,9 +25,11 @@ function makeChain(result: TableResult) {
 
 let tableResults: Record<string, TableResult> = {};
 
+const fromMock = vi.fn((table: string) => makeChain(tableResults[table] ?? { data: [], error: null }));
+
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
-    from: vi.fn((table: string) => makeChain(tableResults[table] ?? { data: [], error: null })),
+    from: (...args: unknown[]) => fromMock(...args),
   },
 }));
 
@@ -41,18 +43,18 @@ describe('Working Memory Assembler', () => {
         data: [
           {
             id: 'char-ashley',
-            name: 'Ashley De La Cruz',
-            alias: ['Ashley'],
-            summary: 'Met after Club Metro.',
+            name: 'Alex Morgan',
+            alias: ['Alex'],
+            summary: 'Met after Blue Room.',
             importance_score: 72,
             metadata: {
-              al_biography: { narrative_summary: 'Ashley was a short but memorable Club Metro chapter.' },
+              al_biography: { narrative_summary: 'Alex was a short but memorable Blue Room chapter.' },
             },
             updated_at: '2026-06-10T00:00:00Z',
           },
           {
             id: 'char-sol',
-            name: 'Sol',
+            name: 'Sam Chen',
             alias: [],
             summary: 'A relationship thread with unresolved emotion.',
             importance_score: 80,
@@ -61,7 +63,7 @@ describe('Working Memory Assembler', () => {
           },
           {
             id: 'char-abuela',
-            name: 'Abuela',
+            name: 'Grandma Rose',
             alias: [],
             summary: 'Family anchor.',
             importance_score: 90,
@@ -71,7 +73,7 @@ describe('Working Memory Assembler', () => {
           {
             id: 'char-tio-juan',
             name: 'Tio Juan',
-            alias: ['Tío Juan'],
+            alias: ['Uncle James'],
             summary: 'Family member connected to family stories.',
             importance_score: 70,
             metadata: {},
@@ -79,7 +81,7 @@ describe('Working Memory Assembler', () => {
           },
           {
             id: 'char-leslie',
-            name: 'Leslie',
+            name: 'Morgan Gray',
             alias: [],
             summary: 'Connected to graduation memories.',
             importance_score: 68,
@@ -90,7 +92,7 @@ describe('Working Memory Assembler', () => {
         error: null,
       },
       locations: {
-        data: [{ id: 'loc-metro', name: 'Club Metro', importance_score: 65 }],
+        data: [{ id: 'loc-metro', name: 'Blue Room', importance_score: 65 }],
         error: null,
       },
       organizations: {
@@ -99,7 +101,7 @@ describe('Working Memory Assembler', () => {
       },
       people_places: {
         data: [
-          { id: 'pp-metro', name: 'Club Metro', type: 'place', corrected_names: [] },
+          { id: 'pp-metro', name: 'Blue Room', type: 'place', corrected_names: [] },
           { id: 'pp-costco', name: 'Costco', type: 'organization', corrected_names: [] },
         ],
         error: null,
@@ -107,8 +109,8 @@ describe('Working Memory Assembler', () => {
       projects: {
         data: [
           {
-            id: 'proj-lorebook',
-            name: 'LoreBook',
+            id: 'proj-lifeledger',
+            name: 'LifeLedger',
             description: 'Personal memory system progressing through retrieval architecture.',
             status: 'active',
             updated_at: '2026-06-12T00:00:00Z',
@@ -120,25 +122,25 @@ describe('Working Memory Assembler', () => {
         data: [
           {
             id: 'mem-ashley',
-            summary: 'Ashley and I met after Club Metro in DTLA.',
+            summary: 'Alex and I met after Blue Room in DTLA.',
             journal_entry_id: 'entry-ashley',
             created_at: '2026-06-10T00:00:00Z',
           },
           {
             id: 'mem-sol',
-            summary: 'Sol came up as an emotionally complicated relationship memory.',
+            summary: 'Sam Chen came up as an emotionally complicated relationship memory.',
             journal_entry_id: 'entry-sol',
             created_at: '2026-06-11T00:00:00Z',
           },
           {
             id: 'mem-family',
-            summary: 'Abuela and Tio Juan appeared in a family memory.',
+            summary: 'Grandma Rose and Tio Juan appeared in a family memory.',
             journal_entry_id: 'entry-family',
             created_at: '2026-06-09T00:00:00Z',
           },
           {
             id: 'mem-leslie',
-            summary: "Leslie's graduation was a remembered event.",
+            summary: "Morgan Gray's graduation was a remembered event.",
             journal_entry_id: 'entry-leslie',
             created_at: '2026-06-07T00:00:00Z',
           },
@@ -149,16 +151,16 @@ describe('Working Memory Assembler', () => {
         data: [
           {
             id: 'ev-ashley',
-            event_title: 'Ashley after Club Metro',
+            event_title: 'Alex after Blue Room',
             event_type: 'romantic_scene',
             event_date: '2026-06-10',
-            event_summary: 'Met Ashley after Club Metro and spent time together.',
+            event_summary: 'Met Alex after Blue Room and spent time together.',
             significance_score: 72,
             confidence: 0.86,
           },
           {
-            id: 'ev-lorebook',
-            event_title: 'LoreBook retrieval sprint',
+            id: 'ev-lifeledger',
+            event_title: 'LifeLedger retrieval sprint',
             event_type: 'project_progress',
             event_date: '2026-06-12',
             event_summary: 'Working Memory Assembler design started.',
@@ -167,10 +169,10 @@ describe('Working Memory Assembler', () => {
           },
           {
             id: 'ev-leslie',
-            event_title: "Leslie's graduation",
+            event_title: "Morgan Gray's graduation",
             event_type: 'graduation',
             event_date: '2026-06-07',
-            event_summary: "Leslie's graduation was a family/social milestone.",
+            event_summary: "Morgan Gray's graduation was a family/social milestone.",
             significance_score: 78,
             confidence: 0.86,
           },
@@ -202,8 +204,8 @@ describe('Working Memory Assembler', () => {
       },
       entity_facts: {
         data: [
-          { id: 'fact-ashley', fact: 'Ashley was connected to Club Metro.', confidence: 0.88, updated_at: '2026-06-10T00:00:00Z' },
-          { id: 'fact-sol', fact: 'Sol is relationship-relevant, not project context.', confidence: 0.8, updated_at: '2026-06-11T00:00:00Z' },
+          { id: 'fact-ashley', fact: 'Alex was connected to Blue Room.', confidence: 0.88, updated_at: '2026-06-10T00:00:00Z' },
+          { id: 'fact-sol', fact: 'Sam Chen is relationship-relevant, not project context.', confidence: 0.8, updated_at: '2026-06-11T00:00:00Z' },
         ],
         error: null,
       },
@@ -211,17 +213,17 @@ describe('Working Memory Assembler', () => {
         data: [
           {
             id: 'entry-metro',
-            summary: 'Club Metro night',
-            content: 'At Club Metro I met Ashley and the night became a memorable scene.',
+            summary: 'Blue Room night',
+            content: 'At Blue Room I met Alex and the night became a memorable scene.',
             date: '2026-06-10T00:00:00Z',
             tags: ['significant'],
             source: 'manual',
             metadata: {},
           },
           {
-            id: 'entry-lorebook',
-            summary: 'LoreBook progress',
-            content: 'LoreBook is progressing through context assembly and retrieval design.',
+            id: 'entry-lifeledger',
+            summary: 'LifeLedger progress',
+            content: 'LifeLedger is progressing through context assembly and retrieval design.',
             date: '2026-06-12T00:00:00Z',
             tags: ['project'],
             source: 'manual',
@@ -243,7 +245,7 @@ describe('Working Memory Assembler', () => {
         data: [
           {
             id: 'chat-1',
-            content: 'Did you save Ashley after Club Metro?',
+            content: 'Did you save Alex after Blue Room?',
             created_at: '2026-06-10T00:00:00Z',
             session_id: 'thread-1',
             role: 'user',
@@ -256,7 +258,7 @@ describe('Working Memory Assembler', () => {
           {
             id: 'bio-1',
             account_type: 'biography_snapshot',
-            narrative_text: 'You are building LoreBook while tracking relationships and family memory.',
+            narrative_text: 'You are building LifeLedger while tracking relationships and family memory.',
             metadata: {},
             recorded_at: '2026-06-12T00:00:00Z',
           },
@@ -266,18 +268,20 @@ describe('Working Memory Assembler', () => {
     };
   });
 
-  it('assembles a person working memory for Ashley without pulling unrelated context when budgeted', async () => {
+  it('assembles a person working memory for Alex without pulling unrelated context when budgeted', async () => {
     const result = await assembleWorkingMemory(
-      { userId: 'user-1', question: 'What do you know about Ashley?' },
+      { userId: 'user-1', question: 'What do you know about Alex?' },
       { maxItems: 6 }
     );
 
     expect(result.intent).toBe('PERSON_QUERY');
-    expect(result.entities.some((entity) => entity.name.includes('Ashley'))).toBe(true);
-    expect(result.episodes.some((item) => /Ashley|Club Metro/i.test(item.content))).toBe(true);
+    expect(result.entities.some((entity) => entity.name.includes('Alex'))).toBe(true);
+    expect(result.episodes.some((item) => /Alex|Blue Room/i.test(item.content))).toBe(true);
     expect(result.confidence).toBeGreaterThan(0.7);
     expect(result.budget.selected).toBeLessThanOrEqual(6);
     expect(result.rejected.length).toBeGreaterThan(0);
+    expect(result.timing?.queryCount).toBeGreaterThan(0);
+    expect(result.timing?.totalMs).toBeGreaterThanOrEqual(0);
 
     const packet = buildWorkingMemoryPacket(result);
     expect(packet.text).toContain('WORKING MEMORY PACKET');
@@ -287,28 +291,53 @@ describe('Working Memory Assembler', () => {
     expect(packet.text).toContain('reason=');
   });
 
-  it('assembles relationship context for Sol', async () => {
-    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What do you remember about Sol?' });
+  it('avoids duplicate character table queries for person queries', async () => {
+    fromMock.mockClear();
+    await assembleWorkingMemory({ userId: 'user-1', question: 'What do you know about Alex?' });
+    const characterQueries = fromMock.mock.calls.filter(([table]) => table === 'characters').length;
+    expect(characterQueries).toBeLessThanOrEqual(1);
+  });
+
+  it('reuses character cache for household relationship queries', async () => {
+    fromMock.mockClear();
+    await assembleWorkingMemory({ userId: 'user-1', question: 'Who lives with me?' });
+    const characterQueries = fromMock.mock.calls.filter(([table]) => table === 'characters').length;
+    expect(characterQueries).toBe(1);
+    expect(fromMock.mock.calls.some(([table]) => table === 'character_relationships')).toBe(true);
+  });
+
+  it('records per-query timing breakdown', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'How is LifeLedger progressing?' });
+    expect(result.timing).toBeDefined();
+    expect(result.timing!.entityResolutionMs).toBeGreaterThanOrEqual(0);
+    expect(result.timing!.candidateGenerationMs).toBeGreaterThanOrEqual(0);
+    expect(result.timing!.rankingMs).toBeGreaterThanOrEqual(0);
+    expect(result.timing!.queries.length).toBeGreaterThan(0);
+    expect(result.timing!.queries.every((q) => q.table && q.purpose)).toBe(true);
+  });
+
+  it('assembles relationship context for Sam Chen', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What do you remember about Sam Chen?' });
 
     expect(result.intent).toBe('RELATIONSHIP_QUERY');
-    expect(result.entities.some((entity) => entity.name === 'Sol')).toBe(true);
+    expect(result.entities.some((entity) => entity.name === 'Sam Chen')).toBe(true);
     expect(result.relationships.some((item) => /romantic/i.test(item.content))).toBe(true);
   });
 
-  it('assembles place context for Club Metro', async () => {
-    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What happened at Club Metro?' });
+  it('assembles place context for Blue Room', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What happened at Blue Room?' });
 
     expect(result.intent).toBe('PLACE_QUERY');
-    expect(result.entities.some((entity) => entity.name === 'Club Metro')).toBe(true);
-    expect([...result.episodes, ...result.timeline].some((item) => /Club Metro/i.test(item.content))).toBe(true);
+    expect(result.entities.some((entity) => entity.name === 'Blue Room')).toBe(true);
+    expect([...result.episodes, ...result.timeline].some((item) => /Blue Room/i.test(item.content))).toBe(true);
   });
 
-  it('assembles project context for LoreBook', async () => {
-    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'How is LoreBook progressing?' });
+  it('assembles project context for LifeLedger', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'How is LifeLedger progressing?' });
 
     expect(result.intent).toBe('PROJECT_QUERY');
-    expect(result.projects.some((item) => item.title === 'LoreBook')).toBe(true);
-    expect(result.episodes.some((item) => /LoreBook/i.test(item.content))).toBe(true);
+    expect(result.projects.some((item) => item.title === 'LifeLedger')).toBe(true);
+    expect(result.episodes.some((item) => /LifeLedger/i.test(item.content))).toBe(true);
   });
 
   it('keeps Amazon as an organization, not a person', async () => {
@@ -319,13 +348,13 @@ describe('Working Memory Assembler', () => {
   });
 
   it.each([
-    ['Ashley', 'What do you know about Ashley?', 'PERSON_QUERY'],
-    ['Sol', 'What do you remember about Sol?', 'RELATIONSHIP_QUERY'],
-    ['Abuela', 'What do you know about Abuela?', 'PERSON_QUERY'],
+    ['Alex', 'What do you know about Alex?', 'PERSON_QUERY'],
+    ['Sam Chen', 'What do you remember about Sam Chen?', 'RELATIONSHIP_QUERY'],
+    ['Grandma Rose', 'What do you know about Grandma Rose?', 'PERSON_QUERY'],
     ['Tio Juan', 'What do you know about Tio Juan?', 'PERSON_QUERY'],
-    ['Leslie', "What happened at Leslie's graduation?", 'EVENT_QUERY'],
-    ['Club Metro', 'What happened at Club Metro?', 'PLACE_QUERY'],
-    ['LoreBook', 'How is LoreBook progressing?', 'PROJECT_QUERY'],
+    ['Morgan Gray', "What happened at Morgan Gray's graduation?", 'EVENT_QUERY'],
+    ['Blue Room', 'What happened at Blue Room?', 'PLACE_QUERY'],
+    ['LifeLedger', 'How is LifeLedger progressing?', 'PROJECT_QUERY'],
     ['Amazon', 'What do you know about Amazon?', 'PERSON_QUERY'],
     ['Costco', 'What happened at Costco?', 'PLACE_QUERY'],
   ])('evaluates target %s', async (target, question, expectedIntent) => {

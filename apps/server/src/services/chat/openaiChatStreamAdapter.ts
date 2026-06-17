@@ -2,7 +2,7 @@ import type OpenAI from 'openai';
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 
 import { config } from '../../config';
-import { openai } from '../../lib/openai';
+import { normalizeOpenAIChatParams, openai } from '../../lib/openai';
 import { logger } from '../../logger';
 
 type ChatMessage = OpenAI.Chat.ChatCompletionMessageParam;
@@ -61,10 +61,15 @@ export async function createOpenAIChatStream(params: {
   messages: ChatMessage[];
   userId?: string;
 }): Promise<LorekeeperChatStream> {
+  const { model, temperature } = normalizeOpenAIChatParams({
+    model: params.model,
+    temperature: params.temperature,
+  });
+
   if (!config.useResponsesApiForChat) {
     return openai.chat.completions.create({
-      model: params.model,
-      temperature: params.temperature,
+      model,
+      ...(temperature != null ? { temperature } : {}),
       stream: true,
       messages: params.messages,
     });
@@ -75,7 +80,7 @@ export async function createOpenAIChatStream(params: {
 
   logger.debug(
     {
-      model: params.model,
+      model,
       inputMessages: responseInput.length,
       userId: params.userId,
     },
@@ -83,10 +88,10 @@ export async function createOpenAIChatStream(params: {
   );
 
   const stream = await openai.responses.create({
-    model: params.model,
+    model,
     instructions: typeof systemPrompt?.content === 'string' ? systemPrompt.content : undefined,
     input: responseInput,
-    temperature: params.temperature,
+    ...(temperature != null ? { temperature } : {}),
     stream: true,
     store: false,
     ...(params.userId ? { safety_identifier: params.userId } : {}),

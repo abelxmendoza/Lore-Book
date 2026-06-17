@@ -1,9 +1,8 @@
 import { Router } from 'express';
 
 import { logger } from '../logger';
-import { entityAmbiguityService } from '../services/entityAmbiguityService';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { entityResolutionService } from '../services/entityResolutionService';
-import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 
@@ -11,12 +10,9 @@ const router = Router();
  * POST /api/entity-ambiguity/resolve
  * Resolve an entity ambiguity by selecting a candidate or creating a new entity
  */
-router.post('/resolve', async (req, res) => {
+router.post('/resolve', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const userId = req.user!.id;
 
     const { message_id, surface_text, chosen_entity_id, chosen_entity_name, create_new } = req.body;
 

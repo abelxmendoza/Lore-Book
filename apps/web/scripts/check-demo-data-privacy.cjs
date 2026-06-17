@@ -24,6 +24,9 @@ const filesToScan = [
 ];
 
 const blockedTerms = [
+  'abelxmendoza@gmail.com',
+  'firefistabel@gmail.com',
+  '789bd607-e063-466f-a9ef-f68d24e8bb57',
   'Sol',
   'Mendoza',
   'Ortiz',

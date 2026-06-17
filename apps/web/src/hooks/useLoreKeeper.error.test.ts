@@ -2,10 +2,15 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { MockDataProvider } from '../contexts/MockDataContext';
+import { LoreKeeperProvider } from '../contexts/LoreKeeperContext';
 import { useLoreKeeper } from './useLoreKeeper';
 
 const wrapper = ({ children }: { children: React.ReactNode }) =>
-  React.createElement(MockDataProvider, null, children);
+  React.createElement(
+    MockDataProvider,
+    null,
+    React.createElement(LoreKeeperProvider, null, children)
+  );
 
 vi.mock('../lib/supabase', () => ({
   supabase: {

@@ -8,7 +8,20 @@ const router = Router();
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const insights = await evolutionService.analyze(req.user!.id);
+    const refresh = req.query.refresh === 'true';
+    const { insights, timing } = await evolutionService.analyze(req.user!.id, { refresh });
+
+    if (process.env.NODE_ENV !== 'production') {
+      res.setHeader('X-Evolution-Timing-Ms', String(timing.totalMs));
+      res.setHeader('X-Evolution-Db-Ms', String(timing.dbMs));
+      res.setHeader('X-Evolution-Openai-Ms', String(timing.openaiMs));
+      res.setHeader('X-Evolution-Cache-Hit', timing.cacheHit ? '1' : '0');
+    }
+
+    if (timing.openaiMs > 3000) {
+      logger.info({ userId: req.user!.id, timing }, 'Slow evolution analyze');
+    }
+
     res.json({ insights });
   } catch (error) {
     logger.error({ error }, 'Error analyzing evolution');

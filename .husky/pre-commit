@@ -1,5 +1,11 @@
 echo "🔍 Running pre-commit checks..."
 
+echo "🔒 Founder privacy check..."
+npm run check:founder-privacy || exit 1
+
+echo "🔒 Demo privacy check..."
+npm run check:demo-privacy || exit 1
+
 # Skip linter for now (ESLint v9 config needed)
 # echo "📝 Running linter..."
 # cd apps/web && npm run lint || echo "⚠️  Linter has warnings"

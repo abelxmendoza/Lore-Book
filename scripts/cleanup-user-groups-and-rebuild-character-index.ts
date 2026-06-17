@@ -6,9 +6,9 @@
  * Dry-run by default.
  *
  * Usage:
- *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user abelxmendoza@gmail.com
- *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user abelxmendoza@gmail.com --execute
- *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user abelxmendoza@gmail.com --execute --delete-organizations
+ *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user <your-email>
+ *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user <your-email> --execute
+ *   npx tsx scripts/cleanup-user-groups-and-rebuild-character-index.ts --user <your-email> --execute --delete-organizations
  */
 
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';

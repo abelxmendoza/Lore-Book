@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
 import { documentService } from '../services/documentService';
 
 const router = Router();
@@ -38,16 +39,31 @@ router.post('/upload', requireAuth, upload.single('file'), async (req: Authentic
     }
 
     const userId = req.user!.id;
-    const fileContent = req.file.buffer.toString('utf-8');
-    const fileName = req.file.originalname;
-    const fileType = req.file.mimetype;
+    const result = await unifiedFileIngestionService.ingest({
+      userId,
+      buffer: req.file.buffer,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      kind: 'document',
+    });
 
-    const result = await documentService.processDocument(userId, fileContent, fileName, fileType);
+    if (result.processingStatus === 'failed') {
+      return res.status(500).json({
+        error: 'Failed to process document',
+        message: result.error ?? 'Unknown error',
+        userFileId: result.userFileId,
+      });
+    }
 
     res.json({
       success: true,
-      message: `Document processed successfully. Created ${result.entriesCreated} entries, ${result.charactersCreated} characters, and ${result.sectionsCreated} memoir sections.`,
-      ...result
+      userFileId: result.userFileId,
+      message: `Document processed successfully. Created ${result.momentsCreated ?? 0} entries, ${result.charactersCreated ?? 0} characters, and ${result.sectionsCreated ?? 0} memoir sections.`,
+      entriesCreated: result.momentsCreated ?? 0,
+      charactersCreated: result.charactersCreated ?? 0,
+      sectionsCreated: result.sectionsCreated ?? 0,
+      derivedCounts: result.derivedCounts,
+      entryIds: result.entryIds,
     });
   } catch (error) {
     logger.error({ err: error }, 'Failed to upload document');

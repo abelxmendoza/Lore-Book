@@ -56,4 +56,33 @@ describe('Route Registry', () => {
     expect(corePaths).toContain('/api/admin');
     expect(corePaths).toContain('/api/skills');
   });
+
+  it('registers P0-promoted experimental systems as CORE_RUNTIME', () => {
+    const corePaths = routeRegistry
+      .filter((entry) => entry.classification === 'CORE_RUNTIME')
+      .map((entry) => entry.path);
+    const promoted = [
+      '/api/biography',
+      '/api/entity-resolution',
+      '/api/goals',
+      '/api/life-arcs',
+      '/api/voids',
+      '/api/insights',
+      '/api/predictions',
+      '/api/timeline-hierarchy',
+      '/api/documents',
+      '/api/photos',
+      '/api/entity-ambiguity',
+    ];
+    for (const path of promoted) {
+      expect(corePaths, `${path} should be CORE_RUNTIME`).toContain(path);
+    }
+  });
+
+  it('photos and documents use protected mounts (not public)', () => {
+    const photos = routeRegistry.find((e) => e.path === '/api/photos');
+    const documents = routeRegistry.find((e) => e.path === '/api/documents');
+    expect(photos?.requiresAuth).not.toBe(false);
+    expect(documents?.requiresAuth).not.toBe(false);
+  });
 });

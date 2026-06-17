@@ -26,7 +26,7 @@ describe('Sprint AK — conversation intelligence', () => {
     });
 
     it('classifies person_profile', () => {
-      expect(classifyQuestionIntent('What do you remember about Ashley?')).toBe('person_profile');
+      expect(classifyQuestionIntent('What do you remember about Alex?')).toBe('person_profile');
     });
 
     it('classifies daily_recall', () => {
@@ -53,7 +53,7 @@ describe('Sprint AK — conversation intelligence', () => {
   describe('AK-2 memory evidence format', () => {
     it('formats known/unknown/evidence blocks', () => {
       const text = formatEvidenceResponse({
-        known: ['Character "Abuela" in database'],
+        known: ['Character "Grandma Rose" in database'],
         unknown: ['No timeline events yet'],
         evidence: { thread: 2, memory: 3, event: 0, character: 1 },
       });
@@ -68,7 +68,7 @@ describe('Sprint AK — conversation intelligence', () => {
     it('labels current thread and stored lore separately', () => {
       const text = formatLabeledRecall({
         currentThread: 'We talked about Costco.',
-        storedLore: 'Abuela — grandmother, 3 memories',
+        storedLore: 'Grandma Rose — grandmother, 3 memories',
       });
       expect(text).toContain('**Current Thread:**');
       expect(text).toContain('**Stored Lore:**');
@@ -77,13 +77,13 @@ describe('Sprint AK — conversation intelligence', () => {
 
   describe('AK-5 therapist suppression', () => {
     it('suppresses therapist for testing and recall', () => {
-      expect(shouldSuppressTherapist('Did you save Abuela?', 'memory_verification')).toBe(true);
+      expect(shouldSuppressTherapist('Did you save Grandma Rose?', 'memory_verification')).toBe(true);
       expect(shouldSuppressTherapist('What do you know about my family?')).toBe(true);
     });
 
     it('prefers biography for caretaker facts', () => {
       expect(shouldPreferBiographyWriter('Tio Juan makes sure I eat')).toBe(true);
-      expect(shouldPreferBiographyWriter('Costco with Abuela was great')).toBe(true);
+      expect(shouldPreferBiographyWriter('Costco with Grandma Rose was great')).toBe(true);
     });
   });
 
@@ -94,8 +94,8 @@ describe('Sprint AK — conversation intelligence', () => {
       );
     });
 
-    it('transforms Costco + Abuela', () => {
-      const insight = buildStoryInsights(['Costco with Abuela yesterday']);
+    it('transforms Costco + Grandma Rose', () => {
+      const insight = buildStoryInsights(['Costco with Grandma Rose yesterday']);
       expect(insight[0]).toContain("wasn't Costco");
     });
   });

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
-import { useAuth } from '../lib/supabase';
+import { supabase, useAuth } from '../lib/supabase';
 import { canCallAuthenticatedApi } from '../lib/runtimeIdentity';
+import type { AccountAuthority } from '../lib/accountAuthority';
 
-export type SubscriptionStatus = 'trial' | 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'free';
+export type SubscriptionStatus = 'trial' | 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired' | 'free' | 'privileged';
 export type PlanType = 'free' | 'premium';
 
 export interface UsageData {
@@ -24,6 +25,7 @@ export interface SubscriptionData {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   usage: UsageData;
+  authority?: AccountAuthority;
 }
 
 const DEFAULT_FREE_SUBSCRIPTION: SubscriptionData = {
@@ -85,6 +87,11 @@ export function useSubscription() {
   }, [authLoading, user, fetchSubscription]);
 
   const createSubscription = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) {
+      throw new Error('Sign in required to start a subscription.');
+    }
+
     try {
       const result = await fetchJson<{
         subscriptionId: string;

@@ -172,7 +172,7 @@ const coreRouteFiles = [
   path.join(SRC, 'routes/entries.ts'),
   path.join(SRC, 'routes/chat.ts'),
   path.join(SRC, 'routes/threads.ts'),
-  path.join(SRC, 'routes/health.ts'),
+  path.join(SRC, 'routes/wellness.ts'),
   path.join(SRC, 'routes/continuity.ts'),
   path.join(SRC, 'routes/corrections.ts'),
   path.join(SRC, 'routes/canon.ts'),

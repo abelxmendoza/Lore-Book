@@ -48,5 +48,5 @@ export type IdentityPulse = {
   summary: string;
 };
 
-export const fetchIdentityPulse = (timeRange: string = '30') => 
-  fetchJson<IdentityPulse>(`/api/analytics/identity?timeRange=${timeRange}`);
+export const fetchIdentityPulse = (timeRange: string = '30') =>
+  fetchJson<IdentityPulse>(`/api/identity/pulse?timeRange=${timeRange}`);

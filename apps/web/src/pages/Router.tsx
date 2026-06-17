@@ -324,7 +324,7 @@ export const Router = () => {
         path="/upgrade"
         element={
           <LazyRoute>
-            <AuthGate><UpgradePage /></AuthGate>
+            <UpgradePage />
           </LazyRoute>
         }
       />

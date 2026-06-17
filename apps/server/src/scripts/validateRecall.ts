@@ -11,15 +11,19 @@ import { routeRecallQuery, buildRecallCoverageReport } from '../services/chat/re
 import { detectSyncRecallIntent } from '../services/chat/recallIntentPatterns';
 import { logger } from '../logger';
 
-const MAIN_USER = process.env.RECALL_TEST_USER_ID ?? '789bd607-e063-466f-a9ef-f68d24e8bb57';
+const MAIN_USER = process.env.RECALL_TEST_USER_ID ?? process.env.TARGET_USER_ID ?? '';
+if (!MAIN_USER) {
+  console.error('Required: RECALL_TEST_USER_ID or TARGET_USER_ID environment variable.');
+  process.exit(1);
+}
 
 const CONVERSATION_HISTORY = [
   {
     role: 'user',
     content:
-      'Ashley De La Cruz was 19. We met after Club Metro in DTLA and spent the night together.',
+      'Alex Morgan was 19. We met after a downtown lounge and spent the evening together.',
   },
-  { role: 'assistant', content: 'Got it — I will remember Ashley.' },
+  { role: 'assistant', content: 'Got it — I will remember Alex.' },
 ];
 
 const TEST_CASES: Array<{
@@ -54,24 +58,24 @@ const TEST_CASES: Array<{
     mustNotContain: ['Relevant past entries were found'],
   },
   {
-    query: 'Tell me about Sol',
+    query: 'Tell me about Sam',
     expectedIntent: 'entity',
     foundationPrimary: true,
   },
   {
-    query: 'Tell me about Abuela',
+    query: 'Tell me about Grandma Rose',
     expectedIntent: 'entity',
     foundationPrimary: true,
   },
   {
-    query: 'Who is Ashley De La Cruz?',
+    query: 'Who is Alex Morgan?',
     expectedIntent: 'entity',
     foundationPrimary: true,
     mustNotContain: ['Relevant past entries were found'],
-    mustContain: ['Ashley'],
+    mustContain: ['Alex'],
   },
   {
-    query: 'Who is Tío Juan?',
+    query: 'Who is Uncle James?',
     expectedIntent: 'entity',
     foundationPrimary: true,
     mustNotContain: ['Relevant past entries were found'],
@@ -87,7 +91,7 @@ const TEST_CASES: Array<{
     expectedIntent: 'conversation',
     foundationPrimary: true,
     mustNotContain: ['Relevant past entries were found'],
-    mustContain: ['Ashley'],
+    mustContain: ['Alex'],
     history: CONVERSATION_HISTORY,
   },
 ];

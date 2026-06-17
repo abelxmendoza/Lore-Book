@@ -1,28 +1,39 @@
 /**
  * One-off life reconstruction audit against live Supabase data.
- * Run: npx tsx scripts/lifeReconstructionAudit.ts
+ * Loads entity benchmark from .private/audit-benchmark.json (gitignored).
+ *
+ * Run:
+ *   TARGET_USER_ID=<uuid> npx tsx apps/server/scripts/lifeReconstructionAudit.ts
  */
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { buildMemoryCoverageAudit } from '../src/services/diagnostics/memoryCoverageAudit';
 import { classifyEntity } from '../src/services/entities/entityClassifier';
 import { supabaseAdmin } from '../src/services/supabaseClient';
 
-const USER_IDS = [
-  '5e53b78a-daee-40a4-a6d5-2a69fe22803a',
-  '789bd607-e063-466f-a9ef-f68d24e8bb57',
-];
+const userId = process.env.TARGET_USER_ID ?? '';
+if (!userId) {
+  console.error('Required: TARGET_USER_ID environment variable.');
+  process.exit(1);
+}
 
-const BENCHMARK = [
-  'Abuela', 'Tío Juan', 'Mom', 'Step Dad Ben', 'Sol', 'Ashley De La Cruz', 'Leslie', 'Tío Ralph', 'Tía Grace',
-  'James', 'Jerry', 'Kelly', 'Rafeh Qazi', 'Andrew', 'Daisy', 'Hell Fairy', 'Oscuri.dad', 'Baby Bats', 'Mr. Chino', 'Goth Tio',
-  'Amazon Ring', 'Find My', 'High Noons', 'Moreno Valley', "Mom's House", 'Club Metro', "Leslie's Graduation Party",
-];
+const USER_IDS = [userId];
 
-const TIMELINE_EVENTS = [
-  'Costco with Abuela', 'Building LoreBook', 'Club Metro', 'First Street Pool and Billiards',
-  "Leslie's Graduation Party", 'Amazon onboarding', 'Kelly interview', 'Sol breakup',
-];
+type AuditBenchmark = {
+  entities?: string[];
+  timelineEvents?: string[];
+  pollutionPatterns?: string[];
+};
 
-const POLLUTION_PATTERNS = ['ring', 'find my', 'high noon', 'moreno valley', "mom's house", 'amazon ring', 'club metro'];
+const privateBenchmarkPath = resolve(__dirname, '../../../.private/audit-benchmark.json');
+const benchmark: AuditBenchmark = existsSync(privateBenchmarkPath)
+  ? JSON.parse(readFileSync(privateBenchmarkPath, 'utf8'))
+  : {};
+
+const BENCHMARK = benchmark.entities ?? ['Alex Morgan', 'Grandma Rose', 'Downtown Lounge'];
+const TIMELINE_EVENTS = benchmark.timelineEvents ?? ['Weekend trip', 'New project kickoff'];
+const POLLUTION_PATTERNS = benchmark.pollutionPatterns ?? ['ring', 'find my'];
 
 async function auditUser(userId: string) {
   console.log('\n======== USER', userId, '========');

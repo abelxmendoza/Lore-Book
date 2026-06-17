@@ -11,7 +11,15 @@ vi.mock('../../web/src/config/featureFlags', () => ({
   featureFlags: mockFeatureFlags,
 }));
 vi.mock('../../src/config', () => ({
-  config: { enableExperimental: false, apiEnv: 'dev' },
+  config: {
+    enableExperimental: false,
+    apiEnv: 'dev',
+    adminUserId: 'admin-uuid',
+    adminEmail: 'admin@example.com',
+    ownerUserId: 'owner-uuid',
+    ownerEmail: 'founder@example.com',
+    developerEmail: 'dev@example.com',
+  },
 }));
 
 describe('featureFlags middleware helpers', () => {
@@ -32,19 +40,12 @@ describe('featureFlags middleware helpers', () => {
       expect(flags).not.toBe(mockFeatureFlags);
     });
 
-    it('should unlock all flags when ENABLE_EXPERIMENTAL and user is admin', async () => {
+    it('should unlock all flags when ENABLE_EXPERIMENTAL and user is admin via app_metadata', async () => {
       const { getActiveFlags } = await import('../../src/middleware/featureFlags');
-      const user = { id: 'u1', role: 'admin' };
+      const user = { id: 'u1', app_metadata: { role: 'admin' } };
       const flags = getActiveFlags(user, { ENABLE_EXPERIMENTAL: 'true', API_ENV: 'production' });
       expect(flags.timelinePlayback).toBe(true);
       expect(flags.memoryClusters).toBe(true);
-    });
-
-    it('should unlock all flags when ENABLE_EXPERIMENTAL and user is developer', async () => {
-      const { getActiveFlags } = await import('../../src/middleware/featureFlags');
-      const user = { id: 'u1', user_metadata: { role: 'developer' } };
-      const flags = getActiveFlags(user, { ENABLE_EXPERIMENTAL: 'true' });
-      expect(flags.timelinePlayback).toBe(true);
     });
 
     it('should not unlock all flags when ENABLE_EXPERIMENTAL but user is standard', async () => {

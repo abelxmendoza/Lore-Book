@@ -28,14 +28,18 @@ describe('Chat Orchestration API Routes', () => {
 
   it('POST /message returns response', async () => {
     const res = await request(app)
-      .post('/api/chat/message/message')
+      .post('/api/chat/message')
       .send({ message: 'Hello' })
       .expect(200);
     expect(res.body).toHaveProperty('text');
   });
 
   it('POST /message returns 400 without message', async () => {
-    await request(app).post('/api/chat/message/message').send({}).expect(400);
+    await request(app).post('/api/chat/message').send({}).expect(400);
+  });
+
+  it('rejects legacy double /message path', async () => {
+    await request(app).post('/api/chat/message/message').send({ message: 'Hello' }).expect(404);
   });
 
   it('GET /history/:sessionId returns messages', async () => {

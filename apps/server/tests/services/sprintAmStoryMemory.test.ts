@@ -27,12 +27,12 @@ import { containsBlockedPhrase } from '../../src/services/chat/antiRepetitionLay
 const TRANSCRIPT_CASES = [
   { label: 'Jerry', message: 'Who is Jerry?', intent: 'person_profile', name: 'Jerry' },
   { label: 'James', message: 'Do you remember James?', intent: 'recall_person', name: 'James' },
-  { label: 'Tía Grace', message: 'What happened at Tía Grace\'s house?', intent: 'scene_recall', scene: "Tía Grace's house" },
-  { label: 'Tío Juan', message: 'What do you know about Tío Juan?', intent: 'person_profile', name: 'Tío Juan' },
-  { label: 'Ashley', message: 'What happened with Ashley?', intent: 'event_story', name: 'Ashley' },
-  { label: 'Sol', message: 'What happened with Sol?', intent: 'event_story', name: 'Sol' },
-  { label: 'Club Metro', message: 'What happened at Club Metro?', intent: 'scene_recall', scene: 'Club Metro' },
-  { label: 'Costco + Abuela', message: 'What happened at Costco with Abuela?', intent: 'scene_recall' },
+  { label: 'Aunt Grace', message: 'What happened at Aunt Grace\'s house?', intent: 'scene_recall', scene: "Aunt Grace's house" },
+  { label: 'Uncle James', message: 'What do you know about Uncle James?', intent: 'person_profile', name: 'Uncle James' },
+  { label: 'Alex', message: 'What happened with Alex?', intent: 'event_story', name: 'Alex' },
+  { label: 'Sam Chen', message: 'What happened with Sam Chen?', intent: 'event_story', name: 'Sam Chen' },
+  { label: 'Blue Room', message: 'What happened at Blue Room?', intent: 'scene_recall', scene: 'Blue Room' },
+  { label: 'Costco + Grandma Rose', message: 'What happened at Costco with Grandma Rose?', intent: 'scene_recall' },
   { label: 'Kelly onboarding', message: 'What happened with Kelly?', intent: 'event_story', name: 'Kelly' },
   { label: 'Amazon hiring', message: 'Tell me the story of Amazon hiring process', intent: 'event_story' },
   { label: 'Story roster', message: 'Who are the people in my story?', intent: 'story_roster' },
@@ -71,46 +71,46 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
   });
 
   describe('AM-1 scene reconstruction format', () => {
-    it('formats Tía Grace Memorial Day scene with participants and meaning', () => {
+    it('formats Aunt Grace Memorial Day scene with participants and meaning', () => {
       const scene: SceneReconstruction = {
-        summary: 'Memorial Day weekend visit at Tía Grace\'s house',
-        participants: ['Abel', 'Jerry', 'James', 'Tía Grace'],
-        location: "Tía Grace's house",
+        summary: 'Memorial Day weekend visit at Aunt Grace\'s house',
+        participants: ['Abel', 'Jerry', 'James', 'Aunt Grace'],
+        location: "Aunt Grace's house",
         activities: [
-          'building LoreBook',
+          'building LifeLedger',
           'smoking',
           'James playing Magic',
           'Jerry discussing hardware',
           'doubting coding project',
         ],
-        emotional_context: 'Family gathering during early LoreBook development',
-        significance: 'Family gathering during early LoreBook development.',
+        emotional_context: 'Family gathering during early LifeLedger development',
+        significance: 'Family gathering during early LifeLedger development.',
         evidence: { memories: 4, events: 1, thread_messages: 3, facts: 2 },
       };
       const text = formatSceneForChat(scene);
-      assertStoryResponse(text, ['Participants', 'Jerry', 'James', 'Tía Grace', 'Meaning', 'Evidence']);
+      assertStoryResponse(text, ['Participants', 'Jerry', 'James', 'Aunt Grace', 'Meaning', 'Evidence']);
     });
 
-    it('formats Club Metro scene', () => {
+    it('formats Blue Room scene', () => {
       const scene: SceneReconstruction = {
-        summary: 'Night out at Club Metro in DTLA',
-        participants: ['Abel', 'Ashley'],
-        location: 'Club Metro',
+        summary: 'Night out at Blue Room in DTLA',
+        participants: ['Abel', 'Alex'],
+        location: 'Blue Room',
         activities: ['dancing', 'meeting after the club'],
         emotional_context: null,
-        significance: 'Where Ashley entered the story.',
+        significance: 'Where Alex entered the story.',
         evidence: { memories: 2, events: 1, thread_messages: 1, facts: 0 },
       };
       const text = formatSceneForChat(scene);
-      assertStoryResponse(text, ['Club Metro', 'Ashley', 'Meaning']);
+      assertStoryResponse(text, ['Blue Room', 'Alex', 'Meaning']);
     });
   });
 
   describe('AM-2 character memory profiles', () => {
-    it('formats Tío Juan as lived biography not generic uncle line', () => {
+    it('formats Uncle James as lived biography not generic uncle line', () => {
       const profile: CharacterMemoryProfile = {
         whoAreThey:
-          'Lives with you. Abuela\'s son. Makes sure you eat. Frequent participant in household life.',
+          'Lives with you. Grandma Rose\'s son. Makes sure you eat. Frequent participant in household life.',
         relationshipToUser: 'uncle',
         majorMemories: ['Medical appointments', 'Household meals', 'Family responsibility'],
         recurringPatterns: ['Family responsibility', 'Caretaking'],
@@ -118,26 +118,26 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
         lastSeen: '2025-06-01',
         importanceScore: 72,
         biography:
-          'Tío Juan is woven into daily household life — not just "your uncle" but someone who shows up for meals and medical appointments.',
+          'Uncle James is woven into daily household life — not just "your uncle" but someone who shows up for meals and medical appointments.',
       };
-      const text = formatCharacterMemoryProfileForChat(profile, 'Tío Juan');
+      const text = formatCharacterMemoryProfileForChat(profile, 'Uncle James');
       assertStoryResponse(text, ['Lives with you', 'Major memories', 'Biography', 'Medical']);
       expect(text).not.toMatch(/^He is your uncle\.?$/i);
     });
 
     it('formats Jerry with project context', () => {
       const profile: CharacterMemoryProfile = {
-        whoAreThey: 'Friend and LoreBook collaborator. Discusses hardware and coding.',
+        whoAreThey: 'Friend and LifeLedger collaborator. Discusses hardware and coding.',
         relationshipToUser: 'friend',
-        majorMemories: ['Memorial Day at Tía Grace\'s', 'LoreBook development sessions'],
-        recurringPatterns: ['Building LoreBook', 'Technical discussions'],
+        majorMemories: ['Memorial Day at Aunt Grace\'s', 'LifeLedger development sessions'],
+        recurringPatterns: ['Building the product', 'Technical discussions'],
         firstSeen: '2024-05-25',
         lastSeen: '2025-06-10',
         importanceScore: 65,
-        biography: 'Jerry appears in early LoreBook development scenes alongside James and family.',
+        biography: 'Jerry appears in early LifeLedger development scenes alongside James and family.',
       };
       const text = formatCharacterMemoryProfileForChat(profile, 'Jerry');
-      assertStoryResponse(text, ['Jerry', 'LoreBook', 'Major memories']);
+      assertStoryResponse(text, ['Jerry', 'LifeLedger', 'Major memories']);
     });
   });
 
@@ -150,14 +150,14 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
           characters: [
             {
               id: '1',
-              name: 'Tío Juan',
+              name: 'Uncle James',
               category: 'Family',
               memoryCount: 8,
               relationshipHint: 'uncle',
             },
             {
               id: '2',
-              name: 'Juan (Oscuri.dad)',
+              name: 'Juan (Neon Pulse.dad)',
               category: 'Scene / Community',
               memoryCount: 3,
               relationshipHint: null,
@@ -168,52 +168,52 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
         },
       ];
       const text = formatConflictWarning(conflicts)!;
-      assertStoryResponse(text, ['identity conflict', 'Tío Juan', 'Oscuri', 'Do NOT merge']);
+      assertStoryResponse(text, ['identity conflict', 'Uncle James', 'Neon Pulse', 'Do NOT merge']);
     });
   });
 
   describe('AM-5 event reconstruction', () => {
-    it('formats Ashley story with facts, timeline, and meaning', () => {
+    it('formats Alex story with facts, timeline, and meaning', () => {
       const event: EventReconstruction = {
-        title: 'Ashley — after Club Metro',
+        title: 'Alex — after Blue Room',
         facts: [
-          'Met after Club Metro in DTLA',
+          'Met after Blue Room in DTLA',
           'Spent the night together',
           'One night stand',
         ],
-        people: ['Ashley'],
-        timeline: [{ date: '2024-08-12', label: 'Met at Club Metro' }],
+        people: ['Alex'],
+        timeline: [{ date: '2024-08-12', label: 'Met at Blue Room' }],
         meaning: 'Positive experience but intentionally short-lived.',
         currentRelevance: 'Closed chapter — no ongoing relationship.',
         evidence: { events: 1, memories: 3, meaning_cached: true },
       };
       const text = formatEventReconstructionForChat(event);
-      assertStoryResponse(text, ['Facts', 'Ashley', 'Club Metro', 'Meaning', 'Timeline']);
+      assertStoryResponse(text, ['Facts', 'Alex', 'Blue Room', 'Meaning', 'Timeline']);
     });
 
-    it('formats Costco + Abuela outing', () => {
+    it('formats Costco + Grandma Rose outing', () => {
       const event: EventReconstruction = {
-        title: 'Costco with Abuela',
-        facts: ['2.5 hours at Costco', 'Abuela is still alive — the highlight'],
-        people: ['Abuela'],
+        title: 'Costco with Grandma Rose',
+        facts: ['2.5 hours at Costco', 'Grandma Rose is still alive — the highlight'],
+        people: ['Grandma Rose'],
         timeline: [{ date: '2025-06-14', label: 'Costco trip' }],
-        meaning: 'The highlight was that my Abuela is still alive.',
+        meaning: 'The highlight was that my Grandma Rose is still alive.',
         currentRelevance: 'Family continuity and gratitude.',
         evidence: { events: 1, memories: 2, meaning_cached: true },
       };
       const text = formatEventReconstructionForChat(event);
-      assertStoryResponse(text, ['Costco', 'Abuela', 'still alive']);
+      assertStoryResponse(text, ['Costco', 'Grandma Rose', 'still alive']);
     });
   });
 
   describe('AM-6 relationship story summaries', () => {
-    it('formats Ashley relationship narrative for Love & Relationships', () => {
+    it('formats Alex relationship narrative for Love & Relationships', () => {
       const story: RelationshipStory = {
-        personName: 'Ashley',
+        personName: 'Alex',
         relationshipType: 'hookup',
         status: 'ended',
         facts: [
-          'Met after Club Metro in DTLA',
+          'Met after Blue Room in DTLA',
           'Spent the night together',
           'One night stand — no desire to continue relationship',
         ],
@@ -222,7 +222,7 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
         flags: { green: ['Good chemistry'], red: ['No follow-up desired'] },
       };
       const text = formatRelationshipStoryForChat(story);
-      assertStoryResponse(text, ['Ashley', 'Club Metro', 'Meaning', 'short-lived']);
+      assertStoryResponse(text, ['Alex', 'Blue Room', 'Meaning', 'short-lived']);
     });
   });
 

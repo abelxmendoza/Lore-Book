@@ -4,39 +4,43 @@ import dotenv from 'dotenv';
 
 import { logger } from './logger';
 
-// Load .env from project root
-// From apps/server/src/config.ts, we need to go up 3 levels to reach root
-const currentDir = __dirname; // apps/server/src
-const serverDir = path.dirname(currentDir); // apps/server
-const appsDir = path.dirname(serverDir); // apps
-const rootDir = path.dirname(appsDir); // root
+// Load .env from project root (skip on hosted platforms — env vars are injected directly)
+const currentDir = __dirname;
+const serverDir = path.dirname(currentDir);
+const appsDir = path.dirname(serverDir);
+const rootDir = path.dirname(appsDir);
 
-// Determine which .env file to load based on API_ENV
-const tempApiEnv = process.env.API_ENV || 'dev';
-const envFileName = tempApiEnv === 'production' ? '.env.production' : 
-                     tempApiEnv === 'staging' ? '.env.staging' : 
-                     '.env.development';
-const envPath = path.resolve(rootDir, envFileName);
-const defaultEnvPath = path.resolve(rootDir, '.env');
+const isHostedRuntime = Boolean(
+  process.env.RAILWAY_ENVIRONMENT ||
+  process.env.VERCEL ||
+  process.env.RENDER ||
+  process.env.FLY_APP_NAME
+);
 
-// Try to load environment-specific file first, then fallback to .env
-let result = dotenv.config({ path: envPath });
-if (result.error) {
-  logger.warn(`⚠️  Failed to load ${envFileName}, trying .env`);
-  result = dotenv.config({ path: defaultEnvPath });
-  if (result.error) {
-    logger.error({ err: result.error }, `❌ Failed to load .env from ${defaultEnvPath}`);
-    // Try process.cwd() as fallback
-    const fallbackPath = path.resolve(process.cwd(), '.env');
-    const fallbackResult = dotenv.config({ path: fallbackPath });
-    if (!fallbackResult.error) {
-      logger.warn(`✅ Loaded .env from fallback: ${fallbackPath}`);
+if (!isHostedRuntime) {
+  const tempApiEnv = process.env.API_ENV || 'dev';
+  const envFileName = tempApiEnv === 'production' ? '.env.production'
+    : tempApiEnv === 'staging' ? '.env.staging'
+    : '.env.development';
+  const envPath = path.resolve(rootDir, envFileName);
+  const defaultEnvPath = path.resolve(rootDir, '.env');
+
+  const tryLoad = (filePath: string, label: string): boolean => {
+    const result = dotenv.config({ path: filePath });
+    if (!result.error) {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info(`Loaded ${label} from ${filePath}`);
+      }
+      return true;
     }
-  } else {
-    logger.warn(`✅ Loaded .env from: ${defaultEnvPath}`);
+    return false;
+  };
+
+  if (!tryLoad(envPath, envFileName)) {
+    if (!tryLoad(defaultEnvPath, '.env')) {
+      tryLoad(path.resolve(process.cwd(), '.env'), 'cwd .env');
+    }
   }
-} else {
-  logger.warn(`✅ Loaded ${envFileName} from: ${envPath}`);
 }
 
 type EnvConfig = {
@@ -72,6 +76,11 @@ type EnvConfig = {
   enableExperimental: boolean;
   adminUserId?: string;
   adminEmail?: string;
+  /** Canonical owner / founder account — never billed, never downgraded. */
+  ownerUserId?: string;
+  ownerEmail?: string;
+  /** Developer test account — premium without billing. */
+  developerEmail?: string;
 };
 
 const apiEnv = (process.env.API_ENV ?? 'dev') as 'dev' | 'staging' | 'production';
@@ -105,7 +114,15 @@ export const config: EnvConfig = {
   apiEnv,
   enableExperimental,
   adminUserId: process.env.ADMIN_USER_ID,
-  adminEmail: process.env.ADMIN_EMAIL,
+  adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase(),
+  ownerUserId: process.env.OWNER_USER_ID || process.env.FOUNDER_USER_ID,
+  ownerEmail: (
+    process.env.OWNER_EMAIL ||
+    process.env.FOUNDER_EMAIL ||
+    process.env.ADMIN_EMAIL ||
+    ''
+  ).trim().toLowerCase() || undefined,
+  developerEmail: process.env.DEVELOPER_EMAIL?.trim().toLowerCase(),
 };
 
 export const assertConfig = () => {

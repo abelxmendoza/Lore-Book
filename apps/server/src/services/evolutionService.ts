@@ -7,6 +7,17 @@ import { openai } from '../lib/openai';
 
 import { memoryService } from './memoryService';
 
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+type CachedInsights = { insights: EvolutionInsights; expiresAt: number };
+
+export type EvolutionAnalyzeTiming = {
+  totalMs: number;
+  dbMs: number;
+  openaiMs: number;
+  cacheHit: boolean;
+};
+
 const defaultInsights: EvolutionInsights = {
   personaTitle: 'The Archivist',
   personaTraits: ['Observant', 'Grounded', 'Steady'],
@@ -25,6 +36,26 @@ const topFromMap = (map: Map<string, number>, limit: number) =>
     .map(([key]) => key);
 
 class EvolutionService {
+  private cache = new Map<string, CachedInsights>();
+
+  private getCached(userId: string): EvolutionInsights | null {
+    const row = this.cache.get(userId);
+    if (!row || Date.now() > row.expiresAt) {
+      if (row) this.cache.delete(userId);
+      return null;
+    }
+    return row.insights;
+  }
+
+  private setCached(userId: string, insights: EvolutionInsights): void {
+    this.cache.set(userId, { insights, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+
+  /** Invalidate cache after journal mutations (optional caller). */
+  invalidate(userId: string): void {
+    this.cache.delete(userId);
+  }
+
   private buildStats(entries: MemoryEntry[]) {
     const tagTotals = new Map<string, number>();
     const moodTotals = new Map<string, number>();
@@ -98,9 +129,32 @@ class EvolutionService {
     return snippets.join('\n---\n');
   }
 
-  async analyze(userId: string): Promise<EvolutionInsights> {
+  async analyze(
+    userId: string,
+    options?: { refresh?: boolean }
+  ): Promise<{ insights: EvolutionInsights; timing: EvolutionAnalyzeTiming }> {
+    const started = Date.now();
+
+    if (!options?.refresh) {
+      const cached = this.getCached(userId);
+      if (cached) {
+        return {
+          insights: cached,
+          timing: { totalMs: Date.now() - started, dbMs: 0, openaiMs: 0, cacheHit: true },
+        };
+      }
+    }
+
+    const dbStarted = Date.now();
     const entries = await memoryService.searchEntries(userId, { limit: 180 });
-    if (!entries.length) return defaultInsights;
+    const dbMs = Date.now() - dbStarted;
+
+    if (!entries.length) {
+      return {
+        insights: defaultInsights,
+        timing: { totalMs: Date.now() - started, dbMs, openaiMs: 0, cacheHit: false },
+      };
+    }
 
     const stats = this.buildStats(entries);
     const emotionalPatterns = topFromMap(stats.moodTotals, 5).map((mood) => `Frequent mood: ${mood}`);
@@ -125,26 +179,39 @@ class EvolutionService {
     ].join('\n\n');
 
     try {
+      const openaiStarted = Date.now();
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.6,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: message },
-          { role: 'user', content: context }
-        ]
+          { role: 'user', content: context },
+        ],
       });
+      const openaiMs = Date.now() - openaiStarted;
 
       const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}');
-      return {
+      const insights = {
         ...defaultInsights,
         ...parsed,
         tagTrends: parsed?.tagTrends ?? stats.trends,
-        emotionalPatterns: parsed?.emotionalPatterns ?? emotionalPatterns
+        emotionalPatterns: parsed?.emotionalPatterns ?? emotionalPatterns,
       } satisfies EvolutionInsights;
+
+      this.setCached(userId, insights);
+
+      return {
+        insights,
+        timing: { totalMs: Date.now() - started, dbMs, openaiMs, cacheHit: false },
+      };
     } catch (error) {
       logger.error({ error }, 'Failed to generate evolution insights');
-      return { ...defaultInsights, tagTrends: stats.trends, emotionalPatterns };
+      const fallback = { ...defaultInsights, tagTrends: stats.trends, emotionalPatterns };
+      return {
+        insights: fallback,
+        timing: { totalMs: Date.now() - started, dbMs, openaiMs: 0, cacheHit: false },
+      };
     }
   }
 }

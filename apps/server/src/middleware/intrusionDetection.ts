@@ -15,10 +15,22 @@ const suspiciousActivities = new Map<string, SuspiciousActivity>();
 const BLOCK_THRESHOLD = 10; // Number of suspicious patterns before blocking
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
+const isDevelopment = () =>
+  process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+
+const isLoopbackIp = (ip: string | undefined): boolean => {
+  if (!ip) return false;
+  const normalized = ip.replace(/^::ffff:/, '');
+  return normalized === '127.0.0.1' || normalized === '::1' || ip === 'localhost';
+};
+
+// Path traversal in URLs is suspicious; in JSON bodies it is normal user content (chat, paths, code).
+const PATH_TRAVERSAL_PATTERNS = [/\.\.\//g, /\.\.\\/g];
+
 // Patterns that indicate potential attacks
 // Using non-greedy quantifiers and word boundaries to prevent ReDoS
 const ATTACK_PATTERNS = [
-  /\.\.\//g, // Path traversal
+  ...PATH_TRAVERSAL_PATTERNS,
   /<script/gi, // XSS attempts
   /\bunion\s+select\b/gi, // SQL injection - using word boundaries and \s+ instead of .*
   /\bexec\s*\(/gi, // Code execution attempts - word boundary prevents ReDoS
@@ -28,12 +40,15 @@ const ATTACK_PATTERNS = [
   /\.git/gi, // Git directory access
   /wp-admin/gi, // WordPress admin (common attack target)
   /phpmyadmin/gi, // phpMyAdmin (common attack target)
-  /\.\.\\/g, // Windows path traversal
   /%00/gi, // Null byte injection
   /javascript:/gi, // JavaScript protocol
   /\bonerror\s*=/gi, // Event handler injection - word boundary prevents ReDoS
   /\bonload\s*=/gi, // Event handler injection - word boundary prevents ReDoS
 ];
+
+const BODY_ATTACK_PATTERNS = ATTACK_PATTERNS.filter(
+  (pattern) => !PATH_TRAVERSAL_PATTERNS.some((p) => p.source === pattern.source)
+);
 
 // Suspicious user agents
 const SUSPICIOUS_USER_AGENTS = [
@@ -73,8 +88,8 @@ const detectSuspiciousPattern = (req: Request): string[] => {
     }
   }
 
-  // Check body for attack patterns
-  for (const pattern of ATTACK_PATTERNS) {
+  // Check body for attack patterns (exclude path traversal — common in chat/code uploads)
+  for (const pattern of BODY_ATTACK_PATTERNS) {
     if (pattern.test(body)) {
       patterns.push(`body_pattern:${pattern.source}`);
     }
@@ -94,12 +109,13 @@ const detectSuspiciousPattern = (req: Request): string[] => {
     }
   }
 
-  // Check for rapid requests from same IP
+  // Rapid requests alone are handled by rate limiting; only flag when paired with attack signals.
   const key = req.ip || 'unknown';
   const existing = suspiciousActivities.get(key);
-  if (existing) {
+  const hasAttackSignal = patterns.some((p) => p !== 'rapid_requests');
+  if (existing && hasAttackSignal) {
     const timeSinceLastSeen = Date.now() - existing.lastSeen;
-    if (timeSinceLastSeen < 1000) { // Less than 1 second between requests
+    if (timeSinceLastSeen < 1000) {
       patterns.push('rapid_requests');
     }
   }
@@ -173,12 +189,23 @@ const recordSuspiciousActivity = (req: Request, patterns: string[]) => {
   }
 };
 
+/** Clears in-memory state — for tests and dev server hot reload. */
+export const resetIntrusionDetectionState = () => {
+  suspiciousActivities.clear();
+};
+
 export const intrusionDetection = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   const key = req.ip || 'unknown';
+
+  // Local dev traffic (thread sync, CSRF polling) should never self-block the UI.
+  if (isDevelopment() && isLoopbackIp(key)) {
+    return next();
+  }
+
   const activity = suspiciousActivities.get(key);
 
   // Block if threshold exceeded

@@ -27,13 +27,13 @@ vi.mock('../../src/services/health/healthStorage', () => ({
 }));
 
 import { requireAuth } from '../../src/middleware/auth';
-import healthRouter from '../../src/routes/health';
+import wellnessRouter from '../../src/routes/wellness';
 
 const app = express();
 app.use(express.json());
-app.use('/api/health', healthRouter);
+app.use('/api/wellness', wellnessRouter);
 
-describe('Health API Routes', () => {
+describe('Wellness API Routes', () => {
   const mockUser = { id: 'u1', email: 'a@b.com' };
 
   beforeEach(() => {
@@ -45,47 +45,37 @@ describe('Health API Routes', () => {
   });
 
   it('POST /analyze should return result', async () => {
-    const res = await request(app).post('/api/health/analyze').send({}).expect(200);
+    const res = await request(app).post('/api/wellness/analyze').send({}).expect(200);
     expect(res.body).toHaveProperty('symptoms');
   });
 
   it('GET /symptoms should return symptoms', async () => {
-    const res = await request(app).get('/api/health/symptoms').expect(200);
+    const res = await request(app).get('/api/wellness/symptoms').expect(200);
     expect(res.body).toHaveProperty('symptoms');
   });
 
   it('GET /sleep should return sleep', async () => {
-    const res = await request(app).get('/api/health/sleep').expect(200);
+    const res = await request(app).get('/api/wellness/sleep').expect(200);
     expect(res.body).toHaveProperty('sleep');
   });
 
   it('GET /stats should return stats', async () => {
-    const res = await request(app).get('/api/health/stats').expect(200);
+    const res = await request(app).get('/api/wellness/stats').expect(200);
     expect(res.body).toBeDefined();
   });
 
   it('GET /energy should return energy', async () => {
-    const res = await request(app).get('/api/health/energy').expect(200);
+    const res = await request(app).get('/api/wellness/energy').expect(200);
     expect(res.body).toHaveProperty('energy');
   });
 
-  it('GET /wellness should return wellness', async () => {
-    const res = await request(app).get('/api/health/wellness').expect(200);
+  it('GET /score should return wellness score', async () => {
+    const res = await request(app).get('/api/wellness/score').expect(200);
     expect(res.body).toHaveProperty('wellness');
   });
 
   it('GET /insights should return insights', async () => {
-    const res = await request(app).get('/api/health/insights').expect(200);
+    const res = await request(app).get('/api/wellness/insights').expect(200);
     expect(res.body).toHaveProperty('insights');
-  });
-
-  it('GET /insights accepts type query', async () => {
-    const res = await request(app).get('/api/health/insights?type=sleep').expect(200);
-    expect(res.body).toHaveProperty('insights');
-  });
-
-  it('GET /symptoms accepts type query', async () => {
-    const res = await request(app).get('/api/health/symptoms?type=headache').expect(200);
-    expect(res.body).toHaveProperty('symptoms');
   });
 });

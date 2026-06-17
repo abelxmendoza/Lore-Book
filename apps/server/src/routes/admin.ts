@@ -17,7 +17,7 @@ import { getAdminMetrics } from '../lib/admin/getAdminMetrics';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/rbac';
-import { cancelSubscription } from '../services/stripeService';
+import { resolveAccountAuthorityFromAuthUser } from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -122,13 +122,17 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
       const sub = (subscriptions || []).find((s: any) => s.user_id === user.id);
       const usage = (usageRows || []).find((u: any) => u.user_id === user.id);
 
+      const authority = resolveAccountAuthorityFromAuthUser(user);
+
       return {
         id: user.id,
         email: user.email,
         createdAt: user.created_at,
         lastSignInAt: user.last_sign_in_at,
         memoryCount: memoryCountMap.get(user.id) ?? 0,
-        role: user.user_metadata?.role || user.app_metadata?.role || 'standard_user',
+        role: authority.role,
+        isFounderAccount: authority.isFounderAccount,
+        privilegeSource: authority.privilegeSource,
         providers: uniqueProviders,
         hasLinkedAccounts: uniqueProviders.length > 1,
         subscriptionStatus: sub?.status || 'free',

@@ -18,7 +18,7 @@ const createQuestSchema = z.object({
 describe('createQuestSchema suggestion payloads', () => {
   it('accepts null description and scores from LLM suggestions', () => {
     const parsed = createQuestSchema.safeParse({
-      title: 'Finish Lorebook onboarding',
+      title: 'Finish LifeLedger onboarding',
       description: null,
       quest_type: 'weekly',
       priority: null,

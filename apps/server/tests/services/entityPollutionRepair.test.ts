@@ -12,7 +12,7 @@ describe('entityPollutionRepair', () => {
   });
 
   it('does not flag real people', () => {
-    for (const name of ['Abuela', 'Tío Juan', 'Step Dad Ben', 'Mr. Chino']) {
+    for (const name of ['Grandma Rose', 'Uncle James', 'Step Dad Ben', 'Mr. Chino']) {
       expect(classifyEntity(name).type).toBe('PERSON');
     }
   });

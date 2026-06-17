@@ -9,6 +9,7 @@ import { FinanceDashboard } from './FinanceDashboard';
 import { LogsViewer } from './LogsViewer';
 import { EngineHealthDashboard } from './EngineHealthDashboard';
 import { canAccessAdmin } from '../../middleware/roleGuard';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { Users, FileText, Zap, Database, AlertTriangle } from 'lucide-react';
 
 interface AdminMetrics {
@@ -45,18 +46,17 @@ export const AdminConsole = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Check if user is admin
-  const isAdmin = canAccessAdmin(user || null);
+  const { authority } = useAccountAuthority();
+
+  const isAdmin = canAccessAdmin(authority);
 
   useEffect(() => {
-    // In development mode, allow access for testing
-    // In production, redirect if not admin
     const apiEnv = import.meta.env.VITE_API_ENV || import.meta.env.MODE || 'dev';
     if (!isAdmin && apiEnv !== 'dev' && apiEnv !== 'development') {
       window.location.href = '/';
       return;
     }
 
-    // Load initial data
     loadDashboardData();
   }, [isAdmin]);
 

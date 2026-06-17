@@ -15,13 +15,13 @@ describe('messageReferencesMention', () => {
   });
 
   it('matches when mention is part of a multi-word name', () => {
-    expect(messageReferencesMention('Hell Fairy played last night', 'Fairy')).toBe(true);
+    expect(messageReferencesMention('Velvet Hour played last night', 'Fairy')).toBe(true);
   });
 
   it('does not match unrelated messages', () => {
     expect(
       messageReferencesMention(
-        'Yesterday I stayed in to build LoreBook with Codex and Cursor',
+        'Yesterday I stayed in to build LifeLedger with Codex and Cursor',
         'Fairy'
       )
     ).toBe(false);
@@ -40,10 +40,10 @@ describe('messageReferencesMention', () => {
     expect(
       threadUserHistoryReferencesMention(
         [
-          { role: 'user', content: 'Yesterday I stayed in to build LoreBook' },
-          { role: 'assistant', content: 'Got it — you spent time on LoreBook.' },
+          { role: 'user', content: 'Yesterday I stayed in to build LifeLedger' },
+          { role: 'assistant', content: 'Got it — you spent time on LifeLedger.' },
         ],
-        "I didn't even mention Hell Fairy in this convo",
+        "I didn't even mention Velvet Hour in this convo",
         'Fairy'
       )
     ).toBe(true); // current message mentions Fairy — callers must gate on established history
@@ -53,8 +53,8 @@ describe('messageReferencesMention', () => {
     expect(
       threadUserHistoryReferencesMention(
         [
-          { role: 'user', content: 'Testing LoreBook changes and finding bugs' },
-          { role: 'assistant', content: 'Hell Fairy played at Club Metro last year.' },
+          { role: 'user', content: 'Testing LifeLedger changes and finding bugs' },
+          { role: 'assistant', content: 'Velvet Hour played at Blue Room last year.' },
         ],
         'Still testing features',
         'Fairy'
@@ -63,16 +63,16 @@ describe('messageReferencesMention', () => {
   });
 
   it('matches multi-word mentions exactly', () => {
-    expect(messageReferencesMention('We met Hell Fairy there', 'Hell Fairy')).toBe(true);
-    expect(messageReferencesMention('We met Fairy there', 'Hell Fairy')).toBe(false);
+    expect(messageReferencesMention('We met Velvet Hour there', 'Velvet Hour')).toBe(true);
+    expect(messageReferencesMention('We met Fairy there', 'Velvet Hour')).toBe(false);
   });
 });
 
 describe('normalizeDisambiguationCandidates', () => {
   it('dedupes by character id', () => {
     const result = dedupeCandidatesById([
-      { character_id: 'a', name: 'Hell Fairy' },
-      { character_id: 'a', name: 'Hell Fairy' },
+      { character_id: 'a', name: 'Velvet Hour' },
+      { character_id: 'a', name: 'Velvet Hour' },
       { character_id: 'b', name: 'Mr. Chino' },
     ]);
     expect(result).toHaveLength(2);
@@ -82,11 +82,11 @@ describe('normalizeDisambiguationCandidates', () => {
     const result = collapseAliasLinkedCandidates(
       [
         { character_id: 'daisy', name: 'Daisy' },
-        { character_id: 'hell', name: 'Hell Fairy from the Underground Scene' },
+        { character_id: 'hell', name: 'Velvet Hour from the Underground Scene' },
       ],
       [
-        { id: 'daisy', name: 'Daisy', alias: ['Hell Fairy'] },
-        { id: 'hell', name: 'Hell Fairy from the Underground Scene', alias: [] },
+        { id: 'daisy', name: 'Daisy', alias: ['Velvet Hour'] },
+        { id: 'hell', name: 'Velvet Hour from the Underground Scene', alias: [] },
       ]
     );
     expect(result).toHaveLength(1);
@@ -95,7 +95,7 @@ describe('normalizeDisambiguationCandidates', () => {
 
   it('collapses same normalized display names', () => {
     const result = collapseSameNameCandidates([
-      { character_id: 'a', name: 'Hell Fairy' },
+      { character_id: 'a', name: 'Velvet Hour' },
       { character_id: 'b', name: 'hell fairy' },
     ]);
     expect(result).toHaveLength(1);
@@ -105,10 +105,10 @@ describe('normalizeDisambiguationCandidates', () => {
     const result = normalizeDisambiguationCandidates(
       [
         { character_id: 'daisy', name: 'Daisy' },
-        { character_id: 'hell', name: 'Hell Fairy from the Underground Scene' },
-        { character_id: 'hell', name: 'Hell Fairy from the Underground Scene' },
+        { character_id: 'hell', name: 'Velvet Hour from the Underground Scene' },
+        { character_id: 'hell', name: 'Velvet Hour from the Underground Scene' },
       ],
-      [{ id: 'daisy', name: 'Daisy', alias: ['Hell Fairy'] }, { id: 'hell', name: 'Hell Fairy from the Underground Scene', alias: [] }]
+      [{ id: 'daisy', name: 'Daisy', alias: ['Velvet Hour'] }, { id: 'hell', name: 'Velvet Hour from the Underground Scene', alias: [] }]
     );
     expect(result).toHaveLength(1);
   });

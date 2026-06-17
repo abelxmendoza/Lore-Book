@@ -51,7 +51,7 @@ import { entriesRouter } from './entries';
 import { evolutionRouter } from './evolution';
 import { githubRouter } from './github';
 import { hqiRouter } from './hqi';
-import healthRouter from './health';
+import wellnessRouter from './wellness';
 import { insightsRouter } from './insights';
 import { integrationsRouter } from './integrations';
 import { legalRouter } from './legal';
@@ -194,18 +194,10 @@ export interface RouteEntry {
 export const routeRegistry: RouteEntry[] = [
   // ---- HEALTH & DIAGNOSTICS -----------------------------------------------
   {
-    path: '/',
-    router: healthRouter,
-    requiresAuth: false,
+    path: '/api/wellness',
+    router: wellnessRouter,
     classification: 'CORE_RUNTIME',
-    description: 'Liveness check — no auth, no DB',
-  },
-  {
-    path: '/api/health',
-    router: healthRouter,
-    requiresAuth: false,
-    classification: 'CORE_RUNTIME',
-    description: 'Health check (Railway healthcheck target)',
+    description: 'User wellness analytics — symptoms, sleep, energy (not system liveness)',
   },
   {
     path: '/api/diagnostics',
@@ -240,7 +232,6 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/account',
     router: accountRouter,
-    requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Account management',
   },
@@ -287,14 +278,13 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/documents',
     router: documentsRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Document upload and processing',
   },
   {
     path: '/api/photos',
     router: photosRouter,
-    requiresAuth: false,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Photo ingestion',
   },
 
@@ -343,7 +333,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/entity-resolution',
     router: entityResolutionRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Entity deduplication and resolution',
   },
 
@@ -383,7 +373,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/insights',
     router: insightsRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Insight storage and retrieval',
   },
   {
@@ -489,7 +479,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/timeline-hierarchy',
     router: timelineHierarchyRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Hierarchical timeline view',
   },
   {
@@ -502,8 +492,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/chronology',
     router: chronologyRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Chronological event ordering',
+    classification: 'CORE_RUNTIME',
+    description: 'Chronological event ordering — used by timeline UI',
   },
   {
     path: '/api/evolution',
@@ -515,7 +505,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/life-arcs',
     router: lifeArcRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Life arc CRUD — list, create, update, delete arcs and relationships',
   },
   {
@@ -549,7 +539,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/entity-ambiguity',
     router: entityAmbiguityRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Entity ambiguity detection and resolution',
   },
   {
@@ -680,7 +670,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/predictions',
     router: predictionsRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Prediction storage and retrieval',
   },
   {
@@ -788,7 +778,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/goals',
     router: goalsRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Goal tracking',
   },
   {
@@ -800,7 +790,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/voids',
     router: voidRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Void / absence pattern detection',
   },
 
@@ -808,8 +798,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/identity',
     router: identityRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Identity model management',
+    classification: 'CORE_RUNTIME',
+    description: 'Identity model — pulse, what-ai-knows, revisions',
   },
   {
     path: '/api/identity-core',
@@ -1053,7 +1043,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/biography',
     router: biographyRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Automated biography generation',
   },
   {

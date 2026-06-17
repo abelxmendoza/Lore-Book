@@ -22,11 +22,14 @@ function arg(flag: string): string | undefined {
 }
 
 async function resolveUserId(email?: string): Promise<string> {
-  if (!email) return process.env.ADMIN_USER_ID ?? '789bd607-e063-466f-a9ef-f68d24e8bb57';
+  const resolved = email || process.env.TARGET_USER_EMAIL;
+  if (!resolved) {
+    throw new Error('Required: --user <email> or TARGET_USER_EMAIL environment variable.');
+  }
   const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
   if (error) throw error;
-  const user = data.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-  if (!user) throw new Error(`No auth user found for ${email}`);
+  const user = data.users.find(u => u.email?.toLowerCase() === resolved.toLowerCase());
+  if (!user) throw new Error(`No auth user found for ${resolved}`);
   return user.id;
 }
 

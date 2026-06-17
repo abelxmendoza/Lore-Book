@@ -35,19 +35,19 @@ describe('EntityClassifier — the Graduation Party regressions', () => {
 describe('EntityClassifier — PERSON requires evidence (the core rule)', () => {
   it('honorific/kinship → PERSON', () => {
     expect(t('Tio Ralph')).toBe('PERSON');
-    expect(t('Abuela')).toBe('PERSON');
+    expect(t('Grandma Rose')).toBe('PERSON');
     expect(t('Dr Martinez')).toBe('PERSON');
     expect(t('Mother')).toBe('PERSON');
     expect(t('Stepdad')).toBe('PERSON');
   });
   it('person-context predicate → PERSON', () => {
-    expect(t('Leslie', 'Leslie said she would bring the cake')).toBe('PERSON');
+    expect(t('Morgan Gray', 'Morgan Gray said she would bring the cake')).toBe('PERSON');
     expect(t('Marcus', 'my cousin Marcus came over')).toBe('PERSON');
   });
   it('bare unknown proper noun → UNCLASSIFIED (never auto-Person/Character)', () => {
-    expect(t('Leslie')).toBe('UNKNOWN');
+    expect(t('Morgan Gray')).toBe('UNKNOWN');
     expect(t('Zephyrine')).toBe('UNKNOWN');
-    expect(isCharacterEligible(classifyEntity('Leslie').type)).toBe(false);
+    expect(isCharacterEligible(classifyEntity('Morgan Gray').type)).toBe(false);
   });
 });
 
@@ -68,7 +68,7 @@ describe('EntityClassifier — places, venues, companies', () => {
     expect(t('Ex Lover')).toBe('ORGANIZATION');
   });
   it('specific venue → LOCATION', () => {
-    expect(t('Club Metro')).toBe('LOCATION');
+    expect(t('Blue Room')).toBe('LOCATION');
   });
 });
 
@@ -81,14 +81,14 @@ describe('EntityClassifier — ship blocker sprint (real-world labels)', () => {
     expect(t("Mom's House")).toBe('HOUSEHOLD');
   });
   it('kinship → PERSON', () => {
-    expect(t('Tío Juan')).toBe('PERSON');
+    expect(t('Uncle James')).toBe('PERSON');
     expect(t('Step Mom')).toBe('PERSON');
     expect(t('Step Dad')).toBe('PERSON');
     expect(t('Brother')).toBe('PERSON');
     expect(t('Sister')).toBe('PERSON');
   });
   it('bare nicknames without context → UNKNOWN (never Person)', () => {
-    for (const name of ['Hell Fairy', 'Daisy', 'Baby Bats', 'Juan (Oscuri.dad)']) {
+    for (const name of ['Velvet Hour', 'Daisy', 'Baby Bats', 'Juan (Neon Pulse.dad)']) {
       expect(t(name)).toBe('UNKNOWN');
       expect(isCharacterEligible(classifyEntity(name).type)).toBe(false);
     }

@@ -11,7 +11,8 @@ import { AdminHeader } from '../../components/admin/AdminHeader';
 import { FinanceDashboard } from '../../components/admin/FinanceDashboard';
 import { UserProviderBadge } from '../../components/admin/UserProviderBadge';
 import { SubscriptionStatusBadge } from '../../components/admin/SubscriptionStatusBadge';
-import { canAccessAdmin } from '../../middleware/roleGuard';
+import { canAccessAdmin, isFounderFromAuthority } from '../../middleware/roleGuard';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { config } from '../../config/env';
 import { getUserFriendlyMessage } from '../../lib/errorHandler';
 import NotFound from '../../routes/NotFound';
@@ -118,6 +119,7 @@ function getSectionTitle(view: AdminView): string {
 
 export const AdminPage = () => {
   const { user, loading: authLoading } = useAuth();
+  const { authority, loading: authorityLoading } = useAccountAuthority();
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -132,17 +134,16 @@ export const AdminPage = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loadIssue, setLoadIssue] = useState<AdminLoadIssue | null>(null);
 
-  const isAdmin = canAccessAdmin(user || null);
+  const isAdmin = canAccessAdmin(authority);
 
   useEffect(() => {
-    // Wait for auth to finish resolving before deciding to redirect
-    if (authLoading) return;
+    if (authLoading || authorityLoading) return;
     if (!isAdmin) {
       window.location.href = '/';
       return;
     }
     loadDashboardData();
-  }, [authLoading, isAdmin]);
+  }, [authLoading, authorityLoading, isAdmin]);
 
   const loadDashboardData = async () => {
     try {
@@ -549,6 +550,7 @@ export const AdminPage = () => {
                           <tr className="border-b border-white/10">
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Email</th>
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Auth</th>
+                            <th className="text-left py-3 px-3 text-white/50 font-medium">Role</th>
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Subscription</th>
                             <th className="text-left py-3 px-3 text-white/50 font-medium">AI (mo)</th>
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Entries (mo)</th>
@@ -564,6 +566,7 @@ export const AdminPage = () => {
                               <td className="py-3 px-3">
                                 <UserProviderBadge providers={u.providers} hasLinkedAccounts={u.hasLinkedAccounts} />
                               </td>
+                              <td className="py-3 px-3 text-white/60 text-xs capitalize">{u.role || 'standard'}</td>
                               <td className="py-3 px-3">
                                 <SubscriptionStatusBadge status={u.subscriptionStatus} tier={u.subscriptionTier} />
                               </td>
@@ -790,6 +793,21 @@ export const AdminPage = () => {
 
             {/* ── TOOLS ── */}
             {currentView === 'tools' && (
+              <div className="space-y-4">
+                {isFounderFromAuthority(authority) && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-amber-200">Founder Account · Personal Production Data</p>
+                        <p className="text-xs text-amber-100/70 mt-1 leading-relaxed">
+                          You are operating on the founder account. Do not export, clone, or migrate this data into
+                          demo, seed, fixture, or public environments. All synthetic data must remain fictional.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               <div className="rounded-lg border border-purple-500/30 bg-black/40 p-4">
                 <h2 className="text-xl font-semibold mb-4">Admin Tools</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -811,6 +829,7 @@ export const AdminPage = () => {
                     </div>
                   ))}
                 </div>
+              </div>
               </div>
             )}
 

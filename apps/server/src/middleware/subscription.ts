@@ -1,33 +1,14 @@
 import type { Response, NextFunction } from 'express';
 
+import { isPrivilegedAccount } from '../lib/accountAuthority';
 import { getUserSubscription } from '../services/stripeService';
 import { getCurrentUsage, canCreateEntry, canMakeAiRequest } from '../services/usageTracking';
-import { supabaseAdmin } from '../services/supabaseClient';
 
 import type { AuthenticatedRequest } from './auth';
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'abelxmendoza@gmail.com';
-
-/**
- * Returns true for the admin account — admins are never gated by billing.
- * Checks both email and app_metadata.role so it works even if email changes.
- */
-async function isAdminUser(userId: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (error || !data?.user) return false;
-    const role = data.user.app_metadata?.role || data.user.user_metadata?.role;
-    if (role === 'admin' || role === 'developer') return true;
-    if (data.user.email && data.user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Middleware to check if user has active subscription or is within trial period.
- * Admin accounts are always allowed through.
+ * Owner, admin, and developer accounts bypass all subscription gates.
  */
 export async function checkSubscription(
   req: AuthenticatedRequest,
@@ -38,7 +19,7 @@ export async function checkSubscription(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (await isAdminUser(req.user.id)) return next();
+  if (await isPrivilegedAccount(req.user.id)) return next();
 
   const subscription = await getUserSubscription(req.user.id);
   const now = new Date();
@@ -64,7 +45,7 @@ export async function checkSubscription(
 
 /**
  * Middleware to require premium subscription.
- * Admin accounts bypass this gate entirely.
+ * Privileged platform roles bypass this gate entirely.
  */
 export async function requirePremium(
   req: AuthenticatedRequest,
@@ -75,7 +56,7 @@ export async function requirePremium(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (await isAdminUser(req.user.id)) return next();
+  if (await isPrivilegedAccount(req.user.id)) return next();
 
   const subscription = await getUserSubscription(req.user.id);
   const now = new Date();
@@ -93,7 +74,7 @@ export async function requirePremium(
 
 /**
  * Middleware to check entry creation limits.
- * Admin accounts have no entry cap.
+ * Privileged accounts have no entry cap.
  */
 export async function checkEntryLimit(
   req: AuthenticatedRequest,
@@ -104,7 +85,7 @@ export async function checkEntryLimit(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (await isAdminUser(req.user.id)) return next();
+  if (await isPrivilegedAccount(req.user.id)) return next();
 
   const check = await canCreateEntry(req.user.id);
   if (!check.allowed) {
@@ -120,7 +101,7 @@ export async function checkEntryLimit(
 
 /**
  * Middleware to check AI request limits.
- * Admin accounts have no AI request cap.
+ * Privileged accounts have no AI request cap.
  */
 export async function checkAiRequestLimit(
   req: AuthenticatedRequest,
@@ -131,7 +112,7 @@ export async function checkAiRequestLimit(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (await isAdminUser(req.user.id)) return next();
+  if (await isPrivilegedAccount(req.user.id)) return next();
 
   const check = await canMakeAiRequest(req.user.id);
   if (!check.allowed) {
@@ -159,7 +140,7 @@ export async function attachUsageData(
 
   try {
     const usage = await getCurrentUsage(req.user.id);
-    (req as any).usage = usage;
+    (req as AuthenticatedRequest & { usage?: unknown }).usage = usage;
   } catch (error) {
     console.error('Error attaching usage data:', error);
   }

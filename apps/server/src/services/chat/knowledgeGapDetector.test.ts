@@ -3,7 +3,7 @@ import { detectKnowledgeGaps, extractCandidateNames, formatKnowledgeGapBlock } f
 
 const chars = [
   { id: 'c1', name: 'Sarah Chen', alias: ['Sar'] },
-  { id: 'c2', name: 'Abuela', alias: [] },
+  { id: 'c2', name: 'Grandma Rose', alias: [] },
 ];
 const locs = [{ id: 'l1', name: 'Costco' }];
 
@@ -48,19 +48,19 @@ describe('detectKnowledgeGaps', () => {
   it('flags a matched entity with no arc and no attributes as sparse', () => {
     const gaps = detectKnowledgeGaps({
       ...base,
-      message: 'Tell me about Abuela',
-      matchedEntities: [{ id: 'c2', type: 'character', name: 'Abuela' }],
+      message: 'Tell me about Grandma Rose',
+      matchedEntities: [{ id: 'c2', type: 'character', name: 'Grandma Rose' }],
       arcLoadedForPrimary: false,
       primaryHasAttributes: false,
     });
-    expect(gaps).toEqual([{ type: 'sparse_entity', name: 'Abuela', entityId: 'c2', entityType: 'character' }]);
+    expect(gaps).toEqual([{ type: 'sparse_entity', name: 'Grandma Rose', entityId: 'c2', entityType: 'character' }]);
   });
 
   it('does not flag a matched entity whose arc loaded', () => {
     const gaps = detectKnowledgeGaps({
       ...base,
-      message: 'Tell me about Abuela',
-      matchedEntities: [{ id: 'c2', type: 'character', name: 'Abuela' }],
+      message: 'Tell me about Grandma Rose',
+      matchedEntities: [{ id: 'c2', type: 'character', name: 'Grandma Rose' }],
       arcLoadedForPrimary: true,
     });
     expect(gaps).toEqual([]);
@@ -69,8 +69,8 @@ describe('detectKnowledgeGaps', () => {
   it('does not flag a matched entity that has attributes', () => {
     const gaps = detectKnowledgeGaps({
       ...base,
-      message: 'Tell me about Abuela',
-      matchedEntities: [{ id: 'c2', type: 'character', name: 'Abuela' }],
+      message: 'Tell me about Grandma Rose',
+      matchedEntities: [{ id: 'c2', type: 'character', name: 'Grandma Rose' }],
       primaryHasAttributes: true,
     });
     expect(gaps).toEqual([]);
@@ -93,12 +93,12 @@ describe('formatKnowledgeGapBlock', () => {
   it('formats unknown and sparse gaps with TIER instructions', () => {
     const block = formatKnowledgeGapBlock([
       { type: 'unknown_entity', name: 'Marcus' },
-      { type: 'sparse_entity', name: 'Abuela', entityId: 'c2', entityType: 'character' },
+      { type: 'sparse_entity', name: 'Grandma Rose', entityId: 'c2', entityType: 'character' },
     ])!;
     expect(block).toContain('KNOWLEDGE GAPS');
     expect(block).toContain('"Marcus" — nothing in the record');
     expect(block).toContain('TIER 3');
-    expect(block).toContain('"Abuela" is on record but has no events or facts yet');
+    expect(block).toContain('"Grandma Rose" is on record but has no events or facts yet');
     expect(block).toContain('nickname');
   });
 });

@@ -57,6 +57,7 @@ export type WorkingMemoryAssembly = {
     rejected: number;
   };
   rejected: Array<WorkingMemoryItem & { rejectedReason: string }>;
+  timing?: WmaAssemblyTiming;
 };
 
 export type WorkingMemoryPacket = {
@@ -79,6 +80,209 @@ export type WorkingMemoryPacket = {
 type AssembleOptions = {
   maxItems?: number;
 };
+
+export type WmaQueryRecord = {
+  table: string;
+  purpose: string;
+  ms: number;
+  rowCount: number;
+  cached: boolean;
+};
+
+export type WmaAssemblyTiming = {
+  totalMs: number;
+  entityResolutionMs: number;
+  candidateGenerationMs: number;
+  rankingMs: number;
+  queryCount: number;
+  queries: WmaQueryRecord[];
+};
+
+type CharacterRow = {
+  id: string;
+  name: string;
+  alias?: string[] | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown> | null;
+  importance_score?: number | null;
+  importance_level?: string | null;
+  updated_at?: string | null;
+};
+
+type PeoplePlaceRow = {
+  id: string;
+  name: string;
+  type?: string | null;
+  corrected_names?: string[] | null;
+};
+
+type ProjectRow = {
+  id: string;
+  name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  status?: string | null;
+  updated_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+/** Request-local scope: dedupes identical queries and records timing per assemble call. */
+class WmaRequestScope {
+  private promises = new Map<string, Promise<unknown>>();
+  readonly queries: WmaQueryRecord[] = [];
+
+  once<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const existing = this.promises.get(key);
+    if (existing) {
+      return existing.then((value) => {
+        this.queries.push({
+          table: key.split(':')[0] ?? key,
+          purpose: `${key.split(':').slice(1).join(':') || key} (cached)`,
+          ms: 0,
+          rowCount: Array.isArray(value) ? value.length : value ? 1 : 0,
+          cached: true,
+        });
+        return value as T;
+      });
+    }
+    const promise = fn();
+    this.promises.set(key, promise);
+    return promise;
+  }
+
+  async traced<T>(
+    table: string,
+    purpose: string,
+    cacheKey: string,
+    fn: () => PromiseLike<{ data: T | null; error?: unknown }>
+  ): Promise<T | null> {
+    return this.once(cacheKey, async () => {
+      const started = Date.now();
+      const { data, error } = await fn();
+      const rowCount = Array.isArray(data) ? data.length : data ? 1 : 0;
+      this.queries.push({
+        table,
+        purpose,
+        ms: Date.now() - started,
+        rowCount,
+        cached: false,
+      });
+      if (error) return null;
+      return data;
+    });
+  }
+}
+
+function escapeIlike(value: string): string {
+  return value.replace(/[%_,().\\]/g, '');
+}
+
+function buildNameSearchTokens(target: string): string[] {
+  const trimmed = target.trim();
+  const tokens = trimmed.split(/\s+/).filter((t) => t.length >= 2);
+  return [trimmed, ...tokens].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
+}
+
+function buildNameOrClause(target: string, column = 'name'): string {
+  return buildNameSearchTokens(target)
+    .map((token) => `${column}.ilike.%${escapeIlike(token)}%`)
+    .join(',');
+}
+
+function characterMatchesTarget(row: CharacterRow, targetKey: string): boolean {
+  const names = [row.name, ...(Array.isArray(row.alias) ? row.alias : [])].map(normalizeNameKey);
+  return names.includes(targetKey) || names.some((name) => targetKey.includes(name) || name.includes(targetKey));
+}
+
+function peoplePlaceMatchesTarget(row: PeoplePlaceRow, targetKey: string): boolean {
+  const names = [row.name, ...(Array.isArray(row.corrected_names) ? row.corrected_names : [])].map(normalizeNameKey);
+  return names.includes(targetKey);
+}
+
+async function fetchAllCharacters(scope: WmaRequestScope, userId: string): Promise<CharacterRow[]> {
+  const rows = await scope.traced(
+    'characters',
+    'all characters for user',
+    'characters:all',
+    () =>
+      supabaseAdmin
+        .from('characters')
+        .select('id, name, alias, summary, metadata, importance_score, importance_level, updated_at')
+        .eq('user_id', userId)
+  );
+  return rows ?? [];
+}
+
+async function fetchCharactersForResolve(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string,
+  targetKey: string
+): Promise<CharacterRow[]> {
+  return scope.once(`characters:resolve:${targetKey}`, async () => {
+    const orClause = buildNameOrClause(target);
+    const filtered = await scope.traced(
+      'characters',
+      'target-filtered character lookup',
+      `characters:filtered:${targetKey}`,
+      () =>
+        supabaseAdmin
+          .from('characters')
+          .select('id, name, alias, summary, metadata, importance_score, importance_level, updated_at')
+          .eq('user_id', userId)
+          .or(orClause)
+    );
+    const rows = filtered ?? [];
+    if (rows.some((row) => characterMatchesTarget(row, targetKey))) return rows;
+    return fetchAllCharacters(scope, userId);
+  });
+}
+
+async function fetchPeoplePlacesForResolve(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string,
+  targetKey: string
+): Promise<PeoplePlaceRow[]> {
+  return scope.once(`people_places:resolve:${targetKey}`, async () => {
+    const filtered = await scope.traced(
+      'people_places',
+      'target-filtered people_places lookup',
+      `people_places:filtered:${targetKey}`,
+      () =>
+        supabaseAdmin
+          .from('people_places')
+          .select('id, name, type, corrected_names')
+          .eq('user_id', userId)
+          .or(buildNameOrClause(target))
+    );
+    const rows = filtered ?? [];
+    if (rows.some((row) => peoplePlaceMatchesTarget(row, targetKey))) return rows;
+    const all = await scope.traced(
+      'people_places',
+      'fallback all people_places',
+      'people_places:all',
+      () =>
+        supabaseAdmin.from('people_places').select('id, name, type, corrected_names').eq('user_id', userId)
+    );
+    return all ?? [];
+  });
+}
+
+async function fetchProjectsForTextual(scope: WmaRequestScope, userId: string): Promise<ProjectRow[]> {
+  const rows = await scope.traced(
+    'projects',
+    'recent projects for textual candidates',
+    'projects:textual',
+    () =>
+      supabaseAdmin
+        .from('projects')
+        .select('id, name, title, description, status, updated_at, metadata')
+        .eq('user_id', userId)
+        .limit(6)
+  );
+  return rows ?? [];
+}
 
 type Candidate = Omit<WorkingMemoryItem, 'score' | 'reasons'> & {
   relevance: number;
@@ -298,44 +502,82 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
   };
 }
 
-async function resolveTargetEntities(userId: string, target: string | null): Promise<WorkingMemoryEntity[]> {
+async function resolveTargetEntities(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string | null
+): Promise<WorkingMemoryEntity[]> {
   if (!target) return [];
   const targetKey = normalizeNameKey(target);
   const classification = classifyEntity(target);
 
   const [characters, locations, organizations, peoplePlaces, projects] = await Promise.all([
-    supabaseAdmin.from('characters').select('id, name, alias, importance_score, importance_level').eq('user_id', userId),
-    supabaseAdmin.from('locations').select('id, name, aliases, importance_score').eq('user_id', userId).ilike('name', target),
-    supabaseAdmin.from('organizations').select('id, name, aliases, importance_score').eq('user_id', userId).ilike('name', target),
-    supabaseAdmin.from('people_places').select('id, name, type, corrected_names').eq('user_id', userId),
-    supabaseAdmin.from('projects').select('id, name, title, status, metadata').eq('user_id', userId).ilike('name', target),
+    fetchCharactersForResolve(scope, userId, target, targetKey),
+    scope.traced(
+      'locations',
+      'target location lookup',
+      `locations:${targetKey}`,
+      () =>
+        supabaseAdmin
+          .from('locations')
+          .select('id, name, aliases, importance_score')
+          .eq('user_id', userId)
+          .ilike('name', target)
+    ),
+    scope.traced(
+      'organizations',
+      'target organization lookup',
+      `organizations:${targetKey}`,
+      () =>
+        supabaseAdmin
+          .from('organizations')
+          .select('id, name, aliases, importance_score')
+          .eq('user_id', userId)
+          .ilike('name', target)
+    ),
+    fetchPeoplePlacesForResolve(scope, userId, target, targetKey),
+    scope.traced(
+      'projects',
+      'target project lookup',
+      `projects:resolve:${targetKey}`,
+      () =>
+        supabaseAdmin
+          .from('projects')
+          .select('id, name, title, status, metadata')
+          .eq('user_id', userId)
+          .ilike('name', target)
+    ),
   ]);
 
   const entities: WorkingMemoryEntity[] = [];
 
-  for (const row of (characters.data ?? []) as any[]) {
-    const names = [row.name, ...(Array.isArray(row.alias) ? row.alias : [])].map(normalizeNameKey);
-    if (names.includes(targetKey) || names.some((name) => targetKey.includes(name) || name.includes(targetKey))) {
+  for (const row of characters) {
+    if (characterMatchesTarget(row, targetKey)) {
       entities.push({ id: row.id, name: row.name, type: 'PERSON', source: 'characters', confidence: 0.95 });
     }
   }
 
-  for (const row of (locations.data ?? []) as any[]) {
+  for (const row of (locations ?? []) as any[]) {
     entities.push({ id: row.id, name: row.name, type: 'PLACE', source: 'locations', confidence: 0.9 });
   }
 
-  for (const row of (organizations.data ?? []) as any[]) {
+  for (const row of (organizations ?? []) as any[]) {
     entities.push({ id: row.id, name: row.name, type: 'ORGANIZATION', source: 'organizations', confidence: 0.88 });
   }
 
-  for (const row of (projects.data ?? []) as any[]) {
+  for (const row of (projects ?? []) as any[]) {
     entities.push({ id: row.id, name: row.name ?? row.title ?? target, type: 'PROJECT', source: 'projects', confidence: 0.88 });
   }
 
-  for (const row of (peoplePlaces.data ?? []) as any[]) {
-    const names = [row.name, ...(Array.isArray(row.corrected_names) ? row.corrected_names : [])].map(normalizeNameKey);
-    if (names.includes(targetKey)) {
-      entities.push({ id: row.id, name: row.name, type: row.type ?? classification.type, source: 'people_places', confidence: 0.82 });
+  for (const row of peoplePlaces) {
+    if (peoplePlaceMatchesTarget(row, targetKey)) {
+      entities.push({
+        id: row.id,
+        name: row.name,
+        type: row.type ?? classification.type,
+        source: 'people_places',
+        confidence: 0.82,
+      });
     }
   }
 
@@ -352,22 +594,27 @@ async function resolveTargetEntities(userId: string, target: string | null): Pro
   });
 }
 
-async function loadProtagonistRelationshipCandidates(userId: string): Promise<Candidate[]> {
-  const { data: chars } = await supabaseAdmin
-    .from('characters')
-    .select('id, name, metadata')
-    .eq('user_id', userId);
-  const list = (chars ?? []) as Array<{ id: string; name: string; metadata?: Record<string, unknown> }>;
+async function loadProtagonistRelationshipCandidates(
+  scope: WmaRequestScope,
+  userId: string
+): Promise<Candidate[]> {
+  const list = await fetchAllCharacters(scope, userId);
   const protagonist =
     list.find((c) => /^me$/i.test(c.name)) ?? list.find((c) => /abel\s+mendoza/i.test(c.name)) ?? list[0];
   if (!protagonist) return [];
 
-  const { data: rels } = await supabaseAdmin
-    .from('character_relationships')
-    .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
-    .eq('user_id', userId)
-    .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
-    .limit(12);
+  const rels = await scope.traced(
+    'character_relationships',
+    'protagonist relationship edges',
+    `relationships:protagonist:${protagonist.id}`,
+    () =>
+      supabaseAdmin
+        .from('character_relationships')
+        .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
+        .eq('user_id', userId)
+        .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
+        .limit(12)
+  );
 
   const nameMap = new Map(list.map((c) => [c.id, c.name]));
   const out: Candidate[] = [];
@@ -395,63 +642,107 @@ async function loadProtagonistRelationshipCandidates(userId: string): Promise<Ca
   return out;
 }
 
-async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity, target: string): Promise<Candidate[]> {
+async function loadPersonCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  entity: WorkingMemoryEntity,
+  target: string,
+  characterRow?: CharacterRow | null
+): Promise<Candidate[]> {
   const characterId = entity.source === 'characters' ? entity.id : null;
   if (!characterId) return [];
 
   const [memories, events, relationships, facts, character] = await Promise.all([
-    supabaseAdmin
-      .from('character_memories')
-      .select('id, summary, journal_entry_id, created_at, metadata')
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-      .limit(8),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-      .order('event_date', { ascending: false })
-      .limit(6),
-    supabaseAdmin
-      .from('character_relationships')
-      .select('id, relationship_type, status, source_character_id, target_character_id, strength, metadata, updated_at')
-      .eq('user_id', userId)
-      .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`)
-      .limit(6),
-    supabaseAdmin
-      .from('entity_facts')
-      .select('id, fact, confidence, updated_at, metadata')
-      .eq('user_id', userId)
-      .eq('entity_type', 'character')
-      .eq('entity_id', characterId)
-      .eq('status', 'active')
-      .order('confidence', { ascending: false })
-      .limit(6),
-    supabaseAdmin.from('characters').select('id, name, summary, metadata, importance_score, importance_level, updated_at').eq('id', characterId).eq('user_id', userId).maybeSingle(),
+    scope.traced(
+      'character_memories',
+      'memories for target character',
+      `memories:${characterId}`,
+      () =>
+        supabaseAdmin
+          .from('character_memories')
+          .select('id, summary, journal_entry_id, created_at, metadata')
+          .eq('user_id', userId)
+          .eq('character_id', characterId)
+          .limit(8)
+    ),
+    scope.traced(
+      'character_timeline_events',
+      'events for target character',
+      `events:character:${characterId}`,
+      () =>
+        supabaseAdmin
+          .from('character_timeline_events')
+          .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
+          .eq('user_id', userId)
+          .eq('character_id', characterId)
+          .order('event_date', { ascending: false })
+          .limit(6)
+    ),
+    scope.traced(
+      'character_relationships',
+      'relationships for target character',
+      `relationships:character:${characterId}`,
+      () =>
+        supabaseAdmin
+          .from('character_relationships')
+          .select('id, relationship_type, status, source_character_id, target_character_id, strength, metadata, updated_at')
+          .eq('user_id', userId)
+          .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`)
+          .limit(6)
+    ),
+    scope.traced(
+      'entity_facts',
+      'active facts for target character',
+      `facts:character:${characterId}`,
+      () =>
+        supabaseAdmin
+          .from('entity_facts')
+          .select('id, fact, confidence, updated_at, metadata')
+          .eq('user_id', userId)
+          .eq('entity_type', 'character')
+          .eq('entity_id', characterId)
+          .eq('status', 'active')
+          .order('confidence', { ascending: false })
+          .limit(6)
+    ),
+    characterRow
+      ? Promise.resolve(characterRow)
+      : scope.traced(
+          'characters',
+          'target character record',
+          `characters:single:${characterId}`,
+          () =>
+            supabaseAdmin
+              .from('characters')
+              .select('id, name, summary, metadata, importance_score, importance_level, updated_at')
+              .eq('id', characterId)
+              .eq('user_id', userId)
+              .maybeSingle()
+        ),
   ]);
 
   const out: Candidate[] = [];
-  const charMeta = (character.data?.metadata ?? {}) as Record<string, unknown>;
+  const charMeta = ((character as CharacterRow | null)?.metadata ?? {}) as Record<string, unknown>;
   const biography = charMeta.al_biography as Record<string, unknown> | undefined;
-  if (character.data) {
+  if (character) {
+    const row = character as CharacterRow;
     out.push({
       id: `character:${characterId}`,
       type: 'entity',
-      title: character.data.name ?? target,
-      content: String(biography?.narrative_summary ?? character.data.summary ?? `Character record for ${target}`),
+      title: row.name ?? target,
+      content: String(biography?.narrative_summary ?? row.summary ?? `Character record for ${target}`),
       source: 'characters',
-      date: character.data.updated_at,
+      date: row.updated_at,
       confidence: 0.9,
       relevance: 1,
-      importance: Number(character.data.importance_score ?? 60) / 100,
+      importance: Number(row.importance_score ?? 60) / 100,
       significance: biography ? 0.85 : 0.55,
       relationshipDistance: 1,
       reasons: ['target character record'],
     });
   }
 
-  for (const memory of (memories.data ?? []) as any[]) {
+  for (const memory of (memories ?? []) as any[]) {
     out.push({
       id: `memory:${memory.id}`,
       type: 'episode',
@@ -469,7 +760,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
     });
   }
 
-  for (const event of (events.data ?? []) as any[]) {
+  for (const event of (events ?? []) as any[]) {
     out.push({
       id: `event:${event.id}`,
       type: 'event',
@@ -486,7 +777,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
     });
   }
 
-  for (const rel of (relationships.data ?? []) as any[]) {
+  for (const rel of (relationships ?? []) as any[]) {
     out.push({
       id: `relationship:${rel.id}`,
       type: 'relationship',
@@ -503,7 +794,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
     });
   }
 
-  for (const fact of (facts.data ?? []) as any[]) {
+  for (const fact of (facts ?? []) as any[]) {
     out.push({
       id: `fact:${fact.id}`,
       type: 'timeline',
@@ -524,6 +815,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
 }
 
 async function loadTextualCandidates(
+  scope: WmaRequestScope,
   userId: string,
   target: string | null,
   intent: WorkingMemoryIntent,
@@ -532,54 +824,86 @@ async function loadTextualCandidates(
   const like = `%${target ?? ''}%`;
   const wantsTarget = Boolean(target);
   const [entries, chats, timeline, eventTargetHits, projects, biography] = await Promise.all([
-    supabaseAdmin
-      .from('journal_entries')
-      .select('id, content, summary, date, tags, source, metadata')
-      .eq('user_id', userId)
-      .order('date', { ascending: false })
-      .limit(intent === 'LIFE_REVIEW' ? 8 : 6),
+    scope.traced(
+      'journal_entries',
+      'recent journal entries',
+      `journal_entries:${intent}`,
+      () =>
+        supabaseAdmin
+          .from('journal_entries')
+          .select('id, content, summary, date, tags, source, metadata')
+          .eq('user_id', userId)
+          .order('date', { ascending: false })
+          .limit(intent === 'LIFE_REVIEW' ? 8 : 6)
+    ),
     threadId
-      ? supabaseAdmin
-          .from('chat_messages')
-          .select('id, content, created_at, session_id, role')
-          .eq('user_id', userId)
-          .eq('session_id', threadId)
-          .order('created_at', { ascending: false })
-          .limit(8)
-      : supabaseAdmin
-          .from('chat_messages')
-          .select('id, content, created_at, session_id, role')
-          .eq('user_id', userId)
-          .eq('role', 'user')
-          .ilike('content', like)
-          .order('created_at', { ascending: false })
-          .limit(6),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-      .eq('user_id', userId)
-      .order('event_date', { ascending: false })
-      .limit(intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 8 : 4),
-    intent === 'EVENT_QUERY' && target
-      ? supabaseAdmin
+      ? scope.traced(
+          'chat_messages',
+          'current thread messages',
+          `chat_messages:thread:${threadId}`,
+          () =>
+            supabaseAdmin
+              .from('chat_messages')
+              .select('id, content, created_at, session_id, role')
+              .eq('user_id', userId)
+              .eq('session_id', threadId)
+              .order('created_at', { ascending: false })
+              .limit(8)
+        )
+      : scope.traced(
+          'chat_messages',
+          'chat messages matching target',
+          `chat_messages:target:${normalizeNameKey(target ?? '')}`,
+          () =>
+            supabaseAdmin
+              .from('chat_messages')
+              .select('id, content, created_at, session_id, role')
+              .eq('user_id', userId)
+              .eq('role', 'user')
+              .ilike('content', like)
+              .order('created_at', { ascending: false })
+              .limit(6)
+        ),
+    scope.traced(
+      'character_timeline_events',
+      'recent timeline events',
+      `timeline_events:recent:${intent}`,
+      () =>
+        supabaseAdmin
           .from('character_timeline_events')
           .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
           .eq('user_id', userId)
-          .or(eventSearchOrClause(target))
           .order('event_date', { ascending: false })
-          .limit(6)
-      : Promise.resolve({ data: [] as any[] }),
-    supabaseAdmin
-      .from('projects')
-      .select('id, name, title, description, status, updated_at, metadata')
-      .eq('user_id', userId)
-      .limit(6),
-    supabaseAdmin
-      .from('narrative_accounts')
-      .select('id, account_type, narrative_text, metadata, recorded_at')
-      .eq('user_id', userId)
-      .order('recorded_at', { ascending: false })
-      .limit(intent === 'IDENTITY_QUERY' || intent === 'LIFE_REVIEW' ? 4 : 2),
+          .limit(intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 8 : 4)
+    ),
+    intent === 'EVENT_QUERY' && target
+      ? scope.traced(
+          'character_timeline_events',
+          'target-matched timeline events',
+          `timeline_events:target:${normalizeNameKey(target)}`,
+          () =>
+            supabaseAdmin
+              .from('character_timeline_events')
+              .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
+              .eq('user_id', userId)
+              .or(eventSearchOrClause(target))
+              .order('event_date', { ascending: false })
+              .limit(6)
+        )
+      : Promise.resolve([] as any[]),
+    fetchProjectsForTextual(scope, userId),
+    scope.traced(
+      'narrative_accounts',
+      'narrative accounts',
+      `narrative_accounts:${intent}`,
+      () =>
+        supabaseAdmin
+          .from('narrative_accounts')
+          .select('id, account_type, narrative_text, metadata, recorded_at')
+          .eq('user_id', userId)
+          .order('recorded_at', { ascending: false })
+          .limit(intent === 'IDENTITY_QUERY' || intent === 'LIFE_REVIEW' ? 4 : 2)
+    ),
   ]);
 
   const targetKey = normalizeNameKey(target ?? '');
@@ -590,7 +914,7 @@ async function loadTextualCandidates(
 
   const out: Candidate[] = [];
 
-  for (const entry of (entries.data ?? []) as any[]) {
+  for (const entry of (entries ?? []) as any[]) {
     const text = String(entry.summary ?? entry.content ?? '');
     if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
@@ -609,7 +933,7 @@ async function loadTextualCandidates(
     });
   }
 
-  for (const chat of (chats.data ?? []) as any[]) {
+  for (const chat of (chats ?? []) as any[]) {
     const text = String(chat.content ?? '');
     if (wantsTarget && !includeByIntent(text) && !threadId) continue;
     out.push({
@@ -630,7 +954,7 @@ async function loadTextualCandidates(
   }
 
   const seenEventIds = new Set<string>();
-  for (const event of [...(timeline.data ?? []), ...(eventTargetHits.data ?? [])] as any[]) {
+  for (const event of [...(timeline ?? []), ...(eventTargetHits ?? [])] as any[]) {
     if (seenEventIds.has(event.id)) continue;
     seenEventIds.add(event.id);
     const text = `${event.event_title ?? ''} ${event.event_summary ?? ''}`;
@@ -651,7 +975,7 @@ async function loadTextualCandidates(
     });
   }
 
-  for (const project of (projects.data ?? []) as any[]) {
+  for (const project of projects) {
     const name = String(project.name ?? project.title ?? '');
     const text = `${name} ${project.description ?? ''} ${project.status ?? ''}`;
     if (intent !== 'PROJECT_QUERY' && (wantsTarget ? !includeByIntent(text) : true)) continue;
@@ -671,7 +995,7 @@ async function loadTextualCandidates(
     });
   }
 
-  for (const account of (biography.data ?? []) as any[]) {
+  for (const account of (biography ?? []) as any[]) {
     const text = String(account.narrative_text ?? '');
     if (!text) continue;
     out.push({
@@ -722,10 +1046,15 @@ export async function assembleWorkingMemory(
   input: { question: string; userId: string; threadId?: string | null },
   options: AssembleOptions = {}
 ): Promise<WorkingMemoryAssembly> {
+  const totalStarted = Date.now();
   const maxItems = options.maxItems ?? DEFAULT_BUDGET;
+  const scope = new WmaRequestScope();
+
+  const entityStarted = Date.now();
   const intent = classifyIntent(input.question);
   const target = extractQuestionTarget(input.question);
-  const entities = await resolveTargetEntities(input.userId, target);
+  const entities = await resolveTargetEntities(scope, input.userId, target);
+  const entityResolutionMs = Date.now() - entityStarted;
 
   const primaryEntity =
     entities.find((entity) => entity.source === 'characters') ??
@@ -733,24 +1062,40 @@ export async function assembleWorkingMemory(
     entities[0] ??
     null;
 
-  const personCandidates =
-    /\b(who lives with me|who do i live with|my household)\b/i.test(input.question)
-      ? await loadProtagonistRelationshipCandidates(input.userId)
+  let characterRow: CharacterRow | null = null;
+  if (primaryEntity?.source === 'characters' && primaryEntity.id && target) {
+    const targetKey = normalizeNameKey(target);
+    const characters = await fetchCharactersForResolve(scope, input.userId, target, targetKey);
+    characterRow = characters.find((row) => row.id === primaryEntity.id) ?? null;
+  }
+
+  const candidateStarted = Date.now();
+  const wantsHousehold = /\b(who lives with me|who do i live with|my household)\b/i.test(input.question);
+
+  const [personCandidates, textualCandidates] = await Promise.all([
+    wantsHousehold
+      ? loadProtagonistRelationshipCandidates(scope, input.userId)
       : intent !== 'EVENT_QUERY' &&
           primaryEntity &&
           (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
-        ? await loadPersonCandidates(input.userId, primaryEntity, target ?? primaryEntity.name)
-        : [];
+        ? loadPersonCandidates(
+            scope,
+            input.userId,
+            primaryEntity,
+            target ?? primaryEntity.name,
+            characterRow
+          )
+        : Promise.resolve([] as Candidate[]),
+    loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined),
+  ]);
+  const candidateGenerationMs = Date.now() - candidateStarted;
 
-  const textualCandidates = await loadTextualCandidates(
-    input.userId,
-    target,
-    intent,
-    input.threadId ?? undefined
-  );
-
+  const rankingStarted = Date.now();
   const { selected, rejected } = selectBudget([...personCandidates, ...textualCandidates], maxItems);
+  const rankingMs = Date.now() - rankingStarted;
   const distributed = distribute(selected);
+
+  const uncachedQueries = scope.queries.filter((query) => !query.cached);
 
   return {
     intent,
@@ -763,6 +1108,14 @@ export async function assembleWorkingMemory(
       rejected: rejected.length,
     },
     rejected,
+    timing: {
+      totalMs: Date.now() - totalStarted,
+      entityResolutionMs,
+      candidateGenerationMs,
+      rankingMs,
+      queryCount: uncachedQueries.length,
+      queries: scope.queries,
+    },
   };
 }
 

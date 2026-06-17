@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../apps/server/src/config';
+import { assertSafeForSyntheticData } from '../apps/server/src/lib/founderGuard';
 import { v4 as uuid } from 'uuid';
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -252,13 +253,11 @@ const dummyMemoirSections = [
   }
 ];
 
-async function getUserId(): Promise<string> {
-  // Try to get the first user from the database
+async function getUserId(): Promise<{ id: string; email?: string | null }> {
   const { data: users, error } = await supabase.auth.admin.listUsers();
   
   if (error || !users || users.users.length === 0) {
     console.log('No users found. Creating a test user...');
-    // Create a test user
     const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
       email: 'test@lorekeeper.dev',
       password: 'testpassword123',
@@ -270,12 +269,12 @@ async function getUserId(): Promise<string> {
     }
     
     console.log(`Created test user: ${newUser.user.email} (${newUser.user.id})`);
-    return newUser.user.id;
+    return { id: newUser.user.id, email: newUser.user.email };
   }
   
-  const userId = users.users[0].id;
-  console.log(`Using existing user: ${users.users[0].email} (${userId})`);
-  return userId;
+  const user = users.users[0];
+  console.log(`Using existing user: ${user.email} (${user.id})`);
+  return { id: user.id, email: user.email };
 }
 
 async function populateEntries(userId: string, chapterIds: string[]): Promise<void> {
@@ -400,7 +399,9 @@ async function main() {
   try {
     console.log('🚀 Starting dummy data population...\n');
     
-    const userId = await getUserId();
+    const target = await getUserId();
+    assertSafeForSyntheticData(target.id, target.email, 'dummy data population');
+    const userId = target.id;
     
     // Create chapters first (entries need chapter IDs)
     const chapterIds = await populateChapters(userId);

@@ -2,7 +2,7 @@
  * Script to set admin role for a specific user
  * 
  * Usage:
- *   tsx scripts/set-admin-role.ts abelxmendoza@gmail.com
+ *   tsx scripts/set-admin-role.ts <email>
  * 
  * This script sets the admin role in Supabase user metadata
  */
@@ -91,7 +91,11 @@ async function setAdminRole(email: string) {
 }
 
 // Get email from command line argument or use default
-const email = process.argv[2] || 'abelxmendoza@gmail.com';
+const email = process.argv[2] ?? process.env.ADMIN_EMAIL;
+if (!email) {
+  console.error('Usage: tsx scripts/set-admin-role.ts <email>');
+  process.exit(1);
+}
 
 setAdminRole(email).catch(error => {
   console.error('❌ Unexpected error:', error);

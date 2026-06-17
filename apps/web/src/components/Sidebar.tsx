@@ -6,7 +6,8 @@ import { Logo } from './Logo';
 import { Button } from './ui/button';
 import { config } from '../config/env';
 import { useAuth } from '../lib/supabase';
-import { isAdmin } from '../middleware/roleGuard';
+import { useAccountAuthority } from '../hooks/useAccountAuthority';
+import { canAccessAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
 import { UserAvatarButton } from './UserAvatarButton';
 
@@ -32,6 +33,7 @@ const SidebarContent = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { authority } = useAccountAuthority();
   const counts = useEntityCounts();
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
@@ -48,7 +50,7 @@ const SidebarContent = ({
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  const userIsAdmin = user ? isAdmin(user) : false;
+  const userIsAdmin = canAccessAdmin(authority);
 
   return (
     <div className="flex flex-col h-full relative">

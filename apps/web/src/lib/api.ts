@@ -191,7 +191,11 @@ export const fetchJson = async <T>(
         }
 
         if (res.status === 401) {
-          const authError = new Error('Authentication required. Please sign in again.');
+          const authError = new Error(
+            error.error === 'Invalid session'
+              ? 'Your session expired. Please sign in again.'
+              : 'Authentication required. Please sign in again.'
+          );
           if (options?.onError) options.onError(authError);
           throw authError;
         }

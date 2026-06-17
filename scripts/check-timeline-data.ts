@@ -22,7 +22,8 @@ async function countTable(table: string, userId: string) {
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
   const userId = await resolveUserId(email);
   console.log(`User: ${email}\nID: ${userId}\n`);
 

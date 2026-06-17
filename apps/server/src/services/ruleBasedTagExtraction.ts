@@ -75,11 +75,11 @@ class RuleBasedTagExtractionService {
     // Get existing tags from user's entries (if userId provided)
     if (userId) {
       try {
-        const existingTags = await memoryService.listTags(userId);
+        const { tags: existingTags } = await memoryService.listTags(userId);
         // Check if content mentions existing tags
         for (const existingTag of existingTags) {
-          if (lowerContent.includes(existingTag.toLowerCase())) {
-            tags.add(existingTag.toLowerCase());
+          if (lowerContent.includes(existingTag.name.toLowerCase())) {
+            tags.add(existingTag.name.toLowerCase());
           }
         }
       } catch (error) {

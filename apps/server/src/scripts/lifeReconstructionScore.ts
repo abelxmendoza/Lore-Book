@@ -10,7 +10,7 @@ import { relationshipFoundationService } from '../services/relationshipFoundatio
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const USER_ID =
-  process.env.RECOVERY_USER_ID ?? '789bd607-e063-466f-a9ef-f68d24e8bb57';
+  process.env.RECOVERY_USER_ID ?? process.env.TARGET_USER_ID ?? '';
 
 const RECALL_QUERIES = [
   'Who lives with me?',

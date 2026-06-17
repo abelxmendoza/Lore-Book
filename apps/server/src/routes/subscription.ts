@@ -2,7 +2,11 @@ import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
 import { authMiddleware, type AuthenticatedRequest } from '../middleware/auth';
-import { rateLimitMiddleware } from '../middleware/rateLimit';
+import {
+  resolveAccountAuthority,
+  isBillingExempt,
+  type AccountAuthority,
+} from '../lib/accountAuthority';
 import {
   createCustomer,
   createSubscription,
@@ -17,6 +21,17 @@ import { getCurrentUsage } from '../services/usageTracking';
 
 const router = Router();
 
+function subscriptionAuthorityPayload(authority: AccountAuthority) {
+  return {
+    role: authority.role,
+    roleLabel: authority.roleLabel,
+    isFounderAccount: authority.isFounderAccount,
+    isPrivileged: authority.isPrivileged,
+    privilegeSource: authority.privilegeSource,
+    subscriptionStatus: authority.isPrivileged ? 'privileged' : undefined,
+  };
+}
+
 /**
  * GET /api/subscription/status
  * Get current subscription status and usage
@@ -27,8 +42,30 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const subscription = await getUserSubscription(req.user.id);
+    const authority = await resolveAccountAuthority(req.user.id);
     const usage = await getCurrentUsage(req.user.id);
+
+    if (authority.isPrivileged) {
+      return res.json({
+        status: 'active',
+        planType: 'premium',
+        trialDaysRemaining: 0,
+        trialEndsAt: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        usage: {
+          ...usage,
+          isPremium: true,
+          isTrial: false,
+          entryLimit: Infinity,
+          aiLimit: Infinity,
+        },
+        authority: subscriptionAuthorityPayload(authority),
+      });
+    }
+
+    const subscription = await getUserSubscription(req.user.id);
 
     if (!subscription) {
       return res.json({
@@ -36,6 +73,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
         planType: 'free',
         usage,
         trialDaysRemaining: 0,
+        authority: subscriptionAuthorityPayload(authority),
       });
     }
 
@@ -53,6 +91,10 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() || null,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       usage,
+      authority: {
+        ...subscriptionAuthorityPayload(authority),
+        privilegeSource: authority.privilegeSource ?? 'stripe_subscription',
+      },
     });
   } catch (error) {
     console.error('Error getting subscription status:', error);
@@ -86,6 +128,13 @@ router.post('/create', authMiddleware, async (req: AuthenticatedRequest, res: Re
   try {
     if (!req.user?.id || !req.user.email) {
       return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (await isBillingExempt(req.user.id)) {
+      return res.status(400).json({
+        error: 'billing_not_required',
+        message: 'Your account has platform access — billing is not required.',
+      });
     }
 
     // Check if user already has a subscription
@@ -155,6 +204,13 @@ router.post('/cancel', authMiddleware, async (req: AuthenticatedRequest, res: Re
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    if (await isBillingExempt(req.user.id)) {
+      return res.status(400).json({
+        error: 'billing_not_required',
+        message: 'Platform accounts cannot cancel privileged access via billing.',
+      });
+    }
+
     const subscription = await getUserSubscription(req.user.id);
     if (!subscription?.stripeSubscriptionId) {
       return res.status(400).json({
@@ -186,6 +242,13 @@ router.post('/reactivate', authMiddleware, async (req: AuthenticatedRequest, res
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (await isBillingExempt(req.user.id)) {
+      return res.status(400).json({
+        error: 'billing_not_required',
+        message: 'Platform accounts already have permanent access.',
+      });
     }
 
     const subscription = await getUserSubscription(req.user.id);
@@ -221,6 +284,13 @@ router.get('/billing-portal', authMiddleware, async (req: AuthenticatedRequest, 
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    if (await isBillingExempt(req.user.id)) {
+      return res.status(400).json({
+        error: 'billing_not_required',
+        message: 'Billing portal is not available for platform accounts.',
+      });
+    }
+
     const subscription = await getUserSubscription(req.user.id);
     if (!subscription?.stripeCustomerId) {
       return res.status(400).json({
@@ -244,11 +314,9 @@ router.get('/billing-portal', authMiddleware, async (req: AuthenticatedRequest, 
 
 /**
  * POST /api/subscription/webhook
- * Stripe webhook endpoint (no auth required - uses signature verification)
- * Note: This route is registered separately in index.ts with raw body parser
- * Rate limited to prevent DoS attacks
+ * Mounted directly in index.ts (before auth + JSON body parser) with express.raw().
  */
-router.post('/webhook', rateLimitMiddleware, async (req: Request, res: Response) => {
+export async function handleStripeWebhook(req: Request, res: Response) {
   const signature = req.headers['stripe-signature'] as string;
 
   if (!signature) {
@@ -270,7 +338,7 @@ router.post('/webhook', rateLimitMiddleware, async (req: Request, res: Response)
     console.error('Error handling webhook:', error);
     return res.status(500).json({ error: 'Webhook handler failed' });
   }
-});
+}
 
 export { router as subscriptionRouter };
 

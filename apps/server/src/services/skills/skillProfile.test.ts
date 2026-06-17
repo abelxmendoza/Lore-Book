@@ -26,7 +26,7 @@ describe('skillProfile', () => {
       enjoyment: 80,
       usage_frequency: 'daily',
       trajectory: 'improving',
-      evidence: ['Building LoreBook in React'],
+      evidence: ['Building the product in React'],
     }, 'msg-1');
 
     const merged = mergeSkillProfiles(base, incoming);

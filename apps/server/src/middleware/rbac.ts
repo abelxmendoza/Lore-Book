@@ -1,52 +1,29 @@
 import type { Response, NextFunction } from 'express';
 
 import { config } from '../config';
+import {
+  type PlatformRole,
+  resolveAccountAuthority,
+  resolveAccountAuthorityFromAuthUser,
+  PRIVILEGED_PLATFORM_ROLES,
+} from '../lib/accountAuthority';
 import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 import type { AuthenticatedRequest } from './auth';
 
-export type UserRole = 'admin' | 'developer' | 'standard_user' | 'beta_user';
+/** @deprecated Use PlatformRole from accountAuthority — kept for backward compatibility. */
+export type UserRole = PlatformRole;
 
-/**
- * Get user role from database
- */
-async function getUserRole(userId: string): Promise<UserRole> {
-  try {
-    // Check if user is admin by ID match
-    if (config.adminUserId && userId === config.adminUserId) {
-      return 'admin';
-    }
-
-    // Check user metadata/role from auth.users table
-    const { data: userData, error } = await supabaseAdmin.auth.admin.getUserById(userId);
-    
-    if (error || !userData?.user) {
-      logger.debug({ error, userId }, 'Failed to get user role, defaulting to standard_user');
-      return 'standard_user';
-    }
-
-    // Email-based fallback — ADMIN_EMAIL env var (Railway / .env.production).
-    const adminEmail = config.adminEmail;
-    if (adminEmail && userData.user.email?.toLowerCase() === adminEmail.toLowerCase()) {
-      return 'admin';
-    }
-
-    const role = (userData.user.user_metadata?.role as UserRole) || 
-                 (userData.user.app_metadata?.role as UserRole) ||
-                 'standard_user';
-
-    return role;
-  } catch (error) {
-    logger.error({ error, userId }, 'Error getting user role');
-    return 'standard_user';
-  }
+async function getUserRole(userId: string): Promise<PlatformRole> {
+  const authority = await resolveAccountAuthority(userId);
+  return authority.role;
 }
 
 /**
  * Check if user has required role
  */
-export function requireRole(...allowedRoles: UserRole[]) {
+export function requireRole(...allowedRoles: PlatformRole[]) {
   return async (
     req: AuthenticatedRequest,
     res: Response,
@@ -57,44 +34,37 @@ export function requireRole(...allowedRoles: UserRole[]) {
     }
 
     const userRole = await getUserRole(req.user.id);
-    
-    // In dev mode, allow admin access
-    if (config.apiEnv === 'dev' && config.adminUserId === req.user.id) {
-      return next();
-    }
 
     if (!allowedRoles.includes(userRole)) {
-      logger.warn({ 
-        userId: req.user.id, 
-        userRole, 
+      logger.warn({
+        userId: req.user.id,
+        userRole,
         requiredRoles: allowedRoles,
-        path: req.path 
+        path: req.path,
       }, 'Access denied: insufficient role');
-      return res.status(403).json({ 
-        error: 'Forbidden', 
-        message: 'Insufficient permissions' 
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
       });
     }
 
-    // Attach role to request for use in handlers
-    (req as any).userRole = userRole;
+    (req as AuthenticatedRequest & { userRole?: PlatformRole }).userRole = userRole;
     next();
   };
 }
 
 /**
- * Check if user is admin — always enforced, no dev bypass.
+ * Owner, admin, and developer access. Always enforced in production.
  */
 export const requireAdmin = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ) => {
-  // In dev/development environments, skip role enforcement entirely
   if (config.apiEnv === 'dev' || config.apiEnv === 'development') {
     return next();
   }
-  return requireRole('admin', 'developer')(req, res, next);
+  return requireRole('owner', 'admin', 'developer')(req, res, next);
 };
 
 /**
@@ -109,14 +79,12 @@ export function requireDevAccess(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Allow in dev environment
   if (config.apiEnv === 'dev') {
     return next();
   }
 
-  // Allow if user is admin/developer
   getUserRole(req.user.id).then(role => {
-    if (role === 'admin' || role === 'developer') {
+    if (PRIVILEGED_PLATFORM_ROLES.includes(role)) {
       return next();
     }
     return res.status(403).json({ error: 'Dev console access denied' });
@@ -137,10 +105,9 @@ export function requireExperimental(
     return next();
   }
 
-  // Check if user is admin (admins can access experimental features)
   if (req.user?.id) {
     getUserRole(req.user.id).then(role => {
-      if (role === 'admin' || role === 'developer') {
+      if (PRIVILEGED_PLATFORM_ROLES.includes(role)) {
         return next();
       }
       return res.status(403).json({ error: 'Experimental features disabled' });
@@ -152,3 +119,4 @@ export function requireExperimental(
   }
 }
 
+export { getUserRole, resolveAccountAuthority, resolveAccountAuthorityFromAuthUser };

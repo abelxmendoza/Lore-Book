@@ -34,7 +34,7 @@ function setupDb(chars: CharFixture[]) {
 
 const baseChar = (overrides: CharFixture = {}): CharFixture => ({
   id: 'c1',
-  name: 'Abuela',
+  name: 'Grandma Rose',
   relationship_depth: null,
   importance_level: null,
   has_met: true,

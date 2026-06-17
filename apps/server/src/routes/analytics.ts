@@ -42,8 +42,7 @@ router.use(requireAuth);
 
 /**
  * GET /api/analytics/identity
- * Get identity pulse analytics with enhanced structure
- * Query params: timeRange (30, 90, 180, all)
+ * @deprecated Use GET /api/identity/pulse — kept for admin analytics modules only.
  */
 router.get('/identity', async (req: AuthenticatedRequest, res) => {
   const timeRange = (req.query.timeRange as string) || '30';

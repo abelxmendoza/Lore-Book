@@ -23,7 +23,7 @@ async function run(): Promise<void> {
   const userIds = [...new Set((userRows ?? []).map((r: any) => r.user_id as string))];
   logger.info({ userCount: userIds.length }, 'Users with characters');
 
-  const MAIN_USER = '789bd607-e063-466f-a9ef-f68d24e8bb57';
+  const validationUserId = process.env.TARGET_USER_ID;
 
   for (const userId of userIds) {
     const output = await biographyFoundationService.generateBiography(userId);
@@ -32,7 +32,7 @@ async function run(): Promise<void> {
       continue;
     }
 
-    if (userId === MAIN_USER) {
+    if (validationUserId && userId === validationUserId) {
       // Print detailed output for main user validation
       logger.info({ userId, facts: output.facts }, 'FACTS');
       logger.info({ userId, themes: output.themes }, 'THEMES');

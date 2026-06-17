@@ -42,12 +42,13 @@ async function run(): Promise<void> {
   logger.info({ resolved_events: resolvedAfter ?? 0, character_timeline_events: cteAfter ?? 0 }, 'AFTER');
 
   // Validation: print timelines for each character of main user
-  const MAIN_USER = '789bd607-e063-466f-a9ef-f68d24e8bb57';
+  const validationUserId = process.env.TARGET_USER_ID;
+  if (validationUserId) {
   const { data: chars } = await supabaseAdmin
-    .from('characters').select('id, name').eq('user_id', MAIN_USER);
+    .from('characters').select('id, name').eq('user_id', validationUserId);
 
   for (const char of chars ?? []) {
-    const timeline = await timelineFoundationService.getCharacterTimeline(MAIN_USER, char.id);
+    const timeline = await timelineFoundationService.getCharacterTimeline(validationUserId, char.id);
     logger.info({
       character: char.name,
       eventCount: timeline.length,
@@ -60,6 +61,7 @@ async function run(): Promise<void> {
         confidence: e.confidence,
       })),
     }, `Timeline: ${char.name}`);
+  }
   }
 
   logger.info('=== TIMELINE GENERATION BACKFILL COMPLETE ===');

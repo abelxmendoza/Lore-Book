@@ -1,22 +1,25 @@
 #!/usr/bin/env tsx
 /**
- * Create the groups detected by reading the user's full chat threads:
- *   1. Los Goths — the latino goth-club scene (existing character cards).
- *   2. Tía Grace's Household — cousins/aunt the user visits (creates the
- *      missing Tía Grace / Jerry / James character cards first).
- *   3. Clever Programmer Bootcamp — the coding bootcamp run by Rafeh Qazi.
+ * Create detected groups from a LOCAL config file (never commit real personal lore).
  *
- * Also records co-mention connections so the people network is wired up.
+ * Usage:
+ *   npx tsx scripts/create-detected-groups.ts \
+ *     --user <email> \
+ *     --groups-file .private/seeds/detected-groups.json \
+ *     [--execute]
  *
- * Dry-run by default; pass --execute to write.
- *   npx tsx scripts/create-detected-groups.ts --user abelxmendoza@gmail.com [--execute]
+ * Copy scripts/seeds/detected-groups.example.json to .private/seeds/ and customize locally.
  */
 
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { randomUUID } from 'crypto';
+
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
 import { organizationService } from '../apps/server/src/services/organizationService';
 import { characterConnectionService } from '../apps/server/src/services/characterConnectionService';
 import { normalizeNameKey } from '../apps/server/src/utils/nameNormalization';
+import { assertSafeForSyntheticData } from '../apps/server/src/lib/founderGuard';
 
 const EXECUTE = process.argv.includes('--execute');
 const log = (...p: unknown[]) => console.log(EXECUTE ? '[EXECUTE]' : '[DRY-RUN]', ...p);
@@ -25,6 +28,23 @@ function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
+
+type GroupMemberSpec = { wanted: string; role: string };
+type EnsureCharacterSpec = { name: string; archetype: string; relType: string; role: string };
+type GroupSpec = {
+  name: string;
+  group_type: string;
+  membership_model: string;
+  user_relationship: string;
+  description: string;
+  aliases?: string[];
+  members?: GroupMemberSpec[];
+  ensureCharacters?: EnsureCharacterSpec[];
+};
+
+type DetectedGroupsConfig = {
+  groups: GroupSpec[];
+};
 
 async function resolveUserId(email: string): Promise<string> {
   const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
@@ -38,41 +58,37 @@ type CharRow = { id: string; name: string; alias: string[] | null };
 
 function resolve(chars: CharRow[], wanted: string): CharRow | undefined {
   const key = normalizeNameKey(wanted);
-  // 1. Exact match on name or alias (safest).
   const exact = chars.find(c =>
     normalizeNameKey(c.name) === key || (c.alias ?? []).some(a => normalizeNameKey(a) === key)
   );
   if (exact) return exact;
-  // 2. The stored name/alias CONTAINS the full wanted phrase (e.g. "Hell Fairy"
-  //    inside "Hell Fairy from the Underground Scene"). Never the reverse — a
-  //    short stored name must not swallow a different wanted name.
   return chars.find(c =>
     normalizeNameKey(c.name).includes(key) || (c.alias ?? []).some(a => normalizeNameKey(a).includes(key))
   );
 }
 
-async function ensureCharacter(userId: string, name: string, opts: { archetype: string; relType: string; role: string }): Promise<string | undefined> {
+async function ensureCharacter(userId: string, spec: EnsureCharacterSpec): Promise<string | undefined> {
   const { data: existing } = await supabase
     .from('characters').select('id, name').eq('user_id', userId);
-  const found = (existing ?? []).find((c: any) => normalizeNameKey(c.name) === normalizeNameKey(name));
-  if (found) { log(`  character exists: ${name} (${found.id})`); return found.id; }
+  const found = (existing ?? []).find((c: any) => normalizeNameKey(c.name) === normalizeNameKey(spec.name));
+  if (found) { log(`  character exists: ${spec.name} (${found.id})`); return found.id; }
 
-  log(`  will create character: ${name} [${opts.archetype}]`);
+  log(`  will create character: ${spec.name} [${spec.archetype}]`);
   if (!EXECUTE) return undefined;
 
   const id = randomUUID();
-  const [firstName, ...rest] = name.replace(/^t[ií]a?\s+/i, '').split(' ');
+  const [firstName, ...rest] = spec.name.replace(/^t[ií]a?\s+/i, '').split(' ');
   const { error } = await supabase.from('characters').insert({
     id,
     user_id: userId,
-    name,
+    name: spec.name,
     alias: [],
     status: 'active',
     tags: [],
     first_name: firstName || null,
     last_name: rest.join(' ') || null,
-    archetype: opts.archetype,
-    role: opts.role,
+    archetype: spec.archetype,
+    role: spec.role,
     importance_level: 'major',
     importance_score: 65,
     relationship_depth: 'close',
@@ -80,8 +96,8 @@ async function ensureCharacter(userId: string, name: string, opts: { archetype: 
     has_met: true,
     likelihood_to_meet: 'likely',
     metadata: {
-      relationship_type: opts.relType,
-      relationship_categories: [opts.relType],
+      relationship_type: spec.relType,
+      relationship_categories: [spec.relType],
       generated_by: 'manual_correction',
       generated_at: new Date().toISOString(),
     },
@@ -89,7 +105,7 @@ async function ensureCharacter(userId: string, name: string, opts: { archetype: 
     updated_at: new Date().toISOString(),
   });
   if (error) { console.error('  insert failed:', error.message); return undefined; }
-  log(`  created character: ${name} (${id})`);
+  log(`  created character: ${spec.name} (${id})`);
   return id;
 }
 
@@ -101,33 +117,43 @@ async function orgExists(userId: string, name: string): Promise<boolean> {
 
 async function createGroup(
   userId: string,
-  spec: {
-    name: string;
-    group_type: any;
-    membership_model: any;
-    user_relationship: any;
-    description: string;
-    members: Array<{ character_id?: string; character_name: string; role: string }>;
-    aliases?: string[];
-  }
+  chars: CharRow[],
+  spec: GroupSpec,
+  ensuredIds: Map<string, string>
 ) {
   if (await orgExists(userId, spec.name)) { log(`Group already exists: ${spec.name}`); return; }
-  log(`Will create group "${spec.name}" [${spec.group_type}] with: ${spec.members.map(m => m.character_name).join(', ')}`);
+
+  const members = (spec.members ?? [])
+    .map(m => {
+      const c = resolve(chars, m.wanted);
+      if (!c) log(`  (!) not found: ${m.wanted}`);
+      return c ? { character_id: c.id, character_name: c.name, role: m.role } : null;
+    })
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+
+  for (const ec of spec.ensureCharacters ?? []) {
+    const id = ensuredIds.get(ec.name);
+    if (id) {
+      members.push({ character_id: id, character_name: ec.name, role: ec.role });
+    }
+  }
+
+  log(`Will create group "${spec.name}" with: ${members.map(m => m.character_name).join(', ') || '(no members)'}`);
   if (!EXECUTE) return;
 
   const org = await organizationService.createOrganization(userId, {
     name: spec.name,
     aliases: spec.aliases ?? [],
-    group_type: spec.group_type,
+    group_type: spec.group_type as any,
     type: 'other',
-    membership_model: spec.membership_model,
-    user_relationship: spec.user_relationship,
+    membership_model: spec.membership_model as any,
+    user_relationship: spec.user_relationship as any,
     is_public_entity: false,
     description: spec.description,
     status: 'active',
-    metadata: { source: 'manual_correction', detected_from: 'chat_threads' },
+    metadata: { source: 'manual_correction', detected_from: 'groups_file' },
   });
-  for (const m of spec.members) {
+  for (const m of members) {
     await organizationService.addMember(userId, org.id, {
       character_id: m.character_id,
       character_name: m.character_name,
@@ -135,73 +161,46 @@ async function createGroup(
       status: 'active',
     });
   }
-  const ids = spec.members.map(m => m.character_id).filter((x): x is string => Boolean(x));
+  const ids = members.map(m => m.character_id).filter((x): x is string => Boolean(x));
   if (ids.length >= 2) await characterConnectionService.recordCoMention(userId, ids);
-  log(`Created "${spec.name}" (${org.id}) with ${spec.members.length} members`);
+  log(`Created "${spec.name}" (${org.id}) with ${members.length} members`);
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  const groupsFile = arg('--groups-file') ?? process.env.DETECTED_GROUPS_FILE ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
+  if (!groupsFile) {
+    console.error('Required: --groups-file <path> or DETECTED_GROUPS_FILE');
+    console.error('Example: --groups-file .private/seeds/detected-groups.json');
+    process.exit(1);
+  }
+
+  const absPath = resolve(groupsFile);
+  if (!existsSync(absPath)) {
+    console.error(`Groups file not found: ${absPath}`);
+    console.error('Copy scripts/seeds/detected-groups.example.json to .private/seeds/ and customize.');
+    process.exit(1);
+  }
+
+  const config: DetectedGroupsConfig = JSON.parse(readFileSync(absPath, 'utf8'));
   const userId = await resolveUserId(email);
+  assertSafeForSyntheticData(userId, email, 'detected groups creation');
+
   console.log(`\n${EXECUTE ? 'EXECUTING' : 'DRY RUN'} group creation for ${email} (${userId})\n`);
 
   const { data } = await supabase.from('characters').select('id, name, alias').eq('user_id', userId);
   const chars = (data ?? []) as CharRow[];
+  const ensuredIds = new Map<string, string>();
 
-  // ── 1. Los Goths (goth scene) ────────────────────────────────────────────
-  console.log('── Los Goths ────────────────────────────');
-  const goth = [
-    { wanted: 'Goth Tio', role: 'Scene organizer (puts on goth nights)' },
-    { wanted: 'Oscuri.dad', role: 'Scene organizer / DJ' },
-    { wanted: 'Hell Fairy', role: 'Performer' },
-    { wanted: 'Mr. Chino', role: 'DJ' },
-    { wanted: 'Baby Bats', role: 'Goth makeup artist' },
-    { wanted: 'Andrew', role: 'Club connection' },
-  ];
-  const gothMembers = goth
-    .map(g => { const c = resolve(chars, g.wanted); if (!c) log(`  (!) not found: ${g.wanted}`); return c ? { character_id: c.id, character_name: c.name, role: g.role } : null; })
-    .filter((m): m is NonNullable<typeof m> => Boolean(m));
-  await createGroup(userId, {
-    name: 'Los Goths',
-    group_type: 'scene',
-    membership_model: 'fuzzy',
-    user_relationship: 'member',
-    description: 'The latino goth-club scene the user is part of — goth nights at Club Metro and First Street Pool & Billiards, putting on rising events in the LA latino goth community.',
-    aliases: ['Latino Goth Scene'],
-    members: gothMembers,
-  });
-
-  // ── 2. Tía Grace's Household (cousins) ─────────────────────────────────────
-  console.log('\n── Tía Grace\'s Household ─────────────────');
-  const grace = await ensureCharacter(userId, 'Tía Grace', { archetype: 'family', relType: 'family', role: 'Aunt' });
-  const jerry = await ensureCharacter(userId, 'Jerry', { archetype: 'family', relType: 'family', role: 'Cousin' });
-  const james = await ensureCharacter(userId, 'James', { archetype: 'family', relType: 'family', role: 'Cousin' });
-  const household = [
-    grace && { character_id: grace, character_name: 'Tía Grace', role: 'Aunt (head of household)' },
-    jerry && { character_id: jerry, character_name: 'Jerry', role: 'Cousin' },
-    james && { character_id: james, character_name: 'James', role: 'Cousin' },
-  ].filter((m): m is NonNullable<typeof m> => Boolean(m));
-  await createGroup(userId, {
-    name: "Tía Grace's Household",
-    group_type: 'family',
-    membership_model: 'strict',
-    user_relationship: 'member',
-    description: "The user's extended family at Tía Grace's house — cousins Jerry and James. The user visits and stays over (e.g. Memorial Day weekend), codes, and hangs out there.",
-    members: household,
-  });
-
-  // ── 3. Clever Programmer Bootcamp ──────────────────────────────────────────
-  console.log('\n── Clever Programmer Bootcamp ────────────');
-  const rafeh = resolve(chars, 'Rafeh Qazi');
-  if (!rafeh) log('  (!) Rafeh Qazi not found');
-  await createGroup(userId, {
-    name: 'Clever Programmer Bootcamp',
-    group_type: 'institution',
-    membership_model: 'fuzzy',
-    user_relationship: 'alumnus',
-    description: 'The coding bootcamp (run by YouTuber Rafeh Qazi) that taught the user front-end development and marketing. ~$15k, helped them become a confident builder (and build Lorebook).',
-    members: rafeh ? [{ character_id: rafeh.id, character_name: rafeh.name, role: 'Teacher / Founder (Rafeh Qazi)' }] : [],
-  });
+  for (const group of config.groups) {
+    console.log(`\n── ${group.name} ──`);
+    for (const ec of group.ensureCharacters ?? []) {
+      const id = await ensureCharacter(userId, ec);
+      if (id) ensuredIds.set(ec.name, id);
+    }
+    await createGroup(userId, chars, group, ensuredIds);
+  }
 
   console.log(`\nDone.${EXECUTE ? '' : ' (no writes — pass --execute to apply)'}`);
 }

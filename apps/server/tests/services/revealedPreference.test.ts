@@ -17,8 +17,8 @@ describe('RevealedPreference — extraction (the prompt examples)', () => {
     expect(m).toContainEqual(expect.objectContaining({ categoryKey: 'financial_freedom', signalType: 'stated', type: 'goal' }));
   });
 
-  it('"I spent all weekend building LoreBook" → REVEALED lorebook', () => {
-    expect(keys('I spent all weekend building LoreBook', 'revealed')).toContain('lorebook');
+  it('"I spent all weekend on lorebook" → REVEALED lorebook', () => {
+    expect(keys('I spent all weekend on lorebook', 'revealed')).toContain('lorebook');
   });
 
   it('"I skipped the party to code" → REVEALED coding, NOT revealed nightlife', () => {
@@ -27,8 +27,8 @@ describe('RevealedPreference — extraction (the prompt examples)', () => {
     expect(revealed).not.toContain('nightlife'); // skipping a party is not attending one
   });
 
-  it('"I took Abuela to Costco" → REVEALED value(family)', () => {
-    const m = extractSignals('I took Abuela to Costco');
+  it('"I took Grandma Rose to Costco" → REVEALED value(family)', () => {
+    const m = extractSignals('I took Grandma Rose to Costco');
     expect(m).toContainEqual(expect.objectContaining({ categoryKey: 'family', signalType: 'revealed', type: 'value' }));
   });
 

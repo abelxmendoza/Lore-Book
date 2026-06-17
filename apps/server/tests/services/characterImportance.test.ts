@@ -20,7 +20,7 @@ describe('characterImportanceService', () => {
     relationshipTypeWeight: 0.2,
   };
 
-  it('scores Abuela higher than background scene character', () => {
+  it('scores Grandma Rose higher than background scene character', () => {
     const abuela = computeImportance({
       ...base,
       mentionCount: 8,

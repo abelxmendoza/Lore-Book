@@ -1,9 +1,8 @@
 import { randomUUID } from 'crypto';
 import { openai } from '../openaiClient';
 
-import mammoth from 'mammoth';
-
 import { config } from '../../config';
+import { extractTextFromBuffer } from '../../lib/fileTextExtractor';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -42,58 +41,82 @@ export interface ExtractedClaim {
  */
 class ResumeParsingService {
   /**
-   * Extract text from a file buffer
-   * Supports TXT, PDF, and DOCX formats
+   * Extract text from a file buffer (delegates to shared fileTextExtractor).
    */
   async extractTextFromFile(
     fileBuffer: Buffer,
     fileType: 'pdf' | 'doc' | 'docx' | 'txt'
   ): Promise<string> {
+    return extractTextFromBuffer(fileBuffer, fileType);
+  }
+
+  /**
+   * Process resume from already-extracted text (unified ingestion path).
+   */
+  async processResumeFromText(
+    userId: string,
+    rawText: string,
+    fileData: {
+      fileName: string;
+      fileType: 'pdf' | 'doc' | 'docx' | 'txt';
+      fileSize: number;
+      sourceFileId?: string;
+    }
+  ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[] }> {
+    const document = await this.createResumeDocument(userId, fileData);
+
+    await this.updateDocumentStatus(document.id, 'processing');
+
     try {
-      if (fileType === 'txt') {
-        return fileBuffer.toString('utf-8');
-      }
+      const extractedClaims = await this.extractClaimsFromResume(rawText);
 
-      if (fileType === 'pdf') {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const pdfParseModule = require('pdf-parse');
-          const pdfParse: (buf: Buffer) => Promise<{ text: string }> = pdfParseModule.default ?? pdfParseModule;
-          const pdfData = await pdfParse(fileBuffer);
-          return pdfData.text;
-        } catch (error) {
-          logger.error({ error, fileType }, 'Failed to parse PDF file');
-          throw new Error('Failed to parse PDF file. The file may be corrupted or encrypted.');
-        }
-      }
+      const claims: CreateClaimInput[] = extractedClaims.map((claim) => ({
+        claim_type: claim.claim_type,
+        claim_text: claim.claim_text,
+        source: 'resume',
+        source_id: document.id,
+        source_detail: `Resume: ${fileData.fileName}`,
+        confidence: claim.confidence,
+        metadata: {
+          context: claim.context,
+          extracted_at: new Date().toISOString(),
+          ...(fileData.sourceFileId ? { source_file_id: fileData.sourceFileId } : {}),
+        },
+      }));
 
-      if (fileType === 'docx') {
-        try {
-          const result = await mammoth.extractRawText({ buffer: fileBuffer });
-          return result.value;
-        } catch (error) {
-          logger.error({ error, fileType }, 'Failed to parse DOCX file');
-          throw new Error('Failed to parse DOCX file. The file may be corrupted.');
-        }
-      }
+      await supabaseAdmin
+        .from('resume_documents')
+        .update({
+          raw_text: rawText,
+          parsed_data: {
+            claims_extracted: extractedClaims,
+            claim_count: claims.length,
+            source_file_id: fileData.sourceFileId,
+          },
+          processing_status: 'completed',
+          claims_generated: claims.length,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', document.id);
 
-      if (fileType === 'doc') {
-        // DOC format (old Microsoft Word) is harder to parse
-        // Mammoth doesn't support it, would need a different library
-        // For now, suggest conversion to DOCX
-        throw new Error(
-          'DOC format (old Microsoft Word) is not supported. Please convert to DOCX or PDF format.'
-        );
-      }
-
-      throw new Error(`Unsupported file type: ${fileType}`);
-    } catch (error) {
-      // Re-throw if it's already our custom error
-      if (error instanceof Error && error.message.includes('Failed to parse') || error.message.includes('not supported')) {
-        throw error;
-      }
-      logger.error({ error, fileType }, 'Failed to extract text from file');
-      throw new Error(`Failed to extract text from ${fileType} file: ${error instanceof Error ? error.message : String(error)}`);
+      return {
+        document: {
+          ...document,
+          raw_text: rawText,
+          parsed_data: { claims_extracted: extractedClaims, claim_count: claims.length },
+          processing_status: 'completed',
+          claims_generated: claims.length,
+          processed_at: new Date().toISOString(),
+        },
+        claims,
+      };
+    } catch (processingError) {
+      await this.updateDocumentStatus(
+        document.id,
+        'failed',
+        processingError instanceof Error ? processingError.message : 'Unknown error'
+      );
+      throw processingError;
     }
   }
 
@@ -247,77 +270,11 @@ ${resumeText.substring(0, 4000)}`;
       fileType: 'pdf' | 'doc' | 'docx' | 'txt';
       fileSize: number;
       fileUrl?: string | null;
+      sourceFileId?: string;
     }
   ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[] }> {
-    try {
-      // Create document record
-      const document = await this.createResumeDocument(userId, fileData);
-
-      // Update status to processing
-      await this.updateDocumentStatus(document.id, 'processing');
-
-      try {
-        // Extract text
-        const rawText = await this.extractTextFromFile(fileBuffer, fileData.fileType);
-
-        // Extract claims
-        const extractedClaims = await this.extractClaimsFromResume(rawText);
-
-        // Convert to CreateClaimInput format
-        const claims: CreateClaimInput[] = extractedClaims.map((claim) => ({
-          claim_type: claim.claim_type,
-          claim_text: claim.claim_text,
-          source: 'resume',
-          source_id: document.id,
-          source_detail: `Resume: ${fileData.fileName}`,
-          confidence: claim.confidence,
-          metadata: {
-            context: claim.context,
-            extracted_at: new Date().toISOString()
-          }
-        }));
-
-        // Update document with parsed data
-        await supabaseAdmin
-          .from('resume_documents')
-          .update({
-            raw_text: rawText,
-            parsed_data: {
-              claims_extracted: extractedClaims,
-              claim_count: claims.length
-            },
-            processing_status: 'completed',
-            claims_generated: claims.length,
-            processed_at: new Date().toISOString()
-          })
-          .eq('id', document.id);
-
-        logger.info({ userId, documentId: document.id, claimCount: claims.length }, 'Resume processed successfully');
-
-        return {
-          document: {
-            ...document,
-            raw_text: rawText,
-            parsed_data: { claims_extracted: extractedClaims, claim_count: claims.length },
-            processing_status: 'completed',
-            claims_generated: claims.length,
-            processed_at: new Date().toISOString()
-          },
-          claims
-        };
-      } catch (processingError) {
-        // Update document with error
-        await this.updateDocumentStatus(
-          document.id,
-          'failed',
-          processingError instanceof Error ? processingError.message : 'Unknown error'
-        );
-        throw processingError;
-      }
-    } catch (error) {
-      logger.error({ error, userId }, 'Error processing resume');
-      throw error;
-    }
+    const rawText = await this.extractTextFromFile(fileBuffer, fileData.fileType);
+    return this.processResumeFromText(userId, rawText, fileData);
   }
 
   /**

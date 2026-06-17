@@ -14,6 +14,9 @@ vi.mock('../../src/services/usageTracking', () => ({
   canCreateEntry: (...args: unknown[]) => mockCanCreateEntry(...args),
   canMakeAiRequest: (...args: unknown[]) => mockCanMakeAiRequest(...args),
 }));
+vi.mock('../../src/lib/accountAuthority', () => ({
+  isPrivilegedAccount: vi.fn().mockResolvedValue(false),
+}));
 
 describe('subscription middleware', () => {
   let mockRequest: Partial<Request>;

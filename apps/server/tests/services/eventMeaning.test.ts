@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { generateMeaningFromText } from '../../src/services/meaning/eventMeaningService';
 
 describe('eventMeaningService', () => {
-  it('generates Costco + Abuela meaning', () => {
+  it('generates Costco + Grandma Rose meaning', () => {
     const meaning = generateMeaningFromText(
       'Costco trip',
-      'The highlight was that my Abuela is still alive. We spent 2.5 hours shopping.',
+      'The highlight was that my Grandma Rose is still alive. We spent 2.5 hours shopping.',
       []
     );
     expect(meaning).not.toBeNull();

@@ -89,11 +89,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     forkThread,
     greetingMessage,
     clearGreeting,
-  } = useConversationRuntime({
-    messages,
-    setMessages,
-    clearMessages: clearConversation,
-  });
+  } = useConversationRuntime();
 
   // Build the display list: prepend the ephemeral greeting when present.
   // greetingMessage is never persisted — it lives only in runtime state.

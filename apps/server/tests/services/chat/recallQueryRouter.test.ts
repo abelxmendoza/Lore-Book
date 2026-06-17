@@ -32,8 +32,8 @@ import { formatCharacterRosterForChat } from '../../../src/services/chat/foundat
 
 const CHARACTERS = [
   { id: 'c1', name: 'Abel', alias: [], metadata: {}, importance_level: 'protagonist' },
-  { id: 'c2', name: 'Sol', alias: [], metadata: {} },
-  { id: 'c3', name: 'Abuela', alias: [], metadata: {} },
+  { id: 'c2', name: 'Sam Chen', alias: [], metadata: {} },
+  { id: 'c3', name: 'Grandma Rose', alias: [], metadata: {} },
 ];
 
 const RELATIONSHIPS = [
@@ -75,8 +75,8 @@ describe('Sprint AF — foundation recall', () => {
 
     expect(result.intent).toBe('character_roster');
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Sol');
-    expect(result.contextBlock).toContain('Abuela');
+    expect(result.contextBlock).toContain('Sam Chen');
+    expect(result.contextBlock).toContain('Grandma Rose');
     expect(result.contextBlock).toContain('memories');
     expect(result.contextBlock).toContain('timeline');
     expect(result.contextBlock).not.toContain('Relevant past entries');
@@ -87,17 +87,17 @@ describe('Sprint AF — foundation recall', () => {
 
     expect(result.intent).toBe('family');
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Abuela');
+    expect(result.contextBlock).toContain('Grandma Rose');
     expect(result.contextBlock).toContain('grandmother');
   });
 
   it('routes entity queries to character foundation profile', async () => {
-    const result = await routeRecallQuery('user-1', 'Tell me about Sol');
+    const result = await routeRecallQuery('user-1', 'Tell me about Sam Chen');
 
     expect(result.intent).toBe('entity');
-    expect(result.entityName).toBe('Sol');
+    expect(result.entityName).toBe('Sam Chen');
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Sol');
+    expect(result.contextBlock).toContain('Sam Chen');
     expect(result.contextBlock).toContain('memories');
   });
 
@@ -105,7 +105,7 @@ describe('Sprint AF — foundation recall', () => {
     const roster = [
       {
         id: 'c2',
-        name: 'Sol',
+        name: 'Sam Chen',
         aliases: [],
         relationshipToUser: 'romantic_partner (blocked)',
         memoryCount: 2,
@@ -114,25 +114,25 @@ describe('Sprint AF — foundation recall', () => {
       },
     ];
     const text = formatCharacterRosterForChat(roster);
-    expect(text).toContain('Sol');
+    expect(text).toContain('Sam Chen');
     expect(text).toContain('romantic_partner');
     expect(text).toContain('appears in 2 memories');
     expect(text).toContain('1 timeline event');
   });
 
-  it('routes "Who is Ashley De La Cruz?" to entity profile', async () => {
+  it('routes "Who is Alex Morgan?" to entity profile', async () => {
     tableResults = {
       ...tableResults,
       characters: {
         data: [
           ...CHARACTERS,
-          { id: 'c4', name: 'Ashley De La Cruz', alias: ['Ashley'], metadata: {} },
+          { id: 'c4', name: 'Alex Morgan', alias: ['Alex'], metadata: {} },
         ],
         error: null,
       },
       entity_facts: {
         data: [
-          { fact: 'Met after Club Metro in DTLA', confidence: 0.9 },
+          { fact: 'Met after Blue Room in DTLA', confidence: 0.9 },
           { fact: 'Spent the night together', confidence: 0.85 },
           { fact: 'Age 19', confidence: 0.8 },
         ],
@@ -144,17 +144,17 @@ describe('Sprint AF — foundation recall', () => {
       },
     };
 
-    const result = await routeRecallQuery('user-1', 'Who is Ashley De La Cruz?');
+    const result = await routeRecallQuery('user-1', 'Who is Alex Morgan?');
     expect(result.intent).toBe('entity');
-    expect(result.entityName).toMatch(/Ashley/i);
+    expect(result.entityName).toMatch(/Alex/i);
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Ashley');
+    expect(result.contextBlock).toContain('Alex');
   });
 
   it('routes conversation recap without journal fallback flag', async () => {
     const history = [
-      { role: 'user', content: 'Ashley De La Cruz was 19. We met after Club Metro in DTLA.' },
-      { role: 'assistant', content: 'Got it — I will remember Ashley.' },
+      { role: 'user', content: 'Alex Morgan was 19. We met after Blue Room in DTLA.' },
+      { role: 'assistant', content: 'Got it — I will remember Alex.' },
     ];
     const result = await routeRecallQuery(
       'user-1',
@@ -174,8 +174,8 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
       people_places: { data: [], error: null },
       characters: {
         data: [
-          { id: 'c1', name: 'Abuela', alias: [], metadata: { mention_count: 12 } },
-          { id: 'c2', name: 'Sol', alias: [], metadata: { mention_count: 7 } },
+          { id: 'c1', name: 'Grandma Rose', alias: [], metadata: { mention_count: 12 } },
+          { id: 'c2', name: 'Sam Chen', alias: [], metadata: { mention_count: 7 } },
           { id: 'c3', name: 'Anaheim', alias: [], metadata: { mention_count: 3 } },
         ],
         error: null,
@@ -205,8 +205,8 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
   it('routes "Recall all the characters in my story" to character_roster', async () => {
     const result = await routeRecallQuery('user-1', 'Recall all the characters in my story');
     expect(result.intent).toBe('character_roster');
-    expect(result.contextBlock).toContain('Abuela');
-    expect(result.contextBlock).toContain('Sol');
+    expect(result.contextBlock).toContain('Grandma Rose');
+    expect(result.contextBlock).toContain('Sam Chen');
   });
 
   it('routes biography queries without journal fallback flag', async () => {

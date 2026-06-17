@@ -3,6 +3,8 @@ import { Brain, Lock, Repeat2, MessageSquareHeart, ChevronDown, ChevronUp } from
 import { useState } from 'react';
 import { PricingTable } from '../components/billing/PricingTable';
 import { useSubscription } from '../hooks/useSubscription';
+import { useAuth } from '../lib/supabase';
+import { useGuest } from '../contexts/GuestContext';
 import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { CTASection } from '../components/landing/CTASection';
@@ -94,12 +96,18 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 
 const UpgradePage = () => {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { isGuest } = useGuest();
   const { subscription } = useSubscription();
   const [showCheckout, setShowCheckout] = useState(false);
 
   const handleUpgrade = (tier: string) => {
-    // Free tier just sends them into the app; paid tiers launch Stripe checkout.
     if (tier === 'free') {
+      navigate('/login');
+      return;
+    }
+    if (authLoading) return;
+    if (!user || isGuest) {
       navigate('/login');
       return;
     }

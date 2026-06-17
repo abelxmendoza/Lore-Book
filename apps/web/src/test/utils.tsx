@@ -1,10 +1,20 @@
 import { ReactElement } from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { ChatThreadProvider } from '../contexts/ChatThreadContext';
+import { LoreKeeperProvider } from '../contexts/LoreKeeperContext';
+import { MockDataProvider } from '../contexts/MockDataContext';
 
-// Custom render function that includes providers
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
-  return <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{children}</BrowserRouter>;
+  return (
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MockDataProvider>
+        <LoreKeeperProvider>
+          <ChatThreadProvider>{children}</ChatThreadProvider>
+        </LoreKeeperProvider>
+      </MockDataProvider>
+    </BrowserRouter>
+  );
 };
 
 const customRender = (
@@ -14,4 +24,3 @@ const customRender = (
 
 export * from '@testing-library/react';
 export { customRender as render };
-

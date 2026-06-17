@@ -5,7 +5,7 @@ import { nameHousehold } from '../../src/services/entities/householdNaming';
 describe('householdNaming', () => {
   it('uses senior kinship anchor instead of concatenating family members', () => {
     expect(nameHousehold([
-      { name: 'Leslie', mentions: 3 },
+      { name: 'Morgan Gray', mentions: 3 },
       { name: 'Tio Ralph', mentions: 2 },
     ])).toBe("Tio Ralph's Family");
   });
@@ -13,7 +13,7 @@ describe('householdNaming', () => {
   it('uses shared surname when multiple members have one', () => {
     expect(nameHousehold([
       { name: 'Ralph Mendoza' },
-      { name: 'Leslie Mendoza' },
+      { name: 'Morgan Gray Mendoza' },
       { name: 'Tio Juan' },
     ])).toBe('Mendoza Family');
   });
@@ -21,7 +21,7 @@ describe('householdNaming', () => {
   it('falls back to most-mentioned member when no kinship or surname exists', () => {
     expect(nameHousehold([
       { name: 'Daisy', mentions: 1 },
-      { name: 'Hell Fairy', mentions: 4 },
-    ])).toBe("Hell Fairy's Family");
+      { name: 'Velvet Hour', mentions: 4 },
+    ])).toBe("Velvet Hour's Family");
   });
 });

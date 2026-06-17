@@ -37,5 +37,18 @@ describe('Photos API Routes', () => {
       expect(Array.isArray(response.body.entries)).toBe(true);
       expect(memoryService.searchEntries).toHaveBeenCalledWith('user-123', { search: '', limit: 1000 });
     });
+
+    it('returns 401 when unauthenticated', async () => {
+      vi.mocked(requireAuth).mockImplementation((_req, res) => {
+        res.status(401).json({ error: 'Unauthorized' });
+      });
+      await request(app).get('/api/photos').expect(401);
+    });
+  });
+
+  describe('POST /api/photos/upload', () => {
+    it('returns 400 when no file provided', async () => {
+      await request(app).post('/api/photos/upload').expect(400);
+    });
   });
 });

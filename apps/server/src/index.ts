@@ -20,7 +20,7 @@ import { secureHeaders } from './middleware/secureHeaders';
 import { userIsolationGuard } from './middleware/userIsolationGuard';
 import { registerRoutes, getDisabledRoutePaths } from './routes/routeRegistry';
 import { runtimeRouter } from './routes/runtime';
-import { subscriptionRouter } from './routes/subscription';
+import { handleStripeWebhook } from './routes/subscription';
 import { setupSwagger } from './swagger';
 import { requestIdMiddleware } from './utils/requestId';
 import { performSecurityCheck } from './utils/securityCheck';
@@ -47,11 +47,10 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // SECURITY: Detect environment before any logic that uses it
-const isDevelopment = process.env.NODE_ENV === 'development' ||
-  (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = process.env.NODE_ENV === 'production' ||
-  process.env.API_ENV === 'production' ||
-  (!process.env.NODE_ENV && !process.env.API_ENV);
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+const isProduction = !isDevelopment && (
+  process.env.NODE_ENV === 'production' || process.env.API_ENV === 'production'
+);
 
 // Perform security check on startup
 const securityCheck = performSecurityCheck();
@@ -154,8 +153,13 @@ app.use(cors({
   maxAge: isDevelopment ? 86400 : 3600 // 24h in dev, 1h in prod
 }));
 
-// Stripe webhook endpoint (must be before body parser - needs raw body)
-app.use('/api/subscription/webhook', express.raw({ type: 'application/json' }), subscriptionRouter);
+// Stripe webhook: no auth, raw body (must be before express.json())
+app.post(
+  '/api/subscription/webhook',
+  rateLimitMiddleware,
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook
+);
 
 // Request size limits - larger in development
 app.use(express.json({ limit: isDevelopment ? '50mb' : '1mb' }));
@@ -179,6 +183,9 @@ app.get('/api/health', (_req, res) => {
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       FRONTEND_URL: !!process.env.FRONTEND_URL,
       PORT: !!process.env.PORT,
+      STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET: !!process.env.STRIPE_WEBHOOK_SECRET,
+      SUBSCRIPTION_PRICE_ID: !!process.env.SUBSCRIPTION_PRICE_ID,
     },
   });
 });
@@ -393,7 +400,10 @@ const server = app.listen(config.port, () => {
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
-    logger.error(`Port ${config.port} is already in use. Please stop the other process or change the port.`);
+    logger.error(
+      `Port ${config.port} is already in use. ` +
+      `Stop the other server (Ctrl+C in the terminal running "npm run dev") or set PORT to a different value.`
+    );
   } else {
     logger.error({ error }, 'Failed to start server');
   }

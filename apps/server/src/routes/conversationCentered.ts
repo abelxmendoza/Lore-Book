@@ -382,7 +382,7 @@ router.post(
       started_at: now,
       created_at: now,
       updated_at: now,
-      metadata: { messages: [] },
+      metadata: {},
     });
 
     if (error) throw error;
@@ -2919,18 +2919,8 @@ router.patch(
       updatePayload.updated_at = new Date().toISOString();
     }
     if (body.title !== undefined) updatePayload.title = body.title;
-    if (body.messages !== undefined) {
-      // Merge messages into existing metadata so we don't clobber other keys
-      // (e.g. chat_session_id set by older ingestion paths).
-      const { data: existing } = await supabaseAdmin
-        .from('conversation_sessions')
-        .select('metadata')
-        .eq('id', id)
-        .eq('user_id', userId)
-        .single();
-      const existingMeta = (existing?.metadata as Record<string, unknown>) ?? {};
-      updatePayload.metadata = { ...existingMeta, messages: body.messages };
-    }
+    // messages in PATCH body are ignored — chat_messages is the canonical store (P2).
+    // touchActivity still bumps sidebar ordering via updated_at.
 
     const { error } = await supabaseAdmin
       .from('conversation_sessions')

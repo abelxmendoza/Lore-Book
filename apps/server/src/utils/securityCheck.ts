@@ -9,10 +9,10 @@ export const performSecurityCheck = (): { passed: boolean; warnings: string[]; e
   const warnings: string[] = [];
   const errors: string[] = [];
   
-  const isProduction = process.env.NODE_ENV === 'production' || 
-                       process.env.API_ENV === 'production';
-  const isDevelopment = process.env.NODE_ENV === 'development' || 
-                        (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+  const isProduction = !isDevelopment && (
+    process.env.NODE_ENV === 'production' || process.env.API_ENV === 'production'
+  );
 
   // CRITICAL: Check if authentication is disabled in production
   if (isProduction && process.env.DISABLE_AUTH_FOR_DEV === 'true') {

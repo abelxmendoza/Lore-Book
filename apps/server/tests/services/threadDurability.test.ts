@@ -43,9 +43,9 @@ describe('Thread durability — duplicate send / multiple tabs / slow hydration'
   it('multiple tabs / partial sources merge to the complete conversation', () => {
     // Tab A hydrated only the user msg; Tab B / snapshot had the assistant.
     const merged = dedupeMessages([
-      [m('db-1', 'user', 'what happened with Ashley', T(1))],
+      [m('db-1', 'user', 'what happened with Alex', T(1))],
       [m('db-2', 'assistant', 'Here is what I recall…', T(2))],
-      [m('meta-1', 'user', 'what happened with Ashley', T(1))], // snapshot dup
+      [m('meta-1', 'user', 'what happened with Alex', T(1))], // snapshot dup
     ]);
     expect(merged.map((x) => x.role)).toEqual(['user', 'assistant']);
     expect(merged).toHaveLength(2); // snapshot dup removed
@@ -84,7 +84,7 @@ describe('Thread durability — ordering (thread switch / new activity reconcili
 describe('Thread durability — broken-title repair (Phase 6/7: never "New Conversation")', () => {
   it('derives a real title from the first user message', () => {
     const title = deriveTitleFromMessages([
-      { role: 'user', content: 'Took Abuela to Costco yesterday and it took forever' },
+      { role: 'user', content: 'Took Grandma Rose to Costco yesterday and it took forever' },
       { role: 'assistant', content: 'That sounds like a long trip…' },
     ]);
     expect(title).toBeTruthy();
@@ -95,7 +95,7 @@ describe('Thread durability — broken-title repair (Phase 6/7: never "New Conve
     for (const generic of ['New Chat', 'Untitled', 'Chat', 'Draft', '']) {
       expect(isGenericThreadTitle(generic)).toBe(true); // detected as broken
     }
-    const repaired = deriveTitleFromMessages([{ role: 'user', content: 'LoreBook memory testing session' }]);
+    const repaired = deriveTitleFromMessages([{ role: 'user', content: 'LifeLedger memory testing session' }]);
     expect(isGenericThreadTitle(repaired)).toBe(false);
   });
 

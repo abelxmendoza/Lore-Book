@@ -45,7 +45,7 @@ describe('OrganizationNetworkService', () => {
       {
         id: 'child',
         user_id: 'u1',
-        name: "Tia Grace's Household",
+        name: "Aunt Grace's Household",
         aliases: [],
         type: 'family',
         group_type: 'family',

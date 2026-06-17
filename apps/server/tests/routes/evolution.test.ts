@@ -26,11 +26,24 @@ describe('Evolution API Routes', () => {
   describe('GET /api/evolution', () => {
     it('should return evolution insights', async () => {
       const mockInsights = [{ period: '2024', themes: [] }];
-      vi.mocked(evolutionService.analyze).mockResolvedValue(mockInsights as any);
+      vi.mocked(evolutionService.analyze).mockResolvedValue({
+        insights: mockInsights as any,
+        timing: { totalMs: 1, dbMs: 0, openaiMs: 0, cacheHit: false },
+      });
 
       const response = await request(app).get('/api/evolution').expect(200);
       expect(response.body).toEqual({ insights: mockInsights });
-      expect(evolutionService.analyze).toHaveBeenCalledWith(mockUser.id);
+      expect(evolutionService.analyze).toHaveBeenCalledWith(mockUser.id, { refresh: false });
+    });
+
+    it('passes refresh=true when query param set', async () => {
+      vi.mocked(evolutionService.analyze).mockResolvedValue({
+        insights: {} as any,
+        timing: { totalMs: 1, dbMs: 0, openaiMs: 0, cacheHit: false },
+      });
+
+      await request(app).get('/api/evolution?refresh=true').expect(200);
+      expect(evolutionService.analyze).toHaveBeenCalledWith(mockUser.id, { refresh: true });
     });
 
     it('should return 500 on service error', async () => {

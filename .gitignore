@@ -20,6 +20,14 @@ build/
 .env.test.local
 .env.production.local
 
+# Founder-local maintenance data (never commit real personal lore)
+.private/
+
+# Local dev session tokens (contain user identity — never commit)
+.lk_session.json
+.lk_session.clean.json
+.lk_session*.json
+
 # IDE
 .vscode/
 .idea/

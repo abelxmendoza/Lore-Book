@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 import { config } from '../config';
+import { isPrivilegedAccount } from '../lib/accountAuthority';
 
 import { getUserSubscription, type SubscriptionData } from './stripeService';
 
@@ -31,11 +32,11 @@ const defaultUsageData = (): UsageData => ({
  */
 export async function getCurrentUsage(userId: string): Promise<UsageData> {
   try {
+    const privileged = await isPrivilegedAccount(userId);
     const subscription = await getUserSubscription(userId);
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Get or create usage record for current month
     const { data: usage } = await supabase
       .from('subscription_usage')
       .select('*')
@@ -46,10 +47,11 @@ export async function getCurrentUsage(userId: string): Promise<UsageData> {
     const entryCount = usage?.entry_count || 0;
     const aiRequestsCount = usage?.ai_requests_count || 0;
 
-    // Determine limits based on subscription
-    const isPremium = subscription?.planType === 'premium';
-    const isTrial = subscription?.status === 'trial' ||
-      (subscription?.trialEndsAt && subscription.trialEndsAt > now);
+    const isPremium = privileged || subscription?.planType === 'premium';
+    const isTrial = !privileged && (
+      subscription?.status === 'trial' ||
+      (subscription?.trialEndsAt && subscription.trialEndsAt > now)
+    );
 
     const entryLimit = isPremium || isTrial ? Infinity : config.freeTierEntryLimit || 50;
     const aiLimit = isPremium || isTrial ? Infinity : config.freeTierAiLimit || 100;
@@ -59,11 +61,10 @@ export async function getCurrentUsage(userId: string): Promise<UsageData> {
       aiRequestsCount,
       entryLimit,
       aiLimit,
-      isPremium: isPremium || false,
+      isPremium: isPremium || isTrial,
       isTrial: isTrial || false,
     };
   } catch (err) {
-    // When Supabase/DB is unavailable (e.g. local dev), allow usage with default limits
     return defaultUsageData();
   }
 }

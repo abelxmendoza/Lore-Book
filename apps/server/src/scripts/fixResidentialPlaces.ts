@@ -12,13 +12,13 @@ import { inferPlaceType } from '../constants/placeTypes';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { placeEnrichmentService } from '../services/placeEnrichmentService';
 
-const DEFAULT_USER = '789bd607-e063-466f-a9ef-f68d24e8bb57';
+const DEFAULT_USER = process.env.TARGET_USER_ID ?? '';
 
 const RESIDENTIAL_NAME_RE =
   /\b(house|home|apartment|apt|condo|flat|casa|duplex|townhouse)\b|[''']s?\s+(house|home|apartment)/i;
 
 const SHOW_VENUE_RE =
-  /\b(night\s?club|concert|music\s?venue|club\s?metro|goth\s?club|dance\s?club|rave|festival)\b/i;
+  /\b(night\s?club|concert|music\s?venue|goth\s?club|dance\s?club|rave|festival)\b/i;
 
 function looksResidential(name: string): boolean {
   if (SHOW_VENUE_RE.test(name)) return false;
@@ -29,6 +29,11 @@ async function main() {
   const execute = process.argv.includes('--execute');
   const userIdx = process.argv.indexOf('--user-id');
   const userId = userIdx >= 0 ? process.argv[userIdx + 1] : DEFAULT_USER;
+
+  if (!userId) {
+    console.error('Required: --user-id <uuid> or TARGET_USER_ID environment variable.');
+    process.exit(1);
+  }
 
   const { data: rows, error } = await supabaseAdmin
     .from('locations')

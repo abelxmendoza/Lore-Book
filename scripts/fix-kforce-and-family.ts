@@ -13,8 +13,8 @@
  * Dry-run by default. Pass --execute to write.
  *
  * Usage:
- *   npx tsx scripts/fix-kforce-and-family.ts --user abelxmendoza@gmail.com
- *   npx tsx scripts/fix-kforce-and-family.ts --user abelxmendoza@gmail.com --execute
+ *   npx tsx scripts/fix-kforce-and-family.ts --user <your-email>
+ *   npx tsx scripts/fix-kforce-and-family.ts --user <your-email> --execute
  */
 
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
@@ -295,7 +295,8 @@ async function ensureFamilyGroup(userId: string, chars: CharRow[]) {
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
   const userId = await resolveUserId(email);
   console.log(`\n${EXECUTE ? 'EXECUTING' : 'DRY RUN'} fix for ${email} (${userId})\n`);
 

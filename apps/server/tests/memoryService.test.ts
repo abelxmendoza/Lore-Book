@@ -23,6 +23,7 @@ vi.mock('../src/services/supabaseClient', () => ({
 describe('MemoryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    memoryService.invalidateEntryListCache('test-user-id');
   });
 
   describe('searchEntries', () => {
@@ -80,9 +81,18 @@ describe('MemoryService', () => {
   describe('getTimeline', () => {
     it('should return empty timeline when no data exists', async () => {
       const result = await memoryService.getTimeline('test-user-id');
-      expect(result).toEqual({
+      expect(result.timeline).toEqual({
         chapters: [],
-        unassigned: []
+        unassigned: [],
+      });
+      expect(result.timing).toMatchObject({
+        totalMs: expect.any(Number),
+        dbMs: expect.any(Number),
+        stitchMs: expect.any(Number),
+        serializeMs: expect.any(Number),
+        chapterLoadMs: expect.any(Number),
+        entryCacheHit: expect.any(Boolean),
+        openaiMs: 0,
       });
     });
   });
@@ -90,7 +100,15 @@ describe('MemoryService', () => {
   describe('listTags', () => {
     it('should return empty array when no entries exist', async () => {
       const result = await memoryService.listTags('test-user-id');
-      expect(result).toEqual([]);
+      expect(result.tags).toEqual([]);
+      expect(result.timing).toMatchObject({
+        totalMs: expect.any(Number),
+        dbMs: expect.any(Number),
+        computeMs: expect.any(Number),
+        serializeMs: expect.any(Number),
+        entryCacheHit: expect.any(Boolean),
+        openaiMs: 0,
+      });
     });
   });
 });

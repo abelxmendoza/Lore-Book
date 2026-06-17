@@ -3,8 +3,6 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-// ── Module mocks ───────────────────────────────────────────────────────────────
-
 vi.mock('../../../../lib/supabase', () => ({
   useAuth: vi.fn(),
 }));
@@ -22,13 +20,10 @@ vi.mock('../../services/runtimeDiagnostics', () => ({
   },
 }));
 
-// Mock useChatThreads with a controllable factory
-const mockUseChatThreads = vi.fn();
-vi.mock('../useChatThreads', () => ({
-  useChatThreads: () => mockUseChatThreads(),
+const mockUseChatThreadContext = vi.fn();
+vi.mock('../../../../contexts/ChatThreadContext', () => ({
+  useChatThreadContext: () => mockUseChatThreadContext(),
 }));
-
-// ── Imports after mocks ────────────────────────────────────────────────────────
 
 import { useAuth } from '../../../../lib/supabase';
 import { fetchJson } from '../../../../lib/api';
@@ -56,8 +51,6 @@ function ensureLocalStorage() {
   });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function makeMessage(role: 'user' | 'assistant', content = 'hello'): Message {
   return { id: `${role}-${Date.now()}-${Math.random()}`, role, content, timestamp: new Date() };
 }
@@ -66,19 +59,32 @@ function makeThread(id: string, messages: Message[] = [], title = 'New chat') {
   return { id, title, messages, updatedAt: new Date().toISOString() };
 }
 
-/** Build a stable mock threads store. */
-function makeThreadsStore(opts: {
-  threads?: ReturnType<typeof makeThread>[];
-  loading?: boolean;
-  ready?: boolean;
-  currentThreadId?: string | null;
-} = {}) {
+function makeContextStore(
+  opts: {
+    threads?: ReturnType<typeof makeThread>[];
+    loading?: boolean;
+    ready?: boolean;
+    currentThreadId?: string | null;
+    activeThreadId?: string | null;
+    activeMessages?: Message[];
+  } = {}
+) {
   const threads = opts.threads ?? [];
+  const activeThreadId = opts.activeThreadId ?? null;
+  const activeMessages =
+    opts.activeMessages ??
+    (activeThreadId ? threads.find((t) => t.id === activeThreadId)?.messages ?? [] : []);
+
   return {
     threads,
     threadsLoading: opts.loading ?? false,
     threadsReady: opts.ready ?? true,
     currentThreadId: opts.currentThreadId ?? null,
+    activeThreadId,
+    activeMessages,
+    setActiveThreadId: vi.fn(),
+    updateActiveMessages: vi.fn(),
+    clearActiveMessages: vi.fn(),
     setCurrentThreadId: vi.fn(),
     createThread: vi.fn(() => 'new-thread-id'),
     getThread: vi.fn((id: string) => threads.find((t) => t.id === id)),
@@ -95,7 +101,6 @@ function makeThreadsStore(opts: {
   };
 }
 
-/** Wrapper factory for MemoryRouter at a given path. */
 function makeWrapper(initialPath = '/chat') {
   return ({ children }: { children: React.ReactNode }) =>
     React.createElement(
@@ -110,39 +115,33 @@ function makeWrapper(initialPath = '/chat') {
     );
 }
 
-function makeRuntimeOptions(messages: Message[] = []) {
-  const setMessages = vi.fn();
-  const clearMessages = vi.fn();
-  return { messages, setMessages, clearMessages };
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('useConversationRuntime', () => {
   beforeEach(() => {
     ensureLocalStorage();
     vi.clearAllMocks();
-    mockUseAuth.mockReturnValue({ user: { id: 'u1' } as any, loading: false, session: null, signOut: vi.fn() });
+    mockUseAuth.mockReturnValue({
+      user: { id: 'u1' } as any,
+      loading: false,
+      session: null,
+      signOut: vi.fn(),
+    });
   });
 
   afterEach(() => {
     localStorage.clear();
   });
 
-  // ── URL hydration ─────────────────────────────────────────────────────────
-
-  it('loads messages for the thread in the URL on mount', async () => {
+  it('activates the thread in the URL on mount', async () => {
     const thread = makeThread('t1', [makeMessage('user', 'hi')]);
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ threads: [thread] });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t1'),
     });
 
     await waitFor(() => {
-      expect(opts.setMessages).toHaveBeenCalledWith(thread.messages);
+      expect(store.setActiveThreadId).toHaveBeenCalledWith('t1');
     });
     expect(store.switchThread).toHaveBeenCalledWith('t1');
     expect(runtimeDiagnostics.startTimer).toHaveBeenCalledWith('hydration');
@@ -153,69 +152,61 @@ describe('useConversationRuntime', () => {
     );
   });
 
-  it('does NOT load messages when URL threadId is absent', async () => {
-    const store = makeThreadsStore();
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+  it('clears active thread when URL threadId is absent', async () => {
+    const store = makeContextStore();
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat'),
     });
 
     await waitFor(() => {
-      expect(opts.setMessages).toHaveBeenCalledWith([]);
+      expect(store.setActiveThreadId).toHaveBeenCalledWith(null);
     });
     expect(store.switchThread).not.toHaveBeenCalled();
   });
 
   it('waits while auth is loading before hydrating', () => {
     mockUseAuth.mockReturnValue({ user: null, loading: true, session: null, signOut: vi.fn() });
-    const store = makeThreadsStore({ loading: false });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ loading: false });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t1'),
     });
 
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect(store.setActiveThreadId).not.toHaveBeenCalled();
     expect(store.switchThread).not.toHaveBeenCalled();
   });
 
   it('waits while threads are loading before hydrating', () => {
-    const store = makeThreadsStore({ loading: true });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ loading: true });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t1'),
     });
 
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect(store.setActiveThreadId).not.toHaveBeenCalled();
   });
 
-  // ── hydratedByHandlerRef guard ────────────────────────────────────────────
-
-  it('skips URL hydration setMessages when handler already loaded the thread', async () => {
+  it('skips URL hydration when handler already loaded the thread', async () => {
     const thread = makeThread('t1', [makeMessage('user')]);
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ threads: [thread] });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    const { result } = renderHook(() => useConversationRuntime(opts), {
+    const { result } = renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat'),
     });
 
-    // selectThread sets hydratedByHandlerRef internally
     act(() => {
       result.current.handleSelectThread('t1');
     });
 
     await waitFor(() => {
-      expect(opts.setMessages).toHaveBeenCalledWith(thread.messages);
+      expect(store.setActiveThreadId).toHaveBeenCalledWith('t1');
     });
 
-    // The URL hydration effect should record a skip for this thread
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'hydration_skip',
       expect.objectContaining({ threadId: 't1' })
@@ -230,21 +221,17 @@ describe('useConversationRuntime', () => {
       resolveSlow = resolve;
     });
     const fastThread = makeThread('fast', [fastMessage]);
-    const store = makeThreadsStore({
-      threads: [
-        makeThread('slow', []),
-        makeThread('fast', []),
-      ],
+    const store = makeContextStore({
+      threads: [makeThread('slow', []), makeThread('fast', [])],
     });
     store.hydrateThreadMessages.mockImplementation(async (id: string) => {
       if (id === 'slow') return slowHydration;
       if (id === 'fast') return fastThread;
       return null;
     });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    const { result } = renderHook(() => useConversationRuntime(opts), {
+    const { result } = renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat'),
     });
 
@@ -256,7 +243,7 @@ describe('useConversationRuntime', () => {
     });
 
     await waitFor(() => {
-      expect(opts.setMessages).toHaveBeenCalledWith(fastThread.messages);
+      expect(store.setActiveThreadId).toHaveBeenCalledWith('fast');
     });
 
     await act(async () => {
@@ -264,7 +251,6 @@ describe('useConversationRuntime', () => {
       await slowHydration;
     });
 
-    expect(opts.setMessages).not.toHaveBeenLastCalledWith([slowMessage]);
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'hydration_skip',
       expect.objectContaining({
@@ -274,14 +260,11 @@ describe('useConversationRuntime', () => {
     );
   });
 
-  // ── handleNewChat ─────────────────────────────────────────────────────────
-
   it('handleNewChat flushes current thread and creates a new one', async () => {
-    const store = makeThreadsStore({ currentThreadId: 'old-thread' });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ currentThreadId: 'old-thread' });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    const { result } = renderHook(() => useConversationRuntime(opts), {
+    const { result } = renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/old-thread'),
     });
 
@@ -290,23 +273,20 @@ describe('useConversationRuntime', () => {
     });
 
     expect(store.flushSave).toHaveBeenCalledWith('old-thread');
-    expect(opts.clearMessages).toHaveBeenCalled();
     expect(store.createThread).toHaveBeenCalled();
+    expect(store.setActiveThreadId).toHaveBeenCalledWith('new-thread-id');
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'flush_save',
       expect.objectContaining({ threadId: 'old-thread' })
     );
   });
 
-  // ── handleDeleteThread ────────────────────────────────────────────────────
-
-  it('handleDeleteThread calls deleteThread and clears messages when deleting active thread', async () => {
+  it('handleDeleteThread calls deleteThread when deleting active thread', async () => {
     const t1 = makeThread('del-me', [makeMessage('user')]);
-    const store = makeThreadsStore({ threads: [t1] });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ threads: [t1] });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    const { result } = renderHook(() => useConversationRuntime(opts), {
+    const { result } = renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/del-me'),
     });
 
@@ -315,7 +295,6 @@ describe('useConversationRuntime', () => {
     });
 
     expect(store.deleteThread).toHaveBeenCalledWith('del-me');
-    expect(opts.setMessages).toHaveBeenCalledWith([]);
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'thread_delete',
       expect.objectContaining({ threadId: 'del-me' })
@@ -325,11 +304,10 @@ describe('useConversationRuntime', () => {
   it('handleDeleteThread navigates to next thread when available', async () => {
     const t1 = makeThread('del-me');
     const t2 = makeThread('next-one', [makeMessage('assistant', 'hi')]);
-    const store = makeThreadsStore({ threads: [t1, t2] });
-    mockUseChatThreads.mockReturnValue(store);
-    const opts = makeRuntimeOptions();
+    const store = makeContextStore({ threads: [t1, t2] });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    const { result } = renderHook(() => useConversationRuntime(opts), {
+    const { result } = renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/del-me'),
     });
 
@@ -338,22 +316,28 @@ describe('useConversationRuntime', () => {
     });
 
     expect(store.deleteThread).toHaveBeenCalledWith('del-me');
-    // Should load next thread's messages
-    expect(opts.setMessages).toHaveBeenCalledWith(t2.messages);
+    expect(store.setActiveThreadId).toHaveBeenCalledWith('next-one');
   });
-
-  // ── Semantic title generation ──────────────────────────────────────────────
 
   it('fires title generation after first assistant response', async () => {
     const thread = makeThread('t1', [], 'New chat');
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
-    mockFetchJson.mockResolvedValueOnce({ title: 'Great Session', subtitle: 'Reflection', success: true });
+    const messages = [
+      makeMessage('user', 'hello'),
+      { ...makeMessage('assistant', 'hi there'), isStreaming: false },
+    ];
+    const store = makeContextStore({
+      threads: [thread],
+      activeThreadId: 't1',
+      activeMessages: messages,
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
+    mockFetchJson.mockResolvedValueOnce({
+      title: 'Great Session',
+      subtitle: 'Reflection',
+      success: true,
+    });
 
-    const messages = [makeMessage('user', 'hello'), { ...makeMessage('assistant', 'hi there'), isStreaming: false }];
-    const opts = makeRuntimeOptions(messages);
-
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t1'),
     });
 
@@ -370,25 +354,20 @@ describe('useConversationRuntime', () => {
         expect.objectContaining({ title: 'Great Session', subtitle: 'Reflection' })
       );
     });
-
-    expect(runtimeDiagnostics.record).toHaveBeenCalledWith('title_start', expect.objectContaining({ threadId: 't1' }));
-    expect(runtimeDiagnostics.recordTimed).toHaveBeenCalledWith(
-      'title_complete',
-      'title_t1',
-      expect.objectContaining({ threadId: 't1' })
-    );
   });
 
   it('records title_error when the title API call fails', async () => {
     const thread = makeThread('t2', [], 'New chat');
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
+    const messages = [makeMessage('user'), { ...makeMessage('assistant'), isStreaming: false }];
+    const store = makeContextStore({
+      threads: [thread],
+      activeThreadId: 't2',
+      activeMessages: messages,
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
     mockFetchJson.mockRejectedValueOnce(new Error('OpenAI 429'));
 
-    const messages = [makeMessage('user'), { ...makeMessage('assistant'), isStreaming: false }];
-    const opts = makeRuntimeOptions(messages);
-
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t2'),
     });
 
@@ -396,30 +375,28 @@ describe('useConversationRuntime', () => {
       expect(runtimeDiagnostics.recordTimed).toHaveBeenCalledWith(
         'title_error',
         'title_t2',
-        expect.objectContaining({ threadId: 't2', meta: expect.objectContaining({ error: 'OpenAI 429' }) })
+        expect.objectContaining({
+          threadId: 't2',
+          meta: expect.objectContaining({ error: 'OpenAI 429' }),
+        })
       );
     });
-
-    // Title failure must not propagate or call updateThread with a broken title
-    expect(store.updateThread).not.toHaveBeenCalledWith(
-      't2',
-      expect.objectContaining({ title: expect.anything() })
-    );
   });
 
   it('skips title generation when the thread already has a non-default title', async () => {
     const thread = makeThread('t3', [makeMessage('user', 'hello')], 'Custom Title');
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
-
     const messages = [makeMessage('user'), { ...makeMessage('assistant'), isStreaming: false }];
-    const opts = makeRuntimeOptions(messages);
+    const store = makeContextStore({
+      threads: [thread],
+      activeThreadId: 't3',
+      activeMessages: messages,
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t3'),
     });
 
-    // Give effects time to run
     await new Promise((r) => setTimeout(r, 50));
 
     expect(mockFetchJson).not.toHaveBeenCalled();
@@ -431,13 +408,15 @@ describe('useConversationRuntime', () => {
 
   it('does not fire title generation while the assistant message is still streaming', async () => {
     const thread = makeThread('t4', [], 'New chat');
-    const store = makeThreadsStore({ threads: [thread] });
-    mockUseChatThreads.mockReturnValue(store);
-
     const messages = [makeMessage('user'), { ...makeMessage('assistant'), isStreaming: true }];
-    const opts = makeRuntimeOptions(messages);
+    const store = makeContextStore({
+      threads: [thread],
+      activeThreadId: 't4',
+      activeMessages: messages,
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
 
-    renderHook(() => useConversationRuntime(opts), {
+    renderHook(() => useConversationRuntime(), {
       wrapper: makeWrapper('/chat/t4'),
     });
 

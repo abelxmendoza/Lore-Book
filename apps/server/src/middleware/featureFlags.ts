@@ -1,8 +1,14 @@
 /**
  * Feature Flag Middleware Helpers
+ *
+ * Role checks delegate to accountAuthority — never read user_metadata.role.
  */
 
 import { config } from '../config';
+import {
+  resolveAccountAuthorityFromAuthUser,
+  type AuthUserLike,
+} from '../lib/accountAuthority';
 
 export type FeatureFlag =
   | 'timelinePlayback'
@@ -19,15 +25,8 @@ const featureFlags: Record<FeatureFlag, boolean> = {
   devDiagnostics: config.apiEnv !== 'production',
 };
 
-export interface User {
-  id: string;
+export interface User extends AuthUserLike {
   role?: string;
-  user_metadata?: {
-    role?: string;
-  };
-  app_metadata?: {
-    role?: string;
-  };
 }
 
 export interface Env {
@@ -42,16 +41,12 @@ export function getActiveFlags(user?: User | null, env?: Env): Record<FeatureFla
   const flags = { ...featureFlags };
   const envConfig = env || {
     ENABLE_EXPERIMENTAL: config.enableExperimental ? 'true' : 'false',
-    API_ENV: config.apiEnv
+    API_ENV: config.apiEnv,
   };
 
-  // If experimental is enabled and user is admin, unlock all flags
   if (envConfig.ENABLE_EXPERIMENTAL === 'true' && user) {
-    const userRole = user.role || 
-                     user.user_metadata?.role || 
-                     user.app_metadata?.role;
-    
-    if (userRole === 'admin' || userRole === 'developer') {
+    const authority = resolveAccountAuthorityFromAuthUser(user);
+    if (authority.isPrivileged) {
       for (const key in flags) {
         flags[key as FeatureFlag] = true;
       }
@@ -72,4 +67,3 @@ export function isFeatureEnabled(
   const activeFlags = getActiveFlags(user, env);
   return activeFlags[flag] === true;
 }
-

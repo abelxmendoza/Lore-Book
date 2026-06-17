@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
 import { emitDelta } from '../realtime/orchestratorEmitter';
+import {
+  identityPulseModule,
+} from '../services/analytics';
+import { buildAnalyticsContext, runLegacyAnalytics } from '../services/analytics/orchestrator';
 import { personaService } from '../services/personaService';
 import { correctionAuthority } from '../services/provenance';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -20,17 +24,19 @@ const recomputeSchema = z.object({
   version: z.string().optional()
 });
 
-router.get('/pulse', requireAuth, (req: AuthenticatedRequest, res) => {
-  const snapshot = personaService.getPersona(req.user!.id);
-  const pulse = {
-    persona: snapshot.version,
-    motifs: snapshot.motifs.map((name) => ({ name, energy: 0.75 })),
-    emotionTrajectory: [{ label: 'stability', value: 0.8 }],
-    stability: 0.9,
-    driftWarnings: [],
-  };
+router.get('/pulse', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const timeRange = (req.query.timeRange as string) || '30';
+  const context = await buildAnalyticsContext({ userId: req.user!.id, timeRange });
+  const result = await runLegacyAnalytics('identity', context, (ctx) =>
+    identityPulseModule.runEnhanced(ctx.userId, ctx.timeRange ?? '30')
+  );
 
-  res.json({ pulse });
+  if (result.value === null) {
+    logger.error({ userId: req.user!.id, diagnostics: result.diagnostics }, 'Identity pulse failed');
+    return res.status(200).json({ error: 'ANALYTICS_DEGRADED', diagnostics: result.diagnostics });
+  }
+
+  res.json(result.value);
 });
 
 router.post('/recompute', requireAuth, (req: AuthenticatedRequest, res) => {

@@ -25,16 +25,16 @@ describe('entityMentionClassifier', () => {
   });
 
   it('requires person evidence for unknown proper nouns', () => {
-    expect(classifyMentionKind('Ashley De la Cruz').kind).toBe('unknown');
-    expect(classifyMentionKind('Ashley').kind).toBe('unknown');
+    expect(classifyMentionKind('Alex Morgan').kind).toBe('unknown');
+    expect(classifyMentionKind('Alex').kind).toBe('unknown');
     expect(classifyMentionKind('Tio Juan').kind).toBe('person');
-    expect(classifyMentionKind('Ashley', 'Ashley said she would call').kind).toBe('person');
+    expect(classifyMentionKind('Alex', 'Alex said she would call').kind).toBe('person');
   });
 
   it('defers all first mentions from automatic character promotion', () => {
-    expect(shouldDeferCharacterPromotion('Ashley', 1)).toBe(true);
-    expect(shouldDeferCharacterPromotion('Ashley', 2)).toBe(false);
-    expect(shouldDeferCharacterPromotion('Ashley De la Cruz', 1)).toBe(true);
-    expect(shouldDeferCharacterPromotion('Ashley De la Cruz', 2)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Alex', 1)).toBe(true);
+    expect(shouldDeferCharacterPromotion('Alex', 2)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Alex Morgan', 1)).toBe(true);
+    expect(shouldDeferCharacterPromotion('Alex Morgan', 2)).toBe(false);
   });
 });

@@ -24,8 +24,8 @@ describe('Sprint AH — trust & recall', () => {
 
   describe('testing mode detection', () => {
     it('detects memory formation queries', () => {
-      expect(detectTestingMode('Did you save Abuela?')).toBe('memory_formation');
-      expect(isTestingModeMessage('Did you make a character for Ashley?')).toBe(true);
+      expect(detectTestingMode('Did you save Grandma Rose?')).toBe('memory_formation');
+      expect(isTestingModeMessage('Did you make a character for Alex?')).toBe(true);
     });
 
     it('detects recall check queries', () => {

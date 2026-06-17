@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { ArrowLeft, Lock, Shield, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { useSubscription } from '../../hooks/useSubscription';
+import { useAuth } from '../../lib/supabase';
+import { useGuest } from '../../contexts/GuestContext';
+import { isPrivilegedAuthority } from '../../lib/accountAuthority';
 
 // Get Stripe publishable key from environment
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
@@ -112,12 +116,30 @@ const CheckoutForm = ({
 };
 
 export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; onSuccess?: () => void }) => {
-  const { subscription, createSubscription } = useSubscription();
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { isGuest } = useGuest();
+  const { subscription, loading: subscriptionLoading, createSubscription } = useSubscription();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [intentType, setIntentType] = useState<'payment' | 'setup' | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const needsSignIn = !authLoading && (!user || isGuest);
 
   useEffect(() => {
+    if (authLoading || subscriptionLoading) return;
+
+    if (needsSignIn) {
+      setLoading(false);
+      return;
+    }
+
+    if (isPrivilegedAuthority(subscription?.authority)) {
+      setLoading(false);
+      return;
+    }
+
     createSubscription()
       .then((result) => {
         setClientSecret(result.clientSecret);
@@ -126,9 +148,10 @@ export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; on
       })
       .catch((err) => {
         console.error('Failed to create subscription:', err);
+        setCheckoutError(err instanceof Error ? err.message : 'Failed to start checkout');
         setLoading(false);
       });
-  }, [createSubscription]);
+  }, [authLoading, subscriptionLoading, needsSignIn, subscription?.authority, createSubscription]);
 
   if (!stripePromise) {
     return (
@@ -140,6 +163,63 @@ export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; on
             </p>
             <Button onClick={onCancel} className="w-full mt-4" variant="outline">
               Go Back
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (needsSignIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-purple-950/20 to-black p-6 flex items-center justify-center">
+        <Card className="bg-black/40 border-border/60 max-w-md">
+          <CardHeader>
+            <CardTitle className="text-xl text-white">Sign in to subscribe</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-white/60 text-sm">
+              {isGuest
+                ? 'Guest sessions cannot start a subscription. Create an account to save your memories and start your free trial.'
+                : 'You need a LoreBook account before starting a subscription.'}
+            </p>
+            <Button className="w-full" onClick={() => navigate('/login')}>
+              Sign in or create account
+            </Button>
+            <Button variant="outline" className="w-full" onClick={onCancel}>
+              Back to pricing
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isPrivilegedAuthority(subscription?.authority)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-purple-950/20 to-black p-6 flex items-center justify-center">
+        <Card className="bg-black/40 border-border/60 max-w-md">
+          <CardContent className="p-6 space-y-4">
+            <p className="text-white/80 text-center">
+              Your account already has full platform access — billing is not required.
+            </p>
+            <Button className="w-full" onClick={onCancel}>
+              Back
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (checkoutError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-purple-950/20 to-black p-6 flex items-center justify-center">
+        <Card className="bg-black/40 border-border/60 max-w-md">
+          <CardContent className="p-6 space-y-4">
+            <p className="text-red-400 text-sm text-center">{checkoutError}</p>
+            <Button className="w-full" onClick={onCancel}>
+              Back to pricing
             </Button>
           </CardContent>
         </Card>

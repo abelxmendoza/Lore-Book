@@ -15,8 +15,8 @@ vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
 }));
 vi.mock('../../src/services/mainLifestoryService');
 vi.mock('../../src/services/biographyGeneration');
-vi.mock('../../src/services/lorebook/lorebookSearchParser');
-vi.mock('../../src/services/lorebook/lorebookRecommendationEngine');
+vi.mock('../../src/services/lifeledger/lifeledgerSearchParser');
+vi.mock('../../src/services/lifeledger/lifeledgerRecommendationEngine');
 vi.mock('../../src/middleware/auth');
 // supabaseClient not mocked: test env uses dbAdapter → SupabaseMock
 
@@ -272,7 +272,7 @@ describe('Biography Routes', () => {
     });
 
     it('should filter by coreOnly query param', async () => {
-      // Route uses supabaseAdmin; coreOnly adds .eq('is_core_lorebook', true). Mock returns []
+      // Route uses supabaseAdmin; coreOnly adds .eq('is_core_lifeledger', true). Mock returns []
       const response = await request(app)
         .get('/api/biography/list?coreOnly=true')
         .expect(200);

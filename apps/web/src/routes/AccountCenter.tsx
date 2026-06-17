@@ -10,7 +10,14 @@ import { useAuth, supabase } from '../lib/supabase';
 import { ActivityTab } from '../components/account/ActivityTab';
 import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
-import { isAdmin } from '../middleware/roleGuard';
+import { useAccountAuthority } from '../hooks/useAccountAuthority';
+import {
+  canAccessAdmin,
+  displayRoleLabel,
+  displayFounderSubline,
+  displayDeveloperSubline,
+  isFounderFromAuthority,
+} from '../middleware/roleGuard';
 import {
   fetchUserProfile,
   updateUserProfile,
@@ -113,7 +120,12 @@ export default function AccountCenter() {
   const navigate = useNavigate();
 
   const displayEmail = getDisplayEmail(user);
-  const userIsAdmin = isAdmin(user);
+  const { authority } = useAccountAuthority();
+  const roleBadge = displayRoleLabel(authority);
+  const userIsAdmin = canAccessAdmin(authority);
+  const userIsFounder = isFounderFromAuthority(authority);
+  const founderSubline = displayFounderSubline(authority);
+  const developerSubline = displayDeveloperSubline(authority);
 
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [loading, setLoading]   = useState(true);
@@ -290,7 +302,6 @@ export default function AccountCenter() {
 
   const providers = (user.identities || []).map((i: any) => i.provider as string);
   const hasGoogle = providers.includes('google');
-  const userRole  = user.user_metadata?.role || user.app_metadata?.role;
 
   // ── Authenticated layout ──────────────────────────────────────────────────
 
@@ -323,18 +334,32 @@ export default function AccountCenter() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-bold text-white truncate">{profile.name || displayEmail}</span>
-                {userIsAdmin && (
+                {roleBadge === 'Owner' && (
                   <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25 shrink-0">
+                    Owner
+                  </span>
+                )}
+                {roleBadge === 'Admin' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/25 shrink-0">
                     Admin
                   </span>
                 )}
-                {userRole === 'developer' && !userIsAdmin && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 shrink-0">
-                    Dev
+                {roleBadge === 'Developer' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 shrink-0">
+                    Developer
                   </span>
                 )}
               </div>
               <p className="text-xs text-white/35 truncate">{displayEmail}</p>
+              {founderSubline && (
+                <p className="text-[10px] text-amber-400/80 mt-0.5">{founderSubline}</p>
+              )}
+              {developerSubline && (
+                <p className="text-[10px] text-cyan-400/80 mt-0.5">{developerSubline}</p>
+              )}
+              {userIsFounder && !founderSubline && (
+                <p className="text-[10px] text-amber-400/70 mt-0.5">Founder Account · Personal Production Data</p>
+              )}
             </div>
           </div>
 

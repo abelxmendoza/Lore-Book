@@ -6,6 +6,10 @@ vi.mock('../../src/config', () => ({
   config: {
     apiEnv: 'production',
     adminUserId: 'admin-uuid',
+    adminEmail: 'admin@example.com',
+    ownerUserId: 'owner-uuid',
+    ownerEmail: 'founder@example.com',
+    developerEmail: 'dev@example.com',
     enableExperimental: false,
   },
 }));
@@ -56,7 +60,7 @@ describe('rbac middleware', () => {
     it('should call next and set req.userRole when user has allowed role', async () => {
       const { requireRole } = await import('../../src/middleware/rbac');
       mockGetUserById.mockResolvedValueOnce({
-        data: { user: { id: 'user-1', user_metadata: { role: 'admin' } } },
+        data: { user: { id: 'user-1', app_metadata: { role: 'admin' } } },
         error: null,
       });
       await requireRole('admin', 'developer')(mockRequest as any, mockResponse as Response, mockNext);
@@ -65,15 +69,26 @@ describe('rbac middleware', () => {
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
 
-    it('should allow when config.adminUserId matches and apiEnv is dev', async () => {
+    it('should return 403 when user_metadata admin is not authoritative', async () => {
       const { requireRole } = await import('../../src/middleware/rbac');
-      const { config } = await import('../../src/config');
-      const prev = (config as any).apiEnv;
-      (config as any).apiEnv = 'dev';
+      mockGetUserById.mockResolvedValueOnce({
+        data: { user: { id: 'user-1', user_metadata: { role: 'admin' } } },
+        error: null,
+      });
+      await requireRole('admin', 'developer')(mockRequest as any, mockResponse as Response, mockNext);
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should allow when config.adminUserId matches', async () => {
+      const { requireRole } = await import('../../src/middleware/rbac');
       (mockRequest as any).user = { id: 'admin-uuid' };
+      mockGetUserById.mockResolvedValueOnce({
+        data: { user: { id: 'admin-uuid', email: 'admin@example.com' } },
+        error: null,
+      });
       await requireRole('admin')(mockRequest as any, mockResponse as Response, mockNext);
       expect(mockNext).toHaveBeenCalled();
-      (config as any).apiEnv = prev;
     });
   });
 
@@ -92,7 +107,7 @@ describe('rbac middleware', () => {
       const { config } = await import('../../src/config');
       (config as any).apiEnv = 'production';
       mockGetUserById.mockResolvedValueOnce({
-        data: { user: { id: 'user-1', user_metadata: { role: 'admin' } } },
+        data: { user: { id: 'user-1', app_metadata: { role: 'admin' } } },
         error: null,
       });
       await requireAdmin(mockRequest as any, mockResponse as Response, mockNext);
@@ -122,7 +137,7 @@ describe('rbac middleware', () => {
     it('should call next when user is admin in production', async () => {
       const { requireDevAccess } = await import('../../src/middleware/rbac');
       mockGetUserById.mockResolvedValueOnce({
-        data: { user: { id: 'user-1', user_metadata: { role: 'admin' } } },
+        data: { user: { id: 'user-1', app_metadata: { role: 'admin' } } },
         error: null,
       });
       requireDevAccess(mockRequest as any, mockResponse as Response, mockNext);
@@ -164,7 +179,7 @@ describe('rbac middleware', () => {
     it('should call next when user is admin and experimental disabled', async () => {
       const { requireExperimental } = await import('../../src/middleware/rbac');
       mockGetUserById.mockResolvedValueOnce({
-        data: { user: { id: 'user-1', user_metadata: { role: 'admin' } } },
+        data: { user: { id: 'user-1', app_metadata: { role: 'admin' } } },
         error: null,
       });
       requireExperimental(mockRequest as any, mockResponse as Response, mockNext);

@@ -31,7 +31,11 @@ import { biographyGenerationEngine } from '../src/services/biographyGeneration';
 import { buildAtomsFromTimeline, buildAtomsFromEventCandidates } from '../src/services/biographyGeneration/narrativeAtomBuilder';
 import type { BiographySpec, NarrativeAtom, NarrativeGraph } from '../src/services/biographyGeneration/types';
 
-const USER_ID = '789bd607-e063-466f-a9ef-f68d24e8bb57';
+const USER_ID = process.env.TARGET_USER_ID ?? '';
+if (!USER_ID) {
+  console.error('Required: TARGET_USER_ID environment variable.');
+  process.exit(1);
+}
 
 // engine internals are private — reach in for the exact filtering logic used in production
 const engineAny = biographyGenerationEngine as any;

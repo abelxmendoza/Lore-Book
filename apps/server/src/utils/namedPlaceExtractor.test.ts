@@ -11,54 +11,54 @@ import {
 describe('namedPlaceExtractor', () => {
   it('extracts possessive home and Costco from user-style messages', () => {
     const text = [
-      'Im at Abuelas house building Lorebook on June 3rd 2026.',
-      'I went to costco with Abuela and it took 2 and a half hours',
+      'Im at Grandma Roses house building LifeLedger on June 3rd 2026.',
+      'I went to costco with Grandma Rose and it took 2 and a half hours',
       'hi sitting on the couch and testing to see if you can save my tío Juan to the Character Book.',
     ].join('\n');
 
     const places = extractNamedPlacesFromText(text);
     const names = places.map(p => p.name);
 
-    expect(names.some(n => /Abuela'?s House/i.test(n))).toBe(true);
+    expect(names.some(n => /Grandma Rose'?s House/i.test(n))).toBe(true);
     expect(names.some(n => /Costco/i.test(n))).toBe(true);
     expect(places.filter(p => placeClusterKey(p.name).startsWith('possessive:abuela'))).toHaveLength(1);
   });
 
   it('prefers short canonical names over event nicknames', () => {
     const candidates = [
-      "Abuela's Lorebook House",
-      "The couch at Abuela's house",
-      "Abuela's House",
+      "Grandma Rose's LifeLedger House",
+      "The couch at Grandma Rose's house",
+      "Grandma Rose's House",
     ];
-    expect(pickBestPlaceName(candidates)).toBe("Abuela's House");
+    expect(pickBestPlaceName(candidates)).toBe("Grandma Rose's House");
   });
 
   it('clusters duplicate house mentions', () => {
     const merged = consolidateNamedPlaces([
       {
-        name: "Abuela's House",
+        name: "Grandma Rose's House",
         type: 'house',
         context: 'at abuelas house',
-        anchor: placeClusterKey("Abuela's House", 'house'),
+        anchor: placeClusterKey("Grandma Rose's House", 'house'),
         isNamed: true,
         mentionCount: 1,
       },
       {
-        name: "Abuela's Two-Basket House",
+        name: "Grandma Rose's Two-Basket House",
         type: 'house',
         context: 'filled up 2 baskets',
-        anchor: placeClusterKey("Abuela's Two-Basket House", 'house'),
+        anchor: placeClusterKey("Grandma Rose's Two-Basket House", 'house'),
         isNamed: true,
         mentionCount: 1,
       },
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].name).toBe("Abuela's House");
+    expect(merged[0].name).toBe("Grandma Rose's House");
     expect(merged[0].mentionCount).toBe(2);
   });
 
   it('formats possessive names consistently', () => {
-    expect(formatPossessivePlace('abuelas', 'house')).toBe("Abuela's House");
-    expect(formatPossessivePlace('Abuela', 'home')).toBe("Abuela's House");
+    expect(formatPossessivePlace('abuelas', 'house')).toBe("Grandma Rose's House");
+    expect(formatPossessivePlace('Grandma Rose', 'home')).toBe("Grandma Rose's House");
   });
 });

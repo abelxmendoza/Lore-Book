@@ -28,14 +28,14 @@ describe('memoryCoverageAudit', () => {
     tableResults = {
       characters: {
         data: [
-          { id: 'char-covered', name: 'Ashley' },
+          { id: 'char-covered', name: 'Alex' },
           { id: 'char-orphan', name: 'Empty Card' },
         ],
         error: null,
       },
       people_places: {
         data: [
-          { id: 'pp-place', name: 'Club Metro', type: 'place', related_entries: ['entry-1'] },
+          { id: 'pp-place', name: 'Blue Room', type: 'place', related_entries: ['entry-1'] },
         ],
         error: null,
       },

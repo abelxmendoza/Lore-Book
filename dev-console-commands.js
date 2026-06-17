@@ -78,7 +78,7 @@ async function testEndpoints() {
     '/api/values',
     '/api/dreams',
     '/api/emotion/eq/analyze',
-    '/api/health/analyze',
+    '/api/wellness/analyze',
     '/api/financial/analyze',
   ];
   

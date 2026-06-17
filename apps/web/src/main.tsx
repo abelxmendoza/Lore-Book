@@ -84,6 +84,8 @@ import './styles/timeline.css';
 
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { ChatThreadProvider } from './contexts/ChatThreadContext';
+import { LoreKeeperProvider } from './contexts/LoreKeeperContext';
 
 import { Router } from './pages/Router';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -129,7 +131,9 @@ if (!rootElement) {
     createRoot(rootElement).render(
       <ErrorBoundary>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ChatThreadProvider>
           <MockDataProvider>
+            <LoreKeeperProvider>
             <GuestProvider>
               <EntityModalProvider>
                 <CurrentContextProvider>
@@ -142,7 +146,9 @@ if (!rootElement) {
                 </CurrentContextProvider>
               </EntityModalProvider>
             </GuestProvider>
+            </LoreKeeperProvider>
           </MockDataProvider>
+          </ChatThreadProvider>
         </BrowserRouter>
       </ErrorBoundary>
     );

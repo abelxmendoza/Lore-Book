@@ -3,7 +3,7 @@
  * READ-ONLY: dump a user's chat threads (grouped by session) and journal
  * entries so we can eyeball real groups/communities in their story.
  *
- * Usage: npx tsx scripts/dump-threads.ts --user abelxmendoza@gmail.com
+ * Usage: npx tsx scripts/dump-threads.ts --user <your-email>
  */
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
 
@@ -21,7 +21,8 @@ async function resolveUserId(email: string): Promise<string> {
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
   const userId = await resolveUserId(email);
 
   const { data: msgs } = await supabase

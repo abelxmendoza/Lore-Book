@@ -175,12 +175,13 @@ describe('useChatThreads', () => {
     );
   });
 
-  it('deserialises message timestamps from strings to Date objects', async () => {
-    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
+  it('deserialises message timestamps from strings to Date objects (guest localStorage)', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
     const ts = '2025-01-01T00:00:00.000Z';
-    mockBackendThreadLoad([
-      makeDbThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }]),
-    ]);
+    localStorage.setItem(
+      'lorekeeper_chat_threads_guest',
+      JSON.stringify([makeStoredThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }])])
+    );
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -264,25 +265,22 @@ describe('useChatThreads', () => {
     expect(result.current.threads).toHaveLength(0);
   });
 
-  it('cancels pending debounced save on deleteThread', async () => {
+  it('deleteThread removes thread after local message update', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockFetchJson.mockResolvedValue({ threads: [], success: true });
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
-    // Create a thread so we have something to delete
     let id: string;
     act(() => {
       id = result.current.createThread();
     });
 
-    // Queue a save via updateThread with messages
     act(() => {
       result.current.updateThread(id!, { messages: [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date() }] });
     });
 
-    // Delete should cancel the pending save and NOT make a DELETE fetch that triggers an error
     act(() => {
       result.current.deleteThread(id!);
     });
@@ -290,9 +288,7 @@ describe('useChatThreads', () => {
     expect(result.current.threads.find((t) => t.id === id!)).toBeUndefined();
   });
 
-  // ── flushSave ─────────────────────────────────────────────────────────────
-
-  it('flushSave fires the pending PATCH immediately and clears the debounce', async () => {
+  it('updateThread with touchActivity PATCHes activity only (no messages)', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockFetchJson.mockResolvedValue({ threads: [], success: true });
 
@@ -304,29 +300,47 @@ describe('useChatThreads', () => {
       id = result.current.createThread();
     });
 
-    const msgs = [{ id: 'm1', role: 'user' as const, content: 'hello', timestamp: new Date() }];
-    act(() => {
-      result.current.updateThread(id!, { messages: msgs });
-    });
+    mockFetchJson.mockClear();
 
-    // Flush should immediately call fetchJson with PATCH
     act(() => {
-      result.current.flushSave(id!);
+      result.current.updateThread(id!, {
+        messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: new Date() }],
+        touchActivity: true,
+      });
     });
 
     await waitFor(() =>
       expect(mockFetchJson).toHaveBeenCalledWith(
         `/api/conversation/threads/${id!}`,
-        expect.objectContaining({ method: 'PATCH' })
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ touchActivity: true }),
+        })
       )
     );
 
-    // Calling flushSave again should be a no-op (debounce already cleared)
-    const callCount = mockFetchJson.mock.calls.length;
+    const patchCalls = mockFetchJson.mock.calls.filter(
+      (c) => c[0] === `/api/conversation/threads/${id!}` && (c[1] as any)?.method === 'PATCH'
+    );
+    expect(patchCalls.every((c) => !(c[1] as any).body.includes('"messages"'))).toBe(true);
+  });
+
+  it('flushSave is a no-op after P2 (messages persist via chat_messages)', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+
+    let id: string;
     act(() => {
+      id = result.current.createThread();
+    });
+
+    act(() => {
+      result.current.updateThread(id!, { messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: new Date() }] });
       result.current.flushSave(id!);
     });
-    expect(mockFetchJson.mock.calls.length).toBe(callCount);
+
+    expect(mockFetchJson).not.toHaveBeenCalled();
   });
 
   // ── updateThread + local persistence ──────────────────────────────────────

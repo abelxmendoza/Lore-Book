@@ -6,7 +6,12 @@ import { createClient } from '@supabase/supabase-js';
 
 import { config } from '../config';
 
-const email = process.argv[2] ?? process.env.ADMIN_EMAIL ?? 'abelxmendoza@gmail.com';
+const email = process.argv[2] ?? process.env.ADMIN_EMAIL;
+if (!email) {
+  console.error('Usage: npx tsx src/scripts/mintDevToken.ts <email> [out.json]');
+  console.error('Or set ADMIN_EMAIL in the environment.');
+  process.exit(1);
+}
 const outPath = process.argv[3] ?? '';
 
 async function main() {

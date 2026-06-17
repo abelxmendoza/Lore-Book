@@ -11,19 +11,8 @@ const healthEngine = new HealthEngine();
 const healthStorage = new HealthStorage();
 
 /**
- * GET /api/health (or GET / when mounted at root)
- * Simple liveness check - no auth, no DB. Use for "is the server up?".
- */
-router.get(
-  '/',
-  (_req, res) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-  }
-);
-
-/**
- * POST /api/health/analyze
- * Process and analyze health and wellness
+ * POST /api/wellness/analyze
+ * Process and analyze health and wellness signals from journal data.
  */
 router.post(
   '/analyze',
@@ -36,14 +25,13 @@ router.post(
 
     const result = await healthEngine.process(userId);
 
-    // Save if requested
     if (save) {
       const savedSymptoms = await healthStorage.saveSymptomEvents(result.symptoms);
       const savedSleep = await healthStorage.saveSleepEvents(result.sleep);
       const savedEnergy = await healthStorage.saveEnergyEvents(result.energy);
       const savedScore = await healthStorage.saveWellnessScore(userId, result.score);
       const savedInsights = await healthStorage.saveInsights(result.insights || []);
-      
+
       result.symptoms = savedSymptoms;
       result.sleep = savedSleep;
       result.energy = savedEnergy;
@@ -57,100 +45,64 @@ router.post(
   })
 );
 
-/**
- * GET /api/health/symptoms
- * Get symptom events
- */
 router.get(
   '/symptoms',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const type = req.query.type as string | undefined;
-
     const symptoms = await healthStorage.getSymptomEvents(userId, type as any);
-
     res.json({ symptoms });
   })
 );
 
-/**
- * GET /api/health/sleep
- * Get sleep events
- */
 router.get(
   '/sleep',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-
     const sleep = await healthStorage.getSleepEvents(userId);
-
     res.json({ sleep });
   })
 );
 
-/**
- * GET /api/health/energy
- * Get energy events
- */
 router.get(
   '/energy',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-
     const energy = await healthStorage.getEnergyEvents(userId);
-
     res.json({ energy });
   })
 );
 
-/**
- * GET /api/health/wellness
- * Get latest wellness score
- */
 router.get(
-  '/wellness',
+  '/score',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-
     const score = await healthStorage.getLatestWellnessScore(userId);
-
     res.json({ wellness: score });
   })
 );
 
-/**
- * GET /api/health/insights
- * Get health insights
- */
 router.get(
   '/insights',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const type = req.query.type as string | undefined;
-
     const insights = await healthStorage.getInsights(userId, type);
-
     res.json({ insights });
   })
 );
 
-/**
- * GET /api/health/stats
- * Get health statistics
- */
 router.get(
   '/stats',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-
     const stats = await healthStorage.getStats(userId);
-
     res.json(stats);
   })
 );

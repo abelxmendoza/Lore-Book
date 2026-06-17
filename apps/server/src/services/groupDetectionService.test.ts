@@ -36,7 +36,7 @@ describe('groupDetectionService', () => {
       if (table === 'characters') {
         return chain([
           { id: 'mr-chino', name: 'Mr. Chino', alias: ['Chino'] },
-          { id: 'daisy', name: 'Daisy', alias: ['Hell Fairy'] },
+          { id: 'daisy', name: 'Daisy', alias: ['Velvet Hour'] },
         ]);
       }
       return chain([]);
@@ -55,7 +55,7 @@ describe('groupDetectionService', () => {
   it('canonicalizes partial member mentions to existing character names', async () => {
     const groups = await groupDetectionService.detectGroupsInMessage(
       'user-1',
-      'I was at First Street Pool and Billiards with Mr. Chino and Daisy after Hell Fairy played.'
+      'I was at First Street Pool and Billiards with Mr. Chino and Daisy after Velvet Hour played.'
     );
 
     expect(groups).toHaveLength(1);
@@ -81,7 +81,7 @@ describe('groupDetectionService', () => {
       'I was contacted about my I-9 and background check for the agency K-force thats hiring me for the Amazon job.'
     );
 
-    const kforce = groups.find(group => group.name === 'Kforce');
+    const kforce = groups.find(group => group.name === 'TechStaff');
     expect(kforce).toBeDefined();
     expect(kforce?.group_type).toBe('company');
     // Even though "Amazon" appears in the same sentence, the agency is not a
@@ -114,10 +114,10 @@ describe('groupDetectionService', () => {
 
     const groups = await groupDetectionService.detectGroupsInMessage(
       'user-kforce',
-      'Sam the recruiter and Kelly both work for Kforce and are handling my onboarding.'
+      'Sam the recruiter and Kelly both work for TechStaff and are handling my onboarding.'
     );
 
-    const kforce = groups.find(group => group.name === 'Kforce');
+    const kforce = groups.find(group => group.name === 'TechStaff');
     expect(kforce).toBeDefined();
     expect(kforce?.group_type).toBe('company');
     expect(kforce?.is_public_entity).toBe(false);

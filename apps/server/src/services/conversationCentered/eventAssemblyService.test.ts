@@ -22,7 +22,7 @@ describe('EventAssemblyService.extractEventTitle', () => {
 
   it('builds a contextual title from unit content', () => {
     const title = extractTitle([
-      { content: 'Went to Costco with Abuela and bought groceries for the week.' },
+      { content: 'Went to Costco with Grandma Rose and bought groceries for the week.' },
     ]);
     expect(title.toLowerCase()).not.toContain('untitled');
     expect(title.toLowerCase()).toMatch(/costco|abuela|grocer/);

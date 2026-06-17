@@ -15,7 +15,7 @@ const router = Router();
  * POST /api/chat/message
  * Handle user message and generate response
  */
-router.post('/message', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { message, session_id } = req.body;
 

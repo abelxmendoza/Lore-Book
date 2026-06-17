@@ -1,6 +1,12 @@
 #!/usr/bin/env tsx
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
-const USER = process.env.ADMIN_USER_ID ?? '789bd607-e063-466f-a9ef-f68d24e8bb57';
+
+const USER = process.env.TARGET_USER_ID ?? '';
+if (!USER) {
+  console.error('Required: TARGET_USER_ID environment variable.');
+  process.exit(1);
+}
+
 async function main() {
   const { data } = await supabase
     .from('chat_messages')
@@ -20,7 +26,6 @@ async function main() {
   console.log('distinct sessions:', bySession.size);
   const sizes = [...bySession.values()].sort((a, b) => b - a);
   console.log('session sizes (desc):', sizes.slice(0, 20));
-  // show a couple sample sessions with names
   let shown = 0;
   for (const [sid, n] of [...bySession.entries()].sort((a, b) => b[1] - a[1])) {
     if (shown >= 3) break;

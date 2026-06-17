@@ -1,54 +1,79 @@
 import { describe, it, expect } from 'vitest';
-import { isAdmin, redirectUnauthorized } from './roleGuard';
+import {
+  canAccessAdmin,
+  canAccessDevConsole,
+  displayFounderSubline,
+  displayDeveloperSubline,
+  isFounderFromAuthority,
+} from './roleGuard';
+import type { ServerAccountAuthority } from '../lib/accountAuthority';
 
-describe('roleGuard', () => {
-  describe('isAdmin', () => {
-    it('returns false for null/undefined user', () => {
-      expect(isAdmin(null)).toBe(false);
-      expect(isAdmin(undefined)).toBe(false);
-    });
+const ownerAuthority: ServerAccountAuthority = {
+  role: 'owner',
+  roleLabel: 'Owner',
+  isFounderAccount: true,
+  isPrivileged: true,
+  privilegeSource: 'platform_authority',
+  effectivePlanType: 'premium',
+  canBeBilled: false,
+  canCancelSubscription: false,
+  canLoseAccess: false,
+  canAccessAdmin: true,
+  canAccessDevConsole: true,
+};
 
-    it('returns true for app_metadata.role === admin or developer (server-set)', () => {
-      expect(isAdmin({ app_metadata: { role: 'admin' } })).toBe(true);
-      expect(isAdmin({ app_metadata: { role: 'developer' } })).toBe(true);
-    });
+const developerAuthority: ServerAccountAuthority = {
+  role: 'developer',
+  roleLabel: 'Developer',
+  isFounderAccount: false,
+  isPrivileged: true,
+  privilegeSource: 'development_privilege',
+  effectivePlanType: 'premium',
+  canBeBilled: false,
+  canCancelSubscription: false,
+  canLoseAccess: false,
+  canAccessAdmin: true,
+  canAccessDevConsole: true,
+};
 
-    it('returns true for user_metadata.role === admin or developer (server-set)', () => {
-      expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(true);
-      expect(isAdmin({ user_metadata: { role: 'developer' } })).toBe(true);
-    });
+const userAuthority: ServerAccountAuthority = {
+  role: 'user',
+  roleLabel: 'User',
+  isFounderAccount: false,
+  isPrivileged: false,
+  privilegeSource: null,
+  effectivePlanType: 'free',
+  canBeBilled: true,
+  canCancelSubscription: true,
+  canLoseAccess: true,
+  canAccessAdmin: false,
+  canAccessDevConsole: false,
+};
 
-    it('returns false for other emails without role claims and no env var set', () => {
-      expect(isAdmin({ email: 'other@example.com' })).toBe(false);
-      expect(isAdmin({})).toBe(false);
-      expect(isAdmin({ user_metadata: {} })).toBe(false);
-      expect(isAdmin({ app_metadata: {} })).toBe(false);
-    });
+describe('roleGuard (server authority display helpers)', () => {
+  it('canAccessAdmin is true for owner and developer', () => {
+    expect(canAccessAdmin(ownerAuthority)).toBe(true);
+    expect(canAccessAdmin(developerAuthority)).toBe(true);
+    expect(canAccessAdmin(userAuthority)).toBe(false);
+    expect(canAccessAdmin(null)).toBe(false);
   });
 
-  describe('redirectUnauthorized', () => {
-    let location: string;
+  it('canAccessDevConsole follows server authority flags', () => {
+    expect(canAccessDevConsole(developerAuthority)).toBe(true);
+    expect(canAccessDevConsole(userAuthority)).toBe(false);
+  });
 
-    beforeEach(() => {
-      location = '';
-      Object.defineProperty(window, 'location', {
-        value: { get href() { return location; }, set href(v: string) { location = v; } },
-        configurable: true,
-      });
-    });
+  it('shows founder subline for owner authority', () => {
+    expect(displayFounderSubline(ownerAuthority)).toContain('Founder Account');
+    expect(displayDeveloperSubline(ownerAuthority)).toBeNull();
+  });
 
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
+  it('shows developer subline for developer authority', () => {
+    expect(displayDeveloperSubline(developerAuthority)).toContain('Developer Account');
+  });
 
-    it('sets window.location.href to path', () => {
-      redirectUnauthorized('/login');
-      expect(window.location.href).toBe('/login');
-    });
-
-    it('defaults to / when no path', () => {
-      redirectUnauthorized();
-      expect(window.location.href).toBe('/');
-    });
+  it('isFounderFromAuthority uses server flag', () => {
+    expect(isFounderFromAuthority(ownerAuthority)).toBe(true);
+    expect(isFounderFromAuthority(developerAuthority)).toBe(false);
   });
 });

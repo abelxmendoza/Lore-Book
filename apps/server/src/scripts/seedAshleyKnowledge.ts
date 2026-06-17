@@ -1,40 +1,49 @@
 #!/usr/bin/env tsx
 /**
- * Ensure Ashley De La Cruz has complete structured lore for recall.
+ * Seed structured character knowledge from a LOCAL facts file (never committed).
  *
  * Usage:
- *   cd apps/server && npx tsx src/scripts/seedAshleyKnowledge.ts
- *   cd apps/server && npx tsx src/scripts/seedAshleyKnowledge.ts --user-id <uuid>
+ *   cd apps/server && npx tsx src/scripts/seedAshleyKnowledge.ts --user-id <uuid> --facts-file ../../.private/seeds/character-knowledge.json
+ *
+ * The facts file stays in .private/ (gitignored). Never commit real personal lore to the repo.
  */
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import 'dotenv/config';
 import { supabaseAdmin } from '../services/supabaseClient';
 
-const DEFAULT_USER = '789bd607-e063-466f-a9ef-f68d24e8bb57';
-const ASHLEY_NAME = 'Ashley De La Cruz';
-
-const CANONICAL_FACTS: Array<{ fact: string; category: string; confidence: number }> = [
-  { fact: 'Last name is De La Cruz', category: 'general', confidence: 0.99 },
-  { fact: 'Was 19', category: 'general', confidence: 0.95 },
-  { fact: 'Met the narrator after Club Metro in DTLA', category: 'relationship', confidence: 0.9 },
-  { fact: 'Spent the night together', category: 'relationship', confidence: 0.92 },
-  { fact: 'Relationship did not continue', category: 'relationship', confidence: 0.85 },
-];
+type SeedFactsFile = {
+  characterName: string;
+  facts: Array<{ fact: string; category: string; confidence: number }>;
+};
 
 async function main() {
   const userIdx = process.argv.indexOf('--user-id');
-  const userId = userIdx >= 0 ? process.argv[userIdx + 1] : DEFAULT_USER;
+  const factsIdx = process.argv.indexOf('--facts-file');
+  const userId = userIdx >= 0 ? process.argv[userIdx + 1] : '';
+  const factsPath = factsIdx >= 0 ? process.argv[factsIdx + 1] : '';
+
+  if (!userId || !factsPath) {
+    console.error('Required: --user-id <uuid> --facts-file <path-to-json>');
+    console.error('Example facts file: .private/seeds/character-knowledge.json (gitignored)');
+    process.exit(1);
+  }
+
+  const seed: SeedFactsFile = JSON.parse(readFileSync(resolve(factsPath), 'utf8'));
+  const characterName = seed.characterName;
 
   const { data: char, error: charErr } = await supabaseAdmin
     .from('characters')
     .select('id, name, alias')
     .eq('user_id', userId)
-    .ilike('name', ASHLEY_NAME)
+    .ilike('name', characterName)
     .maybeSingle();
 
   if (charErr) throw charErr;
   if (!char) {
-    console.error(`No character "${ASHLEY_NAME}" for user ${userId}`);
+    console.error(`No character "${characterName}" for user ${userId}`);
     process.exit(1);
   }
 
@@ -43,86 +52,27 @@ async function main() {
     .select('id, fact')
     .eq('user_id', userId)
     .eq('entity_id', char.id)
-    .eq('entity_type', 'character')
-    .eq('status', 'active');
+    .eq('entity_type', 'character');
 
   const existingSet = new Set((existingFacts ?? []).map((f) => f.fact.toLowerCase()));
-  const now = new Date().toISOString();
   let inserted = 0;
 
-  for (const incoming of CANONICAL_FACTS) {
-    const dup = [...existingSet].some(
-      (e) => e.includes(incoming.fact.toLowerCase()) || incoming.fact.toLowerCase().includes(e)
-    );
-    if (dup) continue;
-
+  for (const item of seed.facts) {
+    if (existingSet.has(item.fact.toLowerCase())) continue;
     const { error } = await supabaseAdmin.from('entity_facts').insert({
       user_id: userId,
       entity_id: char.id,
       entity_type: 'character',
-      fact: incoming.fact,
-      category: incoming.category,
-      confidence: incoming.confidence,
-      mention_count: 1,
-      status: 'active',
-      first_seen_at: now,
-      last_confirmed_at: now,
+      fact: item.fact,
+      category: item.category,
+      confidence: item.confidence,
+      source: 'seed_script',
     });
     if (error) throw error;
-    inserted += 1;
-    existingSet.add(incoming.fact.toLowerCase());
+    inserted++;
   }
 
-  const { data: existingRom } = await supabaseAdmin
-    .from('romantic_relationships')
-    .select('id, metadata')
-    .eq('user_id', userId)
-    .eq('person_id', char.id)
-    .eq('person_type', 'character')
-    .maybeSingle();
-
-  if (!existingRom) {
-    const { error } = await supabaseAdmin.from('romantic_relationships').insert({
-      user_id: userId,
-      person_id: char.id,
-      person_type: 'character',
-      relationship_type: 'one_night_stand',
-      status: 'ended',
-      is_current: false,
-      metadata: {
-        summary: 'Met after Club Metro in DTLA; spent the night together; did not continue',
-        meeting_place: 'Club Metro, DTLA',
-      },
-    });
-    if (error) throw error;
-    console.log('Created romantic_relationship for Ashley');
-  } else {
-    const meta = (existingRom.metadata as Record<string, unknown>) ?? {};
-    const { error } = await supabaseAdmin
-      .from('romantic_relationships')
-      .update({
-        metadata: {
-          ...meta,
-          summary: 'Met after Club Metro in DTLA; spent the night together; did not continue',
-          meeting_place: 'Club Metro, DTLA',
-        },
-        updated_at: now,
-      })
-      .eq('id', existingRom.id);
-    if (error) throw error;
-    console.log('Updated romantic_relationship metadata for Ashley');
-  }
-
-  // Ensure alias includes "Ashley"
-  const aliases = char.alias ?? [];
-  if (!aliases.some((a: string) => a.toLowerCase() === 'ashley')) {
-    await supabaseAdmin
-      .from('characters')
-      .update({ alias: [...aliases, 'Ashley'], updated_at: now })
-      .eq('id', char.id);
-  }
-
-  console.log(`Ashley knowledge seeded for ${char.name} (${char.id}): ${inserted} new fact(s).`);
+  console.log(`Seeded ${inserted} facts for "${characterName}" (${char.id})`);
 }
 
 main().catch((err) => {

@@ -34,11 +34,11 @@ describe('eventSignificanceService', () => {
     expect(significanceLevel).toMatch(/moderate|major|legendary/);
   });
 
-  it('scores Costco + Abuela meaning as high', () => {
+  it('scores Costco + Grandma Rose meaning as high', () => {
     const { significanceScore } = computeEventSignificance({
       ...base,
       title: 'Costco trip',
-      summary: 'The highlight was that my Abuela is still alive',
+      summary: 'The highlight was that my Grandma Rose is still alive',
       peopleCount: 2,
       hasExplicitMeaning: true,
       relationshipImpact: 1,
@@ -56,7 +56,7 @@ describe('eventSignificanceService', () => {
     const meaningful = computeEventSignificance({
       ...base,
       title: 'Costco trip',
-      summary: 'The highlight was that my Abuela is still alive',
+      summary: 'The highlight was that my Grandma Rose is still alive',
       peopleCount: 2,
       hasExplicitMeaning: true,
     });

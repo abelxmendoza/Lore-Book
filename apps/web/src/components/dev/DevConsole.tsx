@@ -6,6 +6,7 @@ import { APITester } from './APITester';
 import { FlagTogglePanel } from './FlagTogglePanel';
 import { DBTools } from './DBTools';
 import { canAccessDevConsole } from '../../middleware/roleGuard';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 
 type DevView = 'logs' | 'components' | 'preview' | 'api' | 'flags' | 'db';
 
@@ -13,10 +14,11 @@ export const DevConsole = () => {
   const { user } = useAuth();
   const [currentView, setCurrentView] = useState<DevView>('logs');
   
+  const { authority } = useAccountAuthority();
+  
   const apiEnv = import.meta.env.VITE_API_ENV || import.meta.env.MODE || 'dev';
   
-  // Check access: API_ENV === "dev" OR user.id == ADMIN_ID
-  const hasAccess = canAccessDevConsole(user || null);
+  const hasAccess = canAccessDevConsole(authority);
 
   useEffect(() => {
     if (!hasAccess) {

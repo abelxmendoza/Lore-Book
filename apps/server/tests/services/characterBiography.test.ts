@@ -22,8 +22,8 @@ function inferRoleInStory(name: string, relationshipTypes: string[]): string {
 }
 
 describe('characterBiographyService', () => {
-  it('infers Abuela as family anchor', () => {
-    expect(inferRoleInStory('Abuela', ['grandmother'])).toBe('Family anchor.');
+  it('infers Grandma Rose as family anchor', () => {
+    expect(inferRoleInStory('Grandma Rose', ['grandmother'])).toBe('Family anchor.');
   });
 
   it('infers Kelly as professional contact', () => {
@@ -32,8 +32,8 @@ describe('characterBiographyService', () => {
     );
   });
 
-  it('infers Ashley as romantic chapter figure', () => {
-    expect(inferRoleInStory('Ashley De La Cruz', ['one_night_stand', 'metro'])).toBe(
+  it('infers Alex as romantic chapter figure', () => {
+    expect(inferRoleInStory('Alex Morgan', ['one_night_stand', 'metro'])).toBe(
       'Romantic connection from a past chapter.'
     );
   });

@@ -38,6 +38,10 @@ vi.mock('./biography/LivingBiographyCard', () => ({
   LivingBiographyCard: () => <div data-testid="living-biography-card">Biography Card</div>,
 }));
 
+vi.mock('../contexts/ChatThreadContext', () => ({
+  useRecentChatThreads: vi.fn(() => []),
+}));
+
 import { HomeScreen } from './HomeScreen';
 
 function wrap(ui: React.ReactElement) {

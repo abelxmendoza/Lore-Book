@@ -24,6 +24,46 @@ import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
 
+const ENTRY_LIST_CACHE_TTL_MS = 30_000;
+const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
+
+export type TimelineEndpointTiming = {
+  totalMs: number;
+  dbMs: number;
+  stitchMs: number;
+  serializeMs: number;
+  chapterLoadMs: number;
+  entryCacheHit: boolean;
+  openaiMs: number;
+};
+
+export type TagsEndpointTiming = {
+  totalMs: number;
+  dbMs: number;
+  computeMs: number;
+  serializeMs: number;
+  entryCacheHit: boolean;
+  openaiMs: number;
+};
+
+export type ChaptersEndpointTiming = {
+  totalMs: number;
+  dbMs: number;
+  entryFetchMs: number;
+  chapterLoadMs: number;
+  profileComputeMs: number;
+  candidateComputeMs: number;
+  serializeMs: number;
+  cacheHit: boolean;
+  openaiMs: number;
+};
+
+type EntryListCacheEntry = {
+  entries: MemoryEntry[];
+  fetchedAt: number;
+  limit: number;
+};
+
 export type SaveEntryPayload = {
   userId: string;
   content: string;
@@ -45,6 +85,23 @@ export type SaveEntryPayload = {
 };
 
 class MemoryService {
+  private entryListCache = new Map<string, EntryListCacheEntry>();
+
+  private isSimpleEntryListQuery(query: JournalQuery): boolean {
+    return (
+      !query.semantic &&
+      !query.search &&
+      !query.tag &&
+      !query.chapterId &&
+      !query.from &&
+      !query.to
+    );
+  }
+
+  invalidateEntryListCache(userId: string): void {
+    this.entryListCache.delete(userId);
+  }
+
   async saveEntry(payload: SaveEntryPayload): Promise<MemoryEntry> {
     const isEncrypted = Boolean((payload.metadata as { encrypted?: boolean } | undefined)?.encrypted);
     const metadata = { ...(payload.metadata ?? {}) } as Record<string, unknown>;
@@ -124,6 +181,8 @@ class MemoryService {
       throw error;
     }
 
+    this.invalidateEntryListCache(payload.userId);
+
     try {
       const upsertedEntities = await peoplePlacesService.recordEntitiesForEntry(entry, payload.relationships);
 
@@ -199,6 +258,20 @@ class MemoryService {
         return this.semanticSearchEntries(userId, query.search, query.limit, query.threshold);
       }
 
+      const requestedLimit = query.limit ?? 50;
+      const simpleList = this.isSimpleEntryListQuery(query);
+
+      if (simpleList) {
+        const cached = this.entryListCache.get(userId);
+        if (
+          cached &&
+          Date.now() - cached.fetchedAt < ENTRY_LIST_CACHE_TTL_MS &&
+          cached.limit >= requestedLimit
+        ) {
+          return cached.entries.slice(0, requestedLimit);
+        }
+      }
+
       let builder = supabaseAdmin.from('journal_entries').select('*').eq('user_id', userId);
 
       if (query.search) {
@@ -217,7 +290,11 @@ class MemoryService {
         builder = builder.lte('date', query.to);
       }
 
-      const { data, error } = await builder.order('date', { ascending: false }).limit(query.limit ?? 50);
+      const fetchLimit = simpleList
+        ? Math.max(requestedLimit, BOOTSTRAP_ENTRY_FETCH_LIMIT)
+        : requestedLimit;
+
+      const { data, error } = await builder.order('date', { ascending: false }).limit(fetchLimit);
       if (error) {
         // Check if table doesn't exist
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
@@ -228,7 +305,18 @@ class MemoryService {
         throw error;
       }
 
-      return data ?? [];
+      const entries = data ?? [];
+
+      if (simpleList) {
+        this.entryListCache.set(userId, {
+          entries,
+          fetchedAt: Date.now(),
+          limit: fetchLimit,
+        });
+        return entries.slice(0, requestedLimit);
+      }
+
+      return entries;
     } catch (error) {
       // If it's a table doesn't exist error, return empty array
       if (error instanceof Error && (error.message?.includes('does not exist') || (error as any).code === '42P01')) {
@@ -310,6 +398,8 @@ class MemoryService {
       throw error;
     }
 
+    this.invalidateEntryListCache(userId);
+
     // Update embedding if content changed
     if (updates.content || updates.summary) {
       try {
@@ -376,13 +466,38 @@ class MemoryService {
     }));
   }
 
-  async getTimeline(userId: string): Promise<ChapterTimeline> {
-    try {
-      const [entries, chapters] = await Promise.all([
-        this.searchEntries(userId, { limit: 365 }),
-        chapterService.listChapters(userId)
-      ]);
+  async getTimeline(
+    userId: string
+  ): Promise<{ timeline: ChapterTimeline; timing: TimelineEndpointTiming }> {
+    const started = Date.now();
+    let entryDbMs = 0;
+    let chapterLoadMs = 0;
+    let stitchMs = 0;
+    let entryCacheHit = false;
 
+    try {
+      const cachedBefore = this.entryListCache.get(userId);
+      const entryCacheWarm = Boolean(
+        cachedBefore &&
+          Date.now() - cachedBefore.fetchedAt < ENTRY_LIST_CACHE_TTL_MS &&
+          cachedBefore.limit >= 365
+      );
+
+      const entryStart = Date.now();
+      const entriesPromise = this.searchEntries(userId, { limit: 365 }).then((entries) => {
+        entryDbMs = Date.now() - entryStart;
+        return entries;
+      });
+      const chaptersStart = Date.now();
+      const chaptersPromise = chapterService.listChapters(userId).then((chapters) => {
+        chapterLoadMs = Date.now() - chaptersStart;
+        return chapters;
+      });
+
+      const [entries, chapters] = await Promise.all([entriesPromise, chaptersPromise]);
+      entryCacheHit = entryCacheWarm;
+
+      const stitchStart = Date.now();
       const chapterGroups = new Map<string, MemoryEntry[]>();
       chapters.forEach((chapter) => {
         chapterGroups.set(chapter.id, []);
@@ -399,36 +514,150 @@ class MemoryService {
 
       const chapterTimelines = chapters.map((chapter) => ({
         ...chapter,
-        months: this.groupByMonth(chapterGroups.get(chapter.id) ?? [])
+        months: this.groupByMonth(chapterGroups.get(chapter.id) ?? []),
       }));
 
-      return {
+      stitchMs = Date.now() - stitchStart;
+
+      const timeline = {
         chapters: chapterTimelines,
-        unassigned: this.groupByMonth(unassigned)
+        unassigned: this.groupByMonth(unassigned),
+      };
+
+      const serializeStart = Date.now();
+      JSON.stringify(timeline);
+      const serializeMs = Date.now() - serializeStart;
+
+      return {
+        timeline,
+        timing: {
+          totalMs: Date.now() - started,
+          dbMs: Math.max(entryDbMs, chapterLoadMs),
+          stitchMs,
+          serializeMs,
+          chapterLoadMs,
+          entryCacheHit,
+          openaiMs: 0,
+        },
       };
     } catch (error) {
       logger.error({ error }, 'Error building timeline');
-      // Return empty timeline on error
       return {
-        chapters: [],
-        unassigned: []
+        timeline: {
+          chapters: [],
+          unassigned: [],
+        },
+        timing: {
+          totalMs: Date.now() - started,
+          dbMs: Math.max(entryDbMs, chapterLoadMs),
+          stitchMs,
+          serializeMs: 0,
+          chapterLoadMs,
+          entryCacheHit,
+          openaiMs: 0,
+        },
       };
     }
   }
 
-  async listTags(userId: string) {
-    try {
-      const entries = await this.searchEntries(userId, { limit: 500 });
+  async listTags(
+    userId: string
+  ): Promise<{ tags: Array<{ name: string; count: number }>; timing: TagsEndpointTiming }> {
+    const started = Date.now();
+    let dbMs = 0;
+    let computeMs = 0;
+    let entryCacheHit = false;
+
+    const aggregateTags = (rows: Array<{ tags?: string[] | null }>) => {
+      const computeStart = Date.now();
       const tags = new Map<string, number>();
-      entries.forEach((entry) => {
-        entry.tags.forEach((tag) => {
+      rows.forEach((entry) => {
+        (entry.tags ?? []).forEach((tag) => {
           tags.set(tag, (tags.get(tag) ?? 0) + 1);
         });
       });
+      computeMs = Date.now() - computeStart;
       return Array.from(tags.entries()).map(([name, count]) => ({ name, count }));
+    };
+
+    try {
+      const cached = this.entryListCache.get(userId);
+      if (
+        cached &&
+        Date.now() - cached.fetchedAt < ENTRY_LIST_CACHE_TTL_MS &&
+        cached.limit >= BOOTSTRAP_ENTRY_FETCH_LIMIT
+      ) {
+        entryCacheHit = true;
+        return {
+          tags: aggregateTags(cached.entries),
+          timing: {
+            totalMs: Date.now() - started,
+            dbMs: 0,
+            computeMs,
+            serializeMs: 0,
+            entryCacheHit: true,
+            openaiMs: 0,
+          },
+        };
+      }
+
+      const dbStart = Date.now();
+      const { data, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('tags')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(BOOTSTRAP_ENTRY_FETCH_LIMIT);
+
+      dbMs = Date.now() - dbStart;
+
+      if (error) {
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          return {
+            tags: [],
+            timing: {
+              totalMs: Date.now() - started,
+              dbMs,
+              computeMs: 0,
+              serializeMs: 0,
+              entryCacheHit: false,
+              openaiMs: 0,
+            },
+          };
+        }
+        logger.error({ error }, 'Error listing tags');
+        throw error;
+      }
+
+      const tags = aggregateTags(data ?? []);
+      const serializeStart = Date.now();
+      JSON.stringify({ tags });
+      const serializeMs = Date.now() - serializeStart;
+
+      return {
+        tags,
+        timing: {
+          totalMs: Date.now() - started,
+          dbMs,
+          computeMs,
+          serializeMs,
+          entryCacheHit,
+          openaiMs: 0,
+        },
+      };
     } catch (error) {
       logger.error({ error }, 'Error listing tags');
-      return [];
+      return {
+        tags: [],
+        timing: {
+          totalMs: Date.now() - started,
+          dbMs,
+          computeMs,
+          serializeMs: 0,
+          entryCacheHit,
+          openaiMs: 0,
+        },
+      };
     }
   }
 

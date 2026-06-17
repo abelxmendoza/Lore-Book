@@ -53,12 +53,18 @@ function mergeMessageSources(sources: ThreadMessageRow[][]): ThreadMessageRow[] 
   });
 }
 
-/** Unified loader: merges metadata + conversation_messages + chat_messages. */
+/** Unified loader: chat_messages is canonical; legacy sources used only when chat is empty. */
 export async function loadThreadMessages(
   userId: string,
   sessionId: string
 ): Promise<ThreadMessageRow[]> {
-  const [{ data: session }, { data: convMsgs }, { data: chatMsgs }] = await Promise.all([
+  const [{ data: chatMsgs }, { data: session }, { data: convMsgs }] = await Promise.all([
+    supabaseAdmin
+      .from('chat_messages')
+      .select('id, role, content, created_at, metadata')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }),
     supabaseAdmin
       .from('conversation_sessions')
       .select('metadata')
@@ -71,22 +77,8 @@ export async function loadThreadMessages(
       .eq('session_id', sessionId)
       .eq('user_id', userId)
       .order('created_at', { ascending: true }),
-    supabaseAdmin
-      .from('chat_messages')
-      .select('id, role, content, created_at, metadata')
-      .eq('session_id', sessionId)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
   ]);
 
-  const fromMeta = metadataMessages(session?.metadata as Record<string, unknown> | null);
-  const fromConversation = (convMsgs ?? []).map((m) => ({
-    id: m.id,
-    role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
-    content: String(m.content ?? ''),
-    created_at: m.created_at,
-    metadata: (m.metadata as Record<string, unknown>) ?? null,
-  }));
   const fromChat = (chatMsgs ?? []).map((m) => ({
     id: m.id,
     role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
@@ -95,7 +87,18 @@ export async function loadThreadMessages(
     metadata: (m.metadata as Record<string, unknown>) ?? null,
   }));
 
-  return mergeMessageSources([fromConversation, fromChat, fromMeta]);
+  if (fromChat.length > 0) return fromChat;
+
+  const fromConversation = (convMsgs ?? []).map((m) => ({
+    id: m.id,
+    role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+    content: String(m.content ?? ''),
+    created_at: m.created_at,
+    metadata: (m.metadata as Record<string, unknown>) ?? null,
+  }));
+  const fromMeta = metadataMessages(session?.metadata as Record<string, unknown> | null);
+
+  return mergeMessageSources([fromConversation, fromMeta]);
 }
 
 export async function threadMessageCount(userId: string, sessionId: string): Promise<number> {
@@ -187,15 +190,7 @@ export async function recoverOrphanedChatSessions(userId: string): Promise<numbe
       started_at: messages[0]?.created_at ?? now,
       created_at: messages[0]?.created_at ?? now,
       updated_at: messages[messages.length - 1]?.created_at ?? now,
-      metadata: {
-        recovered: true,
-        messages: messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          timestamp: m.created_at,
-        })),
-      },
+      metadata: { recovered: true },
     });
 
     if (!error) recovered += 1;
@@ -229,15 +224,7 @@ export async function recoverOrphanSession(userId: string, sessionId: string): P
     started_at: messages[0]?.created_at ?? now,
     created_at: messages[0]?.created_at ?? now,
     updated_at: messages[messages.length - 1]?.created_at ?? now,
-    metadata: {
-      recovered: true,
-      messages: messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: m.created_at,
-      })),
-    },
+    metadata: { recovered: true },
   });
 
   return !error;

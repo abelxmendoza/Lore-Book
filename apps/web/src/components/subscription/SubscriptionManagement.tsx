@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useSubscription } from '../../hooks/useSubscription';
+import { privilegeSourceLabel } from '../../lib/accountAuthority';
 import {
   Loader2, Sparkles, Zap, Check, Minus,
   Calendar, AlertTriangle, CheckCircle, XCircle,
-  CreditCard, PauseCircle, AlertCircle,
+  CreditCard, PauseCircle, AlertCircle, Shield, Crown, Code2,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { CheckoutFlow } from './CheckoutFlow';
@@ -119,6 +120,47 @@ function CancelConfirm({
   );
 }
 
+// ── Privileged account panel ──────────────────────────────────────────────────
+
+function PrivilegedAccessPanel({ authority }: { authority: NonNullable<ReturnType<typeof useSubscription>['subscription']>['authority'] }) {
+  if (!authority?.isPrivileged) return null;
+
+  const isOwner = authority.role === 'owner';
+  const isAdmin = authority.role === 'admin';
+  const isDeveloper = authority.role === 'developer';
+
+  return (
+    <div className={cn(
+      'rounded-xl border p-5 space-y-3',
+      isOwner ? 'border-amber-500/40 bg-gradient-to-br from-amber-500/10 to-black/40' :
+      isAdmin ? 'border-purple-500/40 bg-gradient-to-br from-purple-500/10 to-black/40' :
+      'border-cyan-500/40 bg-gradient-to-br from-cyan-500/10 to-black/40'
+    )}>
+      <div className="flex items-start gap-3">
+        {isOwner ? <Crown className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" /> :
+         isAdmin ? <Shield className="h-5 w-5 text-purple-400 shrink-0 mt-0.5" /> :
+         <Code2 className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />}
+        <div>
+          <p className="text-sm font-semibold text-white">
+            {isOwner ? 'Founder Account' : isAdmin ? 'Admin Access' : 'Developer Account'}
+          </p>
+          <p className="text-xs text-white/60 mt-1">
+            Premium Access Included
+          </p>
+          <p className="text-[11px] text-white/40 mt-2">
+            Source: {privilegeSourceLabel(authority.privilegeSource)}
+          </p>
+          {authority.isFounderAccount && (
+            <p className="text-[11px] text-amber-400/80 mt-1 font-medium">
+              Founder Account · Personal Production Data
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const SubscriptionManagement = () => {
@@ -187,9 +229,27 @@ export const SubscriptionManagement = () => {
     );
   }
 
-  const isPro = ['pro', 'power', 'premium'].includes(subscription.planType ?? '');
-  const isCanceled = subscription.cancelAtPeriodEnd;
-  const isTrial = subscription.status === 'trial' || subscription.usage?.isTrial;
+  const isPrivileged = subscription.authority?.isPrivileged === true;
+  const isPro = isPrivileged || ['pro', 'power', 'premium'].includes(subscription.planType ?? '');
+  const isCanceled = !isPrivileged && subscription.cancelAtPeriodEnd;
+  const isTrial = !isPrivileged && (subscription.status === 'trial' || subscription.usage?.isTrial);
+
+  if (isPrivileged) {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <h1 className="text-2xl font-bold text-white">Subscription</h1>
+        <PrivilegedAccessPanel authority={subscription.authority} />
+        <div className="rounded-xl border border-white/10 bg-black/30 p-5 space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Usage this month</p>
+          <UsageBar label="Journal entries" used={subscription.usage?.entryCount ?? 0} limit={Infinity} />
+          <UsageBar label="AI conversations" used={subscription.usage?.aiRequestsCount ?? 0} limit={Infinity} />
+        </div>
+        <p className="text-xs text-white/25 text-center">
+          Platform accounts are never billed and cannot lose access through Stripe.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">

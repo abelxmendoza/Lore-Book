@@ -25,7 +25,7 @@ import { skillsApi } from '../api/skills';
 import { useQuestBoard } from '../hooks/useQuests';
 import type { Character } from './characters/CharacterProfileCard';
 import type { Skill } from '../types/skill';
-import type { Quest } from '../types/quest';
+import { useRecentChatThreads } from '../contexts/ChatThreadContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -267,20 +267,12 @@ const EmptySlot = ({ label }: { label: string }) => (
   </div>
 );
 
-// ─── RecentThread ─────────────────────────────────────────────────────────────
-
-interface RecentThread {
-  id: string;
-  title: string;
-  subtitle?: string;
-  updatedAt: string;
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const HomeScreen = () => {
   const { user } = useAuth();
   const navigate  = useNavigate();
+  const recentThreads = useRecentChatThreads(3);
 
   const userId = user?.id ?? '';
   const displayName =
@@ -292,7 +284,6 @@ export const HomeScreen = () => {
   // ── Data state ─────────────────────────────────────────────────────────────
   const [topChars,       setTopChars]       = useState<Character[]>([]);
   const [topSkills,      setTopSkills]      = useState<Skill[]>([]);
-  const [recentThreads,  setRecentThreads]  = useState<RecentThread[]>([]);
 
   const { data: board } = useQuestBoard();
 
@@ -324,11 +315,6 @@ export const HomeScreen = () => {
           .sort((a, b) => b.current_level - a.current_level);
         setTopSkills(sorted.slice(0, 3));
       })
-      .catch(() => {});
-
-    // Recent threads
-    fetchJson<{ threads: RecentThread[] }>('/api/conversation/threads?limit=3')
-      .then(data => setRecentThreads(data.threads ?? []))
       .catch(() => {});
   }, []);
 

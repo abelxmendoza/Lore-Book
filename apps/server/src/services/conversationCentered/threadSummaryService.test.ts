@@ -49,10 +49,10 @@ describe('threadSummaryService — deterministic floor', () => {
   });
 
   it('uses the title for the short summary when present', () => {
-    const meta = { ...emptyThreadMetadata(), title: 'Costco With Abuela', people: ['Abuela'], message_count: 3 };
+    const meta = { ...emptyThreadMetadata(), title: 'Costco With Grandma Rose', people: ['Grandma Rose'], message_count: 3 };
     const s = deriveDeterministicSummaries(meta);
-    expect(s.short).toBe('Costco With Abuela');
-    expect(s.medium).toContain('Abuela');
+    expect(s.short).toBe('Costco With Grandma Rose');
+    expect(s.medium).toContain('Grandma Rose');
   });
 
   it('derives from people/places when no title', () => {
@@ -140,14 +140,14 @@ describe('threadIntelligence — extended merge keeps summaries + first_activity
 describe('threadIntelligence — continuity card surfaces title + summary', () => {
   it('leads with the title and medium summary when present', () => {
     const meta = withSummary({
-      title: 'Club Metro Night',
-      summary_medium: 'You went out with Daisy to Club Metro.',
+      title: 'Blue Room Night',
+      summary_medium: 'You went out with Daisy to Blue Room.',
       people: ['Daisy'],
-      places: ['Club Metro'],
+      places: ['Blue Room'],
       last_activity: new Date().toISOString(),
     });
     const card = buildContinuityCard(meta);
-    expect(card).toContain('Club Metro Night');
+    expect(card).toContain('Blue Room Night');
     expect(card).toContain('You went out with Daisy');
     expect(card).toContain('People: Daisy');
   });

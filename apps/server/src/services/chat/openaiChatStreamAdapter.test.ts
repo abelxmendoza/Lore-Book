@@ -13,18 +13,22 @@ vi.mock('../../config', () => ({
   config: mockConfig,
 }));
 
-vi.mock('../../lib/openai', () => ({
-  openai: {
-    chat: {
-      completions: {
-        create: mockChatCreate,
+vi.mock('../../lib/openai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/openai')>();
+  return {
+    ...actual,
+    openai: {
+      chat: {
+        completions: {
+          create: mockChatCreate,
+        },
+      },
+      responses: {
+        create: mockResponsesCreate,
       },
     },
-    responses: {
-      create: mockResponsesCreate,
-    },
-  },
-}));
+  };
+});
 
 vi.mock('../../logger', () => ({
   logger: {
@@ -65,7 +69,6 @@ describe('createOpenAIChatStream', () => {
     expect(stream).toBe(chatStream);
     expect(mockChatCreate).toHaveBeenCalledWith({
       model: 'gpt-5.5',
-      temperature: 0.7,
       stream: true,
       messages: [
         { role: 'system', content: 'System' },
@@ -101,7 +104,6 @@ describe('createOpenAIChatStream', () => {
         { role: 'assistant', content: 'Earlier answer' },
         { role: 'user', content: 'Continue' },
       ],
-      temperature: 0.7,
       stream: true,
       store: false,
       safety_identifier: 'user-123',

@@ -21,7 +21,7 @@ import { supabase, useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
-import { useConversationStore } from '../../features/chat/hooks/useConversationStore';
+import { useActiveChatMessages } from '../../contexts/ChatThreadContext';
 import { generateNicknames } from '../../utils/nicknameGenerator';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
@@ -2501,9 +2501,8 @@ export const CharacterBook = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
   
-  // Get chat messages for character extraction
-  const conversationStore = useConversationStore();
-  const chatMessages = conversationStore.messages.map(msg => ({
+  // Character extraction reads from the canonical chat-thread cache (not an isolated store).
+  const chatMessages = useActiveChatMessages().map(msg => ({
     role: msg.role,
     content: msg.content,
     timestamp: msg.timestamp

@@ -1,5 +1,5 @@
 {
-  "installCommand": "rm -rf node_modules && npm install --legacy-peer-deps",
+  "installCommand": "rm -rf node_modules && npm install --legacy-peer-deps --include=dev",
   "buildCommand": "rm -rf dist && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
@@ -31,7 +31,6 @@
     "VITE_STRIPE_PUBLISHABLE_KEY": "pk_test_51L9CLGDEX66PEmCrcyscRq4ojvpWsWAScd2dFNwJChIFoAdyNAGvDmok0JP0RBWdPjnzYoaP5fXTMO7FBHprD6Yz00BmGfEXxj",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
-    "VITE_ADMIN_EMAIL": "abelxmendoza@gmail.com",
     "VITE_SUPABASE_URL": "https://cshtthzpgkmrbcsfghyq.supabase.co",
     "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaHR0aHpwZ2ttcmJjc2ZnaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjE0NjgsImV4cCI6MjA5NTIzNzQ2OH0.IzX4Q04kFMZeLBFiUv3Ga5GiAg9AS2898yfTeGG4md8"
   }

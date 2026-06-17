@@ -56,7 +56,7 @@ describe('ModeRouterService', () => {
         'What do you know about me?',
         'Who are the characters in my story?',
         'Tell me about my family',
-        'Tell me about Sol',
+        'Tell me about Sam Chen',
       ];
 
       for (const query of queries) {

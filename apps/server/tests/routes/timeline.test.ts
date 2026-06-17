@@ -56,7 +56,10 @@ describe('Timeline API Routes', () => {
         { name: 'tag1', count: 5 },
         { name: 'tag2', count: 3 }
       ];
-      vi.mocked(memoryService.listTags).mockResolvedValue(mockTags);
+      vi.mocked(memoryService.listTags).mockResolvedValue({
+        tags: mockTags,
+        timing: { totalMs: 1, dbMs: 1, computeMs: 0, serializeMs: 0, entryCacheHit: false, openaiMs: 0 },
+      });
 
       const response = await request(app)
         .get('/api/timeline/tags')

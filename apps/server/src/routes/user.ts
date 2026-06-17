@@ -3,6 +3,10 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import {
+  resolveAccountAuthority,
+  serializeAccountAuthority,
+} from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -21,6 +25,21 @@ const privacySettingsSchema = z.object({
   showEmail: z.boolean().optional(),
   allowDataSharing: z.boolean().optional(),
   twoFactorEnabled: z.boolean().optional(),
+});
+
+/**
+ * GET /api/user/authority
+ * Canonical server-side role authority for the authenticated user.
+ * Frontend must use this — never infer roles from user_metadata.
+ */
+router.get('/authority', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const authority = await resolveAccountAuthority(req.user!.id);
+    return res.json(serializeAccountAuthority(authority));
+  } catch (error) {
+    logger.error({ error, userId: req.user?.id }, 'Failed to resolve account authority');
+    return res.status(500).json({ error: 'Failed to resolve account authority' });
+  }
 });
 
 /**

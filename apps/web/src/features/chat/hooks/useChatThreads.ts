@@ -48,13 +48,12 @@ function messagesToJson(messages: Message[]) {
 }
 
 function dbRowToThread(t: any): ChatThread {
-  const msgs: any[] = t.metadata?.messages ?? [];
   const thread: ChatThread = {
     id: t.id,
     title: t.title || DRAFT_THREAD_TITLE,
     subtitle: t.metadata?.subtitle as string | undefined,
     dominantEntities: Array.isArray(t.metadata?.dominantEntities) ? t.metadata.dominantEntities : undefined,
-    messages: msgs.map(parseStoredMessage),
+    messages: [],
     updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
   };
   return normalizeThreadTitle(thread);
@@ -84,23 +83,6 @@ function dedupeThreads(threads: ChatThread[]): ChatThread[] {
   return dedupeConversationThreads(threads);
 }
 
-// ── Read Supabase access_token from localStorage synchronously (for keepalive saves) ──
-function getTokenSync(): string | null {
-  try {
-    const key = Object.keys(localStorage).find(
-      (k) => k.startsWith('sb-') && k.endsWith('-auth-token')
-    );
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw)?.access_token ?? null;
-  } catch {
-    return null;
-  }
-}
-
-type PendingSave = { timer: ReturnType<typeof setTimeout>; snap: any[] };
-
 function sortThreadsByActivity(threads: ChatThread[]): ChatThread[] {
   return [...threads].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -119,7 +101,6 @@ export const useChatThreads = () => {
   // threadsReady: true after a successful backend load — used to gate "thread not found" redirects.
   const [threadsReady, setThreadsReady] = useState(false);
 
-  const saveDebounceRef = useRef<Record<string, PendingSave>>({});
   const currentThreadIdRef = useRef<string | null>(null);
   const threadsRef = useRef<ChatThread[]>([]);
 
@@ -249,52 +230,10 @@ export const useChatThreads = () => {
     }
   }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Save flush helpers ──────────────────────────────────────────────────────
-
-  const flushSave = useCallback((id: string) => {
-    const pending = saveDebounceRef.current[id];
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    delete saveDebounceRef.current[id];
-    runtimeDiagnostics.record('flush_save', { threadId: id });
-    threadPersistenceTracker.markPersisting(id);
-    fetchJson(`/api/conversation/threads/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ messages: pending.snap }),
-    }).then(() => {
-      threadPersistenceTracker.markPersisted(id);
-    }).catch((err: unknown) => {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'flush_save', error: errMsg } });
-      threadPersistenceTracker.markSyncFailed(id, errMsg);
-      console.error('[useChatThreads] flushSave failed for thread', id, errMsg);
-    });
+  // Messages persist via chat_messages on the server (omegaChatService). Client only bumps activity.
+  const flushSave = useCallback((_id: string) => {
+    // No-op — P2 removed metadata.messages dual-write.
   }, []);
-
-  const flushAllPendingKeepalive = useCallback(() => {
-    const token = getTokenSync();
-    const apiBase = config.api.url || '';
-    Object.entries(saveDebounceRef.current).forEach(([id, pending]) => {
-      clearTimeout(pending.timer);
-      delete saveDebounceRef.current[id];
-      try {
-        fetch(`${apiBase}/api/conversation/threads/${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ messages: pending.snap }),
-          keepalive: true,
-        });
-      } catch (_) {}
-    });
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('beforeunload', flushAllPendingKeepalive);
-    return () => window.removeEventListener('beforeunload', flushAllPendingKeepalive);
-  }, [flushAllPendingKeepalive]);
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -487,32 +426,14 @@ export const useChatThreads = () => {
           }).catch(() => {});
         }
         // subtitle is NOT sent here — server already persisted it via the title service
-        if (payload.messages !== undefined) {
-          const existing = saveDebounceRef.current[id];
-          if (existing) clearTimeout(existing.timer);
-          const snap = messagesToJson(payload.messages);
-          threadPersistenceTracker.markPersistPending(id, snap.length);
-          saveDebounceRef.current[id] = {
-            snap,
-            timer: setTimeout(() => {
-              delete saveDebounceRef.current[id];
-              threadPersistenceTracker.markPersisting(id);
-              fetchJson(`/api/conversation/threads/${id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({
-                  messages: snap,
-                  ...(touchActivity ? { touchActivity: true } : {}),
-                }),
-              }).then(() => {
-                threadPersistenceTracker.markPersisted(id);
-              }).catch((err: unknown) => {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'debounced_save', error: errMsg } });
-                threadPersistenceTracker.markSyncFailed(id, errMsg);
-                console.error('[useChatThreads] Debounced save failed for thread', id, errMsg);
-              });
-            }, 1500),
-          };
+        if (touchActivity) {
+          fetchJson(`/api/conversation/threads/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ touchActivity: true }),
+          }).catch((err: unknown) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
+          });
         }
       }
     },
@@ -547,11 +468,6 @@ export const useChatThreads = () => {
 
   const deleteThread = useCallback(
     (id: string) => {
-      const pending = saveDebounceRef.current[id];
-      if (pending) {
-        clearTimeout(pending.timer);
-        delete saveDebounceRef.current[id];
-      }
       setThreads((prev) => {
         const next = prev.filter((t) => t.id !== id);
         if (!isAuthenticated) persistLocal(next, currentThreadIdRef.current);

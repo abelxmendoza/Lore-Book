@@ -14,6 +14,7 @@ const mockResponse = () => {
   const res: any = {};
   res.status = vi.fn().mockReturnValue(res);
   res.json = vi.fn().mockReturnValue(res);
+  res.setHeader = vi.fn().mockReturnValue(res);
   return res;
 };
 
@@ -27,7 +28,10 @@ describe('timelineController.getTimeline', () => {
       chapters: [],
       unassigned: []
     };
-    (memoryService.getTimeline as any).mockResolvedValue(timeline);
+    (memoryService.getTimeline as any).mockResolvedValue({
+      timeline,
+      timing: { totalMs: 1, dbMs: 1, stitchMs: 0, serializeMs: 0, chapterLoadMs: 0, entryCacheHit: false, openaiMs: 0 },
+    });
 
     const req: any = { user: { id: 'user-42' } };
     const res = mockResponse();

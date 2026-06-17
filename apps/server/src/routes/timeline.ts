@@ -21,7 +21,21 @@ router.get('/', requireAuth, getTimeline);
 
 router.get('/tags', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const tags = await memoryService.listTags(req.user!.id);
+    const { tags, timing } = await memoryService.listTags(req.user!.id);
+
+    if (process.env.NODE_ENV !== 'production') {
+      res.setHeader('X-Timeline-Tags-Timing-Ms', String(timing.totalMs));
+      res.setHeader('X-Timeline-Tags-Db-Ms', String(timing.dbMs));
+      res.setHeader('X-Timeline-Tags-Compute-Ms', String(timing.computeMs));
+      res.setHeader('X-Timeline-Tags-Serialize-Ms', String(timing.serializeMs));
+      res.setHeader('X-Timeline-Tags-Cache-Hit', timing.entryCacheHit ? '1' : '0');
+      res.setHeader('X-Timeline-Tags-Openai-Ms', String(timing.openaiMs));
+    }
+
+    if (timing.totalMs > 1500) {
+      logger.info({ userId: req.user!.id, timing }, 'Slow timeline tags fetch');
+    }
+
     res.json({ tags });
   } catch (error) {
     logger.error({ error }, 'Error fetching tags');

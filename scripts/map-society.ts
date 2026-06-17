@@ -4,7 +4,7 @@
  * link employers↔people↔workplaces + cluster recurring co-mentions into typed
  * groups. Dry-run by default (logs what it WOULD create).
  *
- *   npx tsx scripts/map-society.ts --user abelxmendoza@gmail.com [--execute] [--days 365]
+ *   npx tsx scripts/map-society.ts --user <your-email> [--execute] [--days 365]
  */
 
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
@@ -24,7 +24,8 @@ async function resolveUserId(email: string): Promise<string> {
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
   const execute = process.argv.includes('--execute');
   const sinceDays = Number(arg('--days') ?? 365);
   const userId = await resolveUserId(email);

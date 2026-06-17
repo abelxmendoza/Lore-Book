@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { profileClaimsService } from '../services/profileClaims/profileClaimsService';
+import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
 import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
 
 const router = Router();
@@ -44,53 +44,41 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
     const userId = req.user!.id;
     const file = req.file;
 
-    // Determine file type from mimetype
-    let fileType: 'pdf' | 'doc' | 'docx' | 'txt' = 'txt';
-    if (file.mimetype === 'application/pdf') {
-      fileType = 'pdf';
-    } else if (file.mimetype === 'application/msword') {
-      fileType = 'doc';
-    } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      fileType = 'docx';
-    } else if (file.mimetype === 'text/plain') {
-      fileType = 'txt';
+    const result = await unifiedFileIngestionService.ingest({
+      userId,
+      buffer: file.buffer,
+      filename: file.originalname || `resume-${Date.now()}.pdf`,
+      mimeType: file.mimetype,
+      kind: 'resume',
+    });
+
+    if (result.processingStatus === 'failed') {
+      return res.status(500).json({ error: result.error ?? 'Failed to process resume' });
     }
 
-    // Process resume
-    const { document, claims } = await resumeParsingService.processResume(
+    const documents = await resumeParsingService.getResumeDocuments(userId);
+    const document = documents[0];
+
+    logger.info({
       userId,
-      file.buffer,
-      {
-        fileName: file.originalname || `resume-${Date.now()}.${fileType}`,
-        fileType,
-        fileSize: file.size
-      }
-    );
-
-    // Create claims in database
-    const createdClaims = await profileClaimsService.batchCreateClaims(userId, claims);
-
-    logger.info({ 
-      userId, 
-      documentId: document.id, 
-      claimsCreated: createdClaims.length 
-    }, 'Resume processed and claims created');
+      userFileId: result.userFileId,
+      claimsCreated: result.claimsCreated,
+    }, 'Resume processed via unified ingestion');
 
     res.status(201).json({
       success: true,
-      document: {
-        id: document.id,
-        file_name: document.file_name,
-        processing_status: document.processing_status,
-        claims_generated: document.claims_generated
-      },
-      claims: createdClaims.map(c => ({
-        id: c.id,
-        claim_type: c.claim_type,
-        claim_text: c.claim_text,
-        confidence: c.confidence
-      })),
-      message: `Resume processed. ${createdClaims.length} claims extracted.`
+      userFileId: result.userFileId,
+      document: document
+        ? {
+            id: document.id,
+            file_name: document.file_name,
+            processing_status: document.processing_status,
+            claims_generated: document.claims_generated,
+          }
+        : null,
+      claimsCreated: result.claimsCreated ?? 0,
+      derivedCounts: result.derivedCounts,
+      message: `Resume processed. ${result.claimsCreated ?? 0} claims extracted.`,
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process resume');

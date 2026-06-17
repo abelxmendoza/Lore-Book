@@ -4,7 +4,7 @@
  * conversations that mention an agency like Kforce or the Amazon job.
  *
  * Usage:
- *   npx tsx scripts/inspect-kforce-state.ts --user abelxmendoza@gmail.com
+ *   npx tsx scripts/inspect-kforce-state.ts --user <your-email>
  */
 
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';
@@ -33,7 +33,8 @@ async function safeSelect(table: string, userId: string, columns = '*') {
 }
 
 async function main() {
-  const email = arg('--user') ?? 'abelxmendoza@gmail.com';
+  const email = arg('--user') ?? process.env.TARGET_USER_EMAIL ?? '';
+  if (!email) { console.error('Required: --user <email> or TARGET_USER_EMAIL'); process.exit(1); }
   const userId = await resolveUserId(email);
   console.log(`Inspecting ${email} (${userId})\n`);
 

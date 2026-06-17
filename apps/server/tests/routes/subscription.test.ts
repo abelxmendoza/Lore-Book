@@ -17,6 +17,20 @@ vi.mock('../../src/middleware/auth', () => ({
 }));
 vi.mock('../../src/services/stripeService', () => ({ getUserSubscription: vi.fn(), createCustomer: vi.fn(), createSubscription: vi.fn(), cancelSubscription: vi.fn(), reactivateSubscription: vi.fn(), createBillingPortalSession: vi.fn(), handleWebhook: vi.fn(), verifyWebhookSignature: vi.fn() }));
 vi.mock('../../src/services/usageTracking', () => ({ getCurrentUsage: vi.fn() }));
+vi.mock('../../src/lib/accountAuthority', () => ({
+  resolveAccountAuthority: vi.fn().mockResolvedValue({
+    role: 'standard_user',
+    roleLabel: 'Free',
+    isFounderAccount: false,
+    isPrivileged: false,
+    privilegeSource: null,
+    effectivePlanType: 'free',
+    canBeBilled: true,
+    canCancelSubscription: true,
+    canLoseAccess: true,
+  }),
+  isBillingExempt: vi.fn().mockResolvedValue(false),
+}));
 
 const app = express();
 app.use(express.json());
@@ -116,6 +130,25 @@ describe('Subscription API Routes', () => {
 
       const res = await request(app).post('/api/subscription/create').expect(400);
       expect(res.body).toMatchObject({ error: 'Subscription exists' });
+    });
+  });
+
+  describe('POST /api/subscription/webhook', () => {
+    it('returns 400 when stripe-signature header is missing', async () => {
+      const webhookApp = express();
+      webhookApp.post(
+        '/api/subscription/webhook',
+        express.raw({ type: 'application/json' }),
+        (await import('../../src/routes/subscription')).handleStripeWebhook
+      );
+
+      const res = await request(webhookApp)
+        .post('/api/subscription/webhook')
+        .set('Content-Type', 'application/json')
+        .send('{}')
+        .expect(400);
+
+      expect(res.body).toMatchObject({ error: 'Missing stripe-signature header' });
     });
   });
 });

@@ -37,7 +37,7 @@ describe('characterRegistry', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
       if (table === 'characters') {
-        return chain([{ id: 'tio-juan', name: 'Tío Juan', alias: [], metadata: {} }]);
+        return chain([{ id: 'tio-juan', name: 'Uncle James', alias: [], metadata: {} }]);
       }
       if (table === 'entity_facts') return chain([]);
       return chain([]);
@@ -48,7 +48,7 @@ describe('characterRegistry', () => {
     expect(decision.action).toBe('defer');
     if (decision.action === 'defer') {
       expect(decision.candidates).toEqual([
-        { character_id: 'tio-juan', name: 'Tío Juan', subtitle: undefined },
+        { character_id: 'tio-juan', name: 'Uncle James', subtitle: undefined },
       ]);
     }
   });
@@ -57,17 +57,17 @@ describe('characterRegistry', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
       if (table === 'characters') {
-        return chain([{ id: 'oscuridad', name: 'Juan / Oscuridad', alias: ['Oscuridad'], metadata: {} }]);
+        return chain([{ id: 'oscuridad', name: 'Juan / Neon Pulsedad', alias: ['Neon Pulsedad'], metadata: {} }]);
       }
       return chain([]);
     });
 
-    const decision = await characterRegistry.classifyForCreation('user-1', 'Oscuridad');
+    const decision = await characterRegistry.classifyForCreation('user-1', 'Neon Pulsedad');
 
     expect(decision).toMatchObject({
       action: 'merge',
       characterId: 'oscuridad',
-      cleanName: 'Oscuridad',
+      cleanName: 'Neon Pulsedad',
     });
   });
 
@@ -79,7 +79,7 @@ describe('characterRegistry', () => {
             id: 'q1',
             mention_text: 'Fairy',
             candidates: [
-              { character_id: 'a', name: 'Hell Fairy' },
+              { character_id: 'a', name: 'Velvet Hour' },
               { character_id: 'b', name: 'Mr. Chino' },
             ],
             asked_count: 0,
@@ -91,10 +91,10 @@ describe('characterRegistry', () => {
     });
 
     const result = await characterRegistry.takeNextPendingQuestion('user-1', {
-      message: 'Testing LoreBook features',
+      message: 'Testing LifeLedger features',
       threadId: 'thread-dev',
       conversationHistory: [
-        { role: 'user', content: 'Building LoreBook with Codex' },
+        { role: 'user', content: 'Building the product with Codex' },
       ],
     });
 

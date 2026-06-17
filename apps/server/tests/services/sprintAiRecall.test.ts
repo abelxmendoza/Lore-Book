@@ -49,17 +49,17 @@ describe('Sprint AI — memory trust & recall', () => {
   });
 
   describe('significance layer', () => {
-    it('extracts meaning from Costco + Abuela transcript pattern', () => {
+    it('extracts meaning from Costco + Grandma Rose transcript pattern', () => {
       const text =
-        'The highlight was that my Abuela is still alive. We spent 2.5 hours at Costco.';
+        'The highlight was that my Grandma Rose is still alive. We spent 2.5 hours at Costco.';
       const meanings = extractSignificanceFromText(text);
-      expect(meanings.some((m) => /highlight|still alive|Abuela/i.test(m))).toBe(true);
+      expect(meanings.some((m) => /highlight|still alive|Grandma Rose/i.test(m))).toBe(true);
     });
 
     it('formats facts and meaning blocks', () => {
       const { factsBlock, meaningBlock } = formatFactsAndMeaning(
         ['Costco trip', '2.5 hours'],
-        'The highlight was that my Abuela is still alive.'
+        'The highlight was that my Grandma Rose is still alive.'
       );
       expect(factsBlock).toContain('Costco');
       expect(meaningBlock).toMatch(/still alive|highlight/i);
@@ -84,7 +84,7 @@ describe('Sprint AI — memory trust & recall', () => {
       const roster: CharacterRosterEntry[] = [
         {
           id: '1',
-          name: 'Abuela',
+          name: 'Grandma Rose',
           aliases: [],
           relationshipToUser: 'grandmother',
           memoryCount: 3,
@@ -93,7 +93,7 @@ describe('Sprint AI — memory trust & recall', () => {
         },
         {
           id: '2',
-          name: 'Sol',
+          name: 'Sam Chen',
           aliases: [],
           relationshipToUser: 'romantic partner',
           memoryCount: 5,
@@ -122,9 +122,9 @@ describe('Sprint AI — memory trust & recall', () => {
 
       const formatted = await formatGroupedCharacterRosterForChat('test-user', roster);
       expect(formatted).toContain('**Family**');
-      expect(formatted).toContain('Abuela');
+      expect(formatted).toContain('Grandma Rose');
       expect(formatted).toContain('**Romantic**');
-      expect(formatted).toContain('Sol');
+      expect(formatted).toContain('Sam Chen');
       expect(formatted).toContain('**Professional**');
       expect(formatted).toContain('Kelly');
       expect(formatted).toContain('**Scene**');

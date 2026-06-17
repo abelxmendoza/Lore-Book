@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { chapterInsightsService } from '../services/chapterInsightsService';
 import { chapterService } from '../services/chapterService';
@@ -71,13 +72,80 @@ export const createChapter = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 export const listChapters = async (req: AuthenticatedRequest, res: Response) => {
+  const started = Date.now();
   try {
+    const userId = req.user!.id;
+    const { chapterInsightsCacheService } = await import('../services/chapterInsightsCacheService');
+    const cachedProfiles = await chapterInsightsCacheService.getCachedInsights(userId);
+    const cacheHit = Boolean(cachedProfiles);
+
+    const [entryResult, chapterResult] = await Promise.all([
+      (async () => {
+        const start = Date.now();
+        const entries = await memoryService.searchEntries(userId, { limit: 400 });
+        return { entries, ms: Date.now() - start };
+      })(),
+      (async () => {
+        const start = Date.now();
+        const chapters = await chapterService.listChapters(userId);
+        return { chapters, ms: Date.now() - start };
+      })(),
+    ]);
+    const sharedEntries = entryResult.entries;
+    const chapterRows = chapterResult.chapters;
+    const entryFetchMs = entryResult.ms;
+    const chapterLoadMs = chapterResult.ms;
+
+    const profileStart = Date.now();
+    const candidateStart = Date.now();
     const [chapters, candidates] = await Promise.all([
-      chapterInsightsService.buildProfiles(req.user!.id),
-      chapterInsightsService.detectCandidates(req.user!.id)
+      chapterInsightsService
+        .buildProfiles(userId, { entries: sharedEntries, chapters: chapterRows })
+        .then((result) => {
+          const profileComputeMs = Date.now() - profileStart;
+          return { result, profileComputeMs };
+        }),
+      chapterInsightsService
+        .detectCandidates(userId, { entries: sharedEntries })
+        .then((result) => {
+          const candidateComputeMs = Date.now() - candidateStart;
+          return { result, candidateComputeMs };
+        }),
     ]);
 
-    return res.json({ chapters, candidates });
+    const payload = { chapters: chapters.result, candidates: candidates.result };
+    const serializeStart = Date.now();
+    JSON.stringify(payload);
+    const serializeMs = Date.now() - serializeStart;
+
+    const timing = {
+      totalMs: Date.now() - started,
+      dbMs: Math.max(entryFetchMs, chapterLoadMs),
+      entryFetchMs,
+      chapterLoadMs,
+      profileComputeMs: chapters.profileComputeMs,
+      candidateComputeMs: candidates.candidateComputeMs,
+      serializeMs,
+      cacheHit,
+      openaiMs: 0,
+    };
+
+    if (process.env.NODE_ENV !== 'production') {
+      res.setHeader('X-Chapters-Timing-Ms', String(timing.totalMs));
+      res.setHeader('X-Chapters-Db-Ms', String(timing.dbMs));
+      res.setHeader('X-Chapters-Entry-Fetch-Ms', String(timing.entryFetchMs));
+      res.setHeader('X-Chapters-Chapter-Load-Ms', String(timing.chapterLoadMs));
+      res.setHeader('X-Chapters-Profile-Compute-Ms', String(timing.profileComputeMs));
+      res.setHeader('X-Chapters-Candidate-Compute-Ms', String(timing.candidateComputeMs));
+      res.setHeader('X-Chapters-Serialize-Ms', String(timing.serializeMs));
+      res.setHeader('X-Chapters-Cache-Hit', cacheHit ? '1' : '0');
+    }
+
+    if (timing.totalMs > 2500) {
+      logger.info({ userId, timing }, 'Slow chapters fetch');
+    }
+
+    return res.json(payload);
   } catch (error) {
     logger.error({ error }, 'Error listing chapters');
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to list chapters' });

@@ -9,9 +9,10 @@ import { supabaseAdmin } from './supabaseClient';
  * Uses user ID + entry count as cache key (invalidates when entries change)
  */
 class ChapterInsightsCacheService {
-  private memoryCache: Map<string, { data: any; entryCount: number }> = new Map();
+  private memoryCache: Map<string, { data: any; entryCount: number; cachedAt: number }> = new Map();
   private readonly MEMORY_CACHE_SIZE = 50; // Keep last 50 cached insights
   private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL
+  private readonly FAST_PATH_TTL_MS = 60 * 1000; // Skip count query when recently cached
 
   /**
    * Generate cache key from user ID
@@ -29,6 +30,10 @@ class ChapterInsightsCacheService {
     
     if (!cached) {
       return null;
+    }
+
+    if (Date.now() - cached.cachedAt < this.FAST_PATH_TTL_MS) {
+      return cached.data;
     }
 
     // Check if entry count has changed (invalidate cache)
@@ -78,7 +83,8 @@ class ChapterInsightsCacheService {
 
     this.memoryCache.set(cacheKey, {
       data: insights,
-      entryCount
+      entryCount,
+      cachedAt: Date.now(),
     });
   }
 

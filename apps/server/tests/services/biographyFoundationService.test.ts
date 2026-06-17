@@ -49,10 +49,10 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
   tableResults = {
     journal_entries: {
       data: [
-        // co-mentions Sol's breakup AND Abuela in the same entry — the exact
+        // co-mentions Sam Chen's breakup AND Grandma Rose in the same entry — the exact
         // cross-contamination scenario that produced the false "ended" claims
-        { id: 'e1', content: 'Summer of Setbacks and Heartbreak — no contact with Sol since the breakup, ended things for good. Living with Abuela has been steady through it all.', mood: 'sad', tags: ['heartbreak', 'family'], emotional_intensity: 0.8 },
-        { id: 'e2', content: 'Abuela and I went to Costco today, family time as always.', mood: 'content', tags: ['family'], emotional_intensity: 0.3 },
+        { id: 'e1', content: 'Summer of Setbacks and Heartbreak — no contact with Sam Chen since the breakup, ended things for good. Living with Grandma Rose has been steady through it all.', mood: 'sad', tags: ['heartbreak', 'family'], emotional_intensity: 0.8 },
+        { id: 'e2', content: 'Grandma Rose and I went to Costco today, family time as always.', mood: 'content', tags: ['family'], emotional_intensity: 0.3 },
         { id: 'e3', content: 'Still unemployed, prepping for the Epirus interview next week.', mood: 'anxious', tags: ['career'], emotional_intensity: 0.5 },
       ],
       error: null,
@@ -60,8 +60,8 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
     characters: {
       data: [
         { id: PROTAGONIST_ID, name: 'Abel Mendoza', alias: [], metadata: { mention_count: 20 } },
-        { id: SOL_ID, name: 'Sol', alias: [], metadata: { mention_count: 5 } },
-        { id: ABUELA_ID, name: 'Abuela', alias: [], metadata: { mention_count: 5 } },
+        { id: SOL_ID, name: 'Sam Chen', alias: [], metadata: { mention_count: 5 } },
+        { id: ABUELA_ID, name: 'Grandma Rose', alias: [], metadata: { mention_count: 5 } },
       ],
       error: null,
     },
@@ -142,7 +142,7 @@ describe('extractBiographyFacts — authoritative fact hierarchy (Sprint O)', ()
     baseTables({
       journal_entries: {
         data: [
-          { id: 'e1', content: 'Had coffee with Abuela this morning, nothing major going on.', mood: 'calm', tags: [], emotional_intensity: 0.2 },
+          { id: 'e1', content: 'Had coffee with Grandma Rose this morning, nothing major going on.', mood: 'calm', tags: [], emotional_intensity: 0.2 },
         ],
         error: null,
       },

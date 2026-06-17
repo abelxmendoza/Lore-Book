@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useChatThreadContext } from '../../../contexts/ChatThreadContext';
 import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { useGuest } from '../../../contexts/GuestContext';
@@ -100,7 +101,9 @@ function getDemoResponse(message: string): string {
 }
 
 export const useChat = () => {
-  const { threadId: activeThreadId } = useParams<{ threadId?: string }>();
+  const navigate = useNavigate();
+  const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
+  const { createThread, setActiveThreadId } = useChatThreadContext();
   const conversationStore = useConversationStore();
   const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming } = useChatStream();
@@ -167,6 +170,14 @@ export const useChat = () => {
       }
     }
 
+    // Ensure a thread exists before writing to the canonical cache
+    let threadId = urlThreadId ?? null;
+    if (!threadId) {
+      threadId = createThread();
+      setActiveThreadId(threadId);
+      navigate(`/chat/${threadId}`, { replace: true });
+    }
+
     // Create user message
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -175,7 +186,7 @@ export const useChat = () => {
       timestamp: new Date()
     };
 
-    addMessage(userMessage);
+    addMessage(userMessage, { touchActivity: true });
     setLoading(true);
     setLoadingStage('analyzing');
     setLoadingProgress(0);
@@ -288,10 +299,12 @@ export const useChat = () => {
           setLoadingStage('generating');
           setLoadingProgress(100);
           
-          updateMessage(assistantMessageId, {
-            content: accumulatedContent,
-            isStreaming: false,
-            ...metadata,
+          updateMessage(
+            assistantMessageId,
+            {
+              content: accumulatedContent,
+              isStreaming: false,
+              ...metadata,
             sources: metadata?.sources,
             connections: metadata?.connections,
             continuityWarnings: metadata?.continuityWarnings,
@@ -315,7 +328,9 @@ export const useChat = () => {
             // Entity chips
             mentionedEntities: metadata?.mentionedEntities,
             suggestedActions: metadata?.suggestedActions,
-          });
+          },
+          { touchActivity: true }
+          );
 
           // If there's a disambiguation prompt, attach it to the user message
           if (metadata?.disambiguationPrompt) {
@@ -386,7 +401,7 @@ export const useChat = () => {
         (feedback) => {
           updateMessage(assistantMessageId, { cognitionFeedback: feedback });
         },
-        activeThreadId,
+        threadId,
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,
         options?.composerEntities
       );
@@ -417,7 +432,7 @@ export const useChat = () => {
         });
       }
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, activeThreadId]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, navigate]);
 
   const clearConversation = useCallback(() => {
     clearConversationStore();

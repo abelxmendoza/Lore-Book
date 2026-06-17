@@ -39,13 +39,13 @@ describe('SocietyResolver.parse', () => {
   it('parses well-formed group JSON and ignores malformed entries', () => {
     const map = SocietyResolver.parse(JSON.stringify({
       groups: [
-        { key: 'k1', name: 'Los Goths', group_type: 'scene', user_relationship: 'member' },
+        { key: 'k1', name: 'Neon Collective', group_type: 'scene', user_relationship: 'member' },
         { key: 'k2', drop: true },
         { name: 'no key' },
         null,
       ],
     }));
-    expect(map.get('k1')).toEqual({ name: 'Los Goths', group_type: 'scene', user_relationship: 'member', drop: false });
+    expect(map.get('k1')).toEqual({ name: 'Neon Collective', group_type: 'scene', user_relationship: 'member', drop: false });
     expect(map.get('k2')?.drop).toBe(true);
     expect(map.size).toBe(2);
   });
@@ -66,7 +66,7 @@ describe('SocietyResolver.resolve', () => {
 
   it('applies the model name/type and drops coincidental clusters', async () => {
     tracedCompletion.mockResolvedValue(modelReply([
-      { key: 'k1', name: 'Los Goths', group_type: 'scene', user_relationship: 'member' },
+      { key: 'k1', name: 'Neon Collective', group_type: 'scene', user_relationship: 'member' },
       { key: 'k2', drop: true },
     ]));
 
@@ -78,22 +78,22 @@ describe('SocietyResolver.resolve', () => {
     expect(tracedCompletion).toHaveBeenCalledTimes(1);
     expect(out).toHaveLength(1);
     expect(out[0].key).toBe('k1');
-    expect(out[0].name).toBe('Los Goths');
+    expect(out[0].name).toBe('Neon Collective');
     expect(out[0].group_type).toBe('scene');
     expect(out[0].metadata.llm_resolved).toBe(true);
   });
 
   it('never sends named employer/institution clusters to the model', async () => {
     const out = await societyResolver.resolve('user-1', [
-      cluster({ key: 'emp', name: 'Kforce', group_type: 'company', metadata: { anchor: 'employer' } }),
+      cluster({ key: 'emp', name: 'TechStaff', group_type: 'company', metadata: { anchor: 'employer' } }),
     ]);
     expect(tracedCompletion).not.toHaveBeenCalled();
-    expect(out[0].name).toBe('Kforce');
+    expect(out[0].name).toBe('TechStaff');
   });
 
   it('caches resolutions so a repeated cluster does not trigger another call', async () => {
     tracedCompletion.mockResolvedValue(modelReply([
-      { key: 'k1', name: 'Los Goths', group_type: 'scene' },
+      { key: 'k1', name: 'Neon Collective', group_type: 'scene' },
     ]));
     const input = [cluster({ key: 'k1', name: 'Ana & Ben Circle' })];
 

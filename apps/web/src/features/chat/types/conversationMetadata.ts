@@ -3,7 +3,7 @@
  *
  * Ownership rules (DO NOT mutate from the wrong owner):
  *
- *   messages         → useChatThreads (debounced client PATCH, UI format)
+ *   messages         → DEPRECATED (P2). Legacy read-only fallback. Canonical store: chat_messages.
  *   titleSource      → ConversationTitleService (server, set on auto-gen or user rename)
  *   subtitle         → ConversationTitleService (server, generated alongside title)
  *   dominantEntities → ingestion pipeline (server, async after extraction)
@@ -14,13 +14,13 @@
  *   entity_*         → entity-scoped session creation (read-only after creation)
  *
  * Mutation strategy:
- *   All server-side fields are written via PATCH .update({ metadata: { ...existing, ...patch } })
- *   so existing keys are never clobbered. The client only writes `messages` (and reads everything).
+ *   Server-side fields are written via PATCH .update({ metadata: { ...existing, ...patch } }).
+ *   The client no longer writes messages — omegaChatService persists to chat_messages.
  */
 
 export interface ConversationMetadata {
-  // ── Message store (UI format) ───────────────────────────────────────────────
-  /** Full message array in UI format, debounced-synced from the client. */
+  // ── Message store (UI format) — DEPRECATED P2 ───────────────────────────────
+  /** @deprecated Legacy snapshot. Canonical messages live in chat_messages. */
   messages?: SerializedMessage[];
 
   // ── Title governance ────────────────────────────────────────────────────────

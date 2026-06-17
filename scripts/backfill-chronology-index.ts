@@ -4,7 +4,7 @@
  * predate the sync trigger.
  *
  * Usage:
- *   npx tsx scripts/backfill-chronology-index.ts --user abelxmendoza@gmail.com
+ *   npx tsx scripts/backfill-chronology-index.ts --user <your-email>
  *   npx tsx scripts/backfill-chronology-index.ts --all
  */
 import { supabaseAdmin as supabase } from '../apps/server/src/services/supabaseClient';

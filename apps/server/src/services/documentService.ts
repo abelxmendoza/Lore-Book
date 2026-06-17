@@ -13,6 +13,7 @@ import { peoplePlacesService } from './peoplePlacesService';
 import { characterRegistry } from './characterRegistry';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { supabaseAdmin } from './supabaseClient';
+import type { NormalizedArtifact } from './ingestion/types';
 
 
 type DocumentAnalysis = {
@@ -31,59 +32,65 @@ type DocumentAnalysis = {
 };
 
 class DocumentService {
+  /**
+   * Canonical document processing from a normalized artifact (unified ingestion path).
+   */
+  async processDocumentFromArtifact(
+    userId: string,
+    artifact: NormalizedArtifact
+  ): Promise<{
+    success: boolean;
+    entriesCreated: number;
+    charactersCreated: number;
+    sectionsCreated: number;
+    entryIds: string[];
+  }> {
+    const analysis = await this.analyzeDocument(artifact.text, artifact.filename);
+    await this.storeOriginalDocument(userId, artifact.text, artifact.filename, analysis.languageStyle, artifact.sourceFileId);
+
+    const entryIds: string[] = [];
+    const entriesCreated = await this.createEntriesFromDocument(
+      userId,
+      analysis.entries,
+      artifact.sourceFileId,
+      entryIds
+    );
+    const charactersCreated = await this.createCharactersFromDocument(
+      userId,
+      analysis.characters,
+      artifact.sourceFileId
+    );
+    const sectionsCreated = await this.createMemoirSectionsFromDocument(
+      userId,
+      analysis.memoirSections,
+      analysis.languageStyle
+    );
+
+    return {
+      success: true,
+      entriesCreated,
+      charactersCreated,
+      sectionsCreated,
+      entryIds,
+    };
+  }
+
+  /** @deprecated Use unifiedFileIngestionService — kept for backward compatibility */
   async processDocument(
     userId: string,
     fileContent: string,
     fileName: string,
     fileType: string
   ): Promise<{ success: boolean; entriesCreated: number; charactersCreated: number; sectionsCreated: number }> {
-    try {
-      // Extract text from document (handle different formats)
-      const text = await this.extractText(fileContent, fileType);
-
-      // Analyze document with AI
-      const analysis = await this.analyzeDocument(text, fileName);
-
-      // Store original document for reference
-      await this.storeOriginalDocument(userId, text, fileName, analysis.languageStyle);
-
-      // Create entries from document
-      const entriesCreated = await this.createEntriesFromDocument(userId, analysis.entries);
-
-      // Create characters from document
-      const charactersCreated = await this.createCharactersFromDocument(userId, analysis.characters);
-
-      // Create memoir sections from document
-      const sectionsCreated = await this.createMemoirSectionsFromDocument(userId, analysis.memoirSections, analysis.languageStyle);
-
-      return {
-        success: true,
-        entriesCreated,
-        charactersCreated,
-        sectionsCreated
-      };
-    } catch (error) {
-      logger.error({ error }, 'Failed to process document');
-      throw error;
-    }
-  }
-
-  private async extractText(content: string, fileType: string): Promise<string> {
-    // For now, handle plain text and base64 encoded files
-    // In production, you'd want to use libraries like pdf-parse, mammoth (for DOCX), etc.
-    
-    if (fileType === 'text/plain' || fileType === 'text/markdown') {
-      return content;
-    }
-
-    // If it's base64 encoded, decode it
-    if (content.startsWith('data:')) {
-      const base64Data = content.split(',')[1];
-      const decoded = Buffer.from(base64Data, 'base64').toString('utf-8');
-      return decoded;
-    }
-
-    return content;
+    const result = await this.processDocumentFromArtifact(userId, {
+      text: fileContent,
+      mediaRefs: [],
+      detectedDate: null,
+      sourceFileId: 'legacy',
+      mimeType: fileType,
+      filename: fileName,
+    });
+    return result;
   }
 
   private async analyzeDocument(text: string, fileName: string): Promise<DocumentAnalysis> {
@@ -173,7 +180,8 @@ Detection patterns to look for:
     userId: string,
     text: string,
     fileName: string,
-    languageStyle: string
+    languageStyle: string,
+    sourceFileId?: string
   ): Promise<void> {
     const { error } = await supabaseAdmin
       .from('original_documents')
@@ -184,7 +192,7 @@ Detection patterns to look for:
         content: text,
         language_style: languageStyle,
         uploaded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id,file_name'
       });
@@ -204,7 +212,9 @@ Detection patterns to look for:
       content_type?: string;
       preserve_original_language?: boolean;
       original_content?: string;
-    }>
+    }>,
+    sourceFileId?: string,
+    entryIdsOut?: string[]
   ): Promise<number> {
     let created = 0;
     for (const entry of entries) {
@@ -221,7 +231,7 @@ Detection patterns to look for:
         // Use original_content if provided, otherwise use content
         const originalContent = entry.original_content || entry.content;
         
-        await memoryService.saveEntry({
+        const entry = await memoryService.saveEntry({
           userId,
           content: entry.content,
           date: entry.date,
@@ -233,9 +243,11 @@ Detection patterns to look for:
           metadata: { 
             imported: true,
             detection_confidence: detected.confidence,
-            auto_detected: !entry.content_type
+            auto_detected: !entry.content_type,
+            ...(sourceFileId ? { source_file_id: sourceFileId, user_file_id: sourceFileId } : {}),
           }
         });
+        entryIdsOut?.push(entry.id);
         created++;
       } catch (error) {
         logger.warn({ error, entry }, 'Failed to create entry from document');
@@ -246,7 +258,8 @@ Detection patterns to look for:
 
   private async createCharactersFromDocument(
     userId: string,
-    characters: Array<{ name: string; description?: string; relationships?: string[] }>
+    characters: Array<{ name: string; description?: string; relationships?: string[] }>,
+    sourceFileId?: string
   ): Promise<number> {
     let created = 0;
     for (const char of characters) {
@@ -287,7 +300,8 @@ Detection patterns to look for:
             avatar_url: avatarUrl,
             metadata: {
               relationships: char.relationships || [],
-              imported: true
+              imported: true,
+              ...(sourceFileId ? { source_file_id: sourceFileId } : {}),
             },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
