@@ -4,6 +4,7 @@ import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { HeroSection } from '../components/landing/HeroSection';
 import { FeatureCard } from '../components/landing/FeatureCard';
+import { IntelligenceSection } from '../components/landing/IntelligenceSection';
 import { CTASection } from '../components/landing/CTASection';
 import {
   Brain,
@@ -235,6 +236,10 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+        {/* 5b. How LoreBook thinks — technical credibility, late placement so it
+             deepens trust at the decision point without disrupting the pitch above */}
+        <IntelligenceSection />
 
         {/* 6. CTA */}
         <CTASection
