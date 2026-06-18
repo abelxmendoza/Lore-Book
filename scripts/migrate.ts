@@ -6,6 +6,7 @@
  *
  * Usage:
  *   npx tsx scripts/migrate.ts base
+ *   npx tsx scripts/migrate.ts engine
  *   npx tsx scripts/migrate.ts ontology
  *   npx tsx scripts/migrate.ts relationship-peripherals
  *   npx tsx scripts/migrate.ts romantic-peripherals
@@ -22,6 +23,11 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const BASE_MIGRATIONS = [
   'migrations/000_setup_all_tables.sql',
   'migrations/20250102_conversational_orchestration.sql',
+];
+
+export const ENGINE_MIGRATIONS = [
+  'supabase/migrations/20250224000102_engine_results.sql',
+  'supabase/migrations/20260618090000_engine_dependencies.sql',
 ];
 
 export const ONTOLOGY_MIGRATIONS = [
@@ -51,6 +57,25 @@ export async function resolveCommand(argv: string[]): Promise<{ label: string; c
 
     case 'ontology':
       return { label: 'ontology', cmd: { migrations: ONTOLOGY_MIGRATIONS.map((file) => ({ file })) } };
+
+    case 'engine':
+      return {
+        label: 'engine',
+        cmd: {
+          migrations: ENGINE_MIGRATIONS.map((file) => ({ file })),
+          verify: async (pool) => {
+            const r = await pool.query(`
+              SELECT
+                to_regclass('public.engine_results') AS engine_results,
+                to_regclass('public.engine_dependencies') AS engine_dependencies
+            `);
+            console.log('  verify →', r.rows[0]);
+            if (!r.rows[0]?.engine_results || !r.rows[0]?.engine_dependencies) {
+              throw new Error('engine_results or engine_dependencies still missing after migration');
+            }
+          },
+        },
+      };
 
     case 'relationship-peripherals':
       return {
@@ -108,7 +133,7 @@ export async function runMigrate(argv: string[]): Promise<void> {
   const resolved = await resolveCommand(argv);
   if (!resolved) {
     throw new Error(
-      'Usage: migrate.ts <base|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
+      'Usage: migrate.ts <base|engine|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
     );
   }
   await applyMigrations({ root: ROOT, label: resolved.label, ...resolved.cmd });

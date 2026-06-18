@@ -44,6 +44,7 @@ import {
   runMigrate,
   ROOT,
   BASE_MIGRATIONS,
+  ENGINE_MIGRATIONS,
   ONTOLOGY_MIGRATIONS,
 } from '../../../../scripts/migrate';
 
@@ -60,6 +61,13 @@ describe('migrate — resolveCommand (unit)', () => {
     expect(r?.label).toBe('ontology');
     expect(r?.cmd.migrations.map((m) => m.file)).toEqual(ONTOLOGY_MIGRATIONS);
     expect(r?.cmd.requirePooler).toBeUndefined();
+  });
+
+  it('maps "engine" to engine_results + engine_dependencies migrations', async () => {
+    const r = await resolveCommand(['engine']);
+    expect(r?.label).toBe('engine');
+    expect(r?.cmd.migrations.map((m) => m.file)).toEqual(ENGINE_MIGRATIONS);
+    expect(typeof r?.cmd.verify).toBe('function');
   });
 
   it('attaches a verify hook for relationship-peripherals', async () => {
@@ -90,8 +98,8 @@ describe('migrate — resolveCommand (unit)', () => {
     expect(await resolveCommand([])).toBeNull();
   });
 
-  it('base/ontology lists reference .sql files only', () => {
-    for (const f of [...BASE_MIGRATIONS, ...ONTOLOGY_MIGRATIONS]) {
+  it('base/ontology/engine lists reference .sql files only', () => {
+    for (const f of [...BASE_MIGRATIONS, ...ENGINE_MIGRATIONS, ...ONTOLOGY_MIGRATIONS]) {
       expect(f).toMatch(/\.sql$/);
     }
   });

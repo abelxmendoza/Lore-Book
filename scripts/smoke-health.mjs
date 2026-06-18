@@ -42,6 +42,30 @@ function resolveHealthUrl(base) {
   return /\/api\/health$/.test(trimmed) ? trimmed : `${trimmed}/api/health`;
 }
 
+function resolveDbHealthUrl(base) {
+  const trimmed = base.replace(/\/+$/, '').replace(/\/api\/health$/, '');
+  return `${trimmed}/api/health/db`;
+}
+
+/** After liveness passes, verify schema is not degraded (503 guard would block all API routes). */
+async function assertDbSchemaHealthy(base, timeoutMs) {
+  const dbUrl = resolveDbHealthUrl(base);
+  const res = await fetch(dbUrl, {
+    signal: AbortSignal.timeout(timeoutMs),
+    cache: 'no-store',
+  });
+  if (res.status !== 200) {
+    throw new Error(`DB schema probe returned HTTP ${res.status} (${dbUrl})`);
+  }
+  const payload = await res.json().catch(() => ({}));
+  if (payload.status === 'degraded') {
+    const missing = Array.isArray(payload.missingTables) ? payload.missingTables.join(', ') : 'unknown';
+    throw new Error(
+      `Database schema degraded (missing: ${missing}). Run: npm run migrate:engine`,
+    );
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
@@ -95,6 +119,17 @@ async function main() {
 
         console.log(`✅ Healthy (HTTP 200) on attempt ${i}/${attempts}`);
         if (body) console.log(`   body: ${body.slice(0, 300)}`);
+
+        try {
+          await assertDbSchemaHealthy(base, timeoutMs);
+          console.log('✅ DB schema OK (/api/health/db)');
+        } catch (schemaErr) {
+          lastError = schemaErr?.message || String(schemaErr);
+          console.warn(`   attempt ${i}/${attempts}: ${lastError}`);
+          await sleep(intervalMs);
+          continue;
+        }
+
         process.exit(0);
       }
 
@@ -112,6 +147,7 @@ async function main() {
   console.error(`   URL: ${url}`);
   console.error('   If this is a Railway 502 "Application failed to respond", verify the');
   console.error('   public domain Target port matches the PORT env var (railway domain).');
+  console.error('   If liveness passed but schema failed, run: npm run migrate:engine');
   process.exit(1);
 }
 
