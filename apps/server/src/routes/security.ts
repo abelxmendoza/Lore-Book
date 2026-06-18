@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { createCsrfTokenForUserAsync } from '../middleware/csrf';
+import { createCsrfTokenForUser } from '../middleware/csrf';
 import { logSecurityEvent } from '../services/securityLog';
 
 const router = Router();
@@ -16,7 +16,7 @@ const router = Router();
  * In development, CSRF is disabled so this returns a placeholder.
  * In production, returns the live token stored for req.user.id.
  */
-router.get('/csrf-token', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/csrf-token', requireAuth, (req: AuthenticatedRequest, res) => {
   const isDev = process.env.NODE_ENV === 'development' ||
     (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
 
@@ -25,7 +25,7 @@ router.get('/csrf-token', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   const userId = req.user!.id;
-  const token = await createCsrfTokenForUserAsync(userId);
+  const token = createCsrfTokenForUser(userId);
 
   res.setHeader('X-CSRF-Token', token);
 

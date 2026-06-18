@@ -1,7 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
 
-import { getRedisClient, isRedisConfigured } from '../lib/redis';
-import { logger } from '../logger';
 import { logSecurityEvent } from '../services/securityLog';
 
 interface RateLimitStore {
@@ -41,7 +39,7 @@ const getMaxRequests = (req: Request) => {
 // Factory for endpoint-specific rate limiters
 export function createRateLimiter(prodMax: number, windowMs = RATE_LIMIT_WINDOW_MS) {
   const limitStore: RateLimitStore = {};
-  const applyInMemoryLimit = (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const clientId = getClientId(req);
     const max = isDevelopment() ? 10000 : prodMax;
     const now = Date.now();
@@ -65,21 +63,6 @@ export function createRateLimiter(prodMax: number, windowMs = RATE_LIMIT_WINDOW_
     record.count++;
     next();
   };
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!isRedisConfigured()) {
-      return applyInMemoryLimit(req, res, next);
-    }
-
-    void applyEndpointRedisLimit(req, res, prodMax, windowMs, next)
-      .then((handled) => {
-        if (!handled) applyInMemoryLimit(req, res, next);
-      })
-      .catch((error) => {
-        logger.warn({ error }, 'Redis endpoint rate limit failed; falling back to in-memory state');
-        applyInMemoryLimit(req, res, next);
-      });
-  };
 }
 
 const getClientId = (req: Request): string => {
@@ -91,61 +74,7 @@ const getMethodBucket = (req: Request): 'read' | 'write' => {
   return method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'read' : 'write';
 };
 
-const applyRedisRateLimit = async (
-  req: Request,
-  res: Response,
-  key: string,
-  max: number,
-  windowMs: number
-): Promise<boolean | null> => {
-  const redis = await getRedisClient();
-  if (!redis) return null;
-
-  const redisKey = `lk:rate:${key}`;
-  const windowSeconds = Math.ceil(windowMs / 1000);
-  const count = await redis.incr(redisKey);
-  if (count === 1) {
-    await redis.expire(redisKey, windowSeconds);
-  }
-
-  if (count <= max) {
-    return false;
-  }
-
-  const ttl = await redis.ttl(redisKey);
-  const retryAfter = ttl > 0 ? ttl : windowSeconds;
-  logSecurityEvent('rate_limit_exceeded', {
-    ip: req.ip,
-    path: req.path,
-    clientId: key.substring(0, 8),
-    userAgent: req.headers['user-agent'] || 'unknown',
-    backend: 'redis',
-  });
-  res.setHeader('Retry-After', String(retryAfter));
-  res.status(429).json({
-    error: 'Too many requests',
-    message: 'Rate limit exceeded. Please try again later.',
-    retryAfter,
-  });
-  return true;
-};
-
 export const rateLimitMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  if (!isRedisConfigured()) {
-    return rateLimitMiddlewareInMemory(req, res, next);
-  }
-
-  void rateLimitMiddlewareAsync(req, res, next).catch((error) => {
-    logger.warn({ error }, 'Redis rate limit failed; falling back to in-memory state');
-    rateLimitMiddlewareInMemory(req, res, next);
-  });
-};
-
-const rateLimitMiddlewareInMemory = (
   req: Request,
   res: Response,
   next: NextFunction
@@ -183,43 +112,6 @@ const rateLimitMiddlewareInMemory = (
 
   record.count++;
   next();
-};
-
-const rateLimitMiddlewareAsync = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  const clientId = `${getClientId(req)}:${getMethodBucket(req)}`;
-  const max = getMaxRequests(req);
-  const redisLimited = await applyRedisRateLimit(req, res, clientId, max, RATE_LIMIT_WINDOW_MS);
-  if (redisLimited !== null) {
-    if (redisLimited) return;
-    return next();
-  }
-  return rateLimitMiddlewareInMemory(req, res, next);
-};
-
-const applyEndpointRedisLimit = async (
-  req: Request,
-  res: Response,
-  prodMax: number,
-  windowMs: number,
-  next: NextFunction
-) => {
-  const clientId = getClientId(req);
-  const max = isDevelopment() ? 10000 : prodMax;
-  const redisLimited = await applyRedisRateLimit(
-    req,
-    res,
-    `custom:${clientId}:${req.path}`,
-    max,
-    windowMs
-  );
-  if (redisLimited === null) return false;
-  if (redisLimited) return true;
-  next();
-  return true;
 };
 
 // Cleanup old entries periodically
