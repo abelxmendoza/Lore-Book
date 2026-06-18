@@ -13,6 +13,8 @@ export const REQUIRED_TABLES = [
   'journal_entries',
   'characters',
   'tasks',
+  'engine_results',
+  'engine_dependencies',
 ] as const;
 
 export type SchemaStatus = 'ok' | 'degraded';

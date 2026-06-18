@@ -9,6 +9,11 @@ import { createContext, useContext, useState, useEffect, useRef, ReactNode, useC
 import { config } from '../config/env';
 import { useAuth } from '../lib/supabase';
 import {
+  checkBackendHealth,
+  describeBackendHealthFailure,
+  type BackendHealthResult,
+} from '../lib/backendHealth';
+import {
   type RuntimeIdentityType,
   resolveRuntimeIdentity,
   setGlobalRuntimeIdentity,
@@ -29,6 +34,7 @@ interface MockDataContextType {
   setIsMockDataActive: (value: boolean) => void;
   /** True when /api/health failed on load; mock is auto-enabled so the app works without the server */
   backendUnavailable: boolean;
+  backendHealth: BackendHealthResult | null;
   /** Legacy 3-way mode — kept for backward compat. Prefer runtimeIdentity. */
   runtimeDataMode: RuntimeDataMode;
   /** Canonical runtime identity — single source of truth for all capability decisions. */
@@ -73,11 +79,16 @@ export function setGlobalIsGuest(value: boolean) {
 
 // Global backend-unavailable flag so fetchJson can short-circuit without hitting the proxy (used outside React).
 let globalBackendUnavailable = false;
+let globalBackendHealth: BackendHealthResult | null = null;
 export function getBackendUnavailable(): boolean {
   return globalBackendUnavailable;
 }
-export function setGlobalBackendUnavailable(value: boolean) {
+export function getGlobalBackendHealth(): BackendHealthResult | null {
+  return globalBackendHealth;
+}
+export function setGlobalBackendUnavailable(value: boolean, health: BackendHealthResult | null = null) {
   globalBackendUnavailable = value;
+  globalBackendHealth = health;
 }
 
 // RuntimeDataMode — single source of truth for what class of data is currently active.
@@ -93,6 +104,7 @@ function setGlobalRuntimeDataMode(mode: RuntimeDataMode) {
 const backendReachableListeners = new Set<() => void>();
 export function notifyBackendReachable() {
   globalBackendUnavailable = false;
+  globalBackendHealth = null;
   backendReachableListeners.forEach((fn) => fn());
 }
 export function subscribeToBackendReachable(listener: () => void) {
@@ -162,12 +174,25 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
 
   const [isMockDataActive, setIsMockDataActive] = useState(false);
   const [backendUnavailable, setBackendUnavailableState] = useState(false);
+  const [backendHealth, setBackendHealth] = useState<BackendHealthResult | null>(null);
   const healthCheckInFlight = useRef(false);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setBackendUnavailable = useCallback((value: boolean) => {
+  const setBackendUnavailable = useCallback((value: boolean, health: BackendHealthResult | null = null) => {
     setBackendUnavailableState(value);
-    setGlobalBackendUnavailable(value);
+    setBackendHealth(health);
+    setGlobalBackendUnavailable(value, health);
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__lk_backend_health = health;
+    }
+    if (health && !health.ok) {
+      console.warn('[BackendHealth]', describeBackendHealthFailure(health), {
+        url: health.url,
+        kind: health.kind,
+        status: health.status,
+        checkedAt: health.checkedAt,
+      });
+    }
   }, []);
 
   // checkHealth: single flight, 2s timeout; on success clear backendUnavailable; on failure set it and schedule retry in 5s
@@ -176,25 +201,15 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     if (healthCheckInFlight.current) return;
     healthCheckInFlight.current = true;
     const base = config.api.url || '';
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
-    fetch(`${base}/api/health`, { method: 'GET', signal: controller.signal })
-      .then((res) => {
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          setBackendUnavailable(false);
-        } else {
-          setBackendUnavailable(true);
-          // Never enable mock data for authenticated users — they should always see real errors
-          if (!user) {
-            setUseMockDataState(true);
-            setGlobalMockDataEnabled(true);
-          }
+    checkBackendHealth(base, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS })
+      .then((health) => {
+        if (health.ok) {
+          setBackendUnavailable(false, null);
+          return;
         }
-      })
-      .catch(() => {
-        clearTimeout(timeoutId);
-        setBackendUnavailable(true);
+
+        setBackendUnavailable(true, health);
+        // Never enable mock data for authenticated users — they should always see real errors
         if (!user) {
           setUseMockDataState(true);
           setGlobalMockDataEnabled(true);
@@ -228,9 +243,9 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
 
   // When any API request succeeds (e.g. Entities), clear the banner
   useEffect(() => {
-    const clearBanner = () => setBackendUnavailableState(false);
+    const clearBanner = () => setBackendUnavailable(false, null);
     return subscribeToBackendReachable(clearBanner);
-  }, []);
+  }, [setBackendUnavailable]);
 
   // When user logs in, turn off mock data and clear guest flag
   useEffect(() => {
@@ -307,6 +322,7 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
       isMockDataActive,
       setIsMockDataActive,
       backendUnavailable,
+      backendHealth,
       runtimeDataMode,
       runtimeIdentity,
     }}>
@@ -322,4 +338,3 @@ export function useMockData() {
   }
   return context;
 }
-

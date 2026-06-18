@@ -63,6 +63,29 @@ if (!securityCheck.passed) {
 
 const app = express();
 
+const normalizeOrigin = (value: string | undefined): string | null => {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/+$/, '');
+  }
+};
+
+const getAllowedCorsOrigins = (): string[] => {
+  const configuredOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.VITE_API_URL?.replace(/\/api\/?$/, ''),
+    'https://lorebookai.com',
+    'https://www.lorebookai.com',
+    'https://lorebook.app',
+    'https://www.lorebook.app',
+    'https://lore-keeper-web.vercel.app',
+  ];
+
+  return [...new Set(configuredOrigins.map(normalizeOrigin).filter(Boolean) as string[])];
+};
+
 // Configure Helmet with strict security in production, permissive in development
 app.use(
   helmet({
@@ -121,15 +144,7 @@ app.use(cors({
       }
     : (origin, callback) => {
         // In production, only allow specific origins
-        const allowedOrigins = [
-          process.env.FRONTEND_URL,
-          process.env.VITE_API_URL?.replace(/\/api\/?$/, ''), // Base URL without /api
-          'https://lorebookai.com',
-          'https://www.lorebookai.com',
-          'https://lorebook.app',
-          'https://www.lorebook.app',
-          'https://lore-keeper-web.vercel.app' // Legacy — keep until all traffic migrated
-        ].filter(Boolean) as string[];
+        const allowedOrigins = getAllowedCorsOrigins();
 
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) {
@@ -137,9 +152,11 @@ app.use(cors({
         }
 
         // Allow any localhost/127.0.0.1 port (dev tools, mobile simulators, browser extensions)
+        const normalizedOrigin = normalizeOrigin(origin);
         const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+        const isVercelPreview = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
 
-        if (isLocalhost || allowedOrigins.includes(origin)) {
+        if (isLocalhost || isVercelPreview || (normalizedOrigin && allowedOrigins.includes(normalizedOrigin))) {
           callback(null, true);
         } else {
           logger.warn({ origin, allowedOrigins }, 'CORS: Blocked request from unauthorized origin');
@@ -202,9 +219,16 @@ app.get('/api/health/db', async (_req, res) => {
   });
 });
 
+// Runtime diagnostics — public, no auth.
+app.use('/api/runtime', runtimeRouter);
+
 // Schema guard for ALL /api routes (including public): return 503 when DB tables missing (prevents 500/PGRST205 flood)
 app.use('/api', (req, res, next) => {
-  if (req.originalUrl === '/api/health' || req.originalUrl === '/api/health/db') return next();
+  if (
+    req.originalUrl === '/api/health' ||
+    req.originalUrl === '/api/health/db' ||
+    req.originalUrl.startsWith('/api/runtime/')
+  ) return next();
   if (getSchemaStatus() === 'degraded') {
     return res.status(503).json({
       error: 'Database schema incomplete',
@@ -252,9 +276,6 @@ registerRoutes(app, apiRouter);
 
 // Mount protected routes under /api
 app.use('/api', apiRouter);
-
-// Runtime diagnostics — public, no auth (must be after apiRouter so it doesn't go through the auth stack)
-app.use('/api/runtime', runtimeRouter);
 
 // API Documentation (only in development or when enabled)
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {

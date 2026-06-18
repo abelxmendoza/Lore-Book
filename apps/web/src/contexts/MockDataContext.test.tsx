@@ -18,8 +18,15 @@ const ReadsContext = () => {
 };
 
 const ReadsBackendUnavailable = () => {
-  const { backendUnavailable } = useMockData();
-  return <span data-testid="backend-unavailable">{String(backendUnavailable)}</span>;
+  const { backendUnavailable, backendHealth } = useMockData();
+  return (
+    <>
+      <span data-testid="backend-unavailable">{String(backendUnavailable)}</span>
+      <span data-testid="backend-health">
+        {backendHealth && !backendHealth.ok ? `${backendHealth.kind}:${backendHealth.status ?? ''}` : 'none'}
+      </span>
+    </>
+  );
 };
 
 describe('MockDataContext', () => {
@@ -79,11 +86,48 @@ describe('MockDataContext', () => {
           },
           { timeout: 3000 }
         );
+        expect(screen.getByTestId('backend-health')).toHaveTextContent('http_error:500');
         await waitFor(
           () => {
             expect(screen.getByTestId('value').textContent).toBe('true');
           },
           { timeout: 1000 }
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('preserves 502 backend health diagnostics for deployed host failures', async () => {
+      const originalFetch = globalThis.fetch;
+      const mockFetch = vi.fn((input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : (input as URL).toString();
+        if (url.includes('/api/health')) {
+          return Promise.resolve({
+            ok: false,
+            status: 502,
+            statusText: 'Bad Gateway',
+            json: async () => ({}),
+            text: async () => '',
+            headers: new Headers(),
+          } as Response);
+        }
+        return originalFetch.call(globalThis, input);
+      });
+      globalThis.fetch = mockFetch;
+
+      try {
+        render(
+          <MockDataProvider>
+            <ReadsBackendUnavailable />
+          </MockDataProvider>
+        );
+
+        await waitFor(
+          () => {
+            expect(screen.getByTestId('backend-health')).toHaveTextContent('http_error:502');
+          },
+          { timeout: 3000 }
         );
       } finally {
         globalThis.fetch = originalFetch;

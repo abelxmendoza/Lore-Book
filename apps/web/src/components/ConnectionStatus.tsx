@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, RefreshCw, X } from 'lucide-react';
 import { config } from '../config/env';
 import { Button } from './ui/button';
+import {
+  checkBackendHealth,
+  describeBackendHealthFailure,
+  type BackendHealthResult,
+} from '../lib/backendHealth';
 
 interface ConnectionStatusProps {
   onDismiss?: () => void;
@@ -9,6 +14,7 @@ interface ConnectionStatusProps {
 
 export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [healthResult, setHealthResult] = useState<BackendHealthResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -25,16 +31,9 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
     }
     setIsChecking(true);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-      const response = await fetch(`${healthBase}/api/health`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      setIsConnected(response.ok);
+      const result = await checkBackendHealth(healthBase, { timeoutMs: 3000 });
+      setHealthResult(result);
+      setIsConnected(result.ok);
       setLastCheck(new Date());
     } catch (error) {
       setIsConnected(false);
@@ -68,6 +67,9 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
   }
 
   const isDeployed = config.env.isProduction || (config.api.url && !config.api.url.includes('localhost') && !config.api.url.includes('127.0.0.1'));
+  const failureDetail = healthResult && !healthResult.ok
+    ? describeBackendHealthFailure(healthResult)
+    : null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-md animate-in slide-in-from-bottom-5">
@@ -91,12 +93,14 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
               </p>
             ) : isDeployed ? (
               <p className="text-xs text-red-100 mb-3">
-                The backend server is not deployed yet. Some features may be unavailable.
+                {failureDetail ?? 'The backend server is not reachable. Some features may be unavailable.'}
               </p>
             ) : (
               <>
                 <p className="text-xs text-red-100 mb-3">
-                  Cannot connect to backend at <code className="bg-red-600/50 px-1 rounded">{config.api.url}</code>
+                  {failureDetail ?? 'Cannot connect to backend.'}
+                  {' '}
+                  <code className="bg-red-600/50 px-1 rounded break-all">{healthResult?.url ?? config.api.url}</code>
                 </p>
                 <div className="space-y-2">
                   <div className="text-xs text-red-100">

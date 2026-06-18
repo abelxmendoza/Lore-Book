@@ -28,12 +28,14 @@ describe('schemaVerification', () => {
   });
 
   describe('REQUIRED_TABLES', () => {
-    it('includes chapters, journal_entries, characters, tasks', () => {
+    it('includes core API and engine runtime tables', () => {
       expect(REQUIRED_TABLES).toContain('chapters');
       expect(REQUIRED_TABLES).toContain('journal_entries');
       expect(REQUIRED_TABLES).toContain('characters');
       expect(REQUIRED_TABLES).toContain('tasks');
-      expect(REQUIRED_TABLES).toHaveLength(4);
+      expect(REQUIRED_TABLES).toContain('engine_results');
+      expect(REQUIRED_TABLES).toContain('engine_dependencies');
+      expect(REQUIRED_TABLES).toHaveLength(6);
     });
   });
 

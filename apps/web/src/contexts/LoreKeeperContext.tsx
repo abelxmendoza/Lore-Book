@@ -12,7 +12,7 @@ import {
 import { useMockData } from './MockDataContext';
 import { getActiveGuestId, getGuestEntries } from '../services/guestLoreStore';
 import { fetchJson } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { supabase, useAuth } from '../lib/supabase';
 import type { CurrentContext } from '../types/currentContext';
 import { MOCK_ENTRIES, MOCK_TIMELINE, MOCK_TAGS, MOCK_CHAPTERS } from '../mocks/journalData';
 
@@ -94,6 +94,7 @@ const LoreKeeperContext = createContext<LoreKeeperContextValue | null>(null);
 /** Internal hook — single instance lives in LoreKeeperProvider. */
 function useLoreKeeperState() {
   const { useMockData: isMockEnabled } = useMockData();
+  const { user, loading: authLoading } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>(() => {
     if (typeof window === 'undefined') return [];
     const cached = window.localStorage.getItem('lorekeeper-cache');
@@ -134,6 +135,10 @@ function useLoreKeeperState() {
       setEntries(getGuestEntries(guestId));
       return;
     }
+    if (!user && !isMockEnabled) {
+      setEntries([]);
+      return;
+    }
     try {
       const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries', undefined, {
         useMockData: isMockEnabled,
@@ -144,7 +149,7 @@ function useLoreKeeperState() {
       console.error('Failed to refresh entries:', error);
       setEntries([]);
     }
-  }, [isMockEnabled]);
+  }, [isMockEnabled, user]);
 
   const refreshTimeline = useCallback(async () => {
     const guestId = getActiveGuestId();
@@ -169,6 +174,11 @@ function useLoreKeeperState() {
       setTags([...tagCounts.entries()].map(([name, count]) => ({ name, count })));
       return;
     }
+    if (!user && !isMockEnabled) {
+      setTimeline(EMPTY_TIMELINE);
+      setTags([]);
+      return;
+    }
     try {
       const [timelineData, tagData] = await Promise.all([
         fetchJson<{ timeline: TimelineResponse }>('/api/timeline', undefined, {
@@ -187,9 +197,14 @@ function useLoreKeeperState() {
       setTimeline(EMPTY_TIMELINE);
       setTags([]);
     }
-  }, [isMockEnabled]);
+  }, [isMockEnabled, user]);
 
   const refreshChapters = useCallback(async () => {
+    if (!user && !isMockEnabled) {
+      setChapters([]);
+      setChapterCandidates([]);
+      return;
+    }
     try {
       const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>(
         '/api/chapters',
@@ -206,7 +221,7 @@ function useLoreKeeperState() {
       setChapters([]);
       setChapterCandidates([]);
     }
-  }, [isMockEnabled]);
+  }, [isMockEnabled, user]);
 
   /** Lazy — not called on app boot (OpenAI ~7s; no UI reads evolution on chat load). */
   const refreshEvolution = useCallback(async (refresh = false) => {
@@ -371,10 +386,11 @@ function useLoreKeeperState() {
 
   // Single bootstrap per app session — not per useLoreKeeper() caller.
   useEffect(() => {
+    if (authLoading) return;
     void refreshEntries().catch((err) => console.error('Failed to refresh entries on mount:', err));
     void refreshTimeline().catch((err) => console.error('Failed to refresh timeline on mount:', err));
     void refreshChapters().catch((err) => console.error('Failed to refresh chapters on mount:', err));
-  }, [refreshEntries, refreshTimeline, refreshChapters]);
+  }, [authLoading, refreshEntries, refreshTimeline, refreshChapters]);
 
   const prevMock = useRef(isMockEnabled);
   useEffect(() => {

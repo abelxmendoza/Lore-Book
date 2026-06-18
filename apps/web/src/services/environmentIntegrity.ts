@@ -16,6 +16,7 @@
  */
 
 import { runtimeDiagnostics } from '../features/chat/services/runtimeDiagnostics';
+import { checkBackendHealth, describeBackendHealthFailure, type BackendHealthResult } from '../lib/backendHealth';
 
 interface EnvCheckResult {
   variable: string;
@@ -28,6 +29,7 @@ interface IntegrityReport {
   ok: boolean;
   checks: EnvCheckResult[];
   apiHealth: 'ok' | 'fail' | 'skip';
+  apiHealthDetail?: BackendHealthResult;
   warnings: string[];
   errors: string[];
 }
@@ -117,43 +119,40 @@ async function runIntegrityCheck(): Promise<IntegrityReport> {
 
   // ── API health check ─────────────────────────────────────────────────────────
   let apiHealth: 'ok' | 'fail' | 'skip' = 'skip';
+  let apiHealthDetail: BackendHealthResult | undefined;
   const apiBase = apiUrl ?? '';
 
   // Only ping health if we have an explicit URL, or we're in dev (proxy handles it)
   const shouldPingHealth = !!apiBase || !isProduction;
   if (shouldPingHealth) {
-    try {
-      const res = await fetch(`${apiBase}/api/health`, {
-        signal: AbortSignal.timeout(5000),
-        cache: 'no-store',
+    const health = await checkBackendHealth(apiBase, { timeoutMs: 5000 });
+    apiHealthDetail = health;
+    if (health.ok) {
+      apiHealth = 'ok';
+      runtimeDiagnostics.record('api_health_ok', {
+        meta: { status: health.status, url: health.url },
       });
-      if (res.ok) {
-        apiHealth = 'ok';
-        runtimeDiagnostics.record('api_health_ok', { meta: { status: res.status } });
-      } else {
-        apiHealth = 'fail';
-        runtimeDiagnostics.record('api_health_fail', { meta: { status: res.status } });
-        if (isProduction && useMockData === 'false') {
-          warnings.push(
-            `/api/health returned HTTP ${res.status}. ` +
-            'Check that your backend server is deployed and VITE_API_URL points to it.'
-          );
-        }
-      }
-    } catch {
+    } else {
       apiHealth = 'fail';
-      runtimeDiagnostics.record('api_health_fail', { meta: { reason: 'unreachable' } });
+      runtimeDiagnostics.record('api_health_fail', {
+        meta: {
+          reason: health.kind,
+          status: health.status,
+          url: health.url,
+          message: health.message,
+        },
+      });
       if (isProduction && useMockData === 'false') {
         warnings.push(
-          'Backend /api/health is unreachable. ' +
-          'Confirm your backend is deployed and VITE_API_URL is set correctly.'
+          `${describeBackendHealthFailure(health)} ` +
+          'Confirm the backend deployment is running and VITE_API_URL points to it.'
         );
       }
     }
   }
 
   const ok = errors.length === 0;
-  const report: IntegrityReport = { ok, checks, apiHealth, warnings, errors };
+  const report: IntegrityReport = { ok, checks, apiHealth, apiHealthDetail, warnings, errors };
   cachedReport = report;
 
   logReport(report);

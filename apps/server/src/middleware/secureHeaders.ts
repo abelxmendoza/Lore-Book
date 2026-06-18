@@ -19,7 +19,9 @@ export const secureHeaders = (req: Request, res: Response, next: NextFunction) =
     "style-src 'self' 'unsafe-inline'", // Needed for Tailwind
     "img-src 'self' data: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co https://api.openai.com",
+    "connect-src 'self' https://*.supabase.co https://api.openai.com https://*.sentry.io https://*.ingest.us.sentry.io https://lore-book-production.up.railway.app",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://m.stripe.network",
+    "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",
@@ -29,8 +31,8 @@ export const secureHeaders = (req: Request, res: Response, next: NextFunction) =
 
   if (process.env.NODE_ENV === 'development') {
     // Allow Vite HMR in development
-    csp.push("connect-src 'self' ws://localhost:* http://localhost:* https://*.supabase.co https://api.openai.com");
-    csp.push("script-src 'self' 'unsafe-eval' 'unsafe-inline' 'nonce-${nonce}'");
+    csp[5] = "connect-src 'self' ws://localhost:* http://localhost:* https://*.supabase.co https://api.openai.com https://*.sentry.io https://*.ingest.us.sentry.io";
+    csp[1] = `script-src 'self' 'unsafe-eval' 'unsafe-inline' 'nonce-${nonce}'`;
   }
 
   res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
