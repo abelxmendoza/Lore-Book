@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
+import { getRedisClient, isRedisConfigured } from '../lib/redis';
 import { logger } from '../logger';
 import { logSecurityEvent } from '../services/securityLog';
 
@@ -189,12 +190,88 @@ const recordSuspiciousActivity = (req: Request, patterns: string[]) => {
   }
 };
 
+const recordSuspiciousActivityRedis = async (
+  req: Request,
+  patterns: string[]
+): Promise<SuspiciousActivity | null> => {
+  if (patterns.length === 0) return null;
+  const redis = await getRedisClient();
+  if (!redis) return null;
+
+  const key = req.ip || 'unknown';
+  const redisKey = `lk:intrusion:${key}`;
+  const now = Date.now();
+  const raw = await redis.get(redisKey);
+  let activity: SuspiciousActivity | null = null;
+  if (raw) {
+    try {
+      activity = JSON.parse(raw) as SuspiciousActivity;
+    } catch {
+      activity = null;
+    }
+  }
+
+  if (!activity || now - activity.firstSeen > WINDOW_MS) {
+    activity = {
+      ip: key,
+      patterns: [...new Set(patterns)],
+      count: patterns.length,
+      firstSeen: now,
+      lastSeen: now,
+    };
+  } else {
+    activity.patterns = [...new Set([...activity.patterns, ...patterns])];
+    activity.count += patterns.length;
+    activity.lastSeen = now;
+  }
+
+  await redis.set(redisKey, JSON.stringify(activity), { EX: Math.ceil(WINDOW_MS / 1000) });
+
+  logSecurityEvent('suspicious_activity_detected', {
+    ip: key,
+    path: req.path,
+    method: req.method,
+    patterns: activity.patterns,
+    count: activity.count,
+    userAgent: req.headers['user-agent'],
+    backend: 'redis',
+  });
+
+  if (activity.count >= BLOCK_THRESHOLD) {
+    logSecurityEvent('ip_blocked', {
+      ip: key,
+      reason: 'suspicious_activity_threshold_exceeded',
+      patterns: activity.patterns,
+      count: activity.count,
+      backend: 'redis',
+    });
+    logger.warn({ ip: key, patterns: activity.patterns, count: activity.count }, 'IP blocked due to suspicious activity');
+  }
+
+  return activity;
+};
+
 /** Clears in-memory state — for tests and dev server hot reload. */
 export const resetIntrusionDetectionState = () => {
   suspiciousActivities.clear();
 };
 
 export const intrusionDetection = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!isRedisConfigured()) {
+    return intrusionDetectionInMemory(req, res, next);
+  }
+
+  void intrusionDetectionAsync(req, res, next).catch((error) => {
+    logger.warn({ error }, 'Redis intrusion detection failed; falling back to in-memory state');
+    intrusionDetectionInMemory(req, res, next);
+  });
+};
+
+const intrusionDetectionInMemory = (
   req: Request,
   res: Response,
   next: NextFunction
@@ -211,7 +288,7 @@ export const intrusionDetection = (
   // Block if threshold exceeded
   if (activity && activity.count >= BLOCK_THRESHOLD) {
     const timeSinceFirstSeen = Date.now() - activity.firstSeen;
-    
+
     // Reset after window expires
     if (timeSinceFirstSeen > WINDOW_MS) {
       suspiciousActivities.delete(key);
@@ -235,6 +312,66 @@ export const intrusionDetection = (
   const patterns = detectSuspiciousPattern(req);
   if (patterns.length > 0) {
     recordSuspiciousActivity(req, patterns);
+  }
+
+  next();
+};
+
+const intrusionDetectionAsync = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const key = req.ip || 'unknown';
+
+  // Local dev traffic (thread sync, CSRF polling) should never self-block the UI.
+  if (isDevelopment() && isLoopbackIp(key)) {
+    return next();
+  }
+
+  const redis = await getRedisClient();
+  const redisActivityRaw = redis ? await redis.get(`lk:intrusion:${key}`) : null;
+  let activity = suspiciousActivities.get(key);
+  if (redisActivityRaw) {
+    try {
+      activity = JSON.parse(redisActivityRaw) as SuspiciousActivity;
+    } catch (error) {
+      logger.warn({ error }, 'Invalid Redis intrusion payload; falling back to in-memory state');
+      await redis?.del(`lk:intrusion:${key}`);
+    }
+  }
+
+  // Block if threshold exceeded
+  if (activity && activity.count >= BLOCK_THRESHOLD) {
+    const timeSinceFirstSeen = Date.now() - activity.firstSeen;
+
+    // Reset after window expires
+    if (timeSinceFirstSeen > WINDOW_MS) {
+      suspiciousActivities.delete(key);
+      await redis?.del(`lk:intrusion:${key}`);
+      return next();
+    }
+
+    logSecurityEvent('blocked_request', {
+      ip: key,
+      path: req.path,
+      method: req.method,
+      reason: 'ip_blocked',
+    });
+
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Access denied due to suspicious activity',
+    });
+  }
+
+  // Detect suspicious patterns
+  const patterns = detectSuspiciousPattern(req);
+  if (patterns.length > 0) {
+    const redisActivity = await recordSuspiciousActivityRedis(req, patterns);
+    if (!redisActivity) {
+      recordSuspiciousActivity(req, patterns);
+    }
   }
 
   next();

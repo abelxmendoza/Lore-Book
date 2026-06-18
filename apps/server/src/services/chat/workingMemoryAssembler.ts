@@ -971,20 +971,26 @@ async function loadPersonCandidates(
     });
   }
 
+  const memoryTargetKey = normalizeNameKey(target ?? '');
   for (const memory of (memories ?? []) as any[]) {
+    const memText = String(memory.summary ?? `Linked memory ${memory.journal_entry_id}`);
+    // A character can be linked to memories that are really about someone else.
+    // Memories whose text names the queried person rank above the rest so a
+    // person query surfaces them first instead of the most recent linked memory.
+    const namesTarget = !memoryTargetKey || normalizeNameKey(memText).includes(memoryTargetKey);
     out.push({
       id: `memory:${memory.id}`,
       type: 'episode',
       title: `Memory involving ${target}`,
-      content: String(memory.summary ?? `Linked memory ${memory.journal_entry_id}`),
+      content: memText,
       source: 'character_memories',
       date: memory.created_at,
       confidence: 0.8,
-      relevance: 0.95,
+      relevance: namesTarget ? 0.95 : 0.8,
       importance: 0.65,
       significance: 0.6,
       relationshipDistance: 1,
-      reasons: ['linked to target character'],
+      reasons: [namesTarget ? 'names the target' : 'linked to target character'],
       metadata: { journal_entry_id: memory.journal_entry_id },
     });
   }
@@ -1188,22 +1194,29 @@ async function loadTextualCandidates(
   const out: Candidate[] = [];
 
   for (const entry of (entries ?? []) as any[]) {
-    const text = String(entry.summary ?? entry.content ?? '');
+    const summaryText = String(entry.summary ?? '');
+    const bodyText = String(entry.content ?? '');
+    const displayText = summaryText || bodyText;
+    // Match the target against the full entry (summary + body). Auto-generated
+    // summaries often omit the person named in the body, so matching on summary
+    // alone silently dropped relevant episodes from PERSON/RELATIONSHIP queries.
+    const matchText = `${summaryText} ${bodyText}`.trim();
+    const matchesTarget = includeByIntent(matchText);
     if (temporalWindow && !occurredInWindow(entry.date, temporalWindow)) continue;
-    if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
+    if (wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
       id: `episode:${entry.id}`,
       type: 'episode',
       title: entry.summary ? String(entry.summary).slice(0, 80) : 'Journal episode',
-      content: text.slice(0, 700),
+      content: displayText.slice(0, 700),
       source: 'journal_entries',
       date: entry.date,
       confidence: 0.72,
-      relevance: temporal ? 0.95 : wantsTarget ? (includeByIntent(text) ? 0.84 : 0.35) : 0.7,
+      relevance: temporal ? 0.95 : wantsTarget ? (matchesTarget ? 0.84 : 0.35) : 0.7,
       importance: 0.5,
       significance: Array.isArray(entry.tags) && entry.tags.length > 0 ? 0.6 : 0.45,
       relationshipDistance: 0.5,
-      reasons: includeByIntent(text) ? ['text matches target'] : ['recent episode'],
+      reasons: matchesTarget ? ['text matches target'] : ['recent episode'],
     });
   }
 
@@ -1733,6 +1746,9 @@ async function loadProjectCandidates(
 }
 
 const INTENT_QUOTA: Partial<Record<WorkingMemoryIntent, { types: WorkingMemoryItem['type'][]; min: number }>> = {
+  // A question about a person should reliably surface at least one episode that
+  // involves them, even when relationship/timeline items score higher.
+  PERSON_QUERY: { types: ['episode'], min: 1 },
   GOAL_QUERY: { types: ['goal'], min: 3 },
   DIRECTION_QUERY: { types: ['goal'], min: 2 },
   PROJECT_QUERY: { types: ['project'], min: 3 },

@@ -186,6 +186,7 @@ app.get('/api/health', (_req, res) => {
       STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: !!process.env.STRIPE_WEBHOOK_SECRET,
       SUBSCRIPTION_PRICE_ID: !!process.env.SUBSCRIPTION_PRICE_ID,
+      REDIS_URL: !!process.env.REDIS_URL,
     },
   });
 });
