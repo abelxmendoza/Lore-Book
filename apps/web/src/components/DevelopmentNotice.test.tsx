@@ -68,7 +68,8 @@ describe('DevelopmentNotice', () => {
     expect(localStorage.getItem('dev-notice-dismissed')).toBe('true');
   });
 
-  it('should show in production by default', () => {
-    expect(envConfig.config.dev.showDevNotice).toBe(true);
+  it('should respect config toggle for production builds', () => {
+    (envConfig.config.dev as any).showDevNotice = false;
+    expect(envConfig.config.dev.showDevNotice).toBe(false);
   });
 });

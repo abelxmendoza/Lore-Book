@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.replace(/\/+$/, '');
+const localBaseUrl = process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -9,7 +12,7 @@ export default defineConfig({
   reporter: 'html',
   timeout: 60000, // Increase global test timeout to 60s
   use: {
-    baseURL: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
+    baseURL: externalBaseUrl || localBaseUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     actionTimeout: 30000, // Increase action timeout to 30s
@@ -42,12 +45,12 @@ export default defineConfig({
   // When E2E_EXTERNAL_SERVER=1, an external process (e.g. start-server-and-test) starts
   // the dev/preview server; we skip starting webServer to avoid "Process from config.webServer
   // was not able to start. Exit code: 1" when the built-in spawn fails.
-  ...(process.env.E2E_EXTERNAL_SERVER
+  ...(process.env.E2E_EXTERNAL_SERVER || externalBaseUrl
     ? {}
     : {
         webServer: {
           command: process.env.CI ? 'npm run preview' : 'npm run dev',
-          url: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
+          url: localBaseUrl,
           reuseExistingServer: !process.env.CI,
           timeout: 120 * 1000,
           env: {

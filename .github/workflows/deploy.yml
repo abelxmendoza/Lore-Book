@@ -138,4 +138,18 @@ jobs:
         run: >-
           node scripts/smoke-health.mjs "$FRONTEND_ORIGIN"
           --attempts 10 --interval-ms 6000 --timeout-ms 10000
-        continue-on-error: true
+
+      - name: Install web dependencies for production smoke
+        working-directory: apps/web
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright Chromium
+        working-directory: apps/web
+        run: npx playwright install chromium
+
+      - name: Production site console smoke (lorebookai.com)
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ vars.FRONTEND_ORIGIN || 'https://lorebookai.com' }}
+          CI: '1'
+        run: npm run test:e2e:production-site

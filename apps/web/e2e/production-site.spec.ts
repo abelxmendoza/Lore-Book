@@ -1,0 +1,65 @@
+import { test, expect } from '@playwright/test';
+
+/**
+ * Live production smoke — runs against PLAYWRIGHT_BASE_URL (e.g. https://lorebookai.com).
+ * Asserts the landing page loads, renders content, and does not emit critical console errors.
+ */
+
+const IGNORED_CONSOLE_PATTERNS = [
+  /127\.0\.0\.1:7242/, // local debug ingest
+  /favicon\.ico/i,
+  /Content-Security-Policy-Report-Only/i,
+  /Failed to load resource.*favicon/i,
+];
+
+function isIgnoredConsoleMessage(text: string): boolean {
+  return IGNORED_CONSOLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+test.describe('Production Site Smoke', () => {
+  test.beforeEach(async () => {
+    test.setTimeout(45000);
+  });
+
+  test('landing page loads with visible content and no critical console errors', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+
+    page.on('console', (msg) => {
+      if (msg.type() !== 'error') return;
+      const text = msg.text();
+      if (!isIgnoredConsoleMessage(text)) consoleErrors.push(text);
+    });
+
+    page.on('pageerror', (error) => {
+      pageErrors.push(error.message);
+    });
+
+    await page.goto('/', { waitUntil: 'networkidle' });
+
+    await expect(page.locator('#root')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /The AI that learns who you are/i })).toBeVisible();
+
+    const devNotice = page.getByRole('heading', { name: /Early Access — Lore Book/i });
+    await expect(devNotice).toHaveCount(0);
+
+    const critical = [...consoleErrors, ...pageErrors].filter(
+      (message) =>
+        message.includes('forwardRef') ||
+        message.includes("can't access property") ||
+        message.includes('ReferenceError') ||
+        message.includes('TypeError') ||
+        message.includes('[ROUTING]'),
+    );
+
+    expect(critical).toEqual([]);
+  });
+
+  test('health endpoint responds through Vercel rewrite', async ({ request, baseURL }) => {
+    const origin = baseURL?.replace(/\/+$/, '') ?? 'https://lorebookai.com';
+    const response = await request.get(`${origin}/api/health`, { timeout: 15000 });
+    expect(response.status()).toBe(200);
+    const body = await response.text();
+    expect(body.length).toBeGreaterThan(0);
+  });
+});

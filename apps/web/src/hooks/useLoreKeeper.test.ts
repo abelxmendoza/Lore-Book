@@ -32,6 +32,24 @@ vi.mock('../lib/supabase', () => ({
   getConfigDebug: vi.fn().mockReturnValue({}),
 }));
 
+vi.mock('../contexts/MockDataContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../contexts/MockDataContext')>();
+  return {
+    ...actual,
+    useMockData: vi.fn(() => ({
+      useMockData: false,
+      isMockDataActive: false,
+      backendUnavailable: false,
+      backendHealth: null,
+      toggleMockData: vi.fn(),
+      setUseMockData: vi.fn(),
+      setIsMockDataActive: vi.fn(),
+      runtimeIdentity: 'REAL_USER' as const,
+      runtimeDataMode: 'REAL' as const,
+    })),
+  };
+});
+
 // Mock fetchJson to prevent real network requests — hook uses fetchJson, not fetch
 const mockFetchJson = vi.fn();
 vi.mock('../lib/api', () => ({

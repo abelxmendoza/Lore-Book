@@ -30,6 +30,7 @@
     "test:black-screen": "vitest run --config vitest.integration.config.ts src/**/*.integration.test.tsx src/**/*.integration.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:production": "playwright test e2e/production-build.spec.ts",
+    "test:e2e:production-site": "PLAYWRIGHT_BASE_URL=https://lorebookai.com playwright test e2e/production-site.spec.ts --project=chromium",
     "test:e2e:security": "start-server-and-test dev http://localhost:5173 test:e2e:security:run",
     "test:e2e:security:run": "E2E_EXTERNAL_SERVER=1 playwright test e2e/security.spec.ts",
     "test:e2e:ui": "playwright test --ui",
