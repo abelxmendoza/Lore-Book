@@ -5,35 +5,100 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  HUSKY: '0'
+  CYPRESS_INSTALL_BINARY: '0'
+
 jobs:
-  deploy:
-    name: Deploy to Vercel
+  verify:
+    name: Verify Production Artifacts
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 20
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/server/package-lock.json
+            apps/web/package-lock.json
 
-      - name: Verify build
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci --legacy-peer-deps
+
+      - name: Build web production bundle
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Validate web build output
+        working-directory: apps/web
+        run: npm run test:build
+
+      - name: Validate web chunk dependencies
+        working-directory: apps/web
+        run: npm run test:chunk-deps
+
+      - name: Build backend container
+        run: docker build --file apps/server/Dockerfile --tag lorekeeper-server-release apps/server
+
+  deploy-web:
+    name: Deploy Web to Vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [verify]
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Vercel secrets
+        id: vercel_secrets
         run: |
-          cd apps/web
-          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
-          npm run build || echo "⚠️ Build verification completed with warnings"
-        continue-on-error: true
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID is missing. Skipping Vercel deploy."
+          fi
 
-      - name: Deploy to Vercel
-        if: ${{ secrets.VERCEL_TOKEN != '' }}
-        uses: amondnet/vercel-action@v25
+      - name: Setup Node.js
+        if: steps.vercel_secrets.outputs.configured == 'true'
+        uses: actions/setup-node@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          github-comment: true
-          github-deployment: false
+          node-version: ${{ env.NODE_VERSION }}
 
+      - name: Install Vercel CLI
+        if: steps.vercel_secrets.outputs.configured == 'true'
+        run: npm install --global vercel@39.3.0
+
+      - name: Pull Vercel environment
+        if: steps.vercel_secrets.outputs.configured == 'true'
+        working-directory: apps/web
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build Vercel artifact
+        if: steps.vercel_secrets.outputs.configured == 'true'
+        working-directory: apps/web
+        run: vercel build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy Vercel artifact
+        if: steps.vercel_secrets.outputs.configured == 'true'
+        working-directory: apps/web
+        run: vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"

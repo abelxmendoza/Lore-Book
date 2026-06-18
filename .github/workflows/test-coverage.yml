@@ -1,45 +1,42 @@
 name: Test Coverage Report
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  HUSKY: '0'
+  CYPRESS_INSTALL_BINARY: '0'
 
 jobs:
   coverage:
-    name: Generate Coverage Report
+    name: Coverage Report
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 20
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
-      - name: Install dependencies
-        run: |
-          cd apps/web
-          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci --legacy-peer-deps
 
-      - name: Run tests with coverage
-        run: |
-          cd apps/web
-          npm run test:coverage || echo "⚠️ Coverage generation completed with warnings"
+      - name: Generate web coverage
+        working-directory: apps/web
+        run: npm run test:coverage
         continue-on-error: true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./apps/web/coverage/coverage-final.json
-          flags: frontend
-          name: frontend-coverage
-          fail_ci_if_error: false
 
       - name: Upload coverage HTML report
         if: always()
@@ -49,4 +46,3 @@ jobs:
           path: apps/web/coverage/
           retention-days: 30
           if-no-files-found: ignore
-

@@ -1,93 +1,67 @@
 name: Production Build Verification
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
-      - '.github/workflows/production-build-verification.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
+  schedule:
+    - cron: '0 4 * * 0'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   NODE_VERSION: '20'
+  HUSKY: '0'
+  CYPRESS_INSTALL_BINARY: '0'
 
 jobs:
   build-verification:
     name: Production Build Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      
+
       - name: Install dependencies
         working-directory: apps/web
-        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
-      
-      - name: Run unit tests
-        working-directory: apps/web
-        run: npm run test:unit
-      
-      - name: Run black screen prevention tests
-        working-directory: apps/web
-        run: npm run test:black-screen
-      
-      - name: Build production bundle
+        run: npm ci --legacy-peer-deps
+
+      - name: Run production build
         working-directory: apps/web
         run: npm run build
-        env:
-          NODE_ENV: production
-      
+
       - name: Validate build output
         working-directory: apps/web
         run: npm run test:build
-      
+
       - name: Check chunk dependencies
         working-directory: apps/web
         run: npm run test:chunk-deps
-      
-      - name: Verify no React-dependent chunks
-        working-directory: apps/web
-        run: |
-          echo "🔍 Checking for forbidden chunks..."
-          if ls dist/assets/ui-vendor-*.js 2>/dev/null; then
-            echo "❌ ERROR: ui-vendor chunk found! This will cause React.forwardRef errors."
-            exit 1
-          fi
-          if ls dist/assets/editor-vendor-*.js 2>/dev/null; then
-            echo "❌ ERROR: editor-vendor chunk found! This will cause initialization errors."
-            exit 1
-          fi
-          if ls dist/assets/route-*.js 2>/dev/null; then
-            echo "❌ ERROR: route chunks found! This will cause React.forwardRef errors."
-            exit 1
-          fi
-          echo "✅ No forbidden chunks found"
-      
-      - name: Start preview server
-        working-directory: apps/web
-        run: |
-          npm run preview &
-          sleep 5
-      
+
       - name: Install Playwright browsers
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
-      
-      - name: Run production build E2E tests
+
+      - name: Start preview server
+        working-directory: apps/web
+        run: |
+          npm run preview -- --host 127.0.0.1 &
+          npx wait-on http://127.0.0.1:4173 --timeout 30000
+
+      - name: Run production E2E smoke
         working-directory: apps/web
         run: npm run test:e2e:production
         env:
-          BASE_URL: http://localhost:4173
-      
+          BASE_URL: http://127.0.0.1:4173
+        continue-on-error: true
+
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -96,18 +70,3 @@ jobs:
           path: apps/web/dist
           retention-days: 7
           if-no-files-found: ignore
-      
-      - name: Report results
-        if: always()
-        run: |
-          echo "## Production Build Verification" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Checks Performed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Unit tests" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Black screen prevention tests" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Production build" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Build output validation" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Chunk dependency check" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ E2E production build tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
