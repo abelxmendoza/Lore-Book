@@ -34,6 +34,19 @@ import {
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { isCollectivePersonName } from '../utils/personNameValidation';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
+import {
+  characterCreationActionFromCore,
+  characterToResolutionCandidate,
+  compareCharacterCreationDecisions,
+  logCharacterCreationShadowComparison,
+  resolveMentionWithCore,
+  type CharacterResolutionRow,
+} from './entities/entityResolutionBridge';
+import {
+  isEntityResolutionCoreActive,
+  isEntityResolutionShadowEnabled,
+} from './entities/entityResolutionConfig';
+import type { ResolutionContext } from './entities/entityResolutionCore';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
@@ -67,12 +80,11 @@ export type CreationDecision =
   | { action: 'create'; cleanName: string }
   | { action: 'defer'; cleanName: string; rawName: string; candidates: Array<{ character_id: string; name: string; subtitle?: string }> };
 
-type CharacterRow = {
-  id: string;
-  name: string;
-  alias: string[] | null;
-  metadata: Record<string, any> | null;
+export type ClassifyForCreationOptions = {
+  context?: ResolutionContext;
 };
+
+type CharacterRow = CharacterResolutionRow;
 
 class CharacterRegistry {
   /**
@@ -167,18 +179,19 @@ class CharacterRegistry {
    * Decide what to do with an extracted person name. Single choke point for
    * every character-creating pipeline.
    */
-  async classifyForCreation(userId: string, rawName: string): Promise<CreationDecision> {
+  async classifyForCreation(
+    userId: string,
+    rawName: string,
+    options?: ClassifyForCreationOptions
+  ): Promise<CreationDecision> {
     const gate = this.gateName(rawName);
     if (!gate.ok) return { action: 'reject', reason: gate.reason };
-    // Compounds are handled by callers part-by-part; classify the first part
-    // here and let the caller iterate. (Returned via gateName().parts.)
     const cleanName = gate.parts ? gate.parts[0] : gate.cleanName;
 
     if (await this.isKnownNonPerson(userId, cleanName)) {
       return { action: 'reject', reason: 'known_location_or_org' };
     }
 
-    // Authority resolver — single canonical identity check before fuzzy logic.
     const authorityHit = await characterAuthorityService.resolveByName(userId, cleanName);
     if (authorityHit.characterId && authorityHit.confidence >= 0.85) {
       return {
@@ -195,18 +208,54 @@ class CharacterRegistry {
       .eq('user_id', userId);
     const existing = (data ?? []) as CharacterRow[];
 
+    const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
+    const mentionNorm = normalizeNameKey(cleanName);
+
+    const exactMatches = existing.filter(
+      c => normalizeNameKey(c.name) === mentionNorm
+        || (c.alias ?? []).some(a => normalizeNameKey(a) === mentionNorm)
+    );
+    if (exactMatches.length >= 1 && (exactMatches.length > 1 || hasDistinctnessCue)) {
+      return await this.deferWith(userId, cleanName, rawName, exactMatches);
+    }
+
+    if (isEntityResolutionCoreActive()) {
+      return this.classifyWithCore(userId, cleanName, rawName, existing, hasDistinctnessCue, options?.context);
+    }
+
+    const legacyDecision = await this.classifyForCreationLegacy(userId, cleanName, rawName, existing, hasDistinctnessCue);
+
+    if (isEntityResolutionShadowEnabled()) {
+      const coreResult = resolveMentionWithCore(
+        cleanName,
+        existing.map(characterToResolutionCandidate),
+        options?.context ?? {}
+      );
+      const coreDecision = await this.classifyWithCore(userId, cleanName, rawName, existing, hasDistinctnessCue, options?.context);
+      logCharacterCreationShadowComparison(
+        compareCharacterCreationDecisions(
+          cleanName,
+          legacyDecision.action,
+          coreDecision.action === 'reject' ? 'reject' : coreDecision.action,
+          coreResult.recommendation
+        )
+      );
+    }
+
+    return legacyDecision;
+  }
+
+  private async classifyForCreationLegacy(
+    userId: string,
+    cleanName: string,
+    rawName: string,
+    existing: CharacterRow[],
+    hasDistinctnessCue: boolean
+  ): Promise<CreationDecision> {
     const mentionNorm = normalizeNameKey(cleanName);
     const mentionFirst = mentionNorm.split(' ')[0];
     const mentionHasSurname = mentionNorm.includes(' ');
 
-    // Distinctness cue: "Derrik the OTHER manager", "a DIFFERENT Dana" — the
-    // user is telling us this is not the person we know. When a same-name card
-    // exists, the cue makes exact-merge ineligible and forces a question.
-    const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
-
-    // 1. Exact name or alias matches (accent/case-insensitive: "Aunt Maribel"
-    //    must match "Aunt Maribel"). Multiple exact matches (two people
-    //    genuinely named "Derrik") can never auto-resolve — always ask.
     const exactMatches = existing.filter(
       c => normalizeNameKey(c.name) === mentionNorm
         || (c.alias ?? []).some(a => normalizeNameKey(a) === mentionNorm)
@@ -216,48 +265,31 @@ class CharacterRegistry {
       return { action: 'merge', characterId: c.id, matchedName: c.name, cleanName };
     }
     if (exactMatches.length >= 1) {
-      // 1+ exacts with a distinctness cue, or 2+ exacts: gray zone.
       return await this.deferWith(userId, cleanName, rawName, exactMatches);
     }
 
-    // 2. Candidate set: shared first name, whole-token containment ("Nico" ⊂
-    //    "Tío Nico", "Dana" ⊂ "Dana's Meeting Colleague"), or strong fuzzy
-    //    on the full name. "Not the same person" memory applies only to
-    //    materially different mentions ("Kel" vs "Dana") — for
-    //    same-first-name people the ambiguity is real on every mention and
-    //    must not be blanket-excluded.
     let possessiveAmbiguity = false;
     const candidates = existing.filter(c => {
       const candNorm = normalizeNameKey(c.name);
       const candFirst = candNorm.split(' ')[0];
       const candHasSurname = candNorm.includes(' ');
       if (candFirst !== mentionFirst) {
-        const distinct: string[] = c.metadata?.distinct_from_mentions ?? [];
+        const distinct: string[] = (c.metadata?.distinct_from_mentions as string[] | undefined) ?? [];
         if (distinct.includes(mentionNorm)) return false;
-        // Containment: kinship prefixes and descriptive tails share no first
-        // token but are the same person. Possessive forms ("Dana's …")
-        // grammatically describe a DIFFERENT person — flag to force a question.
         if (namesOverlapByContainment(mentionNorm, candNorm)) {
           if (containmentIsPossessive(candNorm, mentionNorm) || containmentIsPossessive(mentionNorm, candNorm)) {
             possessiveAmbiguity = true;
           }
           return true;
         }
-        // Fuzzy full-name match (typos: Quintesa/Quintessa). Guarded by a high
-        // threshold — JW on short names is noisy (Nana Elena vs Abel).
         return jaroWinkler(mentionNorm, candNorm) >= 0.93;
       }
-      // Reesee first name but BOTH have different surnames → different people
       if (mentionHasSurname && candHasSurname && candNorm !== mentionNorm) return false;
       return true;
     });
 
     if (candidates.length === 0) return { action: 'create', cleanName };
 
-    // 3. Single candidate, one side is first-name-only or one name contains
-    //    the other → certain enough to merge ("Quintessa" ↔ "Quintessa
-    //    Vexworth", "Nico" ↔ "Tío Nico"). Asking here would spam. A
-    //    distinctness cue or possessive form overrides the certainty.
     if (candidates.length === 1 && !hasDistinctnessCue && !possessiveAmbiguity) {
       const cand = candidates[0];
       const candNorm = normalizeNameKey(cand.name);
@@ -271,10 +303,64 @@ class CharacterRegistry {
       }
     }
 
-    // 4. Gray zone — multiple plausible people, a fuzzy-but-not-certain
-    //    match, a possessive form, or an explicit distinctness cue. Don't
-    //    create; ask in chat.
     return await this.deferWith(userId, cleanName, rawName, candidates);
+  }
+
+  private async classifyWithCore(
+    userId: string,
+    cleanName: string,
+    rawName: string,
+    existing: CharacterRow[],
+    hasDistinctnessCue: boolean,
+    context?: ResolutionContext
+  ): Promise<CreationDecision> {
+    const mentionNorm = normalizeNameKey(cleanName);
+    const possessiveAmbiguity = this.detectPossessiveAmbiguity(mentionNorm, existing);
+
+    const coreResult = resolveMentionWithCore(
+      cleanName,
+      existing.map(characterToResolutionCandidate),
+      context ?? {}
+    );
+    const coreAction = characterCreationActionFromCore(coreResult);
+
+    if (coreAction === 'reject') {
+      return { action: 'reject', reason: 'core_skip' };
+    }
+
+    if (coreAction === 'create') {
+      return { action: 'create', cleanName };
+    }
+
+    if (coreAction === 'merge') {
+      const resolved = existing.find(c => c.id === coreResult.resolvedId);
+      if (!resolved) return { action: 'create', cleanName };
+      if (hasDistinctnessCue || possessiveAmbiguity) {
+        return await this.deferWith(userId, cleanName, rawName, [resolved, ...existing.filter(c => c.id !== resolved.id).slice(0, 2)]);
+      }
+      return { action: 'merge', characterId: resolved.id, matchedName: resolved.name, cleanName };
+    }
+
+    const rankedRows = coreResult.ranked
+      .map(r => existing.find(c => c.id === r.id))
+      .filter((c): c is CharacterRow => Boolean(c));
+    const deferCandidates = rankedRows.length > 0 ? rankedRows : existing.slice(0, 3);
+    return await this.deferWith(userId, cleanName, rawName, deferCandidates);
+  }
+
+  private detectPossessiveAmbiguity(mentionNorm: string, existing: CharacterRow[]): boolean {
+    const mentionFirst = mentionNorm.split(' ')[0];
+    for (const c of existing) {
+      const candNorm = normalizeNameKey(c.name);
+      const candFirst = candNorm.split(' ')[0];
+      if (candFirst === mentionFirst) continue;
+      if (namesOverlapByContainment(mentionNorm, candNorm)) {
+        if (containmentIsPossessive(candNorm, mentionNorm) || containmentIsPossessive(mentionNorm, candNorm)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**

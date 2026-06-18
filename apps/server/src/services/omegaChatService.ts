@@ -475,9 +475,10 @@ class OmegaChatService {
     timelineInsight?: ChatContextExtension & { layer?: string },
     continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null,
     userId?: string,
-    agentEvidenceBlock?: string | null
+    agentEvidenceBlock?: string | null,
+    selfModelBlock?: string | null
   ): string {
-    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent, userId, agentEvidenceBlock);
+    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent, userId, agentEvidenceBlock, selfModelBlock);
   }
 
   /**
@@ -833,6 +834,7 @@ class OmegaChatService {
     // =====================================================
     // SPRINT AH — Trust & Recall gates (before mode router)
     // =====================================================
+    let selfModelBlockStream: string | null = null;
     try {
       const { detectTestingMode } = await import('./chat/testingModeDetector');
       const { getMemoryFormationStatus } = await import('./chat/memoryFormationStatusService');
@@ -856,6 +858,24 @@ class OmegaChatService {
           'FOUNDATION_RECALL'
         );
       }
+
+      const { resolveMetaProductContext } = await import('./chat/lorebookSelfModelService');
+      const metaContext = await resolveMetaProductContext(message);
+      if (metaContext.shortCircuit) {
+        return formatModeResponse(
+          {
+            content: metaContext.shortCircuit.content,
+            response_mode: 'DIAGNOSTIC',
+            confidence: 0.95,
+            metadata: {
+              meta_product: true,
+              concepts: metaContext.shortCircuit.concepts,
+            },
+          },
+          'SYSTEM_COGNITION'
+        );
+      }
+      selfModelBlockStream = metaContext.promptBlock;
 
       if (detectRecallFailure(message)) {
         const diagnostic = await buildDiagnosticRecall(userId, message, {
@@ -1433,7 +1453,8 @@ class OmegaChatService {
       timelineInsight,
       continuityIntent,
       userId,
-      agentEvidenceBlockStream
+      agentEvidenceBlockStream,
+      selfModelBlockStream
     );
 
     if (returnToThreadContext) {
@@ -1846,6 +1867,30 @@ class OmegaChatService {
       throw persistErr;
     }
 
+    let selfModelBlockChat: string | null = null;
+    try {
+      const { resolveMetaProductContext } = await import('./chat/lorebookSelfModelService');
+      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+      const metaContext = await resolveMetaProductContext(message);
+      if (metaContext.shortCircuit) {
+        return formatModeResponse(
+          {
+            content: metaContext.shortCircuit.content,
+            response_mode: 'DIAGNOSTIC',
+            confidence: 0.95,
+            metadata: {
+              meta_product: true,
+              concepts: metaContext.shortCircuit.concepts,
+            },
+          },
+          'SYSTEM_COGNITION'
+        );
+      }
+      selfModelBlockChat = metaContext.promptBlock;
+    } catch (metaErr) {
+      logger.debug({ err: metaErr, userId }, 'Meta product gate failed (non-stream) — continuing');
+    }
+
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
@@ -2167,7 +2212,8 @@ class OmegaChatService {
       timelineInsightChat,
       undefined,
       userId,
-      agentEvidenceBlock
+      agentEvidenceBlock,
+      selfModelBlockChat
     );
 
     if (refinementClarificationChat) {

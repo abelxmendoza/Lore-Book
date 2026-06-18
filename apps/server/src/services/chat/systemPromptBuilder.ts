@@ -48,7 +48,8 @@ export function buildSystemPrompt(
   timelineInsight?: ChatContextExtension & { layer?: string },
     continuityIntent?: ContinuityIntent | null,
     userId?: string,
-    agentEvidenceBlock?: string | null
+    agentEvidenceBlock?: string | null,
+    selfModelBlock?: string | null
 ): string {
   const timelineSummary = orchestratorSummary.timeline.events
     .slice(0, 20)
@@ -420,6 +421,11 @@ This is proof-of-receipt: it shows the system absorbed what was said.
 **THE PRODUCT FEEL:**
 LoreBook should feel like a system gradually stabilizing autobiographical continuity — not resetting on every message, not faking memory it doesn't have. The restraint and honesty are the product. But restraint is NOT the same as amnesia. When the record has something, use it.
 
+${selfModelBlock ? `
+**HOW LOREBOOK WORKS** (verified system facts — use for product/system questions):
+${selfModelBlock}
+
+` : ''}
 ---
 
 **DEPTH CALIBRATION — HOW TO RESPOND:**
@@ -766,7 +772,7 @@ These arcs have been consistently reinforced across multiple journal entries. Re
 
 ` : ''}
 
-${loreData?.crystallizedKnowledge && loreData.crystallizedKnowledge.length > 0 ? `**WHAT LOREBOOK KNOWS (verified by behavioral evidence):**
+${loreData?.crystallizedKnowledge && loreData.crystallizedKnowledge.length > 0 ? `**WHAT LOREBOOK KNOWS ABOUT YOU (verified by behavioral evidence):**
 ${loreData.crystallizedKnowledge.map((k: { knowledge_type: string; human_readable_claim: string; confidence: number }) =>
   `• [${k.knowledge_type}] ${k.human_readable_claim.substring(0, 120)}${k.human_readable_claim.length > 120 ? '…' : ''}`
 ).join('\n')}
@@ -930,7 +936,7 @@ ${continuityIntent.timelineSignificant ? `**TIMELINE SIGNIFICANCE:** User explic
 5. DO NOT: over-explain, ask multiple questions, roleplay feelings, invent emotions, or produce AI-therapist behavior.
 
 **PRINCIPLE:** Sparse authentic continuity > synthetic emotional richness. The user trusts LoreBook to remember — show it.
-` : ''}${agentEvidenceBlock ? `\n\n${agentEvidenceBlock}\n` : ''}`;
+` : ''}${selfModelBlock ? `\n\n**HOW LOREBOOK WORKS (verified product facts — cite for meta/system questions):**\n${selfModelBlock}\n` : ''}${agentEvidenceBlock ? `\n\n${agentEvidenceBlock}\n` : ''}`;
 }
 
 export function buildEssenceContext(profile: any): string {

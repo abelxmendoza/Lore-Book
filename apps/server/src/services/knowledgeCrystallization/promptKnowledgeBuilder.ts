@@ -93,7 +93,7 @@ export function formatPromptBlock(claims: PromptReadyClaim[]): string | null {
   });
 
   return [
-    'WHAT LOREBOOK KNOWS (verified by behavioral evidence):',
+    'WHAT LOREBOOK KNOWS ABOUT YOU (verified by behavioral evidence):',
     ...lines,
   ].join('\n');
 }

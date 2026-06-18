@@ -201,6 +201,85 @@ export type ResolveWithCoreResult = {
   entityFromCore: Entity | null;
 };
 
+/** Character row shape used by CharacterRegistry → core bridge. */
+export type CharacterResolutionRow = {
+  id: string;
+  name: string;
+  alias: string[] | null;
+  metadata: Record<string, unknown> | null;
+};
+
+export function characterToResolutionCandidate(row: CharacterResolutionRow): ResolutionCandidate {
+  const metadata = row.metadata ?? {};
+  return {
+    id: row.id,
+    name: row.name,
+    aliases: Array.isArray(row.alias) ? row.alias : [],
+    type: 'PERSON',
+    mentions: typeof metadata.mention_count === 'number' ? metadata.mention_count : undefined,
+    lastMentionedAt:
+      typeof metadata.last_mentioned_at === 'string' ? metadata.last_mentioned_at : null,
+    relatedEntityIds: Array.isArray(metadata.related_entity_ids)
+      ? (metadata.related_entity_ids as string[])
+      : [],
+  };
+}
+
+/**
+ * Character creation uses stricter defer rules than omega entity resolution:
+ * only auto_resolve may merge; merge_suggestion and disambiguate → defer.
+ */
+export type CharacterCreationCoreAction = 'merge' | 'create' | 'defer' | 'reject';
+
+export function characterCreationActionFromCore(result: ResolutionResult): CharacterCreationCoreAction {
+  if (result.recommendation === 'skip') return 'reject';
+  if (result.action === 'create' || result.recommendation === 'create_separate') return 'create';
+  if (result.action === 'resolve' && result.recommendation === 'auto_resolve' && result.resolvedId) {
+    return 'merge';
+  }
+  if (result.action === 'disambiguate' || result.recommendation === 'merge_suggestion') return 'defer';
+  return 'create';
+}
+
+export type CharacterCreationShadowComparison = {
+  mention: string;
+  agreement: boolean;
+  legacy: { action: 'reject' | 'merge' | 'create' | 'defer' };
+  core: { action: CharacterCreationCoreAction; recommendation: ResolutionResult['recommendation'] };
+};
+
+export function compareCharacterCreationDecisions(
+  mention: string,
+  legacyAction: CharacterCreationShadowComparison['legacy']['action'],
+  coreAction: CharacterCreationCoreAction,
+  coreRecommendation: ResolutionResult['recommendation']
+): CharacterCreationShadowComparison {
+  const agreement =
+    legacyAction === coreAction ||
+    (legacyAction === 'defer' && coreAction === 'defer') ||
+    (legacyAction === 'reject' && coreAction === 'reject');
+  return {
+    mention,
+    agreement,
+    legacy: { action: legacyAction },
+    core: { action: coreAction, recommendation: coreRecommendation },
+  };
+}
+
+export function logCharacterCreationShadowComparison(comparison: CharacterCreationShadowComparison): void {
+  const level = comparison.agreement ? 'debug' : 'info';
+  logger[level](
+    {
+      entityResolution: 'character_creation_shadow',
+      mode: getEntityResolutionCoreMode(),
+      ...comparison,
+    },
+    comparison.agreement
+      ? 'Character creation shadow agreement'
+      : 'Character creation shadow disagreement'
+  );
+}
+
 /** Compare legacy vs core and decide which path is authoritative. */
 export function resolveWithCore(options: ResolveWithCoreOptions): ResolveWithCoreResult {
   const { mention, entityType, pool, context = {} } = options;
