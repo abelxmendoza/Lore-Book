@@ -88,4 +88,20 @@ describe('mapDbMessageRow', () => {
     expect(message.creationOutcomes).toEqual([{ mention: 'Juan', action: 'create', authority: 'core' }]);
     expect(message.creationOutcomeSummary).toBe('started a record for Juan');
   });
+
+  it('hoists staleProjectionHints from durable metadata onto the Message', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-5',
+      role: 'assistant',
+      content: 'reply',
+      created_at: '2026-06-17T12:00:00.000Z',
+      metadata: {
+        staleProjectionHints: [{ id: 'bio-1', type: 'biography_snapshot' }],
+        staleProjectionSummary: 'life summary outdated',
+      },
+    });
+
+    expect(message.staleProjectionHints).toEqual([{ id: 'bio-1', type: 'biography_snapshot' }]);
+    expect(message.staleProjectionSummary).toBe('life summary outdated');
+  });
 });

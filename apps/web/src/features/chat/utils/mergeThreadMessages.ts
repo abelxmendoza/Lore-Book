@@ -1,5 +1,33 @@
 import type { Message } from '../message/ChatMessage';
 
+/** Assistant protocol fields that must survive durable row hydration. */
+const PROTOCOL_HOIST_KEYS = [
+  'mentionedEntities',
+  'creationOutcomes',
+  'creationOutcomeSummary',
+  'staleProjectionHints',
+  'staleProjectionSummary',
+] as const;
+
+type ProtocolHoistKey = (typeof PROTOCOL_HOIST_KEYS)[number];
+
+function hasProtocolValue(key: ProtocolHoistKey, value: Message[ProtocolHoistKey]): boolean {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.length > 0;
+  return true;
+}
+
+function mergeProtocolFields(preferred: Message, fallback: Message): Message {
+  const merged = { ...preferred };
+  for (const key of PROTOCOL_HOIST_KEYS) {
+    if (!hasProtocolValue(key, merged[key]) && hasProtocolValue(key, fallback[key])) {
+      (merged as Record<string, unknown>)[key] = fallback[key];
+    }
+  }
+  return merged;
+}
+
 function fingerprint(role: string, content: string): string {
   return `${role}:${content.trim().replace(/\s+/g, ' ').toLowerCase()}`;
 }
@@ -44,31 +72,26 @@ export function mergeThreadMessages(local: Message[], server: Message[]): Messag
     if (!existing || sourceRank(row.id) > sourceRank(existing.id)) {
       const message =
         existing && sourceRank(row.id) > sourceRank(existing.id)
-          ? {
-              ...row.message,
-              mentionedEntities:
-                row.message.mentionedEntities ?? existing.message.mentionedEntities,
-              persistStatus: mergePersistStatus(
-                row.message.persistStatus,
-                existing.message.persistStatus
-              ),
-            }
+          ? mergeProtocolFields(row.message, existing.message)
           : row.message;
-      byFingerprint.set(fp, { ...row, message });
-    } else if (!existing.message.mentionedEntities && row.message.mentionedEntities) {
       byFingerprint.set(fp, {
-        ...existing,
+        ...row,
         message: {
-          ...existing.message,
-          mentionedEntities: row.message.mentionedEntities,
-          persistStatus: mergePersistStatus(existing.message.persistStatus, row.message.persistStatus),
+          ...message,
+          persistStatus: mergePersistStatus(message.persistStatus, existing?.message.persistStatus),
         },
       });
-    } else if (row.message.persistStatus === 'saved' && existing.message.persistStatus !== 'saved') {
-      byFingerprint.set(fp, {
-        ...existing,
-        message: { ...existing.message, persistStatus: 'saved' },
-      });
+    } else {
+      const merged = mergeProtocolFields(existing.message, row.message);
+      if (merged !== existing.message || row.message.persistStatus === 'saved') {
+        byFingerprint.set(fp, {
+          ...existing,
+          message: {
+            ...merged,
+            persistStatus: mergePersistStatus(merged.persistStatus, row.message.persistStatus),
+          },
+        });
+      }
     }
   }
 

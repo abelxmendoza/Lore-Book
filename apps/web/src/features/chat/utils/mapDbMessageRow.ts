@@ -23,6 +23,15 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
       : metadata?.creationOutcomeSummary === null
         ? null
         : undefined;
+  const staleProjectionHints = Array.isArray(metadata?.staleProjectionHints)
+    ? (metadata.staleProjectionHints as Message['staleProjectionHints'])
+    : undefined;
+  const staleProjectionSummary =
+    typeof metadata?.staleProjectionSummary === 'string'
+      ? metadata.staleProjectionSummary
+      : metadata?.staleProjectionSummary === null
+        ? null
+        : undefined;
 
   return {
     id: row.id,
@@ -34,5 +43,7 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     ...(mentionedEntities && mentionedEntities.length > 0 ? { mentionedEntities } : {}),
     ...(creationOutcomes && creationOutcomes.length > 0 ? { creationOutcomes } : {}),
     ...(creationOutcomeSummary !== undefined ? { creationOutcomeSummary } : {}),
+    ...(staleProjectionHints && staleProjectionHints.length > 0 ? { staleProjectionHints } : {}),
+    ...(staleProjectionSummary !== undefined ? { staleProjectionSummary } : {}),
   };
 }

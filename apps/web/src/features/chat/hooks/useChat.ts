@@ -455,6 +455,8 @@ export const useChat = () => {
             mentionedEntities: metadata?.mentionedEntities,
             creationOutcomes: metadata?.creationOutcomes,
             creationOutcomeSummary: metadata?.creationOutcomeSummary,
+            staleProjectionHints: metadata?.staleProjectionHints,
+            staleProjectionSummary: metadata?.staleProjectionSummary,
             suggestedActions: metadata?.suggestedActions,
           },
           { touchActivity: true }

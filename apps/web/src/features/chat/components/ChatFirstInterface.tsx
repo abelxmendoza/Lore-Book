@@ -737,6 +737,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               onSourceClick={handleSourceClick}
               onFeedback={handleFeedback}
               onSuggestedAction={handleSuggestedAction}
+              onPrefillComposer={prefillComposer}
               registerMessageRef={registerMessageRef}
             />
           )}

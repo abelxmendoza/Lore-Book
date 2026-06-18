@@ -8,6 +8,7 @@ import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel'
 import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
 import { PersonaChip } from './PersonaChip';
 import { CreationOutcomePanel } from '../components/CreationOutcomePanel';
+import { StaleProjectionPanel } from '../components/StaleProjectionPanel';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -140,6 +141,13 @@ export type Message = {
     authority?: 'core' | 'legacy' | 'shadow';
   }>;
   creationOutcomeSummary?: string | null;
+  staleProjectionHints?: Array<{
+    id: string;
+    type: 'biography_snapshot' | 'timeline_event';
+    title?: string;
+    summary?: string;
+  }>;
+  staleProjectionSummary?: string | null;
   suggestedActions?: ChatSuggestedAction[];
 };
 
@@ -149,6 +157,7 @@ type ChatMessageProps = {
   onCopy?: () => void;
   onSourceClick?: (source: ChatSource) => void;
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
+  onPrefillComposer?: (prompt: string) => void;
 };
 
 export const ChatMessage = ({
@@ -157,6 +166,7 @@ export const ChatMessage = ({
   onCopy,
   onSourceClick,
   onSuggestedAction,
+  onPrefillComposer,
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -608,8 +618,17 @@ export const ChatMessage = ({
           {/* P1 creation protocol outcomes — durable records started/linked/deferred this turn */}
           {!isUser && message.creationOutcomes && message.creationOutcomes.length > 0 && (
             <CreationOutcomePanel
+              messageId={message.id}
               outcomes={message.creationOutcomes}
               summary={message.creationOutcomeSummary}
+              onPrefill={onPrefillComposer}
+            />
+          )}
+
+          {!isUser && message.staleProjectionHints && message.staleProjectionHints.length > 0 && (
+            <StaleProjectionPanel
+              hints={message.staleProjectionHints}
+              summary={message.staleProjectionSummary}
             />
           )}
 

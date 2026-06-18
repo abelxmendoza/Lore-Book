@@ -17,6 +17,7 @@ import {
   userPersistResult,
   type MessagePersistResult,
 } from '../services/chat/chatMessagePersistenceService';
+import { buildAssistantPersistMetadata } from '../services/chat/assistantPersistMetadata';
 import {
   parseChatCompletionStreamChunk,
   type ChatStreamTokenUsage,
@@ -257,7 +258,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
         sessionId: persistSessionId,
         assistantRowId,
         content: fullResponse,
-        metadata: {
+        metadata: buildAssistantPersistMetadata({
           sources: result.metadata.sources,
           connections: result.metadata.connections,
           continuityWarnings: result.metadata.continuityWarnings,
@@ -265,8 +266,12 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
           recall_sources: result.metadata.recall_sources,
           mentionedEntities: result.metadata.mentionedEntities,
           characterIds: result.metadata.characterIds,
+          creationOutcomes: result.metadata.creationOutcomes,
+          creationOutcomeSummary: result.metadata.creationOutcomeSummary,
+          staleProjectionHints: result.metadata.staleProjectionHints,
+          staleProjectionSummary: result.metadata.staleProjectionSummary,
           ...(streamTokenUsage ? { tokenUsage: streamTokenUsage } : {}),
-        },
+        }),
         status,
       });
       if (assistantPersistResult.id) {

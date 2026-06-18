@@ -106,6 +106,39 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].id).toBe('db-a1');
     expect(merged[0].metadata).toEqual(metadata);
   });
+
+  it('keeps creation and stale projection metadata when hydrating durable assistant row', () => {
+    const creationOutcomes = [{ mention: 'Maria', action: 'defer' as const, authority: 'core' as const }];
+    const staleProjectionHints = [{ id: 'bio-1', type: 'biography_snapshot' as const }];
+    const local = [
+      msg('assistant-1', 'assistant', 'reply', {
+        creationOutcomes,
+        creationOutcomeSummary: 'needs clarification on Maria',
+        staleProjectionHints,
+        staleProjectionSummary: 'life summary outdated',
+      }),
+    ];
+    const server = [
+      msg('db-a1', 'assistant', 'reply', {
+        creationOutcomes,
+        creationOutcomeSummary: 'needs clarification on Maria',
+        staleProjectionHints,
+        staleProjectionSummary: 'life summary outdated',
+      }),
+    ];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].creationOutcomes).toEqual(creationOutcomes);
+    expect(merged[0].staleProjectionHints).toEqual(staleProjectionHints);
+  });
+
+  it('preserves local protocol metadata when server row lacks it', () => {
+    const creationOutcomes = [{ mention: 'Juan', action: 'create' as const, entityId: 'c1' }];
+    const local = [msg('assistant-1', 'assistant', 'reply', { creationOutcomes })];
+    const server = [msg('db-a1', 'assistant', 'reply')];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].id).toBe('db-a1');
+    expect(merged[0].creationOutcomes).toEqual(creationOutcomes);
+  });
 });
 
 describe('countMissingAssistantTurns', () => {

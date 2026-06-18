@@ -17,6 +17,7 @@ type ChatMessageListProps = {
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
   onFork?: (messageId: string) => void;
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
+  onPrefillComposer?: (prompt: string) => void;
   registerMessageRef?: (messageId: string, element: HTMLDivElement | null) => void;
 };
 
@@ -34,6 +35,7 @@ export const ChatMessageList = ({
   onFeedback,
   onFork,
   onSuggestedAction,
+  onPrefillComposer,
   registerMessageRef
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,6 +111,7 @@ export const ChatMessageList = ({
                   onSourceClick={onSourceClick}
                   onFeedback={onFeedback}
                   onSuggestedAction={onSuggestedAction}
+                  onPrefillComposer={onPrefillComposer}
                 />
               </div>
             ))}
