@@ -6,7 +6,8 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from './foundationRecallDataService';
-import { extractEntityNameFromMessage } from './memoryFormationStatusService';
+import { loadFoundationEntityIndex } from './foundationEntityIndex';
+import { entityNameFromMessage } from './memoryFormationStatusService';
 import { formatEvidenceResponse, type EvidenceCounts } from './memoryEvidenceFormatter';
 
 type VerificationCheck = { label: string; ok: boolean; detail: string };
@@ -16,7 +17,7 @@ export async function verifyCharacterCreation(
   message: string,
   options: { threadId?: string } = {}
 ): Promise<{ content: string; entityName: string | null }> {
-  const entityName = extractEntityNameFromMessage(message);
+  const entityName = entityNameFromMessage(message);
 
   if (!entityName) {
     const { count: charCount } = await supabaseAdmin
@@ -63,17 +64,19 @@ export async function verifyCharacterCreation(
   const char = await resolveCharacterByName(userId, entityName);
   const checks: VerificationCheck[] = [];
 
-  let peoplePlaceOk = false;
-  const { data: place } = await supabaseAdmin
-    .from('people_places')
-    .select('id, name, type')
-    .eq('user_id', userId)
-    .ilike('name', `%${entityName}%`)
-    .maybeSingle();
-
-  if (place) {
-    peoplePlaceOk = true;
+  const index = await loadFoundationEntityIndex(userId);
+  const normKey = entityName.trim().toLowerCase();
+  let entityRef = index.get(normKey);
+  if (!entityRef) {
+    for (const [key, ref] of index) {
+      if (key.includes(normKey) || normKey.includes(key)) {
+        entityRef = ref;
+        break;
+      }
+    }
   }
+  const entityOk = !!entityRef || !!char;
+  const entityLabel = entityRef?.type ?? (char ? 'person' : null);
 
   if (char) {
     const [{ count: memCount }, { count: relCount }] = await Promise.all([
@@ -91,9 +94,9 @@ export async function verifyCharacterCreation(
 
     checks.push({
       label: '1. Entity exists',
-      ok: peoplePlaceOk,
-      detail: peoplePlaceOk
-        ? `✓ Entity in people_places (${place!.name})`
+      ok: entityOk,
+      detail: entityOk
+        ? `✓ Entity in foundation registry (${char?.name ?? entityName}, ${entityLabel ?? 'person'})`
         : '○ Entity registry pending',
     });
 
@@ -135,7 +138,7 @@ export async function verifyCharacterCreation(
       detail: (relCount ?? 0) > 0 ? `✓ ${relCount} relationship row(s)` : '○ No relationships yet',
     });
   } else {
-    checks.push({ label: '1. Entity exists', ok: peoplePlaceOk, detail: peoplePlaceOk ? '✓' : '✗ Not found' });
+    checks.push({ label: '1. Entity exists', ok: entityOk, detail: entityOk ? '✓' : '✗ Not found' });
     checks.push({ label: '2. Character exists', ok: false, detail: `✗ No character row for "${entityName}"` });
     checks.push({ label: '3. UI card exists', ok: false, detail: '✗ No card — character not created' });
     checks.push({ label: '4. Ingestion succeeded', ok: false, detail: '✗ No ingestion — nothing to display' });
@@ -164,8 +167,8 @@ export async function verifyCharacterCreation(
   if (char) known.push(`Character "${char.name}" exists in database`);
   else unknown.push(`Character record for "${entityName}" not created`);
 
-  if (peoplePlaceOk) known.push('Entity registered in people_places');
-  else unknown.push('Entity not in people_places registry');
+  if (entityOk) known.push('Entity registered in foundation index');
+  else unknown.push('Entity not in foundation registry');
 
   const memCheck = checks.find((c) => c.label === '4. Ingestion succeeded');
   if (memCheck?.ok) known.push(memCheck.detail.replace('✓ ', ''));

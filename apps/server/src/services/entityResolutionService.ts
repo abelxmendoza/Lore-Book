@@ -7,6 +7,7 @@
 import { logger } from '../logger';
 
 import { correctionDashboardService } from './correctionDashboardService';
+import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
 
 export type EntityType = 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ORG' | 'CONCEPT' | 'PERSON';
@@ -433,6 +434,17 @@ export class EntityResolutionService {
         true,
         { source_entity_id: sourceId, target_entity_id: targetId }
       );
+
+      await recordEntityConsolidation({
+        userId,
+        action: 'ENTITY_MERGE',
+        sourceArtifactType: 'entity',
+        sourceArtifactId: sourceId,
+        targetArtifactId: targetId,
+        beforeState: beforeSnapshot,
+        afterState: { merged_into: targetId, target_type: targetType, source_type: sourceType },
+        rationale: reason,
+      }).catch((err) => logger.warn({ err, userId, sourceId, targetId }, 'Entity merge cognition_mutations write failed'));
 
       // Update any open conflicts involving these entities
       await supabaseAdmin

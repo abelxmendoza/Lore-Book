@@ -155,8 +155,7 @@ async function getChapterIdsUnderNode(
  * said about those same entities across ANY thread.
  *
  * Two sources, merged journal-first:
- *   1. journal_entries via people_places.related_entries (populated when
- *      journal entries are ingested — no full-text scan)
+ *   1. journal_entries via character_memories (canonical character ↔ entry link)
  *   2. chat_messages via name match — chat ingestion produces entry_ir, NOT
  *      journal entries, so chat-borne mentions are invisible to source 1.
  *      Without this, cross-thread recall never works for chat conversations.
@@ -171,24 +170,31 @@ export async function retrieveEntityMentionsAcrossThreads(
     if (knownCharacters.length === 0) return [];
 
     const messageLower = message.toLowerCase();
-    const mentionedNames = knownCharacters
-      .filter((c) => c.name && messageLower.includes(c.name.toLowerCase()))
-      .map((c) => c.name);
+    const mentionedChars = knownCharacters.filter(
+      (c) => c.name && messageLower.includes(c.name.toLowerCase())
+    );
+    const mentionedNames = mentionedChars.map((c) => c.name);
+    const mentionedCharIds = mentionedChars.map((c) => c.id);
 
     if (mentionedNames.length === 0) return [];
 
-    // ── Source 1: journal entries via people_places.related_entries ────────
+    // ── Source 1: journal entries via character_memories ───────────────────
     const journalEntries: MemoryEntry[] = [];
-    const { data: entityRows } = await supabaseAdmin
-      .from('people_places')
-      .select('name, related_entries')
-      .eq('user_id', userId)
-      .in('name', mentionedNames);
-
     const entryIdSet = new Set<string>();
-    for (const row of ((entityRows ?? []) as Array<{ name: string; related_entries: string[] | null }>)) {
-      for (const eid of (row.related_entries ?? [])) {
-        entryIdSet.add(eid);
+
+    if (mentionedCharIds.length > 0) {
+      const { data: memoryRows, error: memoryError } = await supabaseAdmin
+        .from('character_memories')
+        .select('journal_entry_id')
+        .eq('user_id', userId)
+        .in('character_id', mentionedCharIds);
+
+      if (memoryError) {
+        logger.warn({ memoryError, userId }, 'retrieveEntityMentionsAcrossThreads character_memories failed');
+      } else {
+        for (const row of (memoryRows ?? []) as Array<{ journal_entry_id: string | null }>) {
+          if (row.journal_entry_id) entryIdSet.add(row.journal_entry_id);
+        }
       }
     }
 

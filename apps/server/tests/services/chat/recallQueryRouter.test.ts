@@ -20,11 +20,10 @@ function makeChain(result: TableResult) {
 }
 
 let tableResults: Record<string, TableResult> = {};
+const fromMock = vi.fn((table: string) => makeChain(tableResults[table] ?? { data: [], error: null }));
 
 vi.mock('../../../src/services/supabaseClient', () => ({
-  supabaseAdmin: {
-    from: vi.fn((table: string) => makeChain(tableResults[table] ?? { data: [], error: null })),
-  },
+  supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
 }));
 
 import { routeRecallQuery } from '../../../src/services/chat/recallQueryRouter';
@@ -45,8 +44,9 @@ describe('Sprint AF — foundation recall', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tableResults = {
-      people_places: { data: [], error: null },
       characters: { data: CHARACTERS, error: null },
+      locations: { data: [], error: null },
+      organizations: { data: [], error: null },
       character_memories: {
         data: [
           { character_id: 'c1' },
@@ -165,13 +165,19 @@ describe('Sprint AF — foundation recall', () => {
     expect(result.foundationPrimary).toBe(true);
     expect(result.contextBlock).not.toContain('Relevant past entries');
   });
+
+  it('does not query people_places for entity routing', async () => {
+    await routeRecallQuery('user-1', 'Tell me about Sam Chen');
+    expect(fromMock).not.toHaveBeenCalledWith('people_places');
+  });
 });
 
 describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tableResults = {
-      people_places: { data: [], error: null },
+      locations: { data: [], error: null },
+      organizations: { data: [], error: null },
       characters: {
         data: [
           { id: 'c1', name: 'Grandma Rose', alias: [], metadata: { mention_count: 12 } },

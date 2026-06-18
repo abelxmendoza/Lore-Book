@@ -7,6 +7,7 @@ import {
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
+import { truthStateWeight } from '../provenance/epistemicWeights';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -38,7 +39,7 @@ export type WorkingMemoryEntity = {
   name: string;
   type: EntityClass | string;
   rootType?: RootType;
-  source: 'characters' | 'locations' | 'organizations' | 'people_places' | 'projects' | 'question';
+  source: 'characters' | 'locations' | 'organizations' | 'projects' | 'question';
   confidence: number;
 };
 
@@ -140,13 +141,6 @@ type CharacterRow = {
   updated_at?: string | null;
 };
 
-type PeoplePlaceRow = {
-  id: string;
-  name: string;
-  type?: string | null;
-  corrected_names?: string[] | null;
-};
-
 type ProjectRow = {
   id: string;
   name?: string | null;
@@ -225,11 +219,6 @@ function characterMatchesTarget(row: CharacterRow, targetKey: string): boolean {
   return names.includes(targetKey) || names.some((name) => targetKey.includes(name) || name.includes(targetKey));
 }
 
-function peoplePlaceMatchesTarget(row: PeoplePlaceRow, targetKey: string): boolean {
-  const names = [row.name, ...(Array.isArray(row.corrected_names) ? row.corrected_names : [])].map(normalizeNameKey);
-  return names.includes(targetKey);
-}
-
 async function fetchAllCharacters(scope: WmaRequestScope, userId: string): Promise<CharacterRow[]> {
   const rows = await scope.traced(
     'characters',
@@ -266,37 +255,6 @@ async function fetchCharactersForResolve(
     const rows = filtered ?? [];
     if (rows.some((row) => characterMatchesTarget(row, targetKey))) return rows;
     return fetchAllCharacters(scope, userId);
-  });
-}
-
-async function fetchPeoplePlacesForResolve(
-  scope: WmaRequestScope,
-  userId: string,
-  target: string,
-  targetKey: string
-): Promise<PeoplePlaceRow[]> {
-  return scope.once(`people_places:resolve:${targetKey}`, async () => {
-    const filtered = await scope.traced(
-      'people_places',
-      'target-filtered people_places lookup',
-      `people_places:filtered:${targetKey}`,
-      () =>
-        supabaseAdmin
-          .from('people_places')
-          .select('id, name, type, corrected_names')
-          .eq('user_id', userId)
-          .or(buildNameOrClause(target))
-    );
-    const rows = filtered ?? [];
-    if (rows.some((row) => peoplePlaceMatchesTarget(row, targetKey))) return rows;
-    const all = await scope.traced(
-      'people_places',
-      'fallback all people_places',
-      'people_places:all',
-      () =>
-        supabaseAdmin.from('people_places').select('id, name, type, corrected_names').eq('user_id', userId)
-    );
-    return all ?? [];
   });
 }
 
@@ -422,13 +380,16 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
   const significance = clamp01(candidate.significance ?? 0.5);
   const relationshipDistance = clamp01(candidate.relationshipDistance ?? 0.5);
   const confidence = clamp01(candidate.confidence);
-  const score =
+  const truthState = (candidate.metadata?.truth_state as string | undefined) ?? 'PENDING_VERIFICATION';
+  const epistemic = truthStateWeight(truthState);
+  const baseScore =
     0.38 * relevance +
     0.18 * importance +
     0.16 * recency +
     0.14 * significance +
     0.08 * relationshipDistance +
     0.06 * confidence;
+  const score = baseScore * epistemic;
 
   return {
     id: candidate.id,
@@ -444,6 +405,8 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
       `relevance=${relevance.toFixed(2)}`,
       `recency=${recency.toFixed(2)}`,
       `confidence=${confidence.toFixed(2)}`,
+      `truth_state=${truthState}`,
+      `epistemic=${epistemic.toFixed(2)}`,
     ],
     metadata: candidate.metadata,
   };
@@ -573,7 +536,7 @@ async function resolveTargetEntities(
   const targetKey = normalizeNameKey(target);
   const classification = classifyEntity(target);
 
-  const [characters, locations, organizations, peoplePlaces, projects] = await Promise.all([
+  const [characters, locations, organizations, projects] = await Promise.all([
     fetchCharactersForResolve(scope, userId, target, targetKey),
     scope.traced(
       'locations',
@@ -597,7 +560,6 @@ async function resolveTargetEntities(
           .eq('user_id', userId)
           .ilike('name', target)
     ),
-    fetchPeoplePlacesForResolve(scope, userId, target, targetKey),
     scope.traced(
       'projects',
       'target project lookup',
@@ -629,19 +591,6 @@ async function resolveTargetEntities(
 
   for (const row of (projects ?? []) as any[]) {
     entities.push({ id: row.id, name: row.name ?? row.title ?? target, type: 'PROJECT', source: 'projects', confidence: 0.88 });
-  }
-
-  for (const row of peoplePlaces) {
-    if (peoplePlaceMatchesTarget(row, targetKey)) {
-      entities.push({
-        id: row.id,
-        name: row.name,
-        type: row.type ?? classification.type,
-        rootType: classification.rootType,
-        source: 'people_places',
-        confidence: 0.82,
-      });
-    }
   }
 
   if (entities.length === 0) {
@@ -1219,6 +1168,11 @@ async function loadTextualCandidates(
       significance: Array.isArray(entry.tags) && entry.tags.length > 0 ? 0.6 : 0.45,
       relationshipDistance: 0.5,
       reasons: matchesTarget ? ['text matches target'] : ['recent episode'],
+      metadata: {
+        ...(entry.metadata ?? {}),
+        knowledge_type: (entry.metadata as Record<string, unknown> | undefined)?.knowledge_type ?? 'EXPERIENCE',
+        truth_state: (entry.metadata as Record<string, unknown> | undefined)?.truth_state ?? 'PENDING_VERIFICATION',
+      },
     });
   }
 
@@ -1864,7 +1818,7 @@ export async function assembleWorkingMemory(
   // Relationship coverage fix: previously relationships only loaded when the target
   // resolved to a `characters` row (loadPersonCandidates) or for explicit household
   // queries. That left RELATIONSHIP_QUERY/LIFE_REVIEW/IDENTITY with zero relationships
-  // when the target resolved to people_places (or not at all). Pull protagonist edges
+  // when the target did not resolve to a character row. Pull protagonist edges
   // for those intents too, and whenever a relationship-shaped query found no character.
   const wantsProtagonistRels =
     wantsHousehold ||

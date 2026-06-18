@@ -69,8 +69,15 @@ router.patch(
     if (!result.success) {
       return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
     }
-    const timeline = await timelineService.updateTimeline(req.user!.id, req.params.id, result.data);
-    res.json({ success: true, timeline });
+    try {
+      const timeline = await timelineService.updateTimeline(req.user!.id, req.params.id, result.data);
+      res.json({ success: true, timeline });
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Timeline not found') {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      throw err;
+    }
   })
 );
 
@@ -79,8 +86,15 @@ router.delete(
   '/:id',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    await timelineService.deleteTimeline(req.user!.id, req.params.id);
-    res.status(204).send();
+    try {
+      await timelineService.deleteTimeline(req.user!.id, req.params.id);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Timeline not found') {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      throw err;
+    }
   })
 );
 

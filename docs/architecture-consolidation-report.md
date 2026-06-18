@@ -10,10 +10,10 @@
 **Optimize for:** simplicity, maintainability, correctness — **not** feature count.
 **Status:** Draft for engineering review.
 
-> **Pre-deletion gate (2026-06-18):** Before executing Phase 0 drops, read
-> [`docs/pre-deletion-salvage-audit.md`](./pre-deletion-salvage-audit.md). Re-verification
-> found `omega_relationships`, `timelines_v2`, and Chronology V1 are **still wired** in
-> application code — only `entity_canonical_map` is confirmed dead in `src/`.
+> **Pre-deletion gate (2026-06-18):** See
+> [`docs/pre-deletion-salvage-audit.md`](./pre-deletion-salvage-audit.md). Phase 0 drops done.
+> **`timelines_v2`** → `life_arcs`. **`people_places`** chat hot path fully redirected (Phase 1a+1b);
+> ingestion/verification helpers still use legacy table.
 
 ---
 

@@ -99,13 +99,6 @@ describe('Working Memory Assembler', () => {
         data: [{ id: 'org-amazon', name: 'Amazon', importance_score: 40 }],
         error: null,
       },
-      people_places: {
-        data: [
-          { id: 'pp-metro', name: 'Blue Room', type: 'place', corrected_names: [] },
-          { id: 'pp-costco', name: 'Costco', type: 'organization', corrected_names: [] },
-        ],
-        error: null,
-      },
       projects: {
         data: [
           {
@@ -488,6 +481,11 @@ describe('Working Memory Assembler', () => {
 
     expect(result.entities.some((entity) => entity.name === 'Amazon' && entity.type === 'ORGANIZATION')).toBe(true);
     expect(result.entities.every((entity) => entity.name !== 'Amazon' || entity.type !== 'PERSON')).toBe(true);
+  });
+
+  it('does not query people_places during entity resolution', async () => {
+    await assembleWorkingMemory({ userId: 'user-1', question: 'What do you know about Sam Chen?' });
+    expect(fromMock).not.toHaveBeenCalledWith('people_places');
   });
 
   it.each([

@@ -35,21 +35,10 @@ import {
 } from './recallIntentPatterns';
 import { buildConversationSummaryWithRosterFallback } from './conversationSummaryBuilder';
 import { buildThreadRecall, THREAD_RECALL_RE } from './threadRecallService';
+import { loadFoundationEntityIndex } from './foundationEntityIndex';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
-  const { data } = await supabaseAdmin
-    .from('people_places')
-    .select('id, name, type, corrected_names')
-    .eq('user_id', userId);
-
-  const map = new Map<string, { id: string; type: string }>();
-  for (const entity of data ?? []) {
-    map.set(entity.name.toLowerCase(), { id: entity.id, type: entity.type });
-    for (const alias of entity.corrected_names ?? []) {
-      map.set(alias.toLowerCase(), { id: entity.id, type: entity.type });
-    }
-  }
-  return map;
+  return loadFoundationEntityIndex(userId);
 }
 
 function extractEntityNameFromQuery(message: string): string | null {

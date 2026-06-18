@@ -88,6 +88,9 @@ export const FALLBACK_SELF_MODEL: Record<SelfModelConcept, SelfModelFact> = {
   },
 };
 
+/** All product-facing concepts — keep in sync with system_knowledge product seed migration. */
+export const PRODUCT_SELF_MODEL_CONCEPTS = Object.keys(FALLBACK_SELF_MODEL) as SelfModelConcept[];
+
 const META_QUERY_RULES: Array<{
   concepts: SelfModelConcept[];
   pattern: RegExp;

@@ -21,6 +21,7 @@ import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { omegaMemoryService } from './omegaMemoryService';
+import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
 
 export interface MergeReport {
@@ -270,6 +271,17 @@ class CharacterMergeService {
     }).then(({ error }) => {
       if (error) logger.debug({ error }, '[CharacterMerge] merge record insert failed');
     });
+
+    await recordEntityConsolidation({
+      userId,
+      action: 'ENTITY_MERGE',
+      sourceArtifactType: 'character',
+      sourceArtifactId: sourceId,
+      targetArtifactId: targetId,
+      beforeState: { id: sourceId, name: source.name, aliases: source.alias ?? [] },
+      afterState: { merged_into: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
+      rationale: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+    }).catch((err) => logger.warn({ err, userId, sourceId, targetId }, '[CharacterMerge] cognition_mutations write failed'));
 
     logger.info({ userId, ...report }, '[CharacterMerge] merge complete');
     return report;

@@ -60,15 +60,28 @@ export interface CorrectionResult {
   timestamp: string;
 }
 
-// Table mapping for each artifact type
-const ARTIFACT_TABLE: Partial<Record<ArtifactType, string>> = {
-  journal_entry:  'journal_entries',
-  entry_ir:       'entry_ir',
-  knowledge_unit: 'knowledge_units',
-  utterance:      'utterances',
-  entity:         'entities',
-  insight:        'insights',
+// Storage mapping for each artifact type
+type TruthStateStorage = 'metadata' | 'column';
+
+const ARTIFACT_STORAGE: Partial<Record<ArtifactType, { table: string; truthStateStorage: TruthStateStorage }>> = {
+  journal_entry:   { table: 'journal_entries', truthStateStorage: 'metadata' },
+  entry_ir:        { table: 'entry_ir', truthStateStorage: 'metadata' },
+  knowledge_unit:  { table: 'knowledge_units', truthStateStorage: 'metadata' },
+  utterance:       { table: 'utterances', truthStateStorage: 'metadata' },
+  entity:          { table: 'entities', truthStateStorage: 'metadata' },
+  insight:         { table: 'insights', truthStateStorage: 'metadata' },
+  character:       { table: 'characters', truthStateStorage: 'metadata' },
+  extracted_unit:  { table: 'extracted_units', truthStateStorage: 'metadata' },
+  omega_claim:     { table: 'omega_claims', truthStateStorage: 'column' },
 };
+
+function readTruthState(artifact: Record<string, unknown>, storage: TruthStateStorage): TruthState {
+  if (storage === 'column') {
+    return (artifact.truth_state as TruthState | undefined) ?? 'PENDING_VERIFICATION';
+  }
+  const meta = (artifact.metadata as Record<string, unknown>) ?? {};
+  return (meta.truth_state as TruthState | undefined) ?? 'PENDING_VERIFICATION';
+}
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -122,10 +135,11 @@ class CorrectionAuthority {
     }
 
     // ── Load artifact (ownership + current state) ────────────────────────────
-    const tableName = ARTIFACT_TABLE[artifactType];
-    if (!tableName) {
+    const storageConfig = ARTIFACT_STORAGE[artifactType];
+    if (!storageConfig) {
       throw new Error(`Unsupported artifact type for revision: ${artifactType}`);
     }
+    const { table: tableName, truthStateStorage } = storageConfig;
 
     const { data: artifact, error: loadError } = await supabaseAdmin
       .from(tableName)
@@ -141,9 +155,8 @@ class CorrectionAuthority {
       throw new Error(`Artifact ${artifactType}:${artifactId} not found or not owned by user.`);
     }
 
-    // ── Read current truth_state from metadata ───────────────────────────────
     const currentMeta = (artifact.metadata as Record<string, unknown>) ?? {};
-    const currentTruthState = (currentMeta.truth_state as TruthState | undefined) ?? 'PENDING_VERIFICATION';
+    const currentTruthState = readTruthState(artifact, truthStateStorage);
 
     // Validate fromState matches actual state (prevents race conditions)
     if (currentTruthState !== fromState) {
@@ -156,10 +169,14 @@ class CorrectionAuthority {
     const beforeState = { truth_state: currentTruthState, metadata: currentMeta };
     const afterMeta = { ...currentMeta, truth_state: toState, revised_at: new Date().toISOString() };
 
-    // ── Update artifact metadata ─────────────────────────────────────────────
+    const updatePayload =
+      truthStateStorage === 'column'
+        ? { truth_state: toState, metadata: afterMeta, updated_at: new Date().toISOString() }
+        : { metadata: afterMeta };
+
     const { error: updateError } = await supabaseAdmin
       .from(tableName)
-      .update({ metadata: afterMeta })
+      .update(updatePayload)
       .eq('id', artifactId)
       .eq('user_id', userId);
 

@@ -83,5 +83,22 @@ describe('lorebookSelfModelService', () => {
       expect(result.shortCircuit).toBeNull();
       expect(result.promptBlock).toBeNull();
     });
+
+    it('uses "what is" opener for identity questions', async () => {
+      const result = await resolveMetaProductContext('What is LoreBook?');
+      expect(result.shortCircuit?.content).toMatch(/^LoreBook is a continuity-aware/);
+    });
+
+    it('uses how-it-works opener for operational questions', async () => {
+      const result = await resolveMetaProductContext('How does this app work?');
+      expect(result.shortCircuit?.content).toContain('Here is how LoreBook works:');
+    });
+
+    it('exports every fallback concept in PRODUCT_SELF_MODEL_CONCEPTS', async () => {
+      const { PRODUCT_SELF_MODEL_CONCEPTS } = await import('../../../src/services/chat/lorebookSelfModelService');
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toHaveLength(8);
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('product_identity');
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('extraction_pipeline');
+    });
   });
 });

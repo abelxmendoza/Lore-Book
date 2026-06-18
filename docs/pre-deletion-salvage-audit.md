@@ -21,7 +21,7 @@ The consolidation report (`docs/architecture-consolidation-report.md`) listed se
 | `timelines_v2` | No migration | **No Supabase migration**, but **live code**: `timelineV2.ts`, `/api/timeline-v2`, web `TimelinePageV2`, hooks, tests | **NO** — redirect or add migration; do not delete UI/routes blindly |
 | `social_edges` | Retire | **Active writes/reads** in `socialStorage.ts` | **NO** |
 | Chronology V1 | Retire | **Active**: `routes/chronology.ts`, `chronologyWorker`, `contextAggregator`, recommendation generators | **NO** |
-| `people_places` | Retire after migration | **50+ references** across WMA, RAG, authority, merge, diagnostics | **NO** — run salvage script first |
+| `people_places` | Retire after migration | **Chat hot path cleared**; ingestion/registry still ~40 refs outside `services/chat` | **NO** — Phase 1+ for table drop |
 
 ---
 
@@ -136,11 +136,31 @@ npx tsx src/scripts/cleanupLegacyEntities.ts promote-locations --all-users
 - `memoryCoverageAudit` → authority map + `character_relationships`
 - App refs cleared; **table DROP still gated** (prod row-count check)
 
-### Step 5 — `timelines_v2` decision
+### Step 5 — `timelines_v2` redirect ✅ (2026-06-18)
 
-Product choice: ship migration vs retire UI. Cannot drop code until decision made.
+`/api/timeline-v2` CRUD delegates to `life_arcs` via `arcService`. Nested chronology unchanged (`chronology_index`).
 
-### Step 6 — Entity store unification (Phase 1)
+### Step 6 — `people_places` Phase 1a (chat read redirect) ✅
+
+- `recallQueryRouter` → `foundationEntityIndex`
+- `ragBuilderService` → `buildLegacyPeoplePlacesView` (no table fetch)
+- Run `npm run test:phase1` (38 tests)
+
+### Step 7 — `people_places` Phase 1b (WMA + cross-thread + claim guard) ✅
+
+- `workingMemoryAssembler` — entity resolution via characters/locations/organizations/projects only
+- `contextAwareMemoryRetrieval` — cross-thread journal links via `character_memories`
+- `memoryClaimGuard` — known names via `loadKnownNameSet`
+
+### Step 8 — `people_places` Phase 1c (verification helpers) ✅
+
+- `characterCreationVerification` — entity check via `loadFoundationEntityIndex` (fixes sync name extract)
+- `memoryFormationStatusService` — location check via `locations` table
+- Architecture guard: **zero** `from('people_places')` under `services/chat`
+
+Run `npm run test:phase1` (71 tests).
+
+### Step 9 — Entity store unification (Phase 1+) ⏸
 
 Follow consolidation report Phase 1 — merge onto `characters` spine with `character_authority_map`.
 
@@ -162,6 +182,7 @@ cd apps/server && npx tsx src/scripts/cleanupLegacyEntities.ts promote-locations
 cd apps/server && npx tsx scripts/audit.ts wma|story|episodes|integrity
 
 # Regression tests
+cd apps/server && npm run test:phase1
 cd apps/server && npm run test:scripts && npm run test:audits
 ```
 

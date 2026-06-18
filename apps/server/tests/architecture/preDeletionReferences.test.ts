@@ -2,14 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 
-/**
- * Pre-deletion reference guard — fails if retirement-candidate tables gain unexpected
- * references in application code. Update allowlists in docs/pre-deletion-salvage-audit.md
- * when a redirect PR intentionally adds/removes a reference.
- *
- * This does NOT drop anything; it prevents accidental re-coupling before merge work completes.
- */
-
 const SERVER_ROOT = join(__dirname, '../..');
 const SERVER_SRC = join(SERVER_ROOT, 'src');
 
@@ -32,24 +24,24 @@ function rel(p: string): string {
 }
 
 describe('pre-deletion reference guard', () => {
-  it('entity_canonical_map has zero application references (safe dead schema)', () => {
-    const hits = rgFiles('entity_canonical_map', SERVER_SRC);
-    expect(hits, `unexpected refs: ${hits.join(', ')}`).toEqual([]);
+  it('entity_canonical_map has zero application references', () => {
+    expect(rgFiles('entity_canonical_map', SERVER_SRC)).toEqual([]);
   });
 
-  it('omega_relationships has zero application references after redirect merge', () => {
-    const hits = rgFiles('omega_relationships', SERVER_SRC);
-    expect(hits, `unexpected refs: ${hits.join(', ')}`).toEqual([]);
+  it('omega_relationships has zero application references', () => {
+    expect(rgFiles('omega_relationships', SERVER_SRC)).toEqual([]);
   });
 
-  it('timelines_v2 references are documented (broken but wired — do not drop blindly)', () => {
-    const hits = rgFiles('timelines_v2', SERVER_SRC);
-    expect(hits.length).toBeGreaterThan(0);
-    expect(hits.some((h) => h.includes('timelineV2.ts'))).toBe(true);
+  it('timelines_v2 table name has zero application references after life_arcs redirect', () => {
+    expect(rgFiles('timelines_v2', SERVER_SRC)).toEqual([]);
   });
 
-  it('people_places still has active references (table not droppable yet)', () => {
-    const hits = rgFiles('people_places', SERVER_SRC);
-    expect(hits.length).toBeGreaterThan(10);
+  it('people_places SQL reads have zero references under services/chat', () => {
+    const hits = rgFiles("from\\('people_places'\\)", join(SERVER_SRC, 'services/chat'));
+    expect(hits.map(rel), hits.map(rel).join(', ')).toEqual([]);
+  });
+
+  it('people_places still referenced outside chat (table not droppable)', () => {
+    expect(rgFiles('people_places', SERVER_SRC).length).toBeGreaterThan(5);
   });
 });

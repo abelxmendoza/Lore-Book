@@ -8,6 +8,12 @@ vi.mock('./supabaseClient', () => ({
   supabaseAdmin: { from: vi.fn() },
 }));
 
+vi.mock('./characterAuthorityService', () => ({
+  characterAuthorityService: {
+    resolveByName: vi.fn().mockResolvedValue({ characterId: null, confidence: 0 }),
+  },
+}));
+
 import { characterRegistry } from './characterRegistry';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -64,6 +70,25 @@ describe('characterRegistry', () => {
       characterId: 'oscuridad',
       cleanName: 'Neon Pulsedad',
     });
+  });
+
+  it('uses entityResolutionCore when ENTITY_RESOLUTION_CORE=on', async () => {
+    const prev = process.env.ENTITY_RESOLUTION_CORE;
+    process.env.ENTITY_RESOLUTION_CORE = 'on';
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
+      if (table === 'characters') {
+        return chain([{ id: 'tio-juan', name: 'Uncle James', alias: [], metadata: {} }]);
+      }
+      if (table === 'entity_facts') return chain([]);
+      return chain([]);
+    });
+
+    const decision = await characterRegistry.classifyForCreation('user-1', 'Juan');
+    expect(decision.action).toBe('create');
+
+    process.env.ENTITY_RESOLUTION_CORE = prev;
   });
 
   it('does not deliver global pending questions into unrelated threads', async () => {

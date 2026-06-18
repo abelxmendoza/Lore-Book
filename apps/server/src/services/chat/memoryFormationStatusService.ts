@@ -149,13 +149,13 @@ export async function getMemoryFormationStatus(
   let placeFound = false;
   for (const pattern of locationPatterns) {
     const { data: place } = await supabaseAdmin
-      .from('people_places')
-      .select('id, name, type')
+      .from('locations')
+      .select('id, name')
       .eq('user_id', userId)
       .ilike('name', `%${pattern}%`)
       .maybeSingle();
 
-    if (place?.type === 'LOCATION') {
+    if (place) {
       checks.push({
         label: 'Location',
         ok: true,

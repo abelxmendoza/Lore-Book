@@ -13,7 +13,7 @@ import { hqiService } from '../hqiService';
 import { locationService } from '../locationService';
 import { memoryGraphService } from '../memoryGraphService';
 import { orchestratorService } from '../orchestratorService';
-import { peoplePlacesService } from '../peoplePlacesService';
+import { buildLegacyPeoplePlacesView } from './foundationEntityIndex';
 import { ragPacketCacheService } from '../ragPacketCacheService';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ChatSource } from '../omegaChatService';
@@ -84,13 +84,13 @@ export async function buildRAGPacket(
 
     // Locations, chapters, timeline hierarchy, people/places — parallel
     try {
-      const [locResult, chapResult, erasResult, sagasResult, arcsResult, ppResult] = await Promise.all([
+      const [locResult, chapResult, erasResult, sagasResult, arcsResult, orgsResult] = await Promise.all([
         locationService.listLocations(userId).catch((): any[] => []),
         chapterService.listChapters(userId).catch((): any[] => []),
         supabaseAdmin.from('eras').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
         supabaseAdmin.from('sagas').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
         supabaseAdmin.from('arcs').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        peoplePlacesService.listEntities(userId).catch((): any[] => []),
+        supabaseAdmin.from('organizations').select('id, name, aliases').eq('user_id', userId),
       ]);
       allLocations = locResult as any[];
       allChapters = chapResult as any[];
@@ -99,7 +99,11 @@ export async function buildRAGPacket(
         sagas: (sagasResult as any).data || [],
         arcs: (arcsResult as any).data || [],
       };
-      allPeoplePlaces = ppResult as any[];
+      allPeoplePlaces = buildLegacyPeoplePlacesView(
+        allCharacters,
+        allLocations,
+        ((orgsResult as any).data as any[]) || []
+      );
     } catch (e) { logger.debug({ e }, 'RAGBuilder: lore parallel fetch failed'); }
 
     // Character attributes — single batched query
@@ -247,7 +251,7 @@ export async function buildRAGPacket(
 
     if (currentContext?.kind === 'thread' && currentContext.threadId) {
       // Thread-scoped entries + cross-thread entity mentions run in parallel.
-      // Cross-thread path uses people_places.related_entries to surface what the user
+      // Cross-thread path uses related_entries on legacy entity rows to surface what the user
       // said about the same people in completely different conversations.
       const [threadEntries, crossThreadEntries] = await Promise.all([
         retrieveMemoriesByThread(userId, currentContext.threadId, 20),

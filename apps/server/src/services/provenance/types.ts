@@ -43,6 +43,7 @@ export type ArtifactType =
   | 'entry_ir'              // compiled intermediate representation
   | 'journal_entry'         // durable autobiographical memory
   | 'entity'                // any resolved entity
+  | 'character'             // character book record (characters table)
   | 'omega_claim'           // entity-bound semantic claim (omega_claims table)
   | 'insight';              // derived reflection or pattern
 

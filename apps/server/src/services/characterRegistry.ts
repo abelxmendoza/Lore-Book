@@ -39,14 +39,13 @@ import {
   characterToResolutionCandidate,
   compareCharacterCreationDecisions,
   logCharacterCreationShadowComparison,
-  resolveMentionWithCore,
   type CharacterResolutionRow,
 } from './entities/entityResolutionBridge';
 import {
   isEntityResolutionCoreActive,
   isEntityResolutionShadowEnabled,
 } from './entities/entityResolutionConfig';
-import type { ResolutionContext } from './entities/entityResolutionCore';
+import { resolveMention, type ResolutionContext } from './entities/entityResolutionCore';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
@@ -226,7 +225,7 @@ class CharacterRegistry {
     const legacyDecision = await this.classifyForCreationLegacy(userId, cleanName, rawName, existing, hasDistinctnessCue);
 
     if (isEntityResolutionShadowEnabled()) {
-      const coreResult = resolveMentionWithCore(
+      const coreResult = resolveMention(
         cleanName,
         existing.map(characterToResolutionCandidate),
         options?.context ?? {}
@@ -317,7 +316,7 @@ class CharacterRegistry {
     const mentionNorm = normalizeNameKey(cleanName);
     const possessiveAmbiguity = this.detectPossessiveAmbiguity(mentionNorm, existing);
 
-    const coreResult = resolveMentionWithCore(
+    const coreResult = resolveMention(
       cleanName,
       existing.map(characterToResolutionCandidate),
       context ?? {}
@@ -325,7 +324,8 @@ class CharacterRegistry {
     const coreAction = characterCreationActionFromCore(coreResult);
 
     if (coreAction === 'reject') {
-      return { action: 'reject', reason: 'core_skip' };
+      // Core skip = UNKNOWN token; creation gate already accepted this as a person mention.
+      return { action: 'create', cleanName };
     }
 
     if (coreAction === 'create') {

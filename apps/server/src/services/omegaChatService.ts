@@ -34,6 +34,11 @@ import { runLoreInterpretationPipeline, resolveMeaningForPlanner } from './pipel
 import { runLoreAgents } from './agents/loreAgentOrchestrator';
 import { buildPersonaEvidenceBlock } from './agents/loreAgentEvidenceBuilder';
 import { resolveMessageEntitiesForDisplay } from './chat/messageEntityDisplayService';
+import {
+  collectCreationOutcomesForMessage,
+  summarizeCreationOutcomes,
+  type CreationOutcome,
+} from './creationOutcomeService';
 import { loadEntityAnalyticsForContext } from './chat/entityAnalyticsLoader';
 import { perceptionService } from './perceptionService';
 import { ragPacketCacheService } from './ragPacketCacheService';
@@ -289,6 +294,15 @@ export type StreamingChatResponse = {
       type: 'character' | 'location' | 'organization';
     }>;
     suggestedActions?: ChatSuggestedAction[];
+    /** P1 creation protocol decisions for names in this turn (read-only). */
+    creationOutcomes?: CreationOutcome[];
+    creationOutcomeSummary?: string | null;
+    sensemakingContract?: {
+      id: string;
+      name: string;
+      filteredItems: number;
+      totalItems: number;
+    };
     mode?: string;
     confidence?: number;
   };
@@ -1319,6 +1333,13 @@ class OmegaChatService {
       rlContext = { type: 'chat_persona', features: {} };
     }
 
+    try {
+      const { applyPersonaRetrievalContract } = await import('./chat/epistemicRetrievalFilter');
+      applyPersonaRetrievalContract(ragPacket as any, activePersona);
+    } catch (err) {
+      logger.debug({ err, userId, activePersona }, 'Persona retrieval contract filter failed, continuing');
+    }
+
     // RESPONSE SAFETY: Analyze message for stress signals and generate safety guidance
     let safetyContext;
     try {
@@ -1669,7 +1690,17 @@ class OmegaChatService {
         });
     }
 
-    // Resolve entities from character/location/org books + omega_entities (not legacy people_places)
+    const threadEntityIds = (threadEntities ?? [])
+      .filter((e) => e.type === 'character')
+      .map((e) => e.id);
+
+    let creationOutcomes: CreationOutcome[] = [];
+    try {
+      creationOutcomes = await collectCreationOutcomesForMessage(userId, message, { threadEntityIds });
+    } catch (err) {
+      logger.debug({ err, userId }, 'Creation outcome collection failed, continuing without');
+    }
+
     const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
     const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
@@ -1811,6 +1842,9 @@ class OmegaChatService {
         timelineUpdates,
         memorySuggestion: memorySuggestion || undefined,
         disambiguationPrompt: disambiguationPrompt || undefined,
+        creationOutcomes: creationOutcomes.length > 0 ? creationOutcomes : undefined,
+        creationOutcomeSummary: summarizeCreationOutcomes(creationOutcomes),
+        sensemakingContract: (ragPacket as { sensemakingContract?: StreamingChatResponse['metadata']['sensemakingContract'] }).sensemakingContract,
         suggestedActions,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
@@ -1870,21 +1904,12 @@ class OmegaChatService {
     let selfModelBlockChat: string | null = null;
     try {
       const { resolveMetaProductContext } = await import('./chat/lorebookSelfModelService');
-      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
       const metaContext = await resolveMetaProductContext(message);
       if (metaContext.shortCircuit) {
-        return formatModeResponse(
-          {
-            content: metaContext.shortCircuit.content,
-            response_mode: 'DIAGNOSTIC',
-            confidence: 0.95,
-            metadata: {
-              meta_product: true,
-              concepts: metaContext.shortCircuit.concepts,
-            },
-          },
-          'SYSTEM_COGNITION'
-        );
+        return {
+          answer: metaContext.shortCircuit.content,
+          entryId,
+        };
       }
       selfModelBlockChat = metaContext.promptBlock;
     } catch (metaErr) {

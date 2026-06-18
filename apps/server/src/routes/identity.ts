@@ -55,7 +55,10 @@ router.post('/recompute', requireAuth, (req: AuthenticatedRequest, res) => {
 const reviseSchema = z.object({
   fromState: z.enum(['CANONICAL', 'CONTEXTUAL', 'REVISED', 'DISPUTED', 'INFERRED', 'PENDING_VERIFICATION']),
   toState:   z.enum(['CANONICAL', 'CONTEXTUAL', 'REVISED', 'DISPUTED', 'INFERRED', 'PENDING_VERIFICATION']),
-  artifactType: z.enum(['journal_entry', 'entry_ir', 'knowledge_unit', 'utterance', 'entity', 'insight', 'conversation_message', 'extracted_unit']),
+  artifactType: z.enum([
+    'journal_entry', 'entry_ir', 'knowledge_unit', 'utterance', 'entity', 'insight',
+    'conversation_message', 'extracted_unit', 'character', 'omega_claim',
+  ]),
   rationale: z.string().optional(),
 });
 

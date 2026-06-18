@@ -140,6 +140,10 @@ jobs:
         working-directory: apps/server
         run: npm run test:audits
 
+      - name: Phase 1 redirect regressions (timeline v2 + people_places reads)
+        working-directory: apps/server
+        run: npm run test:phase1
+
       - name: Ontology/kinship consolidation regressions (unit + integration + e2e)
         working-directory: apps/server
         run: npm run test:kinship
@@ -155,6 +159,10 @@ jobs:
       - name: Lore agents regressions (unit + integration + routing)
         working-directory: apps/server
         run: npm run test:lore-agents
+
+      - name: System cognition regressions (self-model, intent matrix, migration, wiring)
+        working-directory: apps/server
+        run: npm run test:system-cognition
 
       - name: Composer entity chip regressions (matching, validation, chat integration)
         working-directory: apps/server

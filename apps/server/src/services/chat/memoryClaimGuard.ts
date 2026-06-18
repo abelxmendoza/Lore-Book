@@ -12,7 +12,7 @@
  * fabricated-recall regressions are visible in ops instead of silent.
  */
 
-import { supabaseAdmin } from '../supabaseClient';
+import { loadKnownNameSet } from './foundationEntityIndex';
 import { logger } from '../../logger';
 
 const MEMORY_CLAIM_PATTERNS = [
@@ -70,20 +70,8 @@ export async function verifyMemoryClaims(
     return { flagged: false, memoryClaimDetected: true, unknownNames: [] };
   }
 
-  // Known names across the entity graph (characters + people_places + aliases)
-  const [{ data: chars }, { data: places }] = await Promise.all([
-    supabaseAdmin.from('characters').select('name, alias').eq('user_id', userId),
-    supabaseAdmin.from('people_places').select('name').eq('user_id', userId),
-  ]);
-
-  const known = new Set<string>();
-  for (const c of (chars ?? []) as Array<{ name: string; alias: string[] | null }>) {
-    known.add(c.name.toLowerCase());
-    for (const a of c.alias ?? []) known.add(a.toLowerCase());
-  }
-  for (const p of (places ?? []) as Array<{ name: string }>) {
-    known.add(p.name.toLowerCase());
-  }
+  // Known names across canonical entity stores (characters, locations, organizations)
+  const known = await loadKnownNameSet(userId);
 
   const isKnown = (candidate: string): boolean => {
     const lower = candidate.toLowerCase();
