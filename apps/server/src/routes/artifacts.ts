@@ -7,6 +7,7 @@ import {
   artifactRegistry,
   type ArtifactIndexType,
 } from '../services/artifactRegistry';
+import type { LoreAssetKind } from '../services/loreAssetPresentation';
 import {
   refreshProjection,
   refreshStaleProjections,
@@ -23,6 +24,9 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(500).optional(),
   grouped: z.coerce.boolean().optional(),
   includeStale: z.coerce.boolean().optional(),
+  view: z.enum(['assets']).optional(),
+  assetKind: z.enum(['moment', 'portrait', 'evidence', 'pattern', 'chapter', 'scene']).optional(),
+  staleOnly: z.coerce.boolean().optional(),
 });
 
 // GET /api/artifacts
@@ -36,7 +40,17 @@ router.get(
     }
 
     const userId = req.user!.id;
-    const { type, truthState, limit, grouped, includeStale } = parsed.data;
+    const { type, truthState, limit, grouped, includeStale, view, assetKind, staleOnly } = parsed.data;
+
+    if (view === 'assets') {
+      const result = await artifactRegistry.listLoreAssets(userId, {
+        assetKind: assetKind as LoreAssetKind | undefined,
+        truthState: truthState as TruthState | undefined,
+        limit,
+        staleOnly,
+      });
+      return res.json(result);
+    }
 
     if (grouped) {
       const data = await artifactRegistry.listGrouped(userId, limit ?? 100);

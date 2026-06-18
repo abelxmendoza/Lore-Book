@@ -1,77 +1,75 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BookOpen, Brain, User, AlertCircle, CheckCircle2,
-  Clock, Download, ChevronDown, ChevronRight, RefreshCw, X, Layers,
+  AlertCircle, CheckCircle2, Clock, Download, RefreshCw, Sparkles, X,
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
 import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
+import {
+  fetchLoreAssets,
+  LORE_ASSET_TAB_LABELS,
+  type LoreAsset,
+  type LoreAssetKind,
+  type LoreAssetKindCounts,
+  type LoreAssetTruthState,
+} from '../api/loreAssets';
+import { LoreAssetCard } from '../components/loreAssets/LoreAssetCard';
 
 const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
 
-const MOCK_DATA: WhatAIKnowsData = {
-  journal_entries: [
-    { id: 'mock-e1', title: 'Finished the first draft', content: "Stayed up until 3am to finish it. Relief mixed with vulnerability — putting creative work into the world is terrifying in the best way.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(4) },
-    { id: 'mock-e2', title: 'Morning run — week 3', content: "Three weeks of the running habit and I haven't fallen off. Something actually shifted this time. The consistency feels different.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(21) },
-    { id: 'mock-e3', title: 'The conversation with Maya', content: "Finally said what needed to be said. It was uncomfortable but the relief afterward was immediate.", metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(11) },
-    { id: 'mock-e4', title: 'Thinking about the next 2 years', content: "Talked with Dr. Chen today. More clarity coming out of that conversation than I expected. A lot to sit with.", metadata: { truth_state: 'INFERRED' }, created_at: ago(7) },
-    { id: 'mock-e5', title: 'Late night thoughts', content: "Can't sleep. Thinking about the lead role. It feels right but the anxiety is real. Writing helps.", metadata: { truth_state: 'PENDING_VERIFICATION' }, created_at: ago(48) },
-  ],
-  insights: [
-    { id: 'mock-i1', content: "You tend to do your best creative work late at night, consistently after 10pm.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(15) },
-    { id: 'mock-i2', content: "Physical routines like running and cooking seem to stabilize you during periods of high creative or professional stress.", metadata: { truth_state: 'INFERRED' }, created_at: ago(20) },
-    { id: 'mock-i3', content: "You often delay difficult interpersonal conversations but consistently report feeling relieved afterward.", metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(10) },
-    { id: 'mock-i4', content: "Wednesdays and Thursdays are your most reflective journaling days based on entry volume and depth.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(35) },
-  ],
-  entities: [
-    { id: 'mock-ent1', canonical_name: 'Maya', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(60) },
-    { id: 'mock-ent2', canonical_name: 'Dr. Chen', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(7) },
-    { id: 'mock-ent3', canonical_name: 'Sam', type: 'PERSON', metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(45) },
-    { id: 'mock-ent4', canonical_name: 'Jordan', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(30) },
-    { id: 'mock-ent5', canonical_name: 'Riverside Park', type: 'LOCATION', metadata: { truth_state: 'CANONICAL' }, created_at: ago(21) },
-    { id: 'mock-ent6', canonical_name: 'Home Office', type: 'LOCATION', metadata: { truth_state: 'CANONICAL' }, created_at: ago(90) },
-  ],
-  entry_ir: [],
+const MOCK_COUNTS: LoreAssetKindCounts = {
+  moment: 3,
+  portrait: 4,
+  evidence: 1,
+  pattern: 2,
+  chapter: 0,
+  scene: 0,
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const MOCK_ASSETS: LoreAsset[] = [
+  {
+    id: 'mock-e1', artifactType: 'journal_entry', assetKind: 'moment',
+    displayName: 'Finished the first draft', subtitle: 'Creative milestone',
+    truthState: 'CANONICAL', linkedCount: 1, createdAt: ago(4), sourceTable: 'journal_entries',
+  },
+  {
+    id: 'mock-e2', artifactType: 'journal_entry', assetKind: 'moment',
+    displayName: 'Morning run — week 3', truthState: 'CANONICAL', linkedCount: 0,
+    createdAt: ago(21), sourceTable: 'journal_entries',
+  },
+  {
+    id: 'mock-e3', artifactType: 'journal_entry', assetKind: 'moment',
+    displayName: 'The conversation with Maya', truthState: 'CONTEXTUAL', linkedCount: 1,
+    createdAt: ago(11), sourceTable: 'journal_entries',
+  },
+  {
+    id: 'mock-ent1', artifactType: 'entity', assetKind: 'portrait',
+    displayName: 'Maya', subtitle: 'person', truthState: 'CANONICAL', linkedCount: 3,
+    createdAt: ago(60), sourceTable: 'entities',
+  },
+  {
+    id: 'mock-ent2', artifactType: 'entity', assetKind: 'portrait',
+    displayName: 'Dr. Chen', subtitle: 'person', truthState: 'CANONICAL', linkedCount: 1,
+    createdAt: ago(7), sourceTable: 'entities',
+  },
+  {
+    id: 'mock-i1', artifactType: 'insight', assetKind: 'pattern',
+    displayName: 'Late-night creative peak', summary: 'You tend to do your best creative work after 10pm.',
+    truthState: 'CANONICAL', linkedCount: 4, createdAt: ago(15), sourceTable: 'insights',
+  },
+  {
+    id: 'mock-f1', artifactType: 'user_file', assetKind: 'evidence',
+    displayName: 'resume.pdf', subtitle: 'application/pdf', linkedCount: 12,
+    createdAt: ago(30), sourceTable: 'user_files',
+  },
+];
 
-type TruthState = 'CANONICAL' | 'CONTEXTUAL' | 'REVISED' | 'DISPUTED' | 'INFERRED' | 'PENDING_VERIFICATION';
-
-interface JournalEntry {
-  id: string;
-  title?: string;
-  content?: string;
-  metadata?: { truth_state?: TruthState; [key: string]: unknown };
-  created_at: string;
-}
-
-interface Insight {
-  id: string;
-  content?: string;
-  metadata?: { truth_state?: TruthState; [key: string]: unknown };
-  created_at: string;
-}
-
-interface Entity {
-  id: string;
-  canonical_name?: string;
-  type?: string;
-  metadata?: { truth_state?: TruthState; [key: string]: unknown };
-  created_at: string;
-}
-
-interface WhatAIKnowsData {
-  journal_entries: JournalEntry[];
-  insights: Insight[];
-  entities: Entity[];
-  entry_ir: Array<{ id: string; summary?: string; confidence?: number; metadata?: unknown; created_at: string }>;
-}
+type GalleryTab = LoreAssetKind | 'stale' | 'audit';
 
 interface RevisePayload {
-  fromState: TruthState;
-  toState: TruthState;
+  fromState: LoreAssetTruthState;
+  toState: LoreAssetTruthState;
   artifactType: string;
   rationale?: string;
 }
@@ -85,68 +83,27 @@ interface MutationRecord {
   created_at: string;
 }
 
-interface ArtifactProjection {
-  id: string;
-  type: 'biography_snapshot' | 'timeline_event';
-  title?: string;
-  summary?: string;
-  stale?: boolean;
-  createdAt: string;
-}
-
-interface ArtifactListResponse {
-  artifacts: ArtifactProjection[];
-  total: number;
-}
-
 interface ProjectionRefreshResponse {
   refreshed: boolean;
-  type: RefreshableProjectionType;
+  type: 'biography_snapshot' | 'timeline_event';
   artifactId: string;
-  artifact?: ArtifactProjection;
+  artifact?: LoreAsset;
   message?: string;
 }
 
-interface RefreshStaleResponse {
-  results: ProjectionRefreshResponse[];
-  refreshed: number;
-}
-
-type RefreshableProjectionType = 'biography_snapshot' | 'timeline_event';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const TRUTH_STATE_COLORS: Record<TruthState, string> = {
-  CANONICAL:            'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-  CONTEXTUAL:           'text-sky-400 bg-sky-400/10 border-sky-400/20',
-  REVISED:              'text-amber-400 bg-amber-400/10 border-amber-400/20',
-  DISPUTED:             'text-rose-400 bg-rose-400/10 border-rose-400/20',
-  INFERRED:             'text-violet-400 bg-violet-400/10 border-violet-400/20',
+const TRUTH_STATE_COLORS: Record<LoreAssetTruthState, string> = {
+  CANONICAL: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+  CONTEXTUAL: 'text-sky-400 bg-sky-400/10 border-sky-400/20',
+  REVISED: 'text-amber-400 bg-amber-400/10 border-amber-400/20',
+  DISPUTED: 'text-rose-400 bg-rose-400/10 border-rose-400/20',
+  INFERRED: 'text-violet-400 bg-violet-400/10 border-violet-400/20',
   PENDING_VERIFICATION: 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20',
 };
 
-const TRUTH_STATE_LABELS: Record<TruthState, string> = {
-  CANONICAL:            'confirmed',
-  CONTEXTUAL:           'contextual',
-  REVISED:              'revised',
-  DISPUTED:             'disputed',
-  INFERRED:             'inferred',
-  PENDING_VERIFICATION: 'unverified',
-};
-
-function TruthBadge({ state }: { state: TruthState | undefined }) {
-  const s = state ?? 'PENDING_VERIFICATION';
+function TruthBadge({ state }: { state: LoreAssetTruthState }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${TRUTH_STATE_COLORS[s]}`}>
-      {TRUTH_STATE_LABELS[s]}
-    </span>
-  );
-}
-
-function StaleBadge() {
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium text-amber-400 bg-amber-400/10 border-amber-400/20">
-      needs refresh
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${TRUTH_STATE_COLORS[state]}`}>
+      {state.toLowerCase().replace(/_/g, ' ')}
     </span>
   );
 }
@@ -155,25 +112,24 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// ─── ReviseModal ──────────────────────────────────────────────────────────────
-
-interface ReviseModalProps {
-  artifactId: string;
-  artifactType: string;
-  currentState: TruthState;
+function ReviseModal({
+  asset,
+  onClose,
+  onRevised,
+}: {
+  asset: LoreAsset;
   onClose: () => void;
   onRevised: () => void;
-}
-
-function ReviseModal({ artifactId, artifactType, currentState, onClose, onRevised }: ReviseModalProps) {
-  const [permitted, setPermitted] = useState<TruthState[]>([]);
-  const [toState, setToState] = useState<TruthState | ''>('');
+}) {
+  const currentState = asset.truthState ?? 'PENDING_VERIFICATION';
+  const [permitted, setPermitted] = useState<LoreAssetTruthState[]>([]);
+  const [toState, setToState] = useState<LoreAssetTruthState | ''>('');
   const [rationale, setRationale] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchJson<{ permitted: TruthState[] }>(`/api/identity/permitted-transitions?currentState=${currentState}`)
+    fetchJson<{ permitted: LoreAssetTruthState[] }>(`/api/identity/permitted-transitions?currentState=${currentState}`)
       .then(r => setPermitted(r.permitted))
       .catch(() => setPermitted([]));
   }, [currentState]);
@@ -183,9 +139,14 @@ function ReviseModal({ artifactId, artifactType, currentState, onClose, onRevise
     setSubmitting(true);
     setError('');
     try {
-      await fetchJson(`/api/identity/revise/${artifactId}`, {
+      await fetchJson(`/api/identity/revise/${asset.id}`, {
         method: 'POST',
-        body: JSON.stringify({ fromState: currentState, toState, artifactType, rationale } satisfies RevisePayload),
+        body: JSON.stringify({
+          fromState: currentState,
+          toState,
+          artifactType: asset.artifactType,
+          rationale,
+        } satisfies RevisePayload),
       });
       onRevised();
       onClose();
@@ -206,11 +167,9 @@ function ReviseModal({ artifactId, artifactType, currentState, onClose, onRevise
             <X className="w-4 h-4" />
           </button>
         </div>
-
         <p className="text-zinc-400 text-sm mb-4">
-          Currently <TruthBadge state={currentState} />. Choose the state this memory should transition to.
+          <span className="text-zinc-300">{asset.displayName}</span> — currently <TruthBadge state={currentState} />.
         </p>
-
         {permitted.length === 0 ? (
           <p className="text-zinc-500 text-sm">No transitions are permitted from this state.</p>
         ) : (
@@ -220,34 +179,26 @@ function ReviseModal({ artifactId, artifactType, currentState, onClose, onRevise
                 key={s}
                 onClick={() => setToState(s)}
                 className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                  toState === s
-                    ? 'border-white/40 bg-white/10'
-                    : 'border-zinc-700 hover:border-zinc-500'
+                  toState === s ? 'border-white/40 bg-white/10' : 'border-zinc-700 hover:border-zinc-500'
                 }`}
               >
                 <TruthBadge state={s} />
-                <span className="ml-2 text-zinc-300 text-sm">{s}</span>
               </button>
             ))}
           </div>
         )}
-
         {needsRationale && (
           <textarea
-            placeholder="Explain why this memory should be revised or disputed…"
+            placeholder="Explain why this should be revised or disputed…"
             value={rationale}
             onChange={e => setRationale(e.target.value)}
             rows={3}
             className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 resize-none mb-4 focus:outline-none focus:border-zinc-400"
           />
         )}
-
         {error && <p className="text-rose-400 text-sm mb-3">{error}</p>}
-
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">
-            Cancel
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
           <button
             onClick={submit}
             disabled={!toState || submitting || (needsRationale && !rationale.trim())}
@@ -261,220 +212,106 @@ function ReviseModal({ artifactId, artifactType, currentState, onClose, onRevise
   );
 }
 
-// ─── Section components ───────────────────────────────────────────────────────
-
-function EntryRow({ entry, onRevise }: { entry: JournalEntry; onRevise: (id: string, type: string, state: TruthState) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const state = entry.metadata?.truth_state ?? 'PENDING_VERIFICATION';
-
-  return (
-    <div className="border border-zinc-800 rounded-lg bg-zinc-900/50 overflow-hidden">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-800/40 transition-colors"
-      >
-        {expanded ? <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" /> : <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />}
-        <span className="text-white text-sm font-medium truncate flex-1">
-          {entry.title ?? 'Untitled entry'}
-        </span>
-        <TruthBadge state={state} />
-        <span className="text-zinc-500 text-xs shrink-0">{formatDate(entry.created_at)}</span>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-zinc-800">
-          {entry.content && (
-            <p className="text-zinc-400 text-sm mt-3 leading-relaxed line-clamp-6">{entry.content}</p>
-          )}
-          <button
-            onClick={() => onRevise(entry.id, 'journal_entry', state)}
-            className="mt-3 text-xs text-zinc-500 hover:text-white transition-colors underline underline-offset-2"
-          >
-            Revise truth state
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InsightRow({ insight, onRevise }: { insight: Insight; onRevise: (id: string, type: string, state: TruthState) => void }) {
-  const state = insight.metadata?.truth_state ?? 'PENDING_VERIFICATION';
-  return (
-    <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50 group">
-      <Brain className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-zinc-300 text-sm leading-relaxed">{insight.content ?? '—'}</p>
-        <div className="flex items-center gap-2 mt-2">
-          <TruthBadge state={state} />
-          <span className="text-zinc-600 text-xs">{formatDate(insight.created_at)}</span>
-          <button
-            onClick={() => onRevise(insight.id, 'insight', state)}
-            className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors underline underline-offset-2 opacity-0 group-hover:opacity-100"
-          >
-            revise
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EntityRow({ entity, onRevise }: { entity: Entity; onRevise: (id: string, type: string, state: TruthState) => void }) {
-  const state = entity.metadata?.truth_state ?? 'PENDING_VERIFICATION';
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50 group">
-      <User className="w-4 h-4 text-sky-400 shrink-0" />
-      <span className="text-zinc-300 text-sm flex-1 truncate">{entity.canonical_name ?? '—'}</span>
-      {entity.type && <span className="text-zinc-600 text-xs">{entity.type}</span>}
-      <TruthBadge state={state} />
-      <button
-        onClick={() => onRevise(entity.id, 'entity', state)}
-        className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors underline underline-offset-2 opacity-0 group-hover:opacity-100"
-      >
-        revise
-      </button>
-    </div>
-  );
-}
-
-function ProjectionRow({
-  projection,
-  refreshing,
-  onRefresh,
-}: {
-  projection: ArtifactProjection;
-  refreshing: boolean;
-  onRefresh: (projection: ArtifactProjection) => void;
-}) {
-  const label = projection.type === 'biography_snapshot' ? 'Biography' : 'Timeline event';
-  return (
-    <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50">
-      <Layers className="w-4 h-4 text-amber-400/80 mt-0.5 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-zinc-300 text-sm font-medium">{projection.title ?? label}</span>
-          <span className="text-zinc-600 text-xs">{label}</span>
-          {projection.stale && <StaleBadge />}
-        </div>
-        {projection.summary && (
-          <p className="text-zinc-500 text-xs mt-1 leading-relaxed line-clamp-3">{projection.summary}</p>
-        )}
-        <p className="text-zinc-600 text-xs mt-2">
-          {projection.stale
-            ? 'Source memories changed — refresh to rebuild this summary from your latest truth.'
-            : 'Derived from your journal entries and kept in sync.'}
-        </p>
-        {projection.stale && (
-          <button
-            onClick={() => onRefresh(projection)}
-            disabled={refreshing}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-amber-400/25 text-amber-300/90 hover:bg-amber-400/10 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing…' : 'Refresh summary'}
-          </button>
-        )}
-      </div>
-      <span className="text-zinc-600 text-xs shrink-0">{formatDate(projection.createdAt)}</span>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+const GALLERY_TABS: GalleryTab[] = ['moment', 'portrait', 'evidence', 'pattern', 'stale', 'audit'];
 
 export default function WhatAIKnows() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMockData = useShouldUseMockData();
 
-  const [data, setData] = useState<WhatAIKnowsData | null>(null);
+  const [assets, setAssets] = useState<LoreAsset[]>([]);
+  const [countsByKind, setCountsByKind] = useState<LoreAssetKindCounts>(MOCK_COUNTS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'memories' | 'insights' | 'entities' | 'derived' | 'audit'>('memories');
+  const [tab, setTab] = useState<GalleryTab>('moment');
   const [auditLog, setAuditLog] = useState<MutationRecord[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [projections, setProjections] = useState<ArtifactProjection[]>([]);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [revising, setRevising] = useState<LoreAsset | null>(null);
 
-  const [revising, setRevising] = useState<{ id: string; type: string; state: TruthState } | null>(null);
+  const staleAssets = useMemo(() => assets.filter(a => a.stale), [assets]);
 
-  const staleProjections = projections.filter(p => p.stale);
-
-  const loadProjections = useCallback(async () => {
-    const [biography, timeline] = await Promise.all([
-      fetchJson<ArtifactListResponse>('/api/artifacts?type=biography_snapshot&limit=5'),
-      fetchJson<ArtifactListResponse>('/api/artifacts?type=timeline_event&limit=50'),
-    ]);
-    setProjections([...biography.artifacts, ...timeline.artifacts]);
-  }, []);
+  const visibleAssets = useMemo(() => {
+    if (tab === 'stale') return staleAssets;
+    if (tab === 'audit') return [];
+    return assets.filter(a => a.assetKind === tab);
+  }, [assets, tab, staleAssets]);
 
   const load = useCallback(async () => {
     if (isMockData) {
-      setData(MOCK_DATA);
-      setProjections([]);
+      setAssets(MOCK_ASSETS);
+      setCountsByKind(MOCK_COUNTS);
       setLoading(false);
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const grouped = await fetchJson<WhatAIKnowsData>('/api/artifacts?grouped=true');
-      setData(grouped);
-      await loadProjections();
+      const result = await fetchLoreAssets({ limit: 500 });
+      setAssets(result.assets);
+      setCountsByKind(result.countsByKind);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      setError(err instanceof Error ? err.message : 'Failed to load lore assets');
     } finally {
       setLoading(false);
     }
-  }, [isMockData, loadProjections]);
+  }, [isMockData]);
 
-  const refreshProjection = useCallback(async (projection: ArtifactProjection) => {
+  const refreshAsset = useCallback(async (asset: LoreAsset) => {
     if (isMockData) return;
-    setRefreshingId(projection.id);
+    setRefreshingId(asset.id);
     try {
-      const result = await fetchJson<ProjectionRefreshResponse>(
-        `/api/artifacts/${projection.id}/refresh`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ type: projection.type }),
-        }
-      );
-      if (result.artifact) {
-        setProjections(prev => prev.map(p => (p.id === projection.id ? { ...p, ...result.artifact } : p)));
-      } else {
-        await loadProjections();
-      }
+      await fetchJson<ProjectionRefreshResponse>(`/api/artifacts/${asset.id}/refresh`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: asset.artifactType,
+        }),
+      });
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
       setRefreshingId(null);
     }
-  }, [isMockData, loadProjections]);
+  }, [isMockData, load]);
 
   const refreshAllStale = useCallback(async () => {
-    if (isMockData || staleProjections.length === 0) return;
+    if (isMockData || staleAssets.length === 0) return;
     setRefreshingAll(true);
     setError('');
     try {
-      const result = await fetchJson<RefreshStaleResponse>('/api/artifacts/refresh-stale', {
+      await fetchJson('/api/artifacts/refresh-stale', {
         method: 'POST',
         body: JSON.stringify({
-          items: staleProjections.map(p => ({ id: p.id, type: p.type, stale: true })),
+          items: staleAssets.map(a => ({
+            id: a.id,
+            type: a.artifactType,
+            stale: true,
+          })),
         }),
       });
-      if (result.refreshed > 0) {
-        await loadProjections();
-      }
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
       setRefreshingAll(false);
     }
-  }, [isMockData, staleProjections, loadProjections]);
+  }, [isMockData, staleAssets, load]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const requested = searchParams.get('tab');
+    if (requested === 'derived') {
+      setTab('stale');
+      return;
+    }
+    if (requested && GALLERY_TABS.includes(requested as GalleryTab)) {
+      setTab(requested as GalleryTab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isMockData || tab !== 'audit' || auditLog.length > 0) return;
@@ -485,8 +322,15 @@ export default function WhatAIKnows() {
       .finally(() => setAuditLoading(false));
   }, [tab, auditLog.length, isMockData]);
 
-  const handleExport = () => {
-    window.open('/api/identity/export', '_blank');
+  const selectTab = (next: GalleryTab) => {
+    setTab(next);
+    setSearchParams({ tab: next }, { replace: true });
+  };
+
+  const tabCount = (t: GalleryTab) => {
+    if (t === 'stale') return staleAssets.length;
+    if (t === 'audit') return null;
+    return countsByKind[t as LoreAssetKind] ?? 0;
   };
 
   if (!user && !isMockData) {
@@ -496,161 +340,106 @@ export default function WhatAIKnows() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Header */}
       <div className="border-b border-zinc-800 px-6 py-5">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-white">What the AI knows about you</h1>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-400" />
+              <h1 className="text-xl font-semibold text-white">Lore Assets</h1>
+            </div>
             <p className="text-zinc-500 text-sm mt-1">
-              Every memory, insight, and entity the system holds — with truth states and derived summaries.
+              Everything in your book — moments, people, files, patterns — with truth states and provenance.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={load}
-              className="p-2 text-zinc-400 hover:text-white transition-colors"
-              title="Refresh"
-            >
+          <div className="flex items-center gap-3 shrink-0">
+            <button onClick={load} className="p-2 text-zinc-400 hover:text-white transition-colors" title="Refresh">
               <RefreshCw className="w-4 h-4" />
             </button>
             <button
-              onClick={handleExport}
+              onClick={() => window.open('/api/identity/export', '_blank')}
               className="flex items-center gap-2 px-4 py-2 text-sm border border-zinc-700 rounded-lg text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
             >
               <Download className="w-4 h-4" />
-              Export all
+              Export
             </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-6">
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-zinc-900 p-1 rounded-lg w-fit">
-          {(['memories', 'insights', 'entities', 'derived', 'audit'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm rounded-md transition-colors capitalize ${
-                tab === t ? 'bg-white text-black font-medium' : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              {t === 'memories' && data
-                ? `memories (${data.journal_entries.length})`
-                : t === 'insights' && data
-                ? `insights (${data.insights.length})`
-                : t === 'entities' && data
-                ? `entities (${data.entities.length})`
-                : t === 'derived'
-                ? `derived (${projections.length})`
-                : t}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1 mb-6 bg-zinc-900 p-1 rounded-lg w-fit">
+          {GALLERY_TABS.map(t => {
+            const count = tabCount(t);
+            const label = LORE_ASSET_TAB_LABELS[t];
+            return (
+              <button
+                key={t}
+                onClick={() => selectTab(t)}
+                className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                  tab === t ? 'bg-white text-black font-medium' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {count != null ? `${label} (${count})` : label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Loading / Error */}
         {loading && (
           <div className="flex items-center gap-3 text-zinc-400 py-16 justify-center">
             <RefreshCw className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Reading your memory…</span>
+            <span className="text-sm">Opening your lore…</span>
           </div>
         )}
 
         {error && (
-          <div className="flex items-center gap-2 text-rose-400 bg-rose-400/10 border border-rose-400/20 rounded-lg px-4 py-3 text-sm">
+          <div className="flex items-center gap-2 text-rose-400 bg-rose-400/10 border border-rose-400/20 rounded-lg px-4 py-3 text-sm mb-4">
             <AlertCircle className="w-4 h-4 shrink-0" />
             {error}
           </div>
         )}
 
-        {/* Memories tab */}
-        {!loading && !error && tab === 'memories' && data && (
-          <div className="space-y-2">
-            {data.journal_entries.length === 0 ? (
-              <EmptyState icon={BookOpen} message="No journal entries yet. Start writing to build your memory." />
-            ) : (
-              data.journal_entries.map(e => (
-                <EntryRow
-                  key={e.id}
-                  entry={e}
-                  onRevise={(id, type, state) => setRevising({ id, type, state })}
-                />
-              ))
-            )}
+        {!loading && tab !== 'audit' && tab === 'stale' && staleAssets.length > 0 && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border border-amber-400/20 rounded-lg bg-amber-400/5 mb-4">
+            <p className="text-amber-200/80 text-sm">
+              {staleAssets.length} derived summar{staleAssets.length === 1 ? 'y is' : 'ies are'} out of date.
+            </p>
+            <button
+              onClick={refreshAllStale}
+              disabled={refreshingAll}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-amber-400/15 border border-amber-400/25 text-amber-200 hover:bg-amber-400/25 disabled:opacity-50 transition-colors shrink-0"
+            >
+              <RefreshCw className={`w-3 h-3 ${refreshingAll ? 'animate-spin' : ''}`} />
+              {refreshingAll ? 'Refreshing…' : 'Refresh all'}
+            </button>
           </div>
         )}
 
-        {/* Insights tab */}
-        {!loading && !error && tab === 'insights' && data && (
+        {!loading && tab !== 'audit' && (
           <div className="space-y-2">
-            {data.insights.length === 0 ? (
-              <EmptyState icon={Brain} message="No insights synthesized yet." />
-            ) : (
-              data.insights.map(i => (
-                <InsightRow
-                  key={i.id}
-                  insight={i}
-                  onRevise={(id, type, state) => setRevising({ id, type, state })}
-                />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Entities tab */}
-        {!loading && !error && tab === 'entities' && data && (
-          <div className="space-y-2">
-            {data.entities.length === 0 ? (
-              <EmptyState icon={User} message="No entities recognized yet." />
-            ) : (
-              data.entities.map(e => (
-                <EntityRow
-                  key={e.id}
-                  entity={e}
-                  onRevise={(id, type, state) => setRevising({ id, type, state })}
-                />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Derived tab — biography + timeline projections */}
-        {!loading && !error && tab === 'derived' && (
-          <div className="space-y-3">
-            {staleProjections.length > 0 && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border border-amber-400/20 rounded-lg bg-amber-400/5">
-                <p className="text-amber-200/80 text-sm">
-                  {staleProjections.length} summar{staleProjections.length === 1 ? 'y is' : 'ies are'} out of date after memory corrections.
+            {visibleAssets.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-16 text-zinc-600">
+                <Sparkles className="w-8 h-8" />
+                <p className="text-sm text-center max-w-sm">
+                  {tab === 'stale'
+                    ? 'All summaries are in sync with your memories.'
+                    : `No ${LORE_ASSET_TAB_LABELS[tab as LoreAssetKind].toLowerCase()} yet. Chat, write, or upload to grow your lore.`}
                 </p>
-                <button
-                  onClick={refreshAllStale}
-                  disabled={refreshingAll}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-amber-400/15 border border-amber-400/25 text-amber-200 hover:bg-amber-400/25 disabled:opacity-50 transition-colors shrink-0"
-                >
-                  <RefreshCw className={`w-3 h-3 ${refreshingAll ? 'animate-spin' : ''}`} />
-                  {refreshingAll ? 'Refreshing…' : 'Refresh all'}
-                </button>
               </div>
-            )}
-            {projections.length === 0 ? (
-              <EmptyState
-                icon={Layers}
-                message="No derived summaries yet. Biography and timeline projections appear here once generated."
-              />
             ) : (
-              projections.map(p => (
-                <ProjectionRow
-                  key={`${p.type}-${p.id}`}
-                  projection={p}
-                  refreshing={refreshingId === p.id || refreshingAll}
-                  onRefresh={refreshProjection}
+              visibleAssets.map(asset => (
+                <LoreAssetCard
+                  key={`${asset.artifactType}-${asset.id}`}
+                  asset={asset}
+                  onRevise={asset.truthState ? setRevising : undefined}
+                  onRefresh={refreshAsset}
+                  refreshing={refreshingId === asset.id || refreshingAll}
                 />
               ))
             )}
           </div>
         )}
 
-        {/* Audit tab */}
         {tab === 'audit' && (
           <div className="space-y-2">
             {auditLoading && (
@@ -660,7 +449,10 @@ export default function WhatAIKnows() {
               </div>
             )}
             {!auditLoading && auditLog.length === 0 && (
-              <EmptyState icon={CheckCircle2} message="No mutations recorded yet. Every truth-state revision will appear here." />
+              <div className="flex flex-col items-center gap-3 py-16 text-zinc-600">
+                <CheckCircle2 className="w-8 h-8" />
+                <p className="text-sm">No truth revisions recorded yet.</p>
+              </div>
             )}
             {auditLog.map(m => (
               <div key={m.id} className="flex items-start gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50">
@@ -679,25 +471,13 @@ export default function WhatAIKnows() {
         )}
       </div>
 
-      {/* Revise modal */}
       {revising && (
         <ReviseModal
-          artifactId={revising.id}
-          artifactType={revising.type}
-          currentState={revising.state}
+          asset={revising}
           onClose={() => setRevising(null)}
           onRevised={load}
         />
       )}
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 py-16 text-zinc-600">
-      <Icon className="w-8 h-8" />
-      <p className="text-sm text-center max-w-xs">{message}</p>
     </div>
   );
 }

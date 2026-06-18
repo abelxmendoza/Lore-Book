@@ -9,6 +9,15 @@ import {
   computeSourceInputVersion,
   isProjectionStale,
 } from './projectionVersion';
+import {
+  countAssetsByKind,
+  presentLoreAsset,
+  type LoreAssetKind,
+  type LoreAssetKindCounts,
+  type LoreAssetView,
+} from './loreAssetPresentation';
+
+export type { LoreAssetKind, LoreAssetKindCounts, LoreAssetView } from './loreAssetPresentation';
 
 export type ArtifactIndexType =
   | ArtifactType
@@ -35,6 +44,13 @@ export interface ArtifactListOptions {
   truthState?: TruthState;
   limit?: number;
   includeStale?: boolean;
+}
+
+export interface LoreAssetListOptions {
+  assetKind?: LoreAssetKind;
+  truthState?: TruthState;
+  limit?: number;
+  staleOnly?: boolean;
 }
 
 export interface WhatAIKnowsGrouped {
@@ -146,7 +162,7 @@ const INDEX_SOURCES: SourceConfig[] = [
     type: 'character',
     table: 'characters',
     defaultLimit: 200,
-    select: 'id, name, subtitle, metadata, created_at, updated_at',
+    select: 'id, name, subtitle, avatar_url, metadata, created_at, updated_at',
     normalize: (row) => ({
       id: String(row.id),
       type: 'character',
@@ -207,7 +223,7 @@ const INDEX_SOURCES: SourceConfig[] = [
     type: 'user_file',
     table: 'user_files',
     defaultLimit: 50,
-    select: 'id, filename, mime_type, metadata, created_at',
+    select: 'id, filename, mime_type, storage_url, derived_counts, metadata, created_at, updated_at',
     normalize: (row) => ({
       id: String(row.id),
       type: 'user_file',
@@ -306,6 +322,42 @@ export class ArtifactRegistry {
 
     entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return entries.slice(0, limit);
+  }
+
+  async listLoreAssets(
+    userId: string,
+    options: LoreAssetListOptions = {}
+  ): Promise<{ assets: LoreAssetView[]; total: number; countsByKind: LoreAssetKindCounts }> {
+    const limit = Math.min(options.limit ?? 200, 500);
+    const batches = await Promise.all(
+      INDEX_SOURCES.map((source) => querySource(userId, source, source.defaultLimit))
+    );
+
+    let assets = batches
+      .flat()
+      .map(({ entry, row }) => presentLoreAsset(entry, row));
+
+    if (options.assetKind) {
+      assets = assets.filter((a) => a.assetKind === options.assetKind);
+    }
+
+    if (options.truthState) {
+      assets = assets.filter((a) => a.truthState === options.truthState);
+    }
+
+    if (options.staleOnly) {
+      assets = assets.filter((a) => a.stale === true);
+    }
+
+    assets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const countsByKind = countAssetsByKind(assets);
+    const sliced = assets.slice(0, limit);
+
+    return {
+      assets: sliced,
+      total: assets.length,
+      countsByKind,
+    };
   }
 
   /** Backward-compatible shape for What AI Knows page. */

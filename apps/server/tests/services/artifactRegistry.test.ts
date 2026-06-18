@@ -106,4 +106,49 @@ describe('artifactRegistry', () => {
       sourceTable: 'characters',
     });
   });
+
+  it('listLoreAssets returns presentation fields and kind counts', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'journal_entries') {
+        return chain({
+          data: [
+            {
+              id: 'e1',
+              title: 'Morning run',
+              content: 'Ran 5k',
+              metadata: { truth_state: 'CANONICAL', entities: [{ id: 'x' }] },
+              created_at: '2024-01-02T00:00:00Z',
+              updated_at: '2024-01-03T00:00:00Z',
+            },
+          ],
+        });
+      }
+      if (table === 'characters') {
+        return chain({
+          data: [
+            {
+              id: 'c1',
+              name: 'Maya',
+              subtitle: 'Friend',
+              avatar_url: 'https://cdn.example/maya.png',
+              metadata: {},
+              created_at: '2024-01-03T00:00:00Z',
+            },
+          ],
+        });
+      }
+      return chain({ data: [] });
+    });
+
+    const result = await artifactRegistry.listLoreAssets('user-1', { limit: 10 });
+
+    expect(result.total).toBe(2);
+    expect(result.countsByKind.moment).toBe(1);
+    expect(result.countsByKind.portrait).toBe(1);
+    expect(result.assets[0]).toMatchObject({
+      assetKind: 'portrait',
+      displayName: 'Maya',
+      thumbnailUrl: 'https://cdn.example/maya.png',
+    });
+  });
 });
