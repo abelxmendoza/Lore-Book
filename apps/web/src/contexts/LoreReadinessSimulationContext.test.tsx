@@ -21,6 +21,13 @@ vi.mock('../config/env', () => ({
 
 vi.mock('../lib/supabase', () => ({
   useAuth: () => ({ user: null, loading: false }),
+  isSupabaseConfigured: () => false,
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+  },
 }));
 
 function SimulationProbe() {
@@ -43,10 +50,10 @@ describe('LoreReadinessSimulationContext', () => {
 
   it('persists preset and compiled mode in localStorage', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithStore(
       <LoreReadinessSimulationProvider>
         <SimulationProbe />
-      </LoreReadinessSimulationProvider>
+      </LoreReadinessSimulationProvider>,
     );
 
     expect(screen.getByTestId('preset')).toHaveTextContent('rich');
@@ -70,10 +77,10 @@ describe('LoreReadinessSimulationContext', () => {
       JSON.stringify({ enabled: true, preset: 'sparse', compiledMode: 'one' })
     );
 
-    render(
+    renderWithStore(
       <LoreReadinessSimulationProvider>
         <SimulationProbe />
-      </LoreReadinessSimulationProvider>
+      </LoreReadinessSimulationProvider>,
     );
 
     expect(screen.getByTestId('preset')).toHaveTextContent('sparse');
