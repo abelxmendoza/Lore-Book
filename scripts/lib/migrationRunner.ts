@@ -7,7 +7,7 @@
  * that uses this is `scripts/migrate.ts`.
  *
  * Connection: Session pooler URI in `SUPABASE_CONNECTION_STRING` (or `DATABASE_URL`).
- * Do NOT put `sslmode=` in the URI — SSL is configured in code (rejectUnauthorized:false).
+ * Do NOT put `sslmode=` in the URI — it is stripped automatically; SSL is configured in code (rejectUnauthorized:false).
  */
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -56,9 +56,7 @@ export function getConnectionString(opts: { requirePooler?: boolean } = {}): str
   if (!conn.startsWith('postgres')) {
     throw new Error('Connection string must be a postgresql:// or postgres:// URI.');
   }
-  if (/sslmode=/i.test(conn)) {
-    throw new Error('Remove sslmode= from the connection string — SSL is configured in code.');
-  }
+  // Strip query string (including sslmode) — Pool sets ssl explicitly below.
   conn = conn.replace(/\?.*$/, '');
   if (opts.requirePooler) {
     const u = new URL(conn.replace(/^postgresql:/i, 'postgres:'));

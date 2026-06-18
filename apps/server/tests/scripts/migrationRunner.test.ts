@@ -112,9 +112,9 @@ describe('migrationRunner — getConnectionString (unit)', () => {
     expect(() => getConnectionString()).toThrow(/postgresql:\/\/ or postgres:\/\//);
   });
 
-  it('rejects a URI that embeds sslmode', () => {
+  it('strips sslmode from the URI', () => {
     process.env.SUPABASE_CONNECTION_STRING = `${POOLER_URI}?sslmode=require`;
-    expect(() => getConnectionString()).toThrow(/Remove sslmode=/);
+    expect(getConnectionString()).toBe(POOLER_URI);
   });
 
   it('strips a trailing query string', () => {
