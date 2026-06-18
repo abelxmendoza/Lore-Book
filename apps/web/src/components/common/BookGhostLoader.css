@@ -1,0 +1,47 @@
+/* Reusable book-ghost loader — wraps the shared scene for arbitrary loading states. */
+
+.book-ghost-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Inline / panel-sized loader: scale the fixed-size scene down and clip the
+   surrounding empty space so it sits neatly inside cards and panels. */
+.book-ghost-loader--inline {
+  padding: 1.25rem 0;
+  gap: 0.25rem;
+}
+
+.book-ghost-loader--inline .book-ghost-loader__scene-clip {
+  height: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.book-ghost-loader--inline .lore-generating-scene {
+  transform: scale(0.6);
+  margin-bottom: 0;
+}
+
+.book-ghost-loader__caption {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(196, 181, 253, 0.78);
+  text-align: center;
+}
+
+.book-ghost-loader__subtext {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+}

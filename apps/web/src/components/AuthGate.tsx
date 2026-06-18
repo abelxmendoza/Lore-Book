@@ -13,6 +13,9 @@ import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
 import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
 import { InferenceSyncProvider } from './InferenceSyncProvider';
+import { WelcomeSplash } from './common/WelcomeSplash';
+import { BookGhostLoader } from './common/BookGhostLoader';
+import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
 const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
   const [email, setEmail] = useState('');
@@ -283,6 +286,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
           errorTracking.clearUser();
         });
       }
+
+      // Reset the welcome-splash gate on a real sign-out so the next login shows
+      // it again. SIGNED_OUT never fires on refresh, so this won't cause reshows.
+      if (event === 'SIGNED_OUT') {
+        resetWelcomeSplash();
+      }
     });
 
     return () => {
@@ -292,13 +301,15 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   }, [isConfigured, needsAuth, debug]);
   
   // DEV-only escape hatch — never reaches production.
-  if (DEV_DISABLE_AUTH) return <>{children}</>;
+  if (DEV_DISABLE_AUTH) return <><WelcomeSplash />{children}</>;
 
   // Non-REAL_USER runtimes need neither auth nor terms.
   // GUEST_USER  → ephemeral sandbox, no account to bind terms to.
   // DEMO_RUNTIME → synthetic showcase, fully public.
   // DEGRADED_RUNTIME → user is already authenticated; backend is just temporarily down.
-  if (!needsAuth && !needsTerms) return <>{children}</>;
+  // Guest/demo enter the app here (not via the real-user return below), so the
+  // welcome splash must be mounted on this path too.
+  if (!needsAuth && !needsTerms) return <><WelcomeSplash />{children}</>;
 
 
   const handleEmailLogin = async (email: string) => {
@@ -379,16 +390,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
    */
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-black via-purple-950 to-black">
-        <div className="text-center">
-          <div className="mx-auto w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
-          <p className="animate-pulse font-techno tracking-[0.5em] text-primary">Syncing memory…</p>
-          {initError && (
-            <p className="mt-4 text-xs text-red-400 max-w-md">{initError}</p>
-          )}
-          <p className="mt-2 text-xs text-white/40">This should only take a moment...</p>
-        </div>
-      </div>
+      <BookGhostLoader
+        fullScreen
+        caption="Syncing your memory…"
+        subtext={initError ?? 'This should only take a moment…'}
+        data-testid="auth-loading"
+      />
     );
   }
 
@@ -420,6 +427,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
   return (
     <InferenceSyncProvider>
+      <WelcomeSplash />
       {children}
     </InferenceSyncProvider>
   );

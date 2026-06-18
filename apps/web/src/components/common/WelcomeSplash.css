@@ -1,0 +1,45 @@
+/* Full-screen welcome splash — shown once per session after login/guest/demo. */
+
+.welcome-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  opacity: 1;
+  cursor: pointer;
+  animation: welcome-splash-in 0.5s ease both;
+}
+
+.welcome-splash--leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+.welcome-splash__screen {
+  height: 100%;
+}
+
+.welcome-splash__hint {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+@keyframes welcome-splash-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-splash {
+    animation: none;
+  }
+}
