@@ -1,17 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { actionLoggingService, ExtractedAction, ActionContext } from '../../src/services/actionLogging/actionLoggingService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
-import { timeEngine } from '../../src/services/timeEngine';
 
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
     from: vi.fn(),
-  },
-}));
-
-vi.mock('../../src/services/timeEngine', () => ({
-  timeEngine: {
-    parseTimestamp: vi.fn(),
   },
 }));
 
@@ -63,27 +56,19 @@ describe('ActionLoggingService', () => {
 
   describe('Timestamp Inference - 6-Layer Strategy', () => {
     it('should prioritize explicit time mentions', async () => {
-      const mockParseResult = {
-        timestamp: new Date('2024-01-15T10:30:00Z'),
-        precision: 'minute' as const,
-        confidence: 0.95,
-      };
-
-      vi.mocked(timeEngine.parseTimestamp).mockReturnValue(mockParseResult);
-
       const context: ActionContext = {
         messageTimestamp: new Date('2024-01-20T12:00:00Z'),
       };
 
       const result = await actionLoggingService.logAction(
         'user-1',
-        'I said hello at 10:30 AM',
+        'Meeting on March 15, 2024 went well',
         'msg-1',
         context
       );
 
-      expect(timeEngine.parseTimestamp).toHaveBeenCalled();
       expect(result).toBe('action-1');
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('should use experience time range when experience_id is provided', async () => {
@@ -107,14 +92,6 @@ describe('ActionLoggingService', () => {
     });
 
     it('should use relative time parsing', async () => {
-      const mockParseResult = {
-        timestamp: new Date('2024-01-19T12:00:00Z'),
-        precision: 'day' as const,
-        confidence: 0.8,
-      };
-
-      vi.mocked(timeEngine.parseTimestamp).mockReturnValue(mockParseResult);
-
       mockSingle.mockResolvedValue({
         data: { id: 'action-1' },
         error: null,
@@ -129,7 +106,7 @@ describe('ActionLoggingService', () => {
         }
       );
 
-      expect(timeEngine.parseTimestamp).toHaveBeenCalled();
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('should fall back to message timestamp', async () => {
@@ -151,15 +128,6 @@ describe('ActionLoggingService', () => {
     });
 
     it('should default to current time with low confidence when no context available', async () => {
-      // Mock timeEngine to return low confidence so Layer 3 is skipped
-      vi.mocked(timeEngine.parseTimestamp).mockReturnValue({
-        timestamp: new Date('2024-01-20T12:00:00Z'),
-        confidence: 0.3, // Low confidence (< 0.5) so Layer 3 check fails
-        precision: 'minute',
-        type: 'relative',
-        originalText: '',
-      });
-
       const beforeTime = new Date();
 
       await actionLoggingService.logAction(

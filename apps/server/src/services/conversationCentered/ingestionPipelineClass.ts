@@ -70,6 +70,10 @@ import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import {
+  collectAdditionalTemporalReferences,
+  mapTemporalWindowToIngestionRef,
+} from '../../utils/temporalResolver';
 import { scanTemporalMentions } from '../ontology/temporalLexicon';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
@@ -548,11 +552,10 @@ export class ConversationIngestionPipeline {
     originalText?: string;
     label?: string;
   }>> {
-    const { timeEngine } = await import('../timeEngine');
     const { resolveUserTimezone, clampOccurrenceDate } = await import('../../utils/temporalOccurrence');
-    const userTz = await resolveUserTimezone(userId);
-    timeEngine.setUserTimezone(userTz);
+    await resolveUserTimezone(userId);
     const now = new Date();
+    const text = originalText || normalizedText;
     const references: Array<{
       timestamp: Date;
       endTimestamp?: Date;
@@ -562,77 +565,57 @@ export class ConversationIngestionPipeline {
       label?: string;
     }> = [];
 
-    // Glossary-driven temporal scan (SSOT) + anchor resolver
     const seenLabels = new Set<string>();
-    for (const mention of scanTemporalMentions(originalText || normalizedText, now)) {
-      if (mention.window) {
-        const label = mention.window.label;
-        if (seenLabels.has(label)) continue;
-        seenLabels.add(label);
 
-        const mappedPrecision: import('../timeEngine').TimePrecision =
-          mention.window.precision === 'hour'
-            ? 'hour'
-            : mention.window.precision === 'day'
-              ? 'day'
-              : mention.window.precision === 'month'
-                ? 'month'
-                : mention.window.precision === 'year'
-                  ? 'year'
-                  : 'day';
+    for (const mention of scanTemporalMentions(text, now)) {
+      if (!mention.window) continue;
+      const label = mention.window.label;
+      if (seenLabels.has(label)) continue;
+      seenLabels.add(label);
 
-        references.push({
-          timestamp: clampOccurrenceDate(mention.window.start, now) ?? now,
-          endTimestamp: mention.window.end ? clampOccurrenceDate(mention.window.end, now) ?? undefined : undefined,
-          precision: mappedPrecision,
-          confidence: mention.window.confidence,
-          originalText: mention.phrase,
-          label,
-        });
-        continue;
-      }
-
-      const ref = timeEngine.parseTimestamp(mention.phrase, undefined, true);
-      if (ref.confidence > 0.5) {
-        const ts = clampOccurrenceDate(ref.timestamp, now);
-        if (!ts) continue;
-        const label = mention.phrase;
-        if (seenLabels.has(label)) continue;
-        seenLabels.add(label);
-        references.push({
-          timestamp: ts,
-          precision: ref.precision,
-          confidence: ref.confidence,
-          originalText: ref.originalText || mention.phrase,
-          label,
-        });
-      }
-    }
-
-    const anchor = resolveAllTemporalAnchors(originalText || normalizedText, now);
-    if (anchor && !seenLabels.has(anchor.label)) {
-      const mappedPrecision: import('../timeEngine').TimePrecision =
-        anchor.precision === 'hour'
-          ? 'hour'
-          : anchor.precision === 'day'
-            ? 'day'
-            : anchor.precision === 'month'
-              ? 'month'
-              : anchor.precision === 'year'
-                ? 'year'
-                : 'day';
-
+      const mapped = mapTemporalWindowToIngestionRef(mention.window, mention.phrase);
       references.push({
-        timestamp: clampOccurrenceDate(anchor.start, now) ?? now,
-        endTimestamp: anchor.end ? clampOccurrenceDate(anchor.end, now) ?? undefined : undefined,
-        precision: mappedPrecision,
-        confidence: anchor.confidence,
-        originalText: anchor.label,
-        label: anchor.label,
+        timestamp: clampOccurrenceDate(mapped.timestamp, now) ?? now,
+        endTimestamp: mapped.endTimestamp
+          ? clampOccurrenceDate(mapped.endTimestamp, now) ?? undefined
+          : undefined,
+        precision: mapped.precision,
+        confidence: mapped.confidence,
+        originalText: mapped.originalText,
+        label: mapped.label,
       });
     }
 
-    // If no patterns found but text suggests real-time (present tense, "just happened", etc.)
+    for (const mapped of collectAdditionalTemporalReferences(text, now, seenLabels)) {
+      references.push({
+        timestamp: clampOccurrenceDate(mapped.timestamp, now) ?? now,
+        endTimestamp: mapped.endTimestamp
+          ? clampOccurrenceDate(mapped.endTimestamp, now) ?? undefined
+          : undefined,
+        precision: mapped.precision,
+        confidence: mapped.confidence,
+        originalText: mapped.originalText,
+        label: mapped.label,
+      });
+    }
+
+    if (references.length === 0) {
+      const anchor = resolveAllTemporalAnchors(text, now);
+      if (anchor) {
+        const mapped = mapTemporalWindowToIngestionRef(anchor);
+        references.push({
+          timestamp: clampOccurrenceDate(mapped.timestamp, now) ?? now,
+          endTimestamp: mapped.endTimestamp
+            ? clampOccurrenceDate(mapped.endTimestamp, now) ?? undefined
+            : undefined,
+          precision: mapped.precision,
+          confidence: mapped.confidence,
+          originalText: mapped.originalText,
+          label: mapped.label,
+        });
+      }
+    }
+
     if (references.length === 0) {
       const presentTenseIndicators = /\b(just|recently|now|currently|happening|happened|occurred)\b/gi;
       if (presentTenseIndicators.test(normalizedText)) {
@@ -640,7 +623,7 @@ export class ConversationIngestionPipeline {
           timestamp: new Date(),
           precision: 'minute',
           confidence: 0.7,
-          originalText: 'current time'
+          originalText: 'current time',
         });
       }
     }
@@ -1435,6 +1418,17 @@ export class ConversationIngestionPipeline {
               splitUnit.metadata
             );
             unitIds.push(savedUnit.id);
+
+            const splitUnitForReview: ExtractedUnit = {
+              ...savedUnit,
+              entity_ids:
+                savedUnit.entity_ids?.length > 0 ? savedUnit.entity_ids : _resolvedEntityIds,
+            };
+            await this.enqueueMemoryReviewIfNeeded(
+              userId,
+              splitUnitForReview,
+              splitUnit.content || normalized.normalized_text
+            );
           }
         } else {
           // Normal extraction for single-event utterances — hybrid router first,

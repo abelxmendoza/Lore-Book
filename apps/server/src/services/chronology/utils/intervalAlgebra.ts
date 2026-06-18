@@ -1,6 +1,9 @@
 import { parseISO, isBefore, isAfter, isEqual } from 'date-fns';
 
-import { timeEngine } from '../../timeEngine';
+import {
+  normalizeTimestamp,
+  parseStoredTimestamp,
+} from '../../utils/temporalNormalization';
 import type { Event, TemporalEdge, TemporalRelation } from '../types';
 
 /**
@@ -24,16 +27,15 @@ export function applyIntervalAlgebra(
     const start2 = parseISO(event2.timestamp);
     const end2 = event2.endTimestamp ? parseISO(event2.endTimestamp) : start2;
 
-    // Normalize timestamps using Time Engine for precision handling
-    const ref1 = timeEngine.parseTimestamp(event1.timestamp);
-    const ref2 = timeEngine.parseTimestamp(event2.timestamp);
-    const normStart1 = timeEngine.normalizeTimestamp(ref1.timestamp, ref1.precision);
+    const ref1 = parseStoredTimestamp(event1.timestamp);
+    const ref2 = parseStoredTimestamp(event2.timestamp);
+    const normStart1 = normalizeTimestamp(ref1.timestamp, ref1.precision);
     const normEnd1 = event1.endTimestamp
-      ? timeEngine.normalizeTimestamp(parseISO(event1.endTimestamp), ref1.precision)
+      ? normalizeTimestamp(parseISO(event1.endTimestamp), ref1.precision)
       : normStart1;
-    const normStart2 = timeEngine.normalizeTimestamp(ref2.timestamp, ref2.precision);
+    const normStart2 = normalizeTimestamp(ref2.timestamp, ref2.precision);
     const normEnd2 = event2.endTimestamp
-      ? timeEngine.normalizeTimestamp(parseISO(event2.endTimestamp), ref2.precision)
+      ? normalizeTimestamp(parseISO(event2.endTimestamp), ref2.precision)
       : normStart2;
 
     // Calculate confidence based on precision

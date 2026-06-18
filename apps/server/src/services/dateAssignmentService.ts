@@ -1,9 +1,9 @@
 import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
+import { parseMessageTimestamp } from '../utils/temporalResolver';
 
 import { supabaseAdmin } from './supabaseClient';
-import { timeEngine } from './timeEngine';
 
 export type DateSuggestion = {
   date: Date;
@@ -105,7 +105,7 @@ class DateAssignmentService {
       }
 
       // Parse the date using TimeEngine
-      const temporalRef = timeEngine.parseTimestamp(parsed.date);
+      const temporalRef = parseMessageTimestamp(parsed.date, new Date(), false);
       
       return {
         date: temporalRef.timestamp,
@@ -257,8 +257,8 @@ class DateAssignmentService {
       const parsed = JSON.parse(completion.choices[0]?.message?.content ?? '{}');
       
       if (parsed.startDate && parsed.endDate) {
-        const startRef = timeEngine.parseTimestamp(parsed.startDate);
-        const endRef = timeEngine.parseTimestamp(parsed.endDate);
+        const startRef = parseMessageTimestamp(parsed.startDate, new Date(), false);
+        const endRef = parseMessageTimestamp(parsed.endDate, new Date(), false);
         
         return {
           startDate: startRef.timestamp,

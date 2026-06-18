@@ -6,10 +6,10 @@
  */
 import { temporalScanPhrases, temporalSequencePhrases } from './glossary';
 import {
-  resolveAllTemporalAnchors,
   resolveTemporalAnchor,
   type TemporalWindow,
 } from '../../utils/temporalAnchorResolver';
+import { resolveChronoInText, resolveTemporalWindow } from '../../utils/temporalResolver';
 
 export interface TemporalMention {
   phrase: string;
@@ -48,7 +48,10 @@ export function scanTemporalMentions(text: string, now: Date = new Date()): Temp
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const window = resolveTemporalAnchor(spec.phrase, now) ?? resolveTemporalAnchor(sentence, now);
+      const window =
+        resolveTemporalAnchor(spec.phrase, now) ??
+        resolveTemporalAnchor(sentence, now) ??
+        resolveChronoInText(sentence, now);
       mentions.push({
         phrase: spec.phrase,
         kind: spec.kind,
@@ -64,7 +67,7 @@ export function scanTemporalMentions(text: string, now: Date = new Date()): Temp
 
 /** Best-resolved temporal window for the full text (highest-confidence mention). */
 export function resolveTextTemporalWindow(text: string, now: Date = new Date()): TemporalWindow | null {
-  return resolveAllTemporalAnchors(text, now);
+  return resolveTemporalWindow(text, now);
 }
 
 /** Narrative sequence markers present in text ("then", "before that", …). */

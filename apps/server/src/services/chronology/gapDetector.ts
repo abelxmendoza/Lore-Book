@@ -1,6 +1,6 @@
 import { parseISO, differenceInDays } from 'date-fns';
 
-import { timeEngine } from '../timeEngine';
+import { parseStoredTimestamp } from '../../utils/temporalNormalization';
 
 import type { Event, Gap } from './types';
 
@@ -21,7 +21,7 @@ export class GapDetector {
       .filter(e => e.timestamp)
       .map(e => {
         try {
-          const ref = timeEngine.parseTimestamp(e.timestamp!);
+          const ref = parseStoredTimestamp(e.timestamp!);
           return {
             ...e,
             parsedTimestamp: ref.timestamp,

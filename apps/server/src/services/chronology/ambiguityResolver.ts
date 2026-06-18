@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { timeEngine } from '../timeEngine';
+import { parseStoredTimestamp } from '../../utils/temporalNormalization';
 
 import type { Event } from './types';
 
@@ -21,7 +21,7 @@ export class AmbiguityResolver {
 
       // Try to parse and validate existing timestamp
       try {
-        const ref = timeEngine.parseTimestamp(event.timestamp);
+        const ref = parseStoredTimestamp(event.timestamp);
         if (ref.confidence < 0.5) {
           // Low confidence timestamp, try to improve it
           const inferred = this.inferTimestamp(event, events);
@@ -65,7 +65,7 @@ export class AmbiguityResolver {
           .filter((ts): ts is string => ts !== null)
           .map(ts => {
             try {
-              return timeEngine.parseTimestamp(ts).timestamp;
+              return parseStoredTimestamp(ts).timestamp;
             } catch {
               return null;
             }
@@ -87,7 +87,7 @@ export class AmbiguityResolver {
         try {
           return {
             event: e,
-            date: timeEngine.parseTimestamp(e.timestamp!).timestamp,
+            date: parseStoredTimestamp(e.timestamp!).timestamp,
           };
         } catch {
           return null;

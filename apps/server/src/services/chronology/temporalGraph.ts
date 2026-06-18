@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { timeEngine } from '../timeEngine';
+import { detectTemporalConflicts, parseStoredTimestamp } from '../../utils/temporalNormalization';
 
 import type { Event, TemporalGraph, TemporalEdge } from './types';
 import { applyIntervalAlgebra } from './utils/intervalAlgebra';
@@ -21,7 +21,7 @@ export class TemporalGraphBuilder {
       if (!event.timestamp) return event;
 
       try {
-        const ref = timeEngine.parseTimestamp(event.timestamp);
+        const ref = parseStoredTimestamp(event.timestamp);
         return {
           ...event,
           timestamp: ref.timestamp.toISOString(),
@@ -49,9 +49,9 @@ export class TemporalGraphBuilder {
       .map(e => e.timestamp!);
 
     if (timestamps.length > 1) {
-      const conflicts = timeEngine.detectTemporalConflicts(
-        timestamps.map(ts => new Date(ts)),
-        60 // 60 minute threshold
+      const conflicts = detectTemporalConflicts(
+        timestamps.map((ts) => new Date(ts)),
+        60
       );
 
       if (conflicts.length > 0) {

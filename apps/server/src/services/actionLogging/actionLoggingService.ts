@@ -7,8 +7,8 @@
 import { randomUUID } from 'crypto';
 
 import { logger } from '../../logger';
+import { parseMessageTimestamp } from '../../utils/temporalResolver';
 import { supabaseAdmin } from '../supabaseClient';
-import { timeEngine } from '../timeEngine';
 import type { TimePrecision } from '../timeEngine';
 
 export interface ExtractedAction {
@@ -218,7 +218,7 @@ class ActionLoggingService {
     }
 
     // Layer 3: Parse relative time expressions ("just now", "earlier", "yesterday")
-    const relativeTime = timeEngine.parseTimestamp(message, undefined, false);
+    const relativeTime = parseMessageTimestamp(message, new Date(), false);
     if (relativeTime.confidence > 0.5 && relativeTime.type === 'relative') {
       return {
         timestamp: relativeTime.timestamp,
@@ -286,9 +286,7 @@ class ActionLoggingService {
     precision: TimePrecision;
     originalText?: string;
   } | null {
-    // Use timeEngine to extract explicit dates/times
-    // Patterns: "yesterday", "last week", "at 3pm", "on Monday", "2 hours ago"
-    const temporalRef = timeEngine.parseTimestamp(message, undefined, false);
+    const temporalRef = parseMessageTimestamp(message, new Date(), false);
     if (temporalRef.confidence > 0.7 && temporalRef.type !== 'fuzzy') {
       return {
         timestamp: temporalRef.timestamp,

@@ -39,6 +39,10 @@ import {
   summarizeCreationOutcomes,
   type CreationOutcome,
 } from './creationOutcomeService';
+import {
+  collectStaleProjectionHints,
+  type StaleProjectionHint,
+} from './staleProjectionHintService';
 import { loadEntityAnalyticsForContext } from './chat/entityAnalyticsLoader';
 import { perceptionService } from './perceptionService';
 import { ragPacketCacheService } from './ragPacketCacheService';
@@ -68,7 +72,7 @@ import {
 import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from './supabaseClient';
 import { taskEngineService } from './taskEngineService';
-import { timeEngine } from './timeEngine';
+import { parseMessageTimestamp, resolveChronoInText } from '../utils/temporalResolver';
 import { timelineManager } from './timelineManager';
 import { extendChatContext } from './timelineInsight';
 
@@ -303,6 +307,8 @@ export type StreamingChatResponse = {
       filteredItems: number;
       totalItems: number;
     };
+    staleProjectionHints?: StaleProjectionHint[];
+    staleProjectionSummary?: string | null;
     mode?: string;
     confidence?: number;
   };
@@ -396,14 +402,16 @@ class OmegaChatService {
       // Parse each reference using TimeEngine
       const extracted = temporalRefs.map((ref: any) => {
         const text = ref.text || ref.date || '';
-        const temporalRef = timeEngine.parseTimestamp(text);
-        
+        const temporalRef = parseMessageTimestamp(text, new Date(), false);
+        const chronoWindow = temporalRef.confidence < 0.5 ? resolveChronoInText(text) : null;
+        const timestamp = chronoWindow?.start ?? temporalRef.timestamp;
+
         return {
-          date: temporalRef.timestamp.toISOString(),
+          date: timestamp.toISOString(),
           context: ref.context || text,
           precision: temporalRef.precision,
-          confidence: temporalRef.confidence,
-          originalText: temporalRef.originalText || text
+          confidence: chronoWindow?.confidence ?? temporalRef.confidence,
+          originalText: temporalRef.originalText || text,
         };
       });
 
@@ -1701,6 +1709,21 @@ class OmegaChatService {
       logger.debug({ err, userId }, 'Creation outcome collection failed, continuing without');
     }
 
+    let staleProjectionHints: StaleProjectionHint[] = [];
+    let staleProjectionSummary: string | null = null;
+    try {
+      const stale = await collectStaleProjectionHints(userId, {
+        message,
+        activePersona,
+        workingMemory: (ragPacket as { workingMemory?: import('./chat/workingMemoryAssembler').WorkingMemoryAssembly }).workingMemory,
+        timelineUpdates,
+      });
+      staleProjectionHints = stale.hints;
+      staleProjectionSummary = stale.summary;
+    } catch (err) {
+      logger.debug({ err, userId }, 'Stale projection hint collection failed, continuing without');
+    }
+
     const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
     const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
@@ -1844,6 +1867,8 @@ class OmegaChatService {
         disambiguationPrompt: disambiguationPrompt || undefined,
         creationOutcomes: creationOutcomes.length > 0 ? creationOutcomes : undefined,
         creationOutcomeSummary: summarizeCreationOutcomes(creationOutcomes),
+        staleProjectionHints: staleProjectionHints.length > 0 ? staleProjectionHints : undefined,
+        staleProjectionSummary,
         sensemakingContract: (ragPacket as { sensemakingContract?: StreamingChatResponse['metadata']['sensemakingContract'] }).sensemakingContract,
         suggestedActions,
         activePersona: activePersona || undefined,
