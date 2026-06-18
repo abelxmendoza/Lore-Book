@@ -23,6 +23,7 @@ export interface LifeArc {
   confidence: number;
   source: 'inferred' | 'user_created';
   tags: string[];
+  metadata?: Record<string, unknown>;
   children?: LifeArc[];
 }
 

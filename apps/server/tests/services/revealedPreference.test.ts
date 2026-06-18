@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   extractSignals,
+  preferenceStanceSignals,
   confidenceFromEvidence,
   classifyAlignment,
   classifyTrend,
@@ -96,6 +97,49 @@ describe('RevealedPreference — alignment classification', () => {
 
   it('says much more than does → weakly_aligned', () => {
     expect(classifyAlignment({ statedCount: 8, revealedCount: 1, statedShare: 0.6, revealedShare: 0.05 })).toBe('weakly_aligned');
+  });
+});
+
+describe('RevealedPreference — stance bridge (like/dislike → preference signals)', () => {
+  it('maps a self LIKE toward a known category to a stated signal', () => {
+    const m = preferenceStanceSignals("I'm obsessed with the gym");
+    expect(m).toContainEqual(
+      expect.objectContaining({ categoryKey: 'fitness', signalType: 'stated', polarity: 'positive' })
+    );
+  });
+
+  it('maps a self DISLIKE toward a known category to a disliked signal', () => {
+    const m = preferenceStanceSignals("I can't stand the gym");
+    expect(m).toContainEqual(
+      expect.objectContaining({ categoryKey: 'fitness', signalType: 'disliked', polarity: 'negative' })
+    );
+  });
+
+  it('maps negated like ("don\'t like the gym") to a disliked signal', () => {
+    const m = preferenceStanceSignals("I don't like the gym");
+    expect(m).toContainEqual(
+      expect.objectContaining({ categoryKey: 'fitness', signalType: 'disliked', polarity: 'negative' })
+    );
+  });
+
+  it('adds a STATED signal the coarse STATED_CUE alone would miss ("huge fan of bjj")', () => {
+    const text = "I'm a huge fan of bjj";
+    expect(extractSignals(text).some((s) => s.categoryKey === 'fitness' && s.signalType === 'stated')).toBe(false);
+    expect(preferenceStanceSignals(text).some((s) => s.categoryKey === 'fitness' && s.signalType === 'stated')).toBe(true);
+  });
+
+  it('does NOT emit a signal for a third party\'s preference', () => {
+    expect(preferenceStanceSignals('She loves the gym')).toEqual([]);
+    expect(preferenceStanceSignals("She can't stand the gym")).toEqual([]);
+  });
+
+  it('open-vocabulary targets with no known category yield nothing', () => {
+    expect(preferenceStanceSignals('I love sushi')).toEqual([]);
+    expect(preferenceStanceSignals("I hate sushi")).toEqual([]);
+  });
+
+  it('empty input yields nothing', () => {
+    expect(preferenceStanceSignals('')).toEqual([]);
   });
 });
 

@@ -47,6 +47,7 @@ export type RelationshipRole =
   | 'cousin'
   | 'friend'
   | 'close_friend'
+  | 'ally'
   | 'romantic_partner'
   | 'ex_partner'
   | 'coworker'

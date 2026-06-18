@@ -151,4 +151,39 @@ describe('useChat — entity chips from stream metadata', () => {
     expect(assistantMessageId).toBeTruthy();
     expect(findMentionedEntitiesFromMutations()).toEqual(mentionedEntities);
   });
+
+  it('forwards composerEntities to streamChat when provided', async () => {
+    const composerEntities = [
+      {
+        id: 'uuid-abel',
+        name: 'Abel',
+        type: 'character' as const,
+        aliases: [],
+        mentionKeys: ['abel'],
+        status: 'confirmed' as const,
+        matchedLabel: 'Abel',
+      },
+    ];
+
+    mockStreamChat.mockImplementation(
+      async (
+        _msg: string,
+        _history: unknown[],
+        _onChunk: unknown,
+        onMeta: (meta: unknown) => void,
+        onDone: () => void
+      ) => {
+        onMeta({ messageId: 'db-user-2', assistantMessageId: 'db-asst-2', sessionId: 'thread-entities-1' });
+        onDone();
+      }
+    );
+
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      await result.current.sendMessage('Tell me about Abel.', { composerEntities });
+    });
+
+    expect(mockStreamChat.mock.calls[0]?.[12]).toEqual(composerEntities);
+  });
 });

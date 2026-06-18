@@ -105,12 +105,12 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080510] text-white flex flex-col lg:flex-row overflow-hidden">
+    <div className="min-h-screen bg-[#080510] text-white flex flex-col lg:flex-row lg:overflow-hidden">
 
       {/* ── Atmospheric glows ───────────────────────────────────────────────── */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-[700px] h-[500px] bg-primary/10 rounded-full blur-[140px] -translate-x-1/3 -translate-y-1/4" />
-        <div className="absolute bottom-0 right-0 w-[500px] h-[400px] bg-violet-700/8 rounded-full blur-[120px] translate-x-1/4 translate-y-1/4" />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-0 w-[60vw] max-w-[700px] h-[40vh] max-h-[500px] bg-primary/10 rounded-full blur-[100px] sm:blur-[140px] -translate-x-1/3 -translate-y-1/4" />
+        <div className="absolute bottom-0 right-0 w-[55vw] max-w-[500px] h-[35vh] max-h-[400px] bg-violet-700/8 rounded-full blur-[90px] sm:blur-[120px] translate-x-1/4 translate-y-1/4" />
       </div>
 
       {/* ── LEFT — product pitch ─────────────────────────────────────────────── */}
@@ -177,11 +177,11 @@ export default function Login() {
       </div>
 
       {/* ── RIGHT — auth form ────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-10 lg:py-0">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-start lg:justify-center px-5 py-10 sm:py-12 lg:py-0">
 
         {/* Mobile-only header */}
-        <div className="lg:hidden mb-8 text-center">
-          <Logo size="xl" showText />
+        <div className="lg:hidden mb-7 sm:mb-8 text-center">
+          <Logo size="lg" showText />
           <p className="text-white/40 text-sm mt-3">The AI that learns who you are.</p>
         </div>
 

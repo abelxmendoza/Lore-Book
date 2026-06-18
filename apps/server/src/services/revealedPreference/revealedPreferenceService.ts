@@ -13,8 +13,10 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import {
   extractSignals,
+  preferenceStanceSignals,
   confidenceFromEvidence,
   classifyAlignment,
   classifyTrend,
@@ -36,7 +38,7 @@ interface EvidenceDraft {
 
 interface CategoryAgg {
   categoryKey: string; type: PreferenceType; label: string;
-  statedCount: number; revealedCount: number;
+  statedCount: number; revealedCount: number; dislikedCount: number;
   recentRevealed: number; priorRevealed: number;
   firstSeen: string | null; lastSeen: string | null;
   evidence: EvidenceDraft[];
@@ -84,18 +86,30 @@ class RevealedPreferenceService {
 
     for (const ep of episodes) {
       const matches = extractSignals(ep.text);
+      // Additively fold in deterministic like/dislike stances the coarse STATED_CUE
+      // misses, deduped against what extractSignals already found for this episode.
+      const present = new Set(matches.map((m) => `${m.categoryKey}:${m.signalType}`));
+      for (const sm of preferenceStanceSignals(ep.text)) {
+        const k = `${sm.categoryKey}:${sm.signalType}`;
+        if (!present.has(k)) {
+          present.add(k);
+          matches.push(sm);
+        }
+      }
       for (const m of matches) {
         let agg = aggByCategory.get(m.categoryKey);
         if (!agg) {
           agg = {
             categoryKey: m.categoryKey, type: m.type, label: m.label,
-            statedCount: 0, revealedCount: 0, recentRevealed: 0, priorRevealed: 0,
+            statedCount: 0, revealedCount: 0, dislikedCount: 0,
+            recentRevealed: 0, priorRevealed: 0,
             firstSeen: null, lastSeen: null, evidence: [],
           };
           aggByCategory.set(m.categoryKey, agg);
         }
 
         if (m.signalType === 'stated') agg.statedCount += 1;
+        else if (m.signalType === 'disliked') agg.dislikedCount += 1;
         else {
           agg.revealedCount += 1;
           // recency windows from the episode time
@@ -132,10 +146,11 @@ class RevealedPreferenceService {
         const statedShare = totalStated > 0 ? c.statedCount / totalStated : 0;
         const revealedShare = totalRevealed > 0 ? c.revealedCount / totalRevealed : 0;
         const { trend } = classifyTrend(c.recentRevealed, c.priorRevealed, RECENT_DAYS, PRIOR_DAYS);
-        const evidenceCount = c.statedCount + c.revealedCount;
+        const evidenceCount = c.statedCount + c.revealedCount + c.dislikedCount;
         return {
           user_id: userId, type: c.type, category_key: c.categoryKey, label: c.label,
-          stated_count: c.statedCount, revealed_count: c.revealedCount, evidence_count: evidenceCount,
+          stated_count: c.statedCount, revealed_count: c.revealedCount, disliked_count: c.dislikedCount,
+          evidence_count: evidenceCount,
           confidence: confidenceFromEvidence(evidenceCount),
           stated_share: Number(statedShare.toFixed(4)), revealed_share: Number(revealedShare.toFixed(4)),
           alignment_score: Number((revealedShare - statedShare).toFixed(4)),
@@ -223,8 +238,8 @@ class RevealedPreferenceService {
 
     const cats: RevealedCategory[] = rows.map((r) => ({
       id: r.id, key: r.category_key, label: r.label, type: r.type,
-      statedCount: r.stated_count, revealedCount: r.revealed_count, evidenceCount: r.evidence_count,
-      confidence: r.confidence, statedShare: r.stated_share, revealedShare: r.revealed_share,
+      statedCount: r.stated_count, revealedCount: r.revealed_count, dislikedCount: r.disliked_count ?? 0,
+      evidenceCount: r.evidence_count, confidence: r.confidence, statedShare: r.stated_share, revealedShare: r.revealed_share,
       alignmentScore: r.alignment_score ?? 0, alignmentLabel: r.alignment_label ?? 'aligned',
       trend: r.trend, recentRevealed: r.recent_revealed, priorRevealed: r.prior_revealed,
       sampleEvidence: evBySignal.get(r.id) ?? [],
@@ -236,6 +251,7 @@ class RevealedPreferenceService {
 
     const sections: RevealedSections = {
       saysMatter: byKey([...cats].filter((c) => c.statedCount > 0).sort((a, b) => b.statedCount - a.statedCount).slice(0, 8)),
+      saysDislike: byKey([...cats].filter((c) => c.dislikedCount > 0).sort((a, b) => b.dislikedCount - a.dislikedCount).slice(0, 8)),
       receivesTime: byKey([...cats].filter((c) => c.revealedCount > 0).sort((a, b) => b.revealedCount - a.revealedCount).slice(0, 8)),
       stronglyAligned: byKey(cats.filter((c) => c.alignmentLabel === 'strongly_aligned' || c.alignmentLabel === 'aligned')),
       weaklyAligned: byKey(cats.filter((c) => c.alignmentLabel === 'weakly_aligned' || c.alignmentLabel === 'stated_only')),
@@ -267,7 +283,7 @@ class RevealedPreferenceService {
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SignalRow {
   id: string; type: PreferenceType; category_key: string; label: string;
-  stated_count: number; revealed_count: number; evidence_count: number; confidence: number;
+  stated_count: number; revealed_count: number; disliked_count?: number; evidence_count: number; confidence: number;
   stated_share: number; revealed_share: number; alignment_score: number | null; alignment_label: string | null;
   trend: number; recent_revealed: number; prior_revealed: number;
 }
@@ -275,12 +291,12 @@ interface RawEvidence { signal_id?: string; signal_type: SignalType; source: 'jo
 export interface EvidenceItem { signalType: SignalType; source: 'journal' | 'chat'; sourceId: string; snippet: string; occurredAt: string | null; matchedTerm?: string; }
 export interface RevealedCategory {
   id: string; key: string; label: string; type: PreferenceType;
-  statedCount: number; revealedCount: number; evidenceCount: number; confidence: number;
+  statedCount: number; revealedCount: number; dislikedCount: number; evidenceCount: number; confidence: number;
   statedShare: number; revealedShare: number; alignmentScore: number; alignmentLabel: string;
   trend: number; recentRevealed: number; priorRevealed: number; sampleEvidence: EvidenceItem[];
 }
 export interface RevealedSections {
-  saysMatter: string[]; receivesTime: string[]; stronglyAligned: string[];
+  saysMatter: string[]; saysDislike: string[]; receivesTime: string[]; stronglyAligned: string[];
   weaklyAligned: string[]; emerging: string[]; declining: string[];
 }
 export interface RevealedSelfReport {
@@ -289,7 +305,7 @@ export interface RevealedSelfReport {
   sections: RevealedSections; categories: RevealedCategory[];
 }
 function emptySections(): RevealedSections {
-  return { saysMatter: [], receivesTime: [], stronglyAligned: [], weaklyAligned: [], emerging: [], declining: [] };
+  return { saysMatter: [], saysDislike: [], receivesTime: [], stronglyAligned: [], weaklyAligned: [], emerging: [], declining: [] };
 }
 
 export const revealedPreferenceService = new RevealedPreferenceService();

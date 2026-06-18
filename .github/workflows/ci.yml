@@ -124,6 +124,42 @@ jobs:
         working-directory: apps/server
         run: npm test -- src/services/engineRegistry/dependencyGraph.test.ts tests/db/schemaVerification.test.ts tests/db/engineDependenciesMigration.test.ts
 
+      - name: Networking/health regressions (502 + CORS outage guard)
+        working-directory: apps/server
+        run: npm test -- tests/config/serverPort.test.ts tests/utils/corsPolicy.test.ts tests/routes/health.test.ts tests/integration/serverNetworking.test.ts
+
+      - name: Ingestion pipeline regressions (unit + integration + e2e)
+        working-directory: apps/server
+        run: npm test -- tests/services/extractionSignals.test.ts tests/utils/aiUncertainty.test.ts tests/services/ingestionPipeline.test.ts tests/integration/ingestionPipelineE2E.test.ts
+
+      - name: Script consolidation regressions (migration runner / backfill / cleanup)
+        working-directory: apps/server
+        run: npm run test:scripts
+
+      - name: Audit suite regressions (dispatcher + shared helpers)
+        working-directory: apps/server
+        run: npm run test:audits
+
+      - name: Ontology/kinship consolidation regressions (unit + integration + e2e)
+        working-directory: apps/server
+        run: npm run test:kinship
+
+      - name: Stance & affect lexical regressions (preference like/dislike)
+        working-directory: apps/server
+        run: npm run test:stance
+
+      - name: Lexical extension regressions (temporal, social, discourse)
+        working-directory: apps/server
+        run: npm run test:lexical
+
+      - name: Lore agents regressions (unit + integration + routing)
+        working-directory: apps/server
+        run: npm run test:lore-agents
+
+      - name: Composer entity chip regressions (matching, validation, chat integration)
+        working-directory: apps/server
+        run: npm run test:composer-chips
+
   web-regression-tests:
     name: Web Regression Tests
     runs-on: ubuntu-latest
@@ -148,6 +184,14 @@ jobs:
       - name: Backend health and mock-data regressions
         working-directory: apps/web
         run: npm run test:unit -- src/lib/backendHealth.test.ts src/contexts/MockDataContext.test.tsx
+
+      - name: Redux state-management tests (slices, RTK Query, adapters, event bridge)
+        working-directory: apps/web
+        run: npm run test:unit -- src/store
+
+      - name: Composer entity chip regressions (matching, redux, typing UX)
+        working-directory: apps/web
+        run: npm run test:composer-chips
 
       - name: Demo privacy guard
         working-directory: apps/web
@@ -206,6 +250,80 @@ jobs:
 
       - name: Build Railway server image
         run: docker build --file apps/server/Dockerfile --tag lorekeeper-server-ci apps/server
+
+  e2e-redux-smoke:
+    name: E2E Redux Smoke (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [web-production-build]
+    # Advisory: not part of the required ci-pass gate yet, so e2e flakiness does
+    # not block merges. Promote to ci-pass once it proves stable.
+    env:
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci --legacy-peer-deps
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+
+      - name: Install Playwright chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Redux e2e smoke
+        working-directory: apps/web
+        run: npx playwright test e2e/redux-state.spec.ts --project=chromium
+
+  e2e-composer-chips-smoke:
+    name: E2E Composer Chips Smoke (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [web-production-build]
+    env:
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci --legacy-peer-deps
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+
+      - name: Install Playwright chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run composer chips e2e smoke
+        working-directory: apps/web
+        run: npx playwright test e2e/chat-composer-chips.spec.ts --project=chromium
 
   ci-pass:
     name: CI Pass

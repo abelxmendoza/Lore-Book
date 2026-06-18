@@ -12,6 +12,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Star, ChevronLeft } from 'lucide-react';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
+import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,8 +77,9 @@ const ChapterItem = ({
             {arc.title}
           </p>
           <p className="text-[11px] text-white/30 mt-0.5">{formatDateRange(arc)}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className={`text-[10px] ${c.text}`}>{TRACK_LABELS[track]}</span>
+            <StoryArcBadge arc={arc} variant="compact" />
             {entryCount > 0 && (
               <span className="text-[10px] text-white/20">{entryCount} memor{entryCount === 1 ? 'y' : 'ies'}</span>
             )}
@@ -124,6 +126,7 @@ const ArcPanel = ({
               <span className={`text-xs px-2 py-0.5 rounded-full border ${c.bg} ${c.border} ${c.text}`}>
                 {TRACK_LABELS[track]}
               </span>
+              <StoryArcBadge arc={arc} variant="full" />
               {arc.dominant_emotion && (
                 <span className="text-xs text-white/30">{arc.dominant_emotion}</span>
               )}
@@ -135,6 +138,11 @@ const ArcPanel = ({
               {arc.title}
             </h2>
             <p className="text-xs text-white/35">{formatDateRange(arc)}</p>
+            {getSourceEventCount(arc) != null && (
+              <p className="text-[11px] text-white/30 mt-1">
+                {getSourceEventCount(arc)} linked moment{getSourceEventCount(arc) === 1 ? '' : 's'}
+              </p>
+            )}
           </div>
           {arc.is_active && (
             <span className="flex items-center gap-1 text-xs text-emerald-400 border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 rounded-full shrink-0">

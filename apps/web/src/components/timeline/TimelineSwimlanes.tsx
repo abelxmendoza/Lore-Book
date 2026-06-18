@@ -16,6 +16,8 @@
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
+import { isNarrativeConsolidationArc } from '../../lib/lifeArcLabels';
+import { StoryArcBadge, storyArcTooltipSubtitle } from './StoryArcBadge';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { TimelineStitchedView } from './TimelineStitchedView';
@@ -141,6 +143,7 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: Arc
   const c = TRACK_COLORS[track];
   const MIN_W = 6;
   const displayWidth = Math.max(MIN_W, width);
+  const isStoryArc = isNarrativeConsolidationArc(arc);
 
   return (
     <button
@@ -161,7 +164,7 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: Arc
         top: arcBarTop(subLane),
         height: ARC_BAR_H,
       }}
-      className={`rounded-md border ${c.bg} ${c.border} hover:brightness-125 transition-all group cursor-pointer`}
+      className={`rounded-md border ${c.bg} ${isStoryArc ? 'border-dashed border-amber-400/50' : c.border} hover:brightness-125 transition-all group cursor-pointer`}
     >
       {/* Arc title — only shown if bar is wide enough */}
       {displayWidth > 80 && (
@@ -235,7 +238,10 @@ const Tooltip = ({ arc, entry }: { arc: LifeArc | null; entry: ChronologyEntry |
   const title = isArc ? arc!.title : new Date((entry as ChronologyEntry).start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const body  = isArc ? arc!.summary : (entry as ChronologyEntry).content.slice(0, 180);
   const sub   = isArc
-    ? `${arc!.start_date?.slice(0, 7) ?? ''} – ${arc!.end_date?.slice(0, 7) ?? 'now'}  ·  ${TRACK_LABELS[(arc!.track ?? 'inner') as ArcTrack]}`
+    ? [
+        `${arc!.start_date?.slice(0, 7) ?? ''} – ${arc!.end_date?.slice(0, 7) ?? 'now'}  ·  ${TRACK_LABELS[(arc!.track ?? 'inner') as ArcTrack]}`,
+        storyArcTooltipSubtitle(arc!),
+      ].filter(Boolean).join('  ·  ')
     : '';
 
   return (
@@ -658,10 +664,11 @@ export const TimelineSwimlanes = ({
       {selectedArc && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex-1 min-w-0 w-full">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].bg} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].border} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].text}`}>
                 {TRACK_LABELS[(selectedArc.track ?? 'inner') as ArcTrack]}
               </span>
+              <StoryArcBadge arc={selectedArc} variant="full" />
               {selectedArc.dominant_emotion && (
                 <span className="text-xs text-white/40">{selectedArc.dominant_emotion}</span>
               )}

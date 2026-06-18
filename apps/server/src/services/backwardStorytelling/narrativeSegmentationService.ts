@@ -7,31 +7,13 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../logger';
+import { detectTemporalSequenceMarkers } from '../ontology/temporalLexicon';
+import { analyzeSegmentStructure } from '../narrative/narrativeStructureBridge';
 
 import type { NarrativeSegment } from './types';
 
-const TEMPORAL_MARKER_PATTERNS = [
-  /\b(before|after|then|later|earlier|previously|subsequently)\b/gi,
-  /\b(that\s+same\s+year|that\s+year|during\s+that\s+time)\b/gi,
-  /\b(over\s+the\s+summer|in\s+the\s+summer|that\s+summer)\b/gi,
-  /\b(right\s+before|just\s+before|right\s+after|just\s+after)\b/gi,
-  /\b(when\s+i\s+started|when\s+i\s+finished|after\s+graduation|before\s+re-enrolling)\b/gi,
-  /\b(for\s+a\s+year|for\s+(\d+)\s+months?|for\s+(\d+)\s+weeks?)\b/gi,
-  /\b(during|while|meanwhile|throughout)\b/gi,
-  /\b(re-enrolled|re-enrolling|graduation|graduated)\b/gi,
-  /\b(took\s+a\s+break|then\s+i\s+took)\b/gi,
-];
-
 function extractTemporalMarkers(text: string): string[] {
-  const lower = text.toLowerCase();
-  const found = new Set<string>();
-  for (const pattern of TEMPORAL_MARKER_PATTERNS) {
-    const match = lower.match(pattern);
-    if (match) {
-      match.forEach(m => found.add(m.trim()));
-    }
-  }
-  return Array.from(found);
+  return detectTemporalSequenceMarkers(text);
 }
 
 /**
@@ -76,11 +58,14 @@ export function segmentNarrative(inputText: string): NarrativeSegment[] {
 
   for (let i = 0; i < sentences.length; i++) {
     const text = sentences[i];
+    const structure = analyzeSegmentStructure(text);
     segments.push({
       segment_id: uuid(),
       text,
       narrative_order: i + 1,
       temporal_markers: extractTemporalMarkers(text),
+      narrative_stages: structure.narrative_stages,
+      discourse_moves: structure.discourse_moves,
     });
   }
 

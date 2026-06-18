@@ -189,24 +189,138 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Resolve certified entities mentioned in free text (word-boundary aware). */
+type MatchEntry = {
+  entity: CertifiedEntity;
+  slot: string;
+  fullChecks: Array<{ label: string; pattern: RegExp }>;
+  mentionKeys: string[];
+};
+
+export type CertifiedEntityMatchIndex = {
+  entries: MatchEntry[];
+  prefixBuckets: Map<string, number[]>;
+};
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function lastToken(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  return trimmed.split(/\s+/).pop() ?? '';
+}
+
+function sortedLabels(entity: CertifiedEntity): string[] {
+  return [entity.name, ...entity.aliases]
+    .filter((l) => l.length >= 2)
+    .sort((a, b) => b.length - a.length);
+}
+
+/** Precompile mention patterns — build once per index load. */
+export function buildCertifiedEntityMatchIndex(index: CertifiedEntity[]): CertifiedEntityMatchIndex {
+  const entries: MatchEntry[] = [];
+  const prefixBuckets = new Map<string, number[]>();
+
+  for (const entity of index) {
+    const labels = sortedLabels(entity);
+    const fullChecks = labels.map((label) => ({
+      label,
+      pattern: new RegExp(`(?<![a-z0-9])${escapeRe(label)}(?![a-z0-9])`, 'i'),
+    }));
+    const mentionKeys = entity.mentionKeys?.length
+      ? entity.mentionKeys
+      : labels.map((l) => normalizeNameKey(l)).filter(Boolean);
+    const entryIndex = entries.length;
+    entries.push({
+      entity,
+      slot: `${entity.type}:${entity.id}`,
+      fullChecks,
+      mentionKeys,
+    });
+
+    for (const key of mentionKeys) {
+      if (key.length < 2) continue;
+      const bucket = key.slice(0, 2);
+      const list = prefixBuckets.get(bucket) ?? [];
+      if (!list.includes(entryIndex)) list.push(entryIndex);
+      prefixBuckets.set(bucket, list);
+    }
+  }
+
+  return { entries, prefixBuckets };
+}
+
+const matchIndexCache = new WeakMap<CertifiedEntity[], CertifiedEntityMatchIndex>();
+
+function getMatchIndex(index: CertifiedEntity[]): CertifiedEntityMatchIndex {
+  if (index.length === 0) return buildCertifiedEntityMatchIndex([]);
+  let cached = matchIndexCache.get(index);
+  if (!cached) {
+    cached = buildCertifiedEntityMatchIndex(index);
+    matchIndexCache.set(index, cached);
+  }
+  return cached;
+}
+
+export type CertifiedEntityTextMatch = CertifiedEntity & {
+  matchedLabel: string;
+  matchKind: 'full' | 'prefix';
+};
+
+/** Resolve certified entities mentioned in composer text (full + prefix on last token). */
 export function matchCertifiedEntitiesInText(
   text: string,
   index: CertifiedEntity[]
 ): CertifiedEntity[] {
-  if (!text.trim() || index.length === 0) return [];
-  const lower = text.toLowerCase();
-  const matched = new Map<string, CertifiedEntity>();
+  return matchCertifiedEntitiesInTextDetailed(text, index).map(({ matchedLabel: _l, matchKind: _k, ...entity }) => entity);
+}
 
-  for (const entity of index) {
-    const labels = [entity.name, ...entity.aliases].filter((l) => l.length >= 2);
-    labels.sort((a, b) => b.length - a.length);
-    for (const label of labels) {
-      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'i');
-      if (re.test(lower) || re.test(text)) {
-        matched.set(`${entity.type}:${entity.id}`, entity);
+/** Detailed matches including prefix autocomplete — mirrors client composer chips. */
+export function matchCertifiedEntitiesInTextDetailed(
+  text: string,
+  index: CertifiedEntity[]
+): CertifiedEntityTextMatch[] {
+  const matchIndex = getMatchIndex(index);
+  if (!text.trim() || matchIndex.entries.length === 0) return [];
+
+  const matched = new Map<string, CertifiedEntityTextMatch>();
+
+  for (const entry of matchIndex.entries) {
+    for (const { label, pattern } of entry.fullChecks) {
+      if (pattern.test(text)) {
+        matched.set(entry.slot, {
+          ...entry.entity,
+          matchedLabel: label,
+          matchKind: 'full',
+        });
         break;
+      }
+    }
+  }
+
+  const prefix = normalizeNameKey(lastToken(text));
+  if (prefix.length >= 2) {
+    const bucket = prefix.slice(0, 2);
+    const candidates =
+      matchIndex.prefixBuckets.get(bucket) ??
+      matchIndex.entries.map((_, i) => i);
+
+    for (const entryIndex of candidates) {
+      const entry = matchIndex.entries[entryIndex];
+      if (matched.has(entry.slot)) continue;
+
+      const keyHit = entry.mentionKeys.some((k) => k.startsWith(prefix));
+      const labelHit = entry.fullChecks.some(({ label }) =>
+        normalizeNameKey(label).startsWith(prefix)
+      );
+
+      if (keyHit || labelHit) {
+        matched.set(entry.slot, {
+          ...entry.entity,
+          matchedLabel: entry.entity.name,
+          matchKind: 'prefix',
+        });
       }
     }
   }

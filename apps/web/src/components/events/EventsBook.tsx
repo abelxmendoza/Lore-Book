@@ -34,6 +34,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
+import { useEventsBookData } from '../../store/hooks/useEntityBooks';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
@@ -503,12 +504,28 @@ export const EventsBook: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const { entries = [] } = useLoreKeeper();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    events: serverEvents,
+    eventsSuccess,
+    loading: bookLoading,
+    refetch: refetchEvents,
+    assembleFromChats,
+    isAssembling,
+  } = useEventsBookData();
+  const isMockDataEnabled = useShouldUseMockData();
+  const [localLoading, setLocalLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const events = useMemo((): Event[] => {
+    if (isMockDataEnabled) return MOCK_EVENTS;
+    return (serverEvents as Event[]) ?? [];
+  }, [isMockDataEnabled, serverEvents]);
+
+  const loading = bookLoading || localLoading || isAssembling;
+
+  const [searchTerm, setSearchTerm] = useState('');
   const [recurringScenes, setRecurringScenes] = useState<RecurringScene[]>([]);
   const [scenesLoading, setScenesLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
   const [significanceFilter, setSignificanceFilter] = useState<SignificanceFilter>('all');
@@ -532,7 +549,6 @@ export const EventsBook: React.FC = () => {
     hasPeople: null,
   });
 
-  const isMockDataEnabled = useShouldUseMockData();
   const calendarYear = calendarMonth.getFullYear();
   const calendarMonthNum = calendarMonth.getMonth() + 1;
   const { dayMap: calendarDayMap, loading: calendarApiLoading } = useCalendarMonth(
@@ -555,46 +571,31 @@ export const EventsBook: React.FC = () => {
     return realMemories.length > 0 ? realMemories : (isMockDataEnabled ? dummyMemoryCards : []);
   }, [entries, isMockDataEnabled]);
 
-  useEffect(() => { void loadEvents(); }, [isMockDataEnabled]);
+  useEffect(() => {
+    if (isMockDataEnabled || loading) return;
+    if (events.length === 0) {
+      setError(eventsSuccess ? 'No events found yet' : 'Failed to load events');
+    } else {
+      setError(null);
+    }
+  }, [events.length, eventsSuccess, isMockDataEnabled, loading]);
 
   const loadEvents = async (options?: { assembleFromChats?: boolean }) => {
-    setLoading(true);
     setError(null);
-    if (isMockDataEnabled) {
-      setEvents(MOCK_EVENTS);
-      setLoading(false);
-      return;
-    }
+    if (isMockDataEnabled) return;
+    setLocalLoading(true);
     try {
       if (options?.assembleFromChats) {
-        await fetchJson<{ success: boolean; windowDays: number; events: unknown[] }>(
-          '/api/conversation/assemble-events',
-          {
-            method: 'POST',
-            body: JSON.stringify({ windowDays: 3650 }),
-          }
-        );
-      }
-      const result = await fetchJson<{ success: boolean; events: Event[] }>('/api/conversation/events');
-      if (result.success && result.events && result.events.length > 0) {
-        setEvents(result.events);
+        await assembleFromChats(3650);
       } else {
-        setEvents([]);
-        setError(result.success ? 'No events found yet' : 'Failed to load events');
+        await refetchEvents();
       }
-    } catch (err: any) {
-      setEvents([]);
-      setError(err.message || 'Failed to load events');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load events');
     } finally {
-      setLoading(false);
+      setLocalLoading(false);
     }
   };
-
-  useEffect(() => {
-    const handler = () => { void loadEvents(); };
-    window.addEventListener('lk:events-updated', handler);
-    return () => window.removeEventListener('lk:events-updated', handler);
-  }, []);
 
   // Load recurring scenes when that view is activated
   useEffect(() => {

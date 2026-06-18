@@ -22,8 +22,11 @@ const norm = (s: string) => (s ?? '').toLowerCase().replace(/[‘’ʼ]/g, "'");
 const QUEST_RE =
   /\b(want to|wanna|plan to|planning to|going to|gonna|hope to|hoping to|aim to|aiming to|trying to|try to|need to|have to|gotta|goal|goals|dream of|aspire|intend to|decided to|i will|i'll|resolution|bucket list|some ?day i)\b/i;
 
+// The percentage branch is kept OUTSIDE the `\b(...)\b` group on purpose: a
+// trailing `\b` after `%` (a non-word char) never forms a word boundary, which
+// silently made "80%" undetectable when it lived inside the group.
 const PROGRESS_RE =
-  /\b(finished|completed|done with|wrapped up|knocked out|made progress|making progress|almost done|halfway|half way|milestone|got through|on track|\d{1,3}\s?%)\b/i;
+  /(\b(?:finished|completed|done with|wrapped up|knocked out|made progress|making progress|almost done|halfway|half way|milestone|got through|on track)\b|\d{1,3}\s?%)/i;
 
 const SKILL_RE =
   /\b(learning|learned|practicing|practiced|getting better|getting good|improving|improved|studying|studied|training|trained|mastered|master|leveled up|level(?:ing)? up|skill|skills|technique|picked up|teaching myself|self ?taught)\b/i;

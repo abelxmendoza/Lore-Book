@@ -7,9 +7,54 @@
  *   Phase 7  query intelligence (map a question to a query type)
  *   Phase 8  entity enrichment (keywords/aliases/ontology tags/relationship hints)
  */
-import { glossaryAliases, lookupKeyword, type ActionHint, type GlossaryEntry, type RelationshipHint, type QueryHint, type RootType } from './glossary';
+import { familyContextWords, glossaryAliases, lookupKeyword, type ActionHint, type GlossaryEntry, type RelationshipHint, type QueryHint, type RootType } from './glossary';
+
+// Stance & Affect layer (see docs/stance-affect-lexical-plan.md). Re-exported here so
+// the lexical layer remains the single discovery point for deterministic signals.
+export { detectPreferenceStances, type PreferenceStance, type StancePolarity } from './preferenceStance';
+export {
+  detectAffectStances,
+  affectEmotionDrafts,
+  hasAffectCue,
+  mergeAffectEmotions,
+  type AffectStance,
+  type LexicalEmotionDraft,
+  type MergedEmotion,
+} from './affectStance';
+export {
+  detectEpistemicStances,
+  epistemicCognitionDrafts,
+  hasEpistemicCue,
+  mergeEpistemicCognitions,
+  type EpistemicStance,
+  type LexicalCognitionDraft,
+  type MergedCognition,
+} from './epistemicStance';
+export {
+  scanTemporalMentions,
+  resolveTextTemporalWindow,
+  detectTemporalSequenceMarkers,
+  hasTemporalCue,
+  type TemporalMention,
+} from './temporalLexicon';
+export {
+  parseSocialRoles,
+  hasSocialRoleSignals,
+  type SocialRoleHit,
+} from './socialRelationshipIntelligence';
+export {
+  detectDiscourseMoves,
+  detectNarrativeStages,
+  hasTangentCue,
+  hasStoryFrameCue,
+  type DiscourseMove,
+  type DiscourseSignal,
+  type NarrativeStage,
+  type NarrativeStageSignal,
+} from './discourseStance';
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/['’]/g, "'").replace(/\s+/g, ' ').trim();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Categories that emit hints only — never discovered as standalone entities. */
 const HINT_ONLY_CATEGORIES = new Set([
@@ -17,13 +62,19 @@ const HINT_ONLY_CATEGORIES = new Set([
   'ESSENCE_SIGNAL', 'SHADOW_SIGNAL', 'IDENTITY_SIGNAL', 'CONTRADICTION_SIGNAL',
   'DECISION_SIGNAL', 'MEMORY_SIGNAL', 'CORRECTION_VERB', 'RECALL_VERB',
   'ENTITY_AUTHORITY', 'ANALYTICS_SIGNAL', 'INSIGHT_SIGNAL', 'HABIT', 'VALUE',
+  'STANCE_PREFERENCE', 'STANCE_EPISTEMIC', 'STANCE_AFFECT',
+  'SOCIAL_ROLE', 'NARRATIVE_DISCOURSE', 'NARRATIVE_STAGE', 'TEMPORAL_ANCHOR', 'TEMPORAL_SEQUENCE',
 ]);
 
 // Scene/persona words that REDUCE kinship likelihood for a trailing kinship word
 // (e.g. "Goth Tio" — goth + nightlife scene → persona, not uncle).
 const SCENE_WORDS = /\b(goth|punk|club|dj|scene|stage|show|band|rave|set|warehouse|nightlife|metal|emo|drag|rapper|mc|producer)\b/;
-// Family context words that INCREASE kinship likelihood.
-const FAMILY_CONTEXT = /\b(my|our)\s+(uncle|aunt|tío|tía|tio|tia|mom|dad|mother|father|grandma|grandpa|abuela|abuelo|cousin|family|primo|prima|hermano|hermana)\b|\bfamily\b|\bthanksgiving\b|\breunion\b/;
+// Family context words that INCREASE kinship likelihood. The kinship vocabulary
+// is owned by the glossary (FAMILY entries); only the structural pattern lives here.
+const FAMILY_CONTEXT = new RegExp(
+  `\\b(?:my|our)\\s+(?:${familyContextWords().map(escapeRe).join('|')})\\b|\\bfamily\\b|\\bthanksgiving\\b|\\breunion\\b`,
+  'i'
+);
 const HANDLE_RE = /[.@\d_]/; // dots/handles/digits → stage name / handle
 
 export interface KinshipVerdict {

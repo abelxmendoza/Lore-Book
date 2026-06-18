@@ -3,13 +3,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { MockDataProvider } from '../contexts/MockDataContext';
 import { LoreKeeperProvider } from '../contexts/LoreKeeperContext';
+import { ReduxProvider } from '../store/ReduxProvider';
 import { useLoreKeeper } from './useLoreKeeper';
 
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   React.createElement(
-    MockDataProvider,
+    ReduxProvider,
     null,
-    React.createElement(LoreKeeperProvider, null, children)
+    React.createElement(
+      MockDataProvider,
+      null,
+      React.createElement(LoreKeeperProvider, null, children)
+    )
   );
 
 vi.mock('../lib/supabase', () => ({
@@ -20,6 +25,24 @@ vi.mock('../lib/supabase', () => ({
   },
   useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
 }));
+
+vi.mock('../contexts/MockDataContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../contexts/MockDataContext')>();
+  return {
+    ...actual,
+    useMockData: vi.fn(() => ({
+      useMockData: false,
+      isMockDataActive: false,
+      backendUnavailable: false,
+      backendHealth: null,
+      toggleMockData: vi.fn(),
+      setMockData: vi.fn(),
+      setBackendUnavailable: vi.fn(),
+      runtimeIdentity: 'REAL_USER' as const,
+      runtimeDataMode: 'REAL' as const,
+    })),
+  };
+});
 
 const mockFetchJson = vi.fn();
 vi.mock('../lib/api', () => ({
@@ -62,13 +85,20 @@ describe('useLoreKeeper Integration Tests', () => {
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
-      expect(result.current.entries).toEqual([]);
       expect(result.current.timeline).toEqual(EMPTY_TIMELINE);
     }, { timeout: 3000 });
+    expect(result.current.entries).toEqual([]);
     expect(result.current.loading).toBe(false);
   });
 
   it('should load entries on mount', async () => {
+    const { useAuth } = await import('../lib/supabase');
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'test-user' } as never,
+      session: null,
+      loading: false,
+    });
+
     mockFetchJson.mockImplementation((url: string | RequestInfo) => {
       const urlString = typeof url === 'string' ? url : (url as Request).url;
       if (urlString.includes('/api/entries') && !urlString.includes('?')) {

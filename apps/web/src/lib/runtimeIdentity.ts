@@ -164,16 +164,17 @@ export const runtimeGuards = {
 
 // ─── Global imperative accessor ───────────────────────────────────────────────
 // For use outside React (fetchJson, provenance services, ingestion queue).
-// Set by MockDataContext on every re-render that changes identity.
+// Kept in sync with the Redux runtime slice via runtimeAccess store subscription.
 
-let _globalRuntimeIdentity: RuntimeIdentityType = 'GUEST_USER';
+import { getCachedRuntimeIdentity } from '../store/runtimeIdentityCache';
 
 export function getGlobalRuntimeIdentity(): RuntimeIdentityType {
-  return _globalRuntimeIdentity;
+  return getCachedRuntimeIdentity();
 }
 
-export function setGlobalRuntimeIdentity(identity: RuntimeIdentityType): void {
-  _globalRuntimeIdentity = identity;
+/** @deprecated Runtime identity is owned by the Redux runtime slice. */
+export function setGlobalRuntimeIdentity(_identity: RuntimeIdentityType): void {
+  // no-op
 }
 
 /** True only for authenticated users on a healthy backend — safe for protected /api reads. */

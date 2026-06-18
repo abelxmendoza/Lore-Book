@@ -24,6 +24,8 @@ type ChatThreadListProps = {
   loadingMoreThreads?: boolean;
   threadsTotal?: number | null;
   onLoadMoreThreads?: () => void;
+  threadError?: string | null;
+  onDismissThreadError?: () => void;
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -378,6 +380,8 @@ export const ChatThreadList = ({
   loadingMoreThreads = false,
   threadsTotal = null,
   onLoadMoreThreads,
+  threadError = null,
+  onDismissThreadError,
 }: ChatThreadListProps) => {
   const drawerSwipeStartX = useRef<number | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -507,6 +511,22 @@ export const ChatThreadList = ({
           </button>
         )}
       </div>
+
+      {!collapsed && threadError && (
+        <div className="mx-2 mt-2 px-2.5 py-2 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 flex-shrink-0">
+          <p className="text-[11px] text-red-300/90 leading-snug flex-1">{threadError}</p>
+          {onDismissThreadError && (
+            <button
+              type="button"
+              onClick={onDismissThreadError}
+              className="p-1 rounded text-red-300/60 hover:text-red-200 hover:bg-red-500/10 flex-shrink-0"
+              aria-label="Dismiss thread error"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       {!collapsed && (

@@ -21,6 +21,10 @@ import {
   parseChatCompletionStreamChunk,
   type ChatStreamTokenUsage,
 } from '../services/chat/chatStreamChunk';
+import {
+  listMentionableEntities,
+  sanitizeComposerEntities,
+} from '../services/entities/entityMentionIndexService';
 
 // AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
 const aiRateLimit = createRateLimiter(30);
@@ -123,12 +127,35 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
+    let validatedComposerEntities = composerEntities;
+    if (composerEntities?.length && req.user?.id) {
+      try {
+        const index = await listMentionableEntities(req.user.id);
+        const sanitized = sanitizeComposerEntities(message, composerEntities, index);
+        validatedComposerEntities = sanitized.map((e) => ({
+          id: e.id,
+          name: e.name,
+          type: e.type,
+          status: e.status,
+        }));
+        if (sanitized.length < composerEntities.length) {
+          logger.info(
+            { userId, submitted: composerEntities.length, kept: sanitized.length },
+            'Composer entities sanitized against mention index'
+          );
+        }
+      } catch (err) {
+        logger.warn({ err, userId }, 'Composer entity validation failed; ignoring submitted entities');
+        validatedComposerEntities = undefined;
+      }
+    }
+
     // Resolve the chat stream BEFORE committing SSE headers.
     // If chatStream() throws (OpenAI quota, DB error, etc.) we can still return a
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
-      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, composerEntities);
+      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities);
     } catch (setupError) {
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))

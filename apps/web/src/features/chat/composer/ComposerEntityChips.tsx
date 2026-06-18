@@ -1,9 +1,10 @@
-import { Users, MapPin, Building2, Zap, Calendar, Database, Sparkles } from 'lucide-react';
+import { Users, MapPin, Building2, Zap, Calendar, Database, Sparkles, X } from 'lucide-react';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CertifiedEntityType } from '../../../types/certifiedEntity';
 
 type ComposerEntityChipsProps = {
   entities: CertifiedEntityMatch[];
+  onDismiss?: (entity: CertifiedEntityMatch) => void;
 };
 
 const CONFIG: Record<
@@ -20,18 +21,55 @@ const CONFIG: Record<
 const SUGGESTION_COLOR =
   'border-amber-500/40 bg-amber-500/10 text-amber-200/90 border-dashed';
 
+function chipTitle(entity: CertifiedEntityMatch): string {
+  const kind = entity.matchKind === 'prefix' ? 'autocomplete match' : 'mentioned in draft';
+  const status = entity.status === 'suggestion' ? 'pending review' : 'confirmed book entity';
+  return `${entity.name} (${CONFIG[entity.type].label}, ${status}) — ${kind} — id ${entity.id.slice(0, 8)}…`;
+}
+
 /**
  * Surfaces book entities (confirmed + pending suggestions) detected while typing.
  * Each chip maps to a stable id loaded into the chat pipeline.
  */
-export const ComposerEntityChips = ({ entities }: ComposerEntityChipsProps) => {
+export const ComposerEntityChips = ({ entities, onDismiss }: ComposerEntityChipsProps) => {
   if (entities.length === 0) return null;
 
   const confirmed = entities.filter((e) => e.status !== 'suggestion');
   const suggested = entities.filter((e) => e.status === 'suggestion');
 
+  const renderChip = (entity: CertifiedEntityMatch, colorClass: string) => {
+    const { icon: Icon } = CONFIG[entity.type];
+    const slot = `${entity.type}-${entity.id}`;
+    return (
+      <span
+        key={slot}
+        data-testid={`composer-entity-chip-${entity.type}-${entity.id}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${colorClass}`}
+        title={chipTitle(entity)}
+      >
+        <Icon className="h-3 w-3 flex-shrink-0 opacity-80" />
+        <span className="truncate max-w-[140px]">{entity.name}</span>
+        {entity.matchKind === 'prefix' && <span className="text-[9px] opacity-60">…</span>}
+        {onDismiss && (
+          <button
+            type="button"
+            data-testid={`composer-entity-dismiss-${entity.type}-${entity.id}`}
+            className="ml-0.5 rounded-full p-0.5 hover:bg-white/10"
+            aria-label={`Dismiss ${entity.name}`}
+            onClick={() => onDismiss(entity)}
+          >
+            <X className="h-3 w-3 opacity-70" />
+          </button>
+        )}
+      </span>
+    );
+  };
+
   return (
-    <div className="px-3 sm:px-4 lg:px-10 xl:px-12 pt-2 pb-1 border-b border-white/5 bg-black/30">
+    <div
+      data-testid="composer-entity-chips"
+      className="px-3 sm:px-4 lg:px-10 xl:px-12 pt-2 pb-1 border-b border-white/5 bg-black/30"
+    >
       <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
         {confirmed.length > 0 && (
           <>
@@ -44,17 +82,8 @@ export const ComposerEntityChips = ({ entities }: ComposerEntityChipsProps) => {
             </div>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {confirmed.map((entity) => {
-                const { icon: Icon, color } = CONFIG[entity.type];
-                return (
-                  <span
-                    key={`${entity.type}-${entity.id}`}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${color}`}
-                    title={`${entity.name} (${entity.type}) — id ${entity.id.slice(0, 8)}…`}
-                  >
-                    <Icon className="h-3 w-3 flex-shrink-0 opacity-80" />
-                    <span className="truncate max-w-[140px]">{entity.name}</span>
-                  </span>
-                );
+                const { color } = CONFIG[entity.type];
+                return renderChip(entity, color);
               })}
             </div>
           </>
@@ -69,22 +98,7 @@ export const ComposerEntityChips = ({ entities }: ComposerEntityChipsProps) => {
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {suggested.map((entity) => {
-                const { icon: Icon } = CONFIG[entity.type];
-                return (
-                  <span
-                    key={`${entity.type}-${entity.id}`}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${SUGGESTION_COLOR}`}
-                    title={`${entity.name} — suggestion id ${entity.id.slice(0, 12)}…`}
-                  >
-                    <Icon className="h-3 w-3 flex-shrink-0 opacity-70" />
-                    <span className="truncate max-w-[140px]">{entity.name}</span>
-                    {entity.matchKind === 'prefix' && (
-                      <span className="text-[9px] opacity-60">…</span>
-                    )}
-                  </span>
-                );
-              })}
+              {suggested.map((entity) => renderChip(entity, SUGGESTION_COLOR))}
             </div>
           </>
         )}

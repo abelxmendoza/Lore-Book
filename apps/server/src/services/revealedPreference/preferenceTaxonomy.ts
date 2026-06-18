@@ -9,11 +9,13 @@
  * Revealed evidence is the signal that matters: what you repeatedly do, not say.
  */
 
+import { detectPreferenceStances } from '../ontology/preferenceStance';
+
 export type PreferenceType =
   | 'value' | 'goal' | 'fear' | 'motivation' | 'identity'
   | 'habit' | 'preference' | 'interest' | 'skill';
 
-export type SignalType = 'stated' | 'revealed';
+export type SignalType = 'stated' | 'revealed' | 'disliked';
 
 export interface RawMatch {
   categoryKey: string;
@@ -21,6 +23,8 @@ export interface RawMatch {
   label: string;
   signalType: SignalType;
   matchedTerm: string;
+  /** Stance polarity. Positive → stated; negative → disliked (separate count). */
+  polarity?: 'positive' | 'negative';
 }
 
 /** A revealed pattern is either a self-contained activity, or a topic term that
@@ -197,6 +201,42 @@ export function extractSignals(text: string): RawMatch[] {
           out.push({ categoryKey: cat.key, type: cat.type, label: cat.label, signalType: 'revealed', matchedTerm: revealedTerm.trim() });
         }
       }
+    }
+  }
+  return out;
+}
+
+/**
+ * Bridge — deterministic like/dislike stances → revealed-preference signals.
+ *
+ * Self-attributed LIKE  → `stated`   (positive preference; adds recall the coarse STATED_CUE misses)
+ * Self-attributed DISLIKE → `disliked` (negative preference; persisted separately so alignment math stays honest)
+ */
+export function preferenceStanceSignals(text: string): RawMatch[] {
+  if (!text || !text.trim()) return [];
+  const out: RawMatch[] = [];
+  const seen = new Set<string>();
+  for (const stance of detectPreferenceStances(text)) {
+    if (!stance.attributedToSelf) continue;
+    const cat = CATEGORIES.find((c) => c.topic.test(stance.target));
+    if (!cat) continue;
+
+    if (stance.polarity === 'LIKE') {
+      const key = `${cat.key}:stated`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        categoryKey: cat.key, type: cat.type, label: cat.label,
+        signalType: 'stated', matchedTerm: stance.target, polarity: 'positive',
+      });
+    } else if (stance.polarity === 'DISLIKE') {
+      const key = `${cat.key}:disliked`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        categoryKey: cat.key, type: cat.type, label: cat.label,
+        signalType: 'disliked', matchedTerm: stance.target, polarity: 'negative',
+      });
     }
   }
   return out;

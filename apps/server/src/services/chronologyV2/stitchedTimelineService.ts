@@ -76,10 +76,10 @@ async function loadUserOrder(
 async function resolveArcWindow(
   userId: string,
   lifeArcId: string
-): Promise<{ start?: string; end?: string; label: string | null; arc_type?: string }> {
+): Promise<{ start?: string; end?: string; label: string | null; arc_type?: string; metadata?: Record<string, unknown> }> {
   const { data: arc } = await supabaseAdmin
     .from('life_arcs')
-    .select('title, start_date, end_date, arc_type')
+    .select('title, start_date, end_date, arc_type, metadata')
     .eq('user_id', userId)
     .eq('id', lifeArcId)
     .maybeSingle();
@@ -90,6 +90,7 @@ async function resolveArcWindow(
     end: arc.end_date ?? undefined,
     label: arc.title ?? null,
     arc_type: arc.arc_type ?? undefined,
+    metadata: (arc.metadata as Record<string, unknown>) ?? {},
   };
 }
 
@@ -106,6 +107,35 @@ async function loadOccasionLinks(userId: string, arcId: string) {
     return [];
   }
   return data ?? [];
+}
+
+async function loadNarrativeArcEventIds(
+  userId: string,
+  arcId: string,
+  metadata?: Record<string, unknown>,
+): Promise<string[]> {
+  const fromMeta = (metadata?.source_event_ids as string[] | undefined) ?? [];
+  if (fromMeta.length > 0) return fromMeta;
+
+  const { data: memberships } = await supabaseAdmin
+    .from('arc_memberships')
+    .select('event_candidate_id')
+    .eq('user_id', userId)
+    .eq('arc_id', arcId);
+
+  if (!memberships?.length) return [];
+
+  const candidateIds = memberships.map((m) => m.event_candidate_id as string);
+  const { data: candidates } = await supabaseAdmin
+    .from('event_candidates')
+    .select('source_event_ids')
+    .in('id', candidateIds);
+
+  const ids = new Set<string>();
+  for (const c of candidates ?? []) {
+    for (const id of (c.source_event_ids as string[]) ?? []) ids.add(id);
+  }
+  return [...ids];
 }
 
 export class StitchedTimelineService {
@@ -127,6 +157,8 @@ export class StitchedTimelineService {
     let endTime = opts.end_time;
     let scopeLabel: string | null = null;
     let isOccasionArc = false;
+    let isNarrativeConsolidationArc = false;
+    let narrativeEventIds: string[] = [];
     let occasionLinks: Awaited<ReturnType<typeof loadOccasionLinks>> = [];
 
     if (scopeType === 'life_arc' && opts.life_arc_id) {
@@ -135,8 +167,13 @@ export class StitchedTimelineService {
       endTime = endTime ?? window.end;
       scopeLabel = window.label;
       isOccasionArc = window.arc_type === 'occasion';
+      isNarrativeConsolidationArc =
+        window.metadata?.detector === 'narrative_consolidation' ||
+        ((window.metadata?.source_event_ids as string[] | undefined)?.length ?? 0) > 0;
       if (isOccasionArc) {
         occasionLinks = await loadOccasionLinks(userId, opts.life_arc_id);
+      } else if (isNarrativeConsolidationArc) {
+        narrativeEventIds = await loadNarrativeArcEventIds(userId, opts.life_arc_id, window.metadata);
       }
     }
 
@@ -224,6 +261,32 @@ export class StitchedTimelineService {
             temporalRole: link.temporal_role ?? undefined,
           });
         }
+      }
+    } else if (isNarrativeConsolidationArc && narrativeEventIds.length > 0) {
+      const { data: linkedEvents } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, start_time, confidence, metadata')
+        .eq('user_id', userId)
+        .in('id', narrativeEventIds);
+
+      for (const e of linkedEvents ?? []) {
+        const key = `event:${e.id}`;
+        const meta = (e.metadata ?? {}) as Record<string, unknown>;
+        const narrative = (meta.narrative_structure ?? {}) as Record<string, unknown>;
+        const primaryRole = narrative.primary_arc_membership_role as string | undefined;
+        items.push({
+          id: key,
+          kind: 'event',
+          sourceId: e.id,
+          sortTime: e.start_time,
+          userSortIndex: orderMap.get(key) ?? null,
+          title: e.title ?? 'Event',
+          body: e.summary ?? '',
+          confidence: e.confidence ?? 1,
+          userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
+          temporalRole: primaryRole,
+        });
+        seenEventIds.add(e.id);
       }
     } else {
       for (const m of moments) {

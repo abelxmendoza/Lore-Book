@@ -1,0 +1,49 @@
+name: Health Monitor
+
+# Synthetic uptime monitor. Probes the production backend /api/health on a
+# schedule so a Railway 502 (or any outage) is surfaced as a failed run /
+# notification instead of being discovered by users.
+#
+# Tune cadence/URLs via repository Variables:
+#   BACKEND_HEALTH_URL, FRONTEND_ORIGIN
+on:
+  schedule:
+    - cron: '*/15 * * * *' # every 15 minutes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-monitor
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Probe production health
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      BACKEND_URL: ${{ vars.BACKEND_HEALTH_URL || 'https://lore-book-production.up.railway.app' }}
+      FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN || 'https://lorebookai.com' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Backend health probe (with CORS assertion)
+        run: >-
+          node scripts/smoke-health.mjs "$BACKEND_URL"
+          --origin "$FRONTEND_ORIGIN"
+          --attempts 3 --interval-ms 15000 --timeout-ms 10000
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          echo "::error::Production backend health probe FAILED for $BACKEND_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Likely causes: Railway service down/crash-looped, OOM, or public domain" >> "$GITHUB_STEP_SUMMARY"
+          echo "target-port mismatch with the PORT env var. Check: railway logs / railway domain." >> "$GITHUB_STEP_SUMMARY"

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import type { Message } from '../../message/ChatMessage';
 
 vi.mock('../../../../lib/supabase', () => ({
@@ -33,7 +33,7 @@ vi.mock('../../services/threadPersistenceTracker', () => ({
 
 import { useAuth } from '../../../../lib/supabase';
 import { fetchJson } from '../../../../lib/api';
-import { useChatThreads } from '../useChatThreads';
+import { renderUseChatThreads } from './chatTestUtils';
 
 const mockUseAuth = vi.mocked(useAuth);
 const mockFetchJson = vi.mocked(fetchJson);
@@ -95,7 +95,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
   });
 
   it('merges local assistant bubble when server returns user-only snapshot', async () => {
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
 
     await waitFor(() => expect(result.current.threadsReady).toBe(true));
 
@@ -138,7 +138,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
       return { success: true };
     });
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsReady).toBe(true));
 
     act(() => {
@@ -212,7 +212,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
       return { success: true };
     });
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsReady).toBe(true));
 
     await act(async () => {
@@ -227,7 +227,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
   });
 
   it('restores thread in list when protected delete fails', async () => {
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsReady).toBe(true));
 
     act(() => {

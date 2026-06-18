@@ -17,9 +17,8 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
-import { booksApi } from '../../api/books';
-import { apiCache } from '../../lib/cache';
 import { supabase, useAuth } from '../../lib/supabase';
+import { useCharactersBookData } from '../../store/hooks/useEntityBooks';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
@@ -2454,7 +2453,16 @@ export const CharacterBook = () => {
   const { user, loading: authLoading } = useAuth();
   const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
   const { isGuest, guestState } = useGuest();
-  const [characters, setCharacters] = useState<Character[]>([]);
+  const {
+    data: charactersBookData,
+    loading: charactersLoading,
+    refetch: refetchCharactersBook,
+    invalidate: invalidateCharactersBook,
+    isMockEnabled,
+    isGuest: isGuestRuntime,
+    guestId,
+  } = useCharactersBookData();
+  const [demoCharacterOverride, setDemoCharacterOverride] = useState<Character[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
@@ -2486,6 +2494,56 @@ export const CharacterBook = () => {
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
+
+  const serverCharacters = useMemo((): Character[] => {
+    if (isMockEnabled || isMockDataEnabled) {
+      return mockDataService.getWithFallback.characters(null, true).data.map(withDemoAnalytics);
+    }
+    if (isGuestRuntime && guestId) {
+      return getGuestCharacters(guestId);
+    }
+    if (isGuest && guestState?.guestId) {
+      return getGuestCharacters(guestState.guestId);
+    }
+    const characterList = (charactersBookData?.characters ?? []) as Character[];
+    const result = mockDataService.getWithFallback.characters(
+      characterList.length > 0 ? characterList : null,
+      false
+    );
+    return result.data;
+  }, [
+    charactersBookData,
+    isMockEnabled,
+    isMockDataEnabled,
+    isGuestRuntime,
+    isGuest,
+    guestId,
+    guestState?.guestId,
+  ]);
+
+  const characters = demoCharacterOverride ?? serverCharacters;
+  const bookLoading = charactersLoading || loading;
+
+  useEffect(() => {
+    setSelectedCharacter((sel) => {
+      if (!sel) return null;
+      const updated = characters.find((c) => c.id === sel.id);
+      return updated ?? sel;
+    });
+  }, [characters]);
+
+  const loadCharacters = async () => {
+    if (authLoading) return;
+    if (isMockDataEnabled || isMockEnabled) return;
+    if (isGuest && guestState?.guestId) return;
+    setDemoCharacterOverride(null);
+    setLoading(true);
+    try {
+      await refetchCharactersBook();
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Character extraction reads from the canonical chat-thread cache (not an isolated store).
   const chatMessages = useActiveChatMessages().map(msg => ({
@@ -2524,7 +2582,7 @@ export const CharacterBook = () => {
     setRestoringCast(true);
     setRescanError(null);
     try {
-      apiCache.deletePattern(/\/api\/(characters|knowledge)/);
+      invalidateCharactersBook();
       const result = await selfCharacterApi.rescanConversations();
       await loadCharacters();
       const promoted = result.summary?.charactersPromoted ?? 0;
@@ -2540,53 +2598,6 @@ export const CharacterBook = () => {
       setRescanError(error instanceof Error ? error.message : 'Failed to rescan conversations');
     } finally {
       setRestoringCast(false);
-    }
-  };
-
-  const loadCharacters = async () => {
-    if (authLoading) return;
-    setLoading(true);
-
-    if (isMockDataEnabled) {
-      const result = mockDataService.getWithFallback.characters(null, true);
-      setCharacters(result.data.map(withDemoAnalytics));
-      setLoading(false);
-      return;
-    }
-
-    if (isGuest && guestState?.guestId) {
-      setCharacters(getGuestCharacters(guestState.guestId));
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      const response = await booksApi.loadCharacters();
-      const characterList = (response?.characters || []) as Character[];
-      
-      // Use mock data service to determine what to show - pass current toggle state
-      const result = mockDataService.getWithFallback.characters(
-        characterList.length > 0 ? characterList : null,
-        isMockDataEnabled
-      );
-      // Normalize analytics for demo characters so cards render correctly
-      const normalized = isMockDataEnabled
-        ? result.data.map(withDemoAnalytics)
-        : result.data;
-      setCharacters(normalized);
-      setSelectedCharacter((sel) => {
-        if (!sel) return null;
-        const updated = normalized.find((c) => c.id === sel.id);
-        return updated ?? sel;
-      });
-    } catch {
-      setCharacters((prev) => {
-        if (prev.length > 0) return prev;
-        const result = mockDataService.getWithFallback.characters(null, isMockDataEnabled);
-        return isMockDataEnabled ? result.data.map(withDemoAnalytics) : result.data;
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -2634,23 +2645,11 @@ export const CharacterBook = () => {
     }
   };
 
-  // Load on mount, when auth hydration completes (user?.id appears), and when
-  // the mock toggle changes. The mount fetch can fire before the Supabase
-  // session is hydrated → 401 → empty book; the user?.id dependency reloads
-  // once the session is actually available.
+  // Load romantic relationships on auth/mock changes; character list is RTK-driven.
   useEffect(() => {
-    void loadCharacters();
     void loadRelationships();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isMockDataEnabled, authLoading, isGuest, guestState?.guestId]);
-
-  useEffect(() => {
-    if (!isGuest) return;
-    const onGuestLore = () => { void loadCharacters(); };
-    window.addEventListener('lk:guest-lore-updated', onGuestLore);
-    return () => window.removeEventListener('lk:guest-lore-updated', onGuestLore);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGuest]);
+  }, [user?.id, isMockDataEnabled]);
 
   // Ensure protagonist exists; periodic self sync from chat (throttled).
   useEffect(() => {
@@ -2671,7 +2670,7 @@ export const CharacterBook = () => {
           .syncFromConversations({ limit: 20, sinceDays: 90 })
           .then(async (sync) => {
             if (cancelled || sync.processed <= 0) return;
-            apiCache.deletePattern(/\/api\/(characters|knowledge)/);
+            invalidateCharactersBook();
             await loadCharacters();
             window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
           })
@@ -2684,21 +2683,15 @@ export const CharacterBook = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isMockDataEnabled, authLoading]);
 
-  useEffect(() => {
-    const onInference = () => { void loadCharacters(); };
-    window.addEventListener('lk:inference-complete', onInference);
-    return () => window.removeEventListener('lk:inference-complete', onInference);
-  }, []);
-
   // Auto-open modal when navigated here from an entity chip (chat → characters).
   useEffect(() => {
-    if (loading || characters.length === 0) return;
+    if (bookLoading || characters.length === 0) return;
     const id = sessionStorage.getItem('highlightItem');
     if (!id) return;
     sessionStorage.removeItem('highlightItem');
     const match = characters.find(c => c.id === id);
     if (match) setSelectedCharacter(match);
-  }, [loading, characters]);
+  }, [bookLoading, characters]);
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
@@ -2710,7 +2703,6 @@ export const CharacterBook = () => {
   useEffect(() => {
     const handler = (e: Event) => {
       const ids: string[] = (e as CustomEvent<{ ids: string[] }>).detail?.ids ?? [];
-      void loadCharacters();
       if (ids.length > 0) {
         setRecentlyUpdatedIds(new Set(ids));
         setTimeout(() => setRecentlyUpdatedIds(new Set()), 4000);
@@ -2946,7 +2938,7 @@ export const CharacterBook = () => {
         demoMode={isMockDataEnabled}
         onConsolidated={(result) => {
           if (result?.demoCharacters && isMockDataEnabled) {
-            setCharacters(result.demoCharacters.map(withDemoAnalytics));
+            setDemoCharacterOverride(result.demoCharacters.map(withDemoAnalytics));
           } else {
             void loadCharacters();
             void loadRelationships();

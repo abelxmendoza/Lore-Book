@@ -16,10 +16,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../lib/supabase';
 import { fetchJson } from '../../../lib/api';
+import { store } from '../../../store';
+import { chatApi } from '../../../store/api/chatApi';
+import { mutationErrorMessage } from '../../../store/rtkMutationUtils';
 import { useChatThreadContext } from '../../../contexts/ChatThreadContext';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import type { Message } from '../message/ChatMessage';
-import type { TitleGenerationResult } from '../types/conversationMetadata';
 import {
   isGenericThreadTitle,
 } from '../utils/threadTitleUtils';
@@ -55,6 +57,8 @@ export const useConversationRuntime = () => {
     setActiveThreadId,
     activeMessages,
     clearActiveMessages,
+    lastError,
+    dismissThreadError,
   } = useChatThreadContext();
 
   const [greetingMessage, setGreetingMessage] = useState<string | null>(null);
@@ -70,10 +74,9 @@ export const useConversationRuntime = () => {
   const removeEmptyThread = useCallback(
     async (id: string) => {
       try {
-        const statusRes = await fetchJson<{
-          success: boolean;
-          status?: { protected?: boolean; messageCount?: number };
-        }>(`/api/conversation/threads/${id}/status`);
+        const statusRes = await store
+          .dispatch(chatApi.endpoints.getThreadStatus.initiate(id))
+          .unwrap();
         if (
           statusRes.success &&
           (statusRes.status?.protected || (statusRes.status?.messageCount ?? 0) > 0)
@@ -347,16 +350,15 @@ export const useConversationRuntime = () => {
       .find((m) => m.role === 'assistant' && !m.isStreaming);
     const modeDecision = lastAssistant?.modeDecision?.mode;
 
-    fetchJson<TitleGenerationResult & { success: boolean }>(
-      `/api/conversation/threads/${threadIdParam}/title`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
+    void store
+      .dispatch(
+        chatApi.endpoints.generateThreadTitle.initiate({
+          threadId: threadIdParam,
           messages: payload,
           ...(modeDecision ? { modeDecision } : {}),
-        }),
-      }
-    )
+        })
+      )
+      .unwrap()
       .then(({ title, subtitle, dominantEntities }) => {
         runtimeDiagnostics.recordTimed('title_complete', `title_${threadIdParam}`, {
           threadId: threadIdParam,
@@ -371,7 +373,7 @@ export const useConversationRuntime = () => {
         }
       })
       .catch((err: unknown) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = mutationErrorMessage(err);
         runtimeDiagnostics.recordTimed('title_error', `title_${threadIdParam}`, {
           threadId: threadIdParam,
           meta: { error: errMsg },
@@ -497,10 +499,14 @@ export const useConversationRuntime = () => {
       if (!sourceId) return;
       try {
         await flushSave(sourceId);
-        const res = await fetchJson<{ success: boolean; thread: { id: string } }>(
-          `/api/conversation/threads/${sourceId}/fork`,
-          { method: 'POST', body: JSON.stringify({ message_id: fromMessageId }) }
-        );
+        const res = await store
+          .dispatch(
+            chatApi.endpoints.forkThread.initiate({
+              sourceThreadId: sourceId,
+              messageId: fromMessageId,
+            })
+          )
+          .unwrap();
         if (res.success && res.thread?.id) {
           intendedThreadRef.current = res.thread.id;
           navigate(`/chat/${res.thread.id}`);
@@ -537,5 +543,7 @@ export const useConversationRuntime = () => {
     flushSave,
     getThread,
     forkThread,
+    lastError,
+    dismissThreadError,
   };
 };

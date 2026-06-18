@@ -24,6 +24,7 @@ import { ChatMemorySuggestion } from './ChatMemorySuggestion';
 import { DisambiguationPrompt, type DisambiguationOption } from './DisambiguationPrompt';
 import { MemoryCognitionPanel } from './MemoryCognitionPanel';
 import { CognitionMetaPanel } from './CognitionMetaPanel';
+import { HowLoreBookUnderstoodThis } from './HowLoreBookUnderstoodThis';
 import type { MemoryFeedbackEvent } from '../../hooks/useChatStream';
 
 export type ChatSource = {
@@ -284,6 +285,11 @@ export const ChatMessage = ({
               <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
                 {message.content}
               </p>
+            )}
+
+            {/* "How LoreBook Understood This" — agents observe the USER message */}
+            {isUser && showCognitiveTrace && (
+              <HowLoreBookUnderstoodThis messageId={message.id} visible={showCognitiveTrace} />
             )}
             
             {/* Inline Citations */}

@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
+import { hasTangentCue } from '../ontology/discourseStance';
 
 export interface EmotionalState {
   dominantEmotion: string;
@@ -173,6 +174,17 @@ export class TangentTransitionDetector {
         newTopic: this.extractTopic(currentMessage),
         shiftPercentage: 0,
         similarity: 1,
+      };
+    }
+
+    // Lexical fast path — glossary tangent/subject-change cues
+    if (hasTangentCue(currentMessage)) {
+      return {
+        detected: true,
+        oldTopic: context.previousTopic,
+        newTopic: this.extractTopic(currentMessage),
+        shiftPercentage: 0.65,
+        similarity: 0.35,
       };
     }
 

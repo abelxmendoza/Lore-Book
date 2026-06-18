@@ -4,7 +4,7 @@
 // Enhanced with advanced filters and optimized for large datasets
 // =====================================================
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -23,6 +23,7 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useOrganizationsBookData } from '../../store/hooks/useEntityBooks';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
@@ -943,8 +944,12 @@ const MOCK_ORGANIZATIONS: Organization[] = [
 ];
 
 export const OrganizationsBook: React.FC = () => {
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    organizations: orgsFromServer,
+    candidates: candidatesFromServer,
+    loading: bookLoading,
+    refetch: refetchOrganizations,
+  } = useOrganizationsBookData();
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<OrganizationCategory>('all');
@@ -967,17 +972,58 @@ export const OrganizationsBook: React.FC = () => {
   const [showGroupNetwork, setShowGroupNetwork] = useState(false);
   const [myFamilyCount, setMyFamilyCount] = useState<number | null>(null);
   const [myFamilyRefreshKey, setMyFamilyRefreshKey] = useState(0);
-  const isMockDataEnabled = useShouldUseMockData();
-  // Groups accepted from suggestions this session — kept so they survive the
-  // periodic reloads (in demo mode the backend has no record to refetch).
   const createdOrgsRef = useRef<Organization[]>([]);
+  const [createdOrgsVersion, setCreatedOrgsVersion] = useState(0);
+  const isMockDataEnabled = useShouldUseMockData();
 
-  useEffect(() => {
-    void loadOrganizations();
-    const onInference = () => { void loadOrganizations(); };
-    window.addEventListener('lk:inference-complete', onInference);
-    return () => window.removeEventListener('lk:inference-complete', onInference);
-  }, [isMockDataEnabled]);
+  const mergeCreated = useCallback((base: Organization[]) => {
+    const created = createdOrgsRef.current;
+    if (created.length === 0) return base;
+    const createdById = new Map(created.map(o => [o.id, normalizeOrganization(o)]));
+    const enriched = base.map(o => {
+      const local = createdById.get(o.id);
+      if (!local) return o;
+      const members = (o.members?.length ?? 0) >= (local.members?.length ?? 0) ? o.members : local.members;
+      return normalizeOrganization({
+        ...o,
+        members,
+        member_count: members?.length ?? o.member_count,
+        profile: o.profile ?? o.metadata?.profile ?? local.profile,
+      });
+    });
+    const baseIds = new Set(base.map(o => o.id));
+    const createdOnly = created.filter(o => !baseIds.has(o.id));
+    return [...createdOnly.map(normalizeOrganization), ...enriched];
+  }, [createdOrgsVersion]);
+
+  const organizations = useMemo(() => {
+    if (isMockDataEnabled) {
+      const withProfiles = MOCK_ORGANIZATIONS.map(o => {
+        let profile = o.profile ?? o.metadata?.profile;
+        if (!profile) {
+          try {
+            profile = deriveOrganizationProfile({
+              name: o.name,
+              group_type: o.group_type,
+              members: o.members?.map(m => m.character_name),
+              context: o.description,
+            });
+          } catch {
+            profile = undefined;
+          }
+        }
+        return normalizeOrganization({ ...o, profile });
+      });
+      return mergeCreated(withProfiles);
+    }
+    const organizationsResult = (orgsFromServer as Organization[]) ?? [];
+    const candidatesResult = (candidatesFromServer as GroupCandidate[]) ?? [];
+    return mergeCreated(
+      mergeOrganizationsAndCandidates(organizationsResult, candidatesResult)
+    );
+  }, [isMockDataEnabled, orgsFromServer, candidatesFromServer, mergeCreated]);
+
+  const loading = bookLoading || scanning || creating;
 
   useEffect(() => {
     if (isMockDataEnabled) return;
@@ -991,85 +1037,13 @@ export const OrganizationsBook: React.FC = () => {
   }, []);
 
   const loadOrganizations = async () => {
-    setLoading(true);
     setError(null);
-
-    const mergeCreated = (base: Organization[]) => {
-      const created = createdOrgsRef.current;
-      if (created.length === 0) return base;
-      const createdById = new Map(created.map(o => [o.id, normalizeOrganization(o)]));
-      // For orgs present in both, enrich the backend row with locally-known
-      // members/profile when richer — so a reload never wipes detected members
-      // that the backend may have failed to persist.
-      const enriched = base.map(o => {
-        const local = createdById.get(o.id);
-        if (!local) return o;
-        const members = (o.members?.length ?? 0) >= (local.members?.length ?? 0) ? o.members : local.members;
-        return normalizeOrganization({
-          ...o,
-          members,
-          member_count: members?.length ?? o.member_count,
-          profile: o.profile ?? o.metadata?.profile ?? local.profile,
-        });
-      });
-      const baseIds = new Set(base.map(o => o.id));
-      const createdOnly = created.filter(o => !baseIds.has(o.id));
-      return [...createdOnly.map(normalizeOrganization), ...enriched];
-    };
-
-    // Single try/finally so `loading` ALWAYS resolves — a throw in the demo
-    // branch or in profile derivation must never leave the UI on skeletons.
+    if (isMockDataEnabled) return;
     try {
-      if (isMockDataEnabled) {
-        const withProfiles = MOCK_ORGANIZATIONS.map(o => {
-          let profile = o.profile ?? o.metadata?.profile;
-          if (!profile) {
-            try {
-              profile = deriveOrganizationProfile({
-                name: o.name,
-                group_type: o.group_type,
-                members: o.members?.map(m => m.character_name),
-                context: o.description,
-              });
-            } catch {
-              profile = undefined; // never block the card on a bad profile
-            }
-          }
-          return normalizeOrganization({ ...o, profile });
-        });
-        setOrganizations(mergeCreated(withProfiles));
-        return;
-      }
-
-      const [orgResult, candidateResult] = await Promise.allSettled([
-        fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations'),
-        fetchJson<{ success: boolean; candidates: GroupCandidate[] }>('/api/group-candidates?status=pending')
-          .catch(() => ({ success: false, candidates: [] })),
-      ]);
-      const organizationsResult =
-        orgResult.status === 'fulfilled' && orgResult.value.success ? (orgResult.value.organizations || []) : [];
-      const candidatesResult =
-        candidateResult.status === 'fulfilled' && candidateResult.value.success ? (candidateResult.value.candidates || []) : [];
-      const merged = mergeOrganizationsAndCandidates(
-        organizationsResult,
-        candidatesResult
-      );
-      setOrganizations(mergeCreated(merged));
-      if (orgResult.status === 'rejected') {
-        const message = orgResult.reason instanceof Error ? orgResult.reason.message : 'Failed to load accepted organizations';
-        const cleanMessage = message.replace(/[.]+$/, '');
-        if (merged.length > 0) {
-          setScanNote(`${cleanMessage}. Showing detected group suggestions instead.`);
-        } else {
-          setError(message);
-        }
-      }
-    } catch (err: any) {
+      await refetchOrganizations();
+    } catch (err: unknown) {
       console.error('Failed to load organizations:', err);
-      setOrganizations((prev) => mergeCreated(prev.length > 0 ? prev : []));
-      setError(err.message || 'Failed to load organizations');
-    } finally {
-      setLoading(false);
+      setError(err instanceof Error ? err.message : 'Failed to load organizations');
     }
   };
 
@@ -1239,13 +1213,6 @@ export const OrganizationsBook: React.FC = () => {
     if (match) setSelectedOrganization(match);
   }, [organizations]);
 
-  // Refresh when chat pipeline creates/updates organizations.
-  useEffect(() => {
-    const handler = () => { void loadOrganizations(); };
-    window.addEventListener('lk:organizations-updated', handler);
-    return () => window.removeEventListener('lk:organizations-updated', handler);
-  }, []);
-
   // Arrow key navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1316,7 +1283,7 @@ export const OrganizationsBook: React.FC = () => {
               normalizedCreated,
               ...createdOrgsRef.current.filter(o => o.id !== created.id),
             ];
-            setOrganizations(prev => [normalizedCreated, ...prev.filter(o => o.id !== created.id)]);
+            setCreatedOrgsVersion((v) => v + 1);
             // Guarantee the new card is visible: clear filters, sort newest-first,
             // jump to page 1. Otherwise it can land off the current tab/page.
             setActiveCategory('all');

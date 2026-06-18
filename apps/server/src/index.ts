@@ -26,6 +26,9 @@ import { requestIdMiddleware } from './utils/requestId';
 import { performSecurityCheck } from './utils/securityCheck';
 import { getSchemaStatus, getMissingTables } from './db/schemaVerification';
 import { schemaGuard } from './middleware/schemaGuard';
+import { resolveBindHost } from './config/serverPort';
+import { evaluateOrigin, getAllowedCorsOrigins } from './utils/corsPolicy';
+import { buildHealthPayload } from './routes/health';
 
 assertConfig();
 
@@ -62,29 +65,6 @@ if (!securityCheck.passed) {
 }
 
 const app = express();
-
-const normalizeOrigin = (value: string | undefined): string | null => {
-  if (!value) return null;
-  try {
-    return new URL(value).origin;
-  } catch {
-    return value.replace(/\/+$/, '');
-  }
-};
-
-const getAllowedCorsOrigins = (): string[] => {
-  const configuredOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.VITE_API_URL?.replace(/\/api\/?$/, ''),
-    'https://lorebookai.com',
-    'https://www.lorebookai.com',
-    'https://lorebook.app',
-    'https://www.lorebook.app',
-    'https://lore-keeper-web.vercel.app',
-  ];
-
-  return [...new Set(configuredOrigins.map(normalizeOrigin).filter(Boolean) as string[])];
-};
 
 // Configure Helmet with strict security in production, permissive in development
 app.use(
@@ -143,23 +123,15 @@ app.use(cors({
         callback(null, true);
       }
     : (origin, callback) => {
-        // In production, only allow specific origins
-        const allowedOrigins = getAllowedCorsOrigins();
-
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) {
-          return callback(null, true);
-        }
-
-        // Allow any localhost/127.0.0.1 port (dev tools, mobile simulators, browser extensions)
-        const normalizedOrigin = normalizeOrigin(origin);
-        const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-        const isVercelPreview = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
-
-        if (isLocalhost || isVercelPreview || (normalizedOrigin && allowedOrigins.includes(normalizedOrigin))) {
+        // In production, only allow first-party origins, localhost, and Vercel previews.
+        const decision = evaluateOrigin(origin, process.env);
+        if (decision.allowed) {
           callback(null, true);
         } else {
-          logger.warn({ origin, allowedOrigins }, 'CORS: Blocked request from unauthorized origin');
+          logger.warn(
+            { origin, allowedOrigins: getAllowedCorsOrigins(process.env) },
+            'CORS: Blocked request from unauthorized origin'
+          );
           callback(new Error('Not allowed by CORS'));
         }
       },
@@ -188,23 +160,7 @@ app.use(requestIdMiddleware);
 // Liveness: GET /api/health first so nothing else can return 500 for it (no auth, no DB)
 const SERVER_START_TIME = Date.now();
 app.get('/api/health', (_req, res) => {
-  const uptimeSeconds = Math.floor((Date.now() - SERVER_START_TIME) / 1000);
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptimeSeconds,
-    deploymentEnv: process.env.NODE_ENV ?? 'unknown',
-    envPresent: {
-      SUPABASE_URL: !!process.env.SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
-      FRONTEND_URL: !!process.env.FRONTEND_URL,
-      PORT: !!process.env.PORT,
-      STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
-      STRIPE_WEBHOOK_SECRET: !!process.env.STRIPE_WEBHOOK_SECRET,
-      SUBSCRIPTION_PRICE_ID: !!process.env.SUBSCRIPTION_PRICE_ID,
-    },
-  });
+  res.status(200).json(buildHealthPayload(SERVER_START_TIME));
 });
 
 // Database schema health: status, missing tables, last check (no auth)
@@ -404,8 +360,12 @@ async function runBootTasks(): Promise<void> {
 // Bind the port FIRST so the healthcheck (/api/health) is reachable immediately,
 // then kick off boot tasks in the background. CJS requires an async IIFE only
 // for the top-level awaits inside runBootTasks().
-const server = app.listen(config.port, () => {
-  logger.info(`Lore Book API listening on ${config.port}`);
+const BIND_HOST = resolveBindHost(process.env);
+const server = app.listen(config.port, BIND_HOST, () => {
+  logger.info(
+    { port: config.port, host: BIND_HOST, nodeEnv: process.env.NODE_ENV ?? 'unknown' },
+    `Lore Book API listening on ${BIND_HOST}:${config.port}`
+  );
   const aiMode = process.env.DEV_AI_FALLBACK === 'true'
     ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
     : config.openAiKey
@@ -413,11 +373,39 @@ const server = app.listen(config.port, () => {
       : '❌ AI Provider: NO KEY — requests will fail';
   logger.info(aiMode);
 
+  // Self health-probe: confirm the edge-facing /api/health is actually reachable
+  // on the bound port. This catches the class of failure behind the 2026-06-18
+  // outage (process "up" but unreachable on the expected port) at boot time
+  // instead of via a user-reported 502. Non-fatal: log loudly and continue.
+  void verifyOwnHealth(config.port);
+
   // Fire-and-forget: never let boot work block or crash the listening server.
   runBootTasks().catch((error) => {
     logger.error({ error }, 'Boot tasks failed — server still listening');
   });
 });
+
+async function verifyOwnHealth(port: number): Promise<void> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      logger.info({ port }, '✅ Self health-check passed (/api/health reachable on bound port)');
+    } else {
+      logger.error(
+        { port, status: res.status },
+        '🚨 Self health-check returned non-200 — the app may be unreachable to the platform edge'
+      );
+    }
+  } catch (error) {
+    logger.error(
+      { port, error },
+      '🚨 Self health-check could not reach /api/health on the bound port — ' +
+        'verify the platform domain target port matches PORT or the edge will return 502'
+    );
+  }
+}
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {

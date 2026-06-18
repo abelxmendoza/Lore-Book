@@ -6,6 +6,7 @@ import {
   getGlobalMockDataEnabled,
   setGlobalMockDataEnabled,
 } from './MockDataContext';
+import { ReduxProvider } from '../store/ReduxProvider';
 
 const ThrowsOutside = () => {
   useMockData();
@@ -37,9 +38,11 @@ describe('MockDataContext', () => {
 
     it('returns context when inside MockDataProvider', () => {
       render(
-        <MockDataProvider>
-          <ReadsContext />
-        </MockDataProvider>
+        <ReduxProvider>
+          <MockDataProvider>
+            <ReadsContext />
+          </MockDataProvider>
+        </ReduxProvider>
       );
       expect(screen.getByTestId('value').textContent).toMatch(/true|false/);
     });
@@ -48,9 +51,11 @@ describe('MockDataContext', () => {
   describe('MockDataProvider', () => {
     it('renders children', () => {
       render(
-        <MockDataProvider>
-          <div data-testid="child">Child</div>
-        </MockDataProvider>
+        <ReduxProvider>
+          <MockDataProvider>
+            <div data-testid="child">Child</div>
+          </MockDataProvider>
+        </ReduxProvider>
       );
       expect(screen.getByTestId('child')).toHaveTextContent('Child');
     });
@@ -74,10 +79,12 @@ describe('MockDataContext', () => {
 
       try {
         render(
-          <MockDataProvider>
-            <ReadsBackendUnavailable />
-            <ReadsContext />
-          </MockDataProvider>
+          <ReduxProvider>
+            <MockDataProvider>
+              <ReadsBackendUnavailable />
+              <ReadsContext />
+            </MockDataProvider>
+          </ReduxProvider>
         );
 
         await waitFor(
@@ -118,9 +125,11 @@ describe('MockDataContext', () => {
 
       try {
         render(
-          <MockDataProvider>
-            <ReadsBackendUnavailable />
-          </MockDataProvider>
+          <ReduxProvider>
+            <MockDataProvider>
+              <ReadsBackendUnavailable />
+            </MockDataProvider>
+          </ReduxProvider>
         );
 
         await waitFor(

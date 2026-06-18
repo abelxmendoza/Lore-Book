@@ -14,11 +14,9 @@ import { Badge } from '../ui/badge';
 import { SkillProfileCard } from './SkillProfileCard';
 import { SkillDetailModal } from './SkillDetailModal';
 import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
-import { skillsApi } from '../../api/skills';
-import { useMockData } from '../../contexts/MockDataContext';
+import { useSkillsBookData } from '../../store/hooks/useEntityBooks';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { format, subDays } from 'date-fns';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 
@@ -131,8 +129,7 @@ const generateMockSkills = (): Skill[] => {
 const MOCK_SKILLS: Skill[] = generateMockSkills();
 
 export const SkillsBook: React.FC = () => {
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useSkillsBookData();
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<SkillCategoryFilter>('all');
@@ -149,37 +146,20 @@ export const SkillsBook: React.FC = () => {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const { useMockData: isMockDataEnabled } = useMockData();
 
-  useEffect(() => {
-    void loadSkills();
-  }, [isMockDataEnabled]);
-
-  useEffect(() => {
-    return onStoryDataUpdated(() => {
-      void loadSkills();
-    }, 'skills');
-  }, [isMockDataEnabled]);
+  const skills = useMemo(
+    () => (isMockDataEnabled ? MOCK_SKILLS : (data?.skills ?? [])),
+    [data, isMockDataEnabled]
+  );
 
   const loadSkills = async () => {
-    setLoading(true);
     setError(null);
-
-    if (isMockDataEnabled) {
-      setSkills(MOCK_SKILLS);
-      setLoading(false);
-      return;
-    }
-
+    if (isMockDataEnabled) return;
     try {
-      const skillsData = await skillsApi.getSkills({ active_only: false });
-      setSkills(skillsData);
-    } catch (err: any) {
+      await refetch();
+    } catch (err: unknown) {
       console.error('Failed to load skills:', err);
-      setSkills([]);
-      setError(err.message || 'Failed to load skills');
-    } finally {
-      setLoading(false);
+      setError(err instanceof Error ? err.message : 'Failed to load skills');
     }
   };
 

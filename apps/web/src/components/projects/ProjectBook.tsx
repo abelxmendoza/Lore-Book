@@ -2,9 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
-import { booksApi } from '../../api/books';
-import { useMockData } from '../../contexts/MockDataContext';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { useProjectsBookData } from '../../store/hooks/useEntityBooks';
 import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
 import { ProjectDetailModal } from './ProjectDetailModal';
 import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
@@ -51,10 +49,7 @@ const titleizeFilter = (value: string, labels: Record<string, string>) =>
  * Projects Book — card grid + detail modal (Locations/Skills book pattern).
  */
 export const ProjectBook = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
-  const [projects, setProjects] = useState<ProjectCardData[]>([]);
-  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useProjectsBookData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -65,34 +60,29 @@ export const ProjectBook = () => {
   const [active, setActive] = useState<ProjectCardData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (isMockDataEnabled) {
-        setProjects(DEMO_PROJECTS);
-        setDuplicateGroups([]);
-        return;
-      }
-      const book = await booksApi.loadProjects();
-      setProjects((book.projects ?? []) as ProjectCardData[]);
-      setDuplicateGroups((book.duplicate_groups ?? []) as DuplicateGroup[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void load(); }, [isMockDataEnabled]);
+  const projects = useMemo((): ProjectCardData[] => {
+    if (isMockDataEnabled) return DEMO_PROJECTS;
+    return (data?.projects ?? []) as ProjectCardData[];
+  }, [data, isMockDataEnabled]);
 
   useEffect(() => {
-    if (isMockDataEnabled) return;
-    return onStoryDataUpdated(() => {
-      void load();
-    }, 'projects');
-  }, [isMockDataEnabled]);
+    if (isMockDataEnabled) {
+      setDuplicateGroups([]);
+      return;
+    }
+    setDuplicateGroups((data?.duplicate_groups ?? []) as DuplicateGroup[]);
+  }, [data, isMockDataEnabled]);
+
+  const load = async () => {
+    setError(null);
+    try {
+      await refetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load projects');
+    }
+  };
 
   // Available status / type filters, derived from the loaded projects (with counts).
   const statusOptions = useMemo(() => {

@@ -40,6 +40,10 @@ jobs:
         working-directory: apps/web
         run: npm ci --legacy-peer-deps
 
+      - name: Redux state-management tests (slices, RTK Query, adapters, event bridge)
+        working-directory: apps/web
+        run: npm run test:unit -- src/store
+
       - name: Build web production bundle
         working-directory: apps/web
         run: npm run build
@@ -102,3 +106,36 @@ jobs:
         if: steps.vercel_secrets.outputs.configured == 'true'
         working-directory: apps/web
         run: vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+  post-deploy-health:
+    name: Post-Deploy Health Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    needs: [deploy-web]
+    env:
+      # Override via repo/environment variables if the URLs change.
+      BACKEND_URL: ${{ vars.BACKEND_HEALTH_URL || 'https://lore-book-production.up.railway.app' }}
+      FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN || 'https://lorebookai.com' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Railway redeploys from git on the same push; give it time to come up,
+      # then assert the edge actually serves 200 with correct CORS. This is the
+      # gate that would have caught the 2026-06-18 port-mismatch 502.
+      - name: Backend /api/health smoke check
+        run: >-
+          node scripts/smoke-health.mjs "$BACKEND_URL"
+          --origin "$FRONTEND_ORIGIN"
+          --attempts 30 --interval-ms 10000 --timeout-ms 10000
+
+      - name: Frontend reachability smoke check
+        run: >-
+          node scripts/smoke-health.mjs "$FRONTEND_ORIGIN"
+          --attempts 10 --interval-ms 6000 --timeout-ms 10000
+        continue-on-error: true

@@ -9,6 +9,8 @@ export type NarrativeSegment = {
   text: string;
   narrative_order: number; // order user told it (1-based)
   temporal_markers: string[]; // "before", "after", "that year", "over the summer"
+  narrative_stages?: Array<{ stage: string; cue: string; confidence: number }>;
+  discourse_moves?: Array<{ move: string; cue: string; confidence: number }>;
 };
 
 export type TemporalRelation = 'before' | 'after' | 'during';

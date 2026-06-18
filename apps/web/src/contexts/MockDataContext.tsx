@@ -1,11 +1,10 @@
 /**
  * Mock Data Context
- * Global state management for mock data toggle
- * Allows users to switch between mock and real data in dev and production.
- * When backend is unreachable, mock is auto-enabled so the app stays usable.
+ * React adapter over the Redux `runtime` slice — single write path for demo/mock
+ * mode, backend health, and derived runtime identity.
  */
 
-import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
+import { createContext, useContext, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
 import { config } from '../config/env';
 import { useAuth } from '../lib/supabase';
 import {
@@ -13,18 +12,46 @@ import {
   describeBackendHealthFailure,
   type BackendHealthResult,
 } from '../lib/backendHealth';
+import { type RuntimeIdentityType, resolveRuntimeIdentity } from '../lib/runtimeIdentity';
+import { useAppDispatch, useAppSelector, useAppStore } from '../store/hooks';
+import { computeInitialMockDataToggle, MOCK_DATA_STORAGE_KEY } from '../store/mockDataInit';
 import {
-  type RuntimeIdentityType,
-  resolveRuntimeIdentity,
-  setGlobalRuntimeIdentity,
-} from '../lib/runtimeIdentity';
+  setBackendStatus,
+  setIsGuest,
+  setIsMockDataActive,
+  setRuntimeDataMode,
+  setRuntimeIdentity,
+  setUseMockData,
+  type RuntimeDataMode,
+} from '../store/slices/runtimeSlice';
+import {
+  selectBackendHealth,
+  selectBackendUnavailable,
+  selectEffectiveUseMockData,
+  selectIsMockDataActive,
+  selectRuntimeDataMode,
+  selectRuntimeIdentity,
+} from '../store/selectors';
 
 export type { RuntimeIdentityType };
-export type RuntimeDataMode = 'REAL' | 'DEMO' | 'DEGRADED';
+export type { RuntimeDataMode };
 
-const HEALTH_CHECK_TIMEOUT_MS = 3000; // Match ConnectionStatus so we don't mark backend down when it's just slow
-// Retry less often when backend is down to reduce console/network spam (was 5s)
-const HEALTH_RETRY_MS = 30_000;
+// Re-export non-React accessors for fetchJson, mockDataService, etc.
+export {
+  getGlobalMockDataEnabled,
+  setGlobalMockDataEnabled,
+  getIsUserLoggedIn,
+  setGlobalIsUserLoggedIn,
+  getGlobalIsGuest,
+  setGlobalIsGuest,
+  getBackendUnavailable,
+  getGlobalBackendHealth,
+  setGlobalBackendUnavailable,
+  getRuntimeDataMode,
+  notifyBackendReachable,
+  subscribeToBackendReachable,
+  subscribeToMockDataState,
+} from '../store/runtimeAccess';
 
 interface MockDataContextType {
   useMockData: boolean;
@@ -32,170 +59,57 @@ interface MockDataContextType {
   setUseMockData: (value: boolean) => void;
   isMockDataActive: boolean;
   setIsMockDataActive: (value: boolean) => void;
-  /** True when /api/health failed on load; mock is auto-enabled so the app works without the server */
   backendUnavailable: boolean;
   backendHealth: BackendHealthResult | null;
-  /** Legacy 3-way mode — kept for backward compat. Prefer runtimeIdentity. */
   runtimeDataMode: RuntimeDataMode;
-  /** Canonical runtime identity — single source of truth for all capability decisions. */
   runtimeIdentity: RuntimeIdentityType;
 }
 
 const MockDataContext = createContext<MockDataContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'lorebook_use_mock_data';
-
-// Global state for use outside React components (e.g., in fetchJson)
-let globalMockDataEnabled = false;
-const mockDataStateListeners = new Set<(enabled: boolean) => void>();
-
-export function setGlobalMockDataEnabled(enabled: boolean) {
-  globalMockDataEnabled = enabled;
-  // Notify all listeners
-  mockDataStateListeners.forEach(listener => listener(enabled));
-}
-
-export function getGlobalMockDataEnabled(): boolean {
-  return globalMockDataEnabled;
-}
-
-// Global "user is logged in" — when true, shouldUseMockData() must return false everywhere
-let globalIsUserLoggedIn = false;
-export function getIsUserLoggedIn(): boolean {
-  return globalIsUserLoggedIn;
-}
-export function setGlobalIsUserLoggedIn(value: boolean) {
-  globalIsUserLoggedIn = value;
-}
-
-// Global "guest session" — when true and mock is off, shouldUseMockData() returns false (guest clean slate)
-let globalIsGuest = false;
-export function getGlobalIsGuest(): boolean {
-  return globalIsGuest;
-}
-export function setGlobalIsGuest(value: boolean) {
-  globalIsGuest = value;
-}
-
-// Global backend-unavailable flag so fetchJson can short-circuit without hitting the proxy (used outside React).
-let globalBackendUnavailable = false;
-let globalBackendHealth: BackendHealthResult | null = null;
-export function getBackendUnavailable(): boolean {
-  return globalBackendUnavailable;
-}
-export function getGlobalBackendHealth(): BackendHealthResult | null {
-  return globalBackendHealth;
-}
-export function setGlobalBackendUnavailable(value: boolean, health: BackendHealthResult | null = null) {
-  globalBackendUnavailable = value;
-  globalBackendHealth = health;
-}
-
-// RuntimeDataMode — single source of truth for what class of data is currently active.
-let globalRuntimeDataMode: RuntimeDataMode = 'REAL';
-export function getRuntimeDataMode(): RuntimeDataMode {
-  return globalRuntimeDataMode;
-}
-function setGlobalRuntimeDataMode(mode: RuntimeDataMode) {
-  globalRuntimeDataMode = mode;
-}
-
-// When any API request succeeds (e.g. Entities), we can clear "backend unavailable" so the banner goes away.
-const backendReachableListeners = new Set<() => void>();
-export function notifyBackendReachable() {
-  globalBackendUnavailable = false;
-  globalBackendHealth = null;
-  backendReachableListeners.forEach((fn) => fn());
-}
-export function subscribeToBackendReachable(listener: () => void) {
-  backendReachableListeners.add(listener);
-  return () => {
-    backendReachableListeners.delete(listener);
-  };
-}
-
-export function subscribeToMockDataState(listener: (enabled: boolean) => void) {
-  mockDataStateListeners.add(listener);
-  return () => {
-    mockDataStateListeners.delete(listener);
-  };
-}
+const HEALTH_CHECK_TIMEOUT_MS = 3000;
+const HEALTH_RETRY_MS = 30_000;
 
 export function MockDataProvider({ children }: { children: ReactNode }) {
+  const dispatch = useAppDispatch();
+  const store = useAppStore();
   const { user } = useAuth();
 
-  const [useMockData, setUseMockDataState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      // URL parameter overrides everything (?mockData=true for demo mode)
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlMockData = urlParams.get('mockData');
-      if (urlMockData === 'true') {
-        setGlobalMockDataEnabled(true);
-        return true;
-      } else if (urlMockData === 'false') {
-        setGlobalMockDataEnabled(false);
-        return false;
-      }
+  const useMockData = useAppSelector(selectEffectiveUseMockData);
+  const rawUseMockData = useAppSelector((s) => s.runtime.useMockData);
+  const isMockDataActive = useAppSelector(selectIsMockDataActive);
+  const backendUnavailable = useAppSelector(selectBackendUnavailable);
+  const backendHealth = useAppSelector(selectBackendHealth);
+  const runtimeIdentity = useAppSelector(selectRuntimeIdentity);
+  const runtimeDataMode = useAppSelector(selectRuntimeDataMode);
 
-      // If a Supabase session exists in localStorage, never start with mock data.
-      // This prevents the race condition where data hooks fire with mock data
-      // before the auth effect turns it off.
-      const hasSession = Object.keys(localStorage).some(
-        (k) => k.startsWith('sb-') && k.endsWith('-auth-token')
-      );
-      if (hasSession) {
-        localStorage.setItem(STORAGE_KEY, 'false');
-        setGlobalMockDataEnabled(false);
-        return false;
-      }
+  const didInit = useRef(false);
+  if (!didInit.current) {
+    didInit.current = true;
+    dispatch(setUseMockData(computeInitialMockDataToggle()));
+  }
 
-      // Auto-enable for the /demo route so there's no flash before DemoRuntime mounts.
-      // Also honors the sessionStorage flag set by DemoRuntime so refreshing at /characters
-      // while in a demo session stays in demo mode.
-      const isOnDemoPath = window.location.pathname.startsWith('/demo');
-      const isDemoSession = sessionStorage.getItem('lk_demo_runtime') === 'true';
-      if (isOnDemoPath || isDemoSession) {
-        setGlobalMockDataEnabled(true);
-        return true;
-      }
-
-      // For unauthenticated users, respect saved preference (demo mode toggle)
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved !== null) {
-        const value = saved === 'true';
-        setGlobalMockDataEnabled(value);
-        return value;
-      }
-    }
-    // Unauthenticated default: off. Demo mode must be opted in explicitly.
-    setGlobalMockDataEnabled(false);
-    return false;
-  });
-
-  const [isMockDataActive, setIsMockDataActive] = useState(false);
-  const [backendUnavailable, setBackendUnavailableState] = useState(false);
-  const [backendHealth, setBackendHealth] = useState<BackendHealthResult | null>(null);
   const healthCheckInFlight = useRef(false);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setBackendUnavailable = useCallback((value: boolean, health: BackendHealthResult | null = null) => {
-    setBackendUnavailableState(value);
-    setBackendHealth(health);
-    setGlobalBackendUnavailable(value, health);
-    if (typeof window !== 'undefined') {
-      (window as unknown as Record<string, unknown>).__lk_backend_health = health;
-    }
-    if (health && !health.ok) {
-      console.warn('[BackendHealth]', describeBackendHealthFailure(health), {
-        url: health.url,
-        kind: health.kind,
-        status: health.status,
-        checkedAt: health.checkedAt,
-      });
-    }
-  }, []);
+  const setBackendUnavailable = useCallback(
+    (value: boolean, health: BackendHealthResult | null = null) => {
+      dispatch(setBackendStatus({ unavailable: value, health }));
+      if (typeof window !== 'undefined') {
+        (window as unknown as Record<string, unknown>).__lk_backend_health = health;
+      }
+      if (health && !health.ok) {
+        console.warn('[BackendHealth]', describeBackendHealthFailure(health), {
+          url: health.url,
+          kind: health.kind,
+          status: health.status,
+          checkedAt: health.checkedAt,
+        });
+      }
+    },
+    [dispatch],
+  );
 
-  // checkHealth: single flight, 2s timeout; on success clear backendUnavailable; on failure set it and schedule retry in 5s
   const checkHealth = useCallback(() => {
     if (!config.dev.allowMockData) return;
     if (healthCheckInFlight.current) return;
@@ -209,30 +123,27 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
         }
 
         setBackendUnavailable(true, health);
-        // Never enable mock data for authenticated users — they should always see real errors
-        if (!user) {
-          setUseMockDataState(true);
-          setGlobalMockDataEnabled(true);
+        const loggedIn = !!store.getState().auth.user;
+        if (!loggedIn) {
+          dispatch(setUseMockData(true));
         }
       })
       .finally(() => {
         healthCheckInFlight.current = false;
       });
-  }, [setBackendUnavailable, user]);
+  }, [dispatch, setBackendUnavailable, store]);
 
-  // On mount: run initial health check
   useEffect(() => {
     checkHealth();
   }, [checkHealth]);
 
-  // When backend is unavailable, re-check every 30s so we clear the banner when backend comes back
   useEffect(() => {
     if (!backendUnavailable) return;
     const schedule = () => {
       retryTimeoutRef.current = setTimeout(() => {
         retryTimeoutRef.current = null;
         checkHealth();
-        schedule(); // next retry; cleanup clears when backendUnavailable becomes false
+        schedule();
       }, HEALTH_RETRY_MS);
     };
     schedule();
@@ -241,91 +152,78 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     };
   }, [backendUnavailable, checkHealth]);
 
-  // When any API request succeeds (e.g. Entities), clear the banner
   useEffect(() => {
-    const clearBanner = () => setBackendUnavailable(false, null);
-    return subscribeToBackendReachable(clearBanner);
-  }, [setBackendUnavailable]);
-
-  // When user logs in, turn off mock data and clear guest flag
-  useEffect(() => {
-    const loggedIn = !!user;
-    setGlobalIsUserLoggedIn(loggedIn);
-    if (loggedIn) {
-      setUseMockDataState(false);
-      setGlobalMockDataEnabled(false);
-      setGlobalIsGuest(false);
+    if (user) {
+      dispatch(setUseMockData(false));
+      dispatch(setIsGuest(false));
     }
-  }, [user?.id]);
+  }, [user?.id, dispatch]);
 
-  // Sync with global state — always apply the auth gate so authenticated users
-  // can never have the global mock flag set to true even via localStorage bleed.
   useEffect(() => {
-    setGlobalMockDataEnabled(user ? false : useMockData);
-  }, [useMockData, user]);
-
-  // Save to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, String(useMockData));
+    if (typeof window !== 'undefined' && !user) {
+      localStorage.setItem(MOCK_DATA_STORAGE_KEY, String(rawUseMockData));
     }
-  }, [useMockData]);
+  }, [rawUseMockData, user]);
 
   const toggleMockData = useCallback(() => {
-    if (user) return; // authenticated users cannot toggle mock data
-    setUseMockDataState(prev => {
-      const newValue = !prev;
-      setGlobalMockDataEnabled(newValue);
-      return newValue;
-    });
-  }, [user]);
+    if (user) return;
+    dispatch(setUseMockData(!rawUseMockData));
+  }, [dispatch, rawUseMockData, user]);
 
-  const setUseMockData = useCallback((value: boolean) => {
-    if (user) return; // authenticated users cannot enable mock data
-    setUseMockDataState(value);
-    setGlobalMockDataEnabled(value);
-  }, [user]);
+  const setUseMockDataValue = useCallback(
+    (value: boolean) => {
+      if (user) return;
+      dispatch(setUseMockData(value));
+    },
+    [dispatch, user],
+  );
 
-  const runtimeIdentity = useMemo<RuntimeIdentityType>(() => resolveRuntimeIdentity({
-    isAuthenticated:   !!user,
-    isGuest:           false,
-    // Authenticated users are always REAL — never DEMO, even if toggle is on
-    isMockDataEnabled: user ? false : useMockData,
-    backendUnavailable,
-  }), [useMockData, user, backendUnavailable]);
+  const setIsMockDataActiveValue = useCallback(
+    (value: boolean) => {
+      dispatch(setIsMockDataActive(value));
+    },
+    [dispatch],
+  );
 
-  // Sync canonical identity to global so non-React code can read it.
-  useEffect(() => {
-    setGlobalRuntimeIdentity(runtimeIdentity);
-  }, [runtimeIdentity]);
+  const derivedIdentity = useMemo<RuntimeIdentityType>(
+    () =>
+      resolveRuntimeIdentity({
+        isAuthenticated: !!user,
+        isGuest: false,
+        isMockDataEnabled: user ? false : rawUseMockData,
+        backendUnavailable,
+      }),
+    [rawUseMockData, user, backendUnavailable],
+  );
 
-  // Derive legacy 3-way mode from identity for backward compat.
-  const runtimeDataMode = useMemo<RuntimeDataMode>(() => {
-    if (runtimeIdentity === 'DEMO_RUNTIME') return 'DEMO';
-    if (runtimeIdentity === 'DEGRADED_RUNTIME') return 'DEGRADED';
+  const derivedDataMode = useMemo<RuntimeDataMode>(() => {
+    if (derivedIdentity === 'DEMO_RUNTIME') return 'DEMO';
+    if (derivedIdentity === 'DEGRADED_RUNTIME') return 'DEGRADED';
     return 'REAL';
-  }, [runtimeIdentity]);
+  }, [derivedIdentity]);
 
   useEffect(() => {
-    setGlobalRuntimeDataMode(runtimeDataMode);
-  }, [runtimeDataMode]);
+    dispatch(setRuntimeIdentity(derivedIdentity));
+  }, [derivedIdentity, dispatch]);
 
-  // Authenticated real users must NEVER see mock data, regardless of stored toggle
-  // or a leftover demo session flag. Compute once here so every consumer is safe.
-  const exposedMockData = user ? false : useMockData;
+  useEffect(() => {
+    dispatch(setRuntimeDataMode(derivedDataMode));
+  }, [derivedDataMode, dispatch]);
 
   return (
-    <MockDataContext.Provider value={{
-      useMockData: exposedMockData,
-      toggleMockData,
-      setUseMockData,
-      isMockDataActive,
-      setIsMockDataActive,
-      backendUnavailable,
-      backendHealth,
-      runtimeDataMode,
-      runtimeIdentity,
-    }}>
+    <MockDataContext.Provider
+      value={{
+        useMockData,
+        toggleMockData,
+        setUseMockData: setUseMockDataValue,
+        isMockDataActive,
+        setIsMockDataActive: setIsMockDataActiveValue,
+        backendUnavailable,
+        backendHealth,
+        runtimeDataMode,
+        runtimeIdentity,
+      }}
+    >
       {children}
     </MockDataContext.Provider>
   );

@@ -344,7 +344,8 @@ describe('useConversationRuntime', () => {
     await waitFor(() => {
       expect(mockFetchJson).toHaveBeenCalledWith(
         '/api/conversation/threads/t1/title',
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: 'POST' }),
+        expect.any(Object)
       );
     });
 

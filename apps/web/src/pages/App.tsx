@@ -1,10 +1,17 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, Menu } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { config } from '../config/env';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import {
+  setActiveSurface as setActiveSurfaceAction,
+  setMobileDrawerOpen,
+  toggleDevMode,
+  setDevMode as setDevModeAction,
+} from '../store/slices/uiSlice';
 
 import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
@@ -77,9 +84,19 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
+  const dispatch = useAppDispatch();
+  const activeSurface = useAppSelector((s) => s.ui.activeSurface);
+  const isMobileDrawerOpen = useAppSelector((s) => s.ui.mobileDrawerOpen);
+  const devMode = useAppSelector((s) => s.ui.devMode);
+  const setActiveSurface = useCallback(
+    (surface: SurfaceKey) => dispatch(setActiveSurfaceAction(surface)),
+    [dispatch]
+  );
+  const setIsMobileDrawerOpen = useCallback(
+    (open: boolean) => dispatch(setMobileDrawerOpen(open)),
+    [dispatch]
+  );
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   // Sync route → surface (handles browser back/forward and direct navigation)
   useEffect(() => {
@@ -140,7 +157,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     const timeoutId = setTimeout(refreshAllData, 100);
     return () => clearTimeout(timeoutId);
   }, [isMockDataEnabled, refreshEntries, refreshTimeline, refreshChapters]);
-  const [devMode, setDevMode] = useState(false);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -256,7 +272,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <Sidebar
         activeSurface={activeSurface}
         onSurfaceChange={setActiveSurface}
-        onToggleDevMode={() => setDevMode((prev) => !prev)}
+        onToggleDevMode={() => dispatch(toggleDevMode())}
         devModeEnabled={devMode}
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
@@ -402,7 +418,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                 <p className="text-xs uppercase text-primary/70">Developer Diagnostics</p>
                 <p className="text-xs sm:text-sm text-white/70">Raw fabric edges, agent logs, and embedding inspector.</p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setDevMode(false)}>
+              <Button size="sm" variant="ghost" onClick={() => dispatch(setDevModeAction(false))}>
                 Hide
               </Button>
             </div>

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, waitFor } from '@testing-library/react';
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
 
@@ -25,8 +25,9 @@ vi.mock('../../services/runtimeDiagnostics', () => ({
 
 import { useAuth } from '../../../../lib/supabase';
 import { fetchJson } from '../../../../lib/api';
-import { useChatThreads } from '../useChatThreads';
+import { selectCurrentThreadId, selectThreadError } from '../../../../store/selectors';
 import { runtimeDiagnostics } from '../../services/runtimeDiagnostics';
+import { renderUseChatThreads } from './chatTestUtils';
 
 const mockUseAuth = vi.mocked(useAuth);
 const mockFetchJson = vi.mocked(fetchJson);
@@ -96,7 +97,7 @@ describe('useChatThreads', () => {
 
   it('stays in loading state while auth is resolving', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ loading: true }));
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     expect(result.current.threadsLoading).toBe(true);
     expect(mockFetchJson).not.toHaveBeenCalled();
   });
@@ -108,7 +109,7 @@ describe('useChatThreads', () => {
     const stored = [makeStoredThread('thread-1', 'Old thread')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
 
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
@@ -125,7 +126,7 @@ describe('useChatThreads', () => {
     ];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     expect(result.current.threads).toHaveLength(1);
@@ -134,7 +135,7 @@ describe('useChatThreads', () => {
 
   it('starts with empty threads when localStorage is empty and not authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
 
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
@@ -150,7 +151,7 @@ describe('useChatThreads', () => {
       makeDbThread('thread-b', 'Thread B'),
     ]);
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
 
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
@@ -176,7 +177,7 @@ describe('useChatThreads', () => {
       return { success: true };
     });
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
 
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
@@ -198,7 +199,7 @@ describe('useChatThreads', () => {
       JSON.stringify([makeStoredThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }])])
     );
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     const msg = result.current.threads[0].messages[0];
@@ -210,7 +211,7 @@ describe('useChatThreads', () => {
 
   it('creates a new thread locally when not authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let newId: string;
@@ -227,7 +228,7 @@ describe('useChatThreads', () => {
 
   it('reuses the most recent empty thread instead of creating a new one', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let firstId: string;
@@ -248,7 +249,7 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([]);
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     act(() => {
@@ -258,7 +259,8 @@ describe('useChatThreads', () => {
     await waitFor(() =>
       expect(mockFetchJson).toHaveBeenCalledWith(
         '/api/conversation/threads',
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: 'POST' }),
+        expect.any(Object)
       )
     );
   });
@@ -270,7 +272,7 @@ describe('useChatThreads', () => {
     const stored = [makeStoredThread('del-1', 'Delete me')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threads).toHaveLength(1));
 
     act(() => {
@@ -284,7 +286,7 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([]);
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let id: string;
@@ -307,7 +309,7 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([]);
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let id: string;
@@ -324,25 +326,28 @@ describe('useChatThreads', () => {
       });
     });
 
-    await waitFor(() =>
-      expect(mockFetchJson).toHaveBeenCalledWith(
-        `/api/conversation/threads/${id!}`,
-        expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ touchActivity: true }),
-        })
-      )
-    );
+    await waitFor(() => {
+      const patchCalls = mockFetchJson.mock.calls.filter(
+        (c) =>
+          c[0] === `/api/conversation/threads/${id!}` &&
+          (c[1] as { method?: string; body?: string })?.method === 'PATCH'
+      );
+      expect(patchCalls.some((c) => (c[1] as { body?: string }).body === JSON.stringify({ touchActivity: true }))).toBe(
+        true
+      );
+    });
 
     const patchCalls = mockFetchJson.mock.calls.filter(
-      (c) => c[0] === `/api/conversation/threads/${id!}` && (c[1] as any)?.method === 'PATCH'
+      (c) =>
+        c[0] === `/api/conversation/threads/${id!}` &&
+        (c[1] as { method?: string; body?: string })?.method === 'PATCH'
     );
     expect(patchCalls.every((c) => !(c[1] as any).body.includes('"messages"'))).toBe(true);
   });
 
   it('flushSave is a no-op after P2 (messages persist via chat_messages)', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let id: string;
@@ -362,7 +367,7 @@ describe('useChatThreads', () => {
 
   it('persists updated threads to localStorage for guest users', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     let id: string;
@@ -386,7 +391,7 @@ describe('useChatThreads', () => {
     const stored = [makeStoredThread('r1', 'Old Name')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threads).toHaveLength(1));
 
     act(() => {
@@ -402,10 +407,53 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([makeDbThread('find-me', 'Found')]);
 
-    const { result } = renderHook(() => useChatThreads());
+    const { result } = renderUseChatThreads();
     await waitFor(() => expect(result.current.threadsReady).toBe(true));
 
     expect(result.current.getThread('find-me')?.title).toBe('Found');
     expect(result.current.getThread('not-there')).toBeUndefined();
+  });
+
+  // ── Redux chat slice ──────────────────────────────────────────────────────
+
+  it('mirrors currentThreadId into the Redux chat slice', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const { result, store } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+
+    act(() => {
+      result.current.createThread();
+    });
+
+    expect(selectCurrentThreadId(store.getState())).toBe(result.current.currentThreadId);
+  });
+
+  it('records load-more failures in the chat slice error field', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
+    mockBackendThreadLoad([makeDbThread('t1')]);
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('health/repair')) return { repaired: 0 };
+      if (url.includes('recover-orphans')) return { success: true };
+      if (url.includes('/threads?') && !url.includes('cursor=')) {
+        return { threads: [makeDbThread('t1')], success: true, hasMore: true, nextCursor: 'page2' };
+      }
+      if (url.includes('cursor=page2')) throw new Error('Pagination failed');
+      return { success: true };
+    });
+
+    const { result, store } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    await act(async () => {
+      await result.current.loadMoreThreads();
+    });
+
+    expect(selectThreadError(store.getState())).toBe('Pagination failed');
+    expect(result.current.lastError).toBe('Pagination failed');
+
+    act(() => {
+      result.current.dismissThreadError();
+    });
+    expect(selectThreadError(store.getState())).toBeNull();
   });
 });

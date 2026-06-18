@@ -7,6 +7,7 @@
 import { logger } from '../../logger';
 
 import { memoryService } from '../memoryService';
+import { persistNarrativeStructureForJournalEntry } from '../narrative/narrativeStructureService';
 
 import type { NarrativeSegment, StorySlice, StoryTimeInference } from './types';
 
@@ -62,7 +63,13 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
           segment_id: segment.segment_id,
           inference_confidence: time?.confidence ?? null,
           backward_storytelling: true,
+          narrative_stages: segment.narrative_stages ?? [],
+          discourse_moves: segment.discourse_moves ?? [],
         },
+      });
+
+      void persistNarrativeStructureForJournalEntry(userId, entry.id, segment.text).catch((err) => {
+        logger.debug({ err, entryId: entry.id }, 'Story slice narrative structure persist skipped');
       });
 
       slices.push({

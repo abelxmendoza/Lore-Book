@@ -57,6 +57,8 @@ import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarifica
 import { EntityChipsRow } from './EntityChipsRow';
 import { RelationshipGroupsRow } from './RelationshipGroupsRow';
 import { extractRelationshipGroups } from '../utils/relationshipMetadata';
+import { LexicalSignalBadges } from '../../../components/shared/LexicalSignalBadges';
+import { extractLexicalSignals } from '../../../lib/lexicalRelationshipLabels';
 import { SilenceMessage } from './SilenceMessage';
 import { RecallMessage } from './RecallMessage';
 
@@ -179,6 +181,7 @@ export const ChatMessage = ({
 
   const isUser = message.role === 'user';
   const relationshipGroups = extractRelationshipGroups(message.metadata);
+  const lexicalSignals = extractLexicalSignals(message.metadata as Record<string, unknown> | undefined);
   const isSystem = message.isSystemMessage;
 
   // System messages get special styling
@@ -651,6 +654,12 @@ export const ChatMessage = ({
         {isUser && relationshipGroups.length > 0 && (
           <div className="mt-2 w-full min-w-0">
             <RelationshipGroupsRow groups={relationshipGroups} />
+          </div>
+        )}
+
+        {isUser && lexicalSignals && (
+          <div className="mt-2 w-full min-w-0">
+            <LexicalSignalBadges metadata={message.metadata as Record<string, unknown>} />
           </div>
         )}
 

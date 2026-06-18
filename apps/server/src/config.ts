@@ -3,6 +3,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 
 import { logger } from './logger';
+import { resolveServerPort } from './config/serverPort';
 
 // Load .env from project root (skip on hosted platforms — env vars are injected directly)
 const currentDir = __dirname;
@@ -74,6 +75,8 @@ type EnvConfig = {
   freeTierAiLimit?: number;
   apiEnv: 'dev' | 'staging' | 'production';
   enableExperimental: boolean;
+  /** System Cognition / Agent Layer — runs LoreAgents after the interpretation pipeline. */
+  enableLoreAgents: boolean;
   adminUserId?: string;
   adminEmail?: string;
   /** Canonical owner / founder account — never billed, never downgraded. */
@@ -86,8 +89,13 @@ type EnvConfig = {
 const apiEnv = (process.env.API_ENV ?? 'dev') as 'dev' | 'staging' | 'production';
 const enableExperimental = process.env.ENABLE_EXPERIMENTAL === 'true';
 
+const portResolution = resolveServerPort(process.env);
+for (const warning of portResolution.warnings) {
+  logger.warn({ port: portResolution.port, source: portResolution.source }, warning);
+}
+
 export const config: EnvConfig = {
-  port: Number(process.env.PORT ?? 4000),
+  port: portResolution.port,
   openAiKey: process.env.OPENAI_API_KEY ?? '',
   supabaseUrl: process.env.SUPABASE_URL ?? '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
@@ -113,6 +121,7 @@ export const config: EnvConfig = {
   freeTierAiLimit: Number(process.env.FREE_TIER_AI_LIMIT ?? 100),
   apiEnv,
   enableExperimental,
+  enableLoreAgents: process.env.ENABLE_LORE_AGENTS === 'true',
   adminUserId: process.env.ADMIN_USER_ID,
   adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase(),
   ownerUserId: process.env.OWNER_USER_ID || process.env.FOUNDER_USER_ID,

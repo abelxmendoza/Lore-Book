@@ -97,6 +97,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     threadsTotal,
     threadsLoadingMore,
     loadMoreThreads,
+    lastError,
+    dismissThreadError,
   } = useConversationRuntime();
 
   // Build the display list: prepend the ephemeral greeting when present.
@@ -506,6 +508,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         threadsTotal={threadsTotal}
         loadingMoreThreads={threadsLoadingMore}
         onLoadMoreThreads={() => void loadMoreThreads()}
+        threadError={lastError}
+        onDismissThreadError={dismissThreadError}
       />
 
       <div

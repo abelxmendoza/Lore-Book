@@ -18,6 +18,7 @@ import { arcInferenceService } from '../services/continuityRuntime/arcs/arcInfer
 import { dayOccasionService } from '../services/continuityRuntime/arcs/dayOccasionService';
 import { arcReconciliationService } from '../services/continuityRuntime/arcs/arcReconciliationService';
 import { arcMembershipSuggestionService } from '../services/continuityRuntime/arcs/arcMembershipSuggestionService';
+import { narrativeArcConsolidationService } from '../services/narrative/narrativeArcConsolidationService';
 import { FlowDetector } from '../services/creative/flowDetector';
 import { CreativeStorage } from '../services/creative/creativeStorage';
 import { InterventionEngine } from '../services/intervention/interventionEngine';
@@ -160,6 +161,14 @@ enrichmentPipeline.registerUserAnalyzer({
   tier: 'EXPERIMENTAL',
   async processUser(userId) {
     await arcMembershipSuggestionService.runForUser(userId);
+  },
+});
+
+enrichmentPipeline.registerUserAnalyzer({
+  name: 'narrative-arc-consolidation',
+  tier: 'EXPERIMENTAL',
+  async processUser(userId) {
+    await narrativeArcConsolidationService.runForUser(userId);
   },
 });
 

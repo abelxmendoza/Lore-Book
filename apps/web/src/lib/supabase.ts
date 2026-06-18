@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+
+import { useAppSelector } from '../store/hooks';
+import { selectAuthLoading, selectAuthSession, selectAuthUser } from '../store/selectors';
 
 type SupabaseConfig = {
   url: string;
@@ -67,26 +70,15 @@ export const isSupabaseConfigured = () => config !== null;
 
 export const getConfigDebug = () => debug;
 
-// Auth hook
+/** Redux-backed adapter — session sync runs once in ReduxProvider via bindSupabaseAuth. */
 export function useAuth() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const user = useAppSelector(selectAuthUser);
+  const session = useAppSelector(selectAuthSession);
+  const loading = useAppSelector(selectAuthLoading);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
   }, []);
 
-  return { user, loading };
+  return { user, session, loading, signOut };
 }

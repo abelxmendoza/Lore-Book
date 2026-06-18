@@ -68,7 +68,7 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     characterRelationshipsResult,
     entityFactsResult,
     omegaClaimsResult,
-    omegaRelationshipsResult,
+    authorityMapResult,
   ] = await Promise.all([
     supabaseAdmin.from('characters').select('id, name').eq('user_id', userId),
     supabaseAdmin.from('people_places').select('id, name, type, related_entries').eq('user_id', userId),
@@ -78,7 +78,7 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     supabaseAdmin.from('character_relationships').select('source_character_id, target_character_id').eq('user_id', userId),
     supabaseAdmin.from('entity_facts').select('entity_id, entity_type').eq('user_id', userId).eq('status', 'active'),
     supabaseAdmin.from('omega_claims').select('entity_id').eq('user_id', userId).eq('is_active', true),
-    supabaseAdmin.from('omega_relationships').select('from_entity_id, to_entity_id').eq('user_id', userId),
+    supabaseAdmin.from('character_authority_map').select('source_id, canonical_character_id').eq('user_id', userId).eq('source_table', 'omega_entities'),
   ]);
 
   const memoryCounts = countBy((characterMemoriesResult.data ?? []) as any[], 'character_id');
@@ -96,10 +96,10 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     }
   }
 
-  const omegaRelationshipCounts = new Map<string, number>();
-  for (const row of (omegaRelationshipsResult.data ?? []) as any[]) {
-    for (const id of [row.from_entity_id, row.to_entity_id]) {
-      if (typeof id === 'string') omegaRelationshipCounts.set(id, (omegaRelationshipCounts.get(id) ?? 0) + 1);
+  const omegaCharIdByEntityId = new Map<string, string>();
+  for (const row of (authorityMapResult.data ?? []) as any[]) {
+    if (typeof row.source_id === 'string' && typeof row.canonical_character_id === 'string') {
+      omegaCharIdByEntityId.set(row.source_id, row.canonical_character_id);
     }
   }
 
@@ -109,15 +109,19 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     if (key) charIdByNameKey.set(key, row.id);
   }
 
-  const linkedCharacterStats = (name: string) => {
-    const charId = charIdByNameKey.get(normalizeNameKey(name));
+  const characterStatsForId = (charId: string) => ({
+    episodes: memoryCounts.get(charId) ?? 0,
+    events: eventCounts.get(charId) ?? 0,
+    relationships: relationshipCounts.get(charId) ?? 0,
+    evidence: factCounts.get(charId) ?? 0,
+  });
+
+  const linkedCharacterStats = (name: string, omegaEntityId?: string) => {
+    const charId =
+      (omegaEntityId ? omegaCharIdByEntityId.get(omegaEntityId) : undefined) ??
+      charIdByNameKey.get(normalizeNameKey(name));
     if (!charId) return null;
-    return {
-      episodes: memoryCounts.get(charId) ?? 0,
-      events: eventCounts.get(charId) ?? 0,
-      relationships: relationshipCounts.get(charId) ?? 0,
-      evidence: factCounts.get(charId) ?? 0,
-    };
+    return characterStatsForId(charId);
   };
 
   const entities: EntityCoverageRow[] = [];
@@ -166,18 +170,18 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
   }
 
   for (const row of (omegaResult.data ?? []) as any[]) {
-    const linked = linkedCharacterStats(String(row.primary_name ?? ''));
+    const linked = linkedCharacterStats(String(row.primary_name ?? ''), row.id);
     const base = linked
       ? {
           episodes: Math.max(Number(row.mention_count ?? 0), linked.episodes),
           events: linked.events,
-          relationships: Math.max(omegaRelationshipCounts.get(row.id) ?? 0, linked.relationships),
+          relationships: linked.relationships,
           evidence: Math.max(omegaClaimCounts.get(row.id) ?? 0, linked.evidence),
         }
       : {
           episodes: Number(row.mention_count ?? 0),
           events: 0,
-          relationships: omegaRelationshipCounts.get(row.id) ?? 0,
+          relationships: 0,
           evidence: omegaClaimCounts.get(row.id) ?? 0,
         };
     entities.push({

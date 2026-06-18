@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
+import { detectAIUncertainty } from '../../utils/aiUncertainty';
 import { supabaseAdmin } from '../supabaseClient';
 import { memoryFeedbackBus, type MemoryFeedbackEvent } from '../memoryFeedbackBus';
 import { normalizationService } from './normalizationService';
@@ -18,6 +19,7 @@ import { irCompiler } from '../compiler/irCompiler';
 import { dependencyGraph } from '../compiler/dependencyGraph';
 import { memoryConsolidationService } from '../compiler/memoryConsolidationService';
 import { entityRegistry } from '../entityRegistry';
+import { buildMessageLexicalSignals } from '../ontology/messageLexicalMetadataService';
 import { semanticConversionService } from './semanticConversion';
 import {
   linkContextualEvents,
@@ -68,6 +70,7 @@ import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import { scanTemporalMentions } from '../ontology/temporalLexicon';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
 /**
@@ -97,6 +100,13 @@ export class ConversationIngestionPipeline {
 
       if (msgError || !chatMessage) {
         logger.warn({ error: msgError, chatMessageId, userId }, 'Chat message not found for ingestion');
+        return;
+      }
+
+      // Nothing to extract from an empty/whitespace message — skip before doing
+      // any session mapping or downstream scheduling.
+      if (typeof chatMessage.content !== 'string' || chatMessage.content.trim().length === 0) {
+        logger.debug({ chatMessageId, userId }, 'Chat message has no content; skipping ingestion');
         return;
       }
 
@@ -142,16 +152,23 @@ export class ConversationIngestionPipeline {
         })
         .eq('id', result.messageId);
 
-      // Carry resolved entity/location ids onto chat_messages for episode segmentation.
-      if (result.resolvedEntityIds.length > 0 || result.resolvedLocationIds.length > 0) {
-        const existingMeta = (chatMessage.metadata as Record<string, unknown> | null) ?? {};
+      // Carry resolved entity/location ids + lexical signals onto chat_messages.
+      const existingMeta = (chatMessage.metadata as Record<string, unknown> | null) ?? {};
+      const lexicalSignals = buildMessageLexicalSignals(chatMessage.content);
+      const shouldUpdateMeta =
+        result.resolvedEntityIds.length > 0 ||
+        result.resolvedLocationIds.length > 0 ||
+        lexicalSignals != null;
+
+      if (shouldUpdateMeta) {
         await supabaseAdmin
           .from('chat_messages')
           .update({
             metadata: {
               ...existingMeta,
-              entity_ids: result.resolvedEntityIds,
-              location_ids: result.resolvedLocationIds,
+              ...(result.resolvedEntityIds.length > 0 ? { entity_ids: result.resolvedEntityIds } : {}),
+              ...(result.resolvedLocationIds.length > 0 ? { location_ids: result.resolvedLocationIds } : {}),
+              ...(lexicalSignals ? { lexical_signals: lexicalSignals } : {}),
             },
           })
           .eq('id', chatMessageId)
@@ -482,6 +499,32 @@ export class ConversationIngestionPipeline {
     resolvedEntityIds: string[];
     resolvedLocationIds: string[];
   }> {
+    // Defensive validation — these are required, non-optional inputs. A missing
+    // userId/threadId is a programming error upstream, not user content, so fail
+    // loudly rather than silently writing orphaned rows.
+    if (!userId || typeof userId !== 'string') {
+      throw new TypeError('ingestMessage: userId is required');
+    }
+    if (!threadId || typeof threadId !== 'string') {
+      throw new TypeError('ingestMessage: threadId is required');
+    }
+    if (sender !== 'USER' && sender !== 'AI') {
+      throw new TypeError(`ingestMessage: sender must be 'USER' or 'AI', got ${String(sender)}`);
+    }
+
+    // Empty / whitespace-only messages carry no extractable content. Skip them
+    // cleanly instead of creating empty utterances and firing the whole cluster.
+    if (typeof rawText !== 'string' || rawText.trim().length === 0) {
+      logger.debug({ userId, threadId }, 'ingestMessage: skipping empty message');
+      return {
+        messageId: '',
+        utteranceIds: [],
+        unitIds: [],
+        resolvedEntityIds: [],
+        resolvedLocationIds: [],
+      };
+    }
+
     try {
       return await this.ingestMessageCore(userId, threadId, sender, rawText, conversationHistory, eventContext, entityContext);
     } catch (err) {
@@ -519,42 +562,55 @@ export class ConversationIngestionPipeline {
       label?: string;
     }> = [];
 
-    // Look for temporal expressions in the text
-    const temporalPatterns = [
-      /\b(today|yesterday|tomorrow|now|right now|just now)\b/gi,
-      /\b(last|next)\s+(week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi,
-      /\b(\d+)\s+(day|week|month|year)s?\s+ago\b/gi,
-      /\bin\s+(\d+)\s+(day|week|month|year)s?\b/gi,
-      /\b(a couple|a few)\s+(weeks?|months?|years?)\s+ago\b/gi,
-      /\bwhen i was (a kid|in (high school|college|university)|younger)\b/gi,
-      /\b(in|during)\s+(19|20)\d{2}\b/gi,
-      /\b(19|20)\d{2}\b/g,
-      /\bthe other day\b/gi,
-      /\blast year\b/gi,
-      /\bin (a few|a couple (of )?)weeks?\b/gi
-    ];
+    // Glossary-driven temporal scan (SSOT) + anchor resolver
+    const seenLabels = new Set<string>();
+    for (const mention of scanTemporalMentions(originalText || normalizedText, now)) {
+      if (mention.window) {
+        const label = mention.window.label;
+        if (seenLabels.has(label)) continue;
+        seenLabels.add(label);
 
-    for (const pattern of temporalPatterns) {
-      const matches = originalText.match(pattern);
-      if (matches) {
-        for (const match of matches) {
-          const ref = timeEngine.parseTimestamp(match, undefined, true);
-          if (ref.confidence > 0.5) {
-            const ts = clampOccurrenceDate(ref.timestamp, now);
-            if (!ts) continue;
-            references.push({
-              timestamp: ts,
-              precision: ref.precision,
-              confidence: ref.confidence,
-              originalText: ref.originalText || match
-            });
-          }
-        }
+        const mappedPrecision: import('../timeEngine').TimePrecision =
+          mention.window.precision === 'hour'
+            ? 'hour'
+            : mention.window.precision === 'day'
+              ? 'day'
+              : mention.window.precision === 'month'
+                ? 'month'
+                : mention.window.precision === 'year'
+                  ? 'year'
+                  : 'day';
+
+        references.push({
+          timestamp: clampOccurrenceDate(mention.window.start, now) ?? now,
+          endTimestamp: mention.window.end ? clampOccurrenceDate(mention.window.end, now) ?? undefined : undefined,
+          precision: mappedPrecision,
+          confidence: mention.window.confidence,
+          originalText: mention.phrase,
+          label,
+        });
+        continue;
+      }
+
+      const ref = timeEngine.parseTimestamp(mention.phrase, undefined, true);
+      if (ref.confidence > 0.5) {
+        const ts = clampOccurrenceDate(ref.timestamp, now);
+        if (!ts) continue;
+        const label = mention.phrase;
+        if (seenLabels.has(label)) continue;
+        seenLabels.add(label);
+        references.push({
+          timestamp: ts,
+          precision: ref.precision,
+          confidence: ref.confidence,
+          originalText: ref.originalText || mention.phrase,
+          label,
+        });
       }
     }
 
-    const anchor = resolveAllTemporalAnchors(originalText || normalizedText, new Date());
-    if (anchor) {
+    const anchor = resolveAllTemporalAnchors(originalText || normalizedText, now);
+    if (anchor && !seenLabels.has(anchor.label)) {
       const mappedPrecision: import('../timeEngine').TimePrecision =
         anchor.precision === 'hour'
           ? 'hour'
@@ -753,41 +809,14 @@ export class ConversationIngestionPipeline {
   }
 
   /**
-   * Detect AI uncertainty markers in text
-   * Helps identify when AI might be making assumptions
+   * Detect AI uncertainty markers in text.
+   * Delegates to the pure {@link detectAIUncertainty} util (unit-tested).
    */
   private detectAIUncertainty(text: string): {
     uncertainty_markers: string[];
     context_quality: 'high' | 'medium' | 'low';
   } {
-    const uncertaintyWords = [
-      'might', 'possibly', 'seems', 'appears', 'likely', 'probably',
-      'perhaps', 'maybe', 'could', 'may', 'might be', 'seems like',
-      'appears to', 'looks like', 'sounds like', 'i think', 'i believe',
-      'i assume', 'i guess', 'unclear', 'uncertain', 'not sure'
-    ];
-    
-    const foundMarkers: string[] = [];
-    const lowerText = text.toLowerCase();
-    
-    for (const word of uncertaintyWords) {
-      if (lowerText.includes(word)) {
-        foundMarkers.push(word);
-      }
-    }
-    
-    // Determine context quality based on uncertainty markers
-    let contextQuality: 'high' | 'medium' | 'low' = 'high';
-    if (foundMarkers.length >= 3) {
-      contextQuality = 'low';
-    } else if (foundMarkers.length >= 1) {
-      contextQuality = 'medium';
-    }
-    
-    return {
-      uncertainty_markers: foundMarkers,
-      context_quality: contextQuality,
-    };
+    return detectAIUncertainty(text);
   }
 
   /**
@@ -936,7 +965,13 @@ export class ConversationIngestionPipeline {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
-  ): Promise<{ messageId: string; utteranceIds: string[]; unitIds: string[] }> {
+  ): Promise<{
+    messageId: string;
+    utteranceIds: string[];
+    unitIds: string[];
+    resolvedEntityIds: string[];
+    resolvedLocationIds: string[];
+  }> {
       // Collector for shadow mode baseline — populated by synchronous pipeline steps below
       const _shadowBaseline = {
         entities:        [] as Array<{ name: string; type: string }>,
@@ -1876,6 +1911,30 @@ export class ConversationIngestionPipeline {
                       .catch(err => {
                         logger.warn({ err }, 'Event candidate processing failed (non-blocking)');
                       });
+
+                    // Step 12.8.4b: Lexical narrative structure → event metadata + interpretations
+                    void import('../narrative/narrativeStructureService')
+                      .then(async ({ persistNarrativeStructureForEvent, boostArcMembershipFromEvent }) => {
+                        const narrativeText = [
+                          ...sourceMessages.map((m) => m.content),
+                          ...sourceJournalEntries.map((e) => e.content),
+                        ].join('\n').trim() || fullEvent.summary || fullEvent.title || '';
+                        const analysis = await persistNarrativeStructureForEvent(
+                          userId,
+                          fullEvent.id,
+                          narrativeText,
+                        );
+                        if (analysis?.primaryArcMembershipRole) {
+                          await boostArcMembershipFromEvent(userId, fullEvent.id);
+                        }
+                        if (analysis?.isStoryBlock) {
+                          const { scheduleNarrativeArcConsolidation } = await import(
+                            '../narrative/narrativeArcConsolidationScheduler'
+                          );
+                          scheduleNarrativeArcConsolidation(userId, 'story_block_ingest');
+                        }
+                      })
+                      .catch(err => logger.debug({ err, userId }, 'Narrative structure persist failed'));
 
                     // Step 12.8.6: Narrative continuity detection — non-blocking
                     // detectContinuity() is rule-based (no LLM), fully implemented,

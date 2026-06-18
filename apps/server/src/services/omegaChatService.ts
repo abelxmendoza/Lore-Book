@@ -31,6 +31,8 @@ import { locationService } from './locationService';
 import { memoirService } from './memoirService';
 import { buildActionsFromMeaning } from './ontology/actionPlanService';
 import { runLoreInterpretationPipeline, resolveMeaningForPlanner } from './pipeline/loreInterpretationPipeline';
+import { runLoreAgents } from './agents/loreAgentOrchestrator';
+import { buildPersonaEvidenceBlock } from './agents/loreAgentEvidenceBuilder';
 import { resolveMessageEntitiesForDisplay } from './chat/messageEntityDisplayService';
 import { loadEntityAnalyticsForContext } from './chat/entityAnalyticsLoader';
 import { perceptionService } from './perceptionService';
@@ -472,9 +474,10 @@ class OmegaChatService {
     currentFocusLine?: string,
     timelineInsight?: ChatContextExtension & { layer?: string },
     continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null,
-    userId?: string
+    userId?: string,
+    agentEvidenceBlock?: string | null
   ): string {
-    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent, userId);
+    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent, userId, agentEvidenceBlock);
   }
 
   /**
@@ -634,7 +637,7 @@ class OmegaChatService {
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     entityContext?: { type: string; id: string }
-  ): Promise<string | undefined> {
+  ): Promise<{ messageId: string; pipelineResult?: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult } | undefined> {
     if (isTrivialMessage(message)) {
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
@@ -656,8 +659,10 @@ class OmegaChatService {
         .update({ updated_at: new Date().toISOString() })
         .eq('id', sessionId)
         .eq('user_id', userId);
-      return savedMessage.id;
+      return savedMessage.id ? { messageId: savedMessage.id } : undefined;
     }
+
+    let pipelineResult: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
 
     const { data: savedMessage, error: saveError } = await supabaseAdmin
       .from('chat_messages')
@@ -683,12 +688,27 @@ class OmegaChatService {
 
     if (!isTrivialMessage(message)) {
       try {
-        await runLoreInterpretationPipeline({
+        const interpretation = await runLoreInterpretationPipeline({
           userId,
           messageId: savedMessage.id,
           text: message,
           threadId: sessionId,
         });
+        pipelineResult = interpretation;
+
+        // System Cognition / Agent Layer — observe & propose (never mutates core
+        // memory). Fire-and-forget behind a flag so it can't affect chat latency.
+        if (config.enableLoreAgents) {
+          void runLoreAgents({
+            userId,
+            threadId: sessionId,
+            messageId: savedMessage.id,
+            userMessage: message,
+            pipelineResult: interpretation,
+          }).catch((agentErr) => {
+            logger.warn({ err: agentErr, messageId: savedMessage.id }, 'Lore agents failed — continuing chat');
+          });
+        }
       } catch (pipeErr) {
         logger.warn({ err: pipeErr, messageId: savedMessage.id }, 'Lore interpretation pipeline failed — continuing chat');
       }
@@ -706,7 +726,7 @@ class OmegaChatService {
       );
     }
 
-    return savedMessage.id;
+    return { messageId: savedMessage.id, pipelineResult };
   }
 
   async chatStream(
@@ -725,14 +745,17 @@ class OmegaChatService {
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     let entryId: string | undefined;
+    let pipelineResultForEvidence: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
     try {
-      entryId = await this.persistUserMessageEarly(
+      const earlyPersist = await this.persistUserMessageEarly(
         userId,
         sessionId,
         message,
         conversationHistory,
         entityContext
       );
+      entryId = earlyPersist?.messageId;
+      pipelineResultForEvidence = earlyPersist?.pipelineResult;
     } catch (persistErr) {
       logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed');
       throw persistErr;
@@ -1384,6 +1407,13 @@ class OmegaChatService {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    const agentEvidenceBlockStream = personaBlend
+      ? buildPersonaEvidenceBlock({
+          personaId: personaBlend.primary,
+          pipelineResult: pipelineResultForEvidence,
+        })
+      : null;
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -1402,7 +1432,8 @@ class OmegaChatService {
       currentFocusLine,
       timelineInsight,
       continuityIntent,
-      userId
+      userId,
+      agentEvidenceBlockStream
     );
 
     if (returnToThreadContext) {
@@ -1796,6 +1827,25 @@ class OmegaChatService {
     soulProfileContext?: SoulProfileContext,
     threadId?: string
   ): Promise<OmegaChatResponse> {
+    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
+
+    let entryId: string | undefined;
+    let pipelineResultForEvidence: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
+    try {
+      const earlyPersist = await this.persistUserMessageEarly(
+        userId,
+        sessionId,
+        message,
+        conversationHistory,
+        entityContext
+      );
+      entryId = earlyPersist?.messageId;
+      pipelineResultForEvidence = earlyPersist?.pipelineResult;
+    } catch (persistErr) {
+      logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed (non-stream)');
+      throw persistErr;
+    }
+
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
@@ -2091,6 +2141,13 @@ class OmegaChatService {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    const agentEvidenceBlock = personaBlend
+      ? buildPersonaEvidenceBlock({
+          personaId: personaBlend.primary,
+          pipelineResult: pipelineResultForEvidence,
+        })
+      : null;
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -2109,7 +2166,8 @@ class OmegaChatService {
       currentFocusLine,
       timelineInsightChat,
       undefined,
-      userId
+      userId,
+      agentEvidenceBlock
     );
 
     if (refinementClarificationChat) {
@@ -2224,10 +2282,7 @@ class OmegaChatService {
       { role: 'user' as const, content: message }
     ];
 
-    // Declare entryId here so it is in scope for RL context saving below.
-    // The variable is assigned after the user message is persisted further down in the function.
-    let entryId: string | undefined;
-
+    // entryId assigned by persistUserMessageEarly at the top of this method
     const completion = await openai.chat.completions.create({
       model: config.chatModel,
       temperature: 0.7,
@@ -2236,9 +2291,8 @@ class OmegaChatService {
 
     const answer = completion.choices[0]?.message?.content ?? 'I understand. Tell me more.';
 
-    // RL: Save context for later reward updates (use entryId if available, otherwise generate)
+    // RL: Save context for later reward updates (use persisted user message id when available)
     const messageId = entryId || randomUUID();
-    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     // Save assistant response with challenge metadata if present
     const assistantMetadata: any = {
@@ -2315,75 +2369,19 @@ class OmegaChatService {
     // Note: This is a placeholder - in production, you'd query omega_claims
     // based on entities mentioned in sources or the response content
     const memories: MemoryClaim[] = [];
-
-    // Save chat message and ingest through pipeline (all non-trivial messages)
-    // Note: entryId was declared earlier in this function, above the OpenAI call.
     const timelineUpdates: string[] = [];
 
-    // Only exclude truly trivial messages (hi, ok, thanks, etc.)
-    if (!isTrivialMessage(message)) {
-      // Use the UI thread as the session when provided (matches chatStream behaviour)
-      const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
-
-      // Save message to chat_messages table
-      const { data: savedMessage, error: saveError } = await supabaseAdmin
-        .from('chat_messages')
-        .insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'user',
-          content: message,
-          metadata: {
-            extractedDates,
-            connections: connections.length,
-            hasContinuityWarnings: continuityWarnings.length > 0,
-            sourcesUsed: sources.length,
-          },
-        })
-        .select('id')
-        .single();
-
-      if (saveError || !savedMessage || !savedMessage.id) {
-        logger.warn({ error: saveError, userId }, 'Failed to save chat message');
-      } else {
-        // Set entryId for tracking and RL
-        entryId = savedMessage.id;
-
-        try {
-          await runLoreInterpretationPipeline({
-            userId,
-            messageId: savedMessage.id,
-            text: message,
-            threadId: sessionId,
-          });
-        } catch (pipeErr) {
-          logger.warn({ err: pipeErr, messageId: savedMessage.id }, 'Lore interpretation pipeline failed — continuing chat');
-        }
-
-        // Enqueue ingestion — tracked by pipelineRunService (matches chatStream path).
-        // Skip when entityContext is set: ingestMessageWithContext() fires separately
-        // and enqueueing here too would double-ingest the same content.
-        if (!entityContext) {
-          ingestionQueue.enqueue({
-            userId,
-            chatMessageId: savedMessage.id,
-            sessionId,
-            conversationHistory,
-          }, 'NORMAL');
-        }
-      }
-
+    // Post-chat side effects (user message + pipeline already handled by persistUserMessageEarly)
+    if (!isTrivialMessage(message) && entryId) {
       memoirService.autoUpdateMemoir(userId).catch(err => {
         logger.warn({ err }, 'Failed to auto-update memoir after chat');
       });
 
-      // Auto-update main lifestory biography (fire and forget)
       const { mainLifestoryService } = await import('./mainLifestoryService');
       mainLifestoryService.updateAfterChatEntry(userId).catch(err => {
         logger.warn({ err }, 'Failed to update main lifestory after chat');
       });
 
-      // Extract essence insights after conversation (fire and forget)
       const fullHistory = [...conversationHistory, { role: 'user' as const, content: message }];
       essenceProfileService.extractEssence(userId, fullHistory, ragPacket.relatedEntries)
         .then(insights => {

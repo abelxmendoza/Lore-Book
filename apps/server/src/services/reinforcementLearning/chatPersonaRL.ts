@@ -1,6 +1,8 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { ALL_PERSONA_IDS } from '../personas/personaRegistry';
+
 import { RLEngine, type RLContext, type Action } from './rlEngine';
 
 /**
@@ -39,21 +41,8 @@ export class ChatPersonaRL {
   private rlEngine: RLEngine;
   private explorationRate: number = 0.15; // Start with 15% exploration
 
-  // Available personas — names must match the YOUR PERSONAS block in systemPromptBuilder.ts
-  // archivist  = factual recall only (read-only mode)
-  // therapist  = emotional support
-  // strategist = goal-oriented planning
-  // biography_writer = narrative shaping
-  // soul_capturer    = core identity elements
-  // gossip_buddy     = relationship/character talk
-  private readonly PERSONAS = [
-    'therapist',
-    'strategist',
-    'gossip_buddy',
-    'archivist',
-    'soul_capturer',
-    'biography_writer',
-  ];
+  // Canonical ids from personaRegistry — must stay in sync with systemPromptBuilder.
+  private readonly PERSONAS = [...ALL_PERSONA_IDS];
 
   constructor() {
     this.rlEngine = new RLEngine();

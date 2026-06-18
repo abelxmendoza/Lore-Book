@@ -2,6 +2,7 @@ import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
 import { arcService } from './arcService';
 import { arcMembershipService, type MembershipRole, type SetMembershipPayload } from './arcMembershipService';
+import { lexicalArcMembershipRoleFromMetadata } from '../../narrative/narrativeStructureService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ interface RawCandidate {
   last_seen_at: string;
   occurrence_count: number;
   continuity_strength: number;
+  source_event_ids?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -34,7 +36,12 @@ function containmentRatio(
   return overlap / candDuration;
 }
 
-function inferRole(occurrenceCount: number, ratio: number): MembershipRole {
+function inferRole(
+  occurrenceCount: number,
+  ratio: number,
+  lexicalRole?: MembershipRole | null,
+): MembershipRole {
+  if (lexicalRole === 'turning_point' || lexicalRole === 'defining_moment') return lexicalRole;
   if (occurrenceCount >= 5 && ratio >= 0.8) return 'defining_moment';
   if (occurrenceCount >= 3) return 'turning_point';
   return 'background';
@@ -54,7 +61,7 @@ export class ArcMembershipSuggestionService {
     // 1. Load all event_candidates
     const { data: candidateRows, error: candErr } = await supabaseAdmin
       .from('event_candidates')
-      .select('id, first_seen_at, last_seen_at, occurrence_count, continuity_strength')
+      .select('id, first_seen_at, last_seen_at, occurrence_count, continuity_strength, source_event_ids')
       .eq('user_id', userId);
 
     if (candErr) {
@@ -86,6 +93,23 @@ export class ArcMembershipSuggestionService {
     const now = Date.now();
     const payloads: SetMembershipPayload[] = [];
 
+    const allSourceIds = [
+      ...new Set(
+        unlinked.flatMap((c) => c.source_event_ids ?? []),
+      ),
+    ];
+    const eventMetaById = new Map<string, Record<string, unknown>>();
+    if (allSourceIds.length > 0) {
+      const { data: eventRows } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, metadata')
+        .eq('user_id', userId)
+        .in('id', allSourceIds.slice(0, 100));
+      for (const row of eventRows ?? []) {
+        eventMetaById.set(row.id as string, (row.metadata as Record<string, unknown>) ?? {});
+      }
+    }
+
     for (const cand of unlinked) {
       const candStart = toMs(cand.first_seen_at, 0);
       const candEnd = toMs(cand.last_seen_at, now);
@@ -105,12 +129,23 @@ export class ArcMembershipSuggestionService {
 
       if (!bestArc || bestRatio < this.CONTAIN_THRESHOLD) continue;
 
+      let lexicalRole: MembershipRole | null = null;
+      for (const eid of cand.source_event_ids ?? []) {
+        const role = lexicalArcMembershipRoleFromMetadata(eventMetaById.get(eid));
+        if (role && (!lexicalRole || role === 'turning_point' || role === 'defining_moment')) {
+          lexicalRole = role;
+        }
+      }
+
       payloads.push({
         arc_id: bestArc.id,
         event_candidate_id: cand.id,
         importance_score: Math.round(cand.continuity_strength * bestRatio * 100) / 100,
-        role: inferRole(cand.occurrence_count, bestRatio),
-        metadata: { containment_ratio: Math.round(bestRatio * 100) / 100 },
+        role: inferRole(cand.occurrence_count, bestRatio, lexicalRole),
+        metadata: {
+          containment_ratio: Math.round(bestRatio * 100) / 100,
+          ...(lexicalRole ? { lexical_narrative_role: lexicalRole } : {}),
+        },
       });
     }
 

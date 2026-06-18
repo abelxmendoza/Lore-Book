@@ -56,7 +56,7 @@ describe('memoryCoverageAudit', () => {
         error: null,
       },
       omega_claims: { data: [], error: null },
-      omega_relationships: { data: [], error: null },
+      character_authority_map: { data: [], error: null },
     };
   });
 
@@ -70,5 +70,22 @@ describe('memoryCoverageAudit', () => {
     expect(orphan?.coverageScore).toBe(0);
     expect(orphan?.gaps).toEqual(['no episodes', 'no events', 'no relationships', 'no evidence']);
     expect(report.summary.orphaned).toBeGreaterThanOrEqual(2);
+  });
+
+  it('scores omega entities via character_authority_map when name does not match', async () => {
+    tableResults.omega_entities = {
+      data: [{ id: 'omega-linked', primary_name: 'Codename X', type: 'PERSON', mention_count: 1 }],
+      error: null,
+    };
+    tableResults.character_authority_map = {
+      data: [{ source_id: 'omega-linked', canonical_character_id: 'char-covered' }],
+      error: null,
+    };
+
+    const report = await buildMemoryCoverageAudit('user-1');
+    const omega = report.entities.find((entity) => entity.id === 'omega-linked');
+
+    expect(omega?.relationships).toBeGreaterThan(0);
+    expect(omega?.coverageScore).toBeGreaterThan(0);
   });
 });

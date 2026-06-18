@@ -2,6 +2,7 @@ import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, G
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { LexicalSignalBadges } from '../shared/LexicalSignalBadges';
 import { UnknownField } from '../ui/UnknownField';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useState, useEffect } from 'react';
@@ -545,6 +546,7 @@ export const CharacterProfileCard = ({
                   Situationship
                 </Badge>
               )}
+              <LexicalSignalBadges relationship={relationship} />
             </div>
           </div>
         )}

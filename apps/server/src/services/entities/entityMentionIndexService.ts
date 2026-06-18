@@ -12,6 +12,7 @@ import { groupCandidateService } from '../groupCandidateService';
 import {
   listCertifiedEntities,
   matchCertifiedEntitiesInText,
+  matchCertifiedEntitiesInTextDetailed,
   type CertifiedEntity,
   type CertifiedEntityType,
 } from './certifiedEntityIndexService';
@@ -127,6 +128,44 @@ export function matchMentionableEntitiesInText(
   index: MentionableEntity[]
 ): MentionableEntity[] {
   return matchCertifiedEntitiesInText(text, index) as MentionableEntity[];
+}
+
+export type ComposerEntityPayload = {
+  id: string;
+  name: string;
+  type: CertifiedEntityType;
+  status?: EntityStatus;
+};
+
+/**
+ * Validate client-submitted composer entities against the user's index and draft text.
+ * Strips unknown ids and entities not supported by server-side re-match (prevents spoofing).
+ */
+export function sanitizeComposerEntities(
+  message: string,
+  submitted: ComposerEntityPayload[] | undefined,
+  index: MentionableEntity[]
+): MentionableEntity[] {
+  if (!submitted?.length) return [];
+
+  const bySlot = new Map(index.map((e) => [`${e.type}:${e.id}`, e]));
+  const textMatches = matchCertifiedEntitiesInTextDetailed(message, index);
+  const allowed = new Set(textMatches.map((e) => `${e.type}:${e.id}`));
+
+  const seen = new Set<string>();
+  const validated: MentionableEntity[] = [];
+
+  for (const entity of submitted) {
+    const slot = `${entity.type}:${entity.id}`;
+    if (seen.has(slot)) continue;
+    if (!allowed.has(slot)) continue;
+    const canonical = bySlot.get(slot);
+    if (!canonical) continue;
+    seen.add(slot);
+    validated.push(canonical);
+  }
+
+  return validated;
 }
 
 export type { CertifiedEntity, CertifiedEntityType };

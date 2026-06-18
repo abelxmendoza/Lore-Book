@@ -3,19 +3,25 @@
  *
  * Owns one useChatThreads() instance. All chat UI reads/writes thread list,
  * per-thread messages, and ordering through this context.
+ *
+ * `activeThreadId` lives in the Redux `chat` slice (single source of truth);
+ * this provider keeps the ref + message helpers in sync with that slice.
  */
 
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from 'react';
 import { useChatThreads, type ChatThread } from '../features/chat/hooks/useChatThreads';
 import type { Message } from '../features/chat/message/ChatMessage';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { setActiveThreadId as setActiveThreadIdAction } from '../store/slices/chatSlice';
+import { selectActiveThreadId } from '../store/selectors';
 
 type UpdateActiveMessagesOptions = {
   touchActivity?: boolean;
@@ -38,19 +44,27 @@ export type ChatThreadContextValue = ReturnType<typeof useChatThreads> & {
     updater: (prev: Message[]) => Message[],
     opts?: UpdateActiveMessagesOptions
   ) => void;
+  clearActiveMessages: () => void;
 };
 
 const ChatThreadContext = createContext<ChatThreadContextValue | null>(null);
 
 export function ChatThreadProvider({ children }: { children: ReactNode }) {
   const threadApi = useChatThreads();
-  const activeThreadIdRef = useRef<string | null>(null);
-  const [activeThreadId, setActiveThreadIdState] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const activeThreadId = useAppSelector(selectActiveThreadId);
+  const activeThreadIdRef = useRef<string | null>(activeThreadId);
 
-  const setActiveThreadId = useCallback((id: string | null) => {
-    activeThreadIdRef.current = id;
-    setActiveThreadIdState(id);
-  }, []);
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  const setActiveThreadId = useCallback(
+    (id: string | null) => {
+      dispatch(setActiveThreadIdAction(id));
+    },
+    [dispatch]
+  );
 
   const activeMessages = useMemo(() => {
     if (!activeThreadId) return [];

@@ -2,6 +2,7 @@
  * Relationship role signals from kinship, work, and social cues.
  */
 import { discoverRelationshipHints, inferRelationshipRole } from '../ontology/lexicalIntelligence';
+import { parseSocialRoles } from '../ontology/socialRelationshipIntelligence';
 import type { LexicalRelationshipSignal, RelationshipRole } from './lexicalTypes';
 import { padForScan } from './lexicalNormalizer';
 
@@ -10,8 +11,6 @@ const ROLE_PATTERNS: Array<{ role: RelationshipRole; patterns: RegExp[] }> = [
   { role: 'father', patterns: [/\bmy\s+father\b/i, /\bmy\s+dad\b/i, /\bmy\s+estranged\s+father\b/i, /\bpapá\b/i] },
   { role: 'sibling', patterns: [/\bmy\s+(?:brother|sister|sibling)\b/i] },
   { role: 'cousin', patterns: [/\bmy\s+cousin\b/i] },
-  { role: 'close_friend', patterns: [/\bmy\s+best\s+friend\b/i, /\bclose\s+friend\b/i] },
-  { role: 'friend', patterns: [/\bmy\s+friend\b/i, /\bgood\s+friend\b/i] },
   { role: 'romantic_partner', patterns: [/\bmy\s+(?:boyfriend|girlfriend|partner|husband|wife)\b/i] },
   { role: 'ex_partner', patterns: [/\bmy\s+ex\b/i, /\bex[-\s]?(?:boyfriend|girlfriend|partner|wife|husband)\b/i] },
   { role: 'coworker', patterns: [/\bmy\s+coworker\b/i, /\bco[-\s]?worker\b/i, /\bcolleague\b/i] },
@@ -24,12 +23,23 @@ const ROLE_PATTERNS: Array<{ role: RelationshipRole; patterns: RegExp[] }> = [
   { role: 'promoter', patterns: [/\bpromoter\b/i] },
   { role: 'vendor', patterns: [/\bvendor\b/i] },
   { role: 'community_member', patterns: [/\bcommunity\s+member\b/i] },
-  { role: 'acquaintance', patterns: [/\bacquaintance\b/i] },
 ];
 
 export function detectLexicalRelationships(text: string): LexicalRelationshipSignal[] {
   const signals: LexicalRelationshipSignal[] = [];
   const padded = padForScan(text);
+
+  // Glossary-derived social roles (bestie, ally, homie, …)
+  for (const hit of parseSocialRoles(text)) {
+    if (!hit.attributedToSelf) continue;
+    if (signals.some((s) => s.role === hit.role)) continue;
+    signals.push({
+      role: hit.role as RelationshipRole,
+      cue: hit.cue,
+      sentiment: 'neutral',
+      confidence: hit.confidence,
+    });
+  }
 
   for (const { role, patterns } of ROLE_PATTERNS) {
     for (const re of patterns) {

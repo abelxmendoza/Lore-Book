@@ -1,12 +1,15 @@
 /**
  * Current Context — shared notion of "where the user is"
  * Inferred from navigation only. Used by chat, UI, and retrieval.
+ *
+ * Backed by the Redux `selection` slice; this module keeps the original hook +
+ * provider API so existing consumers don't change.
  */
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import type { CurrentContext } from '../types/currentContext';
-
-const defaultContext: CurrentContext = { kind: 'none' };
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { setCurrentContext as setCurrentContextAction } from '../store/slices/selectionSlice';
 
 interface CurrentContextState {
   currentContext: CurrentContext;
@@ -15,48 +18,35 @@ interface CurrentContextState {
   getBreadcrumbs: () => string[];
 }
 
-const CurrentContextContext = createContext<CurrentContextState | undefined>(undefined);
-
+/** Passthrough — state now lives in the Redux store. Kept so the tree shape is stable. */
 export function CurrentContextProvider({ children }: { children: ReactNode }) {
-  const [currentContext, setCurrentContextState] = useState<CurrentContext>(defaultContext);
-  const [lastNonNoneContext, setLastNonNoneContext] = useState<CurrentContext | null>(null);
+  return <>{children}</>;
+}
 
-  const setCurrentContext = useCallback((ctx: CurrentContext) => {
-    setCurrentContextState(ctx);
-    if (ctx.kind !== 'none') {
-      setLastNonNoneContext(ctx);
-    }
-  }, []);
+export function useCurrentContext(): CurrentContextState {
+  const dispatch = useAppDispatch();
+  const currentContext = useAppSelector((s) => s.selection.currentContext);
+  const lastNonNoneContext = useAppSelector((s) => s.selection.lastNonNoneContext);
+
+  const setCurrentContext = useCallback(
+    (ctx: CurrentContext) => dispatch(setCurrentContextAction(ctx)),
+    [dispatch]
+  );
 
   const getBreadcrumbs = useCallback((): string[] => {
     if (currentContext.kind === 'none') return [];
     if (currentContext.kind === 'thread' && currentContext.threadId) {
-      return ['Threads', currentContext.threadId]; // Name resolved async elsewhere if needed
+      return ['Threads', currentContext.threadId];
     }
-    if (currentContext.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
-      return [currentContext.timelineLayer, currentContext.timelineNodeId]; // Titles resolved async elsewhere if needed
+    if (
+      currentContext.kind === 'timeline' &&
+      currentContext.timelineNodeId &&
+      currentContext.timelineLayer
+    ) {
+      return [currentContext.timelineLayer, currentContext.timelineNodeId];
     }
     return [];
   }, [currentContext]);
 
-  return (
-    <CurrentContextContext.Provider
-      value={{
-        currentContext,
-        lastNonNoneContext,
-        setCurrentContext,
-        getBreadcrumbs,
-      }}
-    >
-      {children}
-    </CurrentContextContext.Provider>
-  );
-}
-
-export function useCurrentContext(): CurrentContextState {
-  const ctx = useContext(CurrentContextContext);
-  if (!ctx) {
-    throw new Error('useCurrentContext must be used within CurrentContextProvider');
-  }
-  return ctx;
+  return { currentContext, lastNonNoneContext, setCurrentContext, getBreadcrumbs };
 }

@@ -43,6 +43,8 @@ export const ChatComposer = ({
     moodEngine,
     autoTagger,
     entityIndexer,
+    visibleMatches,
+    dismissMatch,
     handleSubmit,
     handleKeyDown,
     insertSuggestion
@@ -101,13 +103,31 @@ export const ChatComposer = ({
       )}
 
       {/* Certified entity chips — detected from book index, load KB into pipeline */}
-      <ComposerEntityChips entities={entityIndexer.matches} />
+      {entityIndexer.indexError && (
+        <div
+          data-testid="composer-index-error"
+          className="px-3 sm:px-4 lg:px-10 xl:px-12 pt-2 pb-1 border-b border-amber-500/20 bg-amber-500/5"
+        >
+          <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] flex items-center justify-between gap-2">
+            <span className="text-[11px] text-amber-200/80">{entityIndexer.indexError}</span>
+            <button
+              type="button"
+              data-testid="composer-index-retry"
+              className="text-[11px] text-amber-300 hover:text-amber-200 underline"
+              onClick={() => entityIndexer.retryLoad()}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+      <ComposerEntityChips entities={visibleMatches} onDismiss={dismissMatch} />
 
       {/* Hints Bar */}
       {showHints && (
         <ComposerHints
           mood={moodEngine.mood}
-          entities={entityIndexer.matches}
+          entities={visibleMatches}
           tagCount={autoTagger.suggestions.length}
         />
       )}

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { personaService } from '../services/personaService';
+import { listPersonaCatalog } from '../services/personas/personaRegistry';
 
 const router = Router();
 
@@ -13,6 +14,11 @@ const updateSchema = z.object({
   behavioralBiases: z.record(z.any()).optional(),
   emotionalVector: z.record(z.any()).optional(),
   description: z.string().optional()
+});
+
+/** GET /api/persona/catalog — chat voice personas (not LoreAgents). */
+router.get('/catalog', requireAuth, (_req: AuthenticatedRequest, res) => {
+  res.json({ personas: listPersonaCatalog() });
 });
 
 router.get('/', requireAuth, (req: AuthenticatedRequest, res) => {

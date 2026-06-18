@@ -84,6 +84,7 @@ import './styles/timeline.css';
 
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { ReduxProvider } from './store/ReduxProvider';
 import { ChatThreadProvider } from './contexts/ChatThreadContext';
 import { LoreKeeperProvider } from './contexts/LoreKeeperContext';
 
@@ -131,6 +132,7 @@ if (!rootElement) {
   try {
     createRoot(rootElement).render(
       <ErrorBoundary>
+        <ReduxProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ChatThreadProvider>
           <MockDataProvider>
@@ -153,6 +155,7 @@ if (!rootElement) {
           </MockDataProvider>
           </ChatThreadProvider>
         </BrowserRouter>
+        </ReduxProvider>
       </ErrorBoundary>
     );
   } catch (error) {

@@ -5,14 +5,14 @@ import { fetchJson } from '../../lib/api';
 
 type SignalType = 'value' | 'goal' | 'fear' | 'motivation' | 'identity' | 'habit' | 'preference' | 'interest' | 'skill';
 
-interface EvidenceItem { signalType: 'stated' | 'revealed'; source: 'journal' | 'chat'; sourceId: string; snippet: string; occurredAt: string | null; }
+interface EvidenceItem { signalType: 'stated' | 'revealed' | 'disliked'; source: 'journal' | 'chat'; sourceId: string; snippet: string; occurredAt: string | null; }
 interface RevealedCategory {
   id: string; key: string; label: string; type: SignalType;
-  statedCount: number; revealedCount: number; evidenceCount: number; confidence: number;
+  statedCount: number; revealedCount: number; dislikedCount: number; evidenceCount: number; confidence: number;
   statedShare: number; revealedShare: number; alignmentScore: number; alignmentLabel: string;
   trend: number; sampleEvidence: EvidenceItem[];
 }
-interface RevealedSections { saysMatter: string[]; receivesTime: string[]; stronglyAligned: string[]; weaklyAligned: string[]; emerging: string[]; declining: string[]; }
+interface RevealedSections { saysMatter: string[]; saysDislike: string[]; receivesTime: string[]; stronglyAligned: string[]; weaklyAligned: string[]; emerging: string[]; declining: string[]; }
 interface RevealedSelfReport {
   generatedAt: string; hasData: boolean;
   totals: { stated: number; revealed: number; categories: number };
@@ -154,7 +154,11 @@ export const RevealedSelfPanel = () => {
                   {c.sampleEvidence.length === 0 && <p className="text-xs text-white/40">No sample available.</p>}
                   {c.sampleEvidence.map((e, i) => (
                     <div key={i} className="text-xs text-white/55 flex gap-2">
-                      <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 h-fit ${e.signalType === 'revealed' ? 'bg-teal-500/15 text-teal-300' : 'bg-white/10 text-white/40'}`}>
+                      <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 h-fit ${
+                        e.signalType === 'revealed' ? 'bg-teal-500/15 text-teal-300'
+                          : e.signalType === 'disliked' ? 'bg-red-500/15 text-red-300'
+                            : 'bg-white/10 text-white/40'
+                      }`}>
                         {e.source}
                       </span>
                       <span className="italic">“{e.snippet}”</span>
@@ -170,6 +174,7 @@ export const RevealedSelfPanel = () => {
       {/* Insight sections */}
       <div className="grid sm:grid-cols-2 gap-4">
         <SectionList title="What You Say Matters" empty="You rarely declare priorities — you show them by doing." items={report.sections.saysMatter} byKey={byKey} metric="said" />
+        <SectionList title="What You Say You Dislike" empty="No explicit dislikes recorded yet." items={report.sections.saysDislike ?? []} byKey={byKey} metric="disliked" />
         <SectionList title="Emerging Priorities" icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} empty="No clear acceleration yet." items={report.sections.emerging} byKey={byKey} metric="done" />
         <SectionList title="Weakly Aligned (say ≫ do)" empty="Nothing you talk about more than you live." items={report.sections.weaklyAligned} byKey={byKey} metric="gap" />
         <SectionList title="Declining" icon={<TrendingDown className="h-4 w-4 text-red-400" />} empty="Nothing fading right now." items={report.sections.declining} byKey={byKey} metric="done" />
@@ -183,7 +188,7 @@ export const RevealedSelfPanel = () => {
 };
 
 function SectionList({ title, items, byKey, metric, empty, icon }: {
-  title: string; items: string[]; metric: 'said' | 'done' | 'gap';
+  title: string; items: string[]; metric: 'said' | 'done' | 'gap' | 'disliked';
   byKey: (k: string) => RevealedCategory | undefined; empty: string; icon?: React.ReactNode;
 }) {
   return (
@@ -196,7 +201,10 @@ function SectionList({ title, items, byKey, metric, empty, icon }: {
           {items.map((k) => {
             const c = byKey(k);
             if (!c) return null;
-            const val = metric === 'said' ? `${c.statedCount} said` : metric === 'done' ? `${c.revealedCount} done` : `${c.statedCount} said · ${c.revealedCount} done`;
+            const val = metric === 'said' ? `${c.statedCount} said`
+              : metric === 'disliked' ? `${c.dislikedCount ?? 0} disliked`
+                : metric === 'done' ? `${c.revealedCount} done`
+                  : `${c.statedCount} said · ${c.revealedCount} done`;
             return (
               <div key={k} className="flex items-center justify-between text-xs">
                 <span className="text-white/75">{c.label}</span>

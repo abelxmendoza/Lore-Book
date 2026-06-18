@@ -7,8 +7,19 @@
 
 import { logger } from '../../logger';
 import { clampOccurrenceDate } from '../../utils/temporalOccurrence';
-import { supabaseAdmin } from '../supabaseClient';
+import {
+  affectEmotionDrafts,
+  hasAffectCue,
+  mergeAffectEmotions,
+} from '../ontology/affectStance';
+import {
+  epistemicCognitionDrafts,
+  hasEpistemicCue,
+  mergeEpistemicCognitions,
+  type CognitionType,
+} from '../ontology/epistemicStance';
 import { openai } from '../openaiClient';
+import { supabaseAdmin } from '../supabaseClient';
 
 export interface ExtractedEvent {
   event_date: string;
@@ -21,10 +32,13 @@ export interface ExtractedEvent {
     emotion: string;
     intensity: number;
     timestamp_offset?: number;
+    metadata?: Record<string, unknown>;
   }>;
   cognitions: Array<{
-    cognition_type: 'belief' | 'insecurity_triggered' | 'realization' | 'question' | 'doubt';
+    cognition_type: CognitionType;
     content: string;
+    confidence?: number;
+    metadata?: Record<string, unknown>;
   }>;
   identity_impacts: Array<{
     impact_type: 'reinforced' | 'challenged' | 'shifted' | 'clarified';
@@ -43,8 +57,26 @@ class EventExtractionService {
     messageId: string
   ): Promise<void> {
     try {
-      // Extract structured data using LLM
-      const extracted = await this.extractWithLLM(message);
+      const lexicalCognitions = epistemicCognitionDrafts(message);
+      const lexicalEmotions = affectEmotionDrafts(message);
+      const extracted = await this.extractWithLLM(
+        message,
+        lexicalCognitions.length > 0,
+        lexicalEmotions.length > 0
+      );
+      extracted.emotions = mergeAffectEmotions(lexicalEmotions, extracted.emotions).map((e) => ({
+        emotion: e.emotion,
+        intensity: e.intensity,
+        timestamp_offset: e.timestamp_offset,
+        metadata: e.metadata,
+      }));
+      const mergedCognitions = mergeEpistemicCognitions(lexicalCognitions, extracted.cognitions);
+      extracted.cognitions = mergedCognitions.map((c) => ({
+        cognition_type: c.cognition_type,
+        content: c.content,
+        confidence: c.confidence,
+        metadata: c.metadata,
+      }));
 
       // Check if message contains multiple actions that should be extracted
       const actions = this.extractActionsFromNarrative(message);
@@ -84,7 +116,7 @@ class EventExtractionService {
         await this.createEmotionRecord(userId, eventRecordId, emotion, messageId);
       }
 
-      // Create cognition records
+      // Create cognition records (lexical + LLM merged)
       for (const cognition of extracted.cognitions) {
         await this.createCognitionRecord(userId, eventRecordId, cognition, messageId);
       }
@@ -109,10 +141,21 @@ class EventExtractionService {
   /**
    * Extract structured data using LLM
    */
-  private async extractWithLLM(message: string): Promise<ExtractedEvent> {
+  private async extractWithLLM(
+    message: string,
+    hasLexicalEpistemicCue = false,
+    hasLexicalAffectCue = false
+  ): Promise<ExtractedEvent> {
+    const epistemicHint = hasLexicalEpistemicCue || hasEpistemicCue(message)
+      ? '\nPay special attention to explicit beliefs, doubts, questions, and realizations in the text.'
+      : '';
+    const affectHint = hasLexicalAffectCue || hasAffectCue(message)
+      ? '\nPay special attention to explicit felt emotions (anxious, grateful, drained, angry, etc.) with intensity.'
+      : '';
     const prompt = `Extract structured event data from this journal entry:
 
 "${message}"
+${epistemicHint}${affectHint}
 
 Respond with JSON:
 {
@@ -174,15 +217,28 @@ Respond with JSON:
       };
     } catch (error) {
       logger.warn({ err: error }, 'LLM event extraction failed, using fallback');
-      // Fallback: minimal extraction
+      const lexicalCog = epistemicCognitionDrafts(message);
+      const lexicalEmo = affectEmotionDrafts(message);
+      const fallbackCognitions = mergeEpistemicCognitions(lexicalCog, []).map((c) => ({
+        cognition_type: c.cognition_type,
+        content: c.content,
+        confidence: c.confidence,
+        metadata: { ...c.metadata, llmFallback: true },
+      }));
+      const fallbackEmotions = mergeAffectEmotions(lexicalEmo, []).map((e) => ({
+        emotion: e.emotion,
+        intensity: e.intensity,
+        metadata: { ...e.metadata, llmFallback: true },
+      }));
+      // Fallback: minimal extraction + lexical cognitions/emotions when LLM is unavailable.
       return {
         event_date: new Date().toISOString(),
         location_ids: [],
         participant_ids: [],
         tags: [],
         narrative_text: message,
-        emotions: [],
-        cognitions: [],
+        emotions: fallbackEmotions,
+        cognitions: fallbackCognitions,
         identity_impacts: [],
       };
     }
@@ -362,6 +418,7 @@ Respond with JSON:
         timestamp_offset: emotion.timestamp_offset,
         metadata: {
           source_message_id: sourceMessageId,
+          ...(emotion.metadata ?? {}),
         },
       });
 
@@ -388,6 +445,8 @@ Respond with JSON:
         content: cognition.content,
         metadata: {
           source_message_id: sourceMessageId,
+          ...(cognition.confidence != null ? { confidence: cognition.confidence } : {}),
+          ...(cognition.metadata ?? {}),
         },
       });
 

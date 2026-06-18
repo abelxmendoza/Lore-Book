@@ -16,6 +16,8 @@
  *    importance — not string distance. Only disambiguate below a confidence margin.
  */
 
+import { familyRoleSpecs } from '../ontology/glossary';
+
 import { classifyEntity, isCharacterEligible, type EntityClass } from './entityClassifier';
 
 export interface ResolutionCandidate {
@@ -75,16 +77,13 @@ const DAY_MS = 86_400_000;
 const DISAMBIGUATION_MARGIN = 0.18; // if top − second < this, ask instead of guess
 
 // Kinship synonyms → canonical role, so "grandma" matches an existing "Abuela".
-const KINSHIP_ROLE: Array<{ re: RegExp; role: string }> = [
-  { re: /\b(grandma|grandmother|abuela|nana|nonna|granny)\b/i, role: 'grandmother' },
-  { re: /\b(grandpa|grandfather|abuelo|nono)\b/i, role: 'grandfather' },
-  { re: /\b(mom|mother|mamá|mama|mommy)\b/i, role: 'mother' },
-  { re: /\b(dad|father|papá|papa|daddy)\b/i, role: 'father' },
-  { re: /\b(t[íi]o|uncle)\b/i, role: 'uncle' },
-  { re: /\b(t[íi]a|aunt|auntie)\b/i, role: 'aunt' },
-  { re: /\b(brother|hermano)\b/i, role: 'brother' },
-  { re: /\b(sister|hermana)\b/i, role: 'sister' },
-];
+// Vocabulary is owned by the glossary (FAMILY entries); this only builds the
+// match regex so there is one place to add a kinship term.
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const KINSHIP_ROLE: Array<{ re: RegExp; role: string }> = familyRoleSpecs().map((s) => ({
+  re: new RegExp(`\\b(?:${s.terms.map(escapeRe).join('|')})\\b`, 'i'),
+  role: s.role.toLowerCase(),
+}));
 
 function kinshipRole(text: string): string | null {
   for (const { re, role } of KINSHIP_ROLE) if (re.test(text)) return role;

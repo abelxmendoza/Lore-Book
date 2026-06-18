@@ -18,18 +18,16 @@ import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { fetchJson } from '../../lib/api';
-import { booksApi } from '../../api/books';
-import { apiCache } from '../../lib/cache';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
-import { useMockData } from '../../contexts/MockDataContext';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
 import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
+import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
 
 // Comprehensive mock location data showcasing all app capabilities
 // Export for use in mock data service
@@ -405,10 +403,8 @@ export const dummyLocations: LocationProfile[] = [
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
 export const LocationBook = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
-  const [locations, setLocations] = useState<LocationProfile[]>([]);
+  const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useLocationsBookData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
   
   // Register mock data with service on mount
   useEffect(() => {
@@ -427,6 +423,25 @@ export const LocationBook = () => {
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
   const { entries = [] } = useLoreKeeper();
 
+  const locations = useMemo(() => {
+    if (isMockDataEnabled) {
+      return mockDataService.getWithFallback.locations(null, true).data;
+    }
+    const locationList = (data?.locations ?? []) as LocationProfile[];
+    return mockDataService.getWithFallback.locations(
+      locationList.length > 0 ? locationList : null,
+      false
+    ).data;
+  }, [data, isMockDataEnabled]);
+
+  useEffect(() => {
+    setSelectedLocation((sel) => {
+      if (!sel) return null;
+      const updated = locations.find((l) => l.id === sel.id);
+      return updated ?? sel;
+    });
+  }, [locations]);
+
   const toggleSelectedForMerge = (locationId: string) => {
     setSelectedForMerge(prev => {
       const next = new Set(prev);
@@ -435,48 +450,6 @@ export const LocationBook = () => {
       return next;
     });
   };
-
-  const loadLocations = async () => {
-    setLoading(true);
-    try {
-      apiCache.deletePattern(/\/api\/(books\/)?locations/);
-      const response = await booksApi.loadLocations();
-      const locationList = (response?.locations || []) as LocationProfile[];
-      
-      // Use mock data service to determine what to show - pass current toggle state
-      const result = mockDataService.getWithFallback.locations(
-        locationList.length > 0 ? locationList : null,
-        isMockDataEnabled
-      );
-      
-      setLocations(result.data);
-      setSelectedLocation((sel) => {
-        if (!sel) return null;
-        const updated = result.data.find((l) => l.id === sel.id);
-        return updated ?? sel;
-      });
-    } catch {
-      setLocations((prev) => {
-        if (prev.length > 0) return prev;
-        const result = mockDataService.getWithFallback.locations(null, isMockDataEnabled);
-        return result.data;
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadLocations();
-    const onInference = () => { void loadLocations(); };
-    window.addEventListener('lk:inference-complete', onInference);
-    return () => window.removeEventListener('lk:inference-complete', onInference);
-  }, []);
-
-  // Refresh when mock data toggle changes
-  useEffect(() => {
-    void loadLocations();
-  }, [isMockDataEnabled]);
 
   useEffect(() => {
     const memoryCards = entries.map(entry => memoryEntryToCard({
@@ -565,13 +538,6 @@ export const LocationBook = () => {
     if (match) setSelectedLocation(match);
   }, [loading, locations]);
 
-  // Refresh when chat pipeline creates/updates locations.
-  useEffect(() => {
-    const handler = () => { void loadLocations(); };
-    window.addEventListener('lk:locations-updated', handler);
-    return () => window.removeEventListener('lk:locations-updated', handler);
-  }, []);
-
   // Arrow key navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -646,13 +612,13 @@ export const LocationBook = () => {
           l.name,
           ...(Array.isArray(l.metadata?.aliases) ? (l.metadata!.aliases as string[]) : []),
         ])}
-        onLocationAdded={() => void loadLocations()}
+        onLocationAdded={() => void refetch()}
       />
 
       <LocationMergePanel
         locations={locations}
         demoMode={isMockDataEnabled}
-        onMerged={() => void loadLocations()}
+        onMerged={() => void refetch()}
         selectionMode={selectionMode}
         onSelectionModeChange={setSelectionMode}
         selectedForMerge={selectedForMerge}
@@ -670,7 +636,7 @@ export const LocationBook = () => {
         </div>
         <button
           type="button"
-          onClick={() => void loadLocations()}
+          onClick={() => void refetch()}
           disabled={loading}
           className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
         >
@@ -970,7 +936,7 @@ export const LocationBook = () => {
             setSelectedLocation(loc);
             setLocations(prev => prev.map(l => (l.id === loc.id ? loc : l)));
           }}
-          onClose={() => { setSelectedLocation(null); void loadLocations(); }}
+          onClose={() => { setSelectedLocation(null); void refetch(); }}
         />
       )}
 

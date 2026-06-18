@@ -3,6 +3,7 @@
 import { Heart, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Calendar } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { LexicalSignalBadges } from '../shared/LexicalSignalBadges';
 import { cn } from '../../lib/cn';
 
 type RomanticRelationship = {
@@ -131,6 +132,7 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
                   Situationship
                 </Badge>
               )}
+              <LexicalSignalBadges relationship={relationship} />
               {relationship.rank_among_active && relationship.rank_among_active <= 3 && (
                 <Badge variant="outline" className="text-xs bg-amber-500/20 text-amber-300 border-amber-500/30">
                   #{relationship.rank_among_active}

@@ -24,6 +24,7 @@ import achievementsRouter from './achievements';
 import activitiesRouter from './activities';
 import { adminRouter } from './admin';
 import { agentsRouter } from './agents';
+import { loreAgentsRouter } from './loreAgents';
 import alternateSelfRouter from './alternateSelf';
 import { analyticsRouter } from './analytics';
 import archetypeRouter from './archetype';
@@ -516,6 +517,13 @@ export const routeRegistry: RouteEntry[] = [
     router: correctionDashboardRouter,
     classification: 'ADMIN',
     description: 'Correction review dashboard',
+  },
+  {
+    path: '/api/lore-agents',
+    router: loreAgentsRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'System Cognition / Agent Layer — read-only agent run traces ("How LoreBook Understood This")',
   },
 
   // ---- NARRATIVE CORE -----------------------------------------------------

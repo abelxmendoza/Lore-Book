@@ -3,6 +3,14 @@ import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useEntityIndexer } from '../../../hooks/useEntityIndexer';
 import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import {
+  clearComposerState,
+  dismissComposerMatch,
+  setComposerDraft,
+  composerMatchSlot,
+} from '../../../store/slices/composerSlice';
+import { selectVisibleComposerMatches } from '../../../store/selectors/composerSelectors';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 
@@ -10,7 +18,9 @@ export const useChatComposer = (
   onSubmit: (message: string, certifiedEntities?: CertifiedEntityMatch[]) => void,
   initialValue?: string | null
 ) => {
-  const [input, setInput] = useState(initialValue || '');
+  const dispatch = useAppDispatch();
+  const visibleMatches = useAppSelector(selectVisibleComposerMatches);
+  const [input, setInputState] = useState(initialValue || '');
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -18,6 +28,14 @@ export const useChatComposer = (
   const moodEngine = useMoodEngine();
   const autoTagger = useAutoTagger();
   const entityIndexer = useEntityIndexer();
+
+  const setInput = useCallback(
+    (value: string) => {
+      setInputState(value);
+      dispatch(setComposerDraft(value));
+    },
+    [dispatch]
+  );
 
   // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
   useEffect(() => {
@@ -61,14 +79,22 @@ export const useChatComposer = (
     if (!input.trim()) return;
 
     const parsed = parseSlashCommand(input);
+    const entitiesToSend = visibleMatches;
     if (parsed) {
-      // Slash commands are handled in useChat
-      onSubmit(input.trim(), entityIndexer.matches);
+      onSubmit(input.trim(), entitiesToSend);
     } else {
-      onSubmit(input.trim(), entityIndexer.matches);
+      onSubmit(input.trim(), entitiesToSend);
     }
     setInput('');
-  }, [input, onSubmit, entityIndexer.matches]);
+    dispatch(clearComposerState());
+  }, [input, onSubmit, visibleMatches, setInput, dispatch]);
+
+  const dismissMatch = useCallback(
+    (match: CertifiedEntityMatch) => {
+      dispatch(dismissComposerMatch(composerMatchSlot(match)));
+    },
+    [dispatch]
+  );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -97,6 +123,8 @@ export const useChatComposer = (
     moodEngine,
     autoTagger,
     entityIndexer,
+    visibleMatches,
+    dismissMatch,
     handleSubmit,
     handleKeyDown,
     insertSuggestion

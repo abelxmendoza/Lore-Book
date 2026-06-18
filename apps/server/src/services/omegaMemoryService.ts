@@ -33,6 +33,7 @@ import type {
 } from '../types/omegaMemory';
 
 import { correctionTracker } from './activeLearning/correctionTracker';
+import { characterAuthorityService } from './characterAuthorityService';
 import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
@@ -1236,18 +1237,33 @@ A contradiction means the claims cannot both be true at the same time.`
           .in('id', mergedClaimIds);
       }
 
-      // Update relationships
-      await supabaseAdmin
-        .from('omega_relationships')
-        .update({ from_entity_id: targetEntityId })
-        .eq('from_entity_id', sourceEntityId)
-        .eq('user_id', userId);
+      // Redirect authority-map links from source omega entity to target (canonical character graph).
+      const { data: sourceAuthRows } = await supabaseAdmin
+        .from('character_authority_map')
+        .select('canonical_character_id, alias_name, match_method, confidence')
+        .eq('user_id', userId)
+        .eq('source_table', 'omega_entities')
+        .eq('source_id', sourceEntityId);
 
-      await supabaseAdmin
-        .from('omega_relationships')
-        .update({ to_entity_id: targetEntityId })
-        .eq('to_entity_id', sourceEntityId)
-        .eq('user_id', userId);
+      for (const row of sourceAuthRows ?? []) {
+        await characterAuthorityService.linkSourceRecord(
+          userId,
+          row.canonical_character_id,
+          'omega_entities',
+          targetEntityId,
+          row.alias_name ?? sourceEntity.primary_name,
+          row.match_method ?? 'omega_merge',
+          Number(row.confidence ?? 1),
+        );
+      }
+      if ((sourceAuthRows?.length ?? 0) > 0) {
+        await supabaseAdmin
+          .from('character_authority_map')
+          .delete()
+          .eq('user_id', userId)
+          .eq('source_table', 'omega_entities')
+          .eq('source_id', sourceEntityId);
+      }
 
       // Backpropagate source identity into target aliases so the merged
       // name is still resolvable going forward.
@@ -1391,13 +1407,30 @@ A contradiction means the claims cannot both be true at the same time.`
 
     const rankedClaims = await this.rankClaims(userId, entityId);
 
-    // Get active relationships
-    const { data: relationships } = await supabaseAdmin
-      .from('omega_relationships')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('from_entity_id', entityId)
-      .eq('is_active', true);
+    const resolved = await characterAuthorityService.resolveByOmegaEntity(userId, entityId);
+    let relationships: Relationship[] = [];
+    if (resolved.characterId) {
+      const { data: charRels } = await supabaseAdmin
+        .from('character_relationships')
+        .select('id, user_id, source_character_id, target_character_id, relationship_type, confidence, created_at, updated_at, summary')
+        .eq('user_id', userId)
+        .or(`source_character_id.eq.${resolved.characterId},target_character_id.eq.${resolved.characterId}`);
+
+      relationships = (charRels ?? []).map((rel: Record<string, unknown>) => ({
+        id: String(rel.id),
+        user_id: String(rel.user_id),
+        from_entity_id: rel.source_character_id === resolved.characterId ? entityId : String(rel.source_character_id),
+        to_entity_id: rel.target_character_id === resolved.characterId ? entityId : String(rel.target_character_id),
+        type: String(rel.relationship_type ?? 'related_to'),
+        confidence: Number(rel.confidence ?? 0.8),
+        start_time: String(rel.created_at ?? new Date().toISOString()),
+        end_time: null,
+        is_active: true,
+        created_at: String(rel.created_at ?? new Date().toISOString()),
+        updated_at: String(rel.updated_at ?? rel.created_at ?? new Date().toISOString()),
+        metadata: rel.summary ? { summary: rel.summary } : undefined,
+      }));
+    }
 
     // Use LLM to generate comprehensive summary
     try {

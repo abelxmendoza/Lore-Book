@@ -19,6 +19,7 @@ import {
   parseMeaningResolutionResult,
 } from '../ontology/canonical';
 import { relationshipPersistenceService } from '../ontology/relationshipPersistenceService';
+import { buildMessageLexicalSignals } from '../ontology/messageLexicalMetadataService';
 
 export type LoreInterpretationResult = {
   lexical: LexicalAnalysisResult;
@@ -162,6 +163,7 @@ async function attachPipelineMetadata(
       relationship_group_count: (ontologyMeta.relationship_groups as unknown[] | undefined)?.length ?? 0,
     },
     ontology_enrichment: ontologyMeta,
+    lexical_signals: buildMessageLexicalSignals(lexical.rawText) ?? (existing?.metadata as Record<string, unknown> | undefined)?.lexical_signals,
   };
 
   await supabaseAdmin

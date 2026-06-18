@@ -1,6 +1,12 @@
 /**
- * Canonical kinship dictionary — maps surface phrases to relationship roles.
+ * Kinship extraction — maps surface phrases to relationship roles.
+ *
+ * The kinship VOCABULARY (which surface terms denote which role) is owned by the
+ * lexical glossary (services/ontology/glossary.ts → FAMILY entries). This module
+ * derives its matching tables from `familyRoleSpecs()` so there is exactly one
+ * place to add a kinship term; only the extraction *regex shape* lives here.
  */
+import { familyContextWords, familyRoleSpecs } from '../ontology/glossary';
 
 export type KinshipRole =
   | 'GRANDMOTHER'
@@ -26,23 +32,40 @@ export type KinshipMatch = {
   confidence: number;
 };
 
-/** Title-only kinship (no given name required). */
-const TITLE_ONLY: Array<{ re: RegExp; role: KinshipRole; label: string; confidence: number }> = [
-  { re: /\babuel(?:a|ita)(?:['']s)?\b/i, role: 'GRANDMOTHER', label: 'Grandmother', confidence: 0.95 },
-  { re: /\b(?:grandma|grandmother|nana|nonna|granny)(?:['']s)?\b/i, role: 'GRANDMOTHER', label: 'Grandmother', confidence: 0.92 },
-  { re: /\babuel(?:o|ito)(?:['']s)?\b/i, role: 'GRANDFATHER', label: 'Grandfather', confidence: 0.95 },
-  { re: /\b(?:grandpa|grandfather|nono|papa\s+grande)(?:['']s)?\b/i, role: 'GRANDFATHER', label: 'Grandfather', confidence: 0.92 },
-  { re: /\b(?:mom|mother|mama|mamá|ma)(?:['']s)?\b/i, role: 'MOTHER', label: 'Mother', confidence: 0.9 },
-  { re: /\b(?:dad|father|papa|papá|pa)(?:['']s)?\b/i, role: 'FATHER', label: 'Father', confidence: 0.9 },
-];
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const roleLabel = (role: string): string => role.charAt(0) + role.slice(1).toLowerCase();
+const termAlternation = (terms: string[]): string => terms.map(escapeRe).join('|');
 
-/** Kinship title + optional given name → full display name. */
-const TITLED_PERSON: Array<{ re: RegExp; role: KinshipRole; label: string; confidence: number }> = [
-  { re: /\b(?:t[íi]o|uncle)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi, role: 'UNCLE', label: 'Uncle', confidence: 0.92 },
-  { re: /\b(?:t[íi]a|aunt|auntie)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi, role: 'AUNT', label: 'Aunt', confidence: 0.92 },
-  { re: /\b(?:primo|prima|cousin)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi, role: 'COUSIN', label: 'Cousin', confidence: 0.88 },
-  { re: /\b(?:brother|sister|hermano|hermana)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi, role: 'SIBLING', label: 'Sibling', confidence: 0.85 },
-];
+/**
+ * Title-only kinship (no given name required) — e.g. "Mom", "Abuela".
+ * Derived from glossary FAMILY entries flagged kinshipForm: 'TITLE_ONLY'.
+ */
+const TITLE_ONLY: Array<{ re: RegExp; role: KinshipRole; label: string; confidence: number }> =
+  familyRoleSpecs()
+    .filter((s) => s.kinshipForm === 'TITLE_ONLY')
+    .map((s) => ({
+      re: new RegExp(`\\b(?:${termAlternation(s.terms)})(?:['’]s)?\\b`, 'i'),
+      role: s.role as KinshipRole,
+      label: roleLabel(s.role),
+      confidence: s.confidence,
+    }));
+
+/**
+ * Kinship title + given name → full display name — e.g. "Tío Juan".
+ * Derived from glossary FAMILY entries flagged kinshipForm: 'TITLED'.
+ */
+const TITLED_PERSON: Array<{ re: RegExp; role: KinshipRole; label: string; confidence: number }> =
+  familyRoleSpecs()
+    .filter((s) => s.kinshipForm === 'TITLED')
+    .map((s) => ({
+      re: new RegExp(`\\b(?:${termAlternation(s.terms)})\\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\\b`, 'gi'),
+      role: s.role as KinshipRole,
+      label: roleLabel(s.role),
+      confidence: s.confidence,
+    }));
+
+/** Any FAMILY surface term (glossary-derived) — for a quick kinship-title check. */
+const ANY_KINSHIP_TERM_RE = new RegExp(`\\b(?:${termAlternation(familyContextWords())})\\b`, 'i');
 
 const ROLE_TO_KINSHIP_STRING: Record<KinshipRole, string> = {
   GRANDMOTHER: 'grandmother',
@@ -70,7 +93,7 @@ export function hasKinshipTitle(name: string): boolean {
   const n = name.trim();
   if (!n) return false;
   if (TITLE_ONLY.some(({ re }) => re.test(n))) return true;
-  return /\b(t[íi]o|t[íi]a|uncle|aunt|abuela|abuelo|grandma|grandpa|cousin|primo|prima|mom|dad|mother|father)\b/i.test(n);
+  return ANY_KINSHIP_TERM_RE.test(n);
 }
 
 /** Extract kinship-titled people from free text. */

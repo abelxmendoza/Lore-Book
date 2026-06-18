@@ -46,8 +46,9 @@ export function buildSystemPrompt(
   currentEmotionalState?: EmotionalState | null,
   currentFocusLine?: string,
   timelineInsight?: ChatContextExtension & { layer?: string },
-  continuityIntent?: ContinuityIntent | null,
-  userId?: string
+    continuityIntent?: ContinuityIntent | null,
+    userId?: string,
+    agentEvidenceBlock?: string | null
 ): string {
   const timelineSummary = orchestratorSummary.timeline.events
     .slice(0, 20)
@@ -929,7 +930,7 @@ ${continuityIntent.timelineSignificant ? `**TIMELINE SIGNIFICANCE:** User explic
 5. DO NOT: over-explain, ask multiple questions, roleplay feelings, invent emotions, or produce AI-therapist behavior.
 
 **PRINCIPLE:** Sparse authentic continuity > synthetic emotional richness. The user trusts LoreBook to remember — show it.
-` : ''}`;
+` : ''}${agentEvidenceBlock ? `\n\n${agentEvidenceBlock}\n` : ''}`;
 }
 
 export function buildEssenceContext(profile: any): string {

@@ -1,8 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../../../lib/supabase';
-import { fetchJson } from '../../../lib/api';
-import { chatThreadsApi } from '../../../api/books';
 import { config } from '../../../config/env';
+import { store } from '../../../store';
+import { chatApi } from '../../../store/api/chatApi';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import {
+  setCurrentThreadId as setCurrentThreadIdAction,
+  setThreadError,
+  clearThreadError,
+} from '../../../store/slices/chatSlice';
+import { selectCurrentThreadId, selectThreadError } from '../../../store/selectors';
+import { mutationErrorMessage, mutationErrorStatus } from '../../../store/rtkMutationUtils';
+import { isFetchJsonError } from '../../../store/api/baseApi';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import type { Message } from '../message/ChatMessage';
@@ -95,13 +104,31 @@ function sortThreadsByActivity(threads: ChatThread[]): ChatThread[] {
   );
 }
 
+async function fetchThreadsPage(args: { limit?: number; cursor?: string | null }) {
+  const result = await store.dispatch(
+    chatApi.endpoints.getThreads.initiate(args, { forceRefetch: true })
+  );
+  if (result.error) {
+    const err = result.error;
+    const message = isFetchJsonError(err)
+      ? err.message
+      : typeof (err as { message?: unknown }).message === 'string'
+        ? (err as { message: string }).message
+        : 'Failed to load threads';
+    throw new Error(message);
+  }
+  return result.data!;
+}
+
 export const useChatThreads = () => {
   const { user, loading: authLoading } = useAuth();
   const userId = user?.id;
   const isAuthenticated = !!userId;
+  const dispatch = useAppDispatch();
+  const currentThreadId = useAppSelector(selectCurrentThreadId);
+  const lastError = useAppSelector(selectThreadError);
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
-  const [currentThreadId, setCurrentThreadIdState] = useState<string | null>(null);
   const [threadsHasMore, setThreadsHasMore] = useState(false);
   const [threadsTotal, setThreadsTotal] = useState<number | null>(null);
   const [threadsLoadingMore, setThreadsLoadingMore] = useState(false);
@@ -119,6 +146,13 @@ export const useChatThreads = () => {
   useEffect(() => {
     currentThreadIdRef.current = currentThreadId;
   }, [currentThreadId]);
+
+  const applyCurrentThreadId = useCallback(
+    (id: string | null) => {
+      dispatch(setCurrentThreadIdAction(id));
+    },
+    [dispatch]
+  );
 
   // ── Guest localStorage helpers ──────────────────────────────────────────────
 
@@ -154,10 +188,10 @@ export const useChatThreads = () => {
       setThreads(hydrated);
       for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
-      setCurrentThreadIdState(last ?? null);
+      applyCurrentThreadId(last ?? null);
     } catch {
       setThreads([]);
-      setCurrentThreadIdState(null);
+      applyCurrentThreadId(null);
     } finally {
       setThreadsLoading(false);
     }
@@ -171,19 +205,10 @@ export const useChatThreads = () => {
     setThreadsLoading(true);
     try {
       // Repair + recover before listing — ensures nothing is orphaned or drifted.
-      await chatThreadsApi.repairHealth().catch(() => {});
-      await fetchJson<{ success: boolean; recovered?: number }>(
-        '/api/conversation/threads/recover-orphans',
-        { method: 'POST' }
-      ).catch(() => {});
+      await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
+      await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
 
-      const data = await fetchJson<{
-        threads: any[];
-        success: boolean;
-        total?: number;
-        hasMore?: boolean;
-        nextCursor?: string | null;
-      }>('/api/conversation/threads?limit=30');
+      const data = await fetchThreadsPage({ limit: 30 });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads(loaded);
       threadsNextCursorRef.current = data.nextCursor ?? null;
@@ -194,19 +219,20 @@ export const useChatThreads = () => {
       for (const t of loaded) {
         const rawTitle = (data.threads || []).find((row: any) => row.id === t.id)?.title;
         if (isGenericThreadTitle(rawTitle) && !isGenericThreadTitle(t.title) && t.messages.length > 0) {
-          fetchJson(`/api/conversation/threads/${t.id}/title`, {
-            method: 'PATCH',
-            body: JSON.stringify({ title: t.title }),
-          }).catch(() => {});
+          void store
+            .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: t.id, title: t.title }))
+            .unwrap()
+            .catch(() => {});
         }
       }
       const last = localStorage.getItem(lastThreadKey(userId));
       if (last && loaded.some((t) => t.id === last)) {
-        setCurrentThreadIdState(last);
+        applyCurrentThreadId(last);
       } else {
-        setCurrentThreadIdState(null);
+        applyCurrentThreadId(null);
       }
       setThreadsReady(true);
+      dispatch(clearThreadError());
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
         meta: { threadCount: loaded.length },
       });
@@ -225,7 +251,7 @@ export const useChatThreads = () => {
     } finally {
       setThreadsLoading(false);
     }
-  }, [userId, loadFromLocalStorage]);
+  }, [userId, loadFromLocalStorage, dispatch]);
 
   const loadMoreThreads = useCallback(async () => {
     if (!isAuthenticated || threadsLoadingMore || !threadsHasMore) return;
@@ -234,12 +260,7 @@ export const useChatThreads = () => {
 
     setThreadsLoadingMore(true);
     try {
-      const data = await fetchJson<{
-        threads: any[];
-        success: boolean;
-        hasMore?: boolean;
-        nextCursor?: string | null;
-      }>(`/api/conversation/threads?limit=30&cursor=${encodeURIComponent(cursor)}`);
+      const data = await fetchThreadsPage({ limit: 30, cursor });
       const page = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads((prev) => {
         const seen = new Set(prev.map((t) => t.id));
@@ -252,11 +273,12 @@ export const useChatThreads = () => {
       setThreadsHasMore(data.hasMore ?? false);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      dispatch(setThreadError(errMsg));
       runtimeDiagnostics.record('backend_load_error', { meta: { op: 'load_more_threads', error: errMsg } });
     } finally {
       setThreadsLoadingMore(false);
     }
-  }, [isAuthenticated, threadsHasMore, threadsLoadingMore]);
+  }, [isAuthenticated, threadsHasMore, threadsLoadingMore, dispatch]);
 
   // ── Boot: wait for auth to resolve, then load from the right source ─────────
   useEffect(() => {
@@ -280,7 +302,7 @@ export const useChatThreads = () => {
     // when the user navigates to /chat repeatedly before sending any message.
     const latest = threadsRef.current[0];
     if (latest && latest.messages.length === 0 && isGenericThreadTitle(latest.title)) {
-      setCurrentThreadIdState(latest.id);
+      applyCurrentThreadId(latest.id);
       if (isAuthenticated) localStorage.setItem(lastThreadKey(userId), latest.id);
       return latest.id;
     }
@@ -297,22 +319,22 @@ export const useChatThreads = () => {
       if (!isAuthenticated) persistLocal(next, id);
       return next;
     });
-    setCurrentThreadIdState(id);
+    applyCurrentThreadId(id);
     if (isAuthenticated) {
       threadPersistenceTracker.markPersistPending(id, 0);
       localStorage.setItem(lastThreadKey(userId), id);
-      fetchJson('/api/conversation/threads', {
-        method: 'POST',
-        body: JSON.stringify({ id, title: DRAFT_THREAD_TITLE }),
-      }).then(() => {
-        threadPersistenceTracker.markPersisted(id);
-      }).catch((err: unknown) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'create_thread', error: errMsg } });
-        threadPersistenceTracker.markSyncFailed(id, errMsg);
-        console.error('[useChatThreads] createThread persist failed:', errMsg);
-
-      });
+      void store
+        .dispatch(chatApi.endpoints.createThread.initiate({ id, title: DRAFT_THREAD_TITLE }))
+        .unwrap()
+        .then(() => {
+          threadPersistenceTracker.markPersisted(id);
+        })
+        .catch((err: unknown) => {
+          const errMsg = mutationErrorMessage(err);
+          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'create_thread', error: errMsg } });
+          threadPersistenceTracker.markSyncFailed(id, errMsg);
+          console.error('[useChatThreads] createThread persist failed:', errMsg);
+        });
     } else {
       threadPersistenceTracker.markLocalOnly(id);
     }
@@ -329,10 +351,9 @@ export const useChatThreads = () => {
       const existing = threadsRef.current.find((t) => t.id === id);
       let ensuredMeta: { title?: string; subtitle?: string; updatedAt?: string } = {};
       try {
-        const ensured = await fetchJson<{
-          success: boolean;
-          thread?: { title?: string; subtitle?: string; updatedAt?: string };
-        }>(`/api/conversation/threads/${id}/ensure-visible`, { method: 'POST' });
+        const ensured = await store
+          .dispatch(chatApi.endpoints.ensureThreadVisible.initiate(id))
+          .unwrap();
         if (ensured.success && ensured.thread) {
           ensuredMeta = {
             title: ensured.thread.title,
@@ -345,9 +366,7 @@ export const useChatThreads = () => {
       }
 
       try {
-        const result = await fetchJson<{ success: boolean; messages: any[] }>(
-          `/api/conversation/threads/${id}/messages`
-        );
+        const result = await store.dispatch(chatApi.endpoints.getThreadMessages.initiate(id)).unwrap();
         if (!result.success) return null;
 
         let messages = (result.messages || []).map(dbMessageToMessage);
@@ -426,7 +445,7 @@ export const useChatThreads = () => {
 
   const switchThread = useCallback(
     (id: string) => {
-      setCurrentThreadIdState(id);
+      applyCurrentThreadId(id);
       if (isAuthenticated) {
         localStorage.setItem(lastThreadKey(userId), id);
       } else {
@@ -486,28 +505,38 @@ export const useChatThreads = () => {
 
       if (isAuthenticated) {
         if (payload.title !== undefined) {
-          fetchJson(`/api/conversation/threads/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ title: payload.title }),
-          }).catch((err: unknown) => {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
-          });
+          void store
+            .dispatch(
+              chatApi.endpoints.updateThread.initiate({
+                threadId: id,
+                body: { title: payload.title },
+              })
+            )
+            .unwrap()
+            .catch((err: unknown) => {
+              const errMsg = mutationErrorMessage(err);
+              runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
+            });
         } else if (derivedTitle) {
-          fetchJson(`/api/conversation/threads/${id}/title`, {
-            method: 'PATCH',
-            body: JSON.stringify({ title: derivedTitle }),
-          }).catch(() => {});
+          void store
+            .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: derivedTitle }))
+            .unwrap()
+            .catch(() => {});
         }
         // subtitle is NOT sent here — server already persisted it via the title service
         if (touchActivity) {
-          fetchJson(`/api/conversation/threads/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ touchActivity: true }),
-          }).catch((err: unknown) => {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
-          });
+          void store
+            .dispatch(
+              chatApi.endpoints.updateThread.initiate({
+                threadId: id,
+                body: { touchActivity: true },
+              })
+            )
+            .unwrap()
+            .catch((err: unknown) => {
+              const errMsg = mutationErrorMessage(err);
+              runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
+            });
         }
       }
     },
@@ -556,13 +585,18 @@ export const useChatThreads = () => {
       });
 
       if (isAuthenticated && touchActivity) {
-        fetchJson(`/api/conversation/threads/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ touchActivity: true }),
-        }).catch((err: unknown) => {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
-        });
+        void store
+          .dispatch(
+            chatApi.endpoints.updateThread.initiate({
+              threadId: id,
+              body: { touchActivity: true },
+            })
+          )
+          .unwrap()
+          .catch((err: unknown) => {
+            const errMsg = mutationErrorMessage(err);
+            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
+          });
       }
     },
     [isAuthenticated, persistLocal]
@@ -581,17 +615,18 @@ export const useChatThreads = () => {
         prev.map((t) => (t.id === id ? { ...t, title: unique } : t))
       );
       if (isAuthenticated) {
-        fetchJson(`/api/conversation/threads/${id}/title`, {
-          method: 'PATCH',
-          body: JSON.stringify({ title: unique }),
-        }).catch((err: unknown) => {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'rename_thread', error: errMsg } });
-          console.error('[useChatThreads] renameThread failed:', errMsg);
-        });
+        void store
+          .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: unique }))
+          .unwrap()
+          .catch((err: unknown) => {
+            const errMsg = mutationErrorMessage(err);
+            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'rename_thread', error: errMsg } });
+            dispatch(setThreadError(errMsg));
+            console.error('[useChatThreads] renameThread failed:', errMsg);
+          });
       }
     },
-    [isAuthenticated]
+    [isAuthenticated, dispatch]
   );
 
   const deleteThread = useCallback(
@@ -604,18 +639,35 @@ export const useChatThreads = () => {
         return next;
       });
       if (currentThreadIdRef.current === id) {
-        setCurrentThreadIdState(null);
+        applyCurrentThreadId(null);
         if (isAuthenticated) localStorage.removeItem(lastThreadKey(userId));
       }
       threadPersistenceTracker.remove(id);
       if (isAuthenticated) {
-        fetchJson(`/api/conversation/threads/${id}`, { method: 'DELETE' }).catch((err: unknown) => {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (errMsg.includes('409') || errMsg.includes('protected')) {
-            runtimeDiagnostics.record('thread_delete_blocked', {
-              threadId: id,
-              meta: { reason: 'entity_linked', error: errMsg },
-            });
+        void store
+          .dispatch(chatApi.endpoints.deleteThread.initiate(id))
+          .unwrap()
+          .catch((err: unknown) => {
+            const errMsg = mutationErrorMessage(err);
+            const status = mutationErrorStatus(err);
+            if (status === 409 || errMsg.includes('409') || errMsg.includes('protected')) {
+              runtimeDiagnostics.record('thread_delete_blocked', {
+                threadId: id,
+                meta: { reason: 'entity_linked', error: errMsg },
+              });
+              if (removed) {
+                setThreads((prev) => {
+                  if (prev.some((t) => t.id === id)) return prev;
+                  const next = sortThreadsByActivity([removed, ...prev]);
+                  threadsRef.current = next;
+                  return next;
+                });
+              }
+              return;
+            }
+            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
+            dispatch(setThreadError(errMsg));
+            console.error('[useChatThreads] deleteThread failed:', errMsg);
             if (removed) {
               setThreads((prev) => {
                 if (prev.some((t) => t.id === id)) return prev;
@@ -624,27 +676,15 @@ export const useChatThreads = () => {
                 return next;
               });
             }
-            return;
-          }
-          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
-          console.error('[useChatThreads] deleteThread failed:', errMsg);
-          if (removed) {
-            setThreads((prev) => {
-              if (prev.some((t) => t.id === id)) return prev;
-              const next = sortThreadsByActivity([removed, ...prev]);
-              threadsRef.current = next;
-              return next;
-            });
-          }
-        });
+          });
       }
     },
-    [isAuthenticated, userId, persistLocal]
+    [isAuthenticated, userId, persistLocal, dispatch]
   );
 
   const setCurrentThreadId = useCallback(
     (id: string | null) => {
-      setCurrentThreadIdState(id);
+      applyCurrentThreadId(id);
       if (isAuthenticated) {
         if (id) localStorage.setItem(lastThreadKey(userId), id);
         else localStorage.removeItem(lastThreadKey(userId));
@@ -653,8 +693,12 @@ export const useChatThreads = () => {
         persistLocal(threadsRef.current, id);
       }
     },
-    [isAuthenticated, userId, persistLocal]
+    [isAuthenticated, userId, persistLocal, applyCurrentThreadId]
   );
+
+  const dismissThreadError = useCallback(() => {
+    dispatch(clearThreadError());
+  }, [dispatch]);
 
   const loadThreads = useCallback(() => {
     if (isAuthenticated) return loadFromBackend();
@@ -682,5 +726,7 @@ export const useChatThreads = () => {
     deleteThread,
     flushSave,
     loadThreads,
+    lastError,
+    dismissThreadError,
   };
 };

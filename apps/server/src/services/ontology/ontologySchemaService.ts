@@ -39,7 +39,7 @@ export async function getOntologySchemaState(): Promise<{ locations: boolean; or
   if (!locations || !organizations) {
     logger.warn(
       { locations, organizations },
-      'Ontology columns missing — run: npx tsx scripts/run-ontology-migrations.ts'
+      'Ontology columns missing — run: npm run migrate:ontology'
     );
   }
   return { locations, organizations };

@@ -15,6 +15,15 @@ import { fetchJson } from '../lib/api';
 import { supabase, useAuth } from '../lib/supabase';
 import type { CurrentContext } from '../types/currentContext';
 import { MOCK_ENTRIES, MOCK_TIMELINE, MOCK_TAGS, MOCK_CHAPTERS } from '../mocks/journalData';
+import {
+  useGetEntriesQuery,
+  useGetTimelineQuery,
+  useGetTimelineTagsQuery,
+  useGetChaptersQuery,
+  useCreateChapterMutation,
+  loreApi,
+} from '../store/api/loreApi';
+import { useAppDispatch } from '../store/hooks';
 
 export type JournalEntry = {
   id: string;
@@ -93,9 +102,28 @@ const LoreKeeperContext = createContext<LoreKeeperContextValue | null>(null);
 
 /** Internal hook — single instance lives in LoreKeeperProvider. */
 function useLoreKeeperState() {
+  const dispatch = useAppDispatch();
   const { useMockData: isMockEnabled } = useMockData();
   const { user, loading: authLoading } = useAuth();
-  const [entries, setEntries] = useState<JournalEntry[]>(() => {
+  const guestId = getActiveGuestId();
+
+  const skipServerFetch =
+    authLoading ||
+    isMockEnabled ||
+    (!!guestId && !isMockEnabled) ||
+    (!user && !isMockEnabled);
+
+  const skipChapters =
+    authLoading || isMockEnabled || (!user && !isMockEnabled);
+
+  const entriesQuery = useGetEntriesQuery(undefined, { skip: skipServerFetch });
+  const timelineQuery = useGetTimelineQuery(undefined, { skip: skipServerFetch });
+  const tagsQuery = useGetTimelineTagsQuery(undefined, { skip: skipServerFetch });
+  const chaptersQuery = useGetChaptersQuery(undefined, { skip: skipChapters });
+
+  const [createChapterMutation] = useCreateChapterMutation();
+
+  const [cachedEntries] = useState<JournalEntry[]>(() => {
     if (typeof window === 'undefined') return [];
     const cached = window.localStorage.getItem('lorekeeper-cache');
     if (!cached) return [];
@@ -105,10 +133,7 @@ function useLoreKeeperState() {
       return [];
     }
   });
-  const [timeline, setTimeline] = useState<TimelineResponse>({ chapters: [], unassigned: [] });
-  const [chapters, setChapters] = useState<ChapterProfile[]>([]);
-  const [chapterCandidates, setChapterCandidates] = useState<ChapterCandidate[]>([]);
-  const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
+
   const [answer, setAnswer] = useState('');
   const [reflection, setReflection] = useState('');
   const [searchResults, setSearchResults] = useState<JournalEntry[]>([]);
@@ -129,30 +154,20 @@ function useLoreKeeperState() {
     []
   );
 
-  const refreshEntries = useCallback(async () => {
-    const guestId = getActiveGuestId();
-    if (guestId && !isMockEnabled) {
-      setEntries(getGuestEntries(guestId));
-      return;
-    }
-    if (!user && !isMockEnabled) {
-      setEntries([]);
-      return;
-    }
-    try {
-      const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries', undefined, {
-        useMockData: isMockEnabled,
-        mockData: { entries: MOCK_ENTRIES },
-      });
-      setEntries(data?.entries || []);
-    } catch (error) {
-      console.error('Failed to refresh entries:', error);
-      setEntries([]);
-    }
-  }, [isMockEnabled, user]);
+  const entries = useMemo((): JournalEntry[] => {
+    if (guestId && !isMockEnabled) return getGuestEntries(guestId);
+    if (isMockEnabled) return MOCK_ENTRIES;
+    if (!user && !isMockEnabled) return [];
+    return entriesQuery.data ?? cachedEntries;
+  }, [
+    guestId,
+    isMockEnabled,
+    user,
+    entriesQuery.data,
+    cachedEntries,
+  ]);
 
-  const refreshTimeline = useCallback(async () => {
-    const guestId = getActiveGuestId();
+  const { timeline, tags } = useMemo(() => {
     if (guestId && !isMockEnabled) {
       const guestEntries = getGuestEntries(guestId);
       const byMonth = new Map<string, JournalEntry[]>();
@@ -163,67 +178,72 @@ function useLoreKeeperState() {
       }
       const unassigned = [...byMonth.entries()]
         .sort(([a], [b]) => b.localeCompare(a))
-        .map(([month, entries]) => ({ month, entries }));
-      setTimeline({ chapters: [], unassigned });
+        .map(([month, monthEntries]) => ({ month, entries: monthEntries }));
       const tagCounts = new Map<string, number>();
       for (const entry of guestEntries) {
         for (const tag of entry.tags ?? []) {
           tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
         }
       }
-      setTags([...tagCounts.entries()].map(([name, count]) => ({ name, count })));
-      return;
+      return {
+        timeline: { chapters: [], unassigned } as TimelineResponse,
+        tags: [...tagCounts.entries()].map(([name, count]) => ({ name, count })),
+      };
     }
     if (!user && !isMockEnabled) {
-      setTimeline(EMPTY_TIMELINE);
-      setTags([]);
+      return { timeline: EMPTY_TIMELINE, tags: [] as { name: string; count: number }[] };
+    }
+    if (isMockEnabled) {
+      return { timeline: MOCK_TIMELINE, tags: MOCK_TAGS };
+    }
+    return {
+      timeline: timelineQuery.data ?? EMPTY_TIMELINE,
+      tags: tagsQuery.data ?? [],
+    };
+  }, [guestId, isMockEnabled, user, timelineQuery.data, tagsQuery.data]);
+
+  const { chapters, chapterCandidates } = useMemo(() => {
+    if (!user && !isMockEnabled) {
+      return { chapters: [] as ChapterProfile[], chapterCandidates: [] as ChapterCandidate[] };
+    }
+    if (isMockEnabled) {
+      return { chapters: MOCK_CHAPTERS, chapterCandidates: [] as ChapterCandidate[] };
+    }
+    return {
+      chapters: chaptersQuery.data?.chapters ?? [],
+      chapterCandidates: chaptersQuery.data?.candidates ?? [],
+    };
+  }, [user, isMockEnabled, chaptersQuery.data]);
+
+  const refreshEntries = useCallback(async () => {
+    if (guestId && !isMockEnabled) return;
+    if (!user && !isMockEnabled) return;
+    if (isMockEnabled) {
+      dispatch(loreApi.util.invalidateTags(['Entry']));
       return;
     }
-    try {
-      const [timelineData, tagData] = await Promise.all([
-        fetchJson<{ timeline: TimelineResponse }>('/api/timeline', undefined, {
-          useMockData: isMockEnabled,
-          mockData: { timeline: MOCK_TIMELINE },
-        }),
-        fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags', undefined, {
-          useMockData: isMockEnabled,
-          mockData: { tags: MOCK_TAGS },
-        }),
-      ]);
-      setTimeline(timelineData?.timeline || EMPTY_TIMELINE);
-      setTags(tagData?.tags || []);
-    } catch (error) {
-      console.error('Failed to refresh timeline:', error);
-      setTimeline(EMPTY_TIMELINE);
-      setTags([]);
+    await entriesQuery.refetch();
+  }, [guestId, isMockEnabled, user, entriesQuery, dispatch]);
+
+  const refreshTimeline = useCallback(async () => {
+    if (guestId && !isMockEnabled) return;
+    if (!user && !isMockEnabled) return;
+    if (isMockEnabled) {
+      dispatch(loreApi.util.invalidateTags(['Timeline']));
+      return;
     }
-  }, [isMockEnabled, user]);
+    await Promise.all([timelineQuery.refetch(), tagsQuery.refetch()]);
+  }, [guestId, isMockEnabled, user, timelineQuery, tagsQuery, dispatch]);
 
   const refreshChapters = useCallback(async () => {
-    if (!user && !isMockEnabled) {
-      setChapters([]);
-      setChapterCandidates([]);
+    if (!user && !isMockEnabled) return;
+    if (isMockEnabled) {
+      dispatch(loreApi.util.invalidateTags(['Chapter']));
       return;
     }
-    try {
-      const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>(
-        '/api/chapters',
-        undefined,
-        {
-          useMockData: isMockEnabled,
-          mockData: { chapters: MOCK_CHAPTERS, candidates: [] },
-        }
-      );
-      setChapters(data?.chapters ?? []);
-      setChapterCandidates(data?.candidates ?? []);
-    } catch (error) {
-      console.error('Failed to refresh chapters:', error);
-      setChapters([]);
-      setChapterCandidates([]);
-    }
-  }, [isMockEnabled, user]);
+    await chaptersQuery.refetch();
+  }, [isMockEnabled, user, chaptersQuery, dispatch]);
 
-  /** Lazy — not called on app boot (OpenAI ~7s; no UI reads evolution on chat load). */
   const refreshEvolution = useCallback(async (refresh = false) => {
     try {
       const url = refresh ? '/api/evolution?refresh=true' : '/api/evolution';
@@ -267,27 +287,33 @@ function useLoreKeeperState() {
         const { tags: _tags, chapterId: _chapterId, metadata: _metadata, ...rest } = merged;
         Object.assign(payload, rest);
       }
+
+      let entry: JournalEntry;
       const data = await fetchJson<{ entry: JournalEntry }>('/api/entries', {
         method: 'POST',
         body: JSON.stringify(payload),
+      }, {
+        useMockData: isMockEnabled,
       });
-      setEntries((prev) => [data.entry, ...prev]);
+      entry = data.entry;
+      dispatch(loreApi.util.invalidateTags(['Entry', 'Timeline']));
+
       if (currentContext?.kind === 'thread' && currentContext.threadId) {
         try {
           await fetchJson<{ entry_id: string; thread_id: string }>(
             `/api/threads/${currentContext.threadId}/entries`,
             {
               method: 'POST',
-              body: JSON.stringify({ entry_id: data.entry.id }),
+              body: JSON.stringify({ entry_id: entry.id }),
             }
           );
         } catch (e) {
           console.warn('Failed to link entry to thread:', e);
         }
       }
-      return data.entry;
+      return entry;
     },
-    []
+    [dispatch, guestId, isMockEnabled, user]
   );
 
   const askLoreKeeper = useCallback(async (message: string, persona?: string) => {
@@ -348,9 +374,9 @@ function useLoreKeeperState() {
     }
 
     const parsed = await res.json();
-    setEntries((prev) => [parsed.entry, ...prev]);
+    dispatch(loreApi.util.invalidateTags(['Entry', 'Timeline']));
     return parsed.entry as JournalEntry;
-  }, []);
+  }, [dispatch]);
 
   const summarize = useCallback(async (from: string, to: string) => {
     const data = await fetchJson<{ summary: string; entryCount: number }>('/api/summary', {
@@ -367,14 +393,22 @@ function useLoreKeeperState() {
       endDate?: string | null;
       description?: string | null;
     }) => {
-      const data = await fetchJson<{ chapter: Chapter }>('/api/chapters', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      setChapters((prev) => [hydrateChapter(data.chapter), ...prev]);
-      return data.chapter;
+      if (isMockEnabled || !user) {
+        const data = await fetchJson<{ chapter: Chapter }>('/api/chapters', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        dispatch(loreApi.util.invalidateTags(['Chapter', 'Timeline']));
+        return data.chapter;
+      }
+      const chapter = await createChapterMutation({
+        title: payload.title,
+        start_date: payload.startDate,
+        end_date: payload.endDate ?? undefined,
+      }).unwrap();
+      return chapter;
     },
-    [hydrateChapter]
+    [createChapterMutation, dispatch, isMockEnabled, user]
   );
 
   const summarizeChapter = useCallback(async (chapterId: string) => {
@@ -384,23 +418,12 @@ function useLoreKeeperState() {
     return data.summary;
   }, []);
 
-  // Single bootstrap per app session — not per useLoreKeeper() caller.
-  useEffect(() => {
-    if (authLoading) return;
-    void refreshEntries().catch((err) => console.error('Failed to refresh entries on mount:', err));
-    void refreshTimeline().catch((err) => console.error('Failed to refresh timeline on mount:', err));
-    void refreshChapters().catch((err) => console.error('Failed to refresh chapters on mount:', err));
-  }, [authLoading, refreshEntries, refreshTimeline, refreshChapters]);
-
   const prevMock = useRef(isMockEnabled);
   useEffect(() => {
     if (prevMock.current === isMockEnabled) return;
     prevMock.current = isMockEnabled;
-    if (!isMockEnabled) return;
-    void refreshEntries().catch(() => {});
-    void refreshTimeline().catch(() => {});
-    void refreshChapters().catch(() => {});
-  }, [isMockEnabled, refreshEntries, refreshTimeline, refreshChapters]);
+    dispatch(loreApi.util.invalidateTags(['Entry', 'Timeline', 'Chapter']));
+  }, [isMockEnabled, dispatch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
