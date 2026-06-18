@@ -1,14 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { Provider } from 'react-redux';
 import { OrganizationsBook } from './OrganizationsBook';
+import { MockDataProvider } from '../../contexts/MockDataContext';
+import { makeStore } from '../../store';
 
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
-vi.mock('../../hooks/useShouldUseMockData', () => ({
-  useShouldUseMockData: vi.fn(() => false),
+vi.mock('../../lib/supabase', () => ({
+  useAuth: vi.fn(() => ({ user: { id: 'test-user' }, session: null, loading: false })),
+  isSupabaseConfigured: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock('../../contexts/GuestContext', () => ({
+  useGuest: vi.fn(() => ({ isGuest: false, guestState: null })),
+  GuestProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 // Stub heavy sub-components to keep tests fast
@@ -23,6 +32,8 @@ vi.mock('../groups/GroupSuggestions', () => ({
 vi.mock('../groups/GroupMergePanel', () => ({
   GroupMergePanel: () => <div data-testid="group-merge-panel" />,
 }));
+
+import { fetchJson } from '../../lib/api';
 
 vi.mock('../timeline/ColorCodedTimeline', () => ({
   ColorCodedTimeline: () => <div data-testid="color-coded-timeline" />,
@@ -69,13 +80,47 @@ const mockOrg = {
   },
 };
 
-function wrap(ui: React.ReactElement) {
-  return render(<BrowserRouter>{ui}</BrowserRouter>);
+function wrap(ui: React.ReactElement, store = makeStore()) {
+  return render(
+    <Provider store={store}>
+      <MockDataProvider>
+        <BrowserRouter>{ui}</BrowserRouter>
+      </MockDataProvider>
+    </Provider>
+  );
+}
+
+function mockFetchJson(
+  handler?: (url: string) => Promise<unknown> | unknown
+) {
+  return vi.mocked(fetchJson).mockImplementation(async (url: string) => {
+    if (handler) {
+      const custom = await handler(url);
+      if (custom !== undefined) return custom;
+    }
+    if (String(url).includes('/api/family-trees/mine')) {
+      return { success: true, tree: { members: [] } };
+    }
+    if (String(url).includes('/api/group-candidates')) {
+      return { success: true, candidates: [] };
+    }
+    if (String(url).includes('/api/organizations')) {
+      return { success: true, organizations: [] };
+    }
+    return { success: true };
+  });
 }
 
 describe('OrganizationsBook', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, statusText: 'OK' })
+    );
+    const { useAuth } = await import('../../lib/supabase');
+    vi.mocked(useAuth).mockReturnValue({ user: { id: 'test-user' }, session: null, loading: false });
+    mockFetchJson();
   });
 
   it('renders without crashing', async () => {
@@ -97,8 +142,11 @@ describe('OrganizationsBook', () => {
   });
 
   it('renders organizations list after fetch', async () => {
-    const { fetchJson } = await import('../../lib/api');
-    vi.mocked(fetchJson).mockResolvedValue({ success: true, organizations: [mockOrg] });
+    mockFetchJson(async (url) => {
+      if (String(url).includes('/api/organizations')) {
+        return { success: true, organizations: [mockOrg] };
+      }
+    });
 
     wrap(<OrganizationsBook />);
     await waitFor(() => {
@@ -131,8 +179,7 @@ describe('OrganizationsBook', () => {
   });
 
   it('renders pending group candidates as preview organization cards', async () => {
-    const { fetchJson } = await import('../../lib/api');
-    vi.mocked(fetchJson).mockImplementation(async (url) => {
+    mockFetchJson(async (url) => {
       if (String(url).includes('/api/group-candidates')) {
         return {
           success: true,
@@ -149,7 +196,6 @@ describe('OrganizationsBook', () => {
           }],
         };
       }
-      return { success: true, organizations: [] };
     });
 
     wrap(<OrganizationsBook />);
@@ -226,15 +272,21 @@ describe('OrganizationsBook', () => {
   });
 
   it('uses mock data when mock mode is enabled', async () => {
-    const { useShouldUseMockData } = await import('../../hooks/useShouldUseMockData');
-    const { fetchJson } = await import('../../lib/api');
-    vi.mocked(useShouldUseMockData).mockReturnValue(true);
+    const { useAuth } = await import('../../lib/supabase');
+    const mockDataInit = await import('../../store/mockDataInit');
+    vi.spyOn(mockDataInit, 'computeInitialMockDataToggle').mockReturnValue(true);
+    vi.mocked(useAuth).mockReturnValue({ user: null, session: null, loading: false });
 
     wrap(<OrganizationsBook />);
     await waitFor(() => {
-      // Should render without calling real API
-      expect(fetchJson).not.toHaveBeenCalled();
+      expect(screen.getAllByText(/College Friends|The Thursday Crew/i).length).toBeGreaterThan(0);
     });
+
+    const orgApiCalls = vi.mocked(fetchJson).mock.calls.filter(
+      ([url]) =>
+        String(url).includes('/api/organizations') || String(url).includes('/api/group-candidates')
+    );
+    expect(orgApiCalls).toHaveLength(0);
   });
 
   it('handles API error gracefully', async () => {

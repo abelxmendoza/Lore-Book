@@ -7,12 +7,15 @@ export interface ChatState {
   currentThreadId: string | null;
   /** Last user-visible thread error (load-more, rename, delete, etc.). */
   lastError: string | null;
+  /** Character ids to briefly highlight after chat-driven lore updates. */
+  highlightedCharacterIds: string[];
 }
 
 export const initialChatState: ChatState = {
   activeThreadId: null,
   currentThreadId: null,
   lastError: null,
+  highlightedCharacterIds: [],
 };
 
 const chatSlice = createSlice({
@@ -31,10 +34,17 @@ const chatSlice = createSlice({
     clearThreadError(state) {
       state.lastError = null;
     },
+    pulseCharacterHighlights(state, action: PayloadAction<string[]>) {
+      state.highlightedCharacterIds = action.payload;
+    },
+    clearCharacterHighlights(state) {
+      state.highlightedCharacterIds = [];
+    },
     resetChatUi(state) {
       state.activeThreadId = null;
       state.currentThreadId = null;
       state.lastError = null;
+      state.highlightedCharacterIds = [];
     },
   },
 });
@@ -44,6 +54,8 @@ export const {
   setCurrentThreadId,
   setThreadError,
   clearThreadError,
+  pulseCharacterHighlights,
+  clearCharacterHighlights,
   resetChatUi,
 } = chatSlice.actions;
 

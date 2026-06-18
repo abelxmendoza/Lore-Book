@@ -3,7 +3,7 @@ import type { ChronologyEntry, ChronologyOverlap, TimeBucket, Timeline } from '.
 import { fetchChronology, fetchChronologyOverlaps, fetchTimeBuckets } from '../api/timelineV2';
 import { config } from '../config/env';
 import { mockDataService } from '../services/mockDataService';
-import { subscribeToMockDataState, useMockData } from '../contexts/MockDataContext';
+import { useMockData } from '../contexts/MockDataContext';
 import { useAuth } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
 
@@ -105,14 +105,6 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
 
   useEffect(() => {
     loadChronology();
-  }, [loadChronology]);
-
-  // Refresh when mock data toggle changes
-  useEffect(() => {
-    const unsubscribe = subscribeToMockDataState(() => {
-      loadChronology();
-    });
-    return unsubscribe;
   }, [loadChronology]);
 
   return { entries, loading, error, refetch: loadChronology };

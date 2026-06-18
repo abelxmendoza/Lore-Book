@@ -7,6 +7,8 @@ import { apiCache } from '../../lib/cache';
 import { isNameAlreadyInBookList } from '../../lib/suggestionBookFilter';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
+import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
+import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 
 type Props = {
   onCharacterAdded?: () => void;
@@ -46,6 +48,7 @@ export const DetectedCharacterSuggestions = ({
   const [error, setError] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
+  const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, { skip: showDemo });
 
   const fetchSuggestions = useCallback(async (opts?: { rescan?: boolean }) => {
     if (showDemo) {
@@ -70,10 +73,6 @@ export const DetectedCharacterSuggestions = ({
 
   useEffect(() => {
     void fetchSuggestions();
-    const onRefresh = () => {
-      void fetchSuggestions();
-    };
-    window.addEventListener('lk:characters-updated', onRefresh);
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         void fetchSuggestions();
@@ -81,9 +80,8 @@ export const DetectedCharacterSuggestions = ({
     }, 5 * 60 * 1000);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('lk:characters-updated', onRefresh);
     };
-  }, [fetchSuggestions]);
+  }, [fetchSuggestions, dataUpdatedAt]);
 
   const visible = useMemo(
     () =>
@@ -126,7 +124,7 @@ export const DetectedCharacterSuggestions = ({
             ? `Love story rescan — ${total} relationship${total === 1 ? '' : 's'} updated from ${s.romanticEpisodes} romantic episode${s.romanticEpisodes === 1 ? '' : 's'}.`
             : 'Love story rescan complete — relationships are up to date.'
         );
-        window.dispatchEvent(new CustomEvent('lk:romantic-relationships-updated'));
+        invalidateEntityTags(['Character']);
       } else {
         const result = await selfCharacterApi.rescanConversations();
         const promoted = result.summary?.charactersPromoted ?? 0;
@@ -140,7 +138,7 @@ export const DetectedCharacterSuggestions = ({
         onRescanComplete?.({ charactersPromoted: promoted, restoredFromEvidence: restored });
       }
       await fetchSuggestions({ rescan: true });
-      window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+      invalidateEntityTags(['Character']);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversation rescan failed');
     } finally {
@@ -159,7 +157,7 @@ export const DetectedCharacterSuggestions = ({
       }
       setAdded(prev => new Set(prev).add(k));
       onCharacterAdded?.();
-      window.dispatchEvent(new Event('lk:characters-updated'));
+      invalidateEntityTags(['Character']);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add character');
     } finally {

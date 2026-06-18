@@ -12,6 +12,8 @@ import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
+import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
+import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import type { Character } from './CharacterProfileCard';
 
 export type CharacterDuplicateGroup = {
@@ -95,6 +97,7 @@ export const CharacterMergePanel = ({
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, { skip: demoMode });
 
   const loadDuplicateGroups = useCallback(async () => {
     if (demoMode) {
@@ -129,15 +132,7 @@ export const CharacterMergePanel = ({
 
   useEffect(() => {
     void loadDuplicateGroups();
-  }, [demoMode, loadDuplicateGroups]);
-
-  useEffect(() => {
-    const onRefresh = () => {
-      void loadDuplicateGroups();
-    };
-    window.addEventListener('lk:characters-updated', onRefresh);
-    return () => window.removeEventListener('lk:characters-updated', onRefresh);
-  }, [loadDuplicateGroups]);
+  }, [demoMode, loadDuplicateGroups, dataUpdatedAt]);
 
   const selectedCharacters = useMemo(
     () => characters.filter(character => selectedForMerge.has(character.id) && isArchiveEligible(character)),
@@ -170,7 +165,7 @@ export const CharacterMergePanel = ({
     onConsolidated(result);
     setMergeNotice(notice);
     window.setTimeout(() => setMergeNotice(null), 12000);
-    window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+    if (!demoMode) invalidateEntityTags(['Character']);
   };
 
   const mergeDuplicateGroup = async (group: CharacterDuplicateGroup, targetId: string) => {

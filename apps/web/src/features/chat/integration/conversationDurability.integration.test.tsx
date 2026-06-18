@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { Provider } from 'react-redux';
 import { ChatThreadProvider } from '../../../contexts/ChatThreadContext';
+import { makeStore } from '../../../store';
 import { mergeThreadMessages } from '../utils/mergeThreadMessages';
 import type { Message } from '../message/ChatMessage';
 
@@ -39,7 +41,12 @@ const mockUseAuth = vi.mocked(useAuth);
 const mockFetchJson = vi.mocked(fetchJson);
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return React.createElement(MemoryRouter, null, React.createElement(ChatThreadProvider, null, children));
+  const store = makeStore();
+  return React.createElement(
+    Provider,
+    { store },
+    React.createElement(MemoryRouter, null, React.createElement(ChatThreadProvider, null, children))
+  );
 }
 
 function msg(id: string, role: 'user' | 'assistant', content: string): Message {

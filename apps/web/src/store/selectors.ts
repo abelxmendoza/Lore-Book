@@ -39,3 +39,4 @@ export const selectIsRealUser = (state: RootState) => state.runtime.runtimeIdent
 export const selectActiveThreadId = (state: RootState) => state.chat.activeThreadId;
 export const selectCurrentThreadId = (state: RootState) => state.chat.currentThreadId;
 export const selectThreadError = (state: RootState) => state.chat.lastError;
+export const selectHighlightedCharacterIds = (state: RootState) => state.chat.highlightedCharacterIds;

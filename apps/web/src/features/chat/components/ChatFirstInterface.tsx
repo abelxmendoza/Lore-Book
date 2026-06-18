@@ -42,6 +42,7 @@ import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporte
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
+import { invalidateEntityTags } from '../../../store/invalidateEntityCache';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
 import type { UploadCompletePayload } from './DocumentUpload';
@@ -423,7 +424,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             method: action.apiMethod ?? 'POST',
             ...(action.apiBody ? { body: JSON.stringify(action.apiBody) } : {}),
           });
-          window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+          invalidateEntityTags(['Character']);
           appendSystemNote(action.successMessage ?? 'Updated your lore.');
         } catch (error) {
           appendSystemNote(

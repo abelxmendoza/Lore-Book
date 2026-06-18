@@ -8,7 +8,7 @@ import { ChartCard } from './ChartCard';
 import { InsightCard } from './InsightCard';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
-import { useMockData, subscribeToMockDataState } from '../../contexts/MockDataContext';
+import { useMockData } from '../../contexts/MockDataContext';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { reactionApi } from '../../api/reactions';
 import { perceptionReactionEngineApi, type PatternInsight, type StabilityMetrics } from '../../api/perceptionReactionEngine';
@@ -93,14 +93,6 @@ export const ReactionsResiliencePanel: React.FC = () => {
 
   useEffect(() => {
     void loadData();
-  }, [loadData]);
-
-  // Subscribe to mock data toggle changes
-  useEffect(() => {
-    const unsubscribe = subscribeToMockDataState(() => {
-      void loadData();
-    });
-    return unsubscribe;
   }, [loadData]);
 
   // Filtered patterns

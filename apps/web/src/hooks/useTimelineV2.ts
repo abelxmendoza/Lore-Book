@@ -11,9 +11,11 @@ import {
   removeMemoryFromTimeline as removeMemoryFromTimelineApi
 } from '../api/timelineV2';
 import { mockDataService } from '../services/mockDataService';
-import { subscribeToMockDataState } from '../contexts/MockDataContext';
+import { useAppSelector } from '../store/hooks';
+import { selectEffectiveUseMockData } from '../store/selectors';
 
 export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: string | null }) => {
+  const mockDataEnabled = useAppSelector(selectEffectiveUseMockData);
   const [timelines, setTimelines] = useState<Timeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -62,18 +64,10 @@ export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: st
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, mockDataEnabled]);
 
   useEffect(() => {
     loadTimelines();
-  }, [loadTimelines]);
-
-  // Refresh when mock data toggle changes
-  useEffect(() => {
-    const unsubscribe = subscribeToMockDataState(() => {
-      loadTimelines();
-    });
-    return unsubscribe;
   }, [loadTimelines]);
 
   const createTimeline = useCallback(async (payload: Parameters<typeof createTimelineApi>[0]) => {

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { CharacterAvatar } from './CharacterAvatar';
 import { fetchJson } from '../../lib/api';
+import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
@@ -91,6 +92,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const [roleTagline, setRoleTagline] = useState<string | null>(character.role ?? null);
   const [contextHooks, setContextHooks] = useState<string[]>(getCharacterContextHooks(character));
   const [profileSummary, setProfileSummary] = useState<string | null>(character.summary ?? null);
+  const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, {
+    skip: !canCallAuthenticatedApi(),
+  });
 
   useEffect(() => {
     setResolvedCharacter(character);
@@ -158,13 +162,10 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
     };
 
     void load();
-    const onUpdated = () => { void load(); };
-    window.addEventListener('lk:characters-updated', onUpdated);
     return () => {
       cancelled = true;
-      window.removeEventListener('lk:characters-updated', onUpdated);
     };
-  }, [character.id]);
+  }, [character.id, dataUpdatedAt]);
 
   const summary =
     wittyTagline ||

@@ -6,6 +6,7 @@ import {
   setCurrentThreadId,
   setThreadError,
   clearThreadError,
+  pulseCharacterHighlights,
   resetChatUi,
   initialChatState,
 } from './chatSlice';
@@ -29,6 +30,7 @@ describe('chatSlice', () => {
     let state = chatReducer(initialChatState, setActiveThreadId('a'));
     state = chatReducer(state, setCurrentThreadId('c'));
     state = chatReducer(state, setThreadError('oops'));
+    state = chatReducer(state, pulseCharacterHighlights(['c1']));
     state = chatReducer(state, resetChatUi());
     expect(state).toEqual(initialChatState);
   });

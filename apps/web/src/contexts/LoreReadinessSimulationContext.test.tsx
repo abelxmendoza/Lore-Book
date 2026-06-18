@@ -2,6 +2,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LoreReadinessSimulationProvider, useLoreReadinessSimulation } from './LoreReadinessSimulationContext';
+import { ReduxProvider } from '../store/ReduxProvider';
+
+function renderWithStore(ui: React.ReactElement) {
+  return render(<ReduxProvider>{ui}</ReduxProvider>);
+}
 
 vi.mock('../hooks/useShouldUseMockData', () => ({
   useShouldUseMockData: () => false,

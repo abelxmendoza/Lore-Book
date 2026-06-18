@@ -5,10 +5,10 @@
  * Placement: fixed, bottom-left, above any z-50 overlays.
  */
 
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGuest } from '../contexts/GuestContext';
-import { getGlobalMockDataEnabled, subscribeToMockDataState } from '../contexts/MockDataContext';
+import { useAppSelector } from '../store/hooks';
+import { selectEffectiveUseMockData } from '../store/selectors';
 
 const DEV_AUTH_BYPASS =
   typeof import.meta !== 'undefined' &&
@@ -25,11 +25,7 @@ interface Badge {
 export const ModeBadge = () => {
   const navigate = useNavigate();
   const { isGuest } = useGuest();
-  const [isMockData, setIsMockData] = useState(getGlobalMockDataEnabled());
-
-  useEffect(() => {
-    return subscribeToMockDataState(setIsMockData);
-  }, []);
+  const isMockData = useAppSelector(selectEffectiveUseMockData);
 
   const badges: Badge[] = [];
 

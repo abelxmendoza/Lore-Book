@@ -13,9 +13,10 @@ import {
   type ReactNode,
 } from 'react';
 import { config } from '../config/env';
-import { subscribeToMockDataState } from '../contexts/MockDataContext';
 import { shouldUseMockData } from '../hooks/useShouldUseMockData';
 import { useAuth } from '../lib/supabase';
+import { useAppSelector } from '../store/hooks';
+import { selectEffectiveUseMockData } from '../store/selectors';
 import type {
   LoreReadinessCompiledMode,
   LoreReadinessKnowledgePreset,
@@ -67,24 +68,25 @@ const LoreReadinessSimulationContext = createContext<LoreReadinessSimulationCont
 
 export function LoreReadinessSimulationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [mockRevision, setMockRevision] = useState(0);
+  const mockDataEnabled = useAppSelector(selectEffectiveUseMockData);
   const [stored, setStored] = useState<StoredSimulation>(() =>
     typeof window !== 'undefined' ? readStored() : DEFAULT_STORED
   );
-
-  useEffect(() => {
-    return subscribeToMockDataState(() => setMockRevision((n) => n + 1));
-  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   }, [stored]);
 
   const shouldUseMock = user ? false : shouldUseMockData();
-  void mockRevision;
 
-  const showSimulator = shouldUseMock || config.dev.allowMockData;
-  const isSimulating = shouldUseMock || (showSimulator && stored.enabled);
+  const showSimulator = useMemo(
+    () => shouldUseMock || config.dev.allowMockData,
+    [shouldUseMock, mockDataEnabled],
+  );
+  const isSimulating = useMemo(
+    () => shouldUseMock || (showSimulator && stored.enabled),
+    [shouldUseMock, showSimulator, stored.enabled, mockDataEnabled],
+  );
 
   const setSimulationEnabled = useCallback((enabled: boolean) => {
     setStored((prev) => ({ ...prev, enabled }));

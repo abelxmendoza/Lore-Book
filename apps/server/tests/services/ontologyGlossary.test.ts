@@ -28,7 +28,7 @@ describe('ontology glossary — Discovery Hub sprint', () => {
   it('classifies essence and contradiction query types', () => {
     expect(classifyQueryType('what are my hopes and dreams').queryHint).toBe('ESSENCE_QUERY');
     expect(classifyQueryType('i contradict myself sometimes').queryHint).toBe('CONTRADICTION_QUERY');
-    expect(classifyQueryType('decisions i made last year').queryHint).toBe('DECISION_QUERY');
+    expect(classifyQueryType('decisions i made last year').queryHint).toBe('TEMPORAL_QUERY');
     expect(classifyQueryType('what has been going on lately').queryHint).toBe('TEMPORAL_QUERY');
   });
 

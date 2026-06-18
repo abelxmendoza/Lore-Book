@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { MetricCard } from './MetricCard';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
-import { useMockData, subscribeToMockDataState } from '../../contexts/MockDataContext';
+import { useMockData } from '../../contexts/MockDataContext';
 import { achievementsApi } from '../../api/achievements';
 import { mockDataService } from '../../services/mockDataService';
 import { MOCK_ACHIEVEMENTS, MOCK_APP_ACHIEVEMENTS, MOCK_REAL_LIFE_ACHIEVEMENTS, MOCK_ACHIEVEMENT_STATISTICS } from '../../mocks/achievements';
@@ -323,13 +323,6 @@ export const AchievementsPanel: React.FC = () => {
 
   useEffect(() => {
     void loadData();
-    
-    // Subscribe to mock data toggle changes
-    const unsubscribe = subscribeToMockDataState(() => {
-      void loadData();
-    });
-
-    return unsubscribe;
   }, [loadData]);
 
   if (loading) {

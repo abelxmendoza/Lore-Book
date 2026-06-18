@@ -19,6 +19,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { supabase, useAuth } from '../../lib/supabase';
 import { useCharactersBookData } from '../../store/hooks/useEntityBooks';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { selectHighlightedCharacterIds } from '../../store/selectors';
+import { clearCharacterHighlights } from '../../store/slices/chatSlice';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
@@ -2450,6 +2453,8 @@ type RomanticRelationship = {
 };
 
 export const CharacterBook = () => {
+  const dispatch = useAppDispatch();
+  const highlightedCharacterIds = useAppSelector(selectHighlightedCharacterIds);
   const { user, loading: authLoading } = useAuth();
   const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
   const { isGuest, guestState } = useGuest();
@@ -2593,7 +2598,6 @@ export const CharacterBook = () => {
           ? `Rescanned your conversations — ${total} character${total === 1 ? '' : 's'} restored or promoted. Open any card for the full modal.`
           : 'Conversation rescan complete — your cast is up to date.'
       );
-      window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
     } catch (error) {
       setRescanError(error instanceof Error ? error.message : 'Failed to rescan conversations');
     } finally {
@@ -2672,7 +2676,6 @@ export const CharacterBook = () => {
             if (cancelled || sync.processed <= 0) return;
             invalidateCharactersBook();
             await loadCharacters();
-            window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
           })
           .catch(() => {});
       } catch {
@@ -2701,16 +2704,14 @@ export const CharacterBook = () => {
   const [showFamilyTree, setShowFamilyTree] = useState(false);
   const [showMyFamily, setShowMyFamily] = useState(false);
   useEffect(() => {
-    const handler = (e: Event) => {
-      const ids: string[] = (e as CustomEvent<{ ids: string[] }>).detail?.ids ?? [];
-      if (ids.length > 0) {
-        setRecentlyUpdatedIds(new Set(ids));
-        setTimeout(() => setRecentlyUpdatedIds(new Set()), 4000);
-      }
-    };
-    window.addEventListener('lk:characters-updated', handler);
-    return () => window.removeEventListener('lk:characters-updated', handler);
-  }, []);
+    if (highlightedCharacterIds.length === 0) return;
+    setRecentlyUpdatedIds(new Set(highlightedCharacterIds));
+    const timer = setTimeout(() => {
+      setRecentlyUpdatedIds(new Set());
+      dispatch(clearCharacterHighlights());
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [highlightedCharacterIds, dispatch]);
 
   // Convert entries to MemoryCard format for modal
   useEffect(() => {

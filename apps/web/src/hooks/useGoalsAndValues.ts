@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
-import { useMockData, subscribeToMockDataState, getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { useMockData } from '../contexts/MockDataContext';
 import { useShouldUseMockData } from './useShouldUseMockData';
 import { mockDataService } from '../services/mockDataService';
 import { MOCK_GOALS_VALUES_DATA } from '../mocks/goalsValues';
@@ -193,7 +193,7 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
         hasRealValues: fetchedValues.length, 
         hasRealGoals: fetchedGoals.length,
         hasRealData,
-        globalMockEnabled: getGlobalMockDataEnabled(),
+        globalMockEnabled: isMockDataEnabled,
       });
       setDataSource(useMock ? 'MOCK' : 'REAL');
 
@@ -250,7 +250,7 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
     } finally {
       setLoading(false);
     }
-  }, [isMockDataEnabled, fetchAlignmentSnapshots, fetchDriftObservations]);
+  }, [isMockDataEnabled, shouldUseMock, fetchAlignmentSnapshots, fetchDriftObservations]);
 
   const updateValuePriority = useCallback(async (id: string, priority: number) => {
     try {
@@ -303,14 +303,6 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
 
   useEffect(() => {
     void fetchData();
-  }, [fetchData]);
-
-  // Refresh when mock data toggle changes
-  useEffect(() => {
-    const unsubscribe = subscribeToMockDataState(() => {
-      void fetchData();
-    });
-    return unsubscribe;
   }, [fetchData]);
 
   const getPanelData = useCallback((): GoalsValuesPanelData => {

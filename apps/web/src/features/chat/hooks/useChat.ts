@@ -7,6 +7,7 @@ import { useGuest, GUEST_CHAT_LIMIT } from '../../../contexts/GuestContext';
 import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
+import { invalidateAfterChatIngestion } from '../../../store/invalidateEntityCache';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
 import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
@@ -398,11 +399,7 @@ export const useChat = () => {
             applyGuestLoreUpdates(guestState.guestId, meta.loreUpdates);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
             const ids: string[] | undefined = meta.characterIds;
-            if (ids && ids.length > 0) {
-              window.dispatchEvent(
-                new CustomEvent('lk:characters-updated', { detail: { ids } })
-              );
-            }
+            invalidateAfterChatIngestion({ characterIds: ids });
             dispatchStoryDataUpdated({ scopes: ['all'], characterIds: ids });
           }
 
@@ -501,19 +498,10 @@ export const useChat = () => {
             apiCache.deletePattern(/\/api\/(entries|timeline|chapters|characters|entity-resolution|family-trees|organizations)/);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
             const ids: string[] | undefined = metadata?.characterIds;
-            if (ids && ids.length > 0) {
-              window.dispatchEvent(
-                new CustomEvent('lk:characters-updated', { detail: { ids } })
-              );
-            }
             const locationIds = (metadata?.mentionedEntities as Array<{ id: string; type: string }> | undefined)
               ?.filter((e) => e.type === 'location')
               .map((e) => e.id) ?? [];
-            if (locationIds.length > 0) {
-              window.dispatchEvent(
-                new CustomEvent('lk:locations-updated', { detail: { ids: locationIds } })
-              );
-            }
+            invalidateAfterChatIngestion({ characterIds: ids, locationIds });
             dispatchStoryDataUpdated({
               scopes: ['all', 'skills', 'quests'],
               characterIds: ids,
