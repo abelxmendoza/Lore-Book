@@ -34,10 +34,9 @@ import type {
 
 import { correctionTracker } from './activeLearning/correctionTracker';
 import { characterAuthorityService } from './characterAuthorityService';
+import { queueClaimThroughMrq } from './claimGovernanceBridge';
 import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
-import { memoryReviewQueueService } from './memoryReviewQueueService';
-import { perspectiveService } from './perspectiveService';
 import { provenanceEdgeService } from './provenance/provenanceEdgeService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -71,12 +70,13 @@ export class OmegaMemoryService {
       // O(1) entity lookup by id — avoids O(n) .find() on every claim
       const entityById = new Map(resolvedEntities.map(e => [e.id, e]));
 
-      // Step 4: Detect narrative divergence (observational, non-destructive)
+      // Step 4: Queue claims through MRQ — no direct omega_claim writes
       let divergencesDetected = 0;
+      const committedClaims: Claim[] = [];
+
       for (const claim of claims) {
         const existingClaims = await this.findSimilarClaims(userId, claim);
 
-        // Capture conflicting claims before storeClaim — claim.id is empty until persisted
         let conflictingClaims: typeof existingClaims = [];
         if (await this.conflictDetected(claim, existingClaims)) {
           await this.flagNarrativeDivergence(claim, existingClaims);
@@ -84,87 +84,36 @@ export class OmegaMemoryService {
           conflictingClaims = existingClaims;
         }
 
-        const storedClaim = await this.storeClaim(claim);
-
-        // Write contradiction records now that storedClaim has a real ID
-        if (conflictingClaims.length > 0 && storedClaim.id) {
-          // Continuity event (fire-and-forget)
-          continuityService.recordContradiction(userId, storedClaim, conflictingClaims[0])
-            .catch((err) => logger.warn({ err }, 'Contradiction continuity event failed (non-fatal)'));
-
-          // activeLearning: record as a training signal so the correction tracker
-          // can surface patterns for future model improvement.
-          correctionTracker.recordCorrection(userId, {
-            correction_type: 'entity',
-            original_value: (conflictingClaims[0].text ?? '').substring(0, 500),
-            corrected_value: (storedClaim.text ?? '').substring(0, 500),
-            context: `Contradiction detected for entity ${storedClaim.entity_id}`,
-            metadata: {
-              entity_id: storedClaim.entity_id,
-              claim_id: storedClaim.id,
-              conflicting_claim_id: conflictingClaims[0].id,
-              source: 'contradiction_detection',
-            },
-          }).catch((err: unknown) => logger.warn({ err }, 'correction tracker record failed (non-fatal)'));
-
-          // CONTRADICTS provenance edges — first-class causal graph record
-          Promise.all(
-            conflictingClaims
-              .filter((c) => c.id)
-              .map((conflicting) =>
-                provenanceEdgeService.createEdge({
-                  userId,
-                  sourceId: storedClaim.id,
-                  sourceType: 'omega_claim',
-                  targetId: conflicting.id!,
-                  targetType: 'omega_claim',
-                  relation: 'CONTRADICTS',
-                  confidence: storedClaim.confidence ?? 0.7,
-                  toTruthState: 'DISPUTED',
-                  meta: {
-                    newText:          (storedClaim.text  ?? '').substring(0, 200),
-                    conflictingText:  (conflicting.text   ?? '').substring(0, 200),
-                    entityId:         storedClaim.entity_id,
-                    detectedAt:       new Date().toISOString(),
-                  },
-                })
-              )
-          ).catch((err) => logger.warn({ err }, 'CONTRADICTS edge writes failed (non-fatal)'));
+        const entity = entityById.get(claim.entity_id!);
+        if (!entity) {
+          logger.warn({ userId, entityId: claim.entity_id }, 'Skipping claim — entity not resolved');
+          continue;
         }
-        
-        // Record claim creation event
-        const entity = entityById.get(claim.entity_id);
-        if (entity) {
-          await continuityService.recordClaimCreation(
-            userId,
-            storedClaim,
-            inputText,
-            entity
+
+        const mrqResult = await queueClaimThroughMrq({
+          userId,
+          claim,
+          entity,
+          sourceText: inputText,
+        });
+
+        if (!mrqResult.queued) {
+          logger.warn(
+            { userId, error: mrqResult.error, claimPreview: claim.text?.slice(0, 120) },
+            'Claim MRQ queue failed'
           );
+          continue;
+        }
 
-          // Create perspective claim with default SELF perspective and use MRQ
-          try {
-            const defaultPerspectives = await perspectiveService.getOrCreateDefaultPerspectives(userId);
-            const selfPerspective = defaultPerspectives.find(p => p.type === 'SELF');
-            
-            if (selfPerspective) {
-              // Use MRQ for memory ingestion
-              const { proposal, auto_approved } = await memoryReviewQueueService.ingestMemory(
-                userId,
-                storedClaim,
-                entity,
-                selfPerspective.id,
-                inputText
-              );
-
-              // If not auto-approved, the proposal is queued for review
-              if (!auto_approved) {
-                logger.info({ proposalId: proposal.id, userId }, 'Memory proposal queued for review');
-              }
-            }
-          } catch (error) {
-            logger.info({ err: error, userId }, 'Failed to create perspective claim or MRQ proposal, continuing');
-          }
+        if (mrqResult.claim) {
+          committedClaims.push(mrqResult.claim);
+          await this.handleCommittedClaimSideEffects(
+            userId,
+            mrqResult.claim,
+            inputText,
+            entity,
+            conflictingClaims
+          );
         }
       }
       
@@ -184,7 +133,7 @@ export class OmegaMemoryService {
       
       return {
         entities: resolvedEntities,
-        claims,
+        claims: committedClaims.length > 0 ? committedClaims : claims,
         relationships,
         conflicts_detected: conflictsDetected,
         suggestions,
@@ -1118,7 +1067,61 @@ A contradiction means the claims cannot both be true at the same time.`
   }
 
   /**
-   * Store a claim in the database with embedding
+   * Side effects after MRQ commits a claim (auto-approve or manual approve).
+   */
+  private async handleCommittedClaimSideEffects(
+    userId: string,
+    storedClaim: Claim,
+    inputText: string,
+    entity: Entity,
+    conflictingClaims: Claim[]
+  ): Promise<void> {
+    if (conflictingClaims.length > 0 && storedClaim.id) {
+      continuityService.recordContradiction(userId, storedClaim, conflictingClaims[0])
+        .catch((err) => logger.warn({ err }, 'Contradiction continuity event failed (non-fatal)'));
+
+      correctionTracker.recordCorrection(userId, {
+        correction_type: 'entity',
+        original_value: (conflictingClaims[0].text ?? '').substring(0, 500),
+        corrected_value: (storedClaim.text ?? '').substring(0, 500),
+        context: `Contradiction detected for entity ${storedClaim.entity_id}`,
+        metadata: {
+          entity_id: storedClaim.entity_id,
+          claim_id: storedClaim.id,
+          conflicting_claim_id: conflictingClaims[0].id,
+          source: 'contradiction_detection',
+        },
+      }).catch((err: unknown) => logger.warn({ err }, 'correction tracker record failed (non-fatal)'));
+
+      Promise.all(
+        conflictingClaims
+          .filter((c) => c.id)
+          .map((conflicting) =>
+            provenanceEdgeService.createEdge({
+              userId,
+              sourceId: storedClaim.id,
+              sourceType: 'omega_claim',
+              targetId: conflicting.id!,
+              targetType: 'omega_claim',
+              relation: 'CONTRADICTS',
+              confidence: storedClaim.confidence ?? 0.7,
+              toTruthState: 'DISPUTED',
+              meta: {
+                newText: (storedClaim.text ?? '').substring(0, 200),
+                conflictingText: (conflicting.text ?? '').substring(0, 200),
+                entityId: storedClaim.entity_id,
+                detectedAt: new Date().toISOString(),
+              },
+            })
+          )
+      ).catch((err) => logger.warn({ err }, 'CONTRADICTS edge writes failed (non-fatal)'));
+    }
+
+    await continuityService.recordClaimCreation(userId, storedClaim, inputText, entity);
+  }
+
+  /**
+   * Persist a claim to omega_claims. Intended for MRQ commit paths only.
    */
   async storeClaim(claim: Partial<Claim> & { embedding?: number[] }): Promise<Claim> {
     // Initialise Beta belief from source type and the AI-derived confidence float.
@@ -1581,11 +1584,34 @@ Propose updates that should be reviewed before applying.`
     switch (suggestion.type) {
       case 'new_claim':
         if (suggestion.proposed_data && suggestion.entity_id) {
-          await this.storeClaim({
+          const { data: entity, error } = await supabaseAdmin
+            .from('omega_entities')
+            .select('*')
+            .eq('id', suggestion.entity_id)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (error || !entity) {
+            logger.warn({ err: error, userId, entityId: suggestion.entity_id }, 'approveUpdate: entity not found');
+            break;
+          }
+
+          const claimPayload = {
             ...(suggestion.proposed_data as Partial<Claim>),
             user_id: userId,
             entity_id: suggestion.entity_id,
+          };
+
+          const result = await queueClaimThroughMrq({
+            userId,
+            claim: claimPayload,
+            entity: entity as Entity,
+            sourceText: claimPayload.text ?? 'Approved update suggestion',
           });
+
+          if (!result.queued) {
+            throw new Error(result.error ?? 'Failed to queue approved claim through MRQ');
+          }
         }
         break;
       case 'end_claim':

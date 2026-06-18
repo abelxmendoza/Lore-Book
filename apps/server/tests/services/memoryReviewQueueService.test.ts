@@ -192,7 +192,18 @@ describe('MemoryReviewQueueService', () => {
       } as any);
 
       // Mock auto-approval
-      vi.spyOn(memoryReviewQueueService, 'autoApprove').mockResolvedValue();
+      vi.spyOn(memoryReviewQueueService, 'autoApprove').mockResolvedValue({
+        id: 'claim-1',
+        text: 'Simple fact',
+        user_id: 'user-123',
+        entity_id: 'entity-1',
+        source: 'AI',
+        confidence: 0.4,
+        start_time: new Date().toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as any);
 
       const result = await memoryReviewQueueService.ingestMemory(
         'user-123',

@@ -7,6 +7,7 @@
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
+import type { Claim } from '../types/omegaMemory';
 import type {
   MemoryProposal,
   MemoryDecision,
@@ -183,7 +184,7 @@ Identity-affecting claims include:
     entity: any,
     perspectiveId: string | null,
     sourceText: string
-  ): Promise<{ proposal: MemoryProposal; auto_approved: boolean }> {
+  ): Promise<{ proposal: MemoryProposal; auto_approved: boolean; claim?: Claim }> {
     try {
       // Find affected claims
       const affectedClaimIds = await this.findAffectedClaims(entity.id, claim, userId);
@@ -223,13 +224,13 @@ Identity-affecting claims include:
         throw error;
       }
 
-      // Auto-approve if low risk
+      // Auto-approve if low risk — claim is persisted inside autoApprove
       if (this.shouldBypassReview(riskLevel)) {
-        await this.autoApprove(proposal);
-        return { proposal, auto_approved: true };
+        const storedClaim = await this.autoApprove(proposal);
+        return { proposal, auto_approved: true, claim: storedClaim };
       }
 
-      // Otherwise, enqueue for review
+      // Otherwise, enqueue for review (no omega_claim write yet)
       return { proposal, auto_approved: false };
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to ingest memory with MRQ');
@@ -240,10 +241,9 @@ Identity-affecting claims include:
   /**
    * Auto-approve a proposal
    */
-  async autoApprove(proposal: MemoryProposal): Promise<void> {
+  async autoApprove(proposal: MemoryProposal): Promise<Claim> {
     try {
-      // Commit the claim
-      await this.commitClaim(proposal);
+      const storedClaim = await this.commitClaim(proposal);
 
       // Record decision
       await supabaseAdmin
@@ -278,6 +278,8 @@ Identity-affecting claims include:
         severity: 'INFO',
         reversible: true,
       });
+
+      return storedClaim;
     } catch (error) {
       logger.error({ err: error, proposalId: proposal.id }, 'Failed to auto-approve proposal');
       throw error;
@@ -285,9 +287,9 @@ Identity-affecting claims include:
   }
 
   /**
-   * Commit a claim from a proposal
+   * Commit a claim from a proposal — the only MRQ-approved write path to omega_claims.
    */
-  private async commitClaim(proposal: MemoryProposal): Promise<void> {
+  private async commitClaim(proposal: MemoryProposal): Promise<Claim> {
     try {
       // Create base claim
       const claim = await omegaMemoryService.storeClaim({
@@ -311,6 +313,8 @@ Identity-affecting claims include:
           proposal.perspective_id
         );
       }
+
+      return claim;
     } catch (error) {
       logger.error({ err: error, proposalId: proposal.id }, 'Failed to commit claim');
       throw error;
