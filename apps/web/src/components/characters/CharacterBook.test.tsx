@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router-dom';
 import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -60,12 +59,14 @@ vi.mock('../../lib/supabase', () => {
     supabase: {
       auth: {
         getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
-        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
+        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
       },
       channel: vi.fn(() => channel),
       removeChannel: vi.fn(),
     },
-    useAuth: () => ({ user: { id: 'user-1' }, loading: false })
+    useAuth: () => ({ user: { id: 'user-1' }, loading: false, session: null, signOut: vi.fn() }),
+    isSupabaseConfigured: vi.fn().mockReturnValue(false),
+    getConfigDebug: vi.fn().mockReturnValue({}),
   };
 });
 
@@ -343,11 +344,7 @@ describe('CharacterBook', () => {
     });
 
     function renderImpactBook() {
-      return rtlRender(
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <CharacterBook />
-        </BrowserRouter>
-      );
+      return render(<CharacterBook />);
     }
 
     async function waitForCharactersLoaded() {

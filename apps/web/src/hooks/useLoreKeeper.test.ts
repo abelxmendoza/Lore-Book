@@ -21,12 +21,15 @@ const wrapper = ({ children }: { children: React.ReactNode }) =>
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } })
-    }
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
   },
-  useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
-  isSupabaseConfigured: vi.fn().mockReturnValue(true),
-  getConfigDebug: vi.fn().mockReturnValue({})
+  useAuth: vi.fn(() => ({ user: null, session: null, loading: false, signOut: vi.fn() })),
+  isSupabaseConfigured: vi.fn().mockReturnValue(false),
+  getConfigDebug: vi.fn().mockReturnValue({}),
 }));
 
 // Mock fetchJson to prevent real network requests — hook uses fetchJson, not fetch

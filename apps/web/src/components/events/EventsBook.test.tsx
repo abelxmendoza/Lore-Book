@@ -21,6 +21,19 @@ vi.mock('../../contexts/MockDataContext', () => ({
   MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
+vi.mock('../../contexts/GuestContext', () => ({
+  useGuest: () => ({
+    isGuest: false,
+    guestState: null,
+    startGuestSession: vi.fn(),
+    endGuestSession: vi.fn(),
+    incrementChatMessage: vi.fn(() => false),
+    canSendChatMessage: () => true,
+  }),
+  GUEST_CHAT_LIMIT: 5,
+  GuestProvider: ({ children }: { children?: React.ReactNode }) => children,
+}));
+
 vi.mock('./EventDetailModal', () => ({ EventDetailModal: () => null }));
 vi.mock('../memory-explorer/MemoryDetailModal', () => ({ MemoryDetailModal: () => null }));
 

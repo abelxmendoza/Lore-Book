@@ -3,8 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import type { Character } from './CharacterProfileCard';
 
-vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(),
+vi.mock('../../store/api/entitiesApi', () => ({
+  useGetCharactersBookQuery: vi.fn(() => ({ dataUpdatedAt: 0, refetch: vi.fn() })),
+}));
+
+vi.mock('../../store/invalidateEntityCache', () => ({
+  invalidateEntityTags: vi.fn(),
 }));
 
 const baseCharacter = (overrides: Partial<Character>): Character => ({

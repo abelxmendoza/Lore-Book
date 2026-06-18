@@ -5,6 +5,11 @@ import { Router } from './Router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GuestProvider } from '../contexts/GuestContext';
 import { EntityModalProvider } from '../contexts/EntityModalContext';
+import { ReduxProvider } from '../store/ReduxProvider';
+
+function renderRouter(ui: React.ReactElement) {
+  return render(<ReduxProvider>{ui}</ReduxProvider>);
+}
 
 // Mock AuthGate to bypass auth for testing
 vi.mock('../components/AuthGate', () => ({
@@ -23,10 +28,15 @@ vi.mock('../routes/Landing', () => ({
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } })
-    }
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
   },
-  useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
+  useAuth: vi.fn(() => ({ user: null, session: null, loading: false, signOut: vi.fn() })),
+  isSupabaseConfigured: vi.fn().mockReturnValue(false),
+  getConfigDebug: vi.fn().mockReturnValue({}),
 }));
 
 describe('Router Integration Tests - Black Screen Prevention', () => {
@@ -35,7 +45,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should render Router without crashing', async () => {
-    const { container } = render(
+    const { container } = renderRouter(
       <BrowserRouter>
         <ErrorBoundary>
           <GuestProvider>
@@ -54,7 +64,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle root route (/)', async () => {
-    render(
+    renderRouter(
       <MemoryRouter initialEntries={['/']}>
         <ErrorBoundary>
           <GuestProvider>
@@ -74,7 +84,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /chat route', async () => {
-    render(
+    renderRouter(
       <MemoryRouter initialEntries={['/chat']}>
         <ErrorBoundary>
           <GuestProvider>
@@ -93,7 +103,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /timeline route', async () => {
-    render(
+    renderRouter(
       <MemoryRouter initialEntries={['/timeline']}>
         <ErrorBoundary>
           <GuestProvider>
@@ -112,7 +122,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle 404 routes gracefully', async () => {
-    const { container } = render(
+    const { container } = renderRouter(
       <MemoryRouter initialEntries={['/non-existent-route']}>
         <ErrorBoundary>
           <GuestProvider>
@@ -132,7 +142,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
 
   it('should not show black screen on route errors', async () => {
     // Test that ErrorBoundary catches errors
-    const { container } = render(
+    const { container } = renderRouter(
       <MemoryRouter initialEntries={['/']}>
         <ErrorBoundary>
           <GuestProvider>

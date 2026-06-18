@@ -11,10 +11,12 @@ vi.mock('../../api/entitySuggestions', () => ({
   },
 }));
 
-vi.mock('../../api/selfCharacter', () => ({
-  selfCharacterApi: {
-    rescanConversations: vi.fn(),
-  },
+vi.mock('../../store/api/entitiesApi', () => ({
+  useGetCharactersBookQuery: vi.fn(() => ({ dataUpdatedAt: 0, refetch: vi.fn() })),
+}));
+
+vi.mock('../../store/invalidateEntityCache', () => ({
+  invalidateEntityTags: vi.fn(),
 }));
 
 describe('DetectedCharacterSuggestions', () => {

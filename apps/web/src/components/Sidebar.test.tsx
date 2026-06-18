@@ -16,7 +16,17 @@ vi.mock('react-router-dom', async () => {
 });
 
 vi.mock('../lib/supabase', () => ({
-  useAuth: () => ({ user: { id: 'user-1' } }),
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
+  },
+  useAuth: () => ({ user: { id: 'user-1' }, session: null, loading: false, signOut: vi.fn() }),
+  isSupabaseConfigured: vi.fn().mockReturnValue(false),
+  getConfigDebug: vi.fn().mockReturnValue({}),
 }));
 
 vi.mock('../hooks/useAccountAuthority', () => ({
