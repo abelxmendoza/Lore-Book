@@ -39,9 +39,22 @@ export type LoreAssetCardProps = {
   onRevise?: (asset: LoreAsset) => void;
   onRefresh?: (asset: LoreAsset) => void;
   refreshing?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  highlighted?: boolean;
+  onToggleSelect?: (asset: LoreAsset) => void;
 };
 
-export function LoreAssetCard({ asset, onRevise, onRefresh, refreshing }: LoreAssetCardProps) {
+export function LoreAssetCard({
+  asset,
+  onRevise,
+  onRefresh,
+  refreshing,
+  selectable,
+  selected,
+  highlighted,
+  onToggleSelect,
+}: LoreAssetCardProps) {
   const Icon = KIND_ICONS[asset.assetKind];
   const canRefresh =
     asset.stale &&
@@ -49,9 +62,22 @@ export function LoreAssetCard({ asset, onRevise, onRefresh, refreshing }: LoreAs
 
   return (
     <div
-      className="flex gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50 group hover:border-zinc-700 transition-colors"
+      className={`flex gap-3 px-4 py-3 border rounded-lg bg-zinc-900/50 group transition-colors ${
+        highlighted ? 'border-violet-400/60 ring-1 ring-violet-400/30' : 'border-zinc-800 hover:border-zinc-700'
+      } ${selected ? 'bg-violet-400/5' : ''}`}
       data-testid={`lore-asset-${asset.id}`}
+      id={`lore-asset-${asset.artifactType}-${asset.id}`}
     >
+      {selectable && (
+        <label className="flex items-start pt-2 shrink-0 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect?.(asset)}
+            className="rounded border-zinc-600"
+          />
+        </label>
+      )}
       <div className="shrink-0 mt-0.5">
         {asset.thumbnailUrl ? (
           <img

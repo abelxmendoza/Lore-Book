@@ -14,6 +14,8 @@ import {
   type RefreshableProjectionType,
 } from '../services/projectionRefreshService';
 import type { TruthState } from '../services/provenance';
+import { buildLoreConstellation } from '../services/loreConstellationService';
+import { exportLorePack } from '../services/lorePackExportService';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -95,6 +97,54 @@ router.post(
   })
 );
 
+// GET /api/artifacts/constellation
+router.get(
+  '/constellation',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const centerId = typeof req.query.centerId === 'string' ? req.query.centerId : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const constellation = await buildLoreConstellation(userId, { centerId, limit });
+    res.json(constellation);
+  })
+);
+
+const exportBodySchema = z.object({
+  assets: z.array(z.object({
+    id: z.string(),
+    artifactType: z.string(),
+  })).min(1).max(100),
+});
+
+// POST /api/artifacts/export
+router.post(
+  '/export',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = exportBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const userId = req.user!.id;
+    const pack = await exportLorePack(
+      userId,
+      parsed.data.assets.map((a) => ({
+        id: a.id,
+        artifactType: a.artifactType as ArtifactIndexType,
+      }))
+    );
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="lore-pack-${new Date().toISOString().slice(0, 10)}.json"`
+    );
+    res.json(pack);
+  })
+);
+
 // POST /api/artifacts/:id/refresh
 router.post(
   '/:id/refresh',
@@ -133,6 +183,14 @@ router.get(
     const result = await artifactRegistry.get(userId, id, type);
     if (!result) {
       return res.status(404).json({ error: 'Artifact not found' });
+    }
+
+    if (req.query.view === 'asset') {
+      const { presentLoreAsset } = await import('../services/loreAssetPresentation');
+      return res.json({
+        asset: presentLoreAsset(result.entry, result.record),
+        record: result.record,
+      });
     }
 
     res.json(result);

@@ -8,6 +8,8 @@ import { fetchJson } from '../lib/api';
 import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
 import {
   fetchLoreAssets,
+  exportLorePack,
+  downloadLorePack,
   LORE_ASSET_TAB_LABELS,
   type LoreAsset,
   type LoreAssetKind,
@@ -15,6 +17,7 @@ import {
   type LoreAssetTruthState,
 } from '../api/loreAssets';
 import { LoreAssetCard } from '../components/loreAssets/LoreAssetCard';
+import { LoreConstellationView } from '../components/loreAssets/LoreConstellationView';
 
 const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
 
@@ -65,7 +68,7 @@ const MOCK_ASSETS: LoreAsset[] = [
   },
 ];
 
-type GalleryTab = LoreAssetKind | 'stale' | 'audit';
+type GalleryTab = LoreAssetKind | 'stale' | 'audit' | 'constellation';
 
 interface RevisePayload {
   fromState: LoreAssetTruthState;
@@ -212,7 +215,11 @@ function ReviseModal({
   );
 }
 
-const GALLERY_TABS: GalleryTab[] = ['moment', 'portrait', 'evidence', 'pattern', 'stale', 'audit'];
+const GALLERY_TABS: GalleryTab[] = ['moment', 'portrait', 'evidence', 'pattern', 'constellation', 'stale', 'audit'];
+
+function assetKey(asset: LoreAsset) {
+  return `${asset.artifactType}:${asset.id}`;
+}
 
 export default function WhatAIKnows() {
   const { user } = useAuth();
@@ -230,12 +237,18 @@ export default function WhatAIKnows() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [revising, setRevising] = useState<LoreAsset | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+
+  const highlightAssetId = searchParams.get('assetId');
+  const highlightArtifactType = searchParams.get('artifactType');
+  const constellationCenterId = searchParams.get('centerId') ?? undefined;
 
   const staleAssets = useMemo(() => assets.filter(a => a.stale), [assets]);
 
   const visibleAssets = useMemo(() => {
     if (tab === 'stale') return staleAssets;
-    if (tab === 'audit') return [];
+    if (tab === 'audit' || tab === 'constellation') return [];
     return assets.filter(a => a.assetKind === tab);
   }, [assets, tab, staleAssets]);
 
@@ -300,6 +313,39 @@ export default function WhatAIKnows() {
     }
   }, [isMockData, staleAssets, load]);
 
+  useEffect(() => {
+    if (!highlightAssetId || !highlightArtifactType) return;
+    const el = document.getElementById(`lore-asset-${highlightArtifactType}-${highlightAssetId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightAssetId, highlightArtifactType, loading, tab]);
+
+  const toggleSelect = useCallback((asset: LoreAsset) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      const key = assetKey(asset);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const exportSelected = useCallback(async () => {
+    if (selectedKeys.size === 0 || isMockData) return;
+    setExporting(true);
+    setError('');
+    try {
+      const selections = assets
+        .filter((a) => selectedKeys.has(assetKey(a)))
+        .map((a) => ({ id: a.id, artifactType: a.artifactType }));
+      const pack = await exportLorePack(selections);
+      downloadLorePack(pack);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [assets, isMockData, selectedKeys]);
+
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -311,7 +357,15 @@ export default function WhatAIKnows() {
     if (requested && GALLERY_TABS.includes(requested as GalleryTab)) {
       setTab(requested as GalleryTab);
     }
-  }, [searchParams]);
+    const assetId = searchParams.get('assetId');
+    const artifactType = searchParams.get('artifactType');
+    if (assetId && artifactType) {
+      const match = assets.find((a) => a.id === assetId && a.artifactType === artifactType);
+      if (match && match.assetKind !== tab && tab !== 'constellation') {
+        setTab(match.assetKind);
+      }
+    }
+  }, [searchParams, assets, tab]);
 
   useEffect(() => {
     if (isMockData || tab !== 'audit' || auditLog.length > 0) return;
@@ -329,7 +383,7 @@ export default function WhatAIKnows() {
 
   const tabCount = (t: GalleryTab) => {
     if (t === 'stale') return staleAssets.length;
-    if (t === 'audit') return null;
+    if (t === 'audit' || t === 'constellation') return null;
     return countsByKind[t as LoreAssetKind] ?? 0;
   };
 
@@ -356,11 +410,19 @@ export default function WhatAIKnows() {
               <RefreshCw className="w-4 h-4" />
             </button>
             <button
+              onClick={() => void exportSelected()}
+              disabled={selectedKeys.size === 0 || exporting || isMockData}
+              className="flex items-center gap-2 px-4 py-2 text-sm border border-violet-500/40 rounded-lg text-violet-200 hover:bg-violet-500/10 disabled:opacity-40 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {exporting ? 'Exporting…' : `Lore Pack (${selectedKeys.size})`}
+            </button>
+            <button
               onClick={() => window.open('/api/identity/export', '_blank')}
               className="flex items-center gap-2 px-4 py-2 text-sm border border-zinc-700 rounded-lg text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
             >
               <Download className="w-4 h-4" />
-              Export
+              Full export
             </button>
           </div>
         </div>
@@ -399,7 +461,7 @@ export default function WhatAIKnows() {
           </div>
         )}
 
-        {!loading && tab !== 'audit' && tab === 'stale' && staleAssets.length > 0 && (
+        {!loading && tab !== 'audit' && tab !== 'constellation' && tab === 'stale' && staleAssets.length > 0 && (
           <div className="flex items-center justify-between gap-3 px-4 py-3 border border-amber-400/20 rounded-lg bg-amber-400/5 mb-4">
             <p className="text-amber-200/80 text-sm">
               {staleAssets.length} derived summar{staleAssets.length === 1 ? 'y is' : 'ies are'} out of date.
@@ -415,8 +477,26 @@ export default function WhatAIKnows() {
           </div>
         )}
 
-        {!loading && tab !== 'audit' && (
+        {!loading && tab === 'constellation' && (
+          <LoreConstellationView
+            centerId={constellationCenterId}
+            onNodeClick={(node) => {
+              setSearchParams({
+                tab: node.kind,
+                assetId: node.id,
+                artifactType: node.artifactType,
+              });
+            }}
+          />
+        )}
+
+        {!loading && tab !== 'audit' && tab !== 'constellation' && (
           <div className="space-y-2">
+            {selectedKeys.size > 0 && (
+              <p className="text-xs text-zinc-500 px-1">
+                {selectedKeys.size} selected for Lore Pack export
+              </p>
+            )}
             {visibleAssets.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-600">
                 <Sparkles className="w-8 h-8" />
@@ -431,6 +511,13 @@ export default function WhatAIKnows() {
                 <LoreAssetCard
                   key={`${asset.artifactType}-${asset.id}`}
                   asset={asset}
+                  selectable
+                  selected={selectedKeys.has(assetKey(asset))}
+                  highlighted={
+                    highlightAssetId === asset.id &&
+                    highlightArtifactType === asset.artifactType
+                  }
+                  onToggleSelect={toggleSelect}
                   onRevise={asset.truthState ? setRevising : undefined}
                   onRefresh={refreshAsset}
                   refreshing={refreshingId === asset.id || refreshingAll}

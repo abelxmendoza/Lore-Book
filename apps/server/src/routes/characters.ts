@@ -2359,6 +2359,23 @@ router.get('/:id/conversations', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// GET /api/characters/:id/evidence
+router.get('/:id/evidence', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { getCharacterEvidenceLocker } = await import('../services/characterEvidenceService');
+    const locker = await getCharacterEvidenceLocker(userId, characterId);
+    if (!locker) return res.status(404).json({ error: 'Character not found' });
+    res.json({ success: true, locker });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character evidence locker');
+    res.status(500).json({ error: 'Failed to get character evidence' });
+  }
+});
+
 // GET /api/characters/:id/knowledge-base
 // Unified entity knowledge bundle: facts, crystallized claims, timeline, identity merges, related entities.
 router.get('/:id/knowledge-base', requireAuth, async (req: AuthenticatedRequest, res) => {
