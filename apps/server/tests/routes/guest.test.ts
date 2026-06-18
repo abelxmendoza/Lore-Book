@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
-vi.mock('../logger', () => ({
+vi.mock('../../src/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('../middleware/rateLimit', () => ({
+vi.mock('../../src/middleware/rateLimit', () => ({
   createRateLimiter: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
@@ -15,8 +15,8 @@ const mockStream = async function* () {
   yield { choices: [{ delta: { content: 'guest!' } }] };
 };
 
-vi.mock('../services/guestChatService', () => ({
-  guestChatStream: vi.fn().mockResolvedValue({
+vi.mock('../../src/services/guestChatService', () => ({
+  guestChatStream: vi.fn().mockImplementation(async () => ({
     stream: mockStream(),
     loreUpdates: {
       characters: [{ name: 'Alex', role: 'friend' }],
@@ -24,7 +24,7 @@ vi.mock('../services/guestChatService', () => ({
       locations: [],
       mentionedEntities: [{ id: 'c1', name: 'Alex', type: 'character' }],
     },
-  }),
+  })),
 }));
 
 describe('guest routes', () => {

@@ -4,16 +4,22 @@ import { BrowserRouter } from 'react-router-dom';
 import { ChatThreadProvider } from '../contexts/ChatThreadContext';
 import { LoreKeeperProvider } from '../contexts/LoreKeeperContext';
 import { MockDataProvider } from '../contexts/MockDataContext';
+import { CurrentContextProvider } from '../contexts/CurrentContextContext';
+import { ReduxProvider } from '../store/ReduxProvider';
 
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <MockDataProvider>
-        <LoreKeeperProvider>
-          <ChatThreadProvider>{children}</ChatThreadProvider>
-        </LoreKeeperProvider>
-      </MockDataProvider>
-    </BrowserRouter>
+    <ReduxProvider>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChatThreadProvider>
+          <MockDataProvider>
+            <LoreKeeperProvider>
+              <CurrentContextProvider>{children}</CurrentContextProvider>
+            </LoreKeeperProvider>
+          </MockDataProvider>
+        </ChatThreadProvider>
+      </BrowserRouter>
+    </ReduxProvider>
   );
 };
 

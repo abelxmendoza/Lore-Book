@@ -23,6 +23,18 @@ vi.mock('../hooks/useAccountAuthority', () => ({
   useAccountAuthority: () => ({ authority: null, loading: false, error: null, refresh: vi.fn() }),
 }));
 
+vi.mock('../contexts/GuestContext', () => ({
+  GUEST_CHAT_LIMIT: 5,
+  useGuest: () => ({
+    isGuest: false,
+    guestState: null,
+    startGuestSession: vi.fn(),
+    endGuestSession: vi.fn(),
+    incrementChatMessage: vi.fn(() => false),
+    canSendChatMessage: () => true,
+  }),
+}));
+
 vi.mock('../middleware/roleGuard', () => ({
   canAccessAdmin: () => false,
 }));

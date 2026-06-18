@@ -1196,12 +1196,14 @@ async function loadTextualCandidates(
   for (const entry of (entries ?? []) as any[]) {
     const summaryText = String(entry.summary ?? '');
     const bodyText = String(entry.content ?? '');
-    const displayText = summaryText || bodyText;
     // Match the target against the full entry (summary + body). Auto-generated
     // summaries often omit the person named in the body, so matching on summary
     // alone silently dropped relevant episodes from PERSON/RELATIONSHIP queries.
     const matchText = `${summaryText} ${bodyText}`.trim();
     const matchesTarget = includeByIntent(matchText);
+    const displayText = summaryText && (!wantsTarget || includeByIntent(summaryText))
+      ? summaryText
+      : matchText || summaryText || bodyText;
     if (temporalWindow && !occurredInWindow(entry.date, temporalWindow)) continue;
     if (wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
@@ -1769,7 +1771,8 @@ function boostCandidatesForIntent(candidates: Candidate[], intent: WorkingMemory
 function selectBudget(
   candidates: Candidate[],
   maxItems: number,
-  intent: WorkingMemoryIntent
+  intent: WorkingMemoryIntent,
+  target?: string | null
 ): { selected: WorkingMemoryItem[]; rejected: Array<WorkingMemoryItem & { rejectedReason: string }> } {
   const boosted = boostCandidatesForIntent(candidates, intent);
   const ranked = boosted
@@ -1779,8 +1782,17 @@ function selectBudget(
   const quota = INTENT_QUOTA[intent];
   const mustInclude: WorkingMemoryItem[] = [];
   if (quota) {
+    const targetKey = normalizeNameKey(target ?? '');
     for (const type of quota.types) {
-      const picks = ranked.filter((item) => item.type === type).slice(0, quota.min);
+      const typed = ranked.filter((item) => item.type === type);
+      const targetMatched = targetKey
+        ? typed.filter((item) => {
+            const targetText = item.type === 'episode' ? item.content : `${item.title} ${item.content}`;
+            return normalizeNameKey(targetText).includes(targetKey);
+          })
+        : typed;
+      const picks = [...targetMatched, ...typed.filter((item) => !targetMatched.some((matched) => matched.id === item.id))]
+        .slice(0, quota.min);
       for (const pick of picks) {
         if (!mustInclude.some((m) => m.id === pick.id)) mustInclude.push(pick);
       }
@@ -1899,7 +1911,7 @@ export async function assembleWorkingMemory(
     seenIds.add(c.id);
     return true;
   });
-  const { selected, rejected } = selectBudget(deduped, maxItems, intent);
+  const { selected, rejected } = selectBudget(deduped, maxItems, intent, target);
   const rankingMs = Date.now() - rankingStarted;
   const distributed = distribute(selected);
 

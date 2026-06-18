@@ -158,9 +158,9 @@ describe('CharacterBook', () => {
   it('should render empty state when no characters', () => {
     render(<CharacterBook />);
     // Component should render - check for either "Character Book" header or "No characters found"
-    const characterBookHeader = screen.queryByText(/Character Book/i);
+    const characterBookHeader = screen.queryAllByText(/Character Book/i);
     const noCharacters = screen.queryByText(/No characters found/i);
-    expect(characterBookHeader || noCharacters).toBeTruthy();
+    expect(characterBookHeader.length > 0 || noCharacters).toBeTruthy();
   });
 
   it('should render characters when available', async () => {
@@ -405,7 +405,7 @@ describe('CharacterBook', () => {
         expect(cards.some((card) => card.textContent?.includes('High Impact Minor'))).toBe(true);
         expect(cards.every((card) => !card.textContent?.includes('Low Impact Minor'))).toBe(true);
       });
-    }, 15_000);
-  });
+  }, 15_000);
 });
 
+});

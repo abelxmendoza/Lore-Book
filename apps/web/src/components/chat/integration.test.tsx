@@ -6,6 +6,7 @@ import { GuestProvider } from '../../contexts/GuestContext';
 import { MockDataProvider } from '../../contexts/MockDataContext';
 import { CurrentContextProvider } from '../../contexts/CurrentContextContext';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
+import { ReduxProvider } from '../../store/ReduxProvider';
 
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn().mockResolvedValue({})
@@ -88,15 +89,17 @@ vi.mock('../../lib/monitoring', () => ({
 
 function ChatWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <BrowserRouter>
-      <MockDataProvider>
-        <CurrentContextProvider>
-          <GuestProvider>
-            {children}
-          </GuestProvider>
-        </CurrentContextProvider>
-      </MockDataProvider>
-    </BrowserRouter>
+    <ReduxProvider>
+      <BrowserRouter>
+        <MockDataProvider>
+          <CurrentContextProvider>
+            <GuestProvider>
+              {children}
+            </GuestProvider>
+          </CurrentContextProvider>
+        </MockDataProvider>
+      </BrowserRouter>
+    </ReduxProvider>
   );
 }
 
