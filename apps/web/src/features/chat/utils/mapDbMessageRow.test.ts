@@ -72,4 +72,20 @@ describe('mapDbMessageRow', () => {
       entityEdges: 0,
     });
   });
+
+  it('hoists creationOutcomes from durable metadata onto the Message', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-4',
+      role: 'assistant',
+      content: 'reply',
+      created_at: '2026-06-17T12:00:00.000Z',
+      metadata: {
+        creationOutcomes: [{ mention: 'Juan', action: 'create', authority: 'core' }],
+        creationOutcomeSummary: 'started a record for Juan',
+      },
+    });
+
+    expect(message.creationOutcomes).toEqual([{ mention: 'Juan', action: 'create', authority: 'core' }]);
+    expect(message.creationOutcomeSummary).toBe('started a record for Juan');
+  });
 });

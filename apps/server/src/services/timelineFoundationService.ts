@@ -24,6 +24,7 @@
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
+import { computeSourceInputVersion } from './projectionVersion';
 import { supabaseAdmin } from './supabaseClient';
 
 // ── Event type classification ─────────────────────────────────────────────────
@@ -295,6 +296,8 @@ class TimelineFoundationService {
       }
 
       if (!resolvedEventId) {
+        const computedFromVersion = await computeSourceInputVersion(userId, [entry.id]);
+
         // Create new resolved_event
         const { data: newResolved, error: resolvedErr } = await supabaseAdmin
           .from('resolved_events')
@@ -312,6 +315,7 @@ class TimelineFoundationService {
               generated_by: 'timeline_foundation',
               source_entry_id: entry.id,
               content_hash: contentHash,
+              computed_from_version: computedFromVersion,
               emotional_intensity: entry.emotional_intensity,
             },
           })
@@ -447,6 +451,99 @@ class TimelineFoundationService {
         : null,
       sourceEntryIds: e.source_entry_ids ?? [],
     }));
+  }
+
+  /**
+   * Re-derive a single resolved_event from its source journal entry.
+   * Clears stale metadata after a source memory revision.
+   */
+  async refreshResolvedEvent(userId: string, resolvedEventId: string): Promise<boolean> {
+    const { data: resolved } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .eq('id', resolvedEventId)
+      .maybeSingle();
+
+    if (!resolved) return false;
+
+    const meta = (resolved.metadata ?? {}) as Record<string, unknown>;
+    const sourceEntryId = meta.source_entry_id as string | undefined;
+    if (!sourceEntryId) return false;
+
+    const { data: entry } = await supabaseAdmin
+      .from('journal_entries')
+      .select('id, date, content, summary, mood, tags, emotional_intensity, metadata')
+      .eq('user_id', userId)
+      .eq('id', sourceEntryId)
+      .maybeSingle();
+
+    if (!entry || isBadContent(entry.content)) return false;
+
+    const classified = classifyEntry(
+      entry.content,
+      entry.tags ?? [],
+      entry.mood,
+      entry.summary
+    );
+    const contentHash = (entry.metadata as Record<string, unknown> | null)?.contentHash as
+      | string
+      | undefined;
+    const computedFromVersion = await computeSourceInputVersion(userId, [entry.id]);
+
+    const {
+      invalidated_at: _invAt,
+      invalidation_reason: _invReason,
+      invalidated_source_id: _invSrc,
+      invalidated_source_type: _invType,
+      stale: _stale,
+      ...restMeta
+    } = meta;
+
+    const newMeta = {
+      ...restMeta,
+      generated_by: 'timeline_foundation',
+      source_entry_id: entry.id,
+      content_hash: contentHash,
+      computed_from_version: computedFromVersion,
+      stale: false,
+      refreshed_at: new Date().toISOString(),
+    };
+
+    const { error: updateErr } = await supabaseAdmin
+      .from('resolved_events')
+      .update({
+        title: classified.title,
+        summary: classified.summary,
+        type: classified.eventType,
+        start_time: entry.date,
+        confidence: classified.confidence,
+        tags: entry.tags ?? [],
+        metadata: newMeta,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', resolvedEventId)
+      .eq('user_id', userId);
+
+    if (updateErr) {
+      logger.error({ error: updateErr, resolvedEventId }, 'Failed to refresh resolved_event');
+      return false;
+    }
+
+    await supabaseAdmin
+      .from('character_timeline_events')
+      .update({
+        event_title: classified.title,
+        event_summary: classified.summary,
+        event_type: classified.eventType,
+        event_date: entry.date,
+        emotional_impact: classified.emotionalImpact,
+        confidence: classified.confidence,
+      })
+      .eq('user_id', userId)
+      .eq('event_id', resolvedEventId);
+
+    return true;
   }
 }
 

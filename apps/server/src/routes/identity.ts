@@ -10,6 +10,7 @@ import {
 import { buildAnalyticsContext, runLegacyAnalytics } from '../services/analytics/orchestrator';
 import { personaService } from '../services/personaService';
 import { correctionAuthority } from '../services/provenance';
+import { artifactRegistry } from '../services/artifactRegistry';
 import { supabaseAdmin } from '../services/supabaseClient';
 import type { ArtifactType, TruthState } from '../services/provenance';
 
@@ -151,40 +152,8 @@ router.get('/what-ai-knows', requireAuth, async (req: AuthenticatedRequest, res)
   const userId = req.user!.id;
   const limit  = Math.min(Number(req.query.limit ?? 100), 500);
 
-  const [journalRes, insightRes, entityRes, irRes] = await Promise.all([
-    supabaseAdmin
-      .from('journal_entries')
-      .select('id, title, content, metadata, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit),
-    supabaseAdmin
-      .from('insights')
-      .select('id, content, metadata, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabaseAdmin
-      .from('entities')
-      .select('id, canonical_name, type, metadata, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(200),
-    supabaseAdmin
-      .from('entry_ir')
-      .select('id, summary, confidence, metadata, created_at')
-      .eq('user_id', userId)
-      .in('status', ['PENDING', 'PROMOTED'])
-      .order('created_at', { ascending: false })
-      .limit(50),
-  ]);
-
-  res.json({
-    journal_entries:  journalRes.data  ?? [],
-    insights:         insightRes.data  ?? [],
-    entities:         entityRes.data   ?? [],
-    entry_ir:         irRes.data       ?? [],
-  });
+  const data = await artifactRegistry.listGrouped(userId, limit);
+  res.json(data);
 });
 
 // ─── GET /api/identity/export ─────────────────────────────────────────────────

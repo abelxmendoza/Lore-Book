@@ -7,6 +7,7 @@ import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPa
 import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
 import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
 import { PersonaChip } from './PersonaChip';
+import { CreationOutcomePanel } from '../components/CreationOutcomePanel';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -129,6 +130,16 @@ export type Message = {
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
   continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
   mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  creationOutcomes?: Array<{
+    mention: string;
+    action: 'create' | 'merge' | 'defer' | 'reject';
+    entityId?: string;
+    entityName?: string;
+    reason?: string;
+    candidates?: Array<{ character_id: string; name: string; subtitle?: string }>;
+    authority?: 'core' | 'legacy' | 'shadow';
+  }>;
+  creationOutcomeSummary?: string | null;
   suggestedActions?: ChatSuggestedAction[];
 };
 
@@ -592,6 +603,14 @@ export const ChatMessage = ({
                 </span>
               ))}
             </div>
+          )}
+
+          {/* P1 creation protocol outcomes — durable records started/linked/deferred this turn */}
+          {!isUser && message.creationOutcomes && message.creationOutcomes.length > 0 && (
+            <CreationOutcomePanel
+              outcomes={message.creationOutcomes}
+              summary={message.creationOutcomeSummary}
+            />
           )}
 
           {/* Active persona chip — always visible so users know which mode is active */}

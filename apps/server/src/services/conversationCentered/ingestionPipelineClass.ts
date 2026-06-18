@@ -57,7 +57,7 @@ import { biometricExtractor } from './biometricExtractor';
 import { gymSocialDetector } from './gymSocialDetector';
 import { interestDetector } from './interestDetector';
 import { interestTracker } from './interestTracker';
-// import { memoryReviewQueueService } from '../memoryReviewQueueService';
+import { queueExtractedUnitForReview } from './ingestionMemoryBridge';
 import type { Message, Utterance, ExtractedUnit, NormalizationResult } from '../../types/conversationCentered';
 import { questExtractor } from '../quests/questExtractor';
 import { skillExtractionService } from '../skills/skillExtractionService';
@@ -869,25 +869,13 @@ export class ConversationIngestionPipeline {
    */
   private async enqueueMemoryReviewIfNeeded(
     userId: string,
-    unit: ExtractedUnit
+    unit: ExtractedUnit,
+    sourceText?: string
   ): Promise<void> {
-    // Check if unit affects identity, contradicts, or has high confidence
-    const shouldReview =
-      unit.type === 'CLAIM' ||
-      unit.type === 'PERCEPTION' ||
-      unit.confidence >= 0.8 ||
-      unit.entity_ids.length > 0; // Affects entities
-
-    if (shouldReview) {
-      // Create MRQ proposal
-      // Note: This is a simplified version - adjust based on your MRQ service
-      try {
-        // TODO: Integrate with memoryReviewQueueService
-      // await memoryReviewQueueService.createProposalFromUnit(userId, unit);
-        logger.debug({ unitId: unit.id }, 'Unit queued for review');
-      } catch (error) {
-        logger.warn({ error, unitId: unit.id }, 'Failed to queue unit for review');
-      }
+    try {
+      await queueExtractedUnitForReview(userId, unit, sourceText);
+    } catch (error) {
+      logger.warn({ error, unitId: unit.id }, 'Failed to queue unit for review');
     }
   }
 
@@ -1719,7 +1707,16 @@ export class ConversationIngestionPipeline {
           }
 
           // Step 11: Enqueue for memory review if needed
-          await this.enqueueMemoryReviewIfNeeded(userId, savedUnit);
+          const unitForReview: ExtractedUnit = {
+            ...savedUnit,
+            entity_ids:
+              savedUnit.entity_ids?.length > 0 ? savedUnit.entity_ids : _resolvedEntityIds,
+          };
+          await this.enqueueMemoryReviewIfNeeded(
+            userId,
+            unitForReview,
+            unit.content || normalized.normalized_text
+          );
         }
       }
 

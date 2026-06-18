@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Brain, User, AlertCircle, CheckCircle2,
-  Clock, Download, ChevronDown, ChevronRight, RefreshCw, X,
+  Clock, Download, ChevronDown, ChevronRight, RefreshCw, X, Layers,
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
@@ -85,6 +85,35 @@ interface MutationRecord {
   created_at: string;
 }
 
+interface ArtifactProjection {
+  id: string;
+  type: 'biography_snapshot' | 'timeline_event';
+  title?: string;
+  summary?: string;
+  stale?: boolean;
+  createdAt: string;
+}
+
+interface ArtifactListResponse {
+  artifacts: ArtifactProjection[];
+  total: number;
+}
+
+interface ProjectionRefreshResponse {
+  refreshed: boolean;
+  type: RefreshableProjectionType;
+  artifactId: string;
+  artifact?: ArtifactProjection;
+  message?: string;
+}
+
+interface RefreshStaleResponse {
+  results: ProjectionRefreshResponse[];
+  refreshed: number;
+}
+
+type RefreshableProjectionType = 'biography_snapshot' | 'timeline_event';
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const TRUTH_STATE_COLORS: Record<TruthState, string> = {
@@ -110,6 +139,14 @@ function TruthBadge({ state }: { state: TruthState | undefined }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${TRUTH_STATE_COLORS[s]}`}>
       {TRUTH_STATE_LABELS[s]}
+    </span>
+  );
+}
+
+function StaleBadge() {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium text-amber-400 bg-amber-400/10 border-amber-400/20">
+      needs refresh
     </span>
   );
 }
@@ -301,6 +338,49 @@ function EntityRow({ entity, onRevise }: { entity: Entity; onRevise: (id: string
   );
 }
 
+function ProjectionRow({
+  projection,
+  refreshing,
+  onRefresh,
+}: {
+  projection: ArtifactProjection;
+  refreshing: boolean;
+  onRefresh: (projection: ArtifactProjection) => void;
+}) {
+  const label = projection.type === 'biography_snapshot' ? 'Biography' : 'Timeline event';
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/50">
+      <Layers className="w-4 h-4 text-amber-400/80 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-zinc-300 text-sm font-medium">{projection.title ?? label}</span>
+          <span className="text-zinc-600 text-xs">{label}</span>
+          {projection.stale && <StaleBadge />}
+        </div>
+        {projection.summary && (
+          <p className="text-zinc-500 text-xs mt-1 leading-relaxed line-clamp-3">{projection.summary}</p>
+        )}
+        <p className="text-zinc-600 text-xs mt-2">
+          {projection.stale
+            ? 'Source memories changed — refresh to rebuild this summary from your latest truth.'
+            : 'Derived from your journal entries and kept in sync.'}
+        </p>
+        {projection.stale && (
+          <button
+            onClick={() => onRefresh(projection)}
+            disabled={refreshing}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-amber-400/25 text-amber-300/90 hover:bg-amber-400/10 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing…' : 'Refresh summary'}
+          </button>
+        )}
+      </div>
+      <span className="text-zinc-600 text-xs shrink-0">{formatDate(projection.createdAt)}</span>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function WhatAIKnows() {
@@ -311,29 +391,88 @@ export default function WhatAIKnows() {
   const [data, setData] = useState<WhatAIKnowsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'memories' | 'insights' | 'entities' | 'audit'>('memories');
+  const [tab, setTab] = useState<'memories' | 'insights' | 'entities' | 'derived' | 'audit'>('memories');
   const [auditLog, setAuditLog] = useState<MutationRecord[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [projections, setProjections] = useState<ArtifactProjection[]>([]);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
 
   const [revising, setRevising] = useState<{ id: string; type: string; state: TruthState } | null>(null);
+
+  const staleProjections = projections.filter(p => p.stale);
+
+  const loadProjections = useCallback(async () => {
+    const [biography, timeline] = await Promise.all([
+      fetchJson<ArtifactListResponse>('/api/artifacts?type=biography_snapshot&limit=5'),
+      fetchJson<ArtifactListResponse>('/api/artifacts?type=timeline_event&limit=50'),
+    ]);
+    setProjections([...biography.artifacts, ...timeline.artifacts]);
+  }, []);
 
   const load = useCallback(async () => {
     if (isMockData) {
       setData(MOCK_DATA);
+      setProjections([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const result = await fetchJson<WhatAIKnowsData>('/api/identity/what-ai-knows');
-      setData(result);
+      const grouped = await fetchJson<WhatAIKnowsData>('/api/artifacts?grouped=true');
+      setData(grouped);
+      await loadProjections();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [isMockData]);
+  }, [isMockData, loadProjections]);
+
+  const refreshProjection = useCallback(async (projection: ArtifactProjection) => {
+    if (isMockData) return;
+    setRefreshingId(projection.id);
+    try {
+      const result = await fetchJson<ProjectionRefreshResponse>(
+        `/api/artifacts/${projection.id}/refresh`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ type: projection.type }),
+        }
+      );
+      if (result.artifact) {
+        setProjections(prev => prev.map(p => (p.id === projection.id ? { ...p, ...result.artifact } : p)));
+      } else {
+        await loadProjections();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refresh failed');
+    } finally {
+      setRefreshingId(null);
+    }
+  }, [isMockData, loadProjections]);
+
+  const refreshAllStale = useCallback(async () => {
+    if (isMockData || staleProjections.length === 0) return;
+    setRefreshingAll(true);
+    setError('');
+    try {
+      const result = await fetchJson<RefreshStaleResponse>('/api/artifacts/refresh-stale', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: staleProjections.map(p => ({ id: p.id, type: p.type, stale: true })),
+        }),
+      });
+      if (result.refreshed > 0) {
+        await loadProjections();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refresh failed');
+    } finally {
+      setRefreshingAll(false);
+    }
+  }, [isMockData, staleProjections, loadProjections]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -363,7 +502,7 @@ export default function WhatAIKnows() {
           <div>
             <h1 className="text-xl font-semibold text-white">What the AI knows about you</h1>
             <p className="text-zinc-500 text-sm mt-1">
-              Every memory, insight, and entity the system holds — and the truth state it was given.
+              Every memory, insight, and entity the system holds — with truth states and derived summaries.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -388,7 +527,7 @@ export default function WhatAIKnows() {
       <div className="max-w-4xl mx-auto px-6 py-6">
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-zinc-900 p-1 rounded-lg w-fit">
-          {(['memories', 'insights', 'entities', 'audit'] as const).map(t => (
+          {(['memories', 'insights', 'entities', 'derived', 'audit'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -402,6 +541,8 @@ export default function WhatAIKnows() {
                 ? `insights (${data.insights.length})`
                 : t === 'entities' && data
                 ? `entities (${data.entities.length})`
+                : t === 'derived'
+                ? `derived (${projections.length})`
                 : t}
             </button>
           ))}
@@ -467,6 +608,42 @@ export default function WhatAIKnows() {
                   key={e.id}
                   entity={e}
                   onRevise={(id, type, state) => setRevising({ id, type, state })}
+                />
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Derived tab — biography + timeline projections */}
+        {!loading && !error && tab === 'derived' && (
+          <div className="space-y-3">
+            {staleProjections.length > 0 && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border border-amber-400/20 rounded-lg bg-amber-400/5">
+                <p className="text-amber-200/80 text-sm">
+                  {staleProjections.length} summar{staleProjections.length === 1 ? 'y is' : 'ies are'} out of date after memory corrections.
+                </p>
+                <button
+                  onClick={refreshAllStale}
+                  disabled={refreshingAll}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-amber-400/15 border border-amber-400/25 text-amber-200 hover:bg-amber-400/25 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  <RefreshCw className={`w-3 h-3 ${refreshingAll ? 'animate-spin' : ''}`} />
+                  {refreshingAll ? 'Refreshing…' : 'Refresh all'}
+                </button>
+              </div>
+            )}
+            {projections.length === 0 ? (
+              <EmptyState
+                icon={Layers}
+                message="No derived summaries yet. Biography and timeline projections appear here once generated."
+              />
+            ) : (
+              projections.map(p => (
+                <ProjectionRow
+                  key={`${p.type}-${p.id}`}
+                  projection={p}
+                  refreshing={refreshingId === p.id || refreshingAll}
+                  onRefresh={refreshProjection}
                 />
               ))
             )}

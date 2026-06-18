@@ -14,6 +14,15 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
   const mentionedEntities = Array.isArray(metadata?.mentionedEntities)
     ? (metadata.mentionedEntities as Message['mentionedEntities'])
     : undefined;
+  const creationOutcomes = Array.isArray(metadata?.creationOutcomes)
+    ? (metadata.creationOutcomes as Message['creationOutcomes'])
+    : undefined;
+  const creationOutcomeSummary =
+    typeof metadata?.creationOutcomeSummary === 'string'
+      ? metadata.creationOutcomeSummary
+      : metadata?.creationOutcomeSummary === null
+        ? null
+        : undefined;
 
   return {
     id: row.id,
@@ -23,5 +32,7 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     persistStatus: 'saved',
     ...(metadata ? { metadata } : {}),
     ...(mentionedEntities && mentionedEntities.length > 0 ? { mentionedEntities } : {}),
+    ...(creationOutcomes && creationOutcomes.length > 0 ? { creationOutcomes } : {}),
+    ...(creationOutcomeSummary !== undefined ? { creationOutcomeSummary } : {}),
   };
 }

@@ -19,6 +19,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { invalidateProjectionsForSource } from '../projectionInvalidationService';
 import type { TruthState, ArtifactType } from './types';
 import { provenanceEdgeService } from './provenanceEdgeService';
 
@@ -230,6 +231,10 @@ class CorrectionAuthority {
     logger.info(
       { userId, artifactType, artifactId, fromState, toState, mutationType: rule.mutationType },
       'CorrectionAuthority: truth-state revised'
+    );
+
+    void invalidateProjectionsForSource(userId, artifactId, artifactType, 'source_revision').catch(
+      (err) => logger.warn({ err, userId, artifactId, artifactType }, 'Projection invalidation after revision failed')
     );
 
     return {

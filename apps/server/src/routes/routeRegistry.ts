@@ -84,6 +84,7 @@ import { contradictionsRouter } from './contradictions';
 import resumeRouter from './resume';
 import { notebookRouter } from './notebook';
 import { identityRouter } from './identity';
+import { artifactsRouter } from './artifacts';
 import timeRouter from './time';
 import { privacyRouter } from './privacy';
 import { subscriptionRouter } from './subscription';
@@ -945,6 +946,12 @@ export const routeRegistry: RouteEntry[] = [
     router: identityRouter,
     classification: 'CORE_RUNTIME',
     description: 'Identity model — pulse, what-ai-knows, revisions',
+  },
+  {
+    path: '/api/artifacts',
+    router: artifactsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Unified artifact index — list, get, provenance',
   },
   {
     path: '/api/identity-core',

@@ -453,6 +453,8 @@ export const useChat = () => {
             narrativeEntryCount: metadata?.entry_count,
             // Entity chips
             mentionedEntities: metadata?.mentionedEntities,
+            creationOutcomes: metadata?.creationOutcomes,
+            creationOutcomeSummary: metadata?.creationOutcomeSummary,
             suggestedActions: metadata?.suggestedActions,
           },
           { touchActivity: true }

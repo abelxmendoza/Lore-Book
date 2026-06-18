@@ -22,6 +22,10 @@ import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
+import {
+  computeSourceInputVersion,
+  isProjectionStale,
+} from './projectionVersion';
 
 // ── Fact types ────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,8 @@ export type BiographyOutput = {
   relationshipIds: string[];
   /** Trust-recovery (Sprint O): traces every major derived fact back to its source and confidence. */
   provenance: Record<string, FactProvenance>;
+  computedFromVersion?: string;
+  stale?: boolean;
 };
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -509,6 +515,8 @@ Format:
    * Idempotent: updates existing record if one exists for this user.
    */
   private async storeBiography(userId: string, output: BiographyOutput): Promise<void> {
+    const computedFromVersion = await computeSourceInputVersion(userId, output.sourceEntryIds);
+
     const { data: existing } = await supabaseAdmin
       .from('narrative_accounts')
       .select('id')
@@ -531,6 +539,9 @@ Format:
         relationship_ids: output.relationshipIds,
         provenance: output.provenance,
         generated_by: 'biography_foundation',
+        computed_from_version: computedFromVersion,
+        stale: false,
+        refreshed_at: output.generatedAt,
       },
     };
 
@@ -561,7 +572,16 @@ Format:
 
     if (!data) return null;
 
-    const meta = data.metadata as any;
+    const meta = data.metadata as Record<string, unknown>;
+    const sourceEntryIds = (meta.source_entry_ids as string[] | undefined) ?? [];
+    const computedFromVersion = meta.computed_from_version as string | undefined;
+    let stale = false;
+
+    if (sourceEntryIds.length > 0 && computedFromVersion) {
+      const currentVersion = await computeSourceInputVersion(userId, sourceEntryIds);
+      stale = isProjectionStale(computedFromVersion, currentVersion);
+    }
+
     return {
       facts: meta.facts,
       themes: meta.themes,
@@ -569,11 +589,13 @@ Format:
       snapshot: data.narrative_text,
       snapshotWordCount: meta.word_count,
       generatedAt: data.recorded_at,
-      sourceEntryIds: meta.source_entry_ids ?? [],
+      sourceEntryIds,
       timelineEventIds: [],
       characterIds: meta.character_ids ?? [],
       relationshipIds: meta.relationship_ids ?? [],
       provenance: meta.provenance ?? {},
+      computedFromVersion,
+      stale,
     };
   }
 }
