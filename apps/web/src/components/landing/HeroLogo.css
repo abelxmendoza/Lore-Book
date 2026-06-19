@@ -72,7 +72,7 @@
 }
 
 .hero-logo-frame--hero {
-  --frame-size: 18rem;
+  --frame-size: 21rem;
 }
 
 .hero-logo-frame--hero .hero-logo-stage {
@@ -85,7 +85,7 @@
 
 @media (min-width: 640px) {
   .hero-logo-frame--hero {
-    --frame-size: 21rem;
+    --frame-size: 25rem;
   }
 
   .hero-logo-frame--compact {
@@ -95,7 +95,7 @@
 
 @media (min-width: 768px) {
   .hero-logo-frame--hero {
-    --frame-size: 24rem;
+    --frame-size: 29rem;
   }
 
   .hero-logo-frame {
@@ -105,13 +105,13 @@
 
 @media (min-width: 1024px) {
   .hero-logo-frame--hero {
-    --frame-size: 28rem;
+    --frame-size: 34rem;
   }
 }
 
 @media (min-width: 1280px) {
   .hero-logo-frame--hero {
-    --frame-size: 32rem;
+    --frame-size: 38rem;
   }
 }
 

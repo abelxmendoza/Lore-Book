@@ -9,16 +9,20 @@ const PHRASES = [
   { id: 'autobiographer', label: 'The AutoBiographer AI' },
 ] as const;
 
-const ROTATE_MS = 4200;
+const ROTATE_MS = 4800;
+const CROSSFADE_MS = 650;
 
 const serifStyle = { fontFamily: 'Georgia, "Times New Roman", serif' } as const;
+
+const HEADLINE_SIZE_CLASS =
+  'text-[1.5rem] leading-[1.12] sm:text-3xl md:text-4xl lg:text-5xl xl:text-[3.25rem] max-w-[18ch] sm:max-w-none mx-auto md:mx-0';
 
 function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'] }) {
   if (phraseId === 'remembers') {
     return (
       <>
         <span className="text-white/95">It </span>
-        <span className="relative inline-block">
+        <span className="relative mx-1 inline-block sm:mx-1.5">
           <span
             className="absolute -inset-x-3 -inset-y-2 bg-gradient-to-r from-purple-500/40 via-pink-500/35 to-violet-500/40 blur-2xl rounded-full pointer-events-none hero-headline-glow"
             aria-hidden
@@ -60,7 +64,7 @@ function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'
   return (
     <>
       <span className="text-white/90">The </span>
-      <span className="relative inline-block">
+      <span className="relative mx-1 inline-block sm:mx-1.5">
         <span
           className="absolute -inset-x-3 -inset-y-2 bg-gradient-to-r from-purple-500/35 via-pink-500/30 to-violet-500/35 blur-2xl rounded-full pointer-events-none hero-headline-glow"
           aria-hidden
@@ -74,27 +78,13 @@ function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'
   );
 }
 
-function sizeClassForPhrase(phraseId: (typeof PHRASES)[number]['id']) {
-  switch (phraseId) {
-    case 'remembers':
-    case 'noted':
-      return 'text-[1.875rem] leading-[1.1] sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl max-w-[11ch] sm:max-w-none mx-auto md:mx-0';
-    case 'learns':
-      return 'text-xl leading-[1.15] sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl max-w-[18ch] sm:max-w-none mx-auto md:mx-0';
-    case 'autobiographer':
-      return 'text-lg leading-[1.15] sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl max-w-[16ch] sm:max-w-none mx-auto md:mx-0';
-    default:
-      return '';
-  }
-}
-
 type RotatingHeroHeadlineProps = {
   className?: string;
 };
 
 export function RotatingHeroHeadline({ className }: RotatingHeroHeadlineProps) {
   const [index, setIndex] = useState(0);
-  const [flashKey, setFlashKey] = useState(0);
+  const [prevIndex, setPrevIndex] = useState<number | null>(null);
   const phrase = PHRASES[index];
 
   useEffect(() => {
@@ -102,48 +92,56 @@ export function RotatingHeroHeadline({ className }: RotatingHeroHeadlineProps) {
     if (reducedMotion) return;
 
     const timer = window.setInterval(() => {
-      setIndex((current) => (current + 1) % PHRASES.length);
-      setFlashKey((key) => key + 1);
+      setIndex((current) => {
+        const next = (current + 1) % PHRASES.length;
+        setPrevIndex(current);
+        window.setTimeout(() => setPrevIndex(null), CROSSFADE_MS);
+        return next;
+      });
     }, ROTATE_MS);
 
     return () => window.clearInterval(timer);
   }, []);
+
+  const visibleIndices = new Set(
+    [index, prevIndex].filter((i): i is number => i !== null),
+  );
 
   return (
     <div
       className={cn('relative w-full text-center md:text-left', className)}
       data-testid="hero-rotating-headline"
     >
-      <div className="relative flex items-center justify-center md:justify-start min-h-[2.5rem] sm:min-h-[4.5rem] md:min-h-[5.5rem] lg:min-h-[6rem]">
+      <div className="relative">
         <span
           className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-16 sm:h-20 bg-[radial-gradient(ellipse_at_center,rgba(154,77,255,0.12),transparent_70%)]"
           aria-hidden
         />
         <h1
-          key={`${phrase.id}-${flashKey}`}
           className={cn(
-            'hero-headline-enter relative leading-[1.08] font-bold text-white px-0.5',
-            sizeClassForPhrase(phrase.id),
+            'hero-headline-stage relative font-bold text-white tracking-wide [word-spacing:0.08em] sm:[word-spacing:0.1em]',
+            HEADLINE_SIZE_CLASS,
           )}
           style={serifStyle}
           aria-live="polite"
         >
-          <HeadlineContent phraseId={phrase.id} />
+          {PHRASES.map((item, i) => {
+            if (!visibleIndices.has(i)) return null;
+            return (
+            <span
+              key={item.id}
+              className={cn(
+                'hero-headline-layer',
+                i === index && 'hero-headline-layer--active',
+              )}
+              aria-hidden={i !== index}
+            >
+              <HeadlineContent phraseId={item.id} />
+            </span>
+            );
+          })}
         </h1>
-      </div>
-
-      <div className="flex items-center justify-center md:justify-start gap-2 mt-2 sm:mt-3" aria-hidden>
-        {PHRASES.map((item, i) => (
-          <span
-            key={item.id}
-            className={cn(
-              'h-1 rounded-full transition-all duration-500',
-              i === index
-                ? 'w-7 bg-gradient-to-r from-purple-400 to-pink-400 shadow-[0_0_12px_rgba(168,85,247,0.45)]'
-                : 'w-1.5 bg-white/15',
-            )}
-          />
-        ))}
+        <span className="sr-only">{phrase.label}</span>
       </div>
     </div>
   );

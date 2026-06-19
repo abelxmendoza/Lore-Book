@@ -83,15 +83,15 @@ export const HeroSection = () => {
 
       <div className="relative z-10 max-w-7xl mx-auto w-full min-w-0">
         <div className="hero-layout">
+          <div className="hero-headline-panel">
+            <RotatingHeroHeadline />
+          </div>
+
           <div className="hero-logo-column">
             <HeroLogo variant="hero" />
             <p className="hero-logo-tagline">Life memory · Early access</p>
-          </div>
 
-          <div className="hero-content-column">
-            <div className="hero-copy-panel">
-              <RotatingHeroHeadline />
-
+            <div className="hero-logo-support">
               <p className="hero-copy-lead">
                 Every conversation adds to a record of your life. Mention someone once —
                 LoreBook carries them forward.
@@ -129,7 +129,9 @@ export const HeroSection = () => {
                 <span>Free to start</span>
               </div>
             </div>
+          </div>
 
+          <div className="hero-content-column">
             <ChatPreview />
           </div>
         </div>

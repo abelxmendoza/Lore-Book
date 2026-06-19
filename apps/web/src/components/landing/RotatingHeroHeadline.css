@@ -1,27 +1,3 @@
-@keyframes hero-headline-enter {
-  0% {
-    opacity: 0;
-    transform: translateY(14px);
-    filter: blur(6px);
-  }
-  35% {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-    text-shadow:
-      0 0 32px rgba(154, 77, 255, 0.55),
-      0 0 64px rgba(255, 31, 174, 0.2);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-    text-shadow:
-      0 0 18px rgba(154, 77, 255, 0.22),
-      0 0 36px rgba(255, 31, 174, 0.08);
-  }
-}
-
 @keyframes hero-headline-glow-pulse {
   0%,
   100% {
@@ -34,17 +10,78 @@
   }
 }
 
-.hero-headline-enter {
-  animation: hero-headline-enter 0.85s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
 .hero-headline-glow {
   animation: hero-headline-glow-pulse 4.2s ease-in-out infinite;
 }
 
+/* Fixed stage — height stays stable while phrases crossfade */
+.hero-headline-stage {
+  position: relative;
+  width: 100%;
+  min-height: 4.75rem;
+}
+
+.hero-headline-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(10px);
+  filter: blur(4px);
+  transition:
+    opacity 0.65s ease,
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.65s ease;
+  pointer-events: none;
+  will-change: opacity, transform, filter;
+}
+
+.hero-headline-layer--active {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  pointer-events: auto;
+  z-index: 1;
+}
+
+@media (min-width: 640px) {
+  .hero-headline-stage {
+    min-height: 5.75rem;
+  }
+
+  .hero-headline-layer {
+    justify-content: center;
+  }
+}
+
+@media (min-width: 768px) {
+  .hero-headline-stage {
+    min-height: 6.5rem;
+  }
+
+  .hero-headline-layer {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-headline-stage {
+    min-height: 7rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .hero-headline-enter,
   .hero-headline-glow {
     animation: none;
+  }
+
+  .hero-headline-layer {
+    transform: none;
+    filter: none;
+    transition: opacity 0.35s ease;
   }
 }

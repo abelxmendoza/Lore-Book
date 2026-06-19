@@ -13,12 +13,26 @@
   animation: hero-chat-enter 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
-/* Mobile: logo, then copy + chat column */
+/* Mobile DOM order: headline → logo → chat */
 .hero-layout {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2rem;
+  gap: 1.5rem;
+}
+
+@media (max-width: 767px) {
+  .hero-layout {
+    gap: 1rem;
+  }
+
+  .hero-headline-panel {
+    margin-bottom: -0.25rem;
+  }
+
+  .hero-logo-column {
+    margin-top: -0.5rem;
+  }
 }
 
 .hero-logo-column {
@@ -27,57 +41,51 @@
   align-items: center;
   flex-shrink: 0;
   width: 100%;
+  max-width: 38rem;
+  text-align: center;
 }
 
 .hero-logo-tagline {
-  margin-top: 1rem;
-  font-size: 0.625rem;
+  margin-top: 1.25rem;
+  width: 100%;
+  font-size: 0.6875rem;
   font-family: ui-monospace, monospace;
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.28em;
   color: rgba(168, 85, 247, 0.75);
   text-align: center;
 }
 
-/* Copy + chat share one aligned column */
-.hero-content-column {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  width: 100%;
-  max-width: 34rem;
-  min-width: 0;
-  text-align: center;
+@media (min-width: 640px) {
+  .hero-logo-tagline {
+    font-size: 0.75rem;
+    letter-spacing: 0.32em;
+  }
 }
 
-.hero-copy-panel {
+.hero-logo-support {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.875rem;
   width: 100%;
-  padding-bottom: 1rem;
-  margin-bottom: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 1.25rem;
 }
 
 .hero-copy-lead {
   font-size: 0.875rem;
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.5);
-  max-width: 32rem;
+  max-width: 22rem;
 }
 
 .hero-copy-actions {
   display: flex;
   flex-direction: column;
-  flex-wrap: wrap;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   gap: 0.625rem;
   width: 100%;
-  margin-top: 0.25rem;
 }
 
 .hero-copy-trust {
@@ -85,95 +93,122 @@
   flex-direction: column;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0.25rem 0.75rem;
   font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.35);
-  margin-top: 0.125rem;
+}
+
+.hero-headline-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 34rem;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.hero-content-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 34rem;
+  min-width: 0;
+  text-align: center;
 }
 
 .hero-chat-panel {
   margin-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-top: none;
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @media (min-width: 640px) {
   .hero-copy-lead {
-    font-size: 1rem;
+    font-size: 0.9375rem;
   }
 
   .hero-copy-actions {
     flex-direction: row;
-    align-items: center;
+    flex-wrap: wrap;
   }
 
   .hero-copy-trust {
     flex-direction: row;
-    align-items: center;
   }
 }
 
-/* Desktop: big portrait logo left · copy stacked directly on chat right */
 @media (min-width: 768px) {
   .hero-layout {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 28rem) minmax(0, 36rem);
+    grid-template-rows: auto auto;
+    align-items: start;
     justify-content: center;
-    gap: 2rem;
+    column-gap: 2rem;
+    row-gap: 0;
   }
 
-  .hero-logo-column {
-    flex: 0 0 auto;
-    width: auto;
-  }
-
-  .hero-logo-tagline {
-    text-align: left;
-    align-self: flex-start;
-  }
-
-  .hero-content-column {
-    flex: 1 1 22rem;
-    max-width: 36rem;
-    min-width: 0;
-    text-align: left;
-    align-items: stretch;
-  }
-
-  .hero-copy-panel {
+  .hero-headline-panel {
+    grid-column: 2;
+    grid-row: 1;
     align-items: flex-start;
+    max-width: none;
+    padding-top: 3.25rem;
     padding-bottom: 1.125rem;
   }
 
-  .hero-copy-lead {
-    margin-inline: 0;
+  .hero-logo-column {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 28rem;
   }
 
-  .hero-copy-actions {
-    justify-content: flex-start;
+  .hero-logo-support {
+    max-width: 20rem;
   }
 
-  .hero-copy-trust {
-    justify-content: flex-start;
+  .hero-content-column {
+    grid-column: 2;
+    grid-row: 2;
+    flex: 1 1 22rem;
+    max-width: 36rem;
+    text-align: left;
+  }
+
+  .hero-chat-panel {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: none;
   }
 }
 
 @media (min-width: 1024px) {
   .hero-layout {
-    gap: 2.75rem;
+    column-gap: 2.75rem;
+  }
+
+  .hero-logo-column {
+    max-width: 32rem;
+  }
+
+  .hero-headline-panel {
+    padding-top: 4.5rem;
   }
 
   .hero-copy-lead {
-    font-size: 1.0625rem;
+    font-size: 1rem;
   }
 }
 
 @media (min-width: 1280px) {
   .hero-layout {
-    gap: 3.25rem;
+    column-gap: 3.25rem;
   }
 }
 
