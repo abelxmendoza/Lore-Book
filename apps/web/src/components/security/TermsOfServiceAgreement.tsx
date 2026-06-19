@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import { CONTACT_EMAIL, CONTACT_MAILTO } from '../../lib/contact';
 
 type TermsOfServiceAgreementProps = {
   onAccept: () => void;
@@ -228,7 +229,11 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
               <div>
                 <h2 className="text-xl font-bold text-white mb-3">10. Contact Information</h2>
                 <p className="text-white/80 leading-relaxed">
-                  If you have any questions about these Terms, please contact us through the Service or at the contact information provided in our Privacy Policy.
+                  If you have any questions about these Terms, please contact us at{' '}
+                  <a href={CONTACT_MAILTO} className="text-primary hover:underline">
+                    {CONTACT_EMAIL}
+                  </a>
+                  .
                 </p>
               </div>
 

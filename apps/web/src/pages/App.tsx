@@ -423,7 +423,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
                         )}
                         {/* Memories now live inside the Life Log surface. */}
                         {activeSurface === 'perceptions' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-x-hidden overflow-y-auto p-3 sm:p-6 min-w-0">
                             <PerceptionsView showCreateButton={true} />
                           </div>
                         )}

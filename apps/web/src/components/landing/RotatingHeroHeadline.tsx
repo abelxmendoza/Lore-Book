@@ -5,12 +5,12 @@ import './RotatingHeroHeadline.css';
 const PHRASES = [
   { id: 'remembers', label: 'It Remembers.' },
   { id: 'noted', label: 'Noted.' },
-  { id: 'learns', label: 'The AI that learns who you are' },
-  { id: 'autobiographer', label: 'The AutoBiographer AI' },
+  { id: 'learns', label: 'It learns who you are.' },
+  { id: 'autobiographer', label: 'The Autobiographer AI' },
 ] as const;
 
-const ROTATE_MS = 4800;
-const CROSSFADE_MS = 650;
+const ROTATE_MS = 5500;
+const CROSSFADE_MS = 800;
 
 const serifStyle = { fontFamily: 'Georgia, "Times New Roman", serif' } as const;
 
@@ -55,9 +55,13 @@ function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'
 
   if (phraseId === 'learns') {
     return (
-      <span className="bg-gradient-to-r from-white via-purple-100 to-pink-100 bg-clip-text text-transparent">
-        The AI that learns who you are
-      </span>
+      <>
+        <span className="text-white/95">It </span>
+        <span className="bg-gradient-to-r from-white via-purple-100 to-pink-100 bg-clip-text text-transparent">
+          learns who you are
+        </span>
+        <span className="text-white/95">.</span>
+      </>
     );
   }
 
@@ -70,7 +74,7 @@ function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'
           aria-hidden
         />
         <span className="relative bg-gradient-to-r from-purple-200 via-pink-200 to-violet-300 bg-clip-text text-transparent">
-          AutoBiographer
+          Autobiographer
         </span>
       </span>
       <span className="text-white/90"> AI</span>
@@ -127,14 +131,17 @@ export function RotatingHeroHeadline({ className }: RotatingHeroHeadlineProps) {
         >
           {PHRASES.map((item, i) => {
             if (!visibleIndices.has(i)) return null;
+            const isActive = i === index;
+            const isExiting = prevIndex !== null && i === prevIndex && !isActive;
             return (
             <span
               key={item.id}
               className={cn(
                 'hero-headline-layer',
-                i === index && 'hero-headline-layer--active',
+                isActive && 'hero-headline-layer--active',
+                isExiting && 'hero-headline-layer--exit',
               )}
-              aria-hidden={i !== index}
+              aria-hidden={!isActive}
             >
               <HeadlineContent phraseId={item.id} />
             </span>

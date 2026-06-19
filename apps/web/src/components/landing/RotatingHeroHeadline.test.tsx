@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { RotatingHeroHeadline } from './RotatingHeroHeadline';
 
-const CROSSFADE_MS = 650;
+const CROSSFADE_MS = 800;
 
 describe('RotatingHeroHeadline', () => {
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe('RotatingHeroHeadline', () => {
     render(<RotatingHeroHeadline />);
 
     act(() => {
-      vi.advanceTimersByTime(4800);
+      vi.advanceTimersByTime(5500);
     });
     act(() => {
       vi.advanceTimersByTime(CROSSFADE_MS);
@@ -41,7 +41,7 @@ describe('RotatingHeroHeadline', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Noted.');
 
     act(() => {
-      vi.advanceTimersByTime(4800);
+      vi.advanceTimersByTime(5500);
     });
     act(() => {
       vi.advanceTimersByTime(CROSSFADE_MS);
@@ -49,11 +49,11 @@ describe('RotatingHeroHeadline', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/learns who you are/i);
 
     act(() => {
-      vi.advanceTimersByTime(4800);
+      vi.advanceTimersByTime(5500);
     });
     act(() => {
       vi.advanceTimersByTime(CROSSFADE_MS);
     });
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/AutoBiographer AI/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Autobiographer AI/i);
   });
 });

@@ -790,29 +790,29 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
   const [activeTab, setActiveTab] = useState<'about-others' | 'about-me'>('about-others');
 
   const tabToggle = !personId ? (
-    <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit">
+    <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-full sm:w-fit">
       <button
         type="button"
         onClick={() => setActiveTab('about-others')}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all min-h-10 sm:min-h-0 ${
           activeTab === 'about-others'
             ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
             : 'text-white/50 hover:text-white/80'
         }`}
       >
-        <Eye className="h-4 w-4" />
+        <Eye className="h-4 w-4 flex-shrink-0" />
         About Others
       </button>
       <button
         type="button"
         onClick={() => setActiveTab('about-me')}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all min-h-10 sm:min-h-0 ${
           activeTab === 'about-me'
             ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
             : 'text-white/50 hover:text-white/80'
         }`}
       >
-        <Brain className="h-4 w-4" />
+        <Brain className="h-4 w-4 flex-shrink-0" />
         About Me
       </button>
     </div>
@@ -820,7 +820,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
 
   if (activeTab === 'about-me' && !personId) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 min-w-0">
         {tabToggle}
         <SelfKnowledgeView />
       </div>
@@ -828,7 +828,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       {tabToggle}
       {/* Header */}
       <div className="flex items-center justify-between">

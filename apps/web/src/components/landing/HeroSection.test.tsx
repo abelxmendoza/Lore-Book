@@ -21,7 +21,7 @@ describe('HeroSection', () => {
 
     expect(screen.getByTestId('hero-logo-stub')).toBeInTheDocument();
     expect(screen.getByText('Life memory · Early access')).toBeInTheDocument();
-    expect(screen.getByText(/Every conversation adds to a record of your life/i)).toBeInTheDocument();
+    expect(screen.getByText(/Talk naturally\. Mention someone once/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start a conversation/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Try demo/i })).toBeInTheDocument();
     expect(screen.getByText(/Private by default/i)).toBeInTheDocument();

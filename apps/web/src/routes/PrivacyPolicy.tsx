@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Database, EyeOff, Key, FileText, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Logo } from '../components/Logo';
+import { CONTACT_EMAIL, CONTACT_MAILTO } from '../lib/contact';
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate();
@@ -169,9 +170,13 @@ export default function PrivacyPolicy() {
             <div className="space-y-3 text-white/80 leading-relaxed">
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:</p>
               <div className="bg-black/40 p-4 rounded-lg border border-white/10">
-                <p className="font-semibold text-white mb-2">Lore Book Privacy Team</p>
-                <p className="text-sm">Email: privacy@lorebook.app</p>
-                <p className="text-sm">Support: support@lorebook.app</p>
+                <p className="font-semibold text-white mb-2">Abel Mendoza · Lore Book</p>
+                <p className="text-sm">
+                  Email:{' '}
+                  <a href={CONTACT_MAILTO} className="text-primary hover:underline">
+                    {CONTACT_EMAIL}
+                  </a>
+                </p>
               </div>
             </div>
           </div>

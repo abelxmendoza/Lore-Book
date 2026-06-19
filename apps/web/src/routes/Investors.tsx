@@ -4,6 +4,7 @@ import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { FeatureCard } from '../components/landing/FeatureCard';
 import { CTASection } from '../components/landing/CTASection';
+import { CONTACT_MAILTO } from '../lib/contact';
 import {
   TrendingUp,
   Shield,
@@ -236,7 +237,7 @@ export default function Investors() {
           description="Contact us to learn more about investment opportunities, partnerships, or how LoreBook can transform personal memory systems."
           primaryAction={{
             label: 'Contact Us',
-            path: 'mailto:investors@lorebook.ai',
+            path: CONTACT_MAILTO,
           }}
           secondaryAction={{
             label: 'View Features',

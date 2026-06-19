@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
 import { BookMarked } from 'lucide-react';
+import { useCallback, useState } from 'react';
+
 import './HeroLogo.css';
 
 /** Primary asset first; fall back through alternates then bundled SVG. */
@@ -56,6 +57,7 @@ function HeroLogoFallback({ variant }: { variant: 'hero' | 'compact' }) {
 }
 
 const SMOKE_WISPS = [1, 2, 3, 4, 5, 6] as const;
+const SOUL_MOTES = [1, 2, 3, 4, 5] as const;
 const BOTTOM_FLAMES = [1, 2, 3] as const;
 const TOP_FLAMES = [1, 2, 3] as const;
 const LEFT_FLAMES = [1, 2] as const;
@@ -65,9 +67,16 @@ function HeroLogoEffects() {
   return (
     <div className="hero-logo-fx" aria-hidden>
       <div className="hero-logo-spectral">
+        <div className="hero-logo-veil" />
+        <div className="hero-logo-aura-rim" />
         <div className="hero-logo-smoke">
           {SMOKE_WISPS.map((n) => (
             <span key={n} className={`hero-logo-smoke-wisp hero-logo-smoke-wisp--${n}`} />
+          ))}
+        </div>
+        <div className="hero-logo-motes">
+          {SOUL_MOTES.map((n) => (
+            <span key={n} className={`hero-logo-mote hero-logo-mote--${n}`} />
           ))}
         </div>
         <div className="hero-logo-flames">

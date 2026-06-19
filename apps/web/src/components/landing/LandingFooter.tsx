@@ -3,6 +3,7 @@
 import { Link } from 'react-router-dom';
 import { Logo } from '../Logo';
 import { Github, Twitter, Mail } from 'lucide-react';
+import { CONTACT_MAILTO } from '../../lib/contact';
 
 export const LandingFooter = () => {
   const currentYear = new Date().getFullYear();
@@ -82,7 +83,7 @@ export const LandingFooter = () => {
               <Twitter className="h-5 w-5" />
             </a>
             <a
-              href="mailto:contact@lorebook.ai"
+              href={CONTACT_MAILTO}
               className="text-white/60 hover:text-primary transition-colors"
               aria-label="Email"
             >

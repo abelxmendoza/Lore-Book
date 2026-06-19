@@ -5,9 +5,18 @@ import { Button } from '../ui/button';
 import { ArrowRight, Shield } from 'lucide-react';
 import { HeroLogo } from './HeroLogo';
 import { RotatingHeroHeadline } from './RotatingHeroHeadline';
+import { CompactEntityChip } from '../../features/chat/components/CompactEntityChip';
+import { chipColorForEntity } from '../../lib/entityTypeColors';
+import type { CertifiedEntityType } from '../../types/certifiedEntity';
 import './HeroSection.css';
 
-const ENTITY_CHIPS = ['Mom', 'Portland', 'New job', 'Alex', 'The move'];
+const ENTITY_CHIPS = [
+  { label: 'Mom', type: 'character' },
+  { label: 'Portland', type: 'location' },
+  { label: 'New job', type: 'event' },
+  { label: 'Alex', type: 'character' },
+  { label: 'The move', type: 'event' },
+] satisfies Array<{ label: string; type: CertifiedEntityType }>;
 
 const ChatPreview = () => (
   <div className="hero-chat-enter hero-chat-panel w-full rounded-xl border border-white/10 bg-black/55 backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
@@ -21,35 +30,34 @@ const ChatPreview = () => (
     <div className="px-3 sm:px-4 py-3 sm:py-4 space-y-2.5 sm:space-y-3">
       <div className="flex flex-wrap gap-1 sm:gap-1.5">
         {ENTITY_CHIPS.map((chip) => (
-          <span
-            key={chip}
-            className="px-1.5 sm:px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-200/90 text-[9px] sm:text-[10px]"
+          <CompactEntityChip
+            key={chip.label}
+            className={`px-1.5 sm:px-2 py-0.5 max-w-none ${chipColorForEntity({ type: chip.type, status: 'confirmed' })}`}
           >
-            {chip}
-          </span>
+            {chip.label}
+          </CompactEntityChip>
         ))}
       </div>
 
       <div className="flex justify-end">
         <div className="rounded-lg rounded-tr-sm bg-purple-500/20 border border-purple-500/20 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/90 text-[11px] sm:text-sm leading-relaxed max-w-[94%]">
-          I got the job. The one in Portland I've been talking about with Mom — the one I almost didn't
-          apply for because I convinced myself I wasn't ready.
+          I got the job — the Portland role I've been talking about with Mom. The one I almost
+          didn't apply for because I convinced myself I wasn't ready.
         </div>
       </div>
 
       <div className="flex gap-2 sm:gap-2.5 items-start">
         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shrink-0 mt-0.5" />
         <div className="rounded-lg rounded-tl-sm bg-white/[0.06] border border-white/5 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/80 text-[11px] sm:text-sm leading-relaxed min-w-0">
-          That's the role you mentioned after your call with Mom in March — when you said Portland felt
-          like starting over without losing yourself. You talked yourself out of applying twice; Alex
-          flagged the same hesitation pattern when you passed on the Austin offer last year.
+          That's the role from your call with Mom in March — when Portland felt like starting over
+          without losing yourself. You talked yourself out of applying twice; Alex flagged the same
+          hesitation when you passed on Austin last year.
         </div>
       </div>
 
       <div className="flex justify-end">
         <div className="rounded-lg rounded-tr-sm bg-purple-500/20 border border-purple-500/20 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/90 text-[11px] sm:text-sm leading-relaxed max-w-[92%] sm:max-w-[88%]">
-          Exactly. I didn't have to re-explain Mom, Alex, or why Portland mattered. You already had all of
-          that.
+          Exactly — I didn't have to re-explain Mom, Alex, or why Portland mattered. You already had it.
         </div>
       </div>
 
@@ -57,8 +65,8 @@ const ChatPreview = () => (
         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shrink-0 mt-0.5" />
         <div className="rounded-lg rounded-tl-sm bg-white/[0.06] border border-white/5 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/75 text-[11px] sm:text-sm leading-relaxed min-w-0">
           I've added <span className="text-primary/90 font-medium">New job · Portland</span> to your timeline
-          and linked it to Mom, Alex, and the move you've been processing since February. Want to capture
-          how you're feeling before the first day?
+          and linked Mom, Alex, and the move you've been sitting with since February. Want to capture how
+          you're feeling before day one?
         </div>
       </div>
 
@@ -93,8 +101,8 @@ export const HeroSection = () => {
 
             <div className="hero-logo-support">
               <p className="hero-copy-lead">
-                Every conversation adds to a record of your life. Mention someone once —
-                LoreBook carries them forward.
+                Talk naturally. Mention someone once — LoreBook carries them into every conversation
+                after.
               </p>
 
               <div className="hero-copy-actions">
@@ -136,14 +144,18 @@ export const HeroSection = () => {
           </div>
         </div>
 
-        <div className="mt-8 sm:mt-10 lg:mt-12 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 border-t border-white/5 pt-6 sm:pt-8 lg:pt-10">
+        <div className="hero-flow-stats mt-8 sm:mt-10 lg:mt-12 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 border-t border-white/5 pt-6 sm:pt-8 lg:pt-10">
           {[
-            { value: 'Talk', sub: 'Journal, vent, think out loud' },
-            { value: 'Record', sub: 'People & moments accumulate' },
-            { value: 'Compile', sub: 'Turn lore into readable books' },
-            { value: 'Return', sub: 'Context already there' },
-          ].map(({ value, sub }) => (
-            <div key={value} className="text-center lg:text-left px-0.5">
+            { value: 'Talk', sub: 'Think out loud' },
+            { value: 'Record', sub: 'Lore accumulates' },
+            { value: 'Compile', sub: 'Story becomes books' },
+            { value: 'Return', sub: 'Context is waiting' },
+          ].map(({ value, sub }, stepIndex) => (
+            <div
+              key={value}
+              className="hero-flow-stat text-center lg:text-left px-0.5"
+              style={{ animationDelay: `${stepIndex * 140}ms` }}
+            >
               <p className="text-sm sm:text-lg md:text-xl font-bold text-primary mb-0.5">{value}</p>
               <p className="text-[10px] sm:text-xs text-white/35 leading-snug">{sub}</p>
             </div>
