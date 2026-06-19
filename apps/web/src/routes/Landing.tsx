@@ -17,6 +17,7 @@ import {
   FolderOpen,
   RefreshCw,
   Heart,
+  ScanSearch,
 } from 'lucide-react';
 
 export default function Landing() {
@@ -182,7 +183,12 @@ export default function Landing() {
 
             <div className="space-y-5">
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
-                <h3 className="text-lg font-semibold text-white mb-2">Persistent, not disposable</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-purple-500/20 p-2 flex-shrink-0">
+                    <Layers className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Persistent, not disposable</h3>
+                </div>
                 <p className="text-white/70 text-sm leading-relaxed">
                   Most AI conversations reset when the window closes. LoreBook is built around accumulation —
                   your record grows every session without extra work from you.
@@ -190,7 +196,12 @@ export default function Landing() {
               </div>
 
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
-                <h3 className="text-lg font-semibold text-white mb-2">Evidence, not guesswork</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-amber-500/20 p-2 flex-shrink-0">
+                    <ScanSearch className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Evidence, not guesswork</h3>
+                </div>
                 <p className="text-white/70 text-sm leading-relaxed">
                   Conclusions about your patterns come from what you actually said and did — traceable to moments
                   in your record, not invented backstory.
@@ -198,18 +209,16 @@ export default function Landing() {
               </div>
 
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-cyan-500/20 p-3 flex-shrink-0">
-                    <Lock className="h-6 w-6 text-cyan-400" />
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-cyan-500/20 p-2 flex-shrink-0">
+                    <Lock className="h-5 w-5 text-cyan-400" />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Your record, yours alone</h3>
-                    <p className="text-white/70 text-sm leading-relaxed">
-                      Encrypted by default. Your data is never sold or used to train models. Export everything
-                      LoreBook holds about you, anytime.
-                    </p>
-                  </div>
+                  <h3 className="text-lg font-semibold text-white">Your record, yours alone</h3>
                 </div>
+                <p className="text-white/70 text-sm leading-relaxed">
+                  Encrypted by default. Your data is never sold or used to train models. Export everything
+                  LoreBook holds about you, anytime.
+                </p>
               </div>
             </div>
           </div>
