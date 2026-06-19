@@ -3,6 +3,8 @@ import { BookOpen, Sparkles, Users, Compass, Clock, BookMarked } from 'lucide-re
 import { useNavigate } from 'react-router-dom';
 import { fetchLivingBiographyCard, type LivingBiographyCard as LivingBiographyCardData } from '../../api/livingBiography';
 import { cn } from '../../lib/cn';
+import { lorebookEditorUrlForCompiledBooks } from '../../lib/lorebookLibrary';
+import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 
 function formatLastUpdated(iso: string | null): string {
   if (!iso) return '';
@@ -18,6 +20,8 @@ export const LivingBiographyCard = () => {
   const [card, setCard] = useState<LivingBiographyCardData | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { compiledBooks } = useLoreReadiness();
+  const editorUrl = lorebookEditorUrlForCompiledBooks(compiledBooks);
 
   useEffect(() => {
     fetchLivingBiographyCard()
@@ -39,8 +43,8 @@ export const LivingBiographyCard = () => {
     <div
       role="button"
       tabIndex={0}
-      onClick={() => navigate('/memoir')}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/memoir'); }}
+      onClick={() => navigate(editorUrl)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(editorUrl); }}
       className={cn(
         'group w-full rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 via-black/30 to-pink-500/5 p-5 text-left cursor-pointer',
         'transition-all duration-200 hover:border-purple-500/40 hover:from-purple-500/15',

@@ -4,6 +4,7 @@ import { config, log } from '../config/env';
 import { getGlobalIsGuest } from '../contexts/MockDataContext';
 import { getGuestLoreSnapshot } from '../services/guestLoreStore';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
+import type { ChatFocus } from '../types/chatFocus';
 
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
@@ -79,14 +80,15 @@ export const useChatStream = () => {
     onMetadata: (metadata: any) => void,
     onComplete: () => void,
     onError: (error: string) => void,
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext | null,
     onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
     threadId?: string,
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
     composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>,
-    guestOptions?: { guestId: string }
+    guestOptions?: { guestId: string },
+    chatFocus?: ChatFocus
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -138,6 +140,7 @@ export const useChatStream = () => {
                     }
                   : {}),
                 ...(entityContext ? { entityContext } : {}),
+                ...(chatFocus ? { chatFocus } : {}),
                 ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
                 ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
               }

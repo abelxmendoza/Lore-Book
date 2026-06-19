@@ -583,7 +583,7 @@ const SidebarContent = ({
         {/* Back to landing page */}
         <button
           type="button"
-          onClick={() => { navigate('/home'); onMobileDrawerClose?.(); }}
+          onClick={() => { navigate('/'); onMobileDrawerClose?.(); }}
           aria-label="Back to homepage"
           className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-white/30 hover:text-white/60 transition-colors group"
         >

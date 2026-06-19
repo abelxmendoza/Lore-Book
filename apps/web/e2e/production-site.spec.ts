@@ -38,7 +38,14 @@ test.describe('Production Site Smoke', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
 
     await expect(page.locator('#root')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /The AI that learns who you are/i })).toBeVisible();
+    const heroHeadline = page.getByTestId('hero-rotating-headline');
+    await expect(heroHeadline).toBeVisible();
+    await expect
+      .poll(async () => {
+        const text = (await heroHeadline.locator('h1').textContent()) ?? '';
+        return /remembers|noted|learns who you are|autobiographer/i.test(text);
+      })
+      .toBe(true);
 
     const devNotice = page.getByRole('heading', { name: /Early Access — Lore Book/i });
     await expect(devNotice).toHaveCount(0);

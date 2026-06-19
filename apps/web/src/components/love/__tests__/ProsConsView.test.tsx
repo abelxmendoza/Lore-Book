@@ -44,11 +44,12 @@ describe('ProsConsView', () => {
     expect(screen.getByText(/no cons added yet/i)).toBeInTheDocument();
   });
 
-  it('hides flags sections when empty', () => {
+  it('shows flag panels with empty messages when no flags', () => {
     render(<ProsConsView {...mockProps} redFlags={[]} greenFlags={[]} />);
-    
-    expect(screen.queryByText(/red flags/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/green flags/i)).not.toBeInTheDocument();
+
+    expect(screen.getByText(/red flags \(0\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/green flags \(0\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/no red flags identified/i)).toBeInTheDocument();
   });
 
   it('displays chat prompt', () => {

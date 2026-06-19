@@ -8,6 +8,8 @@ import { MemoryComponents } from './MemoryComponents';
 import { KnowledgeGraphViewer } from '../graph/KnowledgeGraphViewer';
 import { ReactionList } from '../reactions/ReactionList';
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { buildMockMemoryModalData } from '../../mocks/modalDemoData';
 import { memoryEntryToCard, type MemoryCard, type LinkedMemory } from '../../types/memory';
 
 type MemoryDetailModalProps = {
@@ -97,6 +99,19 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
     const loadMemoryDetails = async () => {
       setLoadingFull(true);
       setLoadingLinked(true);
+
+      if (shouldUseMockData() || memory.id.startsWith('mock-mem')) {
+        const data = buildMockMemoryModalData(memory, allMemories);
+        setFullContent(data.fullContent);
+        setEntryMetadata({});
+        setLinkedMemories(data.linkedMemories);
+        setTemporalMemories(data.temporalMemories);
+        setSimilarMemories(data.similarMemories);
+        setInsights(data.insights);
+        setLoadingFull(false);
+        setLoadingLinked(false);
+        return;
+      }
 
       try {
         // Load full entry details

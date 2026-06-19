@@ -325,7 +325,7 @@ export default function Login() {
           <div className="mt-5 text-center">
             <button
               type="button"
-              onClick={() => navigate('/home')}
+              onClick={() => navigate('/')}
               className="text-xs text-white/20 hover:text-white/50 transition"
             >
               ← Back to home

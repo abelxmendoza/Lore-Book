@@ -4,10 +4,16 @@ import { Camera, Upload, Image as ImageIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { LazyImage } from './ui/LazyImage';
+import { DemoUploadProgressPanel, type DemoUploadProgress } from './demo/DemoUploadProgressPanel';
 import { config } from '../config/env';
 import { useMockData } from '../contexts/MockDataContext';
 import { supabase } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
+import {
+  DEMO_PHOTO_GALLERY_STAGES,
+  shouldSimulatePhotoUpload,
+  simulateDemoPhotoGalleryUpload,
+} from '../services/demoPhotoUpload';
 
 interface PhotoMetadata {
   photoId: string;
@@ -70,6 +76,8 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [photos, setPhotos] = useState<PhotoMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<DemoUploadProgress | null>(null);
+  const [newPhotoIds, setNewPhotoIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,39 +159,44 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
+    setUploadProgress(null);
     try {
-      // If mock data is enabled, simulate upload
-      if (isMockDataEnabled) {
+      // Guest/demo: simulate upload with staged progress (no auth required)
+      if (shouldSimulatePhotoUpload()) {
         if (config.dev.enableConsoleLogs) {
           console.log('[MOCK API] Photo upload - Using mock data');
         }
-        
-        // Simulate processing delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        const mockPhotos: PhotoMetadata[] = Array.from(files).map((file, index) => {
-          const entryId = `mock-entry-${Date.now()}-${index}`;
-          const photoUrl = URL.createObjectURL(file);
-          return {
-            photoId: entryId,
-            url: photoUrl,
+
+        const mockPhotos: PhotoMetadata[] = [];
+
+        for (const file of Array.from(files)) {
+          const result = await simulateDemoPhotoGalleryUpload(file, (progress) => {
+            setUploadProgress(progress);
+          });
+
+          mockPhotos.push({
+            photoId: result.photoId,
+            url: result.url,
             metadata: {
-              locationName: 'Mock Location',
+              locationName: result.locationName,
               dateTime: new Date().toISOString(),
             },
             autoEntry: {
-              id: entryId,
-              content: `Auto-generated entry from photo: ${file.name}. This would be created from photo metadata in production.`,
-              tags: ['photo', 'mock']
-            }
-          };
-        });
-        
+              id: result.photoId,
+              content: result.content,
+              tags: result.tags,
+            },
+          });
+        }
+
+        setNewPhotoIds(new Set(mockPhotos.map((photo) => photo.photoId)));
         setPhotos((prev) => [...mockPhotos, ...prev]);
         mockPhotos.forEach((photo) => {
           if (onPhotoUploaded) onPhotoUploaded(photo);
         });
-        
+
+        setTimeout(() => setNewPhotoIds(new Set()), 2500);
+        setUploadProgress(null);
         setUploading(false);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -255,6 +268,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
       alert('Failed to upload photos. Please try again.');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -319,6 +333,16 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         className="hidden"
       />
 
+      {uploading && uploadProgress ? (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <DemoUploadProgressPanel
+            progress={uploadProgress}
+            stages={DEMO_PHOTO_GALLERY_STAGES}
+            icon={ImageIcon}
+          />
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="text-center py-8 text-white/60">Loading photos...</div>
       ) : photos.length === 0 ? (
@@ -330,7 +354,14 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {photos.map((photo) => (
-            <div key={photo.photoId} className="relative group">
+            <div
+              key={photo.photoId}
+              className={`relative group ${
+                newPhotoIds.has(photo.photoId)
+                  ? 'animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-700'
+                  : ''
+              }`}
+            >
               <LazyImage
                 src={photo.url}
                 alt="Photo"

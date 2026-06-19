@@ -12,6 +12,7 @@ import {
   sortEntriesChronologically,
   sortEntriesNewestFirst,
 } from './timelineEventUtils';
+import { TimelineDateHeader, TimelineInlineDate } from './TimelineDateDisplay';
 
 type TimelineEventsChronologyProps = {
   entries: ChronologyEntry[];
@@ -105,14 +106,14 @@ export const TimelineEventsChronology = ({
       <div className="flex gap-2 overflow-x-auto pb-1 px-1 snap-x snap-mandatory touch-pan-x">
         {flat.map((entry) => (
           <div key={entry.id} className="snap-start shrink-0 w-[min(280px,78vw)]">
-            <p className="text-[10px] font-semibold text-primary/80 mb-1.5 px-0.5">
-              {formatEventDateShort(entry.start_time)}
-            </p>
+            <TimelineInlineDate iso={entry.start_time} size="sm" showTime={false} />
+            <div className="mt-1.5">
             <TimelineEventCard
               entry={entry}
               selected={selectedEntryId === entry.id}
               onClick={() => onSelectEntry(entry)}
             />
+            </div>
           </div>
         ))}
       </div>
@@ -124,20 +125,11 @@ export const TimelineEventsChronology = ({
       <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-8 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {groups.map((group) => (
           <section key={group.dateKey} aria-label={group.label}>
-            {/* Prominent date header */}
-            <div className="sticky top-0 z-10 -mx-3 sm:-mx-6 px-3 sm:px-6 py-2 mb-3 bg-black/90 backdrop-blur-sm border-b border-white/8">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <p className="text-base sm:text-lg font-semibold text-white tracking-tight">
-                  {group.label}
-                </p>
-                <p className="text-xs text-white/40 font-medium">{group.weekday}</p>
-                {group.entries.length > 1 && (
-                  <span className="text-[10px] uppercase tracking-wider text-white/30 font-mono ml-auto">
-                    {group.entries.length} events
-                  </span>
-                )}
-              </div>
-            </div>
+            <TimelineDateHeader
+              dateKey={group.dateKey}
+              weekday={group.weekday}
+              count={group.entries.length}
+            />
 
             <div className="space-y-2 pl-0 sm:pl-2 border-l-2 border-primary/25 ml-1 sm:ml-2">
               {group.entries.map((entry) => (

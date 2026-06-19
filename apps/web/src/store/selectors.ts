@@ -19,6 +19,7 @@ export const selectEntityModalOpen = (state: RootState) => state.selection.entit
 export const selectCurrentContext = (state: RootState) => state.selection.currentContext;
 export const selectLastNonNoneContext = (state: RootState) => state.selection.lastNonNoneContext;
 export const selectSoulProfileContext = (state: RootState) => state.selection.soulProfileContext;
+export const selectChatFocus = (state: RootState) => state.selection.chatFocus;
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 export const selectUseMockData = (state: RootState) => state.runtime.useMockData;

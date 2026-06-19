@@ -75,6 +75,8 @@ type CharacterKnowledgeBaseProps = {
   onAskInChat?: (prompt: string) => void;
   /** Pre-loaded bundle (e.g. self profile) — skips fetch when provided */
   initialData?: Partial<CharacterKnowledgeBaseData>;
+  /** When true, copy addresses the app user in second person (your profile). */
+  isSelfProfile?: boolean;
 };
 
 const catLabel: Record<string, string> = {
@@ -129,6 +131,7 @@ export function CharacterKnowledgeBase({
   active = true,
   onAskInChat,
   initialData,
+  isSelfProfile = false,
 }: CharacterKnowledgeBaseProps) {
   const [data, setData] = useState<CharacterKnowledgeBaseData | null>(
     initialData
@@ -184,6 +187,10 @@ export function CharacterKnowledgeBase({
   const firstName = characterName.split(' ')[0];
   const kb = data;
   const learningScore = kb?.intelligence.learningScore ?? 0;
+  const headerTitle = isSelfProfile ? 'What Lore Knows About You' : 'Entity Knowledge Base';
+  const headerDescription = isSelfProfile
+    ? 'Facts, patterns, and connections Lore has collected from your conversations, journal, and resume — your personal knowledge base.'
+    : `Everything LoreBook has learned about ${characterName} — facts, patterns, connections, and timeline. Grows as you chat and when duplicate mentions merge into this person.`;
 
   if (loading) {
     return (
@@ -194,30 +201,52 @@ export function CharacterKnowledgeBase({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-3 sm:space-y-6">
       {/* Entity Knowledge Base header */}
-      <Card className="bg-gradient-to-br from-violet-950/30 via-black/60 to-indigo-950/20 border-2 border-violet-500/25 shadow-xl">
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-violet-500/20 border border-violet-500/40">
-                <Brain className="h-6 w-6 text-violet-300" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  Entity Knowledge Base
-                  <Sparkles className="h-4 w-4 text-violet-300" />
+      <Card className="min-w-0 border border-violet-500/25 bg-gradient-to-br from-violet-950/30 via-black/60 to-indigo-950/20 shadow-lg sm:border-2 sm:shadow-xl">
+        <CardHeader className="px-3 py-2 pb-2 sm:px-6 sm:py-4 sm:pb-3">
+          {/* Mobile: compact single-block header */}
+          <div className="sm:hidden space-y-2">
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="shrink-0 rounded-lg border border-violet-500/40 bg-violet-500/20 p-1.5">
+                  <Brain className="h-3.5 w-3.5 text-violet-300" />
+                </div>
+                <h2 className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                  {isSelfProfile ? 'What Lore Knows' : headerTitle}
                 </h2>
-                <p className="text-sm text-white/55 mt-1 max-w-xl">
-                  Everything LoreBook has learned about {characterName} — facts, patterns, connections,
-                  and timeline. Grows as you chat and when duplicate mentions merge into this person.
-                </p>
+              </div>
+              <div className="shrink-0 text-right leading-none">
+                <span className="text-base font-bold tabular-nums text-white">{learningScore}</span>
+                <span className="text-[10px] text-white/40">/100</span>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-1">
+            <div className="grid grid-cols-4 gap-1">
+              <StatPill icon={Brain} label="Facts" value={kb?.facts.length ?? 0} compact />
+              <StatPill icon={Layers} label="Patterns" value={kb?.knowledgeClaims.length ?? 0} compact />
+              <StatPill icon={Clock} label="Time" value={kb?.profile.timelineEventCount ?? 0} compact />
+              <StatPill icon={MessageSquare} label="Mem" value={kb?.profile.memoryCount ?? 0} compact />
+            </div>
+          </div>
+
+          {/* Desktop: full header */}
+          <div className="hidden sm:flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="shrink-0 rounded-xl border border-violet-500/40 bg-violet-500/20 p-2.5">
+                <Brain className="h-6 w-6 text-violet-300" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="flex flex-wrap items-center gap-2 text-xl font-bold text-white">
+                  {headerTitle}
+                  <Sparkles className="h-4 w-4 shrink-0 text-violet-300" />
+                </h2>
+                <p className="mt-1 max-w-xl text-sm text-white/55">{headerDescription}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-400" />
-                <span className="text-2xl font-bold text-white tabular-nums">{learningScore}</span>
+                <TrendingUp className="h-4 w-4 shrink-0 text-green-400" />
+                <span className="text-2xl font-bold tabular-nums text-white">{learningScore}</span>
                 <span className="text-xs text-white/40">/100 learning</span>
               </div>
               {kb?.intelligence.lastUpdated && (
@@ -228,8 +257,8 @@ export function CharacterKnowledgeBase({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <CardContent className="px-3 pt-0 sm:px-6">
+          <div className="mb-0 hidden grid-cols-2 gap-2 sm:mb-0 sm:grid sm:grid-cols-4">
             <StatPill icon={Brain} label="Facts" value={kb?.facts.length ?? 0} />
             <StatPill icon={Layers} label="Patterns" value={kb?.knowledgeClaims.length ?? 0} />
             <StatPill icon={Clock} label="Timeline" value={kb?.profile.timelineEventCount ?? 0} />
@@ -237,7 +266,7 @@ export function CharacterKnowledgeBase({
           </div>
 
           {(kb?.aliases.length ?? 0) > 0 || (kb?.identityMentions.length ?? 0) > 1 ? (
-            <div className="mt-4 pt-4 border-t border-white/8">
+            <div className="mt-3 border-t border-white/8 pt-3 sm:mt-4 sm:pt-4">
               <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
                 Known as / merged mentions
               </p>
@@ -290,7 +319,7 @@ export function CharacterKnowledgeBase({
             </div>
           )}
 
-          {kb?.profile.relationshipToUser && (
+          {kb?.profile.relationshipToUser && !isSelfProfile && (
             <p className="mt-3 text-xs text-white/50">
               Relationship to you: <span className="text-white/80">{kb.profile.relationshipToUser}</span>
             </p>
@@ -305,7 +334,11 @@ export function CharacterKnowledgeBase({
             icon={MessageSquare}
             iconClass="text-primary"
             title="Conversations"
-            subtitle="Chat threads where this person was mentioned — including the first conversation that introduced them."
+            subtitle={
+              isSelfProfile
+                ? 'Chat threads where you shared details about your life.'
+                : 'Chat threads where this person was mentioned — including the first conversation that introduced them.'
+            }
           />
           <div className="space-y-2">
             {kb!.conversationLinks!.map((link) => (
@@ -337,22 +370,35 @@ export function CharacterKnowledgeBase({
         <SectionHeader
           icon={Brain}
           iconClass="text-violet-400"
-          title="Facts From Conversations"
-          subtitle="Extracted directly from chats — updated as new information comes in."
+          title={isSelfProfile ? 'Facts About You' : 'Facts From Conversations'}
+          subtitle={
+            isSelfProfile
+              ? 'Extracted from your chats and uploads — updated as you share more.'
+              : 'Extracted directly from chats — updated as new information comes in.'
+          }
         />
         {!kb?.facts.length ? (
           <InsufficientData
             compact
             icon={Brain}
             accent="violet"
-            title={`No facts about ${firstName} yet`}
-            description={`Facts are pulled straight from your conversations. Chat about ${firstName} and they'll start appearing here.`}
+            title={isSelfProfile ? 'No facts about you yet' : `No facts about ${firstName} yet`}
+            description={
+              isSelfProfile
+                ? 'Facts are pulled from what you tell Lore. Keep chatting or upload a resume and they will appear here.'
+                : `Facts are pulled straight from your conversations. Chat about ${firstName} and they'll start appearing here.`
+            }
             action={
               onAskInChat
                 ? {
                     label: 'Start a chat',
                     icon: MessageSquare,
-                    onClick: () => onAskInChat(`Let me tell you about ${characterName}: `),
+                    onClick: () =>
+                      onAskInChat(
+                        isSelfProfile
+                          ? 'Help me add more to my personal profile: '
+                          : `Let me tell you about ${characterName}: `,
+                      ),
                   }
                 : undefined
             }
@@ -424,7 +470,11 @@ export function CharacterKnowledgeBase({
             icon={Brain}
             accent="indigo"
             title="No crystallized knowledge yet"
-            description={`Knowledge claims form once a pattern shows up repeatedly across your entries about ${firstName}.`}
+            description={
+              isSelfProfile
+                ? 'Patterns form once Lore sees the same themes across your entries and conversations.'
+                : `Knowledge claims form once a pattern shows up repeatedly across your entries about ${firstName}.`
+            }
           />
         ) : (
           <div className="space-y-3">
@@ -551,16 +601,27 @@ function StatPill({
   icon: Icon,
   label,
   value,
+  compact = false,
 }: {
   icon: typeof Brain;
   label: string;
   value: number;
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <div className="rounded-md border border-white/8 bg-black/30 px-1 py-1 text-center">
+        <p className="text-sm font-bold tabular-nums leading-none text-white">{value}</p>
+        <p className="mt-0.5 truncate text-[8px] uppercase tracking-wide text-white/35">{label}</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-3 rounded-lg bg-black/30 border border-white/8 text-center">
-      <Icon className="h-4 w-4 mx-auto mb-1 text-white/40" />
-      <p className="text-lg font-bold text-white tabular-nums">{value}</p>
-      <p className="text-[10px] text-white/35 uppercase tracking-wide">{label}</p>
+    <div className="rounded-lg border border-white/8 bg-black/30 p-3 text-center">
+      <Icon className="mx-auto mb-1 h-4 w-4 text-white/40" />
+      <p className="text-lg font-bold tabular-nums text-white">{value}</p>
+      <p className="text-[10px] uppercase tracking-wide text-white/35">{label}</p>
     </div>
   );
 }

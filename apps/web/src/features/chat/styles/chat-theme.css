@@ -121,6 +121,141 @@
   border-radius: 3px;
 }
 
-.chat-composer textarea::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+.composer-highlight-input {
+  color: transparent;
+  caret-color: rgb(255 255 255);
+  -webkit-text-fill-color: transparent;
+}
+
+.composer-highlight-input::placeholder {
+  color: rgb(255 255 255 / 0.5);
+  -webkit-text-fill-color: rgb(255 255 255 / 0.5);
+}
+
+.composer-highlight-layer {
+  line-height: inherit;
+}
+
+.composer-highlight-layer mark.entity-hl {
+  border-radius: 0.2rem;
+  padding: 0 0.1rem;
+  font-weight: 600;
+}
+
+.entity-hl-known.entity-hl-character {
+  color: rgb(221 214 254);
+  background: rgb(139 92 246 / 0.32);
+  box-shadow: 0 0 0 1px rgb(167 139 250 / 0.35);
+}
+
+.entity-hl-known.entity-hl-romantic {
+  color: rgb(255 228 230);
+  background: rgb(244 63 94 / 0.32);
+  box-shadow: 0 0 0 1px rgb(251 113 133 / 0.4);
+}
+
+.entity-hl-known.entity-hl-location {
+  color: rgb(165 243 252);
+  background: rgb(6 182 212 / 0.28);
+  box-shadow: 0 0 0 1px rgb(34 211 238 / 0.35);
+}
+
+.entity-hl-known.entity-hl-group {
+  color: rgb(167 243 208);
+  background: rgb(16 185 129 / 0.28);
+  box-shadow: 0 0 0 1px rgb(52 211 153 / 0.35);
+}
+
+.entity-hl-known.entity-hl-skill {
+  color: rgb(199 210 254);
+  background: rgb(99 102 241 / 0.3);
+  box-shadow: 0 0 0 1px rgb(129 140 248 / 0.35);
+}
+
+.entity-hl-known.entity-hl-event {
+  color: rgb(253 230 138);
+  background: rgb(245 158 11 / 0.28);
+  box-shadow: 0 0 0 1px rgb(251 191 36 / 0.35);
+}
+
+.entity-hl-suggestion {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.entity-hl-suggestion.entity-hl-character {
+  color: rgb(221 214 254);
+  background: rgb(139 92 246 / 0.18);
+  box-shadow: 0 0 0 1px rgb(167 139 250 / 0.25);
+}
+
+.entity-hl-suggestion.entity-hl-romantic {
+  color: rgb(255 228 230);
+  background: rgb(244 63 94 / 0.18);
+  box-shadow: 0 0 0 1px rgb(251 113 133 / 0.28);
+}
+
+.entity-hl-suggestion.entity-hl-location {
+  color: rgb(165 243 252);
+  background: rgb(6 182 212 / 0.16);
+  box-shadow: 0 0 0 1px rgb(34 211 238 / 0.25);
+}
+
+.entity-hl-suggestion.entity-hl-group {
+  color: rgb(167 243 208);
+  background: rgb(16 185 129 / 0.16);
+  box-shadow: 0 0 0 1px rgb(52 211 153 / 0.25);
+}
+
+.entity-hl-suggestion.entity-hl-skill {
+  color: rgb(199 210 254);
+  background: rgb(99 102 241 / 0.16);
+  box-shadow: 0 0 0 1px rgb(129 140 248 / 0.25);
+}
+
+.entity-hl-suggestion.entity-hl-event {
+  color: rgb(253 230 138);
+  background: rgb(245 158 11 / 0.16);
+  box-shadow: 0 0 0 1px rgb(251 191 36 / 0.25);
+}
+
+.entity-hl-draft {
+  border-bottom-width: 1px;
+  border-bottom-style: dashed;
+}
+
+.entity-hl-draft.entity-hl-character {
+  color: rgb(196 181 253);
+  background: rgb(139 92 246 / 0.1);
+  border-bottom-color: rgb(167 139 250 / 0.55);
+}
+
+.entity-hl-draft.entity-hl-romantic {
+  color: rgb(253 164 175);
+  background: rgb(244 63 94 / 0.1);
+  border-bottom-color: rgb(251 113 133 / 0.55);
+}
+
+.entity-hl-draft.entity-hl-location {
+  color: rgb(103 232 249);
+  background: rgb(6 182 212 / 0.1);
+  border-bottom-color: rgb(34 211 238 / 0.55);
+}
+
+.entity-hl-draft.entity-hl-group {
+  color: rgb(110 231 183);
+  background: rgb(16 185 129 / 0.1);
+  border-bottom-color: rgb(52 211 153 / 0.55);
+}
+
+.entity-hl-draft.entity-hl-skill {
+  color: rgb(165 180 252);
+  background: rgb(99 102 241 / 0.1);
+  border-bottom-color: rgb(129 140 248 / 0.55);
+}
+
+.entity-hl-draft.entity-hl-event {
+  color: rgb(252 211 77);
+  background: rgb(245 158 11 / 0.1);
+  border-bottom-color: rgb(251 191 36 / 0.55);
 }

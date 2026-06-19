@@ -455,6 +455,21 @@ class ModeHandlers {
         });
       }
 
+      // LoreBook signature — occasional "Noted." for log/deposit moments (not every time)
+      const { maybeNotedSignatureResponse } = await import('../chat/notedSignature');
+      const signature = maybeNotedSignatureResponse({
+        message,
+        conversationHistory: options?.conversationHistory,
+      });
+      if (signature) {
+        return {
+          content: signature,
+          response_mode: 'SILENT_LOG',
+          confidence: 0.95,
+          metadata: { processing: 'async', signature: 'noted' },
+        };
+      }
+
       // Ask the AI for a brief, warm acknowledgment instead of a dead "Noted."
       try {
         const { openai } = await import('../../lib/openai');

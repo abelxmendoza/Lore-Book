@@ -198,7 +198,7 @@ export const DetectedProjectSuggestions = ({
               No pending project suggestions. Mention what you&apos;re building in chat — LoreBook uses lexical intelligence to spot initiatives and suggest them here.
             </p>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 max-h-[28rem] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 max-h-[min(20rem,50dvh)] sm:max-h-[28rem] overflow-y-auto overscroll-contain pr-1 -mr-1">
               {visible.map((s) => {
                 const k = keyFor(s);
                 const quote = evidenceQuote(s);
@@ -211,13 +211,13 @@ export const DetectedProjectSuggestions = ({
                     <button
                       type="button"
                       onClick={() => void handleDismiss(s)}
-                      className="absolute top-2 right-2 h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-white/70 hover:bg-white/10"
+                      className="absolute top-2 right-2 h-8 w-8 sm:h-6 sm:w-6 flex items-center justify-center rounded text-white/30 hover:text-white/70 hover:bg-white/10 touch-manipulation"
                       title="Dismiss"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
 
-                    <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-7">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-9 sm:pr-7">
                       <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${typeColor(s.project_type)}`}>
                         {(s.project_type ?? 'project').toUpperCase()}
                       </span>
@@ -227,9 +227,9 @@ export const DetectedProjectSuggestions = ({
                         </span>
                       )}
                       {isSimilar && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-200 border border-amber-500/25 flex items-center gap-0.5">
-                          <Link2 className="h-2.5 w-2.5" />
-                          similar to {s.matched_project_name}
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-200 border border-amber-500/25 flex items-center gap-0.5 max-w-full">
+                          <Link2 className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">similar to {s.matched_project_name}</span>
                         </span>
                       )}
                       {typeof s.confidence === 'number' && (
@@ -239,34 +239,34 @@ export const DetectedProjectSuggestions = ({
                       )}
                     </div>
 
-                    <h4 className="text-sm font-semibold text-white leading-snug mb-1 flex items-center gap-1.5">
-                      <Briefcase className="h-3.5 w-3.5 text-primary/80" />
-                      {s.name}
+                    <h4 className="text-sm font-semibold text-white leading-snug mb-1 flex items-start gap-1.5">
+                      <Briefcase className="h-3.5 w-3.5 text-primary/80 shrink-0 mt-0.5" />
+                      <span className="break-words">{s.name}</span>
                     </h4>
                     {s.description && (
                       <p className="text-xs text-white/60 leading-relaxed line-clamp-2 mb-2">{s.description}</p>
                     )}
                     {s.reasoning && (
-                      <p className="text-[11px] text-white/45 mb-2">{s.reasoning}</p>
+                      <p className="text-[11px] text-white/45 mb-2 leading-relaxed">{s.reasoning}</p>
                     )}
                     {quote && (
                       <p className="text-[11px] text-white/35 italic line-clamp-2 mb-3">&ldquo;{quote}&rdquo;</p>
                     )}
 
-                    <div className="flex justify-end">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
                       {isSimilar ? (
-                        <span className="flex items-center gap-1 text-xs text-amber-200/80 px-2 py-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Already tracked — add anyway?
+                        <span className="flex items-center gap-1 text-xs text-amber-200/80 px-2 py-1 sm:mr-auto">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-snug">Already tracked — add anyway?</span>
                         </span>
                       ) : null}
                       <button
                         type="button"
                         onClick={() => void handleAdd(s)}
                         disabled={adding === k}
-                        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 disabled:opacity-50"
+                        className="flex items-center justify-center gap-1 text-xs font-medium px-3 py-2.5 sm:px-2.5 sm:py-1 rounded bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 disabled:opacity-50 w-full sm:w-auto min-h-[44px] sm:min-h-0 touch-manipulation"
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
                         {adding === k ? 'Adding…' : 'Add to projects'}
                       </button>
                     </div>

@@ -1,5 +1,4 @@
-import { Loader2, Sparkles, Database, Users, BookOpen, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent } from '../../../components/ui/card';
+import { Loader2, Sparkles, Database, Users, BookOpen } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type LoadingStage =
@@ -14,7 +13,9 @@ type ChatLoadingPulseProps = {
   progress?: number; // 0-100
 };
 
-const stageConfig: Record<LoadingStage, { icon: any; label: string; description: string; progress: number }> = {
+const STAGES: LoadingStage[] = ['analyzing', 'searching', 'connecting', 'reasoning', 'generating'];
+
+const stageConfig: Record<LoadingStage, { icon: typeof Database; label: string; description: string; progress: number }> = {
   analyzing: {
     icon: Database,
     label: 'Analyzing timeline',
@@ -51,55 +52,64 @@ export const ChatLoadingPulse = ({ stage = 'analyzing', progress: externalProgre
   const config = stageConfig[stage];
   const Icon = config.icon;
   const [internalProgress, setInternalProgress] = useState(0);
-  const [dots, setDots] = useState('');
   const progress = externalProgress ?? config.progress;
+  const stageIndex = STAGES.indexOf(stage);
 
-  // Animate progress bar toward target
   useEffect(() => {
     const target = progress;
-    const id = setInterval(() => {
-      setInternalProgress((p) => (p >= target ? target : Math.min(p + 1.5, target)));
-    }, 40);
-    return () => clearInterval(id);
+    const id = window.setInterval(() => {
+      setInternalProgress((p) => (p >= target ? target : Math.min(p + 2, target)));
+    }, 35);
+    return () => window.clearInterval(id);
   }, [progress]);
 
-  // Cycling dots so it feels like active progress
-  useEffect(() => {
-    const id = setInterval(() => {
-      setDots((d) => (d.length >= 3 ? '' : d + '.'));
-    }, 380);
-    return () => clearInterval(id);
-  }, []);
-
   return (
-    <div className="flex gap-3 justify-start">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center ring-2 ring-primary/20 animate-pulse">
-        <Loader2 className="h-4 w-4 text-primary animate-spin" />
+    <div className="flex gap-3 justify-start chat-loading-card-enter px-3 sm:px-6 lg:px-10 pb-2">
+      <div className="chat-loading-avatar-ring flex-shrink-0 w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/25">
+        <BotIcon className="h-4 w-4 text-primary" />
       </div>
-      <Card className="bg-black/40 border-border/60 flex-1 shadow-lg shadow-black/20">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Icon className="h-4 w-4 text-primary animate-pulse" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-white font-medium">{config.label}</div>
-              <div className="text-xs text-white/50 truncate">
-                {config.description}
-                <span className="inline-block w-4 text-left">{dots}</span>
-              </div>
-            </div>
-            {progress >= 100 && <CheckCircle2 className="h-4 w-4 text-green-400 flex-shrink-0" />}
+      <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm chat-bubble-assistant border border-white/10 px-4 py-3.5 shadow-lg shadow-black/25">
+        <div className="flex items-center gap-2.5 mb-3">
+          <Icon className={`h-4 w-4 text-primary flex-shrink-0 ${stage === 'generating' ? 'animate-spin' : ''}`} />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-white font-medium">{config.label}</div>
+            <div className="text-xs text-white/45 truncate">{config.description}</div>
           </div>
-          {/* Progress bar with shimmer overlay */}
-          <div className="mt-2 h-1.5 bg-black/60 rounded-full overflow-hidden relative">
-            <div
-              className="h-full bg-gradient-to-r from-primary/60 to-primary transition-all duration-300 ease-out chat-loading-pulse"
-              style={{ width: `${internalProgress}%` }}
+        </div>
+
+        <div className="flex gap-1 mb-2.5">
+          {STAGES.map((s, i) => (
+            <span
+              key={s}
+              className={`h-1 flex-1 rounded-full transition-all duration-500 ${
+                i < stageIndex
+                  ? 'bg-primary/70'
+                  : i === stageIndex
+                    ? 'bg-primary/45 chat-loading-progress-fill'
+                    : 'bg-white/8'
+              }`}
             />
-            {progress < 100 && <div className="chat-loading-shimmer" aria-hidden />}
-          </div>
-        </CardContent>
-      </Card>
+          ))}
+        </div>
+
+        <div className="h-1.5 bg-black/50 rounded-full overflow-hidden relative">
+          <div
+            className="h-full bg-gradient-to-r from-primary/50 via-primary to-cyan-400/80 transition-all duration-300 ease-out chat-loading-progress-fill rounded-full"
+            style={{ width: `${internalProgress}%` }}
+          />
+          {progress < 100 && <div className="chat-loading-shimmer" aria-hidden />}
+        </div>
+      </div>
     </div>
   );
 };
 
+function BotIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M12 8V4H8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M9 14h.01M15 14h.01" strokeLinecap="round" />
+    </svg>
+  );
+}

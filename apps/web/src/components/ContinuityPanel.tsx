@@ -2,6 +2,7 @@ import { AlertTriangle, Flame, GitBranch, RefreshCw, Shield, Sparkles } from 'lu
 
 import { useContinuity } from '../hooks/useContinuity';
 import { Button } from './ui/button';
+import { formatEpistemicPercent } from '../lib/epistemicLabels';
 
 const Meter = ({ value }: { value: number }) => {
   const pct = Math.round(value * 100);
@@ -51,7 +52,7 @@ export const ContinuityPanel = () => {
                       <p className="text-sm text-slate-200">{Array.isArray(fact.value) ? fact.value.join(', ') : fact.value}</p>
                     </div>
                     <div className="text-right text-xs text-slate-300">
-                      <p className="mb-1 text-emerald-300">Confidence {Math.round(fact.confidence * 100)}%</p>
+                      <p className="mb-1 text-emerald-300">{formatEpistemicPercent(fact.confidence)}</p>
                       <Meter value={fact.confidence} />
                       <p className="mt-1 text-[10px] uppercase tracking-wide text-indigo-200">{fact.scope}</p>
                       {fact.permanent && <p className="text-[10px] text-amber-300">Permanent</p>}

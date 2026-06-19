@@ -63,6 +63,9 @@ import { LexicalSignalBadges } from '../../../components/shared/LexicalSignalBad
 import { extractLexicalSignals } from '../../../lib/lexicalRelationshipLabels';
 import { SilenceMessage } from './SilenceMessage';
 import { RecallMessage } from './RecallMessage';
+import type { EntityMentionRef } from '../../../lib/entityMentions';
+import { entityMentionsFromMessage, mergeEntityMentionRefs } from '../../../lib/entityMentions';
+import { TextWithEntityPills } from '../../../components/entity/TextWithEntityPills';
 
 export type Message = {
   id: string;
@@ -130,7 +133,12 @@ export type Message = {
   activePersona?: string;
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
   continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
-  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  mentionedEntities?: Array<{
+    id: string;
+    name: string;
+    type: 'character' | 'location' | 'organization' | 'skill' | 'event';
+    characterVariant?: import('../../../types/certifiedEntity').CharacterVariant;
+  }>;
   creationOutcomes?: Array<{
     mention: string;
     action: 'create' | 'merge' | 'defer' | 'reject';
@@ -154,19 +162,23 @@ export type Message = {
 type ChatMessageProps = {
   message: Message;
   showCognitiveTrace?: boolean;
+  animateEnter?: boolean;
   onCopy?: () => void;
   onSourceClick?: (source: ChatSource) => void;
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   onPrefillComposer?: (prompt: string) => void;
+  threadEntityMentions?: EntityMentionRef[];
 };
 
 export const ChatMessage = ({
   message,
   showCognitiveTrace = false,
+  animateEnter = false,
   onCopy,
   onSourceClick,
   onSuggestedAction,
   onPrefillComposer,
+  threadEntityMentions = [],
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -204,12 +216,24 @@ export const ChatMessage = ({
   const relationshipGroups = extractRelationshipGroups(message.metadata);
   const lexicalSignals = extractLexicalSignals(message.metadata as Record<string, unknown> | undefined);
   const isSystem = message.isSystemMessage;
+  const enterClass = animateEnter
+    ? isSystem
+      ? 'chat-message-enter-system'
+      : isUser
+        ? 'chat-message-enter-user'
+        : 'chat-message-enter-assistant'
+    : '';
+  const isThinking = !isUser && message.isStreaming && !message.content.trim();
+  const inlineEntityMentions = mergeEntityMentionRefs(
+    entityMentionsFromMessage(message),
+    isUser ? threadEntityMentions : undefined
+  );
 
   // System messages get special styling
   if (isSystem) {
     return (
-      <div className="flex justify-center my-4 w-full">
-        <div className="max-w-[48rem] bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg px-4 py-3 border border-primary/30">
+      <div className={`flex justify-center my-4 w-full ${enterClass}`}>
+        <div className="max-w-[48rem] bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg px-4 py-3 border border-primary/30 shadow-lg shadow-primary/5">
           <div className="flex items-center gap-2 text-sm text-white/90">
             <Sparkles className="h-4 w-4 text-primary" />
             <p>{message.content}</p>
@@ -279,23 +303,21 @@ export const ChatMessage = ({
   return (
     <div
       data-testid={isUser ? 'chat-message-user' : 'chat-message-assistant'}
-      className={`flex gap-3 sm:gap-4 lg:gap-6 items-start ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8`}
+      className={`flex gap-3 sm:gap-4 lg:gap-6 items-start ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8 ${enterClass}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+        <div className={`flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1 ${isThinking ? 'chat-avatar-thinking' : ''}`}>
           <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
       <div className={`min-w-0 w-full ${isUser ? 'flex flex-col items-end max-w-[92%] sm:max-w-[85%] md:max-w-[75%]' : 'flex-1 flex flex-col'}`}>
         <div
-          className={`relative w-full ${
+          className={`relative w-full transition-shadow duration-300 ${
             isUser
-              ? 'inline-block max-w-full bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
-              // Assistant: fill the available width so responses read full-width,
-              // especially on mobile (previously shrink-wrapped via inline-block).
-              : 'block w-full bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
+              ? 'inline-block max-w-full chat-bubble-user rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
+              : `block w-full chat-bubble-assistant rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7 ${message.isStreaming ? 'chat-bubble-streaming' : ''}`
           }`}
         >
           {/* Message Actions Menu */}
@@ -348,18 +370,19 @@ export const ChatMessage = ({
             {!isUser ? (
               <div className="w-full min-w-0 prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
                 {message.isStreaming && !message.content.trim() ? (
-                  <ChatLoadingDots />
+                  <ChatLoadingDots label="Composing" />
                 ) : (
                   <MarkdownRenderer 
                     content={message.content} 
                     isStreaming={message.isStreaming} 
                     className={message.isStreaming ? 'chat-message-streaming' : ''}
+                    entityMentions={inlineEntityMentions}
                   />
                 )}
               </div>
             ) : (
               <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
-                {message.content}
+                <TextWithEntityPills text={message.content} entities={inlineEntityMentions} />
               </p>
             )}
 

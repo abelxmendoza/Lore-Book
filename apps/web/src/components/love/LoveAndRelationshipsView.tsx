@@ -1,6 +1,6 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Heart, Search, Filter, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -14,9 +14,11 @@ import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { 
   getMockRomanticRelationships, 
   getMockRomanticRelationshipsByFilter,
+  buildSimulatedRomanticRelationship,
   type MockRomanticRelationship 
 } from '../../mocks/romanticRelationships';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
+import type { CharacterSuggestion } from '../../api/entitySuggestions';
 import { RelationshipCard } from './RelationshipCard';
 import { RelationshipDetailModal } from './RelationshipDetailModal';
 import { RankingView } from './RankingView';
@@ -111,6 +113,9 @@ const isHighRiskRelationship = (relationship: RomanticRelationship) =>
   ['blocked', 'ghosted', 'obsession', 'complicated'].includes(relationshipStatus(relationship)) ||
   relationshipType(relationship) === 'obsession';
 
+const RELATIONSHIP_GRID_CLASS =
+  'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr';
+
 export const LoveAndRelationshipsView = () => {
   const { useMockData: shouldUseMockData } = useMockData();
   const [relationships, setRelationships] = useState<RomanticRelationship[]>([]);
@@ -123,6 +128,39 @@ export const LoveAndRelationshipsView = () => {
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
   const [rescanSummary, setRescanSummary] = useState<RomanticRescanSummary | null>(null);
+  const [highlightedRelationshipId, setHighlightedRelationshipId] = useState<string | null>(null);
+  const relationshipsGridRef = useRef<HTMLDivElement>(null);
+
+  const scrollToRelationship = useCallback((relationshipId: string) => {
+    window.setTimeout(() => {
+      const el = document.querySelector(`[data-testid="relationship-card-${relationshipId}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 420);
+  }, []);
+
+  const handleSuggestionAdded = useCallback((suggestion: CharacterSuggestion) => {
+    if (shouldUseMockData) {
+      const simulated = buildSimulatedRomanticRelationship(suggestion);
+      setRelationships(prev => {
+        const exists = prev.some(
+          rel => rel.person_name?.toLowerCase() === suggestion.name.toLowerCase()
+        );
+        return exists ? prev : [simulated as RomanticRelationship, ...prev];
+      });
+      setExistingCharacterNames(prev =>
+        prev.some(n => n.toLowerCase() === suggestion.name.toLowerCase())
+          ? prev
+          : [...prev, suggestion.name]
+      );
+      setHighlightedRelationshipId(simulated.id);
+      setActiveFilter('all');
+      scrollToRelationship(simulated.id);
+      window.setTimeout(() => setHighlightedRelationshipId(null), 4500);
+      return;
+    }
+    void loadCharacterNames();
+    void loadRelationships();
+  }, [shouldUseMockData, scrollToRelationship]);
 
   useEffect(() => {
     loadRelationships();
@@ -264,6 +302,15 @@ export const LoveAndRelationshipsView = () => {
     }
   })();
 
+  const renderRelationshipCard = (rel: RomanticRelationship) => (
+    <RelationshipCard
+      key={rel.id}
+      relationship={rel}
+      highlighted={highlightedRelationshipId === rel.id}
+      onClick={() => setSelectedRelationship(rel.id)}
+    />
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -358,10 +405,7 @@ export const LoveAndRelationshipsView = () => {
                 ...relationships.flatMap(rel => rel.person_name ? [rel.person_name] : []),
               ]
         }
-        onCharacterAdded={() => {
-          void loadCharacterNames();
-          void loadRelationships();
-        }}
+        onCharacterAdded={handleSuggestionAdded}
         onRescanComplete={() => {
           void loadRelationships();
         }}
@@ -458,7 +502,7 @@ export const LoveAndRelationshipsView = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value={activeFilter} className="mt-6">
+        <TabsContent value={activeFilter} className="mt-6" ref={relationshipsGridRef}>
           {/* Active Relationships Section */}
           {(activeFilter === 'all' || activeFilter === 'active') && activeRelationships.length > 0 && (
             <div className="mb-8">
@@ -466,14 +510,8 @@ export const LoveAndRelationshipsView = () => {
                 <Heart className="w-5 h-5 text-pink-400" />
                 Active Relationships
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {activeRelationships.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {activeRelationships.map(renderRelationshipCard)}
               </div>
             </div>
           )}
@@ -485,14 +523,8 @@ export const LoveAndRelationshipsView = () => {
                 <Sparkles className="w-5 h-5 text-pink-400" />
                 Crushes & Interests
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {crushes.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {crushes.map(renderRelationshipCard)}
               </div>
             </div>
           )}
@@ -503,41 +535,23 @@ export const LoveAndRelationshipsView = () => {
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
                 <span className="text-white/60">Past Relationships</span>
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {pastRelationships.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {pastRelationships.map(renderRelationshipCard)}
               </div>
             </div>
           )}
 
           {/* Situationships Section */}
           {activeFilter === 'situationships' && filteredRelationships.length > 0 && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {situationships.map((rel) => (
-                <RelationshipCard
-                  key={rel.id}
-                  relationship={rel}
-                  onClick={() => setSelectedRelationship(rel.id)}
-                />
-              ))}
+            <div className={RELATIONSHIP_GRID_CLASS}>
+              {situationships.map(renderRelationshipCard)}
             </div>
           )}
 
           {/* Dating Section */}
           {activeFilter === 'dating' && datingRelationships.length > 0 && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {datingRelationships.map((rel) => (
-                <RelationshipCard
-                  key={rel.id}
-                  relationship={rel}
-                  onClick={() => setSelectedRelationship(rel.id)}
-                />
-              ))}
+            <div className={RELATIONSHIP_GRID_CLASS}>
+              {datingRelationships.map(renderRelationshipCard)}
             </div>
           )}
 
@@ -548,14 +562,8 @@ export const LoveAndRelationshipsView = () => {
                 <Ban className="w-5 h-5 text-red-400" />
                 No Contact
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {noContactRelationships.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {noContactRelationships.map(renderRelationshipCard)}
               </div>
             </div>
           )}
@@ -567,14 +575,8 @@ export const LoveAndRelationshipsView = () => {
                 <RotateCcw className="w-5 h-5 text-blue-400" />
                 Possible Reconnection
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {reconnectionRelationships.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {reconnectionRelationships.map(renderRelationshipCard)}
               </div>
             </div>
           )}
@@ -586,14 +588,8 @@ export const LoveAndRelationshipsView = () => {
                 <AlertTriangle className="w-5 h-5 text-orange-400" />
                 High Risk / Needs Care
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {highRiskRelationships.map((rel) => (
-                  <RelationshipCard
-                    key={rel.id}
-                    relationship={rel}
-                    onClick={() => setSelectedRelationship(rel.id)}
-                  />
-                ))}
+              <div className={RELATIONSHIP_GRID_CLASS}>
+                {highRiskRelationships.map(renderRelationshipCard)}
               </div>
             </div>
           )}

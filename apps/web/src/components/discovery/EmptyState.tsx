@@ -7,19 +7,22 @@ interface EmptyStateProps {
   icon?: React.ReactNode;
 }
 
-export const EmptyState = ({ 
-  title = 'No Data Available', 
+export const EmptyState = ({
+  title = 'No Data Available',
   description = 'There\'s nothing to display here yet.',
-  icon
+  icon,
 }: EmptyStateProps) => {
   return (
-    <Card className="bg-black/20 border-border/40">
-      <CardContent className="p-12 text-center">
-        {icon || <Compass className="h-12 w-12 text-white/20 mx-auto mb-4" />}
-        <h3 className="text-lg font-semibold text-white/60 mb-2">{title}</h3>
-        <p className="text-sm text-white/40">{description}</p>
+    <Card className="bg-white/[0.03] border-white/10 rounded-2xl">
+      <CardContent className="p-8 sm:p-12 text-center">
+        {icon || (
+          <div className="inline-flex p-3 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
+            <Compass className="h-8 w-8 text-primary/50" />
+          </div>
+        )}
+        <h3 className="text-base sm:text-lg font-semibold text-white/70 mb-2">{title}</h3>
+        <p className="text-sm text-white/40 max-w-sm mx-auto leading-relaxed">{description}</p>
       </CardContent>
     </Card>
   );
 };
-

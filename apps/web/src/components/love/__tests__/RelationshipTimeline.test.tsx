@@ -7,9 +7,11 @@ import { RelationshipTimeline } from '../RelationshipTimeline';
 describe('RelationshipTimeline', () => {
   const mockRelationship = {
     id: 'rel-001',
+    person_id: 'char-001',
+    person_name: 'Alex',
     start_date: '2024-01-01T00:00:00Z',
     end_date: undefined,
-    status: 'active'
+    status: 'active',
   } as const;
 
   const mockDates = [
@@ -20,7 +22,7 @@ describe('RelationshipTimeline', () => {
       location: 'Coffee shop',
       description: 'First date',
       sentiment: 0.9,
-      was_positive: true
+      was_positive: true,
     },
     {
       id: 'date-002',
@@ -29,11 +31,11 @@ describe('RelationshipTimeline', () => {
       location: 'Park',
       description: 'First kiss',
       sentiment: 0.95,
-      was_positive: true
-    }
+      was_positive: true,
+    },
   ];
 
-  it('renders relationship period', () => {
+  it('renders intimacy arc header and bond period', () => {
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
@@ -41,9 +43,10 @@ describe('RelationshipTimeline', () => {
         relationship={mockRelationship as any}
       />
     );
-    
-    expect(screen.getByText(/relationship period/i)).toBeInTheDocument();
-    expect(screen.getByText(/started:/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
+    expect(screen.getByText(/bond period/i)).toBeInTheDocument();
+    expect(screen.getByText(/connected since/i)).toBeInTheDocument();
   });
 
   it('shows ongoing badge when no end date', () => {
@@ -54,16 +57,16 @@ describe('RelationshipTimeline', () => {
         relationship={mockRelationship as any}
       />
     );
-    
-    expect(screen.getByText(/ongoing/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/ongoing bond/i)).toBeInTheDocument();
   });
 
   it('shows end date when provided', () => {
     const endedRelationship = {
       ...mockRelationship,
-      end_date: '2024-06-01T00:00:00Z'
+      end_date: '2024-06-01T00:00:00Z',
     };
-    
+
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
@@ -71,8 +74,8 @@ describe('RelationshipTimeline', () => {
         relationship={endedRelationship as any}
       />
     );
-    
-    expect(screen.getByText(/ended:/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/ended/i)).toBeInTheDocument();
   });
 
   it('renders empty state when no dates', () => {
@@ -83,24 +86,29 @@ describe('RelationshipTimeline', () => {
         relationship={mockRelationship as any}
       />
     );
-    
-    expect(screen.getByText(/no milestones yet/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/no intimacy milestones yet/i)).toBeInTheDocument();
   });
 
-  it('renders date events', () => {
+  it('renders intimacy milestones and character book link', () => {
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={mockDates}
         relationship={mockRelationship as any}
+        scores={{
+          affectionScore: 0.92,
+          healthScore: 0.9,
+          intensityScore: 0.88,
+        }}
       />
     );
-    
-    expect(screen.getByText(/milestones & dates/i)).toBeInTheDocument();
-    // Multiple elements contain "first date" (heading and description), so use getAllByText
+
+    expect(screen.getByText(/intimacy milestones/i)).toBeInTheDocument();
+    expect(screen.getByTestId('open-character-book-timeline')).toBeInTheDocument();
     expect(screen.getAllByText(/first date/i).length).toBeGreaterThan(0);
-    // "First kiss" appears in both <h4> and <p> (description), so use getAllByText
     expect(screen.getAllByText(/first kiss/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('92%')).toBeInTheDocument();
   });
 
   it('sorts dates chronologically', () => {
@@ -109,16 +117,16 @@ describe('RelationshipTimeline', () => {
         id: 'date-002',
         date_type: 'first_kiss',
         date_time: '2024-01-20T00:00:00Z',
-        description: 'First kiss'
+        description: 'First kiss',
       },
       {
         id: 'date-001',
         date_type: 'first_date',
         date_time: '2024-01-15T00:00:00Z',
-        description: 'First date'
-      }
+        description: 'First date',
+      },
     ];
-    
+
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
@@ -126,9 +134,8 @@ describe('RelationshipTimeline', () => {
         relationship={mockRelationship as any}
       />
     );
-    
+
     const dates = screen.getAllByText(/first (date|kiss)/i);
-    // First date should appear before first kiss
     expect(dates[0].textContent).toMatch(/first date/i);
   });
 
@@ -140,19 +147,7 @@ describe('RelationshipTimeline', () => {
         relationship={mockRelationship as any}
       />
     );
-    
-    expect(screen.getByText('Coffee shop')).toBeInTheDocument();
-  });
 
-  it('displays description when provided', () => {
-    render(
-      <RelationshipTimeline
-        relationshipId="rel-001"
-        dates={mockDates}
-        relationship={mockRelationship as any}
-      />
-    );
-    
-    expect(screen.getByText('First date')).toBeInTheDocument();
+    expect(screen.getByText('Coffee shop')).toBeInTheDocument();
   });
 });

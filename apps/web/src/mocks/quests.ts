@@ -3,7 +3,7 @@
  * For development and demonstration
  */
 
-import type { Quest, QuestBoard, QuestAnalytics, QuestSuggestion } from '../types/quest';
+import type { Quest, QuestBoard, QuestAnalytics, QuestHistory, QuestSuggestion } from '../types/quest';
 
 const now = new Date();
 const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -152,6 +152,7 @@ const MOCK_IN_PROGRESS_QUESTS: Quest[] = [
     time_spent_hours: 18,
     tags: ['web-development', 'portfolio', 'career'],
     category: 'career',
+    related_goal_id: 'goal-creative-transition',
     source: 'manual',
     created_at: lastWeek.toISOString(),
     updated_at: yesterday.toISOString(),
@@ -765,6 +766,98 @@ export const MOCK_QUEST_BOARD: QuestBoard = {
   completed_quests: MOCK_QUESTS.filter(q => q.status === 'completed'),
   total_count: MOCK_QUESTS.length,
 };
+
+/** Demo quest timeline events derived from mock quest fields. */
+export function getMockQuestHistory(quest: Quest): QuestHistory[] {
+  const events: QuestHistory[] = [
+    {
+      id: `${quest.id}-created`,
+      quest_id: quest.id,
+      event_type: 'created',
+      description: `Quest "${quest.title}" added to your log`,
+      progress_after: 0,
+      created_at: quest.created_at,
+    },
+  ];
+
+  if (quest.started_at) {
+    events.push({
+      id: `${quest.id}-started`,
+      quest_id: quest.id,
+      event_type: 'started',
+      description: 'Quest marked active',
+      progress_before: 0,
+      progress_after: 0,
+      created_at: quest.started_at,
+    });
+  }
+
+  if (quest.source === 'extracted') {
+    events.push({
+      id: `${quest.id}-detected`,
+      quest_id: quest.id,
+      event_type: 'auto_detected',
+      description: 'Detected from your conversations',
+      notes: 'LoreBook matched this goal from chat and journal mentions.',
+      created_at: new Date(new Date(quest.created_at).getTime() + 60_000).toISOString(),
+    });
+  }
+
+  for (const milestone of quest.milestones ?? []) {
+    if (milestone.achieved && milestone.achieved_at) {
+      events.push({
+        id: `${quest.id}-${milestone.id}`,
+        quest_id: quest.id,
+        event_type: 'milestone',
+        description: milestone.description,
+        notes: 'Milestone completed',
+        created_at: milestone.achieved_at,
+      });
+    }
+  }
+
+  if (quest.last_activity_at) {
+    const before = Math.max(0, Math.round(quest.progress_percentage - 10));
+    events.push({
+      id: `${quest.id}-progress`,
+      quest_id: quest.id,
+      event_type: 'progress_updated',
+      description: 'Progress updated',
+      progress_before: before,
+      progress_after: quest.progress_percentage,
+      notes: quest.motivation_notes ? undefined : 'Updated from activity',
+      created_at: quest.last_activity_at,
+    });
+  }
+
+  if (quest.status === 'paused') {
+    events.push({
+      id: `${quest.id}-paused`,
+      quest_id: quest.id,
+      event_type: 'paused',
+      description: 'Quest paused',
+      progress_before: quest.progress_percentage,
+      progress_after: quest.progress_percentage,
+      created_at: quest.updated_at,
+    });
+  }
+
+  if (quest.status === 'completed' && quest.completed_at) {
+    events.push({
+      id: `${quest.id}-completed`,
+      quest_id: quest.id,
+      event_type: 'completed',
+      description: quest.completion_notes ?? 'Quest completed',
+      progress_before: quest.progress_percentage,
+      progress_after: 100,
+      created_at: quest.completed_at,
+    });
+  }
+
+  return events.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
 
 export const MOCK_QUEST_ANALYTICS: QuestAnalytics = {
   total_quests: MOCK_QUESTS.length,

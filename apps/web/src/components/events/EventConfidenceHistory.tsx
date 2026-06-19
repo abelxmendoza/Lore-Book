@@ -7,6 +7,12 @@ import { Clock, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
+import {
+  epistemicColorClass,
+  epistemicHistoryTitle,
+  epistemicLabel,
+  formatEpistemicPercent,
+} from '../../lib/epistemicLabels';
 
 interface ConfidenceSnapshot {
   id: string;
@@ -37,17 +43,8 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.7) return 'text-green-400';
-    if (confidence >= 0.4) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 0.7) return 'High confidence';
-    if (confidence >= 0.4) return 'Mixed';
-    return 'Still forming';
-  };
+  const getConfidenceColor = epistemicColorClass;
+  const getConfidenceLabel = epistemicLabel;
 
   const getChangeIcon = (changeAmount?: number) => {
     if (!changeAmount) return <Minus className="w-3 h-3" />;
@@ -59,8 +56,8 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
     return (
       <Card className="border-border/60 bg-black/40">
         <CardHeader>
-          <CardTitle className="text-sm">Confidence Evolution</CardTitle>
-          <CardDescription>No confidence changes recorded yet</CardDescription>
+          <CardTitle className="text-sm">{epistemicHistoryTitle()}</CardTitle>
+          <CardDescription>No certainty changes recorded yet</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2">
@@ -68,7 +65,7 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
               variant="outline"
               className={`${getConfidenceColor(currentConfidence)} border-current`}
             >
-              {getConfidenceLabel(currentConfidence)} ({Math.round(currentConfidence * 100)}%)
+              {getConfidenceLabel(currentConfidence)} ({formatEpistemicPercent(currentConfidence)})
             </Badge>
           </div>
         </CardContent>
@@ -82,7 +79,7 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
     {
       id: 'current',
       confidence: currentConfidence,
-      reason: 'Current confidence',
+      reason: 'Current certainty',
       recorded_at: new Date().toISOString(),
       metadata: undefined,
     },
@@ -91,8 +88,8 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
   return (
     <Card className="border-border/60 bg-black/40">
       <CardHeader>
-        <CardTitle className="text-sm">Confidence Evolution</CardTitle>
-        <CardDescription>How confidence in this event has changed over time</CardDescription>
+        <CardTitle className="text-sm">{epistemicHistoryTitle()}</CardTitle>
+        <CardDescription>How certain LoreBook is about this event over time</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">

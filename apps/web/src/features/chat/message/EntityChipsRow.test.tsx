@@ -40,7 +40,7 @@ function renderRow(entities: EntityChip[], props: Partial<ComponentProps<typeof 
 describe('EntityChipsRow', () => {
   it('renders detected entity chips for characters and locations', () => {
     renderRow([maya, sanDiego]);
-    expect(screen.getByText('detected:')).toBeInTheDocument();
+    expect(screen.getByText('detected')).toBeInTheDocument();
     expect(screen.getByText('Tía Maria')).toBeInTheDocument();
     expect(screen.getByText('San Diego')).toBeInTheDocument();
   });

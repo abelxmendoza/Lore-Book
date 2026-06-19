@@ -14,6 +14,7 @@ import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser'
 import { chatEditBiographySection, updateBiographySection } from '../services/biographySectionService';
 import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
+import { recompileCoreLorebook } from '../services/biographyGeneration/recompileCoreLorebook';
 import { omegaChatService } from '../services/omegaChatService';
 import { timeEngine } from '../services/timeEngine';
 
@@ -413,6 +414,32 @@ router.post('/:id/save-as-core', requireAuth, async (req: AuthenticatedRequest, 
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to save as Core Lorebook');
     res.status(500).json({ error: 'Failed to save as Core Lorebook' });
+  }
+});
+
+/**
+ * POST /api/biography/recompile-core
+ * Re-compile a named Core Lorebook from current memory (increments lorebook_version).
+ */
+const recompileCoreSchema = z.object({
+  lorebookName: z.string().min(1),
+});
+
+router.post('/recompile-core', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = recompileCoreSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const result = await recompileCoreLorebook(req.user!.id, parsed.data.lorebookName);
+    res.json(result);
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to recompile core lorebook');
+    res.status(500).json({
+      error: 'Failed to recompile core lorebook',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 });
 

@@ -66,10 +66,10 @@ export const LORE_READINESS_PRESET_OPTIONS: Array<{
   description: string;
   overallLevel: 'needs_more' | 'building' | 'ready';
 }> = [
-  { id: 'empty', label: 'Empty', description: 'No knowledge collected', overallLevel: 'needs_more' },
-  { id: 'sparse', label: 'Sparse', description: 'Early chats only', overallLevel: 'needs_more' },
-  { id: 'building', label: 'Building', description: 'Some topics filling in', overallLevel: 'building' },
-  { id: 'rich', label: 'Rich', description: 'Ready to compile several books', overallLevel: 'ready' },
+  { id: 'empty', label: 'Empty', description: 'No chats processed yet', overallLevel: 'needs_more' },
+  { id: 'sparse', label: 'Sparse', description: '2 Story Forge chats', overallLevel: 'needs_more' },
+  { id: 'building', label: 'Building', description: '5 chats → growing memory', overallLevel: 'building' },
+  { id: 'rich', label: 'Rich', description: 'All chats → ready to compile', overallLevel: 'ready' },
 ];
 
 export const LORE_READINESS_COMPILED_OPTIONS: Array<{
@@ -106,14 +106,14 @@ export type MockCompiledBook = {
 const MOCK_BOOK_CATALOG: MockCompiledBook[] = [
   {
     id: 'demo-1',
-    title: 'The Builder Years',
-    lorebook_name: 'Career arc',
+    title: 'The Keeper of Marrowvale',
+    lorebook_name: 'Core lorebook',
     created_at: new Date().toISOString(),
     chapterCount: 6,
   },
   {
     id: 'demo-2',
-    title: 'Love & Loss in the City',
+    title: 'Mira Solenne',
     lorebook_name: 'Relationships',
     created_at: new Date().toISOString(),
     chapterCount: 4,

@@ -1,7 +1,26 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Briefcase } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { PhotoUploadReview } from './PhotoUploadReview';
+import { DemoUploadProgressPanel, type DemoUploadProgress } from '../../../components/demo/DemoUploadProgressPanel';
+import {
+  DEMO_RESUME_UPLOAD_STAGES,
+  shouldSimulateResumeUpload,
+  simulateDemoResumeUpload,
+  type DemoResumeUploadProgress,
+} from '../../../services/demoResumeUpload';
+import {
+  DEMO_PHOTO_ANALYZE_STAGES,
+  DEMO_PHOTO_PROCESS_STAGES,
+  shouldSimulatePhotoUpload,
+  simulateDemoPhotoAnalyze,
+  simulateDemoPhotoProcess,
+} from '../../../services/demoPhotoUpload';
+import {
+  DEMO_DOCUMENT_UPLOAD_STAGES,
+  shouldSimulateDocumentUpload,
+  simulateDemoDocumentUpload,
+} from '../../../services/demoDocumentUpload';
 
 export type ResumeUploadResult = {
   kind: 'resume';
@@ -40,6 +59,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [resumeUploadProgress, setResumeUploadProgress] = useState<DemoResumeUploadProgress | null>(null);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState<DemoUploadProgress | null>(null);
+  const [photoProcessProgress, setPhotoProcessProgress] = useState<DemoUploadProgress | null>(null);
+  const [documentUploadProgress, setDocumentUploadProgress] = useState<DemoUploadProgress | null>(null);
   const [uploadResult, setUploadResult] = useState<{
     success: boolean;
     message: string;
@@ -113,9 +136,21 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
   const handlePhotoUpload = async (file: File) => {
     setProcessingPhoto(true);
+    setPhotoUploadProgress(null);
     setUploadProgress('Analyzing photo...');
 
     try {
+      if (shouldSimulatePhotoUpload()) {
+        const analysis = await simulateDemoPhotoAnalyze(file, (progress) => {
+          setPhotoUploadProgress(progress);
+          setUploadProgress(progress.stageLabel);
+        });
+        setPhotoReview({ file, analysis });
+        setUploadProgress(null);
+        setPhotoUploadProgress(null);
+        return;
+      }
+
       const { supabase } = await import('../../../lib/supabase');
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -151,6 +186,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       onUploadError?.(errorMessage);
     } finally {
       setProcessingPhoto(false);
+      setPhotoUploadProgress(null);
     }
   };
 
@@ -162,9 +198,34 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     if (!photoReview) return;
 
     setProcessingPhoto(true);
+    setPhotoProcessProgress(null);
     setUploadProgress('Processing photo...');
 
     try {
+      if (shouldSimulatePhotoUpload()) {
+        const result = await simulateDemoPhotoProcess(
+          photoReview.file,
+          options,
+          (progress) => {
+            setPhotoProcessProgress(progress);
+            setUploadProgress(progress.stageLabel);
+          },
+        );
+        setUploadResult({
+          success: true,
+          message: result.message,
+        });
+        setPhotoReview(null);
+        setUploadProgress(null);
+        setPhotoProcessProgress(null);
+        onUploadComplete?.();
+
+        setTimeout(() => {
+          setUploadResult(null);
+        }, 5000);
+        return;
+      }
+
       const { supabase } = await import('../../../lib/supabase');
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -215,6 +276,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       onUploadError?.(errorMessage);
     } finally {
       setProcessingPhoto(false);
+      setPhotoProcessProgress(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -224,6 +286,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const handlePhotoReject = () => {
     setPhotoReview(null);
     setUploadProgress(null);
+    setPhotoUploadProgress(null);
+    setPhotoProcessProgress(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -232,16 +296,40 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const uploadResume = async (file: File) => {
     setIsUploading(true);
     setUploadProgress('Processing resume...');
+    setResumeUploadProgress(null);
     setUploadResult(null);
 
+    const finishSuccess = (result: ResumeUploadResult, entriesCreated?: number) => {
+      setUploadResult({
+        success: true,
+        message: 'Resume saved to library and memory.',
+        entriesCreated: entriesCreated ?? result.momentsCreated ?? result.claimsCreated,
+      });
+      setUploadProgress(null);
+      setResumeUploadProgress(null);
+      onUploadComplete?.(result);
+      window.dispatchEvent(new Event('lk:characters-updated'));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTimeout(() => setUploadResult(null), 5000);
+    };
+
     try {
+      if (shouldSimulateResumeUpload()) {
+        const result = await simulateDemoResumeUpload(file, (progress) => {
+          setResumeUploadProgress(progress);
+          setUploadProgress(progress.stageLabel);
+        });
+        finishSuccess(result);
+        return;
+      }
+
       // Get auth token
       const { supabase } = await import('../../../lib/supabase');
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
 
       if (!token) {
-        throw new Error('Authentication required. Please log in.');
+        throw new Error('Authentication required. Please log in to upload your resume.');
       }
 
       setUploadProgress('Saving to library and building your timelines...');
@@ -269,14 +357,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
           ? data.chatFeedback
           : data.message || `Resume processed! ${data.claimsCreated ?? 0} claims added to your lore.`;
 
-      setUploadResult({
-        success: true,
-        message: 'Resume saved to library and memory.',
-        entriesCreated: data.momentsCreated ?? data.claimsCreated,
-      });
-
-      setUploadProgress(null);
-      onUploadComplete?.({
+      finishSuccess({
         kind: 'resume',
         fileName: file.name,
         chatFeedback: feedbackText,
@@ -284,23 +365,12 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         claimsCreated: data.claimsCreated,
         momentsCreated: data.momentsCreated,
         eventsCreated: data.eventsCreated,
-      });
-
-      window.dispatchEvent(new Event('lk:characters-updated'));
-
-      // Clear file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      // Auto-hide success message after 5 seconds
-      setTimeout(() => {
-        setUploadResult(null);
-      }, 5000);
+      }, data.momentsCreated ?? data.claimsCreated);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload resume';
       setUploadResult({ success: false, message: errorMessage });
       setUploadProgress(null);
+      setResumeUploadProgress(null);
       onUploadError?.(errorMessage);
 
       // Clear file input on error
@@ -315,9 +385,35 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const uploadFile = async (file: File) => {
     setIsUploading(true);
     setUploadProgress('Preparing upload...');
+    setDocumentUploadProgress(null);
     setUploadResult(null);
 
     try {
+      if (shouldSimulateDocumentUpload()) {
+        const result = await simulateDemoDocumentUpload(file, (progress) => {
+          setDocumentUploadProgress(progress);
+          setUploadProgress(progress.stageLabel);
+        });
+
+        setUploadResult({
+          success: true,
+          message: 'Document processed successfully!',
+          entriesCreated: result.entriesCreated,
+        });
+        setUploadProgress(null);
+        setDocumentUploadProgress(null);
+        onUploadComplete?.(result);
+
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+
+        setTimeout(() => {
+          setUploadResult(null);
+        }, 5000);
+        return;
+      }
+
       // Get auth token
       const { supabase } = await import('../../../lib/supabase');
       const { data: session } = await supabase.auth.getSession();
@@ -378,6 +474,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload document';
       setUploadResult({ success: false, message: errorMessage });
       setUploadProgress(null);
+      setDocumentUploadProgress(null);
       onUploadError?.(errorMessage);
 
       // Clear file input on error
@@ -386,6 +483,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       }
     } finally {
       setIsUploading(false);
+      setDocumentUploadProgress(null);
     }
   };
 
@@ -436,6 +534,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         onApprove={handlePhotoApprove}
         onReject={handlePhotoReject}
         loading={processingPhoto}
+        processProgress={photoProcessProgress}
+        processStages={DEMO_PHOTO_PROCESS_STAGES}
       />
     );
   }
@@ -467,17 +567,40 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
         <div className="flex flex-col items-center justify-center text-center">
           {isUploading || processingPhoto ? (
-            <>
-              <Loader2 className={`${compact ? 'w-6 h-6' : 'w-8 h-8'} text-primary animate-spin mb-2`} />
-              <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-white mb-1`}>
-                {uploadProgress || 'Uploading...'}
-              </p>
-              {!compact && (
-                <p className="text-xs text-white/60">
-                  Processing your document...
+            resumeUploadProgress ? (
+              <DemoUploadProgressPanel
+                progress={resumeUploadProgress}
+                stages={DEMO_RESUME_UPLOAD_STAGES}
+                icon={Briefcase}
+                compact={compact}
+              />
+            ) : photoUploadProgress ? (
+              <DemoUploadProgressPanel
+                progress={photoUploadProgress}
+                stages={DEMO_PHOTO_ANALYZE_STAGES}
+                icon={ImageIcon}
+                compact={compact}
+              />
+            ) : documentUploadProgress ? (
+              <DemoUploadProgressPanel
+                progress={documentUploadProgress}
+                stages={DEMO_DOCUMENT_UPLOAD_STAGES}
+                icon={FileText}
+                compact={compact}
+              />
+            ) : (
+              <>
+                <Loader2 className={`${compact ? 'w-6 h-6' : 'w-8 h-8'} text-primary animate-spin mb-2`} />
+                <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-white mb-1`}>
+                  {uploadProgress || 'Uploading...'}
                 </p>
-              )}
-            </>
+                {!compact && (
+                  <p className="text-xs text-white/60">
+                    Processing your document...
+                  </p>
+                )}
+              </>
+            )
           ) : (
             <>
               <div className={`${compact ? 'p-2' : 'p-3'} bg-primary/10 rounded-lg ${compact ? 'mb-2' : 'mb-3'}`}>

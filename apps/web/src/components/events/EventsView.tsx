@@ -10,6 +10,11 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { format, parseISO } from 'date-fns';
+import {
+  epistemicColorClass,
+  epistemicLabel,
+  formatEpistemicPercent,
+} from '../../lib/epistemicLabels';
 import { EventDetailModal } from './EventDetailModal';
 import { EventActionsMenu } from './EventActionsMenu';
 import { EventMetaTags } from './EventMetaTags';
@@ -84,17 +89,8 @@ export const EventsView: React.FC = () => {
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.7) return 'text-green-400';
-    if (confidence >= 0.4) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const getConfidenceLabel = (confidence: number): string => {
-    if (confidence >= 0.7) return 'High confidence';
-    if (confidence >= 0.4) return 'Mixed';
-    return 'Still forming';
-  };
+  const getConfidenceColor = epistemicColorClass;
+  const getConfidenceLabel = epistemicLabel;
 
   if (loading) {
     return (
@@ -197,7 +193,7 @@ export const EventsView: React.FC = () => {
                       className={`${getConfidenceColor(event.confidence)} border-current`}
                       title={getConfidenceLabel(event.confidence)}
                     >
-                      {getConfidenceLabel(event.confidence)} ({Math.round(event.confidence * 100)}%)
+                      {getConfidenceLabel(event.confidence)} ({formatEpistemicPercent(event.confidence)})
                     </Badge>
                   </div>
 

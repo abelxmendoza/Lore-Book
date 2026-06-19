@@ -240,7 +240,13 @@ router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRe
       importance: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).optional(),
       impact: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).optional(),
       category: z.preprocess(optionalQuestString, z.string().optional()),
-      suggestion_id: z.string().uuid().optional(),
+      suggestion_id: z.preprocess(
+        (v) => {
+          if (typeof v !== 'string' || !v.trim()) return undefined;
+          return z.string().uuid().safeParse(v.trim()).success ? v.trim() : undefined;
+        },
+        z.string().uuid().optional(),
+      ),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -261,7 +267,8 @@ router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRe
     res.status(201).json({ quest });
   } catch (error) {
     logger.error({ err: error }, 'Failed to materialize quest');
-    res.status(400).json({ error: 'Failed to add quest' });
+    const message = error instanceof Error ? error.message : 'Failed to add quest';
+    res.status(400).json({ error: message || 'Failed to add quest' });
   }
 });
 

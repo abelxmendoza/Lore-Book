@@ -406,10 +406,17 @@ export const LocationBook = () => {
   const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useLocationsBookData();
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Register mock data with service on mount
+  // Seed demo locations once; preserve in-session edits.
   useEffect(() => {
-    mockDataService.register.locations(dummyLocations);
+    if (mockDataService.get.locations().length === 0) {
+      mockDataService.register.locations(dummyLocations);
+    }
   }, []);
+  const [mockRegistryTick, setMockRegistryTick] = useState(0);
+  useEffect(() => {
+    if (!isMockDataEnabled) return;
+    return mockDataService.subscribe(() => setMockRegistryTick((tick) => tick + 1));
+  }, [isMockDataEnabled]);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
@@ -432,7 +439,7 @@ export const LocationBook = () => {
       locationList.length > 0 ? locationList : null,
       false
     ).data;
-  }, [data, isMockDataEnabled]);
+  }, [data, isMockDataEnabled, mockRegistryTick]);
 
   useEffect(() => {
     setSelectedLocation((sel) => {

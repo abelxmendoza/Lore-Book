@@ -27,6 +27,8 @@ import { useMessageCorrection } from '../hooks/useMessageCorrection';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
+import { ChatFocusChipBar } from './ChatFocusChipBar';
+import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -39,6 +41,7 @@ import { GuestExperienceCard } from '../../../components/guest/GuestExperienceCa
 import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
 import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
+import { useMockData } from '../../../contexts/MockDataContext';
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
@@ -53,6 +56,10 @@ import { ActiveContextPanel } from './ActiveContextPanel';
 import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { clearChatFocus } from '../../../store/slices/selectionSlice';
+import { selectChatFocus } from '../../../store/selectors';
+import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
 import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -65,6 +72,8 @@ const PERSISTED_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const dispatch = useAppDispatch();
+  const chatFocus = useAppSelector(selectChatFocus);
 
   // ── Message state (owned by useChat / useConversationStore) ──────────────────
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -96,6 +105,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     clearGreeting,
     threadsHasMore,
     threadsTotal,
+    threadsLoading,
     threadsLoadingMore,
     loadMoreThreads,
     lastError,
@@ -118,6 +128,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     ? [greetingDisplayMsg, ...messages]
     : messages;
 
+  const activeThreadMeta = useMemo(
+    () => threads.find((t) => t.id === activeThreadId),
+    [threads, activeThreadId]
+  );
+  const isHydratingThreadMessages =
+    !!activeThreadId &&
+    messages.length === 0 &&
+    (activeThreadMeta?.messageCount ?? 0) > 0;
+
   const threadEntities = useMemo(() => collectThreadEntities(messages), [messages]);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
 
@@ -129,11 +148,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const focused = focusedEntityId
       ? threadEntities.find((e) => e.id === focusedEntityId)
       : undefined;
+    const focusEntityContext = chatFocus ? focusToEntityContext(chatFocus) : undefined;
+    const focusComposer = chatFocus ? focusToComposerEntities(chatFocus) : undefined;
     return {
-      entityContext: focused ? toEntityContext(focused) : undefined,
+      entityContext: focused ? toEntityContext(focused) : focusEntityContext,
       threadEntities,
+      chatFocus: chatFocus ?? undefined,
+      composerEntities: focusComposer,
     };
-  }, [focusedEntityId, threadEntities]);
+  }, [focusedEntityId, threadEntities, chatFocus]);
 
   // Wrap sendMessage: clear the greeting and track analytics before sending.
   const handleSubmit = (msg: string, certifiedEntities?: CertifiedEntityMatch[]) => {
@@ -144,7 +167,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       });
       clearGreeting();
     }
-    sendMessage(msg, { ...chatSendOptions, composerEntities: certifiedEntities });
+    sendMessage(msg, {
+      ...chatSendOptions,
+      composerEntities: certifiedEntities?.length ? certifiedEntities : chatSendOptions.composerEntities,
+    });
   };
 
   const handleRecallPrompt = useCallback(
@@ -162,6 +188,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   }, [greetingMessage, activeThreadId]);
 
   const { isGuest, canSendChatMessage } = useGuest();
+  const { backendUnavailable } = useMockData();
   const { user } = useAuth();
   const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
   const avatarInitial: string | null = (() => {
@@ -198,6 +225,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialDate, setInitialDate] = useState<string | null>(null);
+  const [focusComposerPulse, setFocusComposerPulse] = useState(false);
+  const lastFocusArrivalRef = useRef<number | null>(null);
   const [threadListCollapsed, setThreadListCollapsed] = useState(false);
   const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>('lorekeeper_context_panel', false);
@@ -213,6 +242,22 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     return () => { document.body.style.overflow = ''; };
   }, [isMobile, threadListMobileOpen]);
 
+  // Apply modal → chat prefill when focus is set from another surface
+  useEffect(() => {
+    if (!chatFocus?.initialPrompt) return;
+    setInitialPrompt(chatFocus.initialPrompt);
+  }, [chatFocus?.entityId, chatFocus?.sourceSurface, chatFocus?.initialPrompt]);
+
+  // Pulse composer when focus arrives from a modal (demo + live)
+  useEffect(() => {
+    if (!chatFocus?.arrivedAt) return;
+    if (lastFocusArrivalRef.current === chatFocus.arrivedAt) return;
+    lastFocusArrivalRef.current = chatFocus.arrivedAt;
+    setFocusComposerPulse(true);
+    const timer = window.setTimeout(() => setFocusComposerPulse(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [chatFocus?.arrivedAt, chatFocus?.entityId, chatFocus?.sourceSurface]);
+
   // ── URL search param pre-fill (date / prompt) ─────────────────────────────────
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -227,9 +272,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     }
   }, [searchParams, navigate]);
 
-  // ── Health check (once per session) ──────────────────────────────────────────
+  // ── Health check (once per session, skip if global offline already known) ───
   const healthWarnedRef = useRef(false);
   useEffect(() => {
+    if (backendUnavailable) return;
     const checkHealth = async () => {
       try {
         const apiBase = import.meta.env.VITE_API_URL || '';
@@ -253,7 +299,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       }
     };
     checkHealth();
-  }, []);
+  }, [backendUnavailable]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
   useKeyboardShortcuts({
@@ -638,22 +684,24 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {isGuest && <GuestExperienceCard variant="compact" showEndSession={false} />}
 
-        {/* Runtime status banner */}
-        {backendStatus && !statusDismissed && (
-          <div className={`flex items-center justify-between px-3 py-2 text-xs flex-shrink-0 ${
+        {/* Runtime status banner — hidden when global offline bar is already shown */}
+        {backendStatus && !statusDismissed && !backendUnavailable && (
+          <div className={`flex items-center justify-between px-3 flex-shrink-0 ${
+            isMobile ? 'py-1 text-[10px]' : 'py-2 text-xs'
+          } ${
             backendStatus === 'unreachable'
-              ? 'bg-red-900/40 border-b border-red-500/30 text-red-300'
-              : 'bg-yellow-900/30 border-b border-yellow-500/20 text-yellow-300'
+              ? 'bg-red-900/30 border-b border-red-500/20 text-red-300/90'
+              : 'bg-yellow-900/25 border-b border-yellow-500/15 text-yellow-300/90'
           }`}>
-            <span>
+            <span className="truncate">
               {backendStatus === 'unreachable'
-                ? 'Cannot reach server — running in offline mode. Messages will not be saved.'
-                : 'Server is degraded — some features may not work correctly.'}
+                ? (isMobile ? 'Offline mode' : 'Cannot reach server — offline mode')
+                : (isMobile ? 'Limited mode' : 'Server degraded — some features limited')}
             </span>
             <button
               type="button"
               onClick={() => setStatusDismissed(true)}
-              className="ml-3 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
+              className="ml-2 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0 p-1"
               aria-label="Dismiss"
             >
               ✕
@@ -665,6 +713,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {showNarrative && (
           <ChronologyNarrativeModal onClose={() => setShowNarrative(false)} />
         )}
+
+        <ChatFocusArrivalToast focus={chatFocus} />
 
         {/* Search Modal */}
         {showSearch && (
@@ -720,7 +770,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {messages.length === 0 ? (
             <div className="flex-1 overflow-y-auto chat-scrollbar">
-              <ChatEmptyState />
+              {isHydratingThreadMessages || (threadsLoading && !!activeThreadId) ? (
+                <div className="flex flex-1 items-center justify-center min-h-[12rem] p-6">
+                  <ChatLoadingPulse stage="connecting" progress={35} />
+                </div>
+              ) : (
+                <ChatEmptyState />
+              )}
             </div>
           ) : (
             <ChatMessageList
@@ -743,7 +799,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           )}
 
           {isLoading && !streamingMessageId && (
-            <div className="px-4 flex-shrink-0">
+            <div className="flex-shrink-0">
               <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
             </div>
           )}
@@ -764,6 +820,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What LoreBook Knows strip — desktop only; mobile uses context menu */}
         {!contextPanelOpen && !isMobile && <WhatLoreBookKnows />}
 
+        {/* Modal / book focus — character + source section */}
+        {chatFocus && (
+          <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
+        )}
+
         {/* Confirmed thread entities — focus to build on established knowledge */}
         <ThreadEntityChips
           messages={messages}
@@ -773,7 +834,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         />
 
         {/* Composer */}
-        <div className="flex-shrink-0">
+        <div
+          className={`flex-shrink-0 rounded-t-xl transition-shadow ${
+            focusComposerPulse
+              ? chatFocus?.sourceSurface === 'love'
+                ? 'animate-focus-composer-pulse ring-2 ring-pink-500/35'
+                : 'animate-focus-composer-pulse ring-2 ring-primary/30'
+              : ''
+          }`}
+        >
           <ChatComposer
             onSubmit={handleSubmit}
             loading={isLoading}

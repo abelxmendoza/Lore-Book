@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../lib/questNormalize';
 import { mockDataService } from '../services/mockDataService';
 import { MOCK_QUESTS, MOCK_QUEST_BOARD, MOCK_QUEST_ANALYTICS, MOCK_QUEST_SUGGESTIONS, buildQuestBoardFromQuests } from '../mocks/quests';
+import { mergeQuestHistoryWithReflections } from '../mocks/modalDemoData';
 import type { Quest, QuestFilters, QuestBoard, QuestAnalytics, QuestHistory, QuestSuggestion } from '../types/quest';
 import {
   useGetQuestsListQuery,
@@ -32,6 +33,25 @@ import {
   EMPTY_QUEST_BOARD,
 } from '../store/hooks/useQuestData';
 import { mutationErrorMessage } from '../store/rtkMutationUtils';
+
+function readMockQuests(): Quest[] {
+  const registered = mockDataService.get.quests();
+  return registered.length > 0 ? registered : MOCK_QUESTS;
+}
+
+function readMockQuestSuggestions(): QuestSuggestion[] {
+  const registered = mockDataService.get.questSuggestions();
+  return registered.length > 0 ? registered : MOCK_QUEST_SUGGESTIONS;
+}
+
+function useMockQuestRefresh(onRefresh: () => void, enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const handler = () => onRefresh();
+    window.addEventListener('lk:quests-updated', handler);
+    return () => window.removeEventListener('lk:quests-updated', handler);
+  }, [enabled, onRefresh]);
+}
 
 function applyMockQuestFilters(quests: Quest[], filters?: QuestFilters): Quest[] {
   let filteredQuests = [...quests];
@@ -83,8 +103,10 @@ export function useQuests(filters?: QuestFilters) {
     setMockLoading(true);
     setMockError(null);
     try {
-      mockDataService.register.quests(MOCK_QUESTS);
-      setMockQuests(applyMockQuestFilters(MOCK_QUESTS, filters));
+      const quests = readMockQuests();
+      mockDataService.register.quests(quests);
+      mockDataService.register.questBoard(buildQuestBoardFromQuests(quests));
+      setMockQuests(applyMockQuestFilters(quests, filters));
     } catch {
       setMockQuests([]);
       setMockError('Failed to fetch quests');
@@ -92,6 +114,8 @@ export function useQuests(filters?: QuestFilters) {
       setMockLoading(false);
     }
   }, [filters]);
+
+  useMockQuestRefresh(() => { void loadMockQuests(); }, useMock);
 
   useEffect(() => {
     if (useMock) void loadMockQuests();
@@ -126,15 +150,17 @@ export function useQuest(questId: string) {
     if (!questId) return;
     setMockLoading(true);
     setMockError(null);
-    const found = MOCK_QUESTS.find((q) => q.id === questId);
+    const found = readMockQuests().find((q) => q.id === questId) ?? null;
     if (found) setMockQuest(found);
     else setMockError('Quest not found');
     setMockLoading(false);
   }, [questId]);
 
+  useMockQuestRefresh(() => { void loadMockQuest(); }, useMock && !!questId);
+
   useEffect(() => {
-    if (useMock) void loadMockQuest();
-  }, [useMock, loadMockQuest]);
+    if (useMock && questId) void loadMockQuest();
+  }, [useMock, questId, loadMockQuest]);
 
   if (useMock) {
     return { data: mockQuest, isLoading: mockLoading, error: mockError, refetch: loadMockQuest };
@@ -166,9 +192,8 @@ export function useQuestBoard() {
     setMockError(null);
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const registered = mockDataService.get.quests();
-      const quests = registered.length > 0 ? registered : MOCK_QUESTS;
-      const board = registered.length > 0 ? buildQuestBoardFromQuests(quests) : MOCK_QUEST_BOARD;
+      const quests = readMockQuests();
+      const board = buildQuestBoardFromQuests(quests);
       mockDataService.register.questBoard(board);
       setMockBoard(board);
     } catch {
@@ -179,6 +204,8 @@ export function useQuestBoard() {
       setMockLoading(false);
     }
   }, []);
+
+  useMockQuestRefresh(() => { void loadMockBoard(); }, useMock);
 
   useEffect(() => {
     if (useMock) void loadMockBoard();
@@ -242,9 +269,29 @@ export function useQuestAnalytics() {
 export function useQuestHistory(questId: string) {
   const { useMock } = useQuestMockRuntime();
   const query = useGetQuestHistoryQuery(questId, { skip: useMock || !questId });
+  const [mockHistory, setMockHistory] = useState<QuestHistory[]>([]);
+  const [mockLoading, setMockLoading] = useState(useMock && !!questId);
+
+  const loadMockHistory = useCallback(() => {
+    if (!questId) return;
+    setMockLoading(true);
+    const quest = readMockQuests().find((q) => q.id === questId);
+    setMockHistory(
+      quest
+        ? mergeQuestHistoryWithReflections(quest, mockDataService.get.questReflections(questId))
+        : [],
+    );
+    setMockLoading(false);
+  }, [questId]);
+
+  useMockQuestRefresh(() => { loadMockHistory(); }, useMock && !!questId);
+
+  useEffect(() => {
+    if (useMock && questId) loadMockHistory();
+  }, [useMock, questId, loadMockHistory]);
 
   if (useMock) {
-    return { data: [] as QuestHistory[], isLoading: false, error: null, refetch: async () => {} };
+    return { data: mockHistory, isLoading: mockLoading, error: null, refetch: async () => { loadMockHistory(); } };
   }
 
   return {
@@ -271,10 +318,13 @@ export function useQuestSuggestions() {
   const loadMockSuggestions = useCallback(async () => {
     setMockLoading(true);
     setMockError(null);
-    mockDataService.register.questSuggestions(MOCK_QUEST_SUGGESTIONS);
-    setMockSuggestions(MOCK_QUEST_SUGGESTIONS);
+    const suggestions = readMockQuestSuggestions();
+    mockDataService.register.questSuggestions(suggestions);
+    setMockSuggestions(suggestions);
     setMockLoading(false);
   }, []);
+
+  useMockQuestRefresh(() => { void loadMockSuggestions(); }, useMock);
 
   useEffect(() => {
     if (!useMock) return;
@@ -353,11 +403,7 @@ export function useCreateQuest() {
           updated_at: now,
           last_activity_at: now,
         };
-        const existing = mockDataService.get.quests();
-        const quests = existing.length > 0 ? [...existing, newQuest] : [...MOCK_QUESTS, newQuest];
-        mockDataService.register.quests(quests);
-        mockDataService.register.questBoard(buildQuestBoardFromQuests(quests));
-        return newQuest;
+        return mockDataService.mutate.quests.create(newQuest);
       }
 
       const result = await createQuest(payload).unwrap();
@@ -380,12 +426,16 @@ export function useCreateQuest() {
  * Hook to update a quest
  */
 export function useUpdateQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [updateQuest, updateState] = useUpdateQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async ({ questId, updates }: { questId: string; updates: Record<string, unknown> }) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.patch(questId, updates as Partial<Quest>);
+      }
       const result = await updateQuest({ questId, updates }).unwrap();
       return result.quest;
     } catch (err) {
@@ -393,36 +443,47 @@ export function useUpdateQuest() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [updateQuest]);
+  }, [useMock, updateQuest]);
 
   return { mutateAsync, isPending: updateState.isLoading, error };
 }
 
 export function useDeleteQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [deleteQuestMutation, deleteState] = useDeleteQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async (questId: string) => {
     setError(null);
     try {
+      if (useMock) {
+        mockDataService.mutate.quests.remove(questId);
+        return;
+      }
       await deleteQuestMutation(questId).unwrap();
     } catch (err) {
       console.error('Failed to delete quest:', err);
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [deleteQuestMutation]);
+  }, [useMock, deleteQuestMutation]);
 
   return { mutateAsync, isPending: deleteState.isLoading, error };
 }
 
 export function useStartQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [startQuest, startState] = useStartQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async (questId: string) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.setStatus(questId, 'active', {
+          started_at: new Date().toISOString(),
+        });
+      }
       const result = await startQuest(questId).unwrap();
       return result.quest;
     } catch (err) {
@@ -430,18 +491,26 @@ export function useStartQuest() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [startQuest]);
+  }, [useMock, startQuest]);
 
   return { mutateAsync, isPending: startState.isLoading, error };
 }
 
 export function useCompleteQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [completeQuest, completeState] = useCompleteQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async ({ questId, notes }: { questId: string; notes?: string }) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.setStatus(questId, 'completed', {
+          progress_percentage: 100,
+          completed_at: new Date().toISOString(),
+          completion_notes: notes,
+        });
+      }
       const result = await completeQuest({ questId, notes }).unwrap();
       return result.quest;
     } catch (err) {
@@ -449,18 +518,25 @@ export function useCompleteQuest() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [completeQuest]);
+  }, [useMock, completeQuest]);
 
   return { mutateAsync, isPending: completeState.isLoading, error };
 }
 
 export function useAbandonQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [abandonQuest, abandonState] = useAbandonQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async ({ questId, reason }: { questId: string; reason?: string }) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.setStatus(questId, 'abandoned', {
+          abandoned_at: new Date().toISOString(),
+          completion_notes: reason,
+        });
+      }
       const result = await abandonQuest({ questId, reason }).unwrap();
       return result.quest;
     } catch (err) {
@@ -468,18 +544,22 @@ export function useAbandonQuest() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [abandonQuest]);
+  }, [useMock, abandonQuest]);
 
   return { mutateAsync, isPending: abandonState.isLoading, error };
 }
 
 export function usePauseQuest() {
+  const { useMock } = useQuestMockRuntime();
   const [pauseQuest, pauseState] = usePauseQuestMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async (questId: string) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.setStatus(questId, 'paused');
+      }
       const result = await pauseQuest(questId).unwrap();
       return result.quest;
     } catch (err) {
@@ -487,18 +567,22 @@ export function usePauseQuest() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [pauseQuest]);
+  }, [useMock, pauseQuest]);
 
   return { mutateAsync, isPending: pauseState.isLoading, error };
 }
 
 export function useUpdateQuestProgress() {
+  const { useMock } = useQuestMockRuntime();
   const [updateProgress, progressState] = useUpdateQuestProgressMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async ({ questId, progress }: { questId: string; progress: number }) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.patch(questId, { progress_percentage: progress });
+      }
       const result = await updateProgress({ questId, progress }).unwrap();
       return result.quest;
     } catch (err) {
@@ -506,18 +590,22 @@ export function useUpdateQuestProgress() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [updateProgress]);
+  }, [useMock, updateProgress]);
 
   return { mutateAsync, isPending: progressState.isLoading, error };
 }
 
 export function useAddQuestReflection() {
+  const { useMock } = useQuestMockRuntime();
   const [addReflection, reflectionState] = useAddQuestReflectionMutation();
   const [error, setError] = useState<string | null>(null);
 
   const mutateAsync = useCallback(async ({ questId, reflection }: { questId: string; reflection: string }) => {
     setError(null);
     try {
+      if (useMock) {
+        return mockDataService.mutate.quests.addReflection(questId, reflection);
+      }
       const result = await addReflection({ questId, reflection }).unwrap();
       return result.history;
     } catch (err) {
@@ -525,7 +613,7 @@ export function useAddQuestReflection() {
       setError(mutationErrorMessage(err));
       throw err;
     }
-  }, [addReflection]);
+  }, [useMock, addReflection]);
 
   return { mutateAsync, isPending: reflectionState.isLoading, error };
 }

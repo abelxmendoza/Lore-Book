@@ -31,7 +31,7 @@ export function FamilyBook() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
-  const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('hierarchical');
+  const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
 
   const load = useCallback(async () => {
     if (shouldUseMock) {
@@ -132,17 +132,17 @@ export function FamilyBook() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setViewMode('hierarchical')}
-                  className={`text-xs px-3 py-1.5 rounded-lg border ${viewMode === 'hierarchical' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-white/50'}`}
-                >
-                  Tree view
-                </button>
-                <button
-                  type="button"
                   onClick={() => setViewMode('visual')}
                   className={`text-xs px-3 py-1.5 rounded-lg border ${viewMode === 'visual' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-white/50'}`}
                 >
                   Visual graph
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('hierarchical')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border ${viewMode === 'hierarchical' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-white/50'}`}
+                >
+                  Tree view
                 </button>
               </div>
               {viewMode === 'hierarchical' && summary?.tree?.members?.length ? (
@@ -150,7 +150,7 @@ export function FamilyBook() {
                   tree={summary.tree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : shouldUseMock && summary?.tree?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && summary?.tree?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
                     tree={summary.tree}

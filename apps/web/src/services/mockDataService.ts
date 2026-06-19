@@ -20,8 +20,14 @@ import type { Achievement, AchievementStatistics } from '../types/achievement';
 import type { ReactionPatterns } from '../types/reaction';
 import type { PatternInsight, StabilityMetrics } from '../api/perceptionReactionEngine';
 import type { MemoryProposal } from '../hooks/useMemoryReviewQueue';
-import type { Quest, QuestBoard, QuestAnalytics, QuestSuggestion } from '../types/quest';
+import type { Quest, QuestBoard, QuestAnalytics, QuestSuggestion, QuestStatus, QuestHistory } from '../types/quest';
+import type { Skill } from '../types/skill';
+import type { SkillSuggestion } from '../api/skills';
+import type { LocationSuggestion } from '../api/entitySuggestions';
+import { emitDemoEffect, demoEffectMessage } from './demoMutationEffects';
 import { generateMockTimelines, generateMockChronologyEntries } from '../mocks/timelineMockData';
+import { MOCK_QUESTS, buildQuestBoardFromQuests } from '../mocks/quests';
+import { MOCK_GOALS_VALUES_DATA } from '../mocks/goalsValues';
 import type { UnifiedNarrativeData } from '../mocks/unifiedNarrativeData';
 import {
   getCharacterRelationships,
@@ -155,8 +161,316 @@ class MockDataRegistry {
   private questBoard: QuestBoard | null = null;
   private questAnalytics: QuestAnalytics | null = null;
   private questSuggestions: QuestSuggestion[] = [];
+  private skills: Skill[] = [];
+  private locationSuggestions: LocationSuggestion[] = [];
+  private skillSuggestions: SkillSuggestion[] = [];
+  private questReflections = new Map<string, QuestHistory[]>();
   private unifiedNarrativeData: UnifiedNarrativeData | null = null;
   private isInitialized = false;
+  private revision = 0;
+  private listeners = new Set<() => void>();
+
+  getRevision(): number {
+    return this.revision;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emitChange(
+    scope: 'quests' | 'characters' | 'goals' | 'locations' | 'skills' | 'memories' | 'all' = 'all',
+  ): void {
+    this.revision += 1;
+    for (const listener of this.listeners) listener();
+    if (typeof window === 'undefined') return;
+    if (scope === 'quests' || scope === 'all') {
+      window.dispatchEvent(new Event('lk:quests-updated'));
+    }
+    if (scope === 'characters' || scope === 'all') {
+      window.dispatchEvent(new Event('lk:characters-updated'));
+    }
+    if (scope === 'goals' || scope === 'all') {
+      window.dispatchEvent(new Event('lk:story-data-updated'));
+    }
+    if (scope === 'locations' || scope === 'all') {
+      window.dispatchEvent(new Event('lk:locations-updated'));
+    }
+    if (scope === 'skills' || scope === 'all') {
+      window.dispatchEvent(new Event('lk:skills-updated'));
+    }
+    if (scope === 'memories' || scope === 'all') {
+      window.dispatchEvent(new CustomEvent('lk:memories-updated'));
+    }
+  }
+
+  private seededQuests(): Quest[] {
+    const current = this.getQuests();
+    return current.length > 0 ? current : [...MOCK_QUESTS];
+  }
+
+  private syncQuestCollection(next: Quest[]): Quest[] {
+    this.quests = next;
+    this.questBoard = buildQuestBoardFromQuests(next);
+    this.emitChange('quests');
+    return next;
+  }
+
+  createQuest(quest: Quest): Quest {
+    this.syncQuestCollection([...this.seededQuests(), quest]);
+    emitDemoEffect({
+      kind: 'quest_created',
+      ...demoEffectMessage('quest_created', quest.title),
+    });
+    return quest;
+  }
+
+  patchQuest(questId: string, patch: Partial<Quest>): Quest {
+    let updated: Quest | null = null;
+    this.syncQuestCollection(
+      this.seededQuests().map((quest) => {
+        if (quest.id !== questId) return quest;
+        updated = {
+          ...quest,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+        };
+        return updated;
+      }),
+    );
+    if (!updated) throw new Error('Quest not found');
+    return updated;
+  }
+
+  setQuestStatus(questId: string, status: QuestStatus, extra: Partial<Quest> = {}): Quest {
+    const updated = this.patchQuest(questId, { status, ...extra });
+    if (status === 'completed') {
+      emitDemoEffect({
+        kind: 'quest_completed',
+        ...demoEffectMessage('quest_completed', updated.title),
+      });
+    } else {
+      emitDemoEffect({
+        kind: 'quest_updated',
+        ...demoEffectMessage('quest_updated', `Quest marked ${status.replace('_', ' ')}`),
+      });
+    }
+    return updated;
+  }
+
+  removeQuest(questId: string): void {
+    this.syncQuestCollection(this.seededQuests().filter((quest) => quest.id !== questId));
+  }
+
+  removeQuestSuggestion(match: { id?: string; title?: string }): void {
+    const key = match.title?.trim().toLowerCase();
+    this.questSuggestions = this.getQuestSuggestions().filter((s) => {
+      if (match.id && s.id === match.id) return false;
+      if (key && s.title.trim().toLowerCase() === key) return false;
+      return true;
+    });
+    this.emitChange('quests');
+  }
+
+  upsertCharacter(character: Character): Character {
+    const list = this.getCharacters();
+    const idx = list.findIndex((c) => c.id === character.id);
+    const next =
+      idx >= 0
+        ? list.map((c, i) => (i === idx ? { ...c, ...character } : c))
+        : [...list, character];
+    this.registerCharacters(next);
+    this.emitChange('characters');
+    const label = character.name || 'Character';
+    if (character.status === 'archived') {
+      emitDemoEffect({
+        kind: 'character_archived',
+        ...demoEffectMessage('character_archived', label),
+      });
+    } else {
+      emitDemoEffect({
+        kind: 'character_saved',
+        ...demoEffectMessage('character_saved', label),
+      });
+    }
+    return character;
+  }
+
+  removeCharacter(characterId: string): void {
+    this.registerCharacters(this.getCharacters().filter((c) => c.id !== characterId));
+    this.emitChange('characters');
+  }
+
+  ensureGoalsValuesSeed(): GoalsValuesMockData {
+    if (!this.goalsValues) {
+      this.goalsValues = {
+        goals: [...MOCK_GOALS_VALUES_DATA.goals],
+        values: [...MOCK_GOALS_VALUES_DATA.values],
+        alignmentSnapshots: [...MOCK_GOALS_VALUES_DATA.alignmentSnapshots],
+        driftObservations: [...MOCK_GOALS_VALUES_DATA.driftObservations],
+      };
+    }
+    return this.goalsValues;
+  }
+
+  updateValuePriority(valueId: string, priority: number): void {
+    const current = this.ensureGoalsValuesSeed();
+    const value = current.values.find((v) => v.id === valueId);
+    this.goalsValues = {
+      ...current,
+      values: current.values.map((entry) =>
+        entry.id === valueId ? { ...entry, priority } : entry,
+      ),
+    };
+    this.emitChange('goals');
+    emitDemoEffect({
+      kind: 'value_priority',
+      ...demoEffectMessage('value_priority', value?.name ?? 'value'),
+    });
+  }
+
+  createLocation(input: { name: string; type?: string | null; context?: string }): LocationProfile {
+    const now = new Date().toISOString();
+    const location: LocationProfile = {
+      id: `loc-mock-${Date.now()}`,
+      name: input.name,
+      type: input.type ?? null,
+      visitCount: 1,
+      firstVisited: now,
+      lastVisited: now,
+      relatedPeople: [],
+      tagCounts: input.type ? [{ tag: input.type, count: 1 }] : [],
+      chapters: [],
+      moods: [],
+      entries: [],
+      sources: ['demo'],
+      description: input.context ?? null,
+    };
+    this.locations = [...this.getLocations(), location];
+    this.emitChange('locations');
+    emitDemoEffect({
+      kind: 'location_added',
+      ...demoEffectMessage('location_added', input.name),
+    });
+    return location;
+  }
+
+  removeLocationSuggestion(match: { id?: string; name?: string }): void {
+    const key = match.name?.trim().toLowerCase();
+    this.locationSuggestions = this.getLocationSuggestions().filter((s) => {
+      if (match.id && s.id === match.id) return false;
+      if (key && s.name.trim().toLowerCase() === key) return false;
+      return true;
+    });
+    this.emitChange('locations');
+  }
+
+  updateLocation(id: string, patch: Partial<LocationProfile>): LocationProfile | null {
+    const locations = this.getLocations();
+    const idx = locations.findIndex((loc) => loc.id === id);
+    if (idx < 0) return null;
+    const current = locations[idx];
+    const updated: LocationProfile = {
+      ...current,
+      ...patch,
+      metadata: patch.metadata ? { ...(current.metadata ?? {}), ...patch.metadata } : current.metadata,
+    };
+    this.locations = locations.map((loc, i) => (i === idx ? updated : loc));
+    this.emitChange('locations');
+    return updated;
+  }
+
+  createSkillFromSuggestion(suggestion: SkillSuggestion): Skill {
+    const now = new Date().toISOString();
+    const skill: Skill = {
+      id: `skill-mock-${Date.now()}`,
+      user_id: 'demo',
+      skill_name: suggestion.skill_name,
+      skill_category: suggestion.skill_category,
+      current_level: 1,
+      total_xp: 35,
+      xp_to_next_level: 65,
+      description: suggestion.description ?? suggestion.origin_story ?? null,
+      first_mentioned_at: now,
+      last_practiced_at: now,
+      practice_count: 1,
+      auto_detected: true,
+      confidence_score: suggestion.confidence ?? 0.75,
+      is_active: true,
+      metadata: suggestion.skill_type
+        ? { skill_profile: { skill_type: suggestion.skill_type, proficiency: suggestion.proficiency ?? 40 } }
+        : {},
+      created_at: now,
+      updated_at: now,
+    };
+    this.skills = [...this.getSkills(), skill];
+    this.emitChange('skills');
+    emitDemoEffect({
+      kind: 'skill_added',
+      ...demoEffectMessage('skill_added', suggestion.skill_name),
+    });
+    return skill;
+  }
+
+  removeSkillSuggestion(match: { id?: string; skill_name?: string }): void {
+    const key = match.skill_name?.trim().toLowerCase();
+    this.skillSuggestions = this.getSkillSuggestions().filter((s) => {
+      if (match.id && s.id === match.id) return false;
+      if (key && s.skill_name.trim().toLowerCase() === key) return false;
+      return true;
+    });
+    this.emitChange('skills');
+  }
+
+  ensureMemoryProposalsSeed(proposals: MemoryProposal[]): MemoryProposal[] {
+    if (this.memoryProposals.length === 0) {
+      this.memoryProposals = [...proposals];
+    }
+    return this.getMemoryProposals();
+  }
+
+  resolveMemoryProposal(
+    id: string,
+    status: MemoryProposal['status'],
+    patch: Partial<MemoryProposal> = {},
+  ): void {
+    const proposal = this.getMemoryProposals().find((p) => p.id === id);
+    this.memoryProposals = this.getMemoryProposals().map((entry) =>
+      entry.id === id
+        ? {
+            ...entry,
+            ...patch,
+            status,
+            resolved_at: new Date().toISOString(),
+          }
+        : entry,
+    );
+    this.emitChange('memories');
+    const label = proposal?.claim_text?.slice(0, 72) ?? 'Proposal';
+    if (status === 'APPROVED') {
+      emitDemoEffect({
+        kind: 'memory_approved',
+        ...demoEffectMessage('memory_approved', label),
+      });
+    } else if (status === 'REJECTED') {
+      emitDemoEffect({
+        kind: 'memory_rejected',
+        ...demoEffectMessage('memory_rejected', label),
+      });
+    } else if (status === 'EDITED') {
+      emitDemoEffect({
+        kind: 'memory_edited',
+        ...demoEffectMessage('memory_edited', label),
+      });
+    } else if (status === 'DEFERRED') {
+      emitDemoEffect({
+        kind: 'memory_deferred',
+        ...demoEffectMessage('memory_deferred', label),
+      });
+    }
+  }
 
   /**
    * Initialize mock data from various sources
@@ -254,6 +568,18 @@ class MockDataRegistry {
     this.questSuggestions = suggestions;
   }
 
+  registerSkills(skills: Skill[]) {
+    this.skills = skills;
+  }
+
+  registerLocationSuggestions(suggestions: LocationSuggestion[]) {
+    this.locationSuggestions = suggestions;
+  }
+
+  registerSkillSuggestions(suggestions: SkillSuggestion[]) {
+    this.skillSuggestions = suggestions;
+  }
+
   registerUnifiedNarrative(data: UnifiedNarrativeData) {
     this.unifiedNarrativeData = data;
   }
@@ -318,7 +644,19 @@ class MockDataRegistry {
   }
 
   getMemoryProposals(): MemoryProposal[] {
-    return [...this.memoryProposals];
+    return this.memoryProposals.filter((proposal) => proposal.status === 'PENDING');
+  }
+
+  getSkills(): Skill[] {
+    return [...this.skills];
+  }
+
+  getLocationSuggestions(): LocationSuggestion[] {
+    return [...this.locationSuggestions];
+  }
+
+  getSkillSuggestions(): SkillSuggestion[] {
+    return [...this.skillSuggestions];
   }
 
   getQuests(): Quest[] {
@@ -335,6 +673,24 @@ class MockDataRegistry {
 
   getQuestSuggestions(): QuestSuggestion[] {
     return [...this.questSuggestions];
+  }
+
+  getQuestReflections(questId: string): QuestHistory[] {
+    return [...(this.questReflections.get(questId) ?? [])];
+  }
+
+  addQuestReflection(questId: string, reflection: string): QuestHistory {
+    const entry: QuestHistory = {
+      id: `refl-${Date.now()}`,
+      quest_id: questId,
+      event_type: 'reflection',
+      description: 'Reflection added',
+      notes: reflection,
+      created_at: new Date().toISOString(),
+    };
+    this.questReflections.set(questId, [...this.getQuestReflections(questId), entry]);
+    this.emitChange('quests');
+    return entry;
   }
 
   getUnifiedNarrative(): UnifiedNarrativeData | null {
@@ -466,6 +822,9 @@ export const mockDataService = {
     questBoard: (data: QuestBoard) => mockDataRegistry.registerQuestBoard(data),
     questAnalytics: (data: QuestAnalytics) => mockDataRegistry.registerQuestAnalytics(data),
     questSuggestions: (data: QuestSuggestion[]) => mockDataRegistry.registerQuestSuggestions(data),
+    skills: (data: Skill[]) => mockDataRegistry.registerSkills(data),
+    locationSuggestions: (data: LocationSuggestion[]) => mockDataRegistry.registerLocationSuggestions(data),
+    skillSuggestions: (data: SkillSuggestion[]) => mockDataRegistry.registerSkillSuggestions(data),
     unifiedNarrative: (data: UnifiedNarrativeData) => mockDataRegistry.registerUnifiedNarrative(data),
   },
 
@@ -491,6 +850,10 @@ export const mockDataService = {
     questBoard: () => mockDataRegistry.getQuestBoard(),
     questAnalytics: () => mockDataRegistry.getQuestAnalytics(),
     questSuggestions: () => mockDataRegistry.getQuestSuggestions(),
+    questReflections: (questId: string) => mockDataRegistry.getQuestReflections(questId),
+    skills: () => mockDataRegistry.getSkills(),
+    locationSuggestions: () => mockDataRegistry.getLocationSuggestions(),
+    skillSuggestions: () => mockDataRegistry.getSkillSuggestions(),
     unifiedNarrative: () => mockDataRegistry.getUnifiedNarrative(),
   },
 
@@ -587,6 +950,64 @@ export const mockDataService = {
    * Check if currently using mock data
    */
   isUsingMock: () => getGlobalMockDataEnabled(),
+
+  /**
+   * Subscribe to in-memory demo mutations (CRUD) for reactive UI updates.
+   */
+  subscribe: (listener: () => void) => mockDataRegistry.subscribe(listener),
+  getRevision: () => mockDataRegistry.getRevision(),
+
+  /**
+   * Demo-mode CRUD — mutates the in-memory registry and emits legacy update events.
+   */
+  mutate: {
+    quests: {
+      create: (quest: Quest) => mockDataRegistry.createQuest(quest),
+      patch: (questId: string, patch: Partial<Quest>) => mockDataRegistry.patchQuest(questId, patch),
+      setStatus: (questId: string, status: QuestStatus, extra?: Partial<Quest>) =>
+        mockDataRegistry.setQuestStatus(questId, status, extra),
+      remove: (questId: string) => mockDataRegistry.removeQuest(questId),
+      addReflection: (questId: string, reflection: string) =>
+        mockDataRegistry.addQuestReflection(questId, reflection),
+    },
+    questSuggestions: {
+      remove: (match: { id?: string; title?: string }) => mockDataRegistry.removeQuestSuggestion(match),
+    },
+    characters: {
+      upsert: (character: Character) => mockDataRegistry.upsertCharacter(character),
+      remove: (characterId: string) => mockDataRegistry.removeCharacter(characterId),
+    },
+    goalsValues: {
+      ensureSeed: () => mockDataRegistry.ensureGoalsValuesSeed(),
+      updateValuePriority: (valueId: string, priority: number) =>
+        mockDataRegistry.updateValuePriority(valueId, priority),
+    },
+    locations: {
+      create: (input: { name: string; type?: string | null; context?: string }) =>
+        mockDataRegistry.createLocation(input),
+      update: (id: string, patch: Partial<LocationProfile>) =>
+        mockDataRegistry.updateLocation(id, patch),
+      removeSuggestion: (match: { id?: string; name?: string }) =>
+        mockDataRegistry.removeLocationSuggestion(match),
+    },
+    skills: {
+      createFromSuggestion: (suggestion: SkillSuggestion) =>
+        mockDataRegistry.createSkillFromSuggestion(suggestion),
+      removeSuggestion: (match: { id?: string; skill_name?: string }) =>
+        mockDataRegistry.removeSkillSuggestion(match),
+    },
+    memoryProposals: {
+      ensureSeed: (proposals: MemoryProposal[]) => mockDataRegistry.ensureMemoryProposalsSeed(proposals),
+      approve: (id: string) => mockDataRegistry.resolveMemoryProposal(id, 'APPROVED'),
+      reject: (id: string) => mockDataRegistry.resolveMemoryProposal(id, 'REJECTED'),
+      edit: (id: string, claimText: string, confidence?: number) =>
+        mockDataRegistry.resolveMemoryProposal(id, 'EDITED', {
+          claim_text: claimText,
+          ...(confidence != null ? { confidence } : {}),
+        }),
+      defer: (id: string) => mockDataRegistry.resolveMemoryProposal(id, 'DEFERRED'),
+    },
+  },
 
   /**
    * Get metadata for current data state

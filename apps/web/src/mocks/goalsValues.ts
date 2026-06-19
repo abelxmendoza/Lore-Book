@@ -3,7 +3,7 @@
  * For development and demonstration
  */
 
-import { mockDataService, type GoalsValuesMockData } from '../services/mockDataService';
+import type { GoalsValuesMockData } from '../services/mockDataService';
 
 export const MOCK_GOALS_VALUES_DATA: GoalsValuesMockData = {
   values: [
@@ -408,15 +408,4 @@ export const MOCK_GOALS_VALUES_DATA: GoalsValuesMockData = {
     },
   ],
 };
-
-// Register mock data immediately when module loads
-if (typeof window !== 'undefined') {
-  mockDataService.register.goalsValues(MOCK_GOALS_VALUES_DATA);
-  console.log('[goalsValues mock] Registered mock data:', {
-    values: MOCK_GOALS_VALUES_DATA.values.length,
-    goals: MOCK_GOALS_VALUES_DATA.goals.length,
-    snapshots: MOCK_GOALS_VALUES_DATA.alignmentSnapshots.length,
-    drift: MOCK_GOALS_VALUES_DATA.driftObservations.length,
-  });
-}
 

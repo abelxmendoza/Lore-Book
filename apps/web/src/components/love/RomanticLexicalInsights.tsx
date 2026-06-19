@@ -115,11 +115,11 @@ export const RomanticLexicalInsights = ({
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
           {insights.map((insight) => (
             <div
               key={insight.id}
-              className="rounded-lg border border-white/8 bg-black/30 px-3 py-2.5"
+              className="flex h-full flex-col rounded-lg border border-white/8 bg-black/30 px-2.5 py-2 sm:px-3 sm:py-2.5"
             >
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <Sparkles className="h-3 w-3 text-pink-300/80" />

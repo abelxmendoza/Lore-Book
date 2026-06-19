@@ -5,6 +5,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { LexicalSignalBadges } from '../shared/LexicalSignalBadges';
 import { cn } from '../../lib/cn';
+import { getRomanticDemoProfile } from '../../mocks/romanticDemoProfiles';
 
 type RomanticRelationship = {
   id: string;
@@ -44,9 +45,10 @@ type RomanticRelationship = {
 interface RelationshipCardProps {
   relationship: RomanticRelationship;
   onClick?: () => void;
+  highlighted?: boolean;
 }
 
-export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProps) => {
+export const RelationshipCard = ({ relationship, onClick, highlighted }: RelationshipCardProps) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -106,24 +108,29 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
   const attachment = sig?.attachment_intensity ?? 0;
   const obsession = sig?.obsession_score ?? 0;
   const attachmentLabel = attachment >= 0.66 ? 'High' : attachment >= 0.4 ? 'Moderate' : 'Low';
+  const demoProfile = getRomanticDemoProfile(relationship.id);
+  const cardTeaser =
+    demoProfile?.headline ??
+    (relationship.metadata?.lexical_evidence as string | undefined);
 
   return (
     <Card
       data-testid={`relationship-card-${relationship.id}`}
       className={cn(
-        "border-border/60 bg-gradient-to-br from-black/40 to-black/60 cursor-pointer transition-all duration-300 hover:border-pink-500/50 hover:shadow-xl hover:shadow-pink-500/20 hover:-translate-y-1 group",
-        isActive && "border-pink-500/30 bg-gradient-to-br from-pink-950/10 to-purple-950/10"
+        "h-full border-border/60 bg-gradient-to-br from-black/40 to-black/60 cursor-pointer transition-all duration-300 hover:border-pink-500/50 hover:shadow-xl hover:shadow-pink-500/20 hover:-translate-y-1 group",
+        isActive && "border-pink-500/30 bg-gradient-to-br from-pink-950/10 to-purple-950/10",
+        highlighted && "animate-romantic-enter animate-romantic-glow border-pink-400/60 ring-2 ring-pink-400/50"
       )}
       onClick={onClick}
     >
-      <CardContent className="p-5">
+      <CardContent className="flex h-full flex-col p-3 sm:p-5">
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <h3 className="font-semibold text-white text-lg mb-1 group-hover:text-pink-300 transition-colors">
+        <div className="mb-2 flex items-start justify-between gap-2 sm:mb-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="mb-1 truncate text-base font-semibold text-white transition-colors group-hover:text-pink-300 sm:text-lg">
               {relationship.person_name || formatRelationshipType(relationship.relationship_type)}
             </h3>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <Badge variant="outline" className={cn("text-xs", getStatusColor(relationship.status))}>
                 {relationship.status}
               </Badge>
@@ -142,10 +149,10 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
           </div>
           
           {/* Heart Fill Visualization */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <Heart 
               className={cn(
-                "w-8 h-8 transition-all group-hover:scale-110",
+                "h-6 w-6 transition-all group-hover:scale-110 sm:h-8 sm:w-8",
                 isActive ? "text-pink-400" : "text-pink-400/50"
               )}
               style={{
@@ -156,29 +163,29 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
             />
             {isActive && (
               <div className="absolute inset-0 animate-ping">
-                <Heart className="w-8 h-8 text-pink-400/30" />
+                <Heart className="h-6 w-6 text-pink-400/30 sm:h-8 sm:w-8" />
               </div>
             )}
           </div>
         </div>
 
         {/* Relationship Type */}
-        <p className="text-sm text-white/70 mb-4">
+        <p className="mb-2 line-clamp-1 text-xs text-white/70 sm:mb-3 sm:text-sm">
           {formatRelationshipType(relationship.relationship_type)}
           {relationship.exclusivity_status && ` · ${relationship.exclusivity_status}`}
         </p>
 
-        {(relationship.metadata?.lexical_evidence as string | undefined) && (
-          <p className="text-[11px] text-white/40 italic leading-relaxed mb-3 line-clamp-2 border-l-2 border-purple-500/30 pl-2">
-            {relationship.metadata?.lexical_evidence as string}
+        {(cardTeaser) && (
+          <p className="mb-2 line-clamp-2 border-l-2 border-purple-500/30 pl-2 text-[10px] leading-relaxed text-white/45 sm:mb-3 sm:text-[11px]">
+            {cardTeaser}
           </p>
         )}
 
         {/* Still Learning — not enough evidence to score honestly yet */}
         {stillLearning ? (
-          <div className="mb-4 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2.5">
-            <p className="text-xs font-medium text-white/55">Still learning</p>
-            <p className="text-[11px] text-white/35 mt-0.5">
+          <div className="mb-2 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-2.5 py-2 sm:mb-3 sm:px-3 sm:py-2.5">
+            <p className="text-[11px] font-medium text-white/55 sm:text-xs">Still learning</p>
+            <p className="mt-0.5 line-clamp-2 text-[10px] text-white/35 sm:text-[11px]">
               Mention {relationship.person_name?.split(' ')[0] || 'them'} more in chat — scores sharpen as evidence grows.
             </p>
           </div>
@@ -186,7 +193,7 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
         <>
         {/* Attachment + fixation signals (only when we have real signals) */}
         {sig && (
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 sm:mb-3 sm:gap-2">
             <span className="text-[11px] px-2 py-0.5 rounded-full border border-pink-500/25 bg-pink-500/10 text-pink-200">
               Attachment: {attachmentLabel}
             </span>
@@ -199,11 +206,11 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
         )}
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="mb-2 grid grid-cols-2 gap-2 sm:mb-3 sm:gap-3">
           <div>
-            <p className="text-xs text-white/50 mb-1">Compatibility</p>
+            <p className="mb-0.5 text-[10px] text-white/50 sm:mb-1 sm:text-xs">Compatibility</p>
             <div className="flex items-center gap-1">
-              <p className={cn("text-sm font-semibold", getScoreColor(relationship.compatibility_score))}>
+              <p className={cn("text-xs font-semibold sm:text-sm", getScoreColor(relationship.compatibility_score))}>
                 {Math.round(relationship.compatibility_score * 100)}%
               </p>
               {relationship.compatibility_score >= 0.7 ? (
@@ -216,9 +223,9 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
             </div>
           </div>
           <div>
-            <p className="text-xs text-white/50 mb-1">Health</p>
+            <p className="mb-0.5 text-[10px] text-white/50 sm:mb-1 sm:text-xs">Health</p>
             <div className="flex items-center gap-1">
-              <p className={cn("text-sm font-semibold", getScoreColor(relationship.relationship_health))}>
+              <p className={cn("text-xs font-semibold sm:text-sm", getScoreColor(relationship.relationship_health))}>
                 {Math.round(relationship.relationship_health * 100)}%
               </p>
               {relationship.relationship_health >= 0.7 ? (
@@ -236,8 +243,8 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
 
         {/* Duration */}
         {relationship.start_date && (
-          <div className="flex items-center gap-2 text-xs text-white/60 mb-4">
-            <Calendar className="w-3 h-3" />
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-white/60 sm:mb-3 sm:gap-2 sm:text-xs">
+            <Calendar className="h-3 w-3 flex-shrink-0" />
             <span>{getDuration()}</span>
             {relationship.start_date && (
               <span className="text-white/40">
@@ -248,7 +255,7 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
         )}
 
         {/* Flags Summary */}
-        <div className="flex items-center gap-4 text-xs">
+        <div className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-[10px] sm:gap-4 sm:text-xs">
           {relationship.red_flags.length > 0 && (
             <div className="flex items-center gap-1 text-red-300">
               <AlertTriangle className="w-3 h-3" />

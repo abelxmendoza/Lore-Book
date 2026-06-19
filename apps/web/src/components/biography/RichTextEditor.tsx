@@ -273,13 +273,13 @@ export const RichTextEditor = ({
   return (
     <div className={`flex flex-col border border-border/50 rounded-lg bg-black/40 overflow-hidden ${className}`}>
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-2 border-b border-border/30 bg-black/60 flex-wrap">
-        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2">
+      <div className="flex items-center gap-1 p-2 border-b border-border/30 bg-black/60 overflow-x-auto md:overflow-visible md:flex-wrap shrink-0 scrollbar-none">
+        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={formatBold}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Bold (⌘B)"
           >
             <Bold className="h-3.5 w-3.5" />
@@ -288,7 +288,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatItalic}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Italic (⌘I)"
           >
             <Italic className="h-3.5 w-3.5" />
@@ -297,19 +297,19 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatUnderline}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Underline"
           >
             <Underline className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2">
+        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={formatHeading1}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Heading 1"
           >
             <Heading1 className="h-3.5 w-3.5" />
@@ -318,7 +318,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatHeading2}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Heading 2"
           >
             <Heading2 className="h-3.5 w-3.5" />
@@ -327,19 +327,19 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatHeading3}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Heading 3"
           >
             <Heading3 className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2">
+        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={formatList}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Bullet List"
           >
             <List className="h-3.5 w-3.5" />
@@ -348,7 +348,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatOrderedList}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Numbered List"
           >
             <ListOrdered className="h-3.5 w-3.5" />
@@ -357,19 +357,19 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatQuote}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Quote"
           >
             <Quote className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2">
+        <div className="flex items-center gap-1 border-r border-border/30 pr-2 mr-2 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={formatCode}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Inline Code"
           >
             <Code className="h-3.5 w-3.5" />
@@ -378,7 +378,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatCodeBlock}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Code Block"
           >
             <Type className="h-3.5 w-3.5" />
@@ -387,7 +387,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatLink}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Link"
           >
             <Link className="h-3.5 w-3.5" />
@@ -396,27 +396,27 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={formatHorizontalRule}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title="Horizontal Rule"
           >
             <Minus className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <div className="flex-1" />
+        <div className="hidden md:block flex-1" />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 ml-auto md:ml-0">
           {autoSave && value !== lastSavedRef.current && (
-            <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
+            <Badge variant="outline" className="hidden md:inline-flex text-xs text-yellow-400 border-yellow-400/30">
               Saving...
             </Badge>
           )}
           {autoSave && value === lastSavedRef.current && value.length > 0 && (
-            <Badge variant="outline" className="text-xs text-green-400 border-green-400/30">
+            <Badge variant="outline" className="hidden md:inline-flex text-xs text-green-400 border-green-400/30">
               Saved
             </Badge>
           )}
-          <div className="text-xs text-white/40 flex items-center gap-2">
+          <div className="hidden md:flex text-xs text-white/40 items-center gap-2">
             <span>{wordCount} words</span>
             <span>•</span>
             <span>{charCount} chars</span>
@@ -425,7 +425,7 @@ export const RichTextEditor = ({
             variant="ghost"
             size="sm"
             onClick={() => setShowPreview(!showPreview)}
-            className="h-7 px-2"
+            className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
             title={showPreview ? 'Hide Preview' : 'Show Preview'}
           >
             {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -435,7 +435,7 @@ export const RichTextEditor = ({
               variant="ghost"
               size="sm"
               onClick={onSave}
-              className="h-7 px-2"
+              className="h-9 w-9 p-0 md:h-7 md:w-auto md:px-2"
               title="Save (⌘S)"
             >
               <Save className="h-3.5 w-3.5" />
@@ -464,7 +464,7 @@ export const RichTextEditor = ({
       </div>
 
       {/* Status Bar */}
-      <div className="px-4 py-2 border-t border-border/30 bg-black/60 text-xs text-white/40 flex items-center justify-between">
+      <div className="hidden md:flex px-4 py-2 border-t border-border/30 bg-black/60 text-xs text-white/40 items-center justify-between">
         <div className="flex items-center gap-3">
           <span>Markdown supported</span>
           <span>•</span>

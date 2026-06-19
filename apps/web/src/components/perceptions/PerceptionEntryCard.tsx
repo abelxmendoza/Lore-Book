@@ -3,6 +3,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
 import { formatDistanceToNow } from 'date-fns';
+import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 
 type PerceptionEntryCardProps = {
   perception: PerceptionEntry;
@@ -99,8 +100,8 @@ export const PerceptionEntryCard = ({
   // Visual treatment: desaturated/muted for perceptions (80% opacity default)
   return (
     <Card
-      className={`transition-all duration-200 ${
-        onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1' : ''
+      className={`min-w-0 transition-all duration-200 ${
+        onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1 active:scale-[0.99] touch-manipulation' : ''
       } ${
         isRetracted
           ? 'opacity-50 border-dashed border-2 border-gray-500/30 bg-gray-900/20'
@@ -114,33 +115,33 @@ export const PerceptionEntryCard = ({
       }`}
       onClick={() => onClick?.(perception)}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="space-y-2 p-2 sm:space-y-3 sm:p-4">
         {/* Header with source and confidence */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-start justify-between gap-1 sm:gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:gap-2">
             <Badge
               variant="outline"
-              className={`${getSourceColor(perception.source)} text-xs px-2 py-0.5 flex items-center gap-1`}
+              className={`${getSourceColor(perception.source)} flex items-center gap-0.5 px-1 py-0 text-[9px] sm:gap-1 sm:px-2 sm:py-0.5 sm:text-xs`}
             >
               {getSourceIcon(perception.source)}
-              <span className="capitalize">{perception.source.replace('_', ' ')}</span>
+              <span className="hidden capitalize sm:inline">{perception.source.replace('_', ' ')}</span>
             </Badge>
             <Badge
               variant="outline"
-              className={`${getConfidenceColor(perception.confidence_level)} text-xs px-2 py-0.5`}
+              className={`${getConfidenceColor(perception.confidence_level)} px-1 py-0 text-[9px] sm:px-2 sm:py-0.5 sm:text-xs`}
             >
-              {typeof perception.confidence_level === 'number' 
-                ? `${Math.round(perception.confidence_level * 100)}% confidence`
-                : perception.confidence_level.replace('_', ' ')} confidence
+              {typeof perception.confidence_level === 'number'
+                ? formatEpistemicPercent(perception.confidence_level)
+                : perception.confidence_level.replace('_', ' ')}
             </Badge>
             {perception.status === 'retracted' || perception.retracted ? (
-              <Badge variant="outline" className="bg-gray-500/10 text-gray-400 border-gray-500/30 text-xs px-2 py-0.5 line-through">
+              <Badge variant="outline" className="hidden border-gray-500/30 bg-gray-500/10 px-2 py-0.5 text-xs text-gray-400 line-through sm:inline-flex">
                 Retracted
               </Badge>
             ) : null}
-            {getResolutionIcon(perception.status)}
+            <span className="sm:hidden">{getResolutionIcon(perception.status)}</span>
           </div>
-          <div className="text-xs text-white/40 flex items-center gap-1">
+          <div className="hidden shrink-0 items-center gap-1 text-xs text-white/40 sm:flex">
             <Clock className="h-3 w-3" />
             {formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true })}
           </div>
@@ -148,26 +149,29 @@ export const PerceptionEntryCard = ({
 
         {/* Subject */}
         {showSubject && (perception.subject_alias || perception.subject_person_id) && (
-          <div className="flex items-center gap-2 text-sm">
-            <User className="h-3.5 w-3.5 text-white/50" />
-            <span className="text-white/70">
-              About: <span className="font-medium text-white">{perception.subject_alias || 'Unknown'}</span>
+          <div className="flex items-center gap-1 text-[10px] sm:gap-2 sm:text-sm">
+            <User className="h-3 w-3 shrink-0 text-white/50 sm:h-3.5 sm:w-3.5" />
+            <span className="min-w-0 truncate text-white/70">
+              <span className="hidden sm:inline">About: </span>
+              <span className="font-medium text-white">{perception.subject_alias || 'Unknown'}</span>
             </span>
           </div>
         )}
 
         {/* Content */}
-        <div className="text-white/80 text-sm leading-relaxed">{perception.content}</div>
+        <div className="text-[10px] leading-snug text-white/80 line-clamp-3 sm:text-sm sm:leading-relaxed sm:line-clamp-none">
+          {perception.content}
+        </div>
 
         {/* Impact on Me (Key Insight Lever) */}
-        <div className="pt-2 border-t border-border/30">
-          <p className="text-xs text-white/50 font-medium mb-1">Impact on Me:</p>
-          <p className="text-xs text-white/70 italic">{perception.impact_on_me}</p>
+        <div className="hidden border-t border-border/30 pt-2 sm:block">
+          <p className="mb-1 text-xs font-medium text-white/50">Impact on Me:</p>
+          <p className="text-xs italic text-white/70">{perception.impact_on_me}</p>
         </div>
 
         {/* Evolution Notes (if any) */}
         {perception.evolution_notes && perception.evolution_notes.length > 0 && (
-          <div className="pt-2 border-t border-border/30">
+          <div className="hidden border-t border-border/30 pt-2 sm:block">
             <p className="text-xs text-white/50 font-medium mb-1">Belief Evolution:</p>
             <div className="space-y-1">
               {perception.evolution_notes.map((note, idx) => (
@@ -179,7 +183,7 @@ export const PerceptionEntryCard = ({
 
         {/* Original Content (if different from current) */}
         {perception.original_content && perception.original_content !== perception.content && (
-          <div className="pt-2 border-t border-border/30">
+          <div className="hidden border-t border-border/30 pt-2 sm:block">
             <p className="text-xs text-white/50 font-medium mb-1">Original Belief:</p>
             <p className="text-xs text-white/60 italic line-through opacity-70">{perception.original_content}</p>
           </div>
@@ -187,7 +191,7 @@ export const PerceptionEntryCard = ({
 
         {/* Resolution note (tracks evolution) */}
         {perception.resolution_note && (
-          <div className="pt-2 border-t border-border/30">
+          <div className="hidden border-t border-border/30 pt-2 sm:block">
             <p className="text-xs text-white/50 font-medium mb-1">
               {perception.status === 'retracted' ? 'Retraction:' : 'Resolution:'}
             </p>
@@ -197,7 +201,7 @@ export const PerceptionEntryCard = ({
 
         {/* Warning labels for unstable perceptions (MANDATORY for unverified) */}
         {isUnverified && !isRetracted && (
-          <div className="flex items-center gap-2 pt-2 border-t border-violet-500/20">
+          <div className="hidden items-center gap-2 border-t border-violet-500/20 pt-2 sm:flex">
             <AlertTriangle className="h-3.5 w-3.5 text-violet-400/70" />
             <span className="text-xs text-violet-400/70">Unverified • Secondhand • Belief at the time</span>
           </div>

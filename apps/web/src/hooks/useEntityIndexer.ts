@@ -3,11 +3,16 @@ import type { CertifiedEntity } from '../types/certifiedEntity';
 import {
   buildEntityMatchIndex,
   matchCertifiedEntitiesWithIndex,
+  sortCertifiedMatches,
   type CertifiedEntityMatch,
   type EntityMatchIndex,
 } from '../lib/certifiedEntityMatch';
+import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
 import { fetchJson } from '../lib/api';
 import { apiCache } from '../lib/cache';
+import { supabase } from '../lib/supabase';
+import { shouldUseMockData } from '../hooks/useShouldUseMockData';
+import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   setComposerIndexError,
@@ -53,14 +58,53 @@ function getSharedSnapshot(): SharedIndexState {
   return shared;
 }
 
+function isTransientAuthError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('Authentication required') ||
+    message.includes('session expired') ||
+    message.includes('Missing Authorization')
+  );
+}
+
+function loadDemoIndex(): void {
+  const entities = buildDemoCertifiedIndex();
+  shared = {
+    entities,
+    matchIndex: buildEntityMatchIndex(entities),
+    ready: true,
+    error: null,
+    loading: false,
+  };
+}
+
 async function loadSharedIndex(force = false): Promise<void> {
   if (sharedLoadPromise && !force) return sharedLoadPromise;
 
   shared = { ...shared, loading: true, error: null };
   emitIndexChange();
 
+  if (shouldUseMockData()) {
+    loadDemoIndex();
+    emitIndexChange();
+    return;
+  }
+
   sharedLoadPromise = (async () => {
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) {
+        // Wait for auth — not an error state (guest / session still hydrating).
+        shared = {
+          entities: [],
+          matchIndex: buildEntityMatchIndex([]),
+          ready: false,
+          error: null,
+          loading: false,
+        };
+        return;
+      }
+
       const data = await fetchJson<{ entities: CertifiedEntity[] }>(INDEX_CACHE_KEY);
       const entities = data.entities ?? [];
       shared = {
@@ -70,7 +114,17 @@ async function loadSharedIndex(force = false): Promise<void> {
         error: null,
         loading: false,
       };
-    } catch {
+    } catch (err) {
+      if (isTransientAuthError(err)) {
+        shared = {
+          entities: [],
+          matchIndex: buildEntityMatchIndex([]),
+          ready: false,
+          error: null,
+          loading: false,
+        };
+        return;
+      }
       shared = {
         entities: [],
         matchIndex: buildEntityMatchIndex([]),
@@ -108,8 +162,10 @@ export const useEntityIndexer = () => {
   const [retryTick, setRetryTick] = useState(0);
 
   const applyMatches = useCallback(
-    (text: string, matchIndex: EntityMatchIndex) => {
-      const next = text.trim() ? matchCertifiedEntitiesWithIndex(text, matchIndex) : [];
+    (text: string, matchIndex: EntityMatchIndex, entities: CertifiedEntity[]) => {
+      const indexMatches = text.trim() ? matchCertifiedEntitiesWithIndex(text, matchIndex) : [];
+      const draftMatches = text.trim() ? detectDraftEntitiesInText(text, entities, indexMatches) : [];
+      const next = [...indexMatches, ...draftMatches].sort(sortCertifiedMatches);
       dispatch(setComposerMatches(next));
     },
     [dispatch]
@@ -117,23 +173,45 @@ export const useEntityIndexer = () => {
 
   useEffect(() => {
     void loadSharedIndex(retryTick > 0);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        apiCache.delete(INDEX_CACHE_KEY);
+        void loadSharedIndex(true);
+      }
+    });
+
+    return () => authListener.subscription.unsubscribe();
   }, [retryTick]);
 
   useEffect(() => {
     dispatch(setComposerIndexReady(sharedState.ready));
     dispatch(setComposerIndexError(sharedState.error));
     if (lastTextRef.current.trim() && sharedState.ready) {
-      applyMatches(lastTextRef.current, sharedState.matchIndex);
+      applyMatches(lastTextRef.current, sharedState.matchIndex, sharedState.entities);
     }
-  }, [sharedState.ready, sharedState.error, sharedState.matchIndex, applyMatches, dispatch]);
+  }, [sharedState.ready, sharedState.error, sharedState.matchIndex, sharedState.entities, applyMatches, dispatch]);
 
   useEffect(() => {
     const handler = () => {
+      if (shouldUseMockData()) {
+        loadDemoIndex();
+        emitIndexChange();
+        return;
+      }
       apiCache.delete(INDEX_CACHE_KEY);
       void loadSharedIndex(true);
     };
+    window.addEventListener('lk:characters-updated', handler);
+    window.addEventListener('lk:locations-updated', handler);
+    window.addEventListener('lk:skills-updated', handler);
     window.addEventListener('lk:story-data-updated', handler);
-    return () => window.removeEventListener('lk:story-data-updated', handler);
+    return () => {
+      window.removeEventListener('lk:characters-updated', handler);
+      window.removeEventListener('lk:locations-updated', handler);
+      window.removeEventListener('lk:skills-updated', handler);
+      window.removeEventListener('lk:story-data-updated', handler);
+    };
   }, []);
 
   const analyze = useCallback(
@@ -144,9 +222,9 @@ export const useEntityIndexer = () => {
         return;
       }
       if (!sharedState.ready) return;
-      applyMatches(text, sharedState.matchIndex);
+      applyMatches(text, sharedState.matchIndex, sharedState.entities);
     },
-    [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready]
+    [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
   );
 
   const retryLoad = useCallback(() => {

@@ -1,13 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Filter, X, Sparkles, Award, Check, Pause, Play, ArrowUpDown } from 'lucide-react';
+import { Search, Filter, X, Target, Award, Check, Pause, Play, ArrowUpDown, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
+import { Card, CardContent } from '../ui/card';
+import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { QuestDetailPanel } from './QuestDetailPanel';
 import { DetectedQuestSuggestions } from './DetectedQuestSuggestions';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest } from '../../hooks/useQuests';
+import { EMPTY_QUEST_BOARD } from '../../store/hooks/useQuestData';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
 
 // Prevent body scroll only when mobile detail overlay is open (sm:hidden fixed modal)
@@ -23,28 +26,84 @@ const useBodyScrollLock = (isLocked: boolean) => {
   }, [isLocked]);
 };
 
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(
-    () => (typeof window !== 'undefined' ? window.innerWidth < 640 : false)
-  );
-  useEffect(() => {
-    const mql = window.matchMedia('(max-width: 639px)');
-    const onChange = () => setIsMobile(mql.matches);
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, []);
-  return isMobile;
+type QuestBoardProps = {
+  onOpenAppSidebar?: () => void;
 };
 
 const SORT_KEYS = ['priority', 'activity', 'progress', 'due_date'] as const;
 const SORT_LABELS: Record<string, string> = {
-  priority: 'PRIORITY',
-  activity: 'RECENT',
-  progress: 'PROGRESS',
-  due_date: 'DUE SOON',
+  priority: 'Priority',
+  activity: 'Recent',
+  progress: 'Progress',
+  due_date: 'Due soon',
 };
 
-export const QuestBoard = () => {
+type QuestCategoryId = 'all' | 'today' | 'week' | 'main' | 'side' | 'completed';
+
+interface QuestCategoryNavProps {
+  selectedCategory: QuestCategoryId;
+  onSelect: (id: QuestCategoryId) => void;
+  counts: {
+    all: number;
+    today: number;
+    week: number;
+    main: number;
+    side: number;
+    completed: number;
+  };
+}
+
+const QUEST_CATEGORY_TABS: { id: QuestCategoryId; label: string; shortLabel: string }[] = [
+  { id: 'all', label: 'All quests', shortLabel: 'All' },
+  { id: 'today', label: 'Today', shortLabel: 'Today' },
+  { id: 'week', label: 'This week', shortLabel: 'Week' },
+  { id: 'main', label: 'Main quests', shortLabel: 'Main' },
+  { id: 'side', label: 'Side quests', shortLabel: 'Side' },
+  { id: 'completed', label: 'Completed', shortLabel: 'Done' },
+];
+
+function QuestCategoryNav({ selectedCategory, onSelect, counts }: QuestCategoryNavProps) {
+  return (
+    <nav
+      data-testid="quest-category-nav"
+      aria-label="Quest categories"
+      className="shrink-0 border-b border-white/10 bg-black/30 px-2 py-2 sm:px-3"
+    >
+      <ul className="flex gap-1.5 overflow-x-auto sm:grid sm:grid-cols-3 sm:overflow-visible pb-0.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {QUEST_CATEGORY_TABS.map((tab) => {
+          const selected = selectedCategory === tab.id;
+          const count = counts[tab.id];
+          return (
+            <li key={tab.id} className="shrink-0 sm:shrink">
+              <button
+                type="button"
+                data-testid={`quest-tab-${tab.id}`}
+                aria-current={selected ? 'page' : undefined}
+                onClick={() => onSelect(tab.id)}
+                className={`flex w-full min-h-[36px] min-w-[4.5rem] sm:min-w-0 items-center justify-center gap-1 rounded-full sm:rounded-md px-3 py-1.5 text-[11px] sm:text-xs font-medium transition-colors touch-manipulation whitespace-nowrap ${
+                  selected
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                    : 'text-white/55 hover:text-white hover:bg-white/5 border border-white/10 bg-black/20'
+                }`}
+              >
+                <span>{tab.shortLabel}</span>
+                <span
+                  className={`shrink-0 text-[9px] tabular-nums px-1 py-0.5 rounded ${
+                    selected ? 'bg-amber-500/25 text-amber-200' : 'bg-white/10 text-white/40'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
@@ -59,7 +118,7 @@ export const QuestBoard = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'today' | 'week' | 'main' | 'side' | 'completed'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<QuestCategoryId>('all');
   const [sortKey, setSortKey] = useState<'priority' | 'activity' | 'progress' | 'due_date'>('priority');
   const cycleSort = () => setSortKey(prev => SORT_KEYS[(SORT_KEYS.indexOf(prev) + 1) % SORT_KEYS.length]);
 
@@ -67,7 +126,9 @@ export const QuestBoard = () => {
   const completeQuest = useCompleteQuest();
   const pauseQuest = usePauseQuest();
 
-  const { data: board, isLoading, error, refetch: refetchBoard } = useQuestBoard();
+  const { data: boardData, isLoading, error, refetch: refetchBoard } = useQuestBoard();
+  const board = boardData ?? EMPTY_QUEST_BOARD;
+  const loadFailed = !isLoading && Boolean(error);
 
   const existingQuestTitles = useMemo(() => {
     if (!board) return [];
@@ -255,6 +316,19 @@ export const QuestBoard = () => {
     });
   }, [selectedCategory, mainQuests, sideQuests, dailyQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests, sortKey]);
 
+  const uniqueQuestCount = useMemo(() => {
+    const byId = new Map<string, Quest>();
+    [...mainQuests, ...sideQuests, ...dailyQuests, ...completedQuests].forEach((q) => {
+      if (!byId.has(q.id)) byId.set(q.id, q);
+    });
+    return byId.size;
+  }, [mainQuests, sideQuests, dailyQuests, completedQuests]);
+
+  const activeQuestCount = useMemo(
+    () => [...mainQuests, ...sideQuests].filter((q) => q.status === 'active').length,
+    [mainQuests, sideQuests]
+  );
+
   // Auto-select first quest if none selected or current selection is not in displayed quests
   // Only auto-select on desktop (not mobile) to avoid auto-opening modal
   useEffect(() => {
@@ -275,6 +349,25 @@ export const QuestBoard = () => {
     }
   }, [selectedCategory, displayedQuests, selectedQuestId]);
 
+  const categoryCounts = useMemo(
+    () => ({
+      all: uniqueQuestCount,
+      today: todaysQuests.length,
+      week: thisWeeksQuests.length,
+      main: mainQuests.length,
+      side: sideQuests.length,
+      completed: completedQuests.length,
+    }),
+    [
+      uniqueQuestCount,
+      todaysQuests.length,
+      thisWeeksQuests.length,
+      mainQuests.length,
+      sideQuests.length,
+      completedQuests.length,
+    ]
+  );
+
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -285,27 +378,41 @@ export const QuestBoard = () => {
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || typeFilter !== 'all' || priorityFilter !== 'all' || categoryFilter !== 'all';
 
+  const isBoardEmpty =
+    (board.main_quests?.length ?? 0) === 0 &&
+    (board.side_quests?.length ?? 0) === 0 &&
+    (board.daily_quests?.length ?? 0) === 0 &&
+    (board.completed_quests?.length ?? 0) === 0;
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-primary/60 font-mono animate-pulse">LOADING QUEST DATABASE...</div>
+      <div
+        data-testid="quest-board-loading"
+        className="flex h-full min-h-0 w-full flex-1 items-center justify-center"
+      >
+        <div className="text-center">
+          <Target className="h-8 w-8 text-amber-400/60 mx-auto mb-3 animate-pulse" />
+          <p className="text-sm text-white/55">Loading your quest log…</p>
+        </div>
       </div>
     );
   }
 
-  if (error && !board) {
+  if (loadFailed && isBoardEmpty) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <div className="text-red-400 font-mono">ERROR: FAILED TO LOAD QUESTS</div>
-        <div className="text-white/60 text-sm font-mono">Check your connection and try again.</div>
-      </div>
-    );
-  }
-
-  if (!board) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-white/60 font-mono">LOADING...</div>
+      <div
+        data-testid="quest-board-error"
+        className="flex h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+      >
+        <Target className="h-10 w-10 text-red-400/40" />
+        <p className="text-red-400 text-sm font-medium">Could not load quests</p>
+        <p className="text-white/50 text-sm max-w-sm">{error}</p>
+        <Button variant="outline" size="sm" onClick={() => void refetchBoard()}>
+          Retry
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-white/50">
+          Go to Chat
+        </Button>
       </div>
     );
   }
@@ -360,51 +467,124 @@ export const QuestBoard = () => {
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col w-full">
-      <div className="flex-shrink-0 px-2 sm:px-4 pt-2 sm:pt-3">
-        <ChatFirstViewHint />
+    <div
+      data-testid="quest-board"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-black/20"
+    >
+      {/* Mobile top bar — quests surface hides the global App header */}
+      <div
+        className="lg:hidden flex items-center justify-between gap-2 border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 px-2"
+        style={{
+          paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+          paddingBottom: '8px',
+        }}
+      >
+        <div className="flex items-center gap-1 min-w-0 flex-1">
+          {onOpenAppSidebar && (
+            <button
+              type="button"
+              onClick={onOpenAppSidebar}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg active:bg-white/10 touch-manipulation"
+              aria-label="Open app menu"
+            >
+              <Menu className="h-5 w-5 text-white/50" />
+            </button>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">Quest Log</p>
+            <p className="text-[10px] text-white/45 truncate">
+              {activeQuestCount} active · {uniqueQuestCount} total
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={cycleSort}
+            className="h-9 px-2.5 flex items-center gap-1 rounded-lg border border-white/10 text-white/70 text-xs touch-manipulation active:bg-white/10"
+            aria-label={`Sort by ${SORT_LABELS[sortKey]}`}
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            <span className="max-w-[4rem] truncate">{SORT_LABELS[sortKey]}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className={`h-9 w-9 flex items-center justify-center rounded-lg border touch-manipulation active:bg-white/10 ${
+              showFilters || hasActiveFilters
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-white/10 text-white/60'
+            }`}
+            aria-label="Toggle filters"
+          >
+            <Filter className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      {/* Cyberpunk Header */}
-      <div className="relative overflow-hidden neon-surface border-b border-primary/30 p-3 sm:p-4 lg:p-5 flex-shrink-0">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3">
-            <div className="p-1.5 sm:p-2 rounded bg-primary/20 border border-primary/50 flex-shrink-0">
-              <Sparkles className="h-3 w-3 sm:h-4 sm:w-4 sm:h-6 sm:w-6 text-primary" />
+
+      {/* Inline error — single banner for all breakpoints */}
+      {loadFailed && (
+        <div
+          data-testid="quest-board-error-banner"
+          className="shrink-0 mx-3 mt-2 lg:mx-0 lg:mt-0 lg:px-5 lg:py-2 lg:border-b lg:border-red-500/10 rounded-lg lg:rounded-none border border-red-500/30 bg-red-500/10 px-3 py-2 flex items-center justify-between gap-2"
+        >
+          <p className="text-xs text-red-300 truncate">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => void refetchBoard()} className="h-8 shrink-0">
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* Desktop header */}
+      <header
+        data-testid="quest-board-header"
+        className="hidden lg:block shrink-0 border-b border-white/10 bg-black/40 px-5 py-3 space-y-2"
+      >
+        <div className="flex flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 border border-amber-500/30 shrink-0">
+              <Target className="h-5 w-5 text-amber-400" />
             </div>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg sm:text-xl sm:text-2xl md:text-3xl font-bold text-white font-techno tracking-wider mb-1">
-                QUEST LOG
-              </h1>
-              <p className="text-[10px] sm:text-xs sm:text-sm text-primary/60 font-mono">
-                {'>'} Auto-detected from conversations • Life changes tracked
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-white tracking-tight">Quest Log</h1>
+              <p className="text-xs text-white/55">
+                {activeQuestCount} active · {uniqueQuestCount} total ·{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/chat')}
+                  className="text-primary/80 hover:text-primary underline-offset-2 hover:underline"
+                >
+                  add goals in Chat
+                </button>
               </p>
             </div>
           </div>
-          
-          {/* Filters & Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={cycleSort}
-              className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
+              className="h-9 border-white/15 text-white/80 hover:bg-white/5"
             >
-              <ArrowUpDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{SORT_LABELS[sortKey]}</span>
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <span className="text-sm">{SORT_LABELS[sortKey]}</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
-              className={`h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 ${
-                showFilters ? 'bg-primary/20 border-primary/50' : ''
+              className={`h-9 border-white/15 text-white/80 hover:bg-white/5 ${
+                showFilters ? 'bg-white/10 border-white/25' : ''
               }`}
             >
-              <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">FILTERS</span>
+              <Filter className="h-4 w-4 mr-1.5" />
+              Filters
               {hasActiveFilters && (
-                <span className="ml-1 sm:ml-2 px-1 sm:px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-primary/30 text-primary">
-                  {[searchQuery, statusFilter, typeFilter, priorityFilter, categoryFilter].filter(f => f !== 'all' && f !== '').length}
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-primary/30 text-primary">
+                  {[searchQuery, statusFilter, typeFilter, priorityFilter, categoryFilter].filter(
+                    (f) => f !== 'all' && f !== ''
+                  ).length}
                 </span>
               )}
             </Button>
@@ -413,48 +593,98 @@ export const QuestBoard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
-                className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm text-primary/60 hover:text-primary hover:bg-primary/20"
+                className="h-9 text-white/50 hover:text-white"
               >
-                <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />
-                <span className="hidden sm:inline">CLEAR</span>
+                <X className="h-4 w-4 mr-1" />
+                Clear
               </Button>
             )}
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigate('/discovery/achievements')}
-              className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
+              className="h-9 border-white/15 text-white/80 hover:bg-white/5"
             >
-              <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">ACHIEVEMENTS</span>
+              <Award className="h-4 w-4 mr-1.5" />
+              Achievements
             </Button>
           </div>
         </div>
-        
-        {/* Grid background and scan line effect */}
-        <div className="absolute inset-0 grid-surface opacity-30 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-      </div>
 
-      {/* Filters Panel */}
+        {showFilters && (
+          <Card className="bg-black/40 border-white/10">
+            <CardContent className="p-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="relative col-span-2 lg:col-span-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                  <Input
+                    placeholder="Search quests…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-black/40 border-white/10 text-white placeholder:text-white/40 h-10"
+                  />
+                </div>
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as QuestStatus | 'all')}
+                  className="bg-black/40 border-white/10 text-white h-10"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="completed">Completed</option>
+                  <option value="abandoned">Abandoned</option>
+                </Select>
+                <Select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as QuestType | 'all')}
+                  className="bg-black/40 border-white/10 text-white h-10"
+                >
+                  <option value="all">All types</option>
+                  <option value="main">Main quests</option>
+                  <option value="side">Side quests</option>
+                  <option value="daily">Daily quests</option>
+                  <option value="achievement">Achievements</option>
+                </Select>
+                {allCategories.length > 0 && (
+                  <Select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="bg-black/40 border-white/10 text-white h-10"
+                  >
+                    <option value="all">All categories</option>
+                    {allCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </header>
+
+      {/* Mobile filters drawer */}
       {showFilters && (
-        <div className="p-2 sm:p-3 sm:p-4 bg-black/60 border-b border-primary/20 backdrop-blur-sm flex-shrink-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="relative">
-              <Search className="absolute left-2.5 sm:left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary/40" />
-              <Input
-                placeholder="Search quests..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 sm:pl-10 bg-black/40 border-primary/30 text-sm h-8 sm:h-9 sm:h-10 text-white placeholder:text-white/40 focus:border-primary/50"
-              />
-            </div>
+        <div className="lg:hidden shrink-0 border-b border-white/10 bg-black/50 px-3 py-3 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+            <Input
+              placeholder="Search quests…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-black/40 border-white/10 text-white placeholder:text-white/40 h-10"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as QuestStatus | 'all')}
-              className="bg-black/40 border-primary/30 text-sm h-8 sm:h-9 sm:h-10 text-white"
+              className="bg-black/40 border-white/10 text-white h-10 text-sm"
             >
-              <option value="all">All Statuses</option>
+              <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="paused">Paused</option>
               <option value="completed">Completed</option>
@@ -463,222 +693,205 @@ export const QuestBoard = () => {
             <Select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as QuestType | 'all')}
-              className="bg-black/40 border-primary/30 text-sm h-8 sm:h-9 sm:h-10 text-white"
+              className="bg-black/40 border-white/10 text-white h-10 text-sm"
             >
-              <option value="all">All Types</option>
-              <option value="main">Main Quests</option>
-              <option value="side">Side Quests</option>
-              <option value="daily">Daily Quests</option>
-              <option value="achievement">Achievements</option>
+              <option value="all">All types</option>
+              <option value="main">Main</option>
+              <option value="side">Side</option>
+              <option value="daily">Daily</option>
+              <option value="achievement">Achievement</option>
             </Select>
-            {allCategories.length > 0 && (
-              <Select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-black/40 border-primary/30 text-sm h-8 sm:h-9 sm:h-10 text-white"
-              >
-                <option value="all">All Categories</option>
-                {allCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </Select>
-            )}
           </div>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="w-full h-9 text-white/50">
+              <X className="h-4 w-4 mr-1" />
+              Clear filters
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Detected quest suggestions — pulled from your chats + journal */}
-      <div className="flex-shrink-0">
-        <DetectedQuestSuggestions
-          existingQuestTitles={existingQuestTitles}
-          onQuestAdded={() => void refetchBoard()}
-        />
+      {/* Mobile quick links */}
+      <div className="lg:hidden shrink-0 flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-black/25 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button
+          type="button"
+          onClick={() => navigate('/chat')}
+          className="shrink-0 text-xs text-primary/80 px-2.5 py-1.5 rounded-full border border-primary/25 bg-primary/5 touch-manipulation"
+        >
+          Add in Chat
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/discovery/achievements')}
+          className="shrink-0 flex items-center gap-1 text-xs text-white/55 px-2.5 py-1.5 rounded-full border border-white/10 touch-manipulation"
+        >
+          <Award className="h-3.5 w-3.5" />
+          Achievements
+        </button>
       </div>
 
-      {/* Main Content - Side by Side */}
-      <div className="flex-1 flex overflow-hidden min-h-[520px] sm:min-h-[640px] gap-0 px-0 sm:gap-4 sm:px-4">
-        {/* Left Panel - Quest List */}
-        <div className="w-full sm:w-1/2 lg:w-2/5 border-r-0 sm:border-r border-primary/20 bg-black/20 flex flex-col min-h-0 pr-0 sm:pr-4">
-          {/* Category Tabs */}
-          <div className="flex overflow-x-auto sm:flex-wrap border-b border-primary/20 bg-black/40 flex-shrink-0 scrollbar-none">
-            {[
-              { id: 'all', label: 'ALL', count: mainQuests.length + sideQuests.length + todaysQuests.length + thisWeeksQuests.length + completedQuests.length },
-              { id: 'today', label: 'TODAY', count: todaysQuests.length, color: 'primary' },
-              { id: 'week', label: 'THIS WEEK', count: thisWeeksQuests.length, color: 'secondary' },
-              { id: 'main', label: 'MAIN', count: mainQuests.length, color: 'blue' },
-              { id: 'side', label: 'SIDE', count: sideQuests.length, color: 'purple' },
-              { id: 'completed', label: 'COMPLETE', count: completedQuests.length, color: 'yellow' },
-            ].map((tab) => {
-              const getTabClasses = () => {
-                if (selectedCategory !== tab.id) {
-                  return 'text-white/60 hover:text-white hover:bg-black/40';
-                }
-                switch (tab.color) {
-                  case 'primary': return 'bg-primary/20 text-primary border-b-2 border-primary';
-                  case 'secondary': return 'bg-secondary/20 text-secondary border-b-2 border-secondary';
-                  case 'blue': return 'bg-blue-500/20 text-blue-400 border-b-2 border-blue-500';
-                  case 'purple': return 'bg-purple-500/20 text-purple-400 border-b-2 border-purple-500';
-                  case 'yellow': return 'bg-yellow-500/20 text-yellow-400 border-b-2 border-yellow-500';
-                  default: return 'bg-primary/20 text-primary border-b-2 border-primary';
-                }
-              };
-
-              const getBadgeClasses = () => {
-                if (selectedCategory !== tab.id) {
-                  return 'bg-white/10 text-white/40';
-                }
-                switch (tab.color) {
-                  case 'primary': return 'bg-primary/30 text-primary';
-                  case 'secondary': return 'bg-secondary/30 text-secondary';
-                  case 'blue': return 'bg-blue-500/30 text-blue-400';
-                  case 'purple': return 'bg-purple-500/30 text-purple-400';
-                  case 'yellow': return 'bg-yellow-500/30 text-yellow-400';
-                  default: return 'bg-primary/30 text-primary';
-                }
-              };
-
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setSelectedCategory(tab.id as any);
-                    if (displayedQuests.length > 0 && !displayedQuests.find(q => q.id === selectedQuestId)) {
-                      setSelectedQuestId(displayedQuests[0]?.id || null);
-                    }
-                  }}
-                  className={`flex-shrink-0 whitespace-nowrap min-h-[44px] sm:flex-1 sm:min-w-[33.333%] sm:min-h-0 px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-mono transition-all ${getTabClasses()}`}
-                >
-                  <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                    <span>{tab.label}</span>
-                    <span className={`text-[10px] px-1 py-0.5 rounded ${getBadgeClasses()}`}>
-                      {tab.count}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+      {/* Body fills remaining viewport height */}
+      <div
+        data-testid="quest-board-body"
+        className="flex min-h-0 flex-1 flex-col sm:flex-row overflow-hidden"
+      >
+        <section
+          data-testid="quest-board-list-pane"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden sm:w-[min(100%,28rem)] lg:w-[min(100%,32rem)] sm:border-r border-white/10 bg-black/20"
+        >
+          <div data-testid="quest-board-suggestions" className="shrink-0 px-2 pt-2 sm:px-3">
+            <DetectedQuestSuggestions
+              existingQuestTitles={existingQuestTitles}
+              onQuestAdded={() => void refetchBoard()}
+            />
           </div>
 
-          {/* Quest List */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <QuestCategoryNav
+            selectedCategory={selectedCategory}
+            onSelect={setSelectedCategory}
+            counts={categoryCounts}
+          />
+
+          <div className="shrink-0 border-b border-white/10 bg-black/25 px-3 py-1.5 sm:px-4 sm:py-2 flex items-baseline justify-between gap-2">
+            <h2
+              data-testid="quest-list-heading"
+              className="text-sm font-semibold text-white"
+            >
+              {selectedCategory === 'completed' ? 'Completed' : 'In progress'}
+            </h2>
+            <p className="text-xs text-white/45 shrink-0">
+              {displayedQuests.length} quest{displayedQuests.length === 1 ? '' : 's'}
+            </p>
+          </div>
+
+          <div
+            data-testid="quest-board-list"
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {displayedQuests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-6 sm:p-8 gap-3">
-                <div className="text-primary/20 font-mono text-[10px] leading-relaxed select-none whitespace-pre">
-                  {'╔═══════════╗\n║  ·  ·  ·  ║\n║           ║\n║  empty    ║\n╚═══════════╝'}
-                </div>
-                <div className="text-primary/40 text-base font-mono font-bold">[QUEST LOG EMPTY]</div>
-                <p className="text-white/40 text-xs font-mono max-w-[220px] leading-relaxed">
+              <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center px-4 gap-3">
+                <Target className="h-10 w-10 text-white/15" />
+                <p className="text-sm font-medium text-white/70">No quests here yet</p>
+                <p className="text-xs text-white/45 max-w-[240px] leading-relaxed">
                   {hasActiveFilters
-                    ? '> Adjust or clear your filters to see quests'
-                    : '> Mention a goal in Chat — quests are auto-detected from your story'}
+                    ? 'Try adjusting or clearing your filters.'
+                    : 'Mention a goal in Chat — quests are auto-detected from your story.'}
                 </p>
                 {!hasActiveFilters && (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/chat')}
-                    className="mt-1 text-xs text-primary/60 hover:text-primary border border-primary/20 hover:border-primary/40 px-3 py-1.5 rounded font-mono transition-colors"
-                  >
-                    GO TO CHAT →
-                  </button>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/chat')}>
+                    Go to Chat
+                  </Button>
                 )}
               </div>
             ) : (
               displayedQuests.map((quest) => {
                 const activityTime = getTimeAgo(quest.last_activity_at);
                 const activityColor = getActivityColor(quest.last_activity_at);
+                const selected = selectedQuestId === quest.id;
+
                 return (
                   <button
                     type="button"
                     key={quest.id}
                     onClick={() => setSelectedQuestId(quest.id)}
-                    className={`relative w-full text-left p-3 sm:p-4 rounded-lg border transition-all overflow-hidden ${
-                      selectedQuestId === quest.id
-                        ? 'border-primary/70 bg-primary/20 shadow-neon'
-                        : `${getStatusColor(quest.status)} hover:border-primary/50 hover:bg-primary/10`
+                    className={`relative w-full text-left rounded-xl border p-3 transition-all overflow-hidden touch-manipulation active:scale-[0.99] ${
+                      selected
+                        ? 'border-amber-500/50 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.08)]'
+                        : `${getStatusColor(quest.status)} hover:border-white/20 hover:bg-white/[0.03]`
                     }`}
                   >
-                    {/* Left type accent stripe */}
-                    <span className={`absolute left-0 inset-y-0 w-[3px] ${getTypeStripeColor(quest.quest_type)}`} aria-hidden="true" />
+                    <span
+                      className={`absolute left-0 inset-y-0 w-1 ${getTypeStripeColor(quest.quest_type)}`}
+                      aria-hidden="true"
+                    />
 
-                    {/* Header row: type badge + quick actions */}
-                    <div className="flex items-center justify-between gap-1 mb-1 pl-1">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <span className={`text-[10px] sm:text-xs font-mono flex-shrink-0 ${getTypeColor(quest.quest_type)}`}>
-                          {quest.quest_type.toUpperCase()}
+                    <div className="flex items-center justify-between gap-2 mb-1.5 pl-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`text-[10px] font-medium uppercase tracking-wide ${getTypeColor(quest.quest_type)}`}>
+                          {quest.quest_type}
                         </span>
                         {quest.source === 'extracted' && (
-                          <span className="text-[8px] sm:text-[10px] text-primary/60 font-mono flex-shrink-0">[AUTO]</span>
+                          <span className="text-[10px] text-primary/70">Auto</span>
                         )}
                       </div>
-                      {/* Quick actions — desktop only */}
                       <div
-                        className="hidden sm:flex items-center gap-0.5 flex-shrink-0"
-                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-0.5 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       >
                         {quest.status === 'active' && (
                           <>
                             <button
                               type="button"
-                              onClick={() => { pauseQuest.mutateAsync(quest.id).catch(() => {}); }}
-                              className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-orange-400 hover:bg-orange-400/10 transition-colors"
+                              onClick={() => {
+                                pauseQuest.mutateAsync(quest.id).catch(() => {});
+                              }}
+                              className="h-9 w-9 sm:h-7 sm:w-7 flex items-center justify-center rounded-md text-white/35 hover:text-orange-400 hover:bg-orange-400/10 touch-manipulation"
                               title="Pause"
+                              aria-label="Pause quest"
                             >
-                              <Pause className="h-2.5 w-2.5" />
+                              <Pause className="h-3.5 w-3.5" />
                             </button>
                             <button
                               type="button"
-                              onClick={() => { completeQuest.mutateAsync({ questId: quest.id }).catch(() => {}); }}
-                              className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-green-400 hover:bg-green-400/10 transition-colors"
+                              onClick={() => {
+                                completeQuest.mutateAsync({ questId: quest.id }).catch(() => {});
+                              }}
+                              className="h-9 w-9 sm:h-7 sm:w-7 flex items-center justify-center rounded-md text-white/35 hover:text-green-400 hover:bg-green-400/10 touch-manipulation"
                               title="Complete"
+                              aria-label="Complete quest"
                             >
-                              <Check className="h-2.5 w-2.5" />
+                              <Check className="h-3.5 w-3.5" />
                             </button>
                           </>
                         )}
                         {quest.status === 'paused' && (
                           <button
                             type="button"
-                            onClick={() => { startQuest.mutateAsync(quest.id).catch(() => {}); }}
-                            className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
+                            onClick={() => {
+                              startQuest.mutateAsync(quest.id).catch(() => {});
+                            }}
+                            className="h-9 w-9 sm:h-7 sm:w-7 flex items-center justify-center rounded-md text-white/35 hover:text-blue-400 hover:bg-blue-400/10 touch-manipulation"
                             title="Resume"
+                            aria-label="Resume quest"
                           >
-                            <Play className="h-2.5 w-2.5" />
+                            <Play className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Title — wraps (no truncate) so the full goal is readable */}
-                    <h3 className="text-sm sm:text-base font-bold text-white mb-1 leading-snug line-clamp-2 pl-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1 leading-snug line-clamp-2 pl-2">
                       {quest.title}
                     </h3>
 
-                    {/* Description */}
                     {quest.description && (
-                      <p className="text-xs sm:text-sm text-white/65 line-clamp-2 mb-2 pl-1 leading-relaxed">
+                      <p className="text-xs text-white/55 line-clamp-2 mb-2 pl-2 leading-relaxed">
                         {quest.description}
                       </p>
                     )}
 
-                    {/* Progress Bar */}
-                    <div className="w-full h-1.5 bg-black/60 rounded-sm overflow-hidden border border-primary/20 mb-1.5">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary via-secondary to-primary transition-all duration-500 shadow-[0_0_8px_rgba(154,77,255,0.4)]"
-                        style={{ width: `${quest.progress_percentage}%` }}
-                      />
+                    <div className="pl-2 mb-2">
+                      <div className="h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-500/80 to-amber-400/60 transition-all duration-500"
+                          style={{ width: `${quest.progress_percentage}%` }}
+                        />
+                      </div>
                     </div>
 
-                    {/* Footer: stats + last activity */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-[10px] sm:text-xs text-white/55 font-mono">
-                        <span>PRI:{quest.priority}</span>
-                        <span>IMP:{quest.importance}</span>
+                    <div className="flex items-center justify-between gap-2 pl-2">
+                      <div className="flex items-center gap-2 text-[10px] text-white/45">
                         <span>{Math.round(quest.progress_percentage)}%</span>
+                        {quest.status !== 'active' && (
+                          <span className="capitalize">{quest.status}</span>
+                        )}
                       </div>
                       {activityTime && (
-                        <div className={`flex items-center gap-1 text-[9px] font-mono flex-shrink-0 ${activityColor}`}>
+                        <div className={`flex items-center gap-1 text-[10px] flex-shrink-0 ${activityColor}`}>
                           <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                          <span>{activityTime}</span>
+                          {activityTime}
                         </div>
                       )}
                     </div>
@@ -687,48 +900,28 @@ export const QuestBoard = () => {
               })
             )}
           </div>
-        </div>
+        </section>
 
-        {/* Right Panel - Quest Details */}
-        <div className="hidden sm:flex sm:w-1/2 lg:w-3/5 min-h-0 pl-4">
+        <section
+          data-testid="quest-board-detail-pane"
+          className="hidden sm:flex min-h-0 min-w-0 flex-1"
+        >
           <QuestDetailPanel questId={selectedQuestId} />
-        </div>
+        </section>
       </div>
 
-      {/* Mobile Detail Modal - Full Screen */}
-      {selectedQuestId && (
-        <div 
-          className="sm:hidden fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex flex-col"
-        >
-          {/* Header with close button */}
-          <div 
-            className="flex-shrink-0 flex items-center justify-between p-4 border-b border-primary/30 bg-black/80"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold text-white font-mono">QUEST DETAILS</h2>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedQuestId(null);
-              }}
-              className="h-10 w-10 p-0 text-white/70 hover:text-white hover:bg-primary/20 rounded flex items-center justify-center transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          
-          {/* Scrollable content */}
-          <div 
-            className="flex-1 overflow-hidden min-h-0 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <QuestDetailPanel 
-              questId={selectedQuestId} 
-              onClose={() => setSelectedQuestId(null)} 
+      {/* Mobile quest detail — bottom sheet */}
+      {selectedQuestId && isMobile && (
+        <MobileBottomSheet open onClose={() => setSelectedQuestId(null)}>
+          <div className="-mx-4 flex flex-col min-h-[min(65dvh,480px)]">
+            <QuestDetailPanel
+              questId={selectedQuestId}
+              onClose={() => setSelectedQuestId(null)}
+              mobile
+              embedded
             />
           </div>
-        </div>
+        </MobileBottomSheet>
       )}
     </div>
   );

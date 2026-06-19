@@ -8,6 +8,8 @@ import { supabaseAdmin } from '../supabaseClient';
 
 export type CertifiedEntityType = 'character' | 'location' | 'organization' | 'skill' | 'event';
 
+export type CharacterVariant = 'romantic';
+
 export type CertifiedEntity = {
   id: string;
   name: string;
@@ -15,6 +17,7 @@ export type CertifiedEntity = {
   aliases: string[];
   /** Normalized lowercase keys for fast mention matching */
   mentionKeys: string[];
+  characterVariant?: CharacterVariant;
 };
 
 function mentionKeysFor(name: string, aliases: string[]): string[] {
@@ -44,6 +47,7 @@ function pushEntity(
     name: existing.name || entity.name,
     aliases: [...aliases],
     mentionKeys: [...mentionKeys],
+    characterVariant: existing.characterVariant ?? entity.characterVariant,
   });
 }
 
@@ -57,6 +61,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     orgsRes,
     skillsRes,
     eventsRes,
+    romanticRes,
   ] = await Promise.all([
     Promise.resolve(
       supabaseAdmin
@@ -108,7 +113,20 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     )
       .then((r) => r.data ?? [])
       .catch(() => []),
+    Promise.resolve(
+      supabaseAdmin
+        .from('romantic_relationships')
+        .select('person_id, person_type')
+        .eq('user_id', userId)
+        .eq('person_type', 'character')
+    )
+      .then((r) => r.data ?? [])
+      .catch(() => []),
   ]);
+
+  const romanticCharacterIds = new Set(
+    (romanticRes as Array<{ person_id: string }>).map((row) => row.person_id).filter(Boolean)
+  );
 
   // Characters — prefer identity index (canonical mentions)
   const charAliases = new Map<string, Set<string>>();
@@ -139,6 +157,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
       type: 'character',
       aliases,
       mentionKeys: mentionKeysFor(name, aliases),
+      ...(romanticCharacterIds.has(id) ? { characterVariant: 'romantic' as const } : {}),
     });
   }
 

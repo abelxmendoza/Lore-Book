@@ -16,6 +16,13 @@ import { EventConfidenceHistory } from './EventConfidenceHistory';
 import { EventActionsMenu } from './EventActionsMenu';
 import { EventMetaTags } from './EventMetaTags';
 import { getDisplayTitle } from '../../utils/displayTitle';
+import { TextWithEntityPills } from '../entity/TextWithEntityPills';
+import {
+  epistemicBadgeColorClass,
+  epistemicHistoryTitle,
+  epistemicLabel,
+  formatEpistemicPercent,
+} from '../../lib/epistemicLabels';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -453,7 +460,7 @@ function getLearnedItems(ev: Event): LearnedItem[] {
 
   if (ev.confidence >= 0.85 && ev.source_count && ev.source_count >= 3) {
     items.push({
-      text: `This is now a high-confidence memory (${Math.round(ev.confidence * 100)}%), corroborated across ${ev.source_count} conversations.`,
+      text: `This is now a well-supported memory (${formatEpistemicPercent(ev.confidence)}), corroborated across ${ev.source_count} conversations.`,
       source: 'confidence',
     });
   }
@@ -550,11 +557,11 @@ function generateOpeningMessage(ev: Event): string {
   }
 
   if (pct >= 75) {
-    parts.push(`Confidence is ${pct}% — this is a well-documented memory.`);
+    parts.push(`With ${formatEpistemicPercent(ev.confidence)}, this is a well-documented memory.`);
   } else if (pct >= 50) {
-    parts.push(`I'm ${pct}% confident — there's room to add more.`);
+    parts.push(`${epistemicLabel(ev.confidence)} — there's room to add more detail (${formatEpistemicPercent(ev.confidence)}).`);
   } else {
-    parts.push(`Confidence is only ${pct}% — this memory is still forming. Anything you share helps clarify it.`);
+    parts.push(`Still uncertain (${formatEpistemicPercent(ev.confidence)}) — anything you share helps clarify it.`);
   }
 
   if (ev.causal_links?.effects?.length) {
@@ -591,27 +598,19 @@ function buildEntityList(ev: Event): ChatEntity[] {
 function renderWithChips(text: string, entities: ChatEntity[]): React.ReactNode {
   if (!entities.length) return <span>{text}</span>;
 
-  const escaped = entities.map(e => e.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
-  const parts = text.split(regex);
+  const mentions = entities.map((entity, index) => ({
+    id: `${entity.kind}-${index}-${entity.name}`,
+    name: entity.name,
+    type:
+      entity.kind === 'location'
+        ? ('location' as const)
+        : entity.kind === 'event'
+          ? ('event' as const)
+          : ('character' as const),
+    status: 'confirmed' as const,
+  }));
 
-  return (
-    <>
-      {parts.map((part, i) => {
-        const match = entities.find(e => e.name.toLowerCase() === part.toLowerCase());
-        if (!match) return part ? <span key={i}>{part}</span> : null;
-        const cls =
-          match.kind === 'person'   ? 'bg-blue-500/25 text-blue-200 border-blue-500/35' :
-          match.kind === 'location' ? 'bg-emerald-500/25 text-emerald-200 border-emerald-500/35' :
-                                      'bg-purple-500/25 text-purple-200 border-purple-500/35';
-        return (
-          <span key={i} className={`inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded border text-[11px] font-medium leading-none ${cls}`}>
-            {part}
-          </span>
-        );
-      })}
-    </>
-  );
+  return <TextWithEntityPills text={text} entities={mentions} />;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -1656,7 +1655,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                             {i.category}
                           </Badge>
                           <span className="text-[10px] text-purple-300/65">
-                            {Math.round(i.confidence * 100)}% confidence
+                            {formatEpistemicPercent(i.confidence)}
                           </span>
                         </div>
                         <p className="text-sm text-purple-100/95 leading-relaxed">{i.text}</p>
@@ -1683,19 +1682,15 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               {eventData.confidence_history && eventData.confidence_history.length > 0 ? (
                 <section>
                   <h3 className="text-xs font-bold text-white/75 uppercase tracking-widest mb-3">
-                    Confidence History
+                    {epistemicHistoryTitle()}
                   </h3>
                   <EventConfidenceHistory snapshots={eventData.confidence_history} currentConfidence={eventData.confidence} />
                 </section>
               ) : (
                 <section className="flex items-center justify-between bg-white/4 border border-white/10 rounded-xl px-4 py-3 text-sm">
-                  <span className="text-white/50">Current confidence</span>
-                  <Badge variant="outline" className={
-                    eventData.confidence >= 0.7 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' :
-                    eventData.confidence >= 0.4 ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' :
-                    'bg-red-500/15 text-red-300 border-red-500/30'
-                  }>
-                    {Math.round(eventData.confidence * 100)}%
+                  <span className="text-white/50">Current certainty</span>
+                  <Badge variant="outline" className={epistemicBadgeColorClass(eventData.confidence)}>
+                    {epistemicLabel(eventData.confidence)} · {formatEpistemicPercent(eventData.confidence)}
                   </Badge>
                 </section>
               )}

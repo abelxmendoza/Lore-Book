@@ -61,7 +61,7 @@ export const LoreEditorGate = ({ bookLoadFailed, bookTitle }: LoreEditorGateProp
             loading={loading}
             variant="full"
             onGenerateTopic={() => navigate('/lorebook')}
-            onGoToChat={() => navigate('/')}
+            onGoToChat={() => navigate('/chat')}
           />
         )}
       </div>

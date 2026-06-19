@@ -18,7 +18,10 @@ export const selectVisibleComposerMatches = createSelector(
 
 export const selectComposerMatchCounts = createSelector(selectVisibleComposerMatches, (matches) => ({
   total: matches.length,
-  confirmed: matches.filter((m) => m.status !== 'suggestion').length,
+  confirmed: matches.filter((m) => m.status === 'confirmed' || !m.status).length,
   suggested: matches.filter((m) => m.status === 'suggestion').length,
+  draft: matches.filter((m) => m.status === 'draft').length,
   prefix: matches.filter((m) => m.matchKind === 'prefix').length,
 }));
+
+export const selectComposerConfirmingSlots = (state: RootState) => state.composer.confirmingSlots;

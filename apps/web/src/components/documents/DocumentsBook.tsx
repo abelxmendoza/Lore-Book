@@ -14,6 +14,13 @@ import {
 import { fetchJson } from '../../lib/api';
 import { dispatchStoryDataUpdated, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { supabase } from '../../lib/supabase';
+import { shouldSimulateResumeUpload, simulateDemoResumeUpload, DEMO_RESUME_UPLOAD_STAGES } from '../../services/demoResumeUpload';
+import {
+  DEMO_DOCUMENT_UPLOAD_STAGES,
+  shouldSimulateDocumentUpload,
+  simulateDemoDocumentUpload,
+} from '../../services/demoDocumentUpload';
+import { DemoUploadProgressPanel, type DemoUploadProgress, type DemoUploadStage } from '../demo/DemoUploadProgressPanel';
 import { ClaimsInbox } from '../career/ClaimsInbox';
 import { ProvenanceLinks } from '../career/ProvenanceLinks';
 
@@ -69,6 +76,8 @@ export function DocumentsBook() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<DemoUploadProgress | null>(null);
+  const [uploadStages, setUploadStages] = useState<DemoUploadStage[]>(DEMO_DOCUMENT_UPLOAD_STAGES);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<FileDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -109,8 +118,32 @@ export function DocumentsBook() {
 
   const uploadFile = async (file: File, asResume: boolean) => {
     setUploading(true);
-    setUploadMsg(null);
+    setUploadProgress(null);
+    setUploadStages(asResume ? DEMO_RESUME_UPLOAD_STAGES : DEMO_DOCUMENT_UPLOAD_STAGES);
+    setUploadMsg(asResume && shouldSimulateResumeUpload() ? 'Reading your resume…' : null);
     try {
+      if (asResume && shouldSimulateResumeUpload()) {
+        await simulateDemoResumeUpload(file, (progress) => {
+          setUploadProgress(progress);
+          setUploadMsg(progress.stageLabel);
+        });
+        setUploadMsg('Resume saved to library (demo).');
+        dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 2000 });
+        await load();
+        return;
+      }
+
+      if (!asResume && shouldSimulateDocumentUpload()) {
+        await simulateDemoDocumentUpload(file, (progress) => {
+          setUploadProgress(progress);
+          setUploadMsg(progress.stageLabel);
+        });
+        setUploadMsg('Document saved to library.');
+        dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 2000 });
+        await load();
+        return;
+      }
+
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
       if (!token) throw new Error('Please log in to upload.');
@@ -138,6 +171,7 @@ export function DocumentsBook() {
       setUploadMsg(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (inputRef.current) inputRef.current.value = '';
     }
   };
@@ -181,7 +215,17 @@ export function DocumentsBook() {
         </div>
       </header>
 
-      {uploadMsg && (
+      {uploading && uploadProgress ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <DemoUploadProgressPanel
+            progress={uploadProgress}
+            stages={uploadStages}
+            icon={uploadStages === DEMO_RESUME_UPLOAD_STAGES ? Briefcase : FileText}
+          />
+        </div>
+      ) : null}
+
+      {uploadMsg && !uploadProgress && (
         <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white flex flex-wrap items-center justify-between gap-2">
           <span>{uploadMsg}</span>
           <button

@@ -11,6 +11,13 @@ vi.mock('react-router-dom', async () => {
 });
 
 const mockFetchCard = vi.fn();
+vi.mock('../../hooks/useLoreReadiness', () => ({
+  useLoreReadiness: () => ({
+    compiledBooks: [{ id: 'demo-1', title: 'The Builder Years', created_at: '2025-01-01', chapterCount: 6 }],
+    loading: false,
+  }),
+}));
+
 vi.mock('../../api/livingBiography', () => ({
   fetchLivingBiographyCard: (...args: unknown[]) => mockFetchCard(...args),
 }));
@@ -101,7 +108,7 @@ describe('LivingBiographyCard', () => {
     );
   });
 
-  it('clicking the card itself navigates to /memoir', async () => {
+  it('clicking the card itself navigates to the compiled lorebook editor', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);
     // Wait for card to appear
@@ -110,7 +117,7 @@ describe('LivingBiographyCard', () => {
     // The outer div[role=button] is the card
     const card = screen.getByRole('button', { name: /Your Story Right Now/i });
     fireEvent.click(card);
-    expect(mockNavigate).toHaveBeenCalledWith('/memoir');
+    expect(mockNavigate).toHaveBeenCalledWith('/memoir?book=demo-1');
   });
 
   it('shows last-updated timestamp', async () => {

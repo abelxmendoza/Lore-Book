@@ -98,15 +98,14 @@ export function IntelligenceSection() {
         {/* Heading */}
         <div className="text-center mb-10 sm:mb-14">
           <p className="text-xs font-mono text-primary/70 uppercase tracking-widest mb-3">
-            Under the hood
+            For the curious
           </p>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 sm:mb-4">
-            How LoreBook <span className="text-primary">thinks</span>
+            How LoreBook <span className="text-primary">holds context</span>
           </h2>
           <p className="text-base sm:text-lg text-white/70 max-w-2xl mx-auto">
-            The continuity you feel isn&apos;t a long prompt. It&apos;s the output of a real
-            pipeline — lexical analysis, a typed ontology, a knowledge graph, and provenance
-            on every derived fact.
+            The continuity you feel isn&apos;t magic — it&apos;s a real pipeline that reads what you say,
+            connects people and places, and keeps provenance on what it learns.
           </p>
         </div>
 

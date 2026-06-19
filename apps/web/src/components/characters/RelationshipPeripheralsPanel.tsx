@@ -39,6 +39,8 @@ type RelationshipPeripheralsPanelProps = {
   title?: string;
   description?: string;
   domainFilter?: RelationshipPeripheryDomain | 'all';
+  variant?: 'default' | 'romantic';
+  onOpenCharacterBook?: (characterId: string) => void;
   onUpdate?: () => void;
 };
 
@@ -102,6 +104,8 @@ export function RelationshipPeripheralsPanel({
   title = 'Their network',
   description,
   domainFilter = 'all',
+  variant = 'default',
+  onOpenCharacterBook,
   onUpdate,
 }: RelationshipPeripheralsPanelProps) {
   const { useMockData: useMocks } = useMockData();
@@ -182,10 +186,16 @@ export function RelationshipPeripheralsPanel({
     if (filter !== 'all' && p.tier !== filter) return false;
     if (domainTab !== 'all' && p.domain !== domainTab) return false;
     if (anchorKind === 'character' && domainFilter !== 'all' && p.domain !== domainFilter) return false;
+    if (anchorKind === 'romantic_relationship' && domainFilter !== 'all' && p.domain !== domainFilter) return false;
     return true;
   });
 
   const availableDomains = [...new Set(peripherals.map((p) => p.domain).filter(Boolean))] as RelationshipPeripheryDomain[];
+  const suspectedCount = peripherals.filter((p) => p.tier === 'suspected').length;
+  const confirmedCount = peripherals.filter((p) => p.tier === 'confirmed').length;
+  const isRomantic = variant === 'romantic';
+  const shellBorder = isRomantic ? 'border-pink-500/20 bg-pink-950/10' : 'border-white/10 bg-black/30';
+  const accentIcon = isRomantic ? 'text-pink-400' : 'text-primary';
 
   if (loading) {
     return (
@@ -197,27 +207,41 @@ export function RelationshipPeripheralsPanel({
   }
 
   return (
-    <div className="space-y-6" data-testid="relationship-peripherals-panel">
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-        <div className="flex items-start gap-3">
-          <GitBranch className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-          <div>
-            <h3 className="text-white font-medium">{title}</h3>
-            <p className="text-sm text-white/60 mt-1">
+    <div className="space-y-4 sm:space-y-6 min-w-0 max-w-full overflow-x-hidden" data-testid="relationship-peripherals-panel">
+      <div className={`rounded-xl border ${shellBorder} p-3 sm:p-4`}>
+        <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+          <GitBranch className={`w-4 h-4 sm:w-5 sm:h-5 ${accentIcon} mt-0.5 shrink-0`} />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm sm:text-base text-white font-medium">{title}</h3>
+            <p className="text-xs sm:text-sm text-white/60 mt-1 leading-relaxed break-words">
               {description ??
                 `Other people connected to ${anchorName} — family, friends, work, and more — surfaced from chat hearsay and possessive mentions.`}
             </p>
+            {peripherals.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-300 bg-amber-500/10">
+                  {suspectedCount} suspected
+                </Badge>
+                <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-300 bg-green-500/10">
+                  {confirmedCount} confirmed
+                </Badge>
+                <Badge variant="outline" className="text-[10px] border-white/15 text-white/50">
+                  {filtered.length} shown
+                </Badge>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {anchorKind === 'character' && availableDomains.length > 1 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5 snap-x snap-mandatory scrollbar-thin">
           <Button
             size="sm"
             variant={domainTab === 'all' ? 'default' : 'outline'}
             onClick={() => setDomainTab('all')}
             data-testid="peripheral-domain-all"
+            className="shrink-0 snap-start"
           >
             All domains
           </Button>
@@ -228,6 +252,7 @@ export function RelationshipPeripheralsPanel({
               variant={domainTab === d ? 'default' : 'outline'}
               onClick={() => setDomainTab(d)}
               data-testid={`peripheral-domain-${d}`}
+              className="shrink-0 snap-start"
             >
               {DOMAIN_LABELS[d]}
             </Button>
@@ -235,13 +260,13 @@ export function RelationshipPeripheralsPanel({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5 snap-x snap-mandatory">
         {(['all', 'suspected', 'confirmed'] as const).map((f) => (
           <Button
             key={f}
             size="sm"
             variant={filter === f ? 'default' : 'outline'}
-            className={filter === f ? 'bg-primary hover:bg-primary/90' : 'border-white/20'}
+            className={`shrink-0 snap-start ${filter === f ? 'bg-primary hover:bg-primary/90' : 'border-white/20'}`}
             onClick={() => setFilter(f)}
             data-testid={`peripheral-filter-${f}`}
           >
@@ -260,87 +285,100 @@ export function RelationshipPeripheralsPanel({
           <p className="text-xs mt-2">Mention their family, friends, or coworkers in chat to surface links.</p>
         </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3 sm:space-y-4">
           {filtered.map((p) => (
             <li
               key={p.id}
-              className="rounded-xl border border-white/10 bg-gradient-to-br from-black/40 to-black/20 p-4"
+              className="rounded-xl border border-white/10 bg-gradient-to-br from-black/40 to-black/20 p-3 sm:p-4 min-w-0 overflow-hidden"
               data-testid={`peripheral-card-${p.id}`}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-lg text-white font-medium">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <span className="text-base sm:text-lg text-white font-medium break-words min-w-0">
                       {p.peripheral_name ?? p.peripheral_surface}
                     </span>
                     {tierBadge(p.tier)}
                     {p.domain && (
-                      <Badge variant="outline" className="text-xs border-white/20 text-white/60">
+                      <Badge variant="outline" className="text-[10px] sm:text-xs border-white/20 text-white/60 shrink-0">
                         {DOMAIN_LABELS[p.domain] ?? p.domain}
                       </Badge>
                     )}
-                    <Badge variant="outline" className="text-xs border-white/20 text-white/70">
+                    <Badge variant="outline" className="text-[10px] sm:text-xs border-white/20 text-white/70 shrink-0 max-w-full truncate">
                       {ROLE_LABELS[p.role] ?? p.role}
                     </Badge>
                   </div>
-                  <p className="text-sm text-white/50 mt-1 flex items-center gap-1">
-                    <Eye className="w-3.5 h-3.5" />
-                    {PROXIMITY_LABELS[p.proximity] ?? p.proximity}
-                    {!p.has_met && ' · unmet'}
+                  <p className="text-xs sm:text-sm text-white/50 mt-1 flex items-start sm:items-center gap-1 break-words">
+                    <Eye className="w-3.5 h-3.5 shrink-0 mt-0.5 sm:mt-0" />
+                    <span>
+                      {PROXIMITY_LABELS[p.proximity] ?? p.proximity}
+                      {!p.has_met && ' · unmet'}
+                    </span>
                   </p>
                 </div>
-                <div className="text-right text-sm text-white/40">
+                <div className="text-xs sm:text-sm text-white/40 shrink-0 sm:text-right">
                   {Math.round(p.confidence * 100)}% confidence
                 </div>
               </div>
 
               {p.metadata?.lexical_evidence && (
-                <blockquote className="mt-3 text-sm text-white/70 border-l-2 border-primary/40 pl-3 italic">
+                <blockquote className="mt-3 text-xs sm:text-sm text-white/70 border-l-2 border-primary/40 pl-3 italic break-words">
                   {p.metadata.lexical_evidence}
                 </blockquote>
               )}
 
-              <div className="flex flex-wrap gap-2 mt-4">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3 sm:mt-4">
                 {p.tier === 'suspected' && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-green-500/40 text-green-300 hover:bg-green-500/10"
+                    className="w-full sm:w-auto border-green-500/40 text-green-300 hover:bg-green-500/10 justify-center"
                     disabled={actionId === p.id}
                     onClick={() => void runAction(p.id, 'confirm')}
                     data-testid={`peripheral-confirm-${p.id}`}
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-1" />
+                    <CheckCircle2 className="w-4 h-4 mr-1 shrink-0" />
                     Confirm
                   </Button>
                 )}
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-white/20"
+                  className="w-full sm:w-auto border-white/20 justify-center"
                   disabled={actionId === p.id || Boolean(p.peripheral_person_id)}
                   onClick={() => void runAction(p.id, 'promote')}
                   data-testid={`peripheral-promote-${p.id}`}
                 >
-                  <UserPlus className="w-4 h-4 mr-1" />
-                  {p.peripheral_person_id ? 'In Character Book' : 'Add to Character Book'}
+                  <UserPlus className="w-4 h-4 mr-1 shrink-0" />
+                  <span className="truncate">{p.peripheral_person_id ? 'In Character Book' : 'Add to Character Book'}</span>
                 </Button>
+                {p.peripheral_person_id && onOpenCharacterBook && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`w-full sm:w-auto justify-center ${isRomantic ? 'border-pink-500/30 text-pink-200 hover:bg-pink-500/10' : 'border-primary/30 text-primary hover:bg-primary/10'}`}
+                    onClick={() => onOpenCharacterBook(p.peripheral_person_id!)}
+                    data-testid={`peripheral-open-book-${p.id}`}
+                  >
+                    Open profile →
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-white/50 hover:text-red-300"
+                  className="w-full sm:w-auto text-white/50 hover:text-red-300 justify-center"
                   disabled={actionId === p.id}
                   onClick={() => void runAction(p.id, 'dismiss')}
                   data-testid={`peripheral-dismiss-${p.id}`}
                 >
-                  <XCircle className="w-4 h-4 mr-1" />
+                  <XCircle className="w-4 h-4 mr-1 shrink-0" />
                   Dismiss
                 </Button>
               </div>
 
               {p.tier === 'suspected' && (
-                <p className="text-xs text-amber-400/80 mt-3 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
+                <p className="text-[11px] sm:text-xs text-amber-400/80 mt-3 flex items-start gap-1.5 break-words">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   Suspected link — not verified as your direct relationship.
                 </p>
               )}

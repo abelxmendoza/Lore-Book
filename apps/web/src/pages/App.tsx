@@ -1,6 +1,6 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { PlusCircle, Menu } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -12,6 +12,11 @@ import {
   toggleDevMode,
   setDevMode as setDevModeAction,
 } from '../store/slices/uiSlice';
+import {
+  setChatFocus,
+  emptyChatFocusSessionStats,
+} from '../store/slices/selectionSlice';
+import type { ChatFocus } from '../types/chatFocus';
 
 import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
@@ -34,13 +39,14 @@ import { ProjectBook } from '../components/projects/ProjectBook';
 import { PhotoAlbum } from '../components/photos/PhotoAlbum';
 import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
+import { LorebookLibraryPage } from '../components/lorebook/LorebookLibraryPage';
+import { LorebookShell } from '../components/lorebook/LorebookShell';
 import { OmniTimeline } from '../components/timeline/OmniTimeline';
 import UserGuide from '../components/guide/UserGuide';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { PerceptionsView } from '../components/perceptions/PerceptionsView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
-import { ConnectionStatus } from '../components/ConnectionStatus';
 import { ModeBadge } from '../components/ModeBadge';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { EventsBook } from '../components/events/EventsBook';
@@ -63,7 +69,8 @@ import { SagaScreen } from '../components/saga/SagaScreen';
 import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { HomeScreen } from '../components/HomeScreen';
 import { PhotoGallery } from '../components/PhotoGallery';
-import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
+import { getSurfaceFromRoute, getRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
+import { isLorebookLibraryRoute } from '../lib/lorebookLibrary';
 
 
 
@@ -71,7 +78,7 @@ interface AppContentProps {
   defaultSurface?: SurfaceKey;
 }
 
-const AppContent = ({ defaultSurface }: AppContentProps) => {
+const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
   const { user } = useAuth();
   const {
     entries,
@@ -85,12 +92,16 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
-  const activeSurface = useAppSelector((s) => s.ui.activeSurface);
+  const reduxActiveSurface = useAppSelector((s) => s.ui.activeSurface);
+  const activeSurface = useMemo(
+    () => getSurfaceFromRoute(location.pathname),
+    [location.pathname]
+  );
   const isMobileDrawerOpen = useAppSelector((s) => s.ui.mobileDrawerOpen);
   const devMode = useAppSelector((s) => s.ui.devMode);
   const setActiveSurface = useCallback(
-    (surface: SurfaceKey) => dispatch(setActiveSurfaceAction(surface)),
-    [dispatch]
+    (surface: SurfaceKey) => navigate(getRouteFromSurface(surface)),
+    [navigate]
   );
   const setIsMobileDrawerOpen = useCallback(
     (open: boolean) => dispatch(setMobileDrawerOpen(open)),
@@ -98,31 +109,78 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   );
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
 
-  // Sync route → surface (handles browser back/forward and direct navigation)
-  useEffect(() => {
-    const surfaceFromRoute = getSurfaceFromRoute(location.pathname);
-    if (surfaceFromRoute !== activeSurface) {
-      setActiveSurface(surfaceFromRoute);
+  // Keep Redux in sync with URL (for selectors, e2e, keyboard shortcuts)
+  useLayoutEffect(() => {
+    if (activeSurface !== reduxActiveSurface) {
+      dispatch(setActiveSurfaceAction(activeSurface));
     }
-  }, [location.pathname]);
-
-  // Also sync when defaultSurface prop changes (from route params)
-  useEffect(() => {
-    if (defaultSurface && defaultSurface !== activeSurface) {
-      setActiveSurface(defaultSurface);
-    }
-  }, [defaultSurface]);
+  }, [activeSurface, reduxActiveSurface, dispatch]);
 
   // Listen for navigation events from subscription components
   useEffect(() => {
     const handleNavigate = (e: CustomEvent) => {
       if (e.detail?.surface) {
-        setActiveSurface(e.detail.surface as SurfaceKey);
+        navigate(getRouteFromSurface(e.detail.surface as SurfaceKey));
       }
     };
     window.addEventListener('navigate', handleNavigate as EventListener);
     return () => window.removeEventListener('navigate', handleNavigate as EventListener);
-  }, []);
+  }, [navigate]);
+
+  // Modal → main chat with entity focus (love, characters, projects, etc.)
+  useEffect(() => {
+    const openChat = (focus?: ChatFocus | null, prefill?: string) => {
+      if (focus || prefill) {
+        const base: ChatFocus =
+          focus ??
+          ({
+            entityId: 'lorebook',
+            entityName: 'Your story',
+            entityType: 'memory',
+            sourceSurface: 'lorebook',
+            sourceLabel: 'Lorebooks',
+            sessionStats: emptyChatFocusSessionStats(),
+          } as ChatFocus);
+        dispatch(
+          setChatFocus({
+            ...base,
+            initialPrompt: prefill ?? base.initialPrompt,
+            sessionStats: base.sessionStats ?? emptyChatFocusSessionStats(),
+          })
+        );
+      }
+      navigate('/chat');
+    };
+
+    const handleOpenChatFocus = (e: CustomEvent<ChatFocus>) => {
+      openChat(e.detail);
+    };
+
+    const handleNavigateSurface = (e: CustomEvent<{ surface?: SurfaceKey; context?: string; focus?: ChatFocus }>) => {
+      const { surface, context, focus } = e.detail ?? {};
+      if (surface === 'chat' || focus) {
+        openChat(focus ?? null, context);
+        return;
+      }
+      if (surface) {
+        navigate(getRouteFromSurface(surface));
+      }
+    };
+
+    const handleChatPrefill = (e: CustomEvent<{ message?: string }>) => {
+      const message = e.detail?.message;
+      if (message) openChat(null, message);
+    };
+
+    window.addEventListener('lorebook:open-chat-focus', handleOpenChatFocus as EventListener);
+    window.addEventListener('navigate-surface', handleNavigateSurface as EventListener);
+    window.addEventListener('lorebook:chat-prefill', handleChatPrefill as EventListener);
+    return () => {
+      window.removeEventListener('lorebook:open-chat-focus', handleOpenChatFocus as EventListener);
+      window.removeEventListener('navigate-surface', handleNavigateSurface as EventListener);
+      window.removeEventListener('lorebook:chat-prefill', handleChatPrefill as EventListener);
+    };
+  }, [dispatch, navigate]);
 
   // Refresh data when mock data toggle changes
   useEffect(() => {
@@ -165,7 +223,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       meta: true,
       handler: () => {
         navigate('/timeline?view=search');
-        setActiveSurface('timeline');
         setTimeout(() => {
           const searchInput = document.querySelector('input[type="search"], input[placeholder*="search" i]') as HTMLInputElement;
           searchInput?.focus();
@@ -179,7 +236,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       handler: () => {
         // Navigate to chatbot where entries can be created
         navigate('/chat');
-        setActiveSurface('chat');
         // Try to focus on chat input if it exists
         setTimeout(() => {
           const textarea = document.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="chat" i]') as HTMLTextAreaElement;
@@ -192,9 +248,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   ]);
 
   const navigateToChat = () => {
-    // Navigate to chatbot where entries can be created
     navigate('/chat');
-    setActiveSurface('chat');
     // Try to focus on chat input if it exists
     setTimeout(() => {
       const textarea = document.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="chat" i]') as HTMLTextAreaElement;
@@ -203,7 +257,22 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     }, 100);
   };
 
-  // Viewport-locked surfaces (chat/lorebook/memoir/saga/timeline) must clamp this
+  // Viewport-locked surfaces (chat/lorebook/memoir/saga/timeline) manage their own scroll.
+  const VIEWPORT_LOCKED_SURFACES = new Set<SurfaceKey>([
+    'chat',
+    'lorebook',
+    'memoir',
+    'saga',
+    'timeline',
+    'discovery',
+    'quests',
+  ]);
+  const isViewportLocked = VIEWPORT_LOCKED_SURFACES.has(activeSurface);
+  const isHome = activeSurface === 'home';
+  const isGuide = activeSurface === 'guide';
+  /** Book-style pages scroll inside <main> so the demo banner does not clip content. */
+  const isBookScrollSurface = !isViewportLocked && !isHome;
+
   const getSurfaceName = (surface: SurfaceKey): string => {
     const names: Record<SurfaceKey, string> = {
       home: 'Home',
@@ -252,8 +321,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <SkipLink />
       <DemoModeBootstrap />
 
-      {/* Mobile Header — hidden in chat, lorebook, and memoir (all have their own top bars) */}
-      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      {/* Mobile Header — hidden in surfaces with their own top bars */}
+      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline' || activeSurface === 'discovery' || activeSurface === 'quests') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -271,27 +340,37 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
       <Sidebar
         activeSurface={activeSurface}
-        onSurfaceChange={setActiveSurface}
         onToggleDevMode={() => dispatch(toggleDevMode())}
         devModeEnabled={devMode}
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
-      {/* Viewport-locked surfaces (chat/lorebook/memoir/saga) must clamp this
-          wrapper to the viewport: as a flex item its min-height:auto floor let
-          content push it (and <main>'s height:100vh) past the viewport, so the
-          chat composer rendered below the fold and the page scrolled. h-screen
-          + min-h-0 pins the composer to the bottom like ChatGPT. All other
-          surfaces keep min-h-screen so they can grow and page-scroll. */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? 'h-screen min-h-0' : 'min-h-screen'}`}>
+      {/* Shell: viewport-locked surfaces fill the screen; book pages scroll inside main. */}
+      <div
+        className={`flex-1 flex flex-col min-h-0 ${
+          isViewportLocked || isBookScrollSurface ? 'h-screen overflow-hidden' : 'min-h-screen'
+        }`}
+      >
       <DemoModeBanner />
       <main
         id="main-content"
-        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
+        className={`flex-1 min-h-0 text-white overflow-x-hidden flex flex-col ${
+          isViewportLocked
+            ? 'p-0 overflow-hidden'
+            : isHome || isGuide
+              ? 'p-0 pt-14 lg:pt-0 overflow-y-auto'
+              : 'overflow-y-auto space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'
+        }`}
         role="main"
-        style={(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
+        style={
+          isViewportLocked
+            ? undefined
+            : isHome
+              ? { minHeight: '100vh', overflowY: 'auto' }
+              : undefined
+        }
       >
-        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && (
+        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'guide' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && activeSurface !== 'discovery' && activeSurface !== 'quests' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
@@ -322,12 +401,18 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'projects' && <ProjectBook />}
         {activeSurface === 'memoir' && (
           <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
-            <BiographyEditor />
+            <BiographyEditor onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
                         {activeSurface === 'lorebook' && (
                           <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
-                            <LoreBook onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
+                            <LorebookShell onOpenAppSidebar={() => setIsMobileDrawerOpen(true)}>
+                              {isLorebookLibraryRoute(location.pathname) ? (
+                                <LorebookLibraryPage onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
+                              ) : (
+                                <LoreBook onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
+                              )}
+                            </LorebookShell>
                           </div>
                         )}
                         {activeSurface === 'photos' && (
@@ -377,8 +462,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'discovery' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-hidden">
-            <DiscoveryHub />
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-black/40 lg:shadow-panel">
+            <DiscoveryHub onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
         {activeSurface === 'love' && (
@@ -386,13 +471,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <LoveAndRelationshipsView />
           </div>
         )}
-                        {activeSurface === 'quests' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100dvh-4rem)] lg:min-h-[calc(100dvh-3.5rem)] overflow-hidden flex flex-col">
-                            <div className="flex-1 min-h-0 flex flex-col">
-                              <QuestBoard />
-                            </div>
-                          </div>
-                        )}
+        {activeSurface === 'quests' && (
+          <div className="fixed inset-0 lg:relative lg:inset-auto flex flex-1 min-h-0 h-full w-full overflow-hidden">
+            <QuestBoard onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
+          </div>
+        )}
                         {activeSurface === 'gaps' && (
                           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
                             <KnowledgeGapDashboard />
@@ -400,8 +483,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         )}
         {activeSurface === 'guide' && <UserGuide />}
         {activeSurface === 'saga' && (
-          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-y-auto">
-            <SagaScreen />
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
+            <SagaScreen onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
         {activeSurface === 'continuity' && (
@@ -434,7 +517,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
 
-        {activeSurface !== 'chat' && (
+        {activeSurface !== 'chat' && activeSurface !== 'quests' && (
           <div className="hidden sm:flex fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex flex-col gap-2">
             <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat} className="shadow-lg">
               <span className="hidden sm:inline">+ New Entry</span>
@@ -452,10 +535,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           }}
         />
 
-        {activeSurface !== 'chat' && <Footer />}
+        {activeSurface !== 'chat' && activeSurface !== 'quests' && <Footer />}
       </main>
       </div>
-      <ConnectionStatus />
       <ModeBadge />
       {import.meta.env.DEV && <ConversationPersistenceInspector />}
     </div>

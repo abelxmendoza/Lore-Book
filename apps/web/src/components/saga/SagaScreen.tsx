@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { BookOpen, Sparkles, Zap, RotateCcw, Star, MessageSquare, ChevronRight } from 'lucide-react';
+import { BookOpen, Sparkles, Zap, RotateCcw, Star, MessageSquare, ChevronRight, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSaga } from '../../hooks/useSaga';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Button } from '../ui/button';
 import { ChapterDetailDrawer, type ChapterContext } from './ChapterDetailDrawer';
 import type { SagaChapter } from '../../api/saga';
@@ -85,10 +86,11 @@ interface DrawerState {
   context?: ChapterContext;
 }
 
-export const SagaScreen = () => {
+export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const { saga: realSaga, refresh, loading, isMock } = useSaga();
   const saga = isMock ? MOCK_SAGA : realSaga;
   const navigate = useNavigate();
+  const isMobile = useIsMobile(1024);
 
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
 
@@ -118,7 +120,44 @@ export const SagaScreen = () => {
 
   return (
     <>
-      <div className="h-full overflow-y-auto bg-gradient-to-br from-black via-[#0b0714] to-black">
+      <div className="flex flex-col h-full min-h-0 bg-gradient-to-br from-black via-[#0b0714] to-black">
+        {isMobile && (
+          <header
+            className="flex-shrink-0 border-b border-white/8 bg-black/95 backdrop-blur-md px-3 py-2.5 z-20"
+            style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+          >
+            <div className="flex items-center gap-2.5">
+              {onOpenAppSidebar && (
+                <button
+                  type="button"
+                  onClick={onOpenAppSidebar}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/60 active:bg-white/10"
+                  aria-label="Open menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-base font-semibold text-white truncate">Life Saga</h1>
+                {saga?.era && (
+                  <p className="text-[11px] text-white/45 truncate mt-0.5">{saga.era}</p>
+                )}
+              </div>
+              {saga && (
+                <button
+                  type="button"
+                  onClick={handleChatEra}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
+                  aria-label="Chat about this era"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </header>
+        )}
+
+        <div className="relative flex-1 min-h-0 overflow-y-auto">
         {/* Atmospheric layers */}
         <div className="fixed inset-0 pointer-events-none">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_15%_20%,rgba(139,92,246,0.10),transparent_50%)]" />
@@ -332,6 +371,7 @@ export const SagaScreen = () => {
 
             </div>
           )}
+        </div>
         </div>
       </div>
 

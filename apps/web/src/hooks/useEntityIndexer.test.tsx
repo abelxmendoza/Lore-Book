@@ -16,6 +16,24 @@ vi.mock('../lib/cache', () => ({
   apiCache: { delete: vi.fn() },
 }));
 
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'test-token' } },
+      }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
+  },
+}));
+
+vi.mock('../hooks/useShouldUseMockData', () => ({
+  shouldUseMockData: vi.fn(() => false),
+  useShouldUseMockData: vi.fn(() => false),
+}));
+
 function wrapper({ children }: { children: ReactNode }) {
   return <Provider store={makeStore()}>{children}</Provider>;
 }

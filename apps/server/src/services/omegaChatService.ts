@@ -93,6 +93,29 @@ export type MemoryClaim = {
   sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED';
 };
 
+export type ChatFocusPayload = {
+  entityId: string;
+  entityName: string;
+  entityType: string;
+  sourceSurface: string;
+  sourceLabel: string;
+  relationshipId?: string;
+  relationshipName?: string;
+  knowledgeScope?: string;
+  initialPrompt?: string;
+  sessionStats?: {
+    messagesSent: number;
+    connectionDelta: number;
+    affectionDelta: number;
+    lastUpdatedAt?: string;
+  };
+  baseline?: {
+    affectionScore?: number;
+    connectionScore?: number;
+    healthScore?: number;
+  };
+};
+
 export type OmegaChatResponse = {
   answer: string;
   entryId?: string;
@@ -653,6 +676,26 @@ class OmegaChatService {
     return `\n\n**THREAD CONFIRMED ENTITIES**: This conversation has established context with:\n${lines.join('\n')}\nBuild on what is already known about these entities from prior thread messages and their records. Do not treat them as newly discovered unless the user introduces genuinely new information.`;
   }
 
+  private buildChatFocusContext(chatFocus?: ChatFocusPayload): string {
+    if (!chatFocus) return '';
+    const stats = chatFocus.sessionStats;
+    const deepening =
+      stats && stats.messagesSent > 0
+        ? ` Session so far: ${stats.messagesSent} focused message(s), connection deepening +${stats.connectionDelta}.`
+        : '';
+    const relationshipLine = chatFocus.relationshipName
+      ? ` They are especially focused on their connection with **${chatFocus.relationshipName}**.`
+      : '';
+    const scopeLine = chatFocus.knowledgeScope ? ` Scope: ${chatFocus.knowledgeScope}.` : '';
+    const loveNote =
+      chatFocus.sourceSurface === 'love'
+        ? ' Prioritize feelings, attachment, patterns, and relationship dynamics over general lore. Treat emotionally charged sharing as deepening this bond.'
+        : '';
+    return `\n\n**USER NAVIGATION FOCUS**
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}
+When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
+  }
+
   /** Persist user message before routing, retrieval, or generation (Chat Trust Recovery). */
   private async persistUserMessageEarly(
     userId: string,
@@ -761,8 +804,22 @@ class OmegaChatService {
     soulProfileContext?: SoulProfileContext,
     threadId?: string,
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
-    composerEntities?: Array<{ id: string; name: string; type: string }>
+    composerEntities?: Array<{ id: string; name: string; type: string }>,
+    chatFocus?: ChatFocusPayload
   ): Promise<StreamingChatResponse> {
+    // Derive entity context from modal/book focus when not explicitly set
+    if (!entityContext && chatFocus?.relationshipId) {
+      entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
+    } else if (!entityContext && chatFocus) {
+      if (chatFocus.entityType === 'character') {
+        entityContext = { type: 'CHARACTER', id: chatFocus.entityId };
+      } else if (chatFocus.entityType === 'location') {
+        entityContext = { type: 'LOCATION', id: chatFocus.entityId };
+      } else {
+        entityContext = { type: 'ENTITY', id: chatFocus.entityId };
+      }
+    }
+
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
@@ -1498,6 +1555,11 @@ class OmegaChatService {
     const composerEntitiesContext = this.buildComposerEntitiesContext(composerEntities);
     if (composerEntitiesContext) {
       systemPrompt += composerEntitiesContext;
+    }
+
+    const chatFocusContext = this.buildChatFocusContext(chatFocus);
+    if (chatFocusContext) {
+      systemPrompt += chatFocusContext;
     }
 
     if (refinementClarificationRequest) {

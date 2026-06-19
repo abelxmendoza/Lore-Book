@@ -1,10 +1,10 @@
 import { Send, Loader2, Paperclip, MessageSquare } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { Textarea } from '../../../components/ui/textarea';
 import { Card } from '../../../components/ui/card';
 import { useChatComposer } from '../hooks/useChatComposer';
 import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
+import { EntityHighlightComposerField } from './EntityHighlightComposerField';
 import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
@@ -22,6 +22,9 @@ type ChatComposerProps = {
   onUploadComplete?: (result: UploadCompletePayload) => void;
   initialPrompt?: string | null;
   initialDate?: string | null;
+  /** Tighter layout for character/org modals — hides upload chrome, reduces padding */
+  variant?: 'default' | 'embedded';
+  placeholder?: string;
 };
 
 export const ChatComposer = ({
@@ -30,8 +33,11 @@ export const ChatComposer = ({
   disabled = false,
   onUploadComplete,
   initialPrompt,
-  initialDate
+  initialDate,
+  variant = 'default',
+  placeholder = 'Message Lore Book...',
 }: ChatComposerProps) => {
+  const embedded = variant === 'embedded';
   const {
     input,
     setInput,
@@ -44,7 +50,10 @@ export const ChatComposer = ({
     autoTagger,
     entityIndexer,
     visibleMatches,
+    confirmingSlots,
+    confirmError,
     dismissMatch,
+    confirmMatch,
     handleSubmit,
     handleKeyDown,
     insertSuggestion
@@ -82,7 +91,11 @@ export const ChatComposer = ({
   return (
     <div
       data-testid="chat-composer"
-      className="border-t border-white/10 bg-black/40 backdrop-blur-sm chat-composer flex-shrink-0 safe-area-bottom"
+      className={`flex-shrink-0 safe-area-bottom ${
+        embedded
+          ? 'bg-black/95 backdrop-blur-md'
+          : 'border-t border-white/10 bg-black/40 backdrop-blur-sm chat-composer'
+      }`}
       style={{ paddingBottom: keyboardInset > 0 ? keyboardInset : undefined }}
     >
       {/* Command Suggestions */}
@@ -106,14 +119,14 @@ export const ChatComposer = ({
       {entityIndexer.indexError && (
         <div
           data-testid="composer-index-error"
-          className="px-3 sm:px-4 lg:px-10 xl:px-12 pt-2 pb-1 border-b border-amber-500/20 bg-amber-500/5"
+          className="border-b border-amber-500/15 bg-amber-500/5 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
         >
-          <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] flex items-center justify-between gap-2">
-            <span className="text-[11px] text-amber-200/80">{entityIndexer.indexError}</span>
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 text-[10px] lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
+            <span className="truncate text-amber-200/75">{entityIndexer.indexError}</span>
             <button
               type="button"
               data-testid="composer-index-retry"
-              className="text-[11px] text-amber-300 hover:text-amber-200 underline"
+              className="shrink-0 text-amber-300/90 hover:text-amber-200 underline"
               onClick={() => entityIndexer.retryLoad()}
             >
               Retry
@@ -121,15 +134,27 @@ export const ChatComposer = ({
           </div>
         </div>
       )}
-      <ComposerEntityChips entities={visibleMatches} onDismiss={dismissMatch} />
+      <ComposerEntityChips
+        entities={visibleMatches}
+        confirmingSlots={confirmingSlots}
+        onDismiss={dismissMatch}
+        onConfirm={confirmMatch}
+      />
 
-      {/* Hints Bar */}
+      {confirmError && (
+        <div
+          data-testid="composer-confirm-error"
+          className="border-b border-red-500/15 bg-red-500/5 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
+        >
+          <p className="mx-auto max-w-5xl truncate text-[10px] text-red-200/85 lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
+            {confirmError}
+          </p>
+        </div>
+      )}
+
+      {/* Mood / tags only — entities shown in chip strip above */}
       {showHints && (
-        <ComposerHints
-          mood={moodEngine.mood}
-          entities={visibleMatches}
-          tagCount={autoTagger.suggestions.length}
-        />
+        <ComposerHints mood={moodEngine.mood} tagCount={autoTagger.suggestions.length} />
       )}
 
       {/* Document Upload Section */}
@@ -165,9 +190,16 @@ export const ChatComposer = ({
       )}
 
       {/* Input Form - ChatGPT style */}
-      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2 sm:py-3 lg:py-4 xl:py-5">
+      <form
+        onSubmit={handleSubmit}
+        className={
+          embedded
+            ? 'w-full px-2 sm:px-3 py-2'
+            : 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2 sm:py-3 lg:py-4 xl:py-5'
+        }
+      >
         <div className={`flex gap-2 sm:gap-2.5 transition-all duration-200 ${isExpanded ? 'items-end' : 'items-center'}`}>
-          {/* Upload Icons - Outside textarea, left side */}
+          {!embedded && (
           <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
             <button
               type="button"
@@ -196,53 +228,58 @@ export const ChatComposer = ({
               </span>
             </button>
           </div>
+          )}
 
-          {/* Textarea Container */}
-          <div className="flex-1 relative min-w-0">
-            <Textarea
-              ref={textareaRef}
-              placeholder="Message Lore Book..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={loading || disabled}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => { if (!input.trim()) setIsFocused(false); }}
-              className={[
-                'w-full bg-white/5 border border-white/10 text-white placeholder:text-white/50',
-                'resize-none overflow-y-auto text-sm sm:text-base leading-relaxed',
-                'focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-primary/20',
-                'scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent',
-                'transition-all duration-200',
-                isExpanded
-                  ? 'rounded-2xl min-h-[100px] sm:min-h-[120px] max-h-[320px] sm:max-h-[400px] px-4 sm:px-5 py-3 sm:py-4 pr-4'
-                  : 'rounded-full min-h-[44px] sm:min-h-[48px] lg:min-h-[52px] max-h-[120px] px-4 sm:px-5 lg:px-6 py-2.5 sm:py-3 pr-11 sm:pr-12 lg:pr-14',
-              ].join(' ')}
-              style={{
-                borderColor: showHints ? `${moodColor}66` : undefined,
-                boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined,
-              }}
-              onKeyDown={handleKeyDown}
+          {/* Textarea + inline entity highlights */}
+          <div className="relative flex-1 min-w-0">
+          <EntityHighlightComposerField
+            value={input}
+            onChange={setInput}
+            textareaRef={textareaRef}
+            matches={visibleMatches}
+            placeholder={placeholder}
+            disabled={loading || disabled}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => { if (!input.trim()) setIsFocused(false); }}
+            onKeyDown={handleKeyDown}
+            className={[
+              'w-full bg-white/5 border border-white/10 text-white placeholder:text-white/50',
+              'resize-none overflow-y-auto text-sm sm:text-base leading-relaxed',
+              'focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-primary/20',
+              'scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent',
+              'transition-all duration-200',
+              embedded
+                ? isExpanded
+                  ? 'rounded-xl min-h-[44px] max-h-[160px] sm:max-h-[220px] px-3 py-2.5'
+                  : 'rounded-full min-h-[44px] max-h-[120px] px-3 py-2.5 pr-11'
+                : isExpanded
+                ? 'rounded-2xl min-h-[100px] sm:min-h-[120px] max-h-[320px] sm:max-h-[400px] px-4 sm:px-5 py-3 sm:py-4 pr-4'
+                : 'rounded-full min-h-[44px] sm:min-h-[48px] lg:min-h-[52px] max-h-[120px] px-4 sm:px-5 lg:px-6 py-2.5 sm:py-3 pr-11 sm:pr-12 lg:pr-14',
+            ].join(' ')}
+            style={{
+              borderColor: showHints ? `${moodColor}66` : undefined,
+              boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined,
+            }}
+          />
+          {isExpanded && input.length > 80 && (
+            <div className="absolute bottom-2 right-3 z-[2] text-[10px] text-white/25 tabular-nums pointer-events-none select-none">
+              {input.length}
+            </div>
+          )}
+          {showHints && moodEngine.mood.score !== 0 && (
+            <MoodIndicator
+              color={moodColor}
+              label={moodEngine.mood.label}
+              position="top-right"
             />
-            {/* Character count — appears when writing a longer message */}
-            {isExpanded && input.length > 80 && (
-              <div className="absolute bottom-2 right-3 text-[10px] text-white/25 tabular-nums pointer-events-none select-none">
-                {input.length}
-              </div>
-            )}
-            {showHints && moodEngine.mood.score !== 0 && (
-              <MoodIndicator
-                color={moodColor}
-                label={moodEngine.mood.label}
-                position="top-right"
-              />
-            )}
+          )}
           </div>
 
           {/* Send Button - stays at bottom of flex row when expanded */}
           <button
             type="submit"
             disabled={!input.trim() || loading || disabled}
-            className="group relative flex-shrink-0 h-[44px] sm:h-[48px] w-[44px] sm:w-[48px] flex items-center justify-center rounded-full bg-primary/20 hover:bg-primary/30 active:bg-primary/40 border border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all touch-manipulation disabled:hover:bg-primary/20"
+            className={`group relative flex-shrink-0 h-[44px] sm:h-[48px] w-[44px] sm:w-[48px] flex items-center justify-center rounded-full bg-primary/20 hover:bg-primary/30 active:bg-primary/40 border border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all touch-manipulation disabled:hover:bg-primary/20 ${loading ? 'chat-loading-avatar-ring scale-95' : ''}`}
             aria-label="Send message"
           >
             {loading ? (

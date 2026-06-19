@@ -25,6 +25,11 @@ import type { Message } from '../message/ChatMessage';
 import {
   isGenericThreadTitle,
 } from '../utils/threadTitleUtils';
+import {
+  deriveDemoThreadMeta,
+  deriveDemoThreadTitle,
+  isDemoChatMockup,
+} from '../../../services/demoChatSimulation';
 
 const GREETING_MIN_GAP_HOURS = 12;
 const GREETING_MIN_MSG_COUNT = 5;
@@ -73,6 +78,29 @@ export const useConversationRuntime = () => {
 
   const removeEmptyThread = useCallback(
     async (id: string) => {
+      if (isDemoChatMockup()) {
+        runtimeDiagnostics.record('thread_delete', { threadId: id, meta: { reason: 'empty_on_open_demo' } });
+        deleteThread(id);
+        hydratedByHandlerRef.current = null;
+        hydrationRequestRef.current = null;
+        const remaining = threads.filter((t) => t.id !== id);
+        const next = remaining.find((t) => t.messages.length > 0) ?? remaining[0];
+        if (next) {
+          intendedThreadRef.current = next.id;
+          isHydratedRef.current = next.messages.length > 0;
+          setActiveThreadId(next.id);
+          switchThread(next.id);
+          navigate(`/chat/${next.id}`, { replace: true });
+        } else {
+          intendedThreadRef.current = null;
+          isHydratedRef.current = false;
+          setActiveThreadId(null);
+          clearActiveMessages();
+          navigate('/chat', { replace: true });
+        }
+        return;
+      }
+
       try {
         const statusRes = await store
           .dispatch(chatApi.endpoints.getThreadStatus.initiate(id))
@@ -148,6 +176,10 @@ export const useConversationRuntime = () => {
         if (hydratedByHandlerRef.current === threadIdParam) {
           runtimeDiagnostics.record('hydration_skip', { threadId: threadIdParam });
           hydratedByHandlerRef.current = null;
+          setActiveThreadId(threadIdParam);
+          switchThread(threadIdParam);
+          intendedThreadRef.current = threadIdParam;
+          isHydratedRef.current = (getThread(threadIdParam)?.messages.length ?? 0) > 0;
         }
         return;
       }
@@ -156,6 +188,13 @@ export const useConversationRuntime = () => {
       const isStreamingActive = thread?.messages.some((m) => m.isStreaming) ?? false;
 
       if (thread && thread.messages.length > 0 && !isStreamingActive) {
+        if (isDemoChatMockup()) {
+          intendedThreadRef.current = threadIdParam;
+          isHydratedRef.current = true;
+          setActiveThreadId(threadIdParam);
+          switchThread(threadIdParam);
+          return;
+        }
         // Reconcile with server in background — never skip when assistant turns may be missing.
         if (hydrationRequestRef.current === threadIdParam) return;
         hydrationRequestRef.current = threadIdParam;
@@ -203,6 +242,9 @@ export const useConversationRuntime = () => {
         }
 
         if (thread.messages.length === 0) {
+          setActiveThreadId(threadIdParam);
+          switchThread(threadIdParam);
+          intendedThreadRef.current = threadIdParam;
           if (hydrationRequestRef.current === threadIdParam) return;
           hydrationRequestRef.current = threadIdParam;
           runtimeDiagnostics.startTimer('hydration');
@@ -261,6 +303,9 @@ export const useConversationRuntime = () => {
           });
       }
     } else {
+      if (hydratedByHandlerRef.current || intendedThreadRef.current) {
+        return;
+      }
       intendedThreadRef.current = null;
       isHydratedRef.current = false;
       setActiveThreadId(null);
@@ -288,6 +333,7 @@ export const useConversationRuntime = () => {
   // ── Return greeting ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!threadIdParam || authLoading || threadsLoading) return;
+    if (isDemoChatMockup()) return;
 
     if (greetingThreadRef.current !== threadIdParam) {
       setGreetingMessage(null);
@@ -339,6 +385,24 @@ export const useConversationRuntime = () => {
     titleGeneratedRef.current = threadIdParam;
     runtimeDiagnostics.record('title_start', { threadId: threadIdParam });
     runtimeDiagnostics.startTimer(`title_${threadIdParam}`);
+
+    if (isDemoChatMockup()) {
+      const meta = deriveDemoThreadMeta(activeMessages);
+      const firstUser = activeMessages.find((m) => m.role === 'user' && m.content?.trim());
+      const derivedTitle = firstUser ? deriveDemoThreadTitle(firstUser.content) : undefined;
+      runtimeDiagnostics.recordTimed('title_complete', `title_${threadIdParam}`, {
+        threadId: threadIdParam,
+        meta: { title: 'demo_local' },
+      });
+      updateThread(threadIdParam, {
+        ...(derivedTitle && isGenericThreadTitle(currentThread?.title ?? '')
+          ? { title: derivedTitle }
+          : {}),
+        subtitle: meta.subtitle,
+        dominantEntities: meta.dominantEntities,
+      });
+      return;
+    }
 
     const payload = activeMessages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -425,6 +489,7 @@ export const useConversationRuntime = () => {
         intendedThreadRef.current = id;
         isHydratedRef.current = true;
         hydratedByHandlerRef.current = id;
+        setActiveThreadId(id);
         switchThread(id);
         navigate(`/chat/${id}`);
         runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', {
@@ -437,6 +502,7 @@ export const useConversationRuntime = () => {
       intendedThreadRef.current = id;
       isHydratedRef.current = true;
       hydratedByHandlerRef.current = id;
+      setActiveThreadId(id);
       switchThread(id);
       navigate(`/chat/${id}`);
       runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', { threadId: id });

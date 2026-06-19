@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Bot, Send, Loader2, Sparkles, PanelLeftClose, PanelLeftOpen,
   MessageSquare, X, ChevronLeft, BookMarked, List, FileText,
-  Upload, Layout, Plus,
+  Upload, Layout, Plus, Menu, MoreHorizontal, BookOpen,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../ui/button';
@@ -15,7 +15,14 @@ import { LoreContentViewer } from './LoreContentViewer';
 import { BiographyGenerator } from './BiographyGenerator';
 import { LoreOutlineEditor } from './LoreOutlineEditor';
 import { ChapterCreationChatbot } from '../chapters/ChapterCreationChatbot';
-import { lorebookReadUrl, isDemoBookId } from '../../lib/lorebookLibrary';
+import {
+  lorebookEditUrl,
+  lorebookReadUrl,
+  isDemoBookId,
+  isCompiledLorebook,
+  resolveDefaultEditorBookId,
+} from '../../lib/lorebookLibrary';
+import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { getDemoLorebookById } from '../../mocks/lorebooks';
 import { fetchJson } from '../../lib/api';
 import { saveBiographySection, chatEditBiographySection } from '../../api/lorebookEditor';
@@ -53,30 +60,49 @@ interface ChatPanelProps {
   className?: string;
 }
 
+const selectedItemLabel = (
+  selectedItem: SelectedItem,
+  data: LoreNavigatorData,
+): string | null => {
+  if (!selectedItem) return null;
+  switch (selectedItem.type) {
+    case 'biography':
+      return data.biography.find((s) => s.id === selectedItem.id)?.title ?? null;
+    case 'character':
+      return data.characters.find((c) => c.id === selectedItem.id)?.name ?? null;
+    case 'location':
+      return data.locations.find((l) => l.id === selectedItem.id)?.name ?? null;
+    case 'chapter':
+      return data.chapters.find((c) => c.id === selectedItem.id)?.title ?? null;
+    default:
+      return null;
+  }
+};
+
 const ChatPanel = ({
   messages, streamingMessageId, input, loading, isStreaming,
   selectedItem, data, inputRef, messagesEndRef,
   onInputChange, onSend, onKeyDown, onClose, className = '',
-}: ChatPanelProps) => (
-  <div className={`flex flex-col bg-black/20 ${className}`}>
+}: ChatPanelProps) => {
+  const editingLabel = selectedItemLabel(selectedItem, data);
+
+  return (
+  <div className={`flex flex-col h-full min-h-0 bg-black/20 ${className}`}>
     {/* Chat header */}
     <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 bg-black/40 shrink-0">
-      <div className="flex items-center gap-2">
-        <Bot className="h-4 w-4 text-primary" />
-        <span className="text-sm font-semibold text-white">AI Assistant</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <Bot className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-sm font-semibold text-white shrink-0">AI Assistant</span>
+        {editingLabel && (
+          <span className="md:hidden text-[11px] text-white/40 truncate">
+            · {editingLabel}
+          </span>
+        )}
       </div>
-      <div className="flex items-center gap-2">
-        <p className="hidden sm:block text-xs text-white/40 truncate max-w-[180px]">
-          {selectedItem
-            ? `Editing: ${
-                selectedItem.type === 'biography'
-                  ? data.biography.find(s => s.id === selectedItem.id)?.title
-                  : selectedItem.type === 'character'
-                  ? data.characters.find(c => c.id === selectedItem.id)?.name
-                  : selectedItem.type === 'location'
-                  ? data.locations.find(l => l.id === selectedItem.id)?.name
-                  : data.chapters.find(c => c.id === selectedItem.id)?.title
-              }`
+      <div className="flex items-center gap-2 shrink-0">
+        <p className="hidden md:block text-xs text-white/40 truncate max-w-[180px]">
+          {editingLabel
+            ? `Editing: ${editingLabel}`
             : 'Select an item to start editing'}
         </p>
         {onClose && (
@@ -152,10 +178,11 @@ const ChatPanel = ({
             : <Send className="h-4 w-4" />}
         </Button>
       </form>
-      <p className="text-xs text-white/30 mt-1.5 pl-0.5">Enter to send · Shift+Enter for new line</p>
+      <p className="hidden sm:block text-xs text-white/30 mt-1.5 pl-0.5">Enter to send · Shift+Enter for new line</p>
     </div>
   </div>
-);
+  );
+};
 
 // ─── Mobile bottom tab bar ────────────────────────────────────────────────────
 
@@ -174,7 +201,7 @@ const BottomTabBar = ({ activeTab, onTabChange, unreadChat }: BottomTabBarProps)
 
   return (
     <div className="md:hidden flex items-center border-t border-border/60 bg-black/90 backdrop-blur-sm shrink-0"
-         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)' }}>
       {tabs.map(tab => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
@@ -183,8 +210,8 @@ const BottomTabBar = ({ activeTab, onTabChange, unreadChat }: BottomTabBarProps)
             key={tab.id}
             type="button"
             onClick={() => onTabChange(tab.id)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors relative ${
-              isActive ? 'text-primary' : 'text-white/40 hover:text-white/60'
+            className={`flex-1 flex flex-col items-center justify-center gap-1 min-h-[52px] py-2 transition-colors relative touch-manipulation ${
+              isActive ? 'text-primary' : 'text-white/40 active:text-white/60'
             }`}
           >
             <Icon className="h-5 w-5" />
@@ -199,9 +226,38 @@ const BottomTabBar = ({ activeTab, onTabChange, unreadChat }: BottomTabBarProps)
   );
 };
 
+// ─── Mobile section picker (book-scoped editor) ───────────────────────────────
+
+interface MobileSectionStripProps {
+  sections: BiographySection[];
+  selectedId?: string;
+  onSelect: (sectionId: string) => void;
+}
+
+const MobileSectionStrip = ({ sections, selectedId, onSelect }: MobileSectionStripProps) => (
+  <div className="md:hidden shrink-0 border-b border-border/50 bg-black/70">
+    <div className="flex gap-2 overflow-x-auto px-3 py-2 scrollbar-none">
+      {sections.map((section) => (
+        <button
+          key={section.id}
+          type="button"
+          onClick={() => onSelect(section.id)}
+          className={`shrink-0 max-w-[200px] truncate rounded-full border px-3 py-2 text-xs font-medium min-h-[36px] touch-manipulation transition-colors ${
+            selectedId === section.id
+              ? 'border-primary/50 bg-primary/20 text-primary'
+              : 'border-white/10 text-white/60 active:bg-white/5'
+          }`}
+        >
+          {section.title}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export const BiographyEditor = () => {
+export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const bookId = searchParams.get('book');
@@ -243,15 +299,35 @@ export const BiographyEditor = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { streamChat, isStreaming } = useChatStream();
+  const { compiledBooks, loading: readinessLoading } = useLoreReadiness();
   const { data, loading: dataLoading, refresh: refreshData } = useLoreNavigatorData(bookId);
   const { createChapter, refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
+
+  const bookIsCompiled = Boolean(bookId && isCompiledLorebook(bookId, compiledBooks));
+
+  useEffect(() => {
+    if (bookId || readinessLoading) return;
+
+    const defaultBookId = resolveDefaultEditorBookId(compiledBooks);
+    if (defaultBookId) {
+      navigate(lorebookEditUrl(defaultBookId), { replace: true });
+    }
+  }, [bookId, readinessLoading, compiledBooks, navigate]);
 
   const [localSectionPatches, setLocalSectionPatches] = useState<Record<string, Partial<BiographySection>>>({});
   const [showOutline, setShowOutline] = useState(false);
   const [showChapterChatbot, setShowChapterChatbot] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setSelectedItem(null);
+    setMobileTab('browse');
+    setShowOutline(false);
+    setShowMobileActions(false);
+  }, [bookId]);
 
   const mergedData: LoreNavigatorData = useMemo(() => ({
     ...data,
@@ -274,7 +350,28 @@ export const BiographyEditor = () => {
   );
 
   const hasLoreContent = hasCompiledContent;
-  const showEditorGate = !bookId || (!isDemoBook && !dataLoading && !hasCompiledContent);
+
+  const resolvingDefaultBook =
+    !bookId && (readinessLoading || compiledBooks.length > 0);
+
+  const showEditorGate =
+    (!bookId && !readinessLoading && compiledBooks.length === 0) ||
+    Boolean(bookId && !readinessLoading && !bookIsCompiled) ||
+    Boolean(bookId && bookIsCompiled && !isDemoBook && !dataLoading && !hasCompiledContent);
+
+  const sortedBiographySections = useMemo(
+    () => [...mergedData.biography].sort((a, b) => a.order - b.order),
+    [mergedData.biography],
+  );
+
+  // When opening a book, land on the first section so Content isn't empty
+  useEffect(() => {
+    if (dataLoading || !bookId || selectedItem) return;
+    if (sortedBiographySections.length > 0) {
+      setSelectedItem({ type: 'biography', id: sortedBiographySections[0].id });
+      setMobileTab('content');
+    }
+  }, [bookId, dataLoading, selectedItem, sortedBiographySections]);
 
   const handleSaveSection = useCallback(async (sectionId: string, updates: { title?: string; content?: string }) => {
     if (isDemoBook) {
@@ -544,10 +641,18 @@ export const BiographyEditor = () => {
     />
   );
 
+  if (resolvingDefaultBook) {
+    return (
+      <div className="flex h-full items-center justify-center bg-black/20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (showEditorGate) {
     return (
       <LoreEditorGate
-        bookLoadFailed={Boolean(bookId && !isDemoBook)}
+        bookLoadFailed={Boolean(bookId && bookIsCompiled && !isDemoBook && !hasCompiledContent)}
         bookTitle={bookTitle}
       />
     );
@@ -557,34 +662,66 @@ export const BiographyEditor = () => {
     <div className="flex flex-col h-full bg-black/20 overflow-hidden">
 
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between border-b border-border/50 px-3 sm:px-4 py-2.5 bg-black/60 backdrop-blur-sm shrink-0 gap-3">
-        {/* Left: back + title */}
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div
+        className="flex items-center justify-between border-b border-border/50 px-2 sm:px-4 py-2 sm:py-2.5 bg-black/60 backdrop-blur-sm shrink-0 gap-2"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)' }}
+      >
+        {/* Left: menu + back + title */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
+          {onOpenAppSidebar && (
+            <button
+              type="button"
+              onClick={onOpenAppSidebar}
+              className="md:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 text-white/50 active:bg-white/10"
+              aria-label="Open app menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => navigate(bookId ? lorebookReadUrl(bookId) : '/lorebook')}
-            className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors shrink-0 font-mono"
+            className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors shrink-0 font-mono min-h-[40px] px-1"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{bookId ? 'Back to book' : 'LoreBooks'}</span>
           </button>
-          <div className="w-px h-3.5 bg-white/10 shrink-0" />
+          <div className="w-px h-3.5 bg-white/10 shrink-0 hidden sm:block" />
           <div className="flex items-center gap-2 min-w-0">
-            <BookMarked className="h-4 w-4 text-primary shrink-0" />
-            <h1 className="text-sm font-semibold text-white truncate">
+            <BookMarked className="h-4 w-4 text-primary shrink-0 hidden sm:block" />
+            <h1 className="text-xs sm:text-sm font-semibold text-white truncate">
               {bookTitle ?? 'LoreBook Editor'}
             </h1>
             {selectedItem && (
               <>
-                <span className="text-white/20 shrink-0">/</span>
-                <span className="text-xs text-white/50 truncate capitalize">{selectedItem.type}</span>
+                <span className="text-white/20 shrink-0 hidden sm:inline">/</span>
+                <span className="text-[10px] sm:text-xs text-white/50 truncate capitalize hidden sm:inline">{selectedItem.type}</span>
               </>
             )}
           </div>
         </div>
 
         {/* Right: actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
+          {bookId && (
+            <button
+              type="button"
+              onClick={() => navigate(lorebookReadUrl(bookId))}
+              className="md:hidden flex h-10 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-medium text-white/60 active:bg-white/10 touch-manipulation"
+              aria-label="Read book"
+            >
+              <BookOpen className="h-4 w-4" />
+              Read
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowMobileActions((v) => !v)}
+            className="md:hidden flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-white/50 active:bg-white/10"
+            aria-label="More actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -662,6 +799,56 @@ export const BiographyEditor = () => {
         </div>
       </div>
 
+      {showMobileActions && (
+        <div className="md:hidden border-b border-border/50 bg-black/80 px-3 py-2 flex flex-wrap gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => { fileInputRef.current?.click(); setShowMobileActions(false); }}
+            disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-white/10 text-white/60 min-h-[40px] disabled:opacity-50"
+          >
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            Upload
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowChapterChatbot(true); setShowMobileActions(false); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-white/10 text-white/60 min-h-[40px]"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Chapter
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowOutline((v) => !v); setShowMobileActions(false); setMobileTab('browse'); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border min-h-[40px] ${
+              showOutline ? 'border-primary/40 bg-primary/15 text-primary' : 'border-white/10 text-white/60'
+            }`}
+          >
+            <Layout className="h-3.5 w-3.5" />
+            Outline
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowGenerator((v) => !v); setShowMobileActions(false); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border min-h-[40px] ${
+              showGenerator ? 'border-primary/40 bg-primary/15 text-primary' : 'border-white/10 text-white/60'
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Generate
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMobileTab('chat'); setShowMobileActions(false); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-white/10 text-white/60 min-h-[40px]"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            AI Chat
+          </button>
+        </div>
+      )}
+
       {uploadResult && (
         <div className={`mx-4 px-3 py-2 text-sm shrink-0 ${uploadResult.includes('failed') ? 'bg-red-500/10 text-red-200' : 'bg-green-500/10 text-green-200'}`}>
           {uploadResult}
@@ -719,29 +906,58 @@ export const BiographyEditor = () => {
       </div>
 
       {/* ── Mobile body: tab panels ── */}
-      <div className="flex md:hidden flex-1 overflow-hidden min-h-0">
+      <div className="flex md:hidden flex-1 flex-col overflow-hidden min-h-0">
         {mobileTab === 'browse' && (
-          <div className="flex-1 overflow-y-auto">
-            {dataLoading
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {showOutline ? (
+              <LoreOutlineEditor
+                sections={mergedData.biography}
+                onSectionSelect={(id) => { handleOutlineSelect(id); setMobileTab('content'); }}
+                onSectionAdd={() => setShowChapterChatbot(true)}
+                onSectionDelete={() => {}}
+                onSectionUpdate={handleOutlineTitleUpdate}
+                onSectionReorder={() => {}}
+                selectedSectionId={selectedItem?.type === 'biography' ? selectedItem.id : undefined}
+              />
+            ) : dataLoading
               ? <div className="h-full flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-              : <LoreNavigator data={mergedData} selectedItem={selectedItem} onSelectItem={handleSelectItem} />}
+              : <LoreNavigator variant="mobile" data={mergedData} selectedItem={selectedItem} onSelectItem={handleSelectItem} />}
           </div>
         )}
 
         {mobileTab === 'content' && (
-          <div className="flex-1 overflow-y-auto">
-            {dataLoading
-              ? <div className="h-full flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-              : emptyState ?? (
-                <LoreContentViewer
-                  data={mergedData}
-                  selectedItem={selectedItem}
-                  onEdit={(item) => { handleEdit(item); setMobileTab('chat'); }}
-                  onSaveSection={handleSaveSection}
-                  onSectionChat={isDemoBook ? undefined : handleSectionChat}
-                />
-              )}
-          </div>
+          <>
+            {bookId && selectedItem && (
+              <div className="shrink-0 border-b border-border/40 bg-black/50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-white/35 mb-0.5">Editing</p>
+                <p className="text-sm font-medium text-white truncate">
+                  {selectedItemLabel(selectedItem, mergedData) ?? selectedItem.type}
+                </p>
+              </div>
+            )}
+            {bookId && sortedBiographySections.length > 0 && (
+              <MobileSectionStrip
+                sections={sortedBiographySections}
+                selectedId={selectedItem?.type === 'biography' ? selectedItem.id : undefined}
+                onSelect={(id) => {
+                  setSelectedItem({ type: 'biography', id });
+                }}
+              />
+            )}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {dataLoading
+                ? <div className="h-full flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                : emptyState ?? (
+                  <LoreContentViewer
+                    data={mergedData}
+                    selectedItem={selectedItem}
+                    onEdit={(item) => { handleEdit(item); setMobileTab('chat'); }}
+                    onSaveSection={handleSaveSection}
+                    onSectionChat={isDemoBook ? undefined : handleSectionChat}
+                  />
+                )}
+            </div>
+          </>
         )}
 
         {mobileTab === 'chat' && (

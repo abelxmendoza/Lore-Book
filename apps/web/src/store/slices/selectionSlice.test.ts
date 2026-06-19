@@ -10,8 +10,12 @@ import {
   clearSelectedEntity,
   setCurrentContext,
   setSoulProfileContext,
+  setChatFocus,
+  clearChatFocus,
+  recordChatFocusMessage,
   type SelectionState,
 } from './selectionSlice';
+import { emptyChatFocusSessionStats } from '../../types/chatFocus';
 
 const character: EntityData = { type: 'character', id: 'c1', name: 'Ada' };
 
@@ -21,6 +25,7 @@ const initial: SelectionState = {
   currentContext: { kind: 'none' },
   lastNonNoneContext: null,
   soulProfileContext: null,
+  chatFocus: null,
 };
 
 describe('selectionSlice', () => {
@@ -70,5 +75,31 @@ describe('selectionSlice', () => {
     expect(withCtx.soulProfileContext).toEqual(ctx);
     const cleared = selectionReducer(withCtx, setSoulProfileContext(null));
     expect(cleared.soulProfileContext).toBeNull();
+  });
+
+  it('tracks chat focus and session deepening stats', () => {
+    const focus = {
+      entityId: 'rel-001',
+      entityName: 'Alex',
+      entityType: 'character' as const,
+      sourceSurface: 'love' as const,
+      sourceLabel: 'Love & Relationships',
+      relationshipId: 'rel-001',
+      sessionStats: emptyChatFocusSessionStats(),
+    };
+    const withFocus = selectionReducer(initial, setChatFocus(focus));
+    expect(withFocus.chatFocus?.entityName).toBe('Alex');
+    expect(withFocus.chatFocus?.arrivedAt).toBeDefined();
+
+    const afterMsg = selectionReducer(
+      withFocus,
+      recordChatFocusMessage({ message: 'I miss Alex and feel closer when we talk' })
+    );
+    expect(afterMsg.chatFocus?.sessionStats.messagesSent).toBe(1);
+    expect(afterMsg.chatFocus?.sessionStats.connectionDelta).toBeGreaterThan(0);
+    expect(afterMsg.chatFocus?.statBumpKey).toBe(1);
+
+    const cleared = selectionReducer(afterMsg, clearChatFocus());
+    expect(cleared.chatFocus).toBeNull();
   });
 });

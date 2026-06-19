@@ -27,6 +27,7 @@ import { useOrganizationsBookData } from '../../store/hooks/useEntityBooks';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
+import { enrichOrganizationForDemo } from '../../mocks/modalDemoData';
 
 const ITEMS_PER_PAGE = 24;
 
@@ -974,6 +975,8 @@ export const OrganizationsBook: React.FC = () => {
   const [myFamilyRefreshKey, setMyFamilyRefreshKey] = useState(0);
   const createdOrgsRef = useRef<Organization[]>([]);
   const [createdOrgsVersion, setCreatedOrgsVersion] = useState(0);
+  const [highlightOrgId, setHighlightOrgId] = useState<string | null>(null);
+  const bookPageRef = useRef<HTMLDivElement>(null);
   const isMockDataEnabled = useShouldUseMockData();
 
   const mergeCreated = useCallback((base: Organization[]) => {
@@ -998,22 +1001,9 @@ export const OrganizationsBook: React.FC = () => {
 
   const organizations = useMemo(() => {
     if (isMockDataEnabled) {
-      const withProfiles = MOCK_ORGANIZATIONS.map(o => {
-        let profile = o.profile ?? o.metadata?.profile;
-        if (!profile) {
-          try {
-            profile = deriveOrganizationProfile({
-              name: o.name,
-              group_type: o.group_type,
-              members: o.members?.map(m => m.character_name),
-              context: o.description,
-            });
-          } catch {
-            profile = undefined;
-          }
-        }
-        return normalizeOrganization({ ...o, profile });
-      });
+      const withProfiles = MOCK_ORGANIZATIONS.map((o) =>
+        enrichOrganizationForDemo(normalizeOrganization(o))
+      );
       return mergeCreated(withProfiles);
     }
     const organizationsResult = (orgsFromServer as Organization[]) ?? [];
@@ -1196,6 +1186,18 @@ export const OrganizationsBook: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, activeCategory, sortBy]);
 
+  useEffect(() => {
+    if (!highlightOrgId) return;
+    const scrollTimer = window.setTimeout(() => {
+      bookPageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 280);
+    const clearTimer = window.setTimeout(() => setHighlightOrgId(null), 4200);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [highlightOrgId]);
+
   const totalPages = Math.ceil(filteredOrganizations.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -1270,7 +1272,7 @@ export const OrganizationsBook: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full min-w-0 max-w-7xl overflow-x-hidden space-y-4 sm:space-y-6 pb-4 sm:pb-6">
       {/* Group Suggestions — surfaces detected group candidates for review */}
       <GroupSuggestions
         categoryFilter={activeCategory}
@@ -1285,12 +1287,12 @@ export const OrganizationsBook: React.FC = () => {
             ];
             setCreatedOrgsVersion((v) => v + 1);
             // Guarantee the new card is visible: clear filters, sort newest-first,
-            // jump to page 1. Otherwise it can land off the current tab/page.
+            // jump to page 1. Highlight in the book grid instead of opening the modal.
             setActiveCategory('all');
             setSearchTerm('');
             setSortBy('recent');
             setCurrentPage(1);
-            setSelectedOrganization(normalizedCreated); // also open it in the modal
+            setHighlightOrgId(normalizedCreated.id);
           } else {
             void loadOrganizations();
           }
@@ -1497,13 +1499,13 @@ export const OrganizationsBook: React.FC = () => {
           </Card>
         )}
 
-        {/* Category Tabs - Dynamically generated based on available types. On mobile, wrap to second row so all are visible without horizontal scroll. */}
+        {/* Category tabs — horizontal scroll on mobile, wrap on desktop */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 sm:gap-2 justify-center sm:justify-start">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-nowrap sm:flex-wrap gap-1 sm:gap-2 justify-start overflow-x-auto overscroll-x-contain snap-x snap-mandatory sm:snap-none scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0 [&_[role=tab]]:snap-start [&_[role=tab]]:text-xs [&_[role=tab]]:sm:text-sm [&_[role=tab]]:px-2.5 [&_[role=tab]]:sm:px-3">
             {availableCategories.includes('all') && (
               <TabsTrigger 
                 value="all" 
-                className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+                className="flex items-center gap-1.5 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
               >
                 <Hash className="h-4 w-4" />
                 All
@@ -1660,7 +1662,7 @@ export const OrganizationsBook: React.FC = () => {
 
       {/* Organizations Display */}
       {loading ? (
-        <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-2 sm:gap-3 grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
@@ -1674,23 +1676,35 @@ export const OrganizationsBook: React.FC = () => {
       ) : (
         <>
           {/* Book Page Container */}
-          <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-purple-50/5 via-purple-100/5 to-purple-50/5 rounded-lg border-2 border-purple-800/30 shadow-2xl overflow-hidden flex flex-col">
+          <div
+            ref={bookPageRef}
+            className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-purple-50/5 via-purple-100/5 to-purple-50/5 rounded-lg border-2 border-purple-800/30 shadow-2xl overflow-hidden flex flex-col"
+          >
             <div className="p-4 sm:p-8 flex flex-col flex-1 min-h-0">
-              {/* Page Header — visible on mobile */}
-              <div className="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-purple-800/20">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-6 w-6 text-purple-600/60" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-purple-900/40 uppercase tracking-wider">
-                      Groups and Organizations
-                    </h3>
-                    <p className="text-xs text-purple-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages} · {filteredOrganizations.length} groups
-                    </p>
+              {/* Page Header */}
+              <div className="mb-4 sm:mb-6 rounded-xl border border-purple-500/30 bg-purple-950/50 px-3 py-3 sm:px-5 sm:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-purple-500/35 bg-purple-500/15">
+                      <BookOpen className="h-5 w-5 text-purple-300" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-semibold text-white tracking-tight">
+                        Groups and Organizations
+                      </h3>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-purple-400/35 bg-purple-500/15 px-2.5 py-0.5 text-xs font-medium text-purple-100">
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <span className="text-xs sm:text-sm text-white/65">
+                          {filteredOrganizations.length} group{filteredOrganizations.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs text-purple-700/40 font-mono">
-                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  <div className="shrink-0 text-xs sm:text-sm font-mono text-white/45 sm:text-right">
+                    {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
                 </div>
               </div>
 
@@ -1705,13 +1719,14 @@ export const OrganizationsBook: React.FC = () => {
                   </div>
                 }
               >
-                <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
+                <div className="flex-1 grid gap-2 sm:gap-3 mb-4 sm:mb-6 grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
                   {paginatedOrganizations.map((org) => (
                     <OrganizationProfileCard
                       key={org.id}
                       organization={org}
                       selectionMode={selectionMode}
                       selected={selectedForMerge.has(org.id)}
+                      highlighted={highlightOrgId === org.id}
                       onClick={() => {
                         if (selectionMode) toggleSelectedForMerge(org.id);
                         else setSelectedOrganization(normalizeOrganization(org));

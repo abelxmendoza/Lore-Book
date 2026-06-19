@@ -47,12 +47,12 @@ export const GroupDetailPanel = ({
     : undefined;
 
   const shellClass = isFamily
-    ? 'rounded-xl border bg-rose-500/5 border-rose-500/20 p-4 space-y-4'
+    ? 'rounded-xl border bg-rose-500/5 border-rose-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
     : isHousehold
-      ? 'rounded-xl border bg-purple-500/5 border-purple-500/20 p-4 space-y-4'
+      ? 'rounded-xl border bg-purple-500/5 border-purple-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
       : isCommunity
-        ? 'rounded-xl border bg-violet-500/5 border-violet-500/20 p-4 space-y-4'
-        : 'rounded-xl border bg-blue-500/5 border-blue-500/20 p-4 space-y-4';
+        ? 'rounded-xl border bg-violet-500/5 border-violet-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
+        : 'rounded-xl border bg-blue-500/5 border-blue-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4';
 
   const title = isFamily ? 'Family' : isHousehold ? 'Household' : isCommunity ? 'Community' : 'Company';
 
@@ -94,9 +94,9 @@ export const GroupDetailPanel = ({
         {members.length === 0 ? (
           <p className="text-xs text-white/30 italic">No members linked yet.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 min-[480px]:grid-cols-2 gap-1.5 sm:gap-2">
             {members.slice(0, 12).map((m) => (
-              <div key={m.id} className="flex items-center gap-2 rounded-lg bg-black/30 border border-white/8 px-3 py-2">
+              <div key={m.id} className="flex items-center gap-2 rounded-lg bg-black/30 border border-white/8 px-2.5 sm:px-3 py-1.5 sm:py-2">
                 <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/70">
                   {m.character_name.charAt(0)}
                 </div>

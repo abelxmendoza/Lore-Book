@@ -39,13 +39,13 @@ const SectionCard = ({
   children: React.ReactNode;
 }) => (
   <Card className="bg-black/40 border-border/50">
-    <CardHeader className="pb-2">
-      <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${accent}`} />
+    <CardHeader className="pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-white/70 flex items-center gap-2">
+        <Icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${accent}`} />
         {title}
       </h3>
     </CardHeader>
-    <CardContent className="space-y-3">{children}</CardContent>
+    <CardContent className="space-y-2.5 sm:space-y-3 px-3 sm:px-6 pb-3 sm:pb-6">{children}</CardContent>
   </Card>
 );
 
@@ -153,7 +153,7 @@ export const OrganizationProfilePanel = ({ organization, onAddInfo }: Props) => 
     (p.communication?.social_media?.length ?? 0) + (p.communication?.channels?.length ?? 0) > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {influenceCard}
 
       {hasMission && (

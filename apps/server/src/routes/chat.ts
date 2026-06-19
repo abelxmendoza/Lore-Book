@@ -51,6 +51,29 @@ const soulProfileContextSchema = z.object({
   })).optional()
 }).optional();
 
+const chatFocusSchema = z.object({
+  entityId: z.string().min(1),
+  entityName: z.string(),
+  entityType: z.enum(['character', 'location', 'organization', 'project', 'skill', 'relationship', 'quest', 'event', 'memory']),
+  sourceSurface: z.string(),
+  sourceLabel: z.string(),
+  relationshipId: z.string().optional(),
+  relationshipName: z.string().optional(),
+  knowledgeScope: z.string().optional(),
+  initialPrompt: z.string().optional(),
+  sessionStats: z.object({
+    messagesSent: z.number(),
+    connectionDelta: z.number(),
+    affectionDelta: z.number(),
+    lastUpdatedAt: z.string().optional(),
+  }).optional(),
+  baseline: z.object({
+    affectionScore: z.number().optional(),
+    connectionScore: z.number().optional(),
+    healthScore: z.number().optional(),
+  }).optional(),
+}).optional();
+
 const chatSchema = z.object({
   message: z.string().min(1).max(5000),
   conversationHistory: z.array(z.object({
@@ -60,9 +83,10 @@ const chatSchema = z.object({
   stream: z.boolean().optional().default(false),
   threadId: z.string().uuid().optional(),
   entityContext: z.object({
-    type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP']),
-    id: z.string().uuid()
+    type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP', 'ROMANTIC_RELATIONSHIP']),
+    id: z.string().min(1)
   }).optional(),
+  chatFocus: chatFocusSchema,
   currentContext: currentContextSchema,
   soulProfileContext: soulProfileContextSchema,
   threadEntities: z.array(z.object({
@@ -124,7 +148,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], threadId, entityContext, soulProfileContext, threadEntities, composerEntities } = parsed.data;
+    const { message, conversationHistory = [], threadId, entityContext, chatFocus, soulProfileContext, threadEntities, composerEntities } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
@@ -156,7 +180,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
-      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities);
+      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities, chatFocus ?? undefined);
     } catch (setupError) {
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))

@@ -1,6 +1,9 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 // Mock Data for Love & Relationships Section
 
+import type { CharacterSuggestion } from '../api/entitySuggestions';
+import { enrichMockAnalytics } from './romanticDemoProfiles';
+
 export type MockRomanticRelationship = {
   id: string;
   person_id: string;
@@ -194,9 +197,10 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'Can be a bit messy',
         'Can be forgetful'
       ],
-      red_flags: [],
+      red_flags: [
+        'Long work stretches can leave little quality time — worth watching, not a dealbreaker',
+      ],
       green_flags: [
-        'Introduced me to her family early on',
         'Always follows through on promises',
         'Apologizes when wrong',
         'Respects my alone time',
@@ -244,7 +248,9 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'Hard to read their signals',
         'We don\'t know each other that well yet'
       ],
-      red_flags: [],
+      red_flags: [
+        'Mixed signals — replies inconsistently and keeps intentions vague',
+      ],
       green_flags: [
         'They seem interested in getting to know me',
         'Mutual friends say good things'
@@ -479,7 +485,9 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'Hard to tell if there\'s real connection',
         'Not sure if they\'re interested'
       ],
-      red_flags: [],
+      red_flags: [
+        'Mostly surface-level so far — hard to tell infatuation from real compatibility',
+      ],
       green_flags: [
         'Seems like a good person',
         'Mutual friends approve'
@@ -573,7 +581,9 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'Needs better timing',
         'Would require a real conversation before reopening anything'
       ],
-      red_flags: [],
+      red_flags: [
+        'Timing and distance made consistency hard — logistics never fully aligned',
+      ],
       green_flags: [
         'Mutual respect remained after the ending',
         'Healthy communication patterns',
@@ -667,16 +677,230 @@ export function generateMockDateEvents(relationshipId: string): MockDateEvent[] 
         was_positive: false
       }
     );
+  } else if (relationshipId === 'rel-002') {
+    events.push(
+      {
+        id: 'date-jordan-1',
+        date_type: 'vulnerability_moment',
+        date_time: new Date(now.getTime() - 22 * 86400000).toISOString(),
+        location: 'Gallery opening',
+        description: 'Two-hour talk about art and ambition — felt like real seeing',
+        sentiment: 0.78,
+        was_positive: true,
+      },
+      {
+        id: 'date-jordan-2',
+        date_type: 'distance',
+        date_time: new Date(now.getTime() - 8 * 86400000).toISOString(),
+        description: 'Three-day reply gap after a warm night — signal went fuzzy again',
+        sentiment: 0.35,
+        was_positive: false,
+      },
+    );
+  } else if (relationshipId === 'rel-003') {
+    events.push(
+      {
+        id: 'date-sam-1',
+        date_type: 'connection_began',
+        date_time: new Date(now.getTime() - 88 * 86400000).toISOString(),
+        location: 'House party',
+        description: 'Met Sam — easy chemistry, no talk of labels',
+        sentiment: 0.72,
+        was_positive: true,
+      },
+      {
+        id: 'date-sam-2',
+        date_type: 'physical_intimacy',
+        date_time: new Date(now.getTime() - 60 * 86400000).toISOString(),
+        description: 'First night together — fun, then they dodged the “what are we” question',
+        sentiment: 0.68,
+        was_positive: true,
+      },
+      {
+        id: 'date-sam-3',
+        date_type: 'distance',
+        date_time: new Date(now.getTime() - 12 * 86400000).toISOString(),
+        description: 'Vanished for four days — you journaled about wanting clarity',
+        sentiment: 0.25,
+        was_positive: false,
+      },
+    );
+  } else if (relationshipId === 'rel-005') {
+    events.push(
+      {
+        id: 'date-morgan-1',
+        date_type: 'emotional_intimacy',
+        date_time: new Date(now.getTime() - 900 * 86400000).toISOString(),
+        description: 'All-night talk — felt like merging minds',
+        sentiment: 0.96,
+        was_positive: true,
+      },
+      {
+        id: 'date-morgan-2',
+        date_type: 'connection_deepening',
+        date_time: new Date(now.getTime() - 800 * 86400000).toISOString(),
+        description: 'Said things you had never told anyone',
+        sentiment: 0.94,
+        was_positive: true,
+      },
+      {
+        id: 'date-morgan-3',
+        date_type: 'fight',
+        date_time: new Date(now.getTime() - 750 * 86400000).toISOString(),
+        description: 'Jealous spiral after a work dinner — repair took days',
+        sentiment: 0.2,
+        was_positive: false,
+      },
+      {
+        id: 'date-morgan-4',
+        date_type: 'breakup',
+        date_time: new Date(now.getTime() - 730 * 86400000).toISOString(),
+        description: 'Mutual exhaustion — too much heat, not enough rest',
+        sentiment: 0.32,
+        was_positive: false,
+      },
+    );
+  } else if (relationshipId === 'rel-006') {
+    events.push(
+      {
+        id: 'date-casey-1',
+        date_type: 'connection_began',
+        date_time: new Date(now.getTime() - 12 * 86400000).toISOString(),
+        location: 'Rooftop party',
+        description: 'Locked eyes across the room — mostly vibes so far',
+        sentiment: 0.7,
+        was_positive: true,
+      },
+    );
+  } else if (relationshipId === 'rel-007') {
+    events.push(
+      {
+        id: 'date-riley-1',
+        date_type: 'physical_intimacy',
+        date_time: new Date(now.getTime() - 75 * 86400000).toISOString(),
+        description: 'Great chemistry for a few weeks',
+        sentiment: 0.75,
+        was_positive: true,
+      },
+      {
+        id: 'date-riley-2',
+        date_type: 'distance',
+        date_time: new Date(now.getTime() - 45 * 86400000).toISOString(),
+        description: 'Replies slowed to nothing — never explained why',
+        sentiment: 0.15,
+        was_positive: false,
+      },
+    );
+  } else if (relationshipId === 'rel-008') {
+    events.push(
+      {
+        id: 'date-nova-1',
+        date_type: 'love_declaration',
+        date_time: new Date(now.getTime() - 300 * 86400000).toISOString(),
+        description: 'Said “I love you” during a volatile week',
+        sentiment: 0.88,
+        was_positive: true,
+      },
+      {
+        id: 'date-nova-2',
+        date_type: 'fight',
+        date_time: new Date(now.getTime() - 150 * 86400000).toISOString(),
+        description: 'Explosive argument — blocked each other after',
+        sentiment: 0.12,
+        was_positive: false,
+      },
+    );
+  } else if (relationshipId === 'rel-009') {
+    events.push(
+      {
+        id: 'date-elena-1',
+        date_type: 'first_date',
+        date_time: new Date(now.getTime() - 620 * 86400000).toISOString(),
+        location: 'Bookstore café',
+        description: 'Quiet first date — easy respect, slow warmth',
+        sentiment: 0.82,
+        was_positive: true,
+      },
+      {
+        id: 'date-elena-2',
+        date_type: 'emotional_intimacy',
+        date_time: new Date(now.getTime() - 400 * 86400000).toISOString(),
+        description: 'Long-distance got hard — ended with kindness, not fireworks',
+        sentiment: 0.55,
+        was_positive: true,
+      },
+      {
+        id: 'date-elena-3',
+        date_type: 'reconciliation',
+        date_time: new Date(now.getTime() - 60 * 86400000).toISOString(),
+        description: 'Brief catch-up coffee — curiosity, not a plan',
+        sentiment: 0.62,
+        was_positive: true,
+      },
+    );
   }
 
   return events;
+}
+
+function appendFallbackIntimacyEvents(relationshipId: string, events: MockDateEvent[]): MockDateEvent[] {
+  if (events.length > 0) return events;
+  const rel = getMockRomanticRelationshipById(relationshipId);
+  if (!rel?.start_date) return events;
+
+  const start = new Date(rel.start_date);
+  const out: MockDateEvent[] = [
+    {
+      id: `${relationshipId}-connection-began`,
+      date_type: 'connection_began',
+      date_time: rel.start_date,
+      description: `Romantic connection with ${rel.person_name ?? 'them'} started showing up in your story`,
+      sentiment: 0.62,
+      was_positive: true,
+    },
+  ];
+
+  if (rel.affection_score >= 0.5) {
+    out.push({
+      id: `${relationshipId}-intimacy-deepening`,
+      date_type: 'emotional_intimacy',
+      date_time: new Date(start.getTime() + 21 * 86400000).toISOString(),
+      description: 'Emotional intimacy began deepening through shared vulnerability',
+      sentiment: rel.affection_score,
+      was_positive: true,
+    });
+  }
+
+  if (rel.emotional_intensity >= 0.7) {
+    out.push({
+      id: `${relationshipId}-intensity-peak`,
+      date_type: 'connection_deepening',
+      date_time: new Date(start.getTime() + 45 * 86400000).toISOString(),
+      description: 'Connection intensity peaked — strong pull and presence in your thoughts',
+      sentiment: rel.emotional_intensity,
+      was_positive: true,
+    });
+  }
+
+  if (rel.end_date) {
+    out.push({
+      id: `${relationshipId}-bond-shift`,
+      date_type: rel.status === 'ended' ? 'breakup' : 'distance',
+      date_time: rel.end_date,
+      description: 'Bond shifted — the romantic connection changed course',
+      sentiment: 0.28,
+      was_positive: false,
+    });
+  }
+
+  return out;
 }
 
 /**
  * Generate mock analytics for a relationship
  */
 export function generateMockRelationshipAnalytics(relationship: MockRomanticRelationship): MockRelationshipAnalytics {
-  return {
+  const base: MockRelationshipAnalytics = {
     relationshipId: relationship.id,
     personId: relationship.person_id,
     personName: relationship.person_name,
@@ -715,8 +939,54 @@ export function generateMockRelationshipAnalytics(relationship: MockRomanticRela
     ].filter(Boolean) as string[],
     affectionTrend: relationship.status === 'active' ? 'increasing' : 'stable',
     healthTrend: relationship.relationship_health > 0.7 ? 'improving' : 'stable',
-    calculatedAt: new Date().toISOString()
+    calculatedAt: new Date().toISOString(),
   };
+  return enrichMockAnalytics(relationship.id, base);
+}
+
+/**
+ * Demo UI: materialize a romantic suggestion as a new relationship card.
+ */
+export function buildSimulatedRomanticRelationship(
+  suggestion: CharacterSuggestion
+): MockRomanticRelationship {
+  const ctx = (suggestion.context ?? '').toLowerCase();
+  const isTalking = ctx.includes('talking stage');
+  const isDate = ctx.includes('date');
+  const relationship_type = isTalking ? 'crush' : isDate ? 'dating' : 'romantic_interest';
+  const now = new Date();
+  const affection = Math.min(0.88, suggestion.confidence * 0.75 + 0.15);
+
+  const base: MockRomanticRelationship = {
+    id: `sim-${suggestion.id}`,
+    person_id: `sim-person-${suggestion.id}`,
+    person_type: 'character',
+    person_name: suggestion.name,
+    relationship_type,
+    status: 'active',
+    is_current: true,
+    affection_score: affection,
+    emotional_intensity: isTalking ? 0.55 : 0.72,
+    compatibility_score: isTalking ? 0.52 : 0.68,
+    relationship_health: isTalking ? 0.58 : 0.72,
+    is_situationship: isTalking,
+    strengths: isTalking ? ['Easy rapport in group settings'] : ['Great conversation chemistry'],
+    weaknesses: isTalking ? ['Still undefined boundaries'] : ['Early — still getting to know each other'],
+    pros: [suggestion.context ?? 'Detected from your chats'],
+    cons: [],
+    red_flags: [],
+    green_flags: isTalking ? [] : ['Strong first connection'],
+    start_date: now.toISOString(),
+    created_at: now.toISOString(),
+    metadata: {
+      lexical_evidence: suggestion.context,
+      glossary_cues: isTalking ? ['talking stage'] : isDate ? ['went on a date'] : ['romantic interest'],
+      parsing: 'simulated_from_suggestion',
+      from_suggestion: true,
+    },
+  };
+
+  return withDemoSignals(base);
 }
 
 /**
@@ -826,7 +1096,7 @@ export function getMockRomanticRelationshipById(id: string): MockRomanticRelatio
  * Get mock dates for a relationship
  */
 export function getMockDateEvents(relationshipId: string): MockDateEvent[] {
-  return generateMockDateEvents(relationshipId);
+  return appendFallbackIntimacyEvents(relationshipId, generateMockDateEvents(relationshipId));
 }
 
 /**

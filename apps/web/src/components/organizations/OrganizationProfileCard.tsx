@@ -290,7 +290,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
 
   return (
     <Card
-      className={`group relative cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0 ${isFormer ? 'opacity-75' : ''} ${
+      className={`group relative cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-0.5 sm:hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 overflow-hidden flex flex-col min-h-0 ${isFormer ? 'opacity-75' : ''} ${
         selected
           ? 'border-purple-500/50 ring-1 ring-purple-500/40 bg-purple-500/10'
           : 'border-border/50'
@@ -307,7 +307,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
         </span>
       )}
       {/* Header — color and icon vary by group type */}
-      <div className={`relative h-10 sm:h-16 bg-gradient-to-br ${visual.grad} flex items-center justify-center flex-shrink-0`}>
+      <div className={`relative h-12 sm:h-16 bg-gradient-to-br ${visual.grad} flex items-center justify-center flex-shrink-0`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
         <Icon className={`h-6 w-6 sm:h-10 sm:w-10 ${visual.iconCls} transition-colors relative z-10`} />
 
@@ -361,8 +361,8 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               {organization.name}
             </h3>
 
-            {/* Group type + relationship badges */}
-            <div className="items-center gap-1.5 mt-0.5 flex-wrap hidden sm:flex">
+            {/* Group type + relationship badges — visible on all breakpoints */}
+            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <p className="text-[10px] text-white/50 truncate capitalize">
                 {gt.replace(/_/g, ' ')}
               </p>
@@ -403,17 +403,17 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
           )}
           {!isPublic && (
             <>
-              <span className="text-white/40 hidden sm:inline">•</span>
-              <span className="hidden sm:inline">
-                <Hash className="h-2.5 w-2.5 inline mr-0.5 align-middle" />
-                {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
+              <span className="text-white/40">•</span>
+              <span className="inline-flex items-center gap-0.5">
+                <Hash className="h-2.5 w-2.5" />
+                {organization.usage_count}
               </span>
             </>
           )}
         </div>
 
-        {/* Mobile — importance + type + relationship + mentions */}
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden flex-wrap">
+        {/* Mobile — importance score (badges already shown in header row) */}
+        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden">
           {organization.analytics && !isObserver && (
             <span
               className={`text-[9px] px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${
@@ -425,13 +425,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               }`}
             >
               {organization.analytics.importance_score >= 70 && <Star className="h-2 w-2" />}
-              {organization.analytics.importance_score}
-            </span>
-          )}
-          <span className="capitalize truncate">{gt.replace(/_/g, ' ')}</span>
-          {rel && rel !== 'member' && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
-              {REL_LABELS[rel]}
+              Score {organization.analytics.importance_score}
             </span>
           )}
           {isPublic && (
@@ -439,21 +433,54 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               Public
             </span>
           )}
-          {(organization.hierarchy_enabled || organization.metadata?.hierarchy_enabled) && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/25">
-              hierarchy
-            </span>
-          )}
         </div>
 
-        {/* Description */}
-        {organization.description && (
-          <p className="text-xs text-white/60 line-clamp-2 leading-snug hidden sm:block">
-            {organization.description}
+        {/* Tagline — mission or description, always visible */}
+        {(organization.profile?.mission || organization.description) && (
+          <p className="text-[11px] sm:text-xs text-white/60 line-clamp-2 leading-snug">
+            {organization.profile?.mission || organization.description}
           </p>
         )}
 
-        {/* Metadata row */}
+        {/* Compact stat pills — mobile + desktop */}
+        <div className="flex flex-wrap gap-1 sm:gap-1.5">
+          {organization.stories && organization.stories.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[10px] text-primary/90">
+              <BookOpen className="h-2.5 w-2.5" />
+              {organization.stories.length}
+            </span>
+          )}
+          {organization.events && organization.events.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-[10px] text-violet-300">
+              <CalendarDays className="h-2.5 w-2.5" />
+              {organization.events.length}
+            </span>
+          )}
+          {organization.founded_year && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted/40 px-1.5 py-0.5 text-[10px] text-white/50">
+              <Calendar className="h-2.5 w-2.5" />
+              {organization.founded_year}
+            </span>
+          )}
+          {organization.location && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted/40 px-1.5 py-0.5 text-[10px] text-white/50 max-w-[120px] truncate">
+              <MapPin className="h-2.5 w-2.5 shrink-0" />
+              {organization.location}
+            </span>
+          )}
+          {organization.profile?.values && organization.profile.values.length > 0 && (
+            organization.profile.values.slice(0, 2).map((v) => (
+              <span
+                key={v}
+                className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/45 truncate max-w-[80px]"
+              >
+                {v}
+              </span>
+            ))
+          )}
+        </div>
+
+        {/* Extended metadata — desktop only */}
         <div className="flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
           {organization.analytics && !isObserver && (
             <>

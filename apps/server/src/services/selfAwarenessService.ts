@@ -210,11 +210,11 @@ export class SelfAwarenessService {
    */
   humanizeConfidence(confidence: number): string {
     if (confidence >= 0.7) {
-      return 'High confidence';
+      return 'High certainty';
     } else if (confidence >= 0.4) {
-      return 'Mixed confidence';
+      return 'Some uncertainty';
     } else {
-      return 'Still forming';
+      return 'High uncertainty';
     }
   }
 }

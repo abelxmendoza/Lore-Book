@@ -9,6 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import {
+  getMockDateEvents,
+  getMockRelationshipAnalytics,
+  getMockRomanticRelationshipById,
+} from '../../mocks/romanticRelationships';
+import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
 
 interface RomanticRelationshipDetailModalProps {
   relationshipId: string;
@@ -50,17 +57,30 @@ export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetai
   relationshipId,
   onClose,
 }) => {
+  const isMockDataEnabled = useShouldUseMockData();
   const [analytics, setAnalytics] = useState<RelationshipAnalytics | null>(null);
   const [dates, setDates] = useState<DateEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, [relationshipId]);
+  }, [relationshipId, isMockDataEnabled]);
 
   const loadData = async () => {
     setLoading(true);
     try {
+      if (isMockDataEnabled) {
+        const mockRel = getMockRomanticRelationshipById(relationshipId);
+        if (mockRel) {
+          setAnalytics(getMockRelationshipAnalytics(relationshipId) ?? null);
+          setDates(getMockDateEvents(relationshipId));
+        } else {
+          setAnalytics(null);
+          setDates([]);
+        }
+        return;
+      }
+
       const [analyticsData, datesData] = await Promise.all([
         fetchJson<{ success: boolean; analytics: RelationshipAnalytics }>(
           `/api/conversation/romantic-relationships/${relationshipId}/analytics`
@@ -228,41 +248,10 @@ export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetai
             </div>
 
             {/* Red & Green Flags */}
-            {(analytics.redFlags.length > 0 || analytics.greenFlags.length > 0) && (
-              <div className="grid grid-cols-2 gap-4">
-                {analytics.redFlags.length > 0 && (
-                  <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10">
-                    <h3 className="font-semibold text-red-300 mb-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      Red Flags
-                    </h3>
-                    <ul className="space-y-1">
-                      {analytics.redFlags.map((flag, idx) => (
-                        <li key={idx} className="text-sm text-white/80">
-                          ⚠ {flag}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {analytics.greenFlags.length > 0 && (
-                  <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/10">
-                    <h3 className="font-semibold text-green-300 mb-2 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
-                      Green Flags
-                    </h3>
-                    <ul className="space-y-1">
-                      {analytics.greenFlags.map((flag, idx) => (
-                        <li key={idx} className="text-sm text-white/80">
-                          ✓ {flag}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
+            <RelationshipFlagsPanel
+              redFlags={analytics.redFlags}
+              greenFlags={analytics.greenFlags}
+            />
           </TabsContent>
 
           <TabsContent value="dates" className="mt-4">

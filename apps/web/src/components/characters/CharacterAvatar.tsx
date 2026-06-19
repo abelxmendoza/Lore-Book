@@ -54,8 +54,8 @@ export function CharacterAvatar({
   if (!resolvedUrl || imageError) {
     return (
       <div
-        className={`rounded-full border border-zinc-800 bg-zinc-900 flex items-center justify-center ${className}`}
-        style={{ width: size, height: size }}
+        className={`shrink-0 rounded-full border border-zinc-800 bg-zinc-900 flex items-center justify-center ${className}`}
+        style={{ width: size, height: size, minWidth: size, minHeight: size }}
         aria-label={`${name} avatar`}
       >
         <UserCircle className="text-white/40" size={size * 0.6} />
@@ -64,21 +64,23 @@ export function CharacterAvatar({
   }
 
   return (
-    <LazyImage
-      src={resolvedUrl}
-      alt={`${name} avatar`}
-      className={`rounded-full border border-zinc-800 bg-zinc-900 object-cover ${className}`}
-      style={{ width: size, height: size }}
-      loading="lazy"
-      onError={() => setImageError(true)}
-      placeholder={
-        <div
-          className={`rounded-full border border-zinc-800 bg-zinc-900 flex items-center justify-center ${className}`}
-          style={{ width: size, height: size }}
-        >
-          <UserCircle className="text-white/40" size={size * 0.6} />
-        </div>
-      }
-    />
+    <div
+      className={`shrink-0 overflow-hidden rounded-full ${className}`}
+      style={{ width: size, height: size, minWidth: size, minHeight: size }}
+      aria-label={`${name} avatar`}
+    >
+      <LazyImage
+        src={resolvedUrl}
+        alt={`${name} avatar`}
+        className="h-full w-full rounded-full border border-zinc-800 bg-zinc-900 object-cover"
+        loading="lazy"
+        onError={() => setImageError(true)}
+        placeholder={
+          <div className="flex h-full w-full items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+            <UserCircle className="text-white/40" size={size * 0.6} />
+          </div>
+        }
+      />
+    </div>
   );
 }

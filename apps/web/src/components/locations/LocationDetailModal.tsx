@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare } from 'lucide-react';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
@@ -12,6 +12,8 @@ import type { LocationProfile } from './LocationProfileCard';
 export type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
 import { schedulePostChatRefresh } from '../../lib/storyRefresh';
+import { mockDataService } from '../../services/mockDataService';
+import { getMockLocationFacts, getMockLocationPeople } from '../../mocks/modalDemoData';
 import { classifyLocation, KIND_META, locationHierarchy, computeChildren, isHouseholdLocation, isRoomLocation } from '../../lib/locationTaxonomy';
 import {
   formatPlaceType,
@@ -25,6 +27,8 @@ import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
 import { Button } from '../ui/button';
 import { Pencil } from 'lucide-react';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 
 type LocationDetailModalProps = {
   location: LocationProfile;
@@ -251,13 +255,20 @@ export const LocationDetailModal = ({
 
   // Load facts when knowledge tab opens
   useEffect(() => {
-    if (activeTab !== 'knowledge' || factsLoaded || isMockDataEnabled || !location.id) return;
+    if (activeTab !== 'knowledge' || factsLoaded) return;
+    if (isMockDataEnabled) {
+      setLocationFacts(getMockLocationFacts(location));
+      setFactsLoading(false);
+      setFactsLoaded(true);
+      return;
+    }
+    if (!location.id) return;
     setFactsLoading(true);
     fetchJson<{ success: boolean; facts: any[] }>(`/api/locations/${location.id}/facts`)
       .then(r => { if (r.success) setLocationFacts(r.facts); })
       .catch(() => {})
       .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
-  }, [activeTab, location.id, factsLoaded, isMockDataEnabled]);
+  }, [activeTab, location, factsLoaded, isMockDataEnabled]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -276,6 +287,21 @@ export const LocationDetailModal = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  const openLocationMainChat = (prompt?: string) => {
+    onClose();
+    openChatWithFocus({
+      entityId: location.id,
+      entityName: location.name,
+      entityType: 'location',
+      sourceSurface: 'locations',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.locations,
+      knowledgeScope: 'place memories, visits, and significance',
+      initialPrompt:
+        prompt ??
+        `Tell me about ${location.name} — what I've shared, how it fits in my life, and what stands out.`,
+    });
+  };
 
   const handleChatSubmit = async (message: string) => {
     if (!message.trim() || chatLoading) return;
@@ -310,7 +336,9 @@ export const LocationDetailModal = ({
     iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
   const a = location.analytics;
-  const verifiedPeople = location.relatedPeople.filter(person => person.character_id);
+  const verifiedPeople = isMockDataEnabled
+    ? getMockLocationPeople(location, mockDataService.get.characters())
+    : location.relatedPeople.filter(person => person.character_id);
   const placeLine = [location.address, location.city, location.region, location.country].filter(Boolean).join(', ');
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
@@ -333,8 +361,9 @@ export const LocationDetailModal = ({
           place_significance: draft.place_significance,
         },
       };
-      setLocation(next);
-      onLocationUpdated?.(next);
+      const saved = mockDataService.mutate.locations.update(location.id, next) ?? next;
+      setLocation(saved);
+      onLocationUpdated?.(saved);
       setEditingProfile(false);
       return;
     }
@@ -950,7 +979,17 @@ export const LocationDetailModal = ({
         </div>
 
         {/* ── Sticky chat composer ── */}
-        <div className="shrink-0 border-t border-white/8 bg-black/60 backdrop-blur-sm p-3">
+        <div className="shrink-0 border-t border-white/8 bg-black/60 backdrop-blur-sm p-3 space-y-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 border-teal-500/30 text-teal-200 hover:bg-teal-500/10"
+            onClick={() => openLocationMainChat()}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Open main chat with {location.name} focus
+          </Button>
           {chatMessages.map((msg, i) => (
             <ChatMessage key={i} message={{ id: `msg-${i}`, role: msg.role, content: msg.content, timestamp: msg.timestamp }} />
           ))}

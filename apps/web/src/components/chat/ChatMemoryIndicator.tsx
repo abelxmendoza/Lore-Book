@@ -1,6 +1,6 @@
 /**
  * Chat Memory Indicator
- * Shows which memories were used in the response with confidence scores
+ * Shows which memories were used in the response with certainty indicators
  * Better than ChatGPT - shows confidence, source, and allows editing
  */
 
@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Database, Edit, Info, X } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import type { Claim } from '../../hooks/useOmegaMemory';
+import { formatEpistemicTitle } from '../../lib/epistemicLabels';
 
 export interface MemoryIndicator {
   claim_id: string;
@@ -27,7 +28,7 @@ interface ChatMemoryIndicatorProps {
 const ConfidenceDot = ({ confidence }: { confidence: number }) => {
   const color = confidence >= 0.7 ? 'bg-green-400' : confidence >= 0.4 ? 'bg-yellow-400' : 'bg-red-400';
   return (
-    <div className={`w-2 h-2 rounded-full ${color}`} title={`${Math.round(confidence * 100)}% confidence`} />
+    <div className={`w-2 h-2 rounded-full ${color}`} title={formatEpistemicTitle(confidence)} />
   );
 };
 

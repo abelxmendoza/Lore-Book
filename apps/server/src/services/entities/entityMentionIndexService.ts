@@ -68,6 +68,7 @@ export async function listMentionableEntities(userId: string): Promise<Mentionab
   for (const s of charSuggestions) {
     if (isNameCoveredByConfirmed(s.name, confirmed)) continue;
     const id = characterSuggestionId(s);
+    const isRomantic = s.archetype === 'romantic' || s.relationship === 'romantic';
     pushUnique(map, {
       id,
       name: s.name,
@@ -75,6 +76,7 @@ export async function listMentionableEntities(userId: string): Promise<Mentionab
       aliases: [],
       mentionKeys: mentionKeysForName(s.name),
       status: 'suggestion',
+      ...(isRomantic ? { characterVariant: 'romantic' as const } : {}),
     });
   }
 

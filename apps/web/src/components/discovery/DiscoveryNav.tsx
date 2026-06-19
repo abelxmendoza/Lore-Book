@@ -1,45 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import {
-  Compass, Heart, Brain, Users, TrendingUp, Target, Clock, MapPin,
-  AlertCircle, Zap, HeartPulse, Database, ClipboardCheck, Activity,
-  Ghost, BookOpen, CalendarDays, BarChart3, Trophy, ScrollText, Eye, Scale
-} from 'lucide-react';
+import { Compass, BookOpen } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
-
-interface NavPanel {
-  id: string;
-  title: string;
-  path: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badgeKey?: 'pendingProposals' | 'openContradictions' | 'fadingMemories';
-}
-
-const INSIGHTS_PANELS: NavPanel[] = [
-  { id: 'soul-profile',         title: 'Soul Profile',            path: '/discovery/soul-profile',          icon: Heart },
-  { id: 'revealed-self',        title: 'Revealed Self',           path: '/discovery/revealed-self',         icon: Eye },
-  { id: 'contradictions',       title: 'Contradictions',          path: '/discovery/contradictions',        icon: Scale },
-  { id: 'identity',             title: 'Identity Pulse',          path: '/discovery/identity',              icon: Brain },
-  { id: 'relationships',        title: 'Relationships',           path: '/discovery/relationships',         icon: Users },
-  { id: 'insights-predictions', title: 'Insights & Predictions',  path: '/discovery/insights-predictions',  icon: TrendingUp },
-  { id: 'values-habits',        title: 'Values & Habits',         path: '/discovery/values-habits',         icon: Target },
-  { id: 'decisions',            title: 'Decision Memory',         path: '/discovery/decisions',             icon: Clock },
-  { id: 'life-arc',             title: 'Recent Moments',          path: '/discovery/life-arc',              icon: MapPin },
-  { id: 'shadow',               title: 'Shadow',                  path: '/discovery/shadow',                icon: AlertCircle },
-  { id: 'xp',                   title: 'Skills & Progress',       path: '/discovery/xp',                   icon: Zap },
-  { id: 'reactions-resilience', title: 'Reactions & Resilience',  path: '/discovery/reactions-resilience',  icon: HeartPulse },
-  { id: 'activity',             title: 'Activity Calendar',        path: '/discovery/activity',              icon: CalendarDays },
-  { id: 'life-stats',           title: 'Life Stats',               path: '/discovery/life-stats',            icon: BarChart3 },
-  { id: 'achievements',         title: 'Achievements',             path: '/discovery/achievements',          icon: Trophy },
-];
-
-const DATA_CONTROL_PANELS: NavPanel[] = [
-  { id: 'memory-management',    title: 'Memory Management',       path: '/discovery/memory-management',     icon: Database },
-  { id: 'memory-review',        title: 'Memory Review Queue',     path: '/discovery/memory-review',         icon: ClipboardCheck,  badgeKey: 'pendingProposals' },
-  { id: 'continuity',           title: 'Continuity',              path: '/discovery/continuity',            icon: Activity },
-  { id: 'correction-dashboard', title: 'Corrections & Pruning',   path: '/discovery/correction-dashboard',  icon: AlertCircle,     badgeKey: 'openContradictions' },
-  { id: 'memory-fade',          title: 'Memory Fade Index',       path: '/discovery/memory-fade',           icon: Ghost,           badgeKey: 'fadingMemories' },
-  { id: 'knowledge-records',    title: 'Knowledge Records',       path: '/discovery/knowledge-records',     icon: ScrollText },
-];
+import {
+  DATA_CONTROL_PANELS,
+  INSIGHT_PANELS,
+  type DiscoveryBadgeKey,
+} from './discoveryPanelRegistry';
 
 export const DiscoveryNav = () => {
   const location = useLocation();
@@ -50,14 +16,14 @@ export const DiscoveryNav = () => {
       ? location.pathname === '/discovery'
       : location.pathname.startsWith(path);
 
-  const getBadgeCount = (key?: NavPanel['badgeKey']): number => {
+  const getBadgeCount = (key?: DiscoveryBadgeKey): number => {
     if (!key || !summary) return 0;
     return summary[key] ?? 0;
   };
 
-  const renderGroup = (label: string, panels: NavPanel[]) => (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold text-white/30 uppercase tracking-widest px-3 pt-3 pb-1">
+  const renderGroup = (label: string, panels: typeof INSIGHT_PANELS) => (
+    <div className="space-y-0.5">
+      <p className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.14em] px-3 pt-4 pb-1.5">
         {label}
       </p>
       {panels.map((panel) => {
@@ -68,16 +34,18 @@ export const DiscoveryNav = () => {
           <Link
             key={panel.id}
             to={panel.path}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+            className={`flex items-center gap-2.5 mx-1 px-3 py-2.5 rounded-xl text-sm transition-colors ${
               active
-                ? 'bg-primary/20 text-primary border border-primary/30'
-                : 'text-white/60 hover:bg-white/5 hover:text-white'
+                ? 'bg-primary/15 text-primary border border-primary/25 shadow-[0_0_20px_rgba(139,92,246,0.08)]'
+                : 'text-white/55 hover:bg-white/[0.04] hover:text-white border border-transparent'
             }`}
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            <div className={`shrink-0 p-1.5 rounded-lg bg-gradient-to-br ${panel.accent} ${active ? 'opacity-100' : 'opacity-70'}`}>
+              <Icon className="h-3.5 w-3.5 text-white" />
+            </div>
             <span className="flex-1 font-medium truncate">{panel.title}</span>
             {count > 0 && (
-              <span className="shrink-0 text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
+              <span className="shrink-0 text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none tabular-nums">
                 {count > 99 ? '99+' : count}
               </span>
             )}
@@ -88,35 +56,33 @@ export const DiscoveryNav = () => {
   );
 
   return (
-    <aside className="w-56 flex-shrink-0 border-r border-border/60 bg-black/20 flex flex-col py-3 px-2 overflow-y-auto">
-      {/* Overview link */}
+    <aside className="w-60 flex-shrink-0 border-r border-white/10 bg-black/30 backdrop-blur-sm flex flex-col py-3 overflow-y-auto">
       <Link
         to="/discovery"
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors mb-1 ${
+        className={`flex items-center gap-2.5 mx-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors mb-1 ${
           isActive('/discovery') && location.pathname === '/discovery'
-            ? 'bg-primary/20 text-primary border border-primary/30'
-            : 'text-white/70 hover:bg-white/5 hover:text-white'
+            ? 'bg-primary/15 text-primary border border-primary/25'
+            : 'text-white/70 hover:bg-white/[0.04] hover:text-white border border-transparent'
         }`}
       >
         <Compass className="h-4 w-4 shrink-0" />
         <span>Overview</span>
       </Link>
 
-      {/* Lorebook shortcut */}
       <Link
         to="/lorebook"
-        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors mb-2"
+        className="flex items-center gap-2.5 mx-2 px-3 py-2.5 rounded-xl text-sm text-white/45 hover:text-white/75 hover:bg-white/[0.04] transition-colors mb-2 border border-transparent"
       >
         <BookOpen className="h-4 w-4 shrink-0" />
         <span>Generate Lorebook</span>
       </Link>
 
-      <div className="border-t border-border/40 mt-1" />
+      <div className="border-t border-white/8 mx-3" />
 
-      <div className="flex-1 space-y-2 mt-1">
-        {renderGroup('Insights', INSIGHTS_PANELS)}
-        <div className="border-t border-border/30 mx-1" />
-        {renderGroup('Data & Control', DATA_CONTROL_PANELS)}
+      <div className="flex-1 mt-1">
+        {renderGroup('Insights', INSIGHT_PANELS)}
+        <div className="border-t border-white/8 mx-3 my-2" />
+        {renderGroup('Data & control', DATA_CONTROL_PANELS)}
       </div>
     </aside>
   );

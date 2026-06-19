@@ -2,6 +2,11 @@ import { User, MapPin, Building2, Lightbulb, AlertTriangle, ChevronRight, Users,
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
+import {
+  epistemicBadgeColorClass,
+  epistemicLabel,
+  formatEpistemicTitle,
+} from '../../lib/epistemicLabels';
 
 export type EntityType = 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ORG' | 'CONCEPT' | 'PERSON';
 export type ResolutionTier = 'PRIMARY' | 'SECONDARY' | 'TERTIARY';
@@ -59,17 +64,8 @@ export const EntityProfileCard = ({ entity, onClick }: EntityProfileCardProps) =
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.7) return 'bg-green-500/20 text-green-400 border-green-500/30';
-    if (confidence >= 0.4) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-    return 'bg-red-500/20 text-red-400 border-red-500/30';
-  };
-
-  const getConfidenceLabel = (confidence: number): string => {
-    if (confidence >= 0.7) return 'High';
-    if (confidence >= 0.4) return 'Medium';
-    return 'Low';
-  };
+  const getConfidenceColor = epistemicBadgeColorClass;
+  const getConfidenceLabel = epistemicLabel;
 
   const formatDate = (dateString: string) => {
     try {
@@ -123,7 +119,7 @@ export const EntityProfileCard = ({ entity, onClick }: EntityProfileCardProps) =
           <Badge 
             variant="outline"
             className={`${getConfidenceColor(entity.confidence)} text-[10px] px-1.5 py-0.5`}
-            title={`${getConfidenceLabel(entity.confidence)} confidence (${Math.round(entity.confidence * 100)}%)`}
+            title={formatEpistemicTitle(entity.confidence)}
           >
             {getConfidenceLabel(entity.confidence)}
           </Badge>

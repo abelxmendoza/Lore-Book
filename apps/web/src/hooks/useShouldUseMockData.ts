@@ -38,6 +38,27 @@ export function shouldUseMockData(): boolean {
   return getGlobalMockDataEnabled() || config.dev.allowMockData;
 }
 
+/**
+ * Returns true when upload flows should be simulated locally (animated progress, no API).
+ * Guest sessions always simulate; demo/mock mode uses the same path.
+ */
+export function useShouldSimulateUploadFlow(): boolean {
+  const { user, loading: authLoading } = useAuth();
+  const { isGuest } = useGuest();
+  const mockEnabled = useShouldUseMockData();
+
+  if (user) return false;
+  if (isGuest) return true;
+  if (authLoading) return false;
+  return mockEnabled;
+}
+
+export function shouldSimulateUploadFlow(): boolean {
+  if (getIsUserLoggedIn()) return false;
+  if (getGlobalIsGuest()) return true;
+  return shouldUseMockData();
+}
+
 
 
 

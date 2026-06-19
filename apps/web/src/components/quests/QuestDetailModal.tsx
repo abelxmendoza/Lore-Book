@@ -15,7 +15,7 @@ interface QuestDetailModalProps {
 export const QuestDetailModal = ({ questId, onClose }: QuestDetailModalProps) => {
   const [reflectionText, setReflectionText] = useState('');
   const { data: quest, isLoading } = useQuest(questId);
-  const { data: history } = useQuestHistory(questId);
+  const { data: history, refetch: refetchHistory } = useQuestHistory(questId);
   const updateProgress = useUpdateQuestProgress();
   const addReflection = useAddQuestReflection();
 
@@ -23,6 +23,7 @@ export const QuestDetailModal = ({ questId, onClose }: QuestDetailModalProps) =>
     if (!reflectionText.trim()) return;
     await addReflection.mutateAsync({ questId, reflection: reflectionText });
     setReflectionText('');
+    await refetchHistory();
   };
 
   if (isLoading || !quest) {

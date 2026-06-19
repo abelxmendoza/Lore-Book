@@ -6,6 +6,7 @@ import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
+import { TimelineInlineDate, TimelineDateHeader } from './TimelineDateDisplay';
 
 interface VerticalTimelineViewProps {
   onEntrySelect?: (entry: ChronologyEntry) => void;
@@ -127,13 +128,9 @@ export const VerticalTimelineView: React.FC<VerticalTimelineViewProps> = ({
                       openMemory(entry);
                     }}
                   >
-                    {/* Date */}
-                    <div className={`text-xs text-white/60 mb-3 ${isLeft ? 'text-left' : 'text-right'}`}>
-                      {new Date(entry.start_time).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
+                    {/* Date ruler badge */}
+                    <div className={`mb-3 ${isLeft ? 'flex justify-start' : 'flex justify-end'}`}>
+                      <TimelineInlineDate iso={entry.start_time} size="lg" />
                     </div>
 
                     {/* Tag */}

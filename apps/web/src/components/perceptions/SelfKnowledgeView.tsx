@@ -96,7 +96,7 @@ export const SelfKnowledgeView = () => {
         <Info className="h-4 w-4 text-indigo-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-indigo-200/80">
           These are not things you told LoreBook — they are patterns it detected from your behavior, entries, and life arcs.
-          Confidence scores reflect how much behavioral evidence supports each claim.
+          Certainty reflects how much behavioral evidence supports each claim — not how strongly you stated it.
         </p>
       </div>
 
@@ -236,7 +236,7 @@ const ClaimCard = ({
         <div className="border-t border-white/10 px-3 pb-3 pt-2 space-y-2" onClick={e => e.stopPropagation()}>
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div className="p-2 rounded bg-white/5">
-              <p className="text-white/40 mb-0.5">Confidence</p>
+              <p className="text-white/40 mb-0.5">Certainty</p>
               <p className="text-white font-semibold">{pct}%</p>
             </div>
             <div className="p-2 rounded bg-white/5">

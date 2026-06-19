@@ -1,20 +1,55 @@
-/* Message Animations */
+/* ─── Chat message & conversation animations ─── */
 
-@keyframes fadeUp {
+/* Message enter — user slides from right */
+@keyframes messageEnterUser {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateX(12px) translateY(6px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0) translateY(0) scale(1);
   }
 }
 
-@keyframes slideIn {
+/* Message enter — assistant slides from left */
+@keyframes messageEnterAssistant {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateX(-12px) translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes messageEnterSystem {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dateHeaderEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes threadEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
   }
   to {
     opacity: 1;
@@ -22,31 +57,174 @@
   }
 }
 
-@keyframes pulse {
-  0%, 100% {
+@keyframes threadActiveBar {
+  from {
+    transform: scaleY(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
     opacity: 1;
   }
+}
+
+/* Subtle streaming glow on assistant bubble border */
+@keyframes bubbleStreamGlow {
+  0%, 100% {
+    border-color: rgba(var(--primary-rgb, 99 102 241) / 0.15);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 99 102 241) / 0);
+  }
   50% {
-    opacity: 0.5;
+    border-color: rgba(var(--primary-rgb, 99 102 241) / 0.35);
+    box-shadow: 0 0 20px -4px rgba(var(--primary-rgb, 99 102 241) / 0.2);
   }
 }
 
-.chat-message-enter {
-  animation: fadeUp 0.3s ease-out;
+@keyframes avatarThinking {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 99 102 241) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(var(--primary-rgb, 99 102 241) / 0);
+  }
 }
 
-.chat-message-streaming {
-  animation: pulse 1.5s ease-in-out infinite;
+@keyframes streamCursorBlink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.15; }
+  100% { opacity: 1; }
 }
 
-.chat-loading-pulse {
-  animation: pulse 2s ease-in-out infinite;
+@keyframes loadingCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-/* Animated progress / loading feel */
+@keyframes loadingRingSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loadingProgressPulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
 @keyframes loadingShimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(200%); }
+}
+
+@keyframes focus-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Enter classes ─── */
+
+.chat-message-enter-user {
+  animation: messageEnterUser 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-message-enter-assistant {
+  animation: messageEnterAssistant 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-message-enter-system {
+  animation: messageEnterSystem 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-date-header-enter {
+  animation: dateHeaderEnter 0.35s ease-out both;
+}
+
+.chat-thread-enter {
+  animation: threadEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-thread-active-bar {
+  animation: threadActiveBar 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center;
+}
+
+/* ─── Bubble styling ─── */
+
+.chat-message {
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+.chat-message:hover {
+  transform: translateY(-1px);
+}
+
+.chat-bubble-user {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 4px 24px -6px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.chat-bubble-assistant {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.025) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 4px 28px -8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(6px);
+}
+
+.chat-bubble-streaming {
+  animation: bubbleStreamGlow 2.4s ease-in-out infinite;
+}
+
+.chat-avatar-thinking {
+  animation: avatarThinking 1.8s ease-in-out infinite;
+}
+
+/* Streaming text — subtle, not whole-bubble opacity flash */
+.chat-message-streaming .markdown-content > :last-child,
+.chat-message-streaming .prose > :last-child {
+  opacity: 0.92;
+  transition: opacity 0.3s ease;
+}
+
+.chat-stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: hsl(var(--primary));
+  animation: streamCursorBlink 1s step-end infinite;
+}
+
+/* ─── Loading states ─── */
+
+.chat-loading-card-enter {
+  animation: loadingCardEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-loading-avatar-ring {
+  position: relative;
+}
+
+.chat-loading-avatar-ring::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-top-color: hsl(var(--primary) / 0.7);
+  border-right-color: hsl(var(--primary) / 0.25);
+  animation: loadingRingSpin 0.9s linear infinite;
 }
 
 .chat-loading-shimmer {
@@ -55,19 +233,27 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.12) 45%,
-    rgba(255, 255, 255, 0.2) 50%,
-    rgba(255, 255, 255, 0.12) 55%,
+    rgba(255, 255, 255, 0.08) 42%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 58%,
     transparent 100%
   );
   background-size: 50% 100%;
-  animation: loadingShimmer 1.8s ease-in-out infinite;
+  animation: loadingShimmer 1.6s ease-in-out infinite;
   pointer-events: none;
 }
 
-/* Smooth transitions */
-.chat-message {
-  transition: all 0.2s ease-out;
+.chat-loading-progress-fill {
+  animation: loadingProgressPulse 2s ease-in-out infinite;
+}
+
+/* Legacy alias */
+.chat-message-enter {
+  animation: messageEnterAssistant 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-loading-pulse {
+  animation: loadingProgressPulse 2s ease-in-out infinite;
 }
 
 .chat-message .markdown-content,
@@ -79,7 +265,57 @@
   word-wrap: break-word;
 }
 
-.chat-message:hover {
-  transform: translateY(-1px);
+/* Chat focus — modal → main chat */
+.chat-focus-shimmer-bar {
+  position: relative;
+  overflow: hidden;
 }
 
+.chat-focus-shimmer-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 65%
+  );
+  background-size: 200% 100%;
+  animation: focus-shimmer 2.2s linear infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Thread list skeleton */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.65; }
+}
+
+.chat-thread-skeleton {
+  animation: skeletonPulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-enter-user,
+  .chat-message-enter-assistant,
+  .chat-message-enter-system,
+  .chat-message-enter,
+  .chat-date-header-enter,
+  .chat-thread-enter,
+  .chat-thread-active-bar,
+  .chat-bubble-streaming,
+  .chat-avatar-thinking,
+  .chat-loading-card-enter,
+  .chat-loading-avatar-ring::before,
+  .chat-loading-shimmer,
+  .chat-stream-cursor,
+  .chat-thread-skeleton {
+    animation: none !important;
+  }
+
+  .chat-message:hover {
+    transform: none;
+  }
+}

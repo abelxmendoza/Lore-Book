@@ -3,7 +3,7 @@ import { parseISO, isBefore, isAfter, isEqual } from 'date-fns';
 import {
   normalizeTimestamp,
   parseStoredTimestamp,
-} from '../../utils/temporalNormalization';
+} from '../../../utils/temporalNormalization';
 import type { Event, TemporalEdge, TemporalRelation } from '../types';
 
 /**

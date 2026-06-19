@@ -7,11 +7,15 @@ import type { Quest } from '../../types/quest';
 interface QuestDetailPanelProps {
   questId: string | null;
   onClose?: () => void;
+  /** Full-screen mobile overlay — single header with safe-area padding */
+  mobile?: boolean;
+  /** Inside MobileBottomSheet — drop side border */
+  embedded?: boolean;
 }
 
-export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) => {
+export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = false }: QuestDetailPanelProps) => {
   const { data: quest, isLoading } = useQuest(questId || '');
-  const { data: history } = useQuestHistory(questId || '');
+  const { data: history, isLoading: historyLoading } = useQuestHistory(questId || '');
   const updateProgress = useUpdateQuestProgress();
   const startQuest = useStartQuest();
   const pauseQuest = usePauseQuest();
@@ -20,10 +24,11 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
 
   if (!questId) {
     return (
-      <div className="h-full flex items-center justify-center bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm min-h-0">
-        <div className="text-center p-4 sm:p-8">
-          <div className="text-primary/60 text-2xl sm:text-4xl mb-4 font-mono">[SELECT QUEST]</div>
-          <p className="text-white/40 text-xs sm:text-sm font-mono">Choose a quest from the list to view details</p>
+      <div className="h-full w-full flex items-center justify-center bg-black/30 border-l border-white/10 min-h-0">
+        <div className="text-center p-6 sm:p-8 max-w-xs">
+          <Target className="h-10 w-10 text-white/15 mx-auto mb-4" />
+          <p className="text-sm font-medium text-white/70 mb-1">Select a quest</p>
+          <p className="text-xs text-white/45">Choose a quest from the list to view details and update progress.</p>
         </div>
       </div>
     );
@@ -31,11 +36,21 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
 
   if (isLoading || !quest) {
     return (
-      <div className="h-full flex items-center justify-center bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm min-h-0">
-        <div className="text-primary/60 animate-pulse font-mono text-sm sm:text-base">LOADING...</div>
+      <div className="h-full w-full flex items-center justify-center bg-black/30 border-l border-white/10 min-h-0">
+        <p className="text-sm text-white/50 animate-pulse">Loading quest…</p>
       </div>
     );
   }
+
+  const getStatusDotColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-400';
+      case 'completed': return 'bg-yellow-400';
+      case 'paused': return 'bg-orange-400';
+      case 'abandoned': return 'bg-red-400';
+      default: return 'bg-primary';
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -57,187 +72,87 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
     }
   };
 
-  const actionButtonClass = "text-xs px-2 h-10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[40px] flex-1 sm:flex-none";
   const canResume = quest.status === 'paused';
   const canPause = quest.status === 'active';
   const canComplete = quest.status !== 'completed' && quest.status !== 'abandoned';
   const canAbandon = quest.status !== 'completed' && quest.status !== 'abandoned';
   const isMutatingStatus = startQuest.isPending || pauseQuest.isPending || completeQuest.isPending || abandonQuest.isPending;
 
+  const actionButtonClass =
+    'text-xs px-2 h-10 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none';
+
   return (
-    <div className="h-full sm:h-full bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm flex flex-col min-h-0 overflow-hidden">
-      {/* Cyberpunk Header - Desktop Only */}
-      <div className="hidden sm:block sticky top-0 z-10 bg-black/80 border-b border-primary/30 backdrop-blur-md flex-shrink-0">
-        <div className="p-3 sm:p-4 sm:p-6">
-          <div className="flex items-start justify-between gap-4 mb-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <div className={`h-1 w-1 rounded-full ${getStatusColor(quest.status)} animate-pulse`} />
-                <Badge 
-                  variant="outline" 
-                  className={`text-[10px] sm:text-xs px-2 py-0.5 border ${getTypeColor(quest.quest_type)} bg-black/60`}
-                >
-                  {quest.quest_type.toUpperCase()}
-                </Badge>
-                <Badge 
-                  variant="outline" 
-                  className={`text-[10px] sm:text-xs px-2 py-0.5 border ${getStatusColor(quest.status)}/30 bg-black/60 ${getStatusColor(quest.status)}`}
-                >
-                  {quest.status.toUpperCase()}
-                </Badge>
-                {quest.source === 'extracted' && (
-                  <Badge variant="outline" className="text-[10px] sm:text-xs text-primary/80 bg-primary/10 border-primary/30 flex items-center gap-1">
-                    <Sparkles className="h-2.5 w-2.5" />
-                    AUTO-DETECTED
-                  </Badge>
-                )}
-              </div>
-              <h2 className="text-base sm:text-lg sm:text-xl md:text-2xl font-bold text-white mb-2 font-mono tracking-wide">
-                {quest.title}
-              </h2>
-            </div>
-            {onClose && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="text-white/60 hover:text-white hover:bg-primary/20 h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
-              >
-                <X className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            )}
-          </div>
-          
-          {/* Progress Bar with Cyberpunk Style */}
-          <div className="relative">
-            <div className="flex items-center justify-between text-xs sm:text-sm text-primary/80 mb-2 font-mono">
-              <span>PROGRESS</span>
-              <span>{Math.round(quest.progress_percentage)}%</span>
-            </div>
-            <div className="relative w-full h-2 sm:h-3 bg-black/60 rounded-sm overflow-hidden border border-primary/20">
-              <div
-                className="absolute inset-0 bg-gradient-to-r from-primary via-secondary to-primary h-full transition-all duration-500 shadow-neon"
-                style={{ width: `${quest.progress_percentage}%` }}
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,rgba(255,255,255,0.1)_50%)] bg-[length:8px_100%] opacity-30" />
-            </div>
-            <div className="flex gap-2 mt-3">
-              <Button
+    <div
+      className={`h-full w-full bg-black/30 flex flex-col min-h-0 overflow-hidden ${
+        embedded ? '' : 'border-l border-white/10'
+      } ${mobile ? 'pb-[max(0px,env(safe-area-inset-bottom))]' : ''}`}
+    >
+      <div
+        className={`flex-shrink-0 sticky top-0 z-10 bg-black/90 border-b border-white/10 backdrop-blur-md ${
+          mobile ? (embedded ? 'p-3 pt-1' : 'p-4 pt-3') : 'p-4 sm:p-5'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <div className={`h-2 w-2 rounded-full ${getStatusDotColor(quest.status)} animate-pulse`} />
+              <Badge
                 variant="outline"
-                size="sm"
-                onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
-                className="text-xs px-2 h-9 sm:h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0"
+                className={`text-[10px] sm:text-xs px-2 py-0.5 border ${getTypeColor(quest.quest_type)} bg-black/60`}
               >
-                -10%
-              </Button>
-              <Button
+                {quest.quest_type}
+              </Badge>
+              <Badge
                 variant="outline"
-                size="sm"
-                onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
-                className="text-xs px-2 h-9 sm:h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0"
+                className={`text-[10px] sm:text-xs px-2 py-0.5 border capitalize bg-black/60 ${getStatusColor(quest.status)}`}
               >
-                +10%
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {canResume && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isMutatingStatus}
-                  onClick={() => { void startQuest.mutateAsync(questId); }}
-                  className={actionButtonClass}
-                >
-                  <Play className="h-3.5 w-3.5 mr-1" />
-                  Resume
-                </Button>
-              )}
-              {canPause && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isMutatingStatus}
-                  onClick={() => { void pauseQuest.mutateAsync(questId); }}
-                  className={actionButtonClass}
-                >
-                  <Pause className="h-3.5 w-3.5 mr-1" />
-                  Pause
-                </Button>
-              )}
-              {canComplete && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isMutatingStatus}
-                  onClick={() => { void completeQuest.mutateAsync({ questId }); }}
-                  className={actionButtonClass}
-                >
-                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                  Complete
-                </Button>
-              )}
-              {canAbandon && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isMutatingStatus}
-                  onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from quest details' }); }}
-                  className="text-xs px-2 h-10 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[40px] flex-1 sm:flex-none"
-                >
-                  <Flag className="h-3.5 w-3.5 mr-1" />
-                  Abandon
-                </Button>
+                {quest.status}
+              </Badge>
+              {quest.source === 'extracted' && (
+                <Badge variant="outline" className="text-[10px] sm:text-xs text-primary/80 bg-primary/10 border-primary/30 flex items-center gap-1">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Auto-detected
+                </Badge>
               )}
             </div>
+            <h2
+              className={`font-semibold text-white leading-snug ${
+                mobile ? 'text-lg' : 'text-lg sm:text-xl'
+              }`}
+            >
+              {quest.title}
+            </h2>
           </div>
-        </div>
-      </div>
-      
-      {/* Mobile Header - Simplified (shown only on mobile) */}
-      <div className="sm:hidden flex-shrink-0 p-4 border-b border-primary/30 bg-black/80">
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <div className={`h-1 w-1 rounded-full ${getStatusColor(quest.status)} animate-pulse`} />
-          <Badge 
-            variant="outline" 
-            className={`text-[10px] px-2 py-0.5 border ${getTypeColor(quest.quest_type)} bg-black/60`}
-          >
-            {quest.quest_type.toUpperCase()}
-          </Badge>
-          <Badge 
-            variant="outline" 
-            className={`text-[10px] px-2 py-0.5 border ${getStatusColor(quest.status)}/30 bg-black/60 ${getStatusColor(quest.status)}`}
-          >
-            {quest.status.toUpperCase()}
-          </Badge>
-          {quest.source === 'extracted' && (
-            <Badge variant="outline" className="text-[10px] text-primary/80 bg-primary/10 border-primary/30 flex items-center gap-1">
-              <Sparkles className="h-2.5 w-2.5" />
-              AUTO-DETECTED
-            </Badge>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="text-white/60 hover:text-white hover:bg-primary/20 h-10 w-10 p-0 flex-shrink-0"
+              aria-label="Close quest details"
+            >
+              <X className="h-5 w-5" />
+            </Button>
           )}
         </div>
-        <h2 className="text-lg font-bold text-white mb-3 font-mono tracking-wide">
-          {quest.title}
-        </h2>
-        {/* Progress Bar for Mobile */}
+
         <div className="relative">
-          <div className="flex items-center justify-between text-xs text-primary/80 mb-2 font-mono">
-            <span>PROGRESS</span>
+          <div className="flex items-center justify-between text-xs text-white/55 mb-2">
+            <span>Progress</span>
             <span>{Math.round(quest.progress_percentage)}%</span>
           </div>
-          <div className="relative w-full h-2 bg-black/60 rounded-sm overflow-hidden border border-primary/20">
+          <div className="relative w-full h-2 bg-black/50 rounded-full overflow-hidden border border-white/10">
             <div
-              className="absolute inset-0 bg-gradient-to-r from-primary via-secondary to-primary h-full transition-all duration-500 shadow-neon"
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-500/80 to-amber-400/60 transition-all duration-500"
               style={{ width: `${quest.progress_percentage}%` }}
             />
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,rgba(255,255,255,0.1)_50%)] bg-[length:8px_100%] opacity-30" />
           </div>
           <div className="flex gap-2 mt-3">
             <Button
               variant="outline"
               size="sm"
               onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
-              className="text-xs px-2 h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] flex-1"
+              className="text-xs px-2 flex-1 sm:flex-none min-h-[44px] sm:min-h-0 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
             >
               -10%
             </Button>
@@ -245,19 +160,19 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
               variant="outline"
               size="sm"
               onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
-              className="text-xs px-2 h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] flex-1"
+              className="text-xs px-2 flex-1 sm:flex-none min-h-[44px] sm:min-h-0 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
             >
               +10%
             </Button>
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className={`mt-3 ${mobile ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}`}>
             {canResume && (
               <Button
                 variant="outline"
                 size="sm"
                 disabled={isMutatingStatus}
                 onClick={() => { void startQuest.mutateAsync(questId); }}
-                className="text-xs h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px]"
+                className={actionButtonClass}
               >
                 <Play className="h-3.5 w-3.5 mr-1" />
                 Resume
@@ -269,7 +184,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
                 size="sm"
                 disabled={isMutatingStatus}
                 onClick={() => { void pauseQuest.mutateAsync(questId); }}
-                className="text-xs h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px]"
+                className={actionButtonClass}
               >
                 <Pause className="h-3.5 w-3.5 mr-1" />
                 Pause
@@ -281,7 +196,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
                 size="sm"
                 disabled={isMutatingStatus}
                 onClick={() => { void completeQuest.mutateAsync({ questId }); }}
-                className="text-xs h-11 border-green-500/30 text-green-300 hover:bg-green-500/10 hover:border-green-500/50 min-h-[44px]"
+                className={`${actionButtonClass} border-green-500/30 text-green-300 hover:bg-green-500/10 hover:border-green-500/50`}
               >
                 <CheckCircle className="h-3.5 w-3.5 mr-1" />
                 Complete
@@ -292,8 +207,8 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
                 variant="outline"
                 size="sm"
                 disabled={isMutatingStatus}
-                onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from mobile quest details' }); }}
-                className="text-xs h-11 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[44px]"
+                onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from quest details' }); }}
+                className="text-xs px-2 h-10 sm:h-9 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
               >
                 <Flag className="h-3.5 w-3.5 mr-1" />
                 Abandon
@@ -303,13 +218,43 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 sm:p-6 space-y-3 sm:space-y-4 sm:space-y-6 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {/* Description */}
+      <div
+        className={`flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 space-y-4 min-h-0 ${
+          mobile ? 'pb-[max(1rem,env(safe-area-inset-bottom))]' : ''
+        }`}
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {quest.description && (
-          <div className="bg-black/30 border border-primary/20 rounded p-2.5 sm:p-3 sm:p-4 holo-border">
-            <div className="text-xs sm:text-sm text-primary/60 mb-2 font-mono">DESCRIPTION</div>
-            <p className="text-xs sm:text-sm sm:text-base text-white/80 leading-relaxed">{quest.description}</p>
+          <div className="bg-black/30 border border-white/10 rounded-xl p-4">
+            <div className="text-xs text-white/45 mb-2 uppercase tracking-wide">Description</div>
+            <p className="text-sm text-white/80 leading-relaxed">{quest.description}</p>
+          </div>
+        )}
+
+        {quest.tags && quest.tags.length > 0 && (
+          <div>
+            <div className="text-xs sm:text-sm text-primary/60 mb-2 font-mono">TAGS</div>
+            <div className="flex flex-wrap gap-1.5">
+              {quest.tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-[10px] sm:text-xs border-primary/25 text-primary/80">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {quest.motivation_notes && (
+          <div className="bg-black/30 border border-emerald-500/20 rounded p-3 sm:p-4">
+            <div className="text-xs sm:text-sm text-emerald-400/60 mb-2 font-mono">WHY THIS MATTERS</div>
+            <p className="text-xs sm:text-sm text-white/75 leading-relaxed">{quest.motivation_notes}</p>
+          </div>
+        )}
+
+        {quest.reward_description && (
+          <div className="bg-black/30 border border-yellow-500/20 rounded p-3 sm:p-4">
+            <div className="text-xs sm:text-sm text-yellow-400/60 mb-2 font-mono">REWARD</div>
+            <p className="text-xs sm:text-sm text-white/75 leading-relaxed">{quest.reward_description}</p>
           </div>
         )}
 
@@ -384,27 +329,38 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
         )}
 
         {/* History */}
-        {history && history.length > 0 && (
+        {(historyLoading || (history && history.length > 0)) && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-3 font-mono">HISTORY</div>
-            <div className="space-y-2">
-              {history.map((event) => (
-                <div key={event.id} className="bg-black/40 border border-primary/20 rounded p-2 sm:p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs sm:text-sm font-medium text-primary font-mono">{event.event_type}</span>
-                    <span className="text-[10px] sm:text-xs text-white/40 font-mono">
-                      {new Date(event.created_at).toLocaleDateString()}
-                    </span>
+            {historyLoading ? (
+              <p className="text-xs text-white/40 font-mono">Loading history…</p>
+            ) : (
+              <div className="space-y-2">
+                {history!.map((event) => (
+                  <div key={event.id} className="bg-black/40 border border-primary/20 rounded p-2 sm:p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span className="text-xs sm:text-sm font-medium text-primary font-mono uppercase">
+                        {event.event_type.replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-[10px] sm:text-xs text-white/40 font-mono shrink-0">
+                        {new Date(event.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {event.description && (
+                      <p className="text-xs sm:text-sm text-white/70">{event.description}</p>
+                    )}
+                    {event.notes && (
+                      <p className="text-xs sm:text-sm text-white/60 mt-1 italic">{event.notes}</p>
+                    )}
+                    {event.progress_before !== undefined && event.progress_after !== undefined && (
+                      <div className="text-[10px] sm:text-xs text-white/50 mt-1 font-mono">
+                        Progress: {event.progress_before}% → {event.progress_after}%
+                      </div>
+                    )}
                   </div>
-                  {event.description && (
-                    <p className="text-xs sm:text-sm text-white/70">{event.description}</p>
-                  )}
-                  {event.notes && (
-                    <p className="text-xs sm:text-sm text-white/60 mt-1 italic">{event.notes}</p>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

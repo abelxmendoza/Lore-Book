@@ -3,6 +3,16 @@ import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { LibraryLanding } from './LibraryLanding';
 
+const mockNavigate = vi.fn();
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 vi.mock('../../hooks/useLoreReadiness', () => ({
   useLoreReadiness: () => ({
     readiness: {
@@ -18,10 +28,10 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
       },
       topics: [],
     },
-    compiledBooks: [],
+    compiledBooks: [{ id: 'compiled-1', title: 'Test Book', created_at: '2025-01-01', chapterCount: 3 }],
     loading: false,
     refresh: async () => {},
-    hasCompiledBook: false,
+    hasCompiledBook: true,
     isSimulated: false,
   }),
 }));
@@ -101,26 +111,32 @@ describe('LibraryLanding', () => {
     expect(mockOnGenerate).not.toHaveBeenCalled();
   });
 
-  it('renders demo books when onReadBook is provided', () => {
-    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
-    expect(screen.getByText('The Keeper of Marrowvale')).toBeInTheDocument();
+  it('renders compiled books when onReadBook is provided', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} />);
+    expect(screen.getAllByText('Test Book').length).toBeGreaterThan(0);
   });
 
-  it('calls onReadBook when Read is clicked on a demo book', async () => {
-    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
+  it('calls onReadBook when Read is clicked on a compiled book', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} />);
     const readBtn = screen.getAllByRole('button', { name: /^Read$/i })[0];
     fireEvent.click(readBtn);
     await waitFor(() => {
-      expect(mockOnReadBook).toHaveBeenCalledWith('demo-1');
+      expect(mockOnReadBook).toHaveBeenCalledWith('compiled-1');
     });
   });
 
-  it('calls onEditBook when Edit is clicked on a demo book', async () => {
-    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
+  it('calls onEditBook when Edit is clicked on a compiled book', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} />);
     const editBtn = screen.getAllByRole('button', { name: /^Edit$/i })[0];
     fireEvent.click(editBtn);
     await waitFor(() => {
-      expect(mockOnEditBook).toHaveBeenCalledWith('demo-1');
+      expect(mockOnEditBook).toHaveBeenCalledWith('compiled-1');
     });
+  });
+
+  it('navigates to lorebook library when Enter LoreBook Library is clicked', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    fireEvent.click(screen.getByRole('button', { name: /enter lorebook library/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/lorebook/library');
   });
 });

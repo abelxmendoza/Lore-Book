@@ -12,6 +12,7 @@
 
 export type { RootType } from './canonical/rootType';
 import type { RootType } from './canonical/rootType';
+import { LORE_COLLECTING_GLOSSARY_ENTRIES } from './glossaryLoreCollecting';
 
 export type RelationshipHint =
   | 'FAMILY_RELATIONSHIP' | 'SOCIAL_RELATIONSHIP' | 'ROMANTIC_RELATIONSHIP'
@@ -125,7 +126,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   E({ keyword: 'vicarious_hearsay', aliases: ['i heard she', 'i heard he', 'apparently they', 'someone said', 'they admitted', 'she admitted', 'he admitted'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.76, confidence: 0.74, relationshipHint: 'ROMANTIC_RELATIONSHIP' }),
   E({ keyword: 'vicarious_anonymous', aliases: ['someone else', 'some guy', 'some girl', 'another man', 'another woman', 'unnamed partner', 'seeing someone'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.72, confidence: 0.7, relationshipHint: 'ROMANTIC_RELATIONSHIP' }),
   E({ keyword: 'vicarious_confirm', aliases: ['they are together', "they're together", 'yeah they', 'definitely seeing', 'confirmed', 'i met him', 'i met her'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.84, confidence: 0.82, relationshipHint: 'ROMANTIC_RELATIONSHIP' }),
-  E({ keyword: 'vicarious_family', aliases: ["'s mom", "'s dad", "'s sister", "'s brother", "'s parents", "'s cousin", 'stepmom', 'stepdad', 'mother-in-law', 'in-law'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.82, confidence: 0.8, relationshipHint: 'FAMILY_RELATIONSHIP' }),
+  E({ keyword: 'vicarious_family', aliases: ["'s mom", "'s dad", "'s sister", "'s brother", "'s parents", "'s cousin", 'stepmom', 'stepdad'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.82, confidence: 0.8, relationshipHint: 'FAMILY_RELATIONSHIP' }),
   E({ keyword: 'vicarious_social', aliases: ["'s roommate", "'s best friend", "'s friend", 'mutual friend', 'lives with', 'hangs out with'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.8, confidence: 0.78, relationshipHint: 'SOCIAL_RELATIONSHIP' }),
   E({ keyword: 'vicarious_work', aliases: ["'s manager", "'s boss", "'s coworker", "'s colleague", 'works with', 'reports to', 'business partner'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.82, confidence: 0.8, relationshipHint: 'WORK_RELATIONSHIP' }),
   E({ keyword: 'vicarious_mentor', aliases: ["'s coach", "'s therapist", "'s mentor", "'s professor", 'life coach', 'counselor'], domain: 'CONCEPT', category: 'RELATIONSHIP_VERB', weight: 0.8, confidence: 0.78, relationshipHint: 'MENTOR_RELATIONSHIP' }),
@@ -355,6 +356,9 @@ export const GLOSSARY: GlossaryEntry[] = [
   E({ keyword: 'ashamed', aliases: ['embarrassed'], domain: 'CONCEPT', category: 'STANCE_AFFECT', subcategory: 'shame', stanceForm: 'EMOTION', weight: 0.85, confidence: 0.85 }),
   E({ keyword: 'disgusted', aliases: [], domain: 'CONCEPT', category: 'STANCE_AFFECT', subcategory: 'disgust', stanceForm: 'EMOTION', weight: 0.8, confidence: 0.8 }),
   E({ keyword: 'shocked', aliases: ['surprised'], domain: 'CONCEPT', category: 'STANCE_AFFECT', subcategory: 'surprise', stanceForm: 'EMOTION', weight: 0.75, confidence: 0.75 }),
+
+  // ── Lore collecting extension (skills, kinship, employment — see glossaryLoreCollecting.ts)
+  ...(LORE_COLLECTING_GLOSSARY_ENTRIES as GlossaryEntry[]),
 ];
 
 // Fast alias → entry lookup (longest aliases first so multi-word wins).

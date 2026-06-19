@@ -44,14 +44,14 @@ const ToastComponent = ({ id, message, type, duration = 5000, onClose }: ToastPr
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg backdrop-blur-sm animate-in slide-in-from-top-5',
+        'flex items-start gap-2.5 sm:items-center sm:gap-3 rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 shadow-lg backdrop-blur-sm animate-in slide-in-from-bottom-4 sm:slide-in-from-top-5 w-full sm:max-w-sm',
         styles[type]
       )}
       role="alert"
       aria-live="polite"
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
-      <p className="flex-1 text-sm font-medium">{message}</p>
+      <p className="flex-1 text-xs sm:text-sm font-medium leading-snug break-words">{message}</p>
       <button
         onClick={onClose}
         className="flex-shrink-0 rounded p-1 hover:bg-white/10 transition-colors"
@@ -63,18 +63,36 @@ const ToastComponent = ({ id, message, type, duration = 5000, onClose }: ToastPr
   );
 };
 
+type ToastPlacement = 'default' | 'demo';
+
+const PLACEMENT_CLASS: Record<ToastPlacement, string> = {
+  // Mobile-first: bottom sheet style; desktop: top-right stack
+  default:
+    'fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[100] flex flex-col gap-2 pointer-events-none sm:inset-x-auto sm:bottom-auto sm:top-4 sm:right-4 sm:max-w-md',
+  demo:
+    'fixed inset-x-3 bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.5rem))] z-[90] flex flex-col gap-2 pointer-events-none sm:inset-x-auto sm:bottom-auto sm:top-[4.25rem] sm:right-3 sm:max-w-sm',
+};
+
 // Toast container component
-export const ToastContainer = ({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) => {
+export const ToastContainer = ({
+  toasts,
+  onRemove,
+  placement = 'default',
+}: {
+  toasts: Toast[];
+  onRemove: (id: string) => void;
+  placement?: ToastPlacement;
+}) => {
   if (toasts.length === 0) return null;
 
   return (
     <div
-      className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-md pointer-events-none"
+      className={PLACEMENT_CLASS[placement]}
       aria-live="polite"
       aria-atomic="true"
     >
       {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
+        <div key={toast.id} className="pointer-events-auto w-full sm:w-auto">
           <ToastComponent {...toast} onClose={() => onRemove(toast.id)} />
         </div>
       ))}
@@ -82,14 +100,19 @@ export const ToastContainer = ({ toasts, onRemove }: { toasts: Toast[]; onRemove
   );
 };
 
+type UseToastOptions = {
+  maxVisible?: number;
+};
+
 // Hook for managing toasts
-export const useToast = () => {
+export const useToast = (options: UseToastOptions = {}) => {
+  const maxVisible = options.maxVisible ?? 2;
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = (message: string, type: ToastType = 'info', duration?: number) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     const newToast: Toast = { id, message, type, duration };
-    setToasts((prev) => [...prev, newToast]);
+    setToasts((prev) => [...prev, newToast].slice(-maxVisible));
     return id;
   };
 
@@ -110,7 +133,9 @@ export const useToast = () => {
     error,
     info,
     warning,
-    ToastContainer: () => <ToastContainer toasts={toasts} onRemove={removeToast} />
+    ToastContainer: ({ placement = 'default' }: { placement?: ToastPlacement } = {}) => (
+      <ToastContainer toasts={toasts} onRemove={removeToast} placement={placement} />
+    ),
   };
 };
 

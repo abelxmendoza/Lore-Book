@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, Type, AlignJustify, Loader2, Download, Menu, X, Edit3 } from 'lucide-react';
 import { LibraryLanding } from './LibraryLanding';
 import { LorebookEmptyState } from './LorebookEmptyState';
-import { SavedBiographies } from './SavedBiographies';
 import { LorebookRecommendations } from './LorebookRecommendations';
 import { BookCoverPage, type ReadingTheme } from './BookCoverPage';
 import { Card, CardContent } from '../ui/card';
@@ -20,9 +19,14 @@ import { LorebookStats } from './LorebookStats';
 import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
 import {
   DEFAULT_DEMO_LOREBOOK,
-  getDemoLorebookById,
 } from '../../mocks/lorebooks';
-import { isDemoBookId, lorebookEditUrl, lorebookReadUrl } from '../../lib/lorebookLibrary';
+import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
+import { compileDemoLorebook } from '../../lib/storyForge/demoLorebookWorkflow';
+import { useLoreReadinessSimulation } from '../../contexts/LoreReadinessSimulationContext';
+import { isDemoBookId, lorebookEditUrl, lorebookEditorUrlForCompiledBooks, lorebookReadUrl } from '../../lib/lorebookLibrary';
+import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { useLorebookShell } from './LorebookShell';
+import type { LoreTopicId } from '../../lib/loreReadiness';
 
 // Biography types (define locally to avoid server import)
 type Biography = {
@@ -101,7 +105,11 @@ interface LoreBookProps {
 export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const inLorebookShell = useLorebookShell();
   const shouldUseMock = useShouldUseMockData();
+  const { compiledBooks, refresh: refreshCompiledBooks, isSimulated } = useLoreReadiness();
+  const { preset, addGeneratedBook } = useLoreReadinessSimulation();
   const { chapters: loreChapters } = useLoreKeeper();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -437,6 +445,26 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   }, [currentPageIndex, allPages, currentSectionIndex, isAnimating]);
 
+  const goToLibrary = useCallback(() => {
+    setShowLibrary(true);
+    setIsCoverVisible(false);
+    setActiveBookId(null);
+    setActiveBookMeta(null);
+    urlBookHandledRef.current = null;
+    navigate('/lorebook', { replace: true });
+  }, [navigate]);
+
+  const isOnLastPage = allPages.length > 0 && currentPageIndex >= allPages.length - 1;
+
+  const handleForwardNavigation = useCallback(() => {
+    if (isAnimating) return;
+    if (isOnLastPage) {
+      goToLibrary();
+      return;
+    }
+    goToNextPage();
+  }, [isAnimating, isOnLastPage, goToLibrary, goToNextPage]);
+
   const goToPage = useCallback((index: number) => {
     if (isAnimating || index < 0 || index >= allPages.length) return;
     
@@ -487,7 +515,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
   // Swipe gesture handlers
   const swipeHandlers = useSwipeGesture({
-    onSwipeLeft: goToNextPage,
+    onSwipeLeft: handleForwardNavigation,
     onSwipeRight: goToPreviousPage,
     threshold: 50
   });
@@ -509,7 +537,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           break;
         case 'ArrowRight':
           e.preventDefault();
-          goToNextPage();
+          handleForwardNavigation();
           break;
         case 'Home':
           e.preventDefault();
@@ -524,7 +552,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToPreviousPage, goToNextPage, goToPage, allPages.length, isAnimating]);
+  }, [goToPreviousPage, handleForwardNavigation, goToPage, allPages.length, isAnimating]);
 
   // Calculate approximate page count for a section
   const calculatePageCount = (section: MemoirSection): number => {
@@ -565,7 +593,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   };
 
   const openDemoBookForReading = useCallback((bookId: string) => {
-    const book = getDemoLorebookById(bookId) ?? DEFAULT_DEMO_LOREBOOK;
+    const book = resolveDemoLorebookById(bookId) ?? DEFAULT_DEMO_LOREBOOK;
     setOutline(book.outline);
     setChapters(book.loreChapters);
     setCurrentPageIndex(0);
@@ -592,22 +620,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     navigate(lorebookReadUrl(biography.id), { replace: true });
   }, [navigate]);
 
-  const goToLibrary = useCallback(() => {
-    setShowLibrary(true);
-    setIsCoverVisible(false);
-    setActiveBookId(null);
-    setActiveBookMeta(null);
-    urlBookHandledRef.current = null;
-    navigate('/lorebook', { replace: true });
-  }, [navigate]);
-
   const goToEditActiveBook = useCallback(() => {
-    if (!activeBookId) {
-      navigate('/memoir');
-      return;
-    }
-    navigate(lorebookEditUrl(activeBookId));
-  }, [activeBookId, navigate]);
+    navigate(activeBookId ? lorebookEditUrl(activeBookId) : lorebookEditorUrlForCompiledBooks(compiledBooks));
+  }, [activeBookId, compiledBooks, navigate]);
 
   const handleSaveAsCore = async (biographyId: string, name: string) => {
     try {
@@ -625,7 +640,39 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowKnowledgeBaseCreator(false);
   };
 
+  const runDemoCompile = useCallback(async (
+    input: { query?: string; topicId?: LoreTopicId },
+    displayQuery: string | null,
+  ) => {
+    const startedAt = Date.now();
+    setGenerating(true);
+    setGeneratingQuery(displayQuery);
+    setShowLibrary(false);
+    setGenerationError(null);
+
+    try {
+      const result = compileDemoLorebook({ ...input, preset });
+      if (!result.ok) {
+        setGenerationError(result.message);
+        return;
+      }
+
+      addGeneratedBook(result.compiled);
+      await refreshCompiledBooks();
+      openDemoBookForReading(result.bookId);
+    } finally {
+      await ensureMinGeneratingDuration(startedAt);
+      setGenerating(false);
+      setGeneratingQuery(null);
+    }
+  }, [addGeneratedBook, openDemoBookForReading, preset, refreshCompiledBooks]);
+
   const handleGenerateFromQuery = async (query: string) => {
+    if (shouldUseMock || isSimulated) {
+      await runDemoCompile({ query }, query);
+      return;
+    }
+
     const startedAt = Date.now();
     setGenerating(true);
     setGeneratingQuery(query);
@@ -656,7 +703,17 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   };
 
+  const handleGenerateFromTopic = async (topicId: string) => {
+    await runDemoCompile({ topicId: topicId as LoreTopicId }, null);
+  };
+
   const handleGenerateFromSpec = async (spec: any, _type?: string) => {
+    if (shouldUseMock || isSimulated) {
+      const query = spec?.title ?? spec?.lorebookName ?? spec?.themes ?? 'My LoreBook';
+      await runDemoCompile({ query: String(query) }, String(query));
+      return;
+    }
+
     const startedAt = Date.now();
     setGenerating(true);
     setGeneratingQuery(spec?.title ?? spec?.lorebookName ?? spec?.themes ?? null);
@@ -693,7 +750,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     if (!bookId || searchParams.get('focus')) return;
     if (urlBookHandledRef.current === bookId && !showLibrary) return;
 
-    if (isDemoBookId(bookId) && shouldUseMock) {
+    if (resolveDemoLorebookById(bookId) && (shouldUseMock || isSimulated)) {
       urlBookHandledRef.current = bookId;
       openDemoBookForReading(bookId);
       return;
@@ -714,7 +771,19 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         }
       })();
     }
-  }, [searchParams, shouldUseMock, showLibrary, openDemoBookForReading, openBiographyForReading]);
+  }, [searchParams, shouldUseMock, isSimulated, showLibrary, openDemoBookForReading, openBiographyForReading]);
+
+  // Bottom nav / shell: return to generate landing when route is bare /lorebook
+  useEffect(() => {
+    const path = location.pathname.split('?')[0];
+    if (path !== '/lorebook' && path !== '/lorebook/') return;
+    if (searchParams.get('book') || searchParams.get('focus')) return;
+    setShowLibrary(true);
+    setIsCoverVisible(false);
+    setActiveBookId(null);
+    setActiveBookMeta(null);
+    urlBookHandledRef.current = null;
+  }, [location.pathname, searchParams]);
 
   // Full-screen generating animation
   if (generating) {
@@ -728,8 +797,15 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         onGenerate={(query) => {
           void handleGenerateFromQuery(query);
         }}
+        onGenerateTopic={(topicId) => {
+          if (shouldUseMock || isSimulated) {
+            void handleGenerateFromTopic(topicId);
+          } else {
+            void handleGenerateFromQuery(topicId);
+          }
+        }}
         onReadBook={(bookId) => {
-          if (isDemoBookId(bookId) && shouldUseMock) {
+          if (resolveDemoLorebookById(bookId) && (shouldUseMock || isSimulated)) {
             openDemoBookForReading(bookId);
           }
         }}
@@ -737,15 +813,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           navigate(lorebookEditUrl(bookId));
         }}
         generating={generating}
-        isMockData={shouldUseMock}
         bottomSlot={
-          !shouldUseMock && (
+          (shouldUseMock || isSimulated) ? undefined : (
             <div className="space-y-8 mt-8">
-              <SavedBiographies
-                onReadBook={openBiographyForReading}
-                onEditBook={(bookId) => navigate(lorebookEditUrl(bookId))}
-                onSaveAsCore={handleSaveAsCore}
-              />
               <div>
                 <p className="text-xs text-white/35 uppercase tracking-widest font-mono mb-4">Suggested next lorebooks</p>
                 <LorebookRecommendations onGenerate={handleGenerateFromSpec} />
@@ -888,7 +958,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   // Cover page — full-screen before the reader
   if (isCoverVisible && outline) {
     return (
-      <div className={`h-screen w-full theme-${theme}`} data-testid="lorebook-cover">
+      <div className={`${inLorebookShell ? 'h-full' : 'h-screen'} w-full theme-${theme}`} data-testid="lorebook-cover">
         <BookCoverPage
           title={outline.title || 'My Lore Book'}
           scope={activeBookMeta?.scope ?? outline.metadata?.languageStyle}
@@ -1172,9 +1242,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
             <button
               type="button"
               className="w-[30%] h-full cursor-pointer pointer-events-auto focus:outline-none focus:ring-2 focus:ring-primary/50"
-              onClick={goToNextPage}
-              disabled={currentPageIndex >= allPages.length - 1 || isAnimating}
-              aria-label="Next page"
+              onClick={handleForwardNavigation}
+              disabled={isAnimating || allPages.length === 0}
+              aria-label={isOnLastPage ? 'Back to LoreBook Library' : 'Next page'}
               tabIndex={0}
             />
           </div>
@@ -1299,13 +1369,28 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={goToNextPage}
-          disabled={currentPageIndex >= allPages.length - 1 || isAnimating}
-          className={`disabled:opacity-30 min-w-[44px] min-h-[44px] ${theme === 'daylight' ? 'text-[#3a2e1a]/60 hover:text-[#1a1208]' : 'text-white/70 hover:text-white'}`}
-          rightIcon={<ChevronRight className="h-5 w-5" />}
-          aria-label="Next page"
+          onClick={handleForwardNavigation}
+          disabled={isAnimating || allPages.length === 0}
+          className={`min-w-[44px] min-h-[44px] ${
+            isOnLastPage
+              ? theme === 'daylight'
+                ? 'text-primary hover:text-primary/80 hover:bg-primary/10'
+                : 'text-primary hover:text-primary/80 hover:bg-primary/10'
+              : theme === 'daylight'
+                ? 'text-[#3a2e1a]/60 hover:text-[#1a1208]'
+                : 'text-white/70 hover:text-white'
+          } disabled:opacity-30`}
+          rightIcon={
+            isOnLastPage ? (
+              <BookMarked className="h-5 w-5" />
+            ) : (
+              <ChevronRight className="h-5 w-5" />
+            )
+          }
+          aria-label={isOnLastPage ? 'Back to LoreBook Library' : 'Next page'}
         >
-          <span className="hidden sm:inline">Next</span>
+          <span className="hidden sm:inline">{isOnLastPage ? 'Library' : 'Next'}</span>
+          <span className="sm:hidden">{isOnLastPage ? 'Library' : ''}</span>
         </Button>
       </div>
 

@@ -7,6 +7,8 @@ import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
 import { useThreadExplorer } from '../hooks/useThreadExplorer';
 import type { ThreadExploreHit } from '../../../api/threadExplorer';
 import { lexicalRescanApi, type KeywordRescanSummary } from '../../../api/lexicalRescan';
+import { sanitizeInlineError } from '../../../lib/backendErrorDisplay';
+import { useMockData } from '../../../contexts/MockDataContext';
 
 type ChatThreadListProps = {
   threads: ChatThread[];
@@ -95,6 +97,7 @@ function ThreadItem({
   onDelete,
   onRename,
   exploreHit,
+  enterIndex = 0,
 }: {
   thread: ChatThread;
   displayTitle: string;
@@ -104,6 +107,7 @@ function ThreadItem({
   onDelete: (e: React.MouseEvent) => void;
   onRename?: (newTitle: string) => void;
   exploreHit?: ThreadExploreHit;
+  enterIndex?: number;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -228,20 +232,23 @@ function ThreadItem({
   }
 
   return (
-    <li className="relative">
+    <li
+      className="relative chat-thread-enter"
+      style={{ animationDelay: `${Math.min(enterIndex, 8) * 35}ms` }}
+    >
       {/* Active left-edge indicator bar */}
       {isActive && (
         <span
-          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-primary"
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-primary chat-thread-active-bar"
           aria-hidden
         />
       )}
       <div
         className={cn(
-          'group flex items-center gap-1 rounded-lg cursor-pointer transition-colors min-h-[44px] sm:min-h-0',
+          'group flex items-center gap-1 rounded-lg cursor-pointer transition-all duration-200 min-h-[44px] sm:min-h-0',
           isActive
-            ? 'bg-primary/[0.13] text-white'
-            : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90'
+            ? 'bg-primary/[0.13] text-white shadow-sm shadow-primary/5'
+            : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90 hover:translate-x-0.5'
         )}
       >
         <button
@@ -383,6 +390,7 @@ export const ChatThreadList = ({
   threadError = null,
   onDismissThreadError,
 }: ChatThreadListProps) => {
+  const { backendUnavailable } = useMockData();
   const drawerSwipeStartX = useRef<number | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -390,6 +398,9 @@ export const ChatThreadList = ({
   const [lexicalScanning, setLexicalScanning] = useState(false);
   const [lexicalResult, setLexicalResult] = useState<KeywordRescanSummary | null>(null);
   const [lexicalError, setLexicalError] = useState<string | null>(null);
+  const visibleThreadError = sanitizeInlineError(threadError, {
+    suppressBackendNoise: backendUnavailable,
+  });
   const [showLexicalPanel, setShowLexicalPanel] = useState(false);
   const {
     hits: exploreHits,
@@ -512,9 +523,13 @@ export const ChatThreadList = ({
         )}
       </div>
 
-      {!collapsed && threadError && (
-        <div className="mx-2 mt-2 px-2.5 py-2 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 flex-shrink-0">
-          <p className="text-[11px] text-red-300/90 leading-snug flex-1">{threadError}</p>
+      {!collapsed && visibleThreadError && (
+        <div className={`mx-2 mt-2 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 flex-shrink-0 ${
+          isMobile ? 'px-2 py-1.5' : 'px-2.5 py-2'
+        }`}>
+          <p className={`text-red-300/90 leading-snug flex-1 ${isMobile ? 'text-[10px] line-clamp-2' : 'text-[11px]'}`}>
+            {visibleThreadError}
+          </p>
           {onDismissThreadError && (
             <button
               type="button"
@@ -700,13 +715,14 @@ export const ChatThreadList = ({
                   {label}
                 </p>
                 <ul className="space-y-0.5">
-                  {groupThreads.map((t) => {
+                  {groupThreads.map((t, threadIdx) => {
                     const hit = hitByThreadId.get(t.id);
                     const topSnippet = hit?.snippets[0];
                     return (
                     <ThreadItem
                       key={t.id}
                       thread={t}
+                      enterIndex={threadIdx}
                       displayTitle={titleLabels.get(t.id) ?? resolveThreadDisplayTitle(t)}
                       isActive={currentThreadId === t.id}
                       isMobile={isMobile}
@@ -726,7 +742,10 @@ export const ChatThreadList = ({
             {hasMoreThreads && !exploreActive && !searchQuery.trim() && (
               <div ref={loadMoreSentinelRef} className="py-3 flex justify-center">
                 {loadingMoreThreads ? (
-                  <Loader2 className="h-4 w-4 text-primary/60 animate-spin" />
+                  <div className="flex items-center gap-2 text-xs text-white/40">
+                    <Loader2 className="h-4 w-4 text-primary/70 animate-spin" />
+                    <span>Loading threads…</span>
+                  </div>
                 ) : (
                   <button
                     type="button"

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { characterSuggestionsApi } from '../../api/entitySuggestions';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
@@ -51,6 +52,36 @@ describe('DetectedCharacterSuggestions', () => {
 
     expect(screen.getByText(/Romantic interests detected/i)).toBeInTheDocument();
     expect(screen.getByText('Priya')).toBeInTheDocument();
+  });
+
+  it('simulates adding a romantic suggestion with effects in demo mode', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onAdded = vi.fn();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    render(
+      <DetectedCharacterSuggestions
+        demoMode
+        variant="romantic"
+        existingCharacterNames={getMockCharacterSuggestionBookNames('romantic')}
+        onCharacterAdded={onAdded}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add Priya' }));
+    expect(screen.getByText(/Adding/i)).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(1100);
+
+    expect(onAdded).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Priya', archetype: 'romantic' })
+    );
+    expect(screen.queryByText('Priya')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('keeps rescan controls visible when there are no live suggestions', async () => {

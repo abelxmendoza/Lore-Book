@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { Calendar, Edit2, Sparkles } from 'lucide-react';
 import type { TimelineResponse } from '../../hooks/useLoreKeeper';
 import { Button } from '../ui/button';
+import { buildMonthlyAxisTicks, buildQuadrennialAxisTicks } from './timelineRulerTicks';
 
 type TimelineGraphProps = {
   timeline: TimelineResponse;
@@ -98,6 +99,14 @@ export const TimelineGraph = ({ timeline, onEditChapter, onEditSaga }: TimelineG
     return (daysSinceStart / totalDays) * 100;
   };
 
+  const axisTicks = useMemo(() => {
+    const xOf = (d: Date) => getPosition(d);
+    const useAllMonths = totalDays <= 900;
+    return useAllMonths
+      ? buildMonthlyAxisTicks(minDate, maxDate, xOf)
+      : buildQuadrennialAxisTicks(minDate, maxDate, xOf);
+  }, [minDate, maxDate, totalDays]);
+
   const getWidth = (startDate: Date, endDate?: Date) => {
     if (!endDate) return 2; // Single point
     const days = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -138,22 +147,23 @@ export const TimelineGraph = ({ timeline, onEditChapter, onEditSaga }: TimelineG
     <div className="relative w-full h-full overflow-auto" ref={containerRef}>
       <div className="relative min-w-full" style={{ height: `${Math.max(400, nodes.length * 60)}px` }}>
         {/* Time axis */}
-        <div className="sticky top-0 z-10 bg-black/80 border-b border-border/60 pb-2 mb-4">
-          <div className="relative h-8">
-            {[0, 25, 50, 75, 100].map((percent) => {
-              const date = new Date(minDate.getTime() + (percent / 100) * totalDays * 24 * 60 * 60 * 1000);
-              return (
-                <div
-                  key={percent}
-                  className="absolute top-0 border-l border-white/20 h-full"
-                  style={{ left: `${percent}%` }}
-                >
-                  <div className="absolute -top-6 left-0 transform -translate-x-1/2 text-xs text-white/60 whitespace-nowrap">
-                    {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </div>
+        <div className="sticky top-0 z-10 border-b-2 border-primary/40 bg-gradient-to-b from-primary/[0.14] via-black/90 to-black/95 pb-2 mb-4 shadow-[inset_0_-1px_0_rgba(255,255,255,0.06)]">
+          <div className="relative h-10">
+            {axisTicks.map((tick, idx) => (
+              <div
+                key={idx}
+                className="absolute top-0 border-l-2 border-primary/50 h-full -translate-x-1/2"
+                style={{ left: `${tick.x}%` }}
+              >
+                <div className={`absolute top-1 left-0 transform -translate-x-1/2 whitespace-nowrap font-mono ${
+                  tick.major
+                    ? 'text-[10px] sm:text-xs font-bold text-white px-2 py-0.5 rounded-md bg-primary/30 border border-primary/50 shadow-[0_0_10px_rgba(99,102,241,0.25)]'
+                    : 'text-[9px] font-semibold text-white/60'
+                }`}>
+                  {tick.label}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
 

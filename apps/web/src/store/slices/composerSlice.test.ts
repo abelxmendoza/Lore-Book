@@ -16,6 +16,7 @@ const initial: ComposerState = {
   draftText: '',
   matches: [],
   dismissedSlots: [],
+  confirmingSlots: [],
   indexReady: false,
   indexError: null,
 };
@@ -71,6 +72,7 @@ describe('composerSelectors', () => {
         draftText: 'Abel',
         matches: [sampleMatch, { ...sampleMatch, id: 'sug:character:kelly', name: 'Kelly', status: 'suggestion' }],
         dismissedSlots: ['character:uuid-abel'],
+        confirmingSlots: [],
         indexReady: true,
         indexError: null,
       },
@@ -81,6 +83,7 @@ describe('composerSelectors', () => {
       total: 1,
       confirmed: 0,
       suggested: 1,
+      draft: 0,
       prefix: 0,
     });
   });

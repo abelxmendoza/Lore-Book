@@ -199,30 +199,12 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
 
       // Use mock data if toggle is enabled or no real data exists
       if (useMock) {
-        // Always register mock data first
-        mockDataService.register.goalsValues(MOCK_GOALS_VALUES_DATA);
-        const existingMock = mockDataService.get.goalsValues();
-        
-        console.log('[useGoalsAndValues] Using mock data:', {
-          values: MOCK_GOALS_VALUES_DATA.values.length,
-          goals: MOCK_GOALS_VALUES_DATA.goals.length,
-          snapshots: MOCK_GOALS_VALUES_DATA.alignmentSnapshots.length,
-          drift: MOCK_GOALS_VALUES_DATA.driftObservations.length,
-          existingMock: !!existingMock,
-        });
-        
-        // Always use MOCK_GOALS_VALUES_DATA directly to ensure it's loaded
-        setValues(MOCK_GOALS_VALUES_DATA.values);
-        setGoals(MOCK_GOALS_VALUES_DATA.goals);
-        setAlignmentSnapshots(MOCK_GOALS_VALUES_DATA.alignmentSnapshots);
-        setDriftObservations(MOCK_GOALS_VALUES_DATA.driftObservations);
-        
-        console.log('[useGoalsAndValues] Set mock data directly:', {
-          valuesSet: MOCK_GOALS_VALUES_DATA.values.length,
-          goalsSet: MOCK_GOALS_VALUES_DATA.goals.length,
-          snapshotsSet: MOCK_GOALS_VALUES_DATA.alignmentSnapshots.length,
-          driftSet: MOCK_GOALS_VALUES_DATA.driftObservations.length,
-        });
+        const payload = mockDataService.mutate.goalsValues.ensureSeed();
+        mockDataService.register.goalsValues(payload);
+        setValues(payload.values);
+        setGoals(payload.goals);
+        setAlignmentSnapshots(payload.alignmentSnapshots);
+        setDriftObservations(payload.driftObservations);
       } else {
         // Use real data
         setValues(fetchedValues);
@@ -254,6 +236,17 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
 
   const updateValuePriority = useCallback(async (id: string, priority: number) => {
     try {
+      if (shouldUseMock) {
+        mockDataService.mutate.goalsValues.updateValuePriority(id, priority);
+        const payload = mockDataService.get.goalsValues();
+        if (payload) {
+          setValues(payload.values);
+          setGoals(payload.goals);
+          setAlignmentSnapshots(payload.alignmentSnapshots);
+          setDriftObservations(payload.driftObservations);
+        }
+        return;
+      }
       await fetchJson(`/api/goals/values/${id}/priority`, {
         method: 'PATCH',
         headers: {
@@ -265,7 +258,7 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to update value priority');
     }
-  }, [fetchData]);
+  }, [fetchData, shouldUseMock]);
 
   const getGoalWithAlignment = useCallback(async (id: string): Promise<GoalWithAlignment | null> => {
     try {
@@ -304,6 +297,18 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!shouldUseMock) return;
+    return mockDataService.subscribe(() => {
+      const payload = mockDataService.get.goalsValues();
+      if (!payload) return;
+      setValues(payload.values);
+      setGoals(payload.goals);
+      setAlignmentSnapshots(payload.alignmentSnapshots);
+      setDriftObservations(payload.driftObservations);
+    });
+  }, [shouldUseMock]);
 
   const getPanelData = useCallback((): GoalsValuesPanelData => {
     return {

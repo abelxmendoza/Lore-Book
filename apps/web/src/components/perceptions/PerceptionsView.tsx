@@ -947,9 +947,9 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         <Card className="bg-black/40 border-border/60 overflow-hidden">
           <CardContent className="p-0">
             {/* Book Page Container */}
-            <div className="relative w-full min-h-[600px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl overflow-hidden">
+            <div className="relative w-full min-h-[72dvh] sm:min-h-[600px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl overflow-hidden">
               {/* Page Content */}
-              <div className="absolute inset-0 p-6 flex flex-col">
+              <div className="absolute inset-0 flex flex-col p-3 sm:p-6">
                 {/* Page Header */}
                 <div className="flex items-center justify-between mb-4 pb-4 border-b border-orange-800/20">
                   <div className="flex items-center gap-3">
@@ -970,7 +970,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                 </div>
 
                 {/* Perceptions Grid */}
-                <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-6 overflow-y-auto">
+                <div className="mb-4 flex min-h-0 flex-1 grid grid-cols-3 gap-2 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {paginatedPerceptions.map((perception, index) => (
                     <PerceptionEntryCard
                       key={perception.id || `perception-${index}`}

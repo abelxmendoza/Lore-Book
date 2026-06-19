@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import {
-  BookOpen, MessageSquare, Sparkles, FileText, Users, MapPin,
-  ChevronRight, Lock, CheckCircle2, Loader2, PenLine, Brain,
+  MessageSquare, Sparkles, FileText, Users, MapPin,
+  Lock, CheckCircle2, Loader2, Brain,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
@@ -12,7 +12,6 @@ import {
 } from '../../lib/loreReadiness';
 import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
 import type { LoreReadinessSummary } from '../../lib/loreReadiness';
-import { lorebookEditUrl } from '../../lib/lorebookLibrary';
 import { cn } from '../../lib/cn';
 import { LoreReadinessSimulator } from './LoreReadinessSimulator';
 
@@ -29,7 +28,7 @@ const FLOW_STEPS = [
   { id: 'collect', label: 'Collect', icon: MessageSquare, hint: 'Chat & journal' },
   { id: 'assess', label: 'Assess', icon: Brain, hint: 'Knowledge counts' },
   { id: 'compile', label: 'Compile', icon: Sparkles, hint: 'Generate book' },
-  { id: 'edit', label: 'Edit', icon: PenLine, hint: 'Refine prose' },
+  { id: 'edit', label: 'Edit', icon: Sparkles, hint: 'Refine prose' },
 ] as const;
 
 function ProgressBar({ value, level }: { value: number; level: LoreReadinessLevel }) {
@@ -192,7 +191,7 @@ export const LoreReadinessPanel = ({
       {/* CTAs */}
       <div className="flex flex-wrap gap-2">
         {!readiness.canGenerateAnyBook && (
-          <Button onClick={() => (onGoToChat ? onGoToChat() : navigate('/'))} leftIcon={<MessageSquare className="h-4 w-4" />}>
+          <Button onClick={() => (onGoToChat ? onGoToChat() : navigate('/chat'))} leftIcon={<MessageSquare className="h-4 w-4" />}>
             Add knowledge via chat
           </Button>
         )}
@@ -211,47 +210,6 @@ export const LoreReadinessPanel = ({
             Building: {buildingTopics.slice(0, 3).map((t) => t.topic.label).join(', ')}
             {buildingTopics.length > 3 ? ` +${buildingTopics.length - 3} more` : ''}
           </p>
-        )}
-      </div>
-
-      {/* Compiled books → edit unlock */}
-      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <PenLine className="h-4 w-4 text-primary/70" />
-          <p className="text-sm font-semibold text-white">Editor access</p>
-          {compiledBooks.length === 0 && (
-            <span className="ml-auto text-[10px] font-mono uppercase text-white/35 flex items-center gap-1">
-              <Lock className="h-3 w-3" /> Locked until compiled
-            </span>
-          )}
-        </div>
-        {compiledBooks.length === 0 ? (
-          <p className="text-sm text-white/45">
-            The lore editor opens after you generate a lorebook. Compilation turns collected knowledge into editable chapters.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {compiledBooks.map((book) => (
-              <li key={book.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(lorebookEditUrl(book.id))}
-                  className="w-full flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 hover:border-primary/30 hover:bg-primary/5 px-3 py-2.5 text-left transition-all group"
-                >
-                  <BookOpen className="h-4 w-4 text-primary/60 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{book.title}</p>
-                    <p className="text-[11px] text-white/35 font-mono">
-                      {book.chapterCount ?? 0} chapters · compiled
-                    </p>
-                  </div>
-                  <span className="text-xs text-primary/70 group-hover:text-primary flex items-center gap-0.5 shrink-0">
-                    Edit <ChevronRight className="h-3.5 w-3.5" />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
         )}
       </div>
     </div>

@@ -1,7 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChatMessage, type Message, type ChatSource, type ChatSuggestedAction } from './ChatMessage';
 import { groupMessagesByDate } from '../utils/messageGrouping';
 import { scrollToMessage } from '../utils/scrollToMessage';
+import type { EntityMentionRef } from '../../../lib/entityMentions';
+import { entityMentionsFromMessage } from '../../../lib/entityMentions';
+
+function buildThreadMentionContext(messages: Message[]): Map<string, EntityMentionRef[]> {
+  const known = new Map<string, EntityMentionRef>();
+  const byMessage = new Map<string, EntityMentionRef[]>();
+
+  for (const message of messages) {
+    for (const entity of entityMentionsFromMessage(message)) {
+      known.set(entity.id, entity);
+    }
+    byMessage.set(message.id, [...known.values()]);
+  }
+
+  return byMessage;
+}
 
 type ChatMessageListProps = {
   messages: Message[];
@@ -40,7 +56,24 @@ export const ChatMessageList = ({
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
+  const previousCountRef = useRef(0);
+  const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
   const groupedMessages = groupMessagesByDate(messages);
+  const threadMentionContext = buildThreadMentionContext(messages);
+
+  // Animate newly appended messages (skip bulk thread hydration)
+  useEffect(() => {
+    const prevCount = previousCountRef.current;
+    const delta = messages.length - prevCount;
+    previousCountRef.current = messages.length;
+
+    if (delta <= 0 || delta > 3) return;
+
+    const newIds = messages.slice(-delta).map((m) => m.id);
+    setEnteringIds(new Set(newIds));
+    const timer = window.setTimeout(() => setEnteringIds(new Set()), 650);
+    return () => window.clearTimeout(timer);
+  }, [messages]);
 
   // Scroll to bottom on thread/message switches and while the user is already
   // near the bottom. Avoid yanking position on every streaming chunk.
@@ -77,7 +110,7 @@ export const ChatMessageList = ({
         {groupedMessages.map((group) => (
           <div key={group.date}>
             {/* Date Header - ChatGPT style */}
-            <div className="sticky top-0 z-10 flex items-center gap-3 sm:gap-4 lg:gap-6 my-6 sm:my-8 lg:my-10">
+            <div className="sticky top-0 z-10 flex items-center gap-3 sm:gap-4 lg:gap-6 my-6 sm:my-8 lg:my-10 chat-date-header-enter">
               <div className="flex-1 border-t border-white/10" />
               <span className="text-xs sm:text-sm text-white/40 font-medium px-3 sm:px-4 py-1 sm:py-1.5 bg-black/40 rounded-full border border-white/10">
                 {group.dateLabel}
@@ -102,6 +135,8 @@ export const ChatMessageList = ({
               >
                 <ChatMessage
                   message={message}
+                  threadEntityMentions={threadMentionContext.get(message.id) ?? []}
+                  animateEnter={enteringIds.has(message.id)}
                   showCognitiveTrace={showCognitiveTrace}
                   onCopy={onCopy ? () => onCopy(message.id) : undefined}
                   onRegenerate={message.role === 'assistant' && onRegenerate ? () => onRegenerate(message.id) : undefined}

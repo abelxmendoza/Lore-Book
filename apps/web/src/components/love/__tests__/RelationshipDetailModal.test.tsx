@@ -153,7 +153,7 @@ describe('RelationshipDetailModal', () => {
     await user.click(timelineTab);
 
     await waitFor(() => {
-      expect(screen.getByText(/relationship period/i)).toBeInTheDocument();
+      expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
     });
   });
 
@@ -170,8 +170,26 @@ describe('RelationshipDetailModal', () => {
     await user.click(timelineTab);
 
     await waitFor(() => {
-      // "First date" appears in both <h4> and <p> (description), so use getAllByText
+      expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
       expect(screen.getAllByText(/first date/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows their connections tab with romantic periphery', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('tab-their-connections'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('relationship-peripherals-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('peripheral-card-periph-alex-coworker')).toBeInTheDocument();
+      expect(screen.getByTestId('their-connections-open-character-network')).toBeInTheDocument();
     });
   });
 

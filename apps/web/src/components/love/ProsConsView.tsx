@@ -1,10 +1,8 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState } from 'react';
-import { Plus, AlertTriangle, CheckCircle, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
+import { RelationshipFlagsPanel } from './RelationshipFlagsPanel';
 
 interface ProsConsViewProps {
   relationshipId: string;
@@ -69,52 +67,7 @@ export const ProsConsView = ({ pros, cons, redFlags, greenFlags }: ProsConsViewP
         </Card>
       </div>
 
-      {/* Flags */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Green Flags */}
-        {greenFlags.length > 0 && (
-          <Card className="border-green-500/30 bg-green-950/10">
-            <CardHeader>
-              <CardTitle className="text-green-300 flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" />
-                Green Flags ({greenFlags.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {greenFlags.map((flag, idx) => (
-                  <li key={idx} className="text-sm text-white/80 flex items-start gap-2">
-                    <span className="text-green-400 mt-1">✓</span>
-                    <span>{flag}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Red Flags */}
-        {redFlags.length > 0 && (
-          <Card className="border-red-500/30 bg-red-950/10">
-            <CardHeader>
-              <CardTitle className="text-red-300 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" />
-                Red Flags ({redFlags.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {redFlags.map((flag, idx) => (
-                  <li key={idx} className="text-sm text-white/80 flex items-start gap-2">
-                    <span className="text-red-400 mt-1">⚠</span>
-                    <span>{flag}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      <RelationshipFlagsPanel redFlags={redFlags} greenFlags={greenFlags} />
 
       {/* Chat Prompt */}
       <Card className="border-primary/30 bg-primary/10">

@@ -9,8 +9,11 @@ import {
   dismissComposerMatch,
   setComposerDraft,
   composerMatchSlot,
+  addComposerConfirming,
+  removeComposerConfirming,
 } from '../../../store/slices/composerSlice';
-import { selectVisibleComposerMatches } from '../../../store/selectors/composerSelectors';
+import { selectVisibleComposerMatches, selectComposerConfirmingSlots } from '../../../store/selectors/composerSelectors';
+import { confirmComposerEntity } from '../../../lib/confirmComposerEntity';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 
@@ -20,7 +23,9 @@ export const useChatComposer = (
 ) => {
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
+  const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
   const [input, setInputState] = useState(initialValue || '');
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,7 +84,7 @@ export const useChatComposer = (
     if (!input.trim()) return;
 
     const parsed = parseSlashCommand(input);
-    const entitiesToSend = visibleMatches;
+    const entitiesToSend = visibleMatches.filter((m) => m.status !== 'draft');
     if (parsed) {
       onSubmit(input.trim(), entitiesToSend);
     } else {
@@ -94,6 +99,25 @@ export const useChatComposer = (
       dispatch(dismissComposerMatch(composerMatchSlot(match)));
     },
     [dispatch]
+  );
+
+  const confirmMatch = useCallback(
+    async (match: CertifiedEntityMatch) => {
+      if (match.status === 'confirmed' || !match.status) return;
+      const slot = composerMatchSlot(match);
+      dispatch(addComposerConfirming(slot));
+      setConfirmError(null);
+      try {
+        await confirmComposerEntity(match);
+        entityIndexer.retryLoad();
+        entityIndexer.analyze(input);
+      } catch (error) {
+        setConfirmError(error instanceof Error ? error.message : 'Could not confirm entity');
+      } finally {
+        dispatch(removeComposerConfirming(slot));
+      }
+    },
+    [dispatch, entityIndexer, input]
   );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -124,7 +148,10 @@ export const useChatComposer = (
     autoTagger,
     entityIndexer,
     visibleMatches,
+    confirmingSlots,
+    confirmError,
     dismissMatch,
+    confirmMatch,
     handleSubmit,
     handleKeyDown,
     insertSuggestion

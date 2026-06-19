@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  BookOpen, Search, Sparkles, User, Briefcase, Clock,
-  Heart, Zap, MapPin, Calendar, Loader2, BookMarked, ChevronRight, Edit3,
+  BookOpen, BookMarked, Search, Sparkles, User, Briefcase, Clock,
+  Heart, Zap, MapPin, Calendar, Loader2, ChevronRight, Edit3,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
@@ -26,17 +26,42 @@ const CATEGORIES: BookCategory[] = [
   { id: 'event',        label: 'An Event',         icon: Calendar,   prompt: 'the story of ',                gradient: 'from-violet-600 to-purple-700',   description: 'One moment, zoomed in' },
 ];
 
-import { cn } from '../../lib/cn';
+import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
+import { LorebookGeneratorSectionTitle, LorebookLibraryHero } from './LorebookSectionTitles';
 import { LoreReadinessPanel } from './LoreReadinessPanel';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
-import { READINESS_COLORS, READINESS_LABELS } from '../../lib/loreReadiness';
+import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
+
+const LIBRARY_BOOK_STYLES = [
+  { gradient: 'from-purple-600 to-indigo-700', accent: 'text-purple-300', border: 'border-purple-500/25' },
+  { gradient: 'from-emerald-600 to-teal-700', accent: 'text-emerald-300', border: 'border-emerald-500/25' },
+  { gradient: 'from-amber-600 to-orange-700', accent: 'text-amber-300', border: 'border-amber-500/25' },
+  { gradient: 'from-pink-600 to-rose-700', accent: 'text-pink-300', border: 'border-pink-500/25' },
+] as const;
+
+function libraryBookPresentation(book: CompiledLorebook, index: number) {
+  const catalog = DEMO_LOREBOOK_CATALOG.find((entry) => entry.id === book.id);
+  const style = LIBRARY_BOOK_STYLES[index % LIBRARY_BOOK_STYLES.length];
+  return {
+    title: book.title,
+    scope: book.is_core_lorebook ? 'Core edition' : book.lorebook_name ?? catalog?.scope ?? 'Compiled lorebook',
+    period: catalog?.period ?? new Date(book.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+    chapters: book.chapterCount ?? catalog?.chapters ?? 0,
+    pages: catalog?.pages ?? Math.max((book.chapterCount ?? 0) * 4, book.chapterCount ?? 0),
+    gradient: catalog?.gradient ?? style.gradient,
+    accent: catalog?.accent ?? style.accent,
+    border: catalog?.border ?? style.border,
+  };
+}
 
 interface LibraryLandingProps {
   onGenerate: (query: string) => void;
+  onGenerateTopic?: (topicId: string) => void;
   onReadBook?: (bookId: string) => void;
   onEditBook?: (bookId: string) => void;
   generating?: boolean;
+  /** @deprecated Library rows come from compiled lorebooks only. */
   isMockData?: boolean;
   /** Slot rendered below the "Recently generated" section — e.g. saved books, recommendations. */
   bottomSlot?: React.ReactNode;
@@ -44,10 +69,10 @@ interface LibraryLandingProps {
 
 export const LibraryLanding = ({
   onGenerate,
+  onGenerateTopic,
   onReadBook,
   onEditBook,
   generating = false,
-  isMockData = false,
   bottomSlot,
 }: LibraryLandingProps) => {
   const navigate = useNavigate();
@@ -84,22 +109,11 @@ export const LibraryLanding = ({
 
       <div className="relative z-10 flex flex-col flex-1 px-4 sm:px-8 lg:px-16 py-6 sm:py-12 max-w-5xl mx-auto w-full">
 
-        {/* Header */}
-        <div className="text-center mb-7 sm:mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 mb-4">
-            <BookMarked className="h-3.5 w-3.5 text-primary/70" />
-            <span className="text-xs text-primary/70 font-mono tracking-wider uppercase">LoreBook Library</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
-            Your LoreBook Library
-          </h1>
-          <p className="text-white/50 text-sm sm:text-base max-w-sm mx-auto">
-            Generate a book from your life, or open one you've made.
-          </p>
-        </div>
+        <LorebookLibraryHero subtitle="Generate a book from your life, or open one you've made." />
 
         {/* Generation search bar */}
         <div className="mb-6 sm:mb-8">
+          <LorebookGeneratorSectionTitle />
           <div className="relative flex items-center gap-2 sm:gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/25 pointer-events-none" />
@@ -169,114 +183,91 @@ export const LibraryLanding = ({
               compiledBooks={compiledBooks}
               loading={readinessLoading}
               variant="compact"
-              onGenerateTopic={() => handleSubmit()}
-              onGoToChat={() => navigate('/')}
+              onGenerateTopic={(topicId) => onGenerateTopic?.(topicId) ?? handleSubmit()}
+              onGoToChat={() => navigate('/chat')}
             />
           </div>
         )}
 
-        {/* Editor entry — only when compiled books exist */}
+        {/* Library entry */}
         <div className="mb-8 sm:mb-10">
-          {compiledBooks.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/memoir?book=${encodeURIComponent(compiledBooks[0].id)}`)}
-              className="group w-full flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/10 px-4 py-3.5 text-left transition-all"
-            >
-              <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-700 opacity-90 group-hover:opacity-100 transition-opacity">
-                <Edit3 className="h-4 w-4 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white group-hover:text-emerald-100 transition-colors">Edit compiled lorebook</p>
-                <p className="text-xs text-white/40 mt-0.5">
-                  {compiledBooks.length} compiled · opens the editor on generated chapters
-                </p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-emerald-400/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => navigate('/memoir')}
-              className="group w-full flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 hover:bg-white/5 px-4 py-3.5 text-left transition-all opacity-90"
-            >
-              <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-indigo-600/60 to-violet-700/60">
-                <Edit3 className="h-4 w-4 text-white/70" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white/60">Lore editor (locked)</p>
-                <p className="text-xs text-white/35 mt-0.5">
-                  {readiness?.canGenerateAnyBook
-                    ? 'Compile a lorebook first — then editing unlocks'
-                    : readiness
-                      ? `${READINESS_LABELS[readiness.overallLevel]} · keep chatting to build knowledge`
-                      : 'Compile a lorebook before editing'}
-                </p>
-              </div>
-              {readiness && (
-                <span className={cn('text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border shrink-0', READINESS_COLORS[readiness.overallLevel])}>
-                  {READINESS_LABELS[readiness.overallLevel]}
-                </span>
-              )}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => navigate(lorebookLibraryUrl())}
+            className="group w-full flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 hover:bg-primary/10 px-4 py-3.5 text-left transition-all"
+          >
+            <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-700 opacity-90 group-hover:opacity-100 transition-opacity">
+              <BookMarked className="h-4 w-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white group-hover:text-primary/90 transition-colors">Enter LoreBook Library</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-primary/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
+          </button>
         </div>
 
-        {/* Your library */}
+        {/* Your library — compiled books only */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-white/35 uppercase tracking-widest font-mono">Your library</p>
-            {isMockData && <span className="text-xs text-white/25 font-mono">{DEMO_LOREBOOK_CATALOG.length} books</span>}
+            {compiledBooks.length > 0 && (
+              <span className="text-xs text-white/25 font-mono">
+                {compiledBooks.length} compiled
+              </span>
+            )}
           </div>
 
-          {isMockData ? (
+          {compiledBooks.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {DEMO_LOREBOOK_CATALOG.map((book) => (
-                <div
-                  key={book.id}
-                  className={`group relative flex items-stretch gap-0 rounded-2xl border ${book.border} overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40`}
-                >
-                  <div className={`w-14 shrink-0 bg-gradient-to-b ${book.gradient} flex items-center justify-center`}>
-                    <BookOpen className="h-5 w-5 text-white/60" />
-                  </div>
-                  <div className="flex-1 bg-white/3 group-hover:bg-white/5 transition-colors px-4 py-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className={`text-xs font-mono uppercase tracking-wider mb-1 ${book.accent}`}>{book.scope}</p>
-                        <h3 className="text-white font-semibold text-base leading-snug mb-1 font-serif">{book.title}</h3>
-                        <p className="text-xs text-white/40">{book.period}</p>
+              {compiledBooks.map((book, index) => {
+                const presentation = libraryBookPresentation(book, index);
+                return (
+                  <div
+                    key={book.id}
+                    className={`group relative flex items-stretch gap-0 rounded-2xl border ${presentation.border} overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40`}
+                  >
+                    <div className={`w-14 shrink-0 bg-gradient-to-b ${presentation.gradient} flex items-center justify-center`}>
+                      <BookOpen className="h-5 w-5 text-white/60" />
+                    </div>
+                    <div className="flex-1 bg-white/3 group-hover:bg-white/5 transition-colors px-4 py-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className={`text-xs font-mono uppercase tracking-wider mb-1 ${presentation.accent}`}>{presentation.scope}</p>
+                          <h3 className="text-white font-semibold text-base leading-snug mb-1 font-serif">{presentation.title}</h3>
+                          <p className="text-xs text-white/40">{presentation.period}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/8">
+                        <span className="text-xs text-white/30">{presentation.chapters} chapters</span>
+                        <span className="text-white/15">·</span>
+                        <span className="text-xs text-white/30">{presentation.pages} pages</span>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          type="button"
+                          onClick={() => onReadBook?.(book.id)}
+                          className="flex-1 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium py-2 transition-colors"
+                        >
+                          Read
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onEditBook?.(book.id)}
+                          className="flex-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-medium py-2 transition-colors inline-flex items-center justify-center gap-1"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          Edit
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/8">
-                      <span className="text-xs text-white/30">{book.chapters} chapters</span>
-                      <span className="text-white/15">·</span>
-                      <span className="text-xs text-white/30">{book.pages} pages</span>
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={() => onReadBook?.(book.id)}
-                        className="flex-1 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium py-2 transition-colors"
-                      >
-                        Read
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onEditBook?.(book.id)}
-                        className="flex-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-medium py-2 transition-colors inline-flex items-center justify-center gap-1"
-                      >
-                        <Edit3 className="h-3 w-3" />
-                        Edit
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 rounded-2xl border border-white/8 bg-white/2 text-center">
               <BookOpen className="h-10 w-10 text-white/15 mb-3" />
-              <p className="text-sm text-white/35">Generate a book above — saved copies appear here.</p>
+              <p className="text-sm text-white/35">Generate a book above — compiled copies appear here for reading and editing.</p>
             </div>
           )}
         </div>

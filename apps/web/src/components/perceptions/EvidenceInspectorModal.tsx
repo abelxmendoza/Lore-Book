@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { knowledgeApi, KNOWLEDGE_TYPE_LABELS, KNOWLEDGE_TYPE_COLORS } from '../../api/knowledge';
 import type { KnowledgeClaim, EvidenceLink } from '../../api/knowledge';
+import { epistemicFieldLabel, formatEpistemicPercent } from '../../lib/epistemicLabels';
 
 interface EvidenceInspectorModalProps {
   claimId: string;
@@ -113,12 +114,12 @@ export const EvidenceInspectorModal = ({ claimId, onClose }: EvidenceInspectorMo
               </div>
             </div>
 
-            {/* Confidence breakdown */}
+            {/* Certainty breakdown */}
             <div>
               <h3 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
                 <Shield className="h-4 w-4 text-indigo-400" />
-                Confidence Breakdown
-                <span className="ml-auto text-indigo-300 font-bold">{Math.round(claim.confidence * 100)}%</span>
+                {epistemicFieldLabel()} breakdown
+                <span className="ml-auto text-indigo-300 font-bold">{formatEpistemicPercent(claim.confidence)}</span>
               </h3>
               <div className="space-y-2.5 p-3 rounded-lg bg-white/5 border border-white/10">
                 {[

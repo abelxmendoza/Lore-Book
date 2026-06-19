@@ -4,6 +4,7 @@ import { locationSuggestionsApi, type LocationSuggestion } from '../../api/entit
 import { apiCache } from '../../lib/cache';
 import { isNameAlreadyInBookList } from '../../lib/suggestionBookFilter';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { mockDataService } from '../../services/mockDataService';
 
 type Props = {
   onLocationAdded?: () => void;
@@ -53,7 +54,10 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
 
   const fetchSuggestions = useCallback(async () => {
     if (showDemo) {
-      setSuggestions(DEMO_SUGGESTIONS);
+      const existing = mockDataService.get.locationSuggestions();
+      const list = existing.length > 0 ? existing : DEMO_SUGGESTIONS;
+      mockDataService.register.locationSuggestions(list);
+      setSuggestions(list);
       setLoading(false);
       return;
     }
@@ -97,7 +101,14 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     setAdding(k);
     setError(null);
     try {
-      if (!showDemo) {
+      if (showDemo) {
+        mockDataService.mutate.locations.create({
+          name: s.name,
+          type: s.type,
+          context: s.context,
+        });
+        mockDataService.mutate.locations.removeSuggestion({ id: s.id, name: s.name });
+      } else {
         const result = await locationSuggestionsApi.accept(s);
         if (!result?.success || !result.location?.id) {
           throw new Error('Server did not create the place');
@@ -105,6 +116,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
         apiCache.deletePattern(/\/api\/locations/);
       }
       setAdded(prev => new Set(prev).add(k));
+      setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
       onLocationAdded?.();
       window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: {} }));
     } catch (err) {
@@ -190,7 +202,13 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDismissed(prev => new Set(prev).add(k))}
+                      onClick={() => {
+                        setDismissed(prev => new Set(prev).add(k));
+                        setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
+                        if (showDemo) {
+                          mockDataService.mutate.locations.removeSuggestion({ id: s.id, name: s.name });
+                        }
+                      }}
                       className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10"
                       aria-label="Dismiss"
                     >

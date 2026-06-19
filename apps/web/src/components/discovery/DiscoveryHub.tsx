@@ -97,8 +97,8 @@ const Panel = ({ children }: { children: ReactNode }) => (
   </PanelBoundary>
 );
 
-export const DiscoveryHub = () => (
-  <DiscoveryLayout>
+export const DiscoveryHub = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => (
+  <DiscoveryLayout onOpenAppSidebar={onOpenAppSidebar}>
     <Suspense fallback={<PanelFallback />}>
       <Routes>
         {/* Overview — the intelligence dashboard */}

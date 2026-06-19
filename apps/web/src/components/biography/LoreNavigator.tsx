@@ -12,6 +12,7 @@ type LoreNavigatorProps = {
   data: LoreNavigatorData;
   selectedItem: SelectedItem;
   onSelectItem: (item: SelectedItem) => void;
+  variant?: 'sidebar' | 'mobile';
 };
 
 type SectionState = {
@@ -21,12 +22,13 @@ type SectionState = {
   chapters: boolean;
 };
 
-export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigatorProps) => {
+export const LoreNavigator = ({ data, selectedItem, onSelectItem, variant = 'sidebar' }: LoreNavigatorProps) => {
+  const isMobile = variant === 'mobile';
   const [expanded, setExpanded] = useState<SectionState>({
     biography: true,
-    characters: true,
-    locations: true,
-    chapters: true
+    characters: !isMobile || data.biography.length === 0,
+    locations: !isMobile || data.biography.length === 0,
+    chapters: !isMobile || data.biography.length === 0,
   });
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -58,9 +60,9 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
   };
 
   return (
-    <div className="h-full flex flex-col bg-black/40 border-r border-border/50">
+    <div className={`h-full flex flex-col bg-black/40 ${isMobile ? '' : 'border-r border-border/50'}`}>
       {/* Search */}
-      <div className="p-4 border-b border-border/50">
+      <div className={`${isMobile ? 'p-3' : 'p-4'} border-b border-border/50`}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
           <Input
@@ -68,18 +70,21 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
             placeholder="Search lore..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 bg-black/60 border-border/50 text-white placeholder:text-white/40"
+            className={`pl-9 bg-black/60 border-border/50 text-white placeholder:text-white/40 ${isMobile ? 'min-h-[44px] text-base' : ''}`}
           />
         </div>
       </div>
 
       {/* Navigation Sections */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className={`flex-1 overflow-y-auto space-y-1 ${isMobile ? 'p-3' : 'p-2'}`}>
         {/* Biography Sections */}
         <div>
           <button
+            type="button"
             onClick={() => toggleSection('biography')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors"
+            className={`w-full flex items-center gap-2 px-3 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors touch-manipulation ${
+              isMobile ? 'py-3 min-h-[44px]' : 'py-2'
+            }`}
           >
             {expanded.biography ? (
               <ChevronDown className="h-4 w-4" />
@@ -97,11 +102,14 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
                 .map((section) => (
                   <button
                     key={section.id}
+                    type="button"
                     onClick={() => handleSelect('biography', section.id)}
-                    className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                    className={`w-full text-left px-3 text-sm rounded-lg transition-all duration-200 touch-manipulation ${
+                      isMobile ? 'py-2.5 min-h-[44px]' : 'py-1.5'
+                    } ${
                       isSelected('biography', section.id)
                         ? 'bg-primary/20 text-white border-l-2 border-primary shadow-sm shadow-primary/20'
-                        : 'text-white/70 hover:bg-black/40 hover:text-white hover:translate-x-1'
+                        : 'text-white/70 hover:bg-black/40 hover:text-white' + (isMobile ? '' : ' hover:translate-x-1')
                     }`}
                   >
                     {section.title}
@@ -114,8 +122,11 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
         {/* Characters */}
         <div>
           <button
+            type="button"
             onClick={() => toggleSection('characters')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors"
+            className={`w-full flex items-center gap-2 px-3 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors touch-manipulation ${
+              isMobile ? 'py-3 min-h-[44px]' : 'py-2'
+            }`}
           >
             {expanded.characters ? (
               <ChevronDown className="h-4 w-4" />
@@ -131,11 +142,14 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
               {filteredCharacters.map((character) => (
                 <button
                   key={character.id}
+                  type="button"
                   onClick={() => handleSelect('character', character.id)}
-                  className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                  className={`w-full text-left px-3 text-sm rounded-lg transition-all duration-200 touch-manipulation ${
+                    isMobile ? 'py-2.5 min-h-[44px]' : 'py-1.5'
+                  } ${
                     isSelected('character', character.id)
                       ? 'bg-primary/20 text-white border-l-2 border-primary shadow-sm shadow-primary/20'
-                      : 'text-white/70 hover:bg-black/40 hover:text-white hover:translate-x-1'
+                      : 'text-white/70 hover:bg-black/40 hover:text-white' + (isMobile ? '' : ' hover:translate-x-1')
                   }`}
                 >
                   {character.name}
@@ -148,8 +162,11 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
         {/* Locations */}
         <div>
           <button
+            type="button"
             onClick={() => toggleSection('locations')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors"
+            className={`w-full flex items-center gap-2 px-3 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors touch-manipulation ${
+              isMobile ? 'py-3 min-h-[44px]' : 'py-2'
+            }`}
           >
             {expanded.locations ? (
               <ChevronDown className="h-4 w-4" />
@@ -165,11 +182,14 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
               {filteredLocations.map((location) => (
                 <button
                   key={location.id}
+                  type="button"
                   onClick={() => handleSelect('location', location.id)}
-                  className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                  className={`w-full text-left px-3 text-sm rounded-lg transition-all duration-200 touch-manipulation ${
+                    isMobile ? 'py-2.5 min-h-[44px]' : 'py-1.5'
+                  } ${
                     isSelected('location', location.id)
                       ? 'bg-primary/20 text-white border-l-2 border-primary shadow-sm shadow-primary/20'
-                      : 'text-white/70 hover:bg-black/40 hover:text-white hover:translate-x-1'
+                      : 'text-white/70 hover:bg-black/40 hover:text-white' + (isMobile ? '' : ' hover:translate-x-1')
                   }`}
                 >
                   {location.name}
@@ -182,8 +202,11 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
         {/* Chapters */}
         <div>
           <button
+            type="button"
             onClick={() => toggleSection('chapters')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors"
+            className={`w-full flex items-center gap-2 px-3 text-sm font-semibold text-white/80 hover:bg-primary/10 rounded-lg transition-colors touch-manipulation ${
+              isMobile ? 'py-3 min-h-[44px]' : 'py-2'
+            }`}
           >
             {expanded.chapters ? (
               <ChevronDown className="h-4 w-4" />
@@ -199,11 +222,14 @@ export const LoreNavigator = ({ data, selectedItem, onSelectItem }: LoreNavigato
               {filteredChapters.map((chapter) => (
                 <button
                   key={chapter.id}
+                  type="button"
                   onClick={() => handleSelect('chapter', chapter.id)}
-                  className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-all duration-200 ${
+                  className={`w-full text-left px-3 text-sm rounded-lg transition-all duration-200 touch-manipulation ${
+                    isMobile ? 'py-2.5 min-h-[44px]' : 'py-1.5'
+                  } ${
                     isSelected('chapter', chapter.id)
                       ? 'bg-primary/20 text-white border-l-2 border-primary shadow-sm shadow-primary/20'
-                      : 'text-white/70 hover:bg-black/40 hover:text-white hover:translate-x-1'
+                      : 'text-white/70 hover:bg-black/40 hover:text-white' + (isMobile ? '' : ' hover:translate-x-1')
                   }`}
                 >
                   {chapter.title}

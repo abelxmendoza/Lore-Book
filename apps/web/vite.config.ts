@@ -115,6 +115,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@lorekeeper/ontology': path.resolve(__dirname, '../server/src/services/ontology'),
     },
   },
   server: {

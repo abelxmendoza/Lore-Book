@@ -14,12 +14,22 @@ import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { skillsApi } from '../../api/skills';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { mockDataService } from '../../services/mockDataService';
+import {
+  enrichSkillForDemo,
+  getMockSkillConnections,
+  getMockSkillMilestones,
+  getMockSkillPhotos,
+  getMockSkillTimeline,
+} from '../../mocks/modalDemoData';
 import { achievementsApi } from '../../api/achievements';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { fetchJson } from '../../lib/api';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { LazyImage } from '../ui/LazyImage';
 import { useNavigate } from 'react-router-dom';
 import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
@@ -161,12 +171,17 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadSkillDetails = async () => {
     setLoadingDetails(true);
     try {
+      if (shouldUseMockData()) {
+        const enriched = enrichSkillForDemo(skill);
+        setSkill(enriched);
+        setSkillDetails(enriched.metadata?.skill_details || null);
+        return;
+      }
       const enrichedSkill = await skillsApi.getSkillDetails(skill.id);
       setSkill(enrichedSkill);
       setSkillDetails(enrichedSkill.metadata?.skill_details || null);
     } catch (error) {
       console.error('Failed to load skill details:', error);
-      // Fallback to basic skill if details fail
       setSkillDetails(null);
     } finally {
       setLoadingDetails(false);
@@ -180,57 +195,63 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadProgressHistory = async () => {
     setLoadingProgress(true);
     try {
+      if (shouldUseMockData()) {
+        const mockProgress: SkillProgress[] = [];
+        const now = new Date();
+        for (let i = 0; i < 15; i++) {
+          const daysAgo = i * 3 + Math.floor(Math.random() * 5);
+          const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+          const xpGained = Math.floor(Math.random() * 500) + 50;
+          const levelBefore = Math.max(1, skill.current_level - Math.floor(i / 3));
+          const levelAfter = levelBefore + (i % 3 === 0 && i > 0 ? 1 : 0);
+
+          const sources = ['memory', 'achievement', 'manual', 'practice'];
+          const sourceType = sources[Math.floor(Math.random() * sources.length)] as
+            | 'memory'
+            | 'achievement'
+            | 'manual'
+            | 'practice';
+
+          const notes = [
+            'Completed coding challenge',
+            'Built a new project',
+            'Attended workshop',
+            'Practiced daily exercises',
+            'Solved complex problem',
+            'Reviewed documentation',
+            'Pair programming session',
+            'Code review feedback',
+            'Online course completion',
+            'Personal project milestone',
+          ];
+
+          mockProgress.push({
+            id: `mock-progress-${i}`,
+            skill_id: skill.id,
+            user_id: '',
+            xp_gained: xpGained,
+            level_before: levelBefore,
+            level_after: levelAfter,
+            source_type: sourceType,
+            source_id: `source-${i}`,
+            notes: notes[Math.floor(Math.random() * notes.length)],
+            timestamp: date.toISOString(),
+            created_at: date.toISOString(),
+          });
+        }
+        setProgressHistory(
+          mockProgress.sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          ),
+        );
+        return;
+      }
+
       const progress = await skillsApi.getSkillProgress(skill.id, 50);
       setProgressHistory(progress);
     } catch (error) {
       console.error('Failed to load progress history:', error);
-      // Real accounts must never see fabricated progress — only demo mode does.
-      if (!shouldUseMockData()) {
-        setProgressHistory([]);
-        setLoadingProgress(false);
-        return;
-      }
-      // Generate mock progress history
-      const mockProgress: SkillProgress[] = [];
-      const now = new Date();
-      for (let i = 0; i < 15; i++) {
-        const daysAgo = i * 3 + Math.floor(Math.random() * 5);
-        const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-        const xpGained = Math.floor(Math.random() * 500) + 50;
-        const levelBefore = Math.max(1, skill.current_level - Math.floor(i / 3));
-        const levelAfter = levelBefore + (i % 3 === 0 && i > 0 ? 1 : 0);
-        
-        const sources = ['memory', 'achievement', 'manual', 'practice'];
-        const sourceType = sources[Math.floor(Math.random() * sources.length)] as 'memory' | 'achievement' | 'manual' | 'practice';
-        
-        const notes = [
-          'Completed coding challenge',
-          'Built a new project',
-          'Attended workshop',
-          'Practiced daily exercises',
-          'Solved complex problem',
-          'Reviewed documentation',
-          'Pair programming session',
-          'Code review feedback',
-          'Online course completion',
-          'Personal project milestone'
-        ];
-        
-        mockProgress.push({
-          id: `mock-progress-${i}`,
-          skill_id: skill.id,
-          user_id: '',
-          xp_gained: xpGained,
-          level_before: levelBefore,
-          level_after: levelAfter,
-          source_type: sourceType,
-          source_id: `source-${i}`,
-          notes: notes[Math.floor(Math.random() * notes.length)],
-          timestamp: date.toISOString(),
-          created_at: date.toISOString()
-        });
-      }
-      setProgressHistory(mockProgress.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      setProgressHistory([]);
     } finally {
       setLoadingProgress(false);
     }
@@ -239,6 +260,15 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadConnections = async () => {
     setLoadingConnections(true);
     try {
+      if (shouldUseMockData()) {
+        const { relatedCharacters, relatedOrganizations } = getMockSkillConnections(
+          skill,
+          mockDataService.get.characters(),
+        );
+        setRelatedCharacters(relatedCharacters);
+        setRelatedOrganizations(relatedOrganizations);
+        return;
+      }
       // Use skillDetails for connections
       if (skillDetails) {
         // Learned from characters
@@ -309,6 +339,10 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadMilestones = async () => {
     setLoadingMilestones(true);
     try {
+      if (shouldUseMockData()) {
+        setMilestones(getMockSkillMilestones(skill));
+        return;
+      }
       // Fetch achievements that relate to this skill
       const allAchievements = await achievementsApi.getAchievements();
       
@@ -339,6 +373,10 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadPhotos = async () => {
     setLoadingPhotos(true);
     try {
+      if (shouldUseMockData()) {
+        setSkillPhotos(getMockSkillPhotos(skill));
+        return;
+      }
       // Fetch photos related to this skill
       const skillName = skill.skill_name.toLowerCase();
       
@@ -407,6 +445,10 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const loadTimelineEvents = async () => {
     setLoadingTimeline(true);
     try {
+      if (shouldUseMockData()) {
+        setTimelineEvents(getMockSkillTimeline(skill));
+        return;
+      }
       // Fetch journal entries that mention this skill
       const skillName = skill.skill_name.toLowerCase();
       const entries = await fetchJson<{ entries: Array<{
@@ -454,6 +496,21 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
     } finally {
       setLoadingTimeline(false);
     }
+  };
+
+  const openSkillMainChat = (prompt?: string) => {
+    onClose();
+    openChatWithFocus({
+      entityId: skill.id,
+      entityName: skill.skill_name,
+      entityType: 'skill',
+      sourceSurface: 'skills',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.skills,
+      knowledgeScope: 'skill practice, progress, and milestones',
+      initialPrompt:
+        prompt ??
+        `Tell me about my ${skill.skill_name} skill — where I'm at and what to focus on next.`,
+    });
   };
 
   const handleSendMessage = async () => {
@@ -987,6 +1044,17 @@ When the user provides information about who they learned from, where they pract
             </TabsContent>
 
             <TabsContent value="chat" className="mt-0">
+              <div className="mb-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2 border-primary/30"
+                  onClick={() => openSkillMainChat()}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Open main chat with {skill.skill_name} focus
+                </Button>
+              </div>
               {/* Chat messages only - input moved to sticky area */}
               <div className="space-y-3 sm:space-y-4">
                 {chatMessages.map((message) => (

@@ -177,9 +177,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
 
   return (
     <Card
-      className={`group relative overflow-hidden border-amber-500/40 bg-gradient-to-br from-amber-950/30 via-black/70 to-purple-950/25 shadow-[0_0_32px_rgba(251,191,36,0.12)] transition-all duration-300 ${
+      className={`group relative min-w-0 overflow-hidden border-amber-500/40 bg-gradient-to-br from-amber-950/30 via-black/70 to-purple-950/25 shadow-[0_0_32px_rgba(251,191,36,0.12)] transition-all duration-300 ${
         canOpenDetail
-          ? 'cursor-pointer hover:border-amber-400/60 hover:shadow-[0_0_40px_rgba(251,191,36,0.22)] hover:-translate-y-0.5'
+          ? 'cursor-pointer hover:border-amber-400/60 hover:shadow-[0_0_40px_rgba(251,191,36,0.22)] hover:-translate-y-0.5 active:scale-[0.995] touch-manipulation'
           : 'cursor-default'
       }`}
       onClick={canOpenDetail ? onClick : undefined}
@@ -192,16 +192,16 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
       <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-amber-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-purple-500/10 blur-3xl" />
 
-      <div className="relative flex flex-col sm:flex-row sm:items-stretch gap-0">
+        <div className="relative flex flex-col sm:flex-row sm:items-stretch gap-0 min-w-0">
         {/* Hero strip */}
-        <div className="relative flex sm:flex-col items-center justify-center gap-3 sm:w-36 md:w-44 px-4 py-4 sm:py-6 bg-gradient-to-br from-amber-500/15 via-primary/10 to-purple-600/10 border-b sm:border-b-0 sm:border-r border-amber-500/20">
+        <div className="relative flex sm:flex-col items-center justify-center gap-2 sm:gap-3 sm:w-36 md:w-44 px-3 py-3 sm:px-4 sm:py-6 bg-gradient-to-br from-amber-500/15 via-primary/10 to-purple-600/10 border-b sm:border-b-0 sm:border-r border-amber-500/20">
           <CharacterAvatar
             url={avatarUrl}
             characterId={resolvedCharacter.id}
             archetype={resolvedCharacter.archetype}
             role={resolvedCharacter.role}
             name={displayName}
-            size={56}
+            size={48}
             className="sm:w-16 sm:h-16 ring-2 ring-amber-400/50 ring-offset-2 ring-offset-black/80"
           />
           <Badge
@@ -214,11 +214,11 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
         </div>
 
         <div className="flex-1 min-w-0">
-          <CardHeader className="pb-2 pt-4 px-4 sm:px-5">
+          <CardHeader className="pb-2 pt-3 px-3 sm:pt-4 sm:px-4 md:px-5">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-amber-100 transition-colors truncate">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-xl font-bold text-white group-hover:text-amber-100 transition-colors truncate max-w-full">
                     {displayName}
                   </h3>
                   {showMeBadge && (
@@ -230,11 +230,11 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                     you
                   </span>
                 </div>
-                <p className="text-sm text-amber-200/70 mt-0.5 font-medium">
+                <p className="text-xs sm:text-sm text-amber-200/70 mt-0.5 font-medium line-clamp-2">
                   {subtitle}
                 </p>
                 {sceneNetwork && (
-                  <p className="text-[11px] text-fuchsia-200/70 mt-1 capitalize">
+                  <p className="hidden sm:block text-[11px] text-fuchsia-200/70 mt-1 capitalize line-clamp-2">
                     Scene network · {formatSceneNetworkTier(sceneNetwork.tier)} ({sceneNetwork.score ?? 0})
                     {(sceneNetwork.public_figure_count ?? 0) > 0
                       ? ` · ${sceneNetwork.public_figure_count} public figure${sceneNetwork.public_figure_count === 1 ? '' : 's'}`
@@ -257,12 +257,12 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             </div>
           </CardHeader>
 
-          <CardContent className="px-4 sm:px-5 pb-4 pt-0 space-y-3">
-            <p className="text-xs sm:text-sm text-white/75 leading-relaxed line-clamp-3 sm:line-clamp-4 italic">
+          <CardContent className="px-3 sm:px-4 md:px-5 pb-3 sm:pb-4 pt-0 space-y-2.5 sm:space-y-3">
+            <p className="text-xs sm:text-sm text-white/75 leading-relaxed line-clamp-2 sm:line-clamp-4 italic">
               {summary}
             </p>
             {contextHooks.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="hidden sm:flex flex-wrap gap-1.5">
                 {contextHooks.slice(0, 4).map((hook) => (
                   <Badge
                     key={hook}
@@ -276,7 +276,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             )}
 
             {/* Quick stats */}
-            <div className="flex flex-wrap gap-3 text-[10px] sm:text-xs text-white/45 font-mono">
+            <div className="flex flex-wrap gap-2 sm:gap-3 text-[10px] sm:text-xs text-white/45 font-mono">
               {(resolvedCharacter.memory_count ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   <BookOpen className="h-3 w-3 text-amber-400/70" />
@@ -301,7 +301,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             {loadingAttributes ? (
               <p className="text-[10px] text-white/35 italic">Reading your profile…</p>
             ) : attributes.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="hidden sm:flex flex-wrap gap-1.5">
                 {attributes.slice(0, 6).map(attr => (
                   <Badge
                     key={attr.id}
@@ -315,7 +315,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                 ))}
               </div>
             ) : (
-              <p className="text-[10px] text-white/35 italic">
+              <p className="text-[10px] text-white/35 italic line-clamp-2">
                 {canOpenDetail
                   ? 'Upload a resume or keep chatting — LoreBook fills in occupation, skills, and contact.'
                   : 'Keep chatting — your main character profile builds automatically.'}

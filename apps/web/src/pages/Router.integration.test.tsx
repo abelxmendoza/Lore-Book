@@ -83,6 +83,24 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
     }, { timeout: 3000 });
   });
 
+  it('should handle /home route', async () => {
+    renderRouter(
+      <MemoryRouter initialEntries={['/home']}>
+        <ErrorBoundary>
+          <GuestProvider>
+            <EntityModalProvider>
+              <Router />
+            </EntityModalProvider>
+          </GuestProvider>
+        </ErrorBoundary>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('app')).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+
   it('should handle /chat route', async () => {
     renderRouter(
       <MemoryRouter initialEntries={['/chat']}>
@@ -97,8 +115,25 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
     );
 
     await waitFor(() => {
-      const app = screen.queryByTestId('app');
-      expect(app).toBeTruthy();
+      expect(screen.queryByTestId('app')).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+
+  it('should handle /chat/:threadId route', async () => {
+    renderRouter(
+      <MemoryRouter initialEntries={['/chat/demo-thread-1']}>
+        <ErrorBoundary>
+          <GuestProvider>
+            <EntityModalProvider>
+              <Router />
+            </EntityModalProvider>
+          </GuestProvider>
+        </ErrorBoundary>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('app')).toBeTruthy();
     }, { timeout: 3000 });
   });
 

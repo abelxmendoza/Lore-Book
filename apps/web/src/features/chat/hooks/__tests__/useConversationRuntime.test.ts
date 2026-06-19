@@ -207,10 +207,41 @@ describe('useConversationRuntime', () => {
       expect(store.setActiveThreadId).toHaveBeenCalledWith('t1');
     });
 
+    expect(store.switchThread).toHaveBeenCalledWith('t1');
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'hydration_skip',
       expect.objectContaining({ threadId: 't1' })
     );
+  });
+
+  it('does not clear active thread on /chat while selecting a sidebar thread', async () => {
+    const thread = makeThread('t1', [makeMessage('user')]);
+    const setActiveCalls: Array<string | null> = [];
+    const store = makeContextStore({ threads: [thread] });
+    store.setActiveThreadId.mockImplementation((id: string | null) => {
+      setActiveCalls.push(id);
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
+
+    const { result } = renderHook(() => useConversationRuntime(), {
+      wrapper: makeWrapper('/chat'),
+    });
+
+    await waitFor(() => {
+      expect(store.setActiveThreadId).toHaveBeenCalledWith(null);
+    });
+
+    setActiveCalls.length = 0;
+
+    act(() => {
+      void result.current.handleSelectThread('t1');
+    });
+
+    await waitFor(() => {
+      expect(setActiveCalls.some((id) => id === 't1')).toBe(true);
+    });
+
+    expect(setActiveCalls.includes(null)).toBe(false);
   });
 
   it('ignores a stale async thread hydration after a newer thread is selected', async () => {

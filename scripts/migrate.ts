@@ -25,6 +25,11 @@ export const BASE_MIGRATIONS = [
   'migrations/20250102_conversational_orchestration.sql',
 ];
 
+export const QUEST_MIGRATIONS = [
+  'supabase/migrations/20250322000130_quest_system.sql',
+  'supabase/migrations/20260616130000_quest_suggestions.sql',
+];
+
 export const ENGINE_MIGRATIONS = [
   'supabase/migrations/20250224000102_engine_results.sql',
   'supabase/migrations/20260618090000_engine_dependencies.sql',
@@ -72,6 +77,25 @@ export async function resolveCommand(argv: string[]): Promise<{ label: string; c
             console.log('  verify →', r.rows[0]);
             if (!r.rows[0]?.engine_results || !r.rows[0]?.engine_dependencies) {
               throw new Error('engine_results or engine_dependencies still missing after migration');
+            }
+          },
+        },
+      };
+
+    case 'quests':
+      return {
+        label: 'quests',
+        cmd: {
+          migrations: QUEST_MIGRATIONS.map((file) => ({ file })),
+          verify: async (pool) => {
+            const r = await pool.query(`
+              SELECT
+                to_regclass('public.quests') AS quests,
+                to_regclass('public.quest_suggestions') AS quest_suggestions
+            `);
+            console.log('  verify →', r.rows[0]);
+            if (!r.rows[0]?.quests || !r.rows[0]?.quest_suggestions) {
+              throw new Error('quests or quest_suggestions still missing after migration');
             }
           },
         },
@@ -133,7 +157,7 @@ export async function runMigrate(argv: string[]): Promise<void> {
   const resolved = await resolveCommand(argv);
   if (!resolved) {
     throw new Error(
-      'Usage: migrate.ts <base|engine|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
+      'Usage: migrate.ts <base|engine|quests|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
     );
   }
   await applyMigrations({ root: ROOT, label: resolved.label, ...resolved.cmd });

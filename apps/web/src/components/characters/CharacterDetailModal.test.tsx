@@ -109,11 +109,11 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    // Actual tab labels: Info, Intelligence, What I Know, Chat, Connections, History, Insights, Perceptions, Social, Metadata
-    expect(screen.getByText(/^info$/i)).toBeInTheDocument();
+    // Tab labels render in mobile pills + desktop sidebar in jsdom (both visible).
+    expect(screen.getAllByText(/^info$/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/chat/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/^social$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^connections$/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^social$/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^connections$/i).length).toBeGreaterThan(0);
   });
 
   it('should show chat composer when Chat tab is active', async () => {
@@ -126,7 +126,7 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    const chatTab = screen.getByRole('button', { name: /intelligence chat/i });
+    const chatTab = screen.getAllByRole('button', { name: /intelligence chat/i })[0];
     await user.click(chatTab);
 
     expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe('CharacterDetailModal', () => {
     );
 
     // Should still render without crashing — check for Info tab (default)
-    expect(screen.getByText(/^info$/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^info$/i).length).toBeGreaterThan(0);
   });
 
   describe('distant but high impact', () => {
@@ -192,7 +192,7 @@ describe('CharacterDetailModal', () => {
       expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
     });
 
-    it('shows high-impact callout in Importance section when background + influence >= 70', async () => {
+    it('shows high-impact badge in header when background + influence >= 70', async () => {
       const highImpactBackground: Character = {
         ...mockCharacter,
         name: 'Background Idol',
@@ -228,11 +228,13 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      // Importance section appears after loadingDetails becomes false; wait for callout text
       await waitFor(() => {
-        const callout = screen.getByText(/they shape your choices and thoughts even with limited presence/i);
-        expect(callout).toBeInTheDocument();
-        expect(callout.closest('p')).toHaveTextContent(/Rare in your story, but high impact on you/i);
+        expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/At a glance/i)).toBeInTheDocument();
+        expect(screen.getByText(/Your ranking/i)).toBeInTheDocument();
       }, { timeout: 3000 });
     });
 

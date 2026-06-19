@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -18,11 +18,13 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { UnknownField } from '../ui/UnknownField';
 import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
+import { CharacterInfoPanel } from './CharacterInfoPanel';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useMockData } from '../../contexts/MockDataContext';
 import {
@@ -35,6 +37,9 @@ import {
   getMockKnowledgeClaims,
   getMockSceneCandidates,
 } from '../../mocks/characterIntelligence';
+import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
@@ -156,28 +161,30 @@ type CharacterDetailModalProps = {
   relationship?: RomanticRelationship;
   /** Protagonist / self profile — amber styling, no delete, synthetic-id safe. */
   isMainCharacter?: boolean;
+  /** Open directly on a tab (e.g. from Love & Relationships → Character Book link). */
+  initialTab?: TabKey;
 };
 
 type TabKey = 'info' | 'social' | 'relationships' | 'network' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
-  { key: 'info',         label: 'Info',              shortLabel: 'Info',    icon: FileText },
-  { key: 'knowledge',    label: 'What I Know',       shortLabel: 'Know',    icon: Brain },
-  { key: 'evidence',     label: 'Evidence Locker',   shortLabel: 'Evidence', icon: Shield },
-  { key: 'chat',         label: 'Intelligence Chat', shortLabel: 'Chat',    icon: MessageSquare },
-  { key: 'photos',       label: 'Photo Gallery',     shortLabel: 'Photos',  icon: ImageIcon },
-  { key: 'messages',     label: 'Messages',          shortLabel: 'Msgs',    icon: MessageSquare },
-  { key: 'relationships', label: 'Connections',      shortLabel: 'Links',   icon: Network },
-  { key: 'network',       label: 'Their network',    shortLabel: 'Network', icon: Link2 },
-  { key: 'history',      label: 'History',           shortLabel: 'History', icon: Calendar },
-  { key: 'timeline',     label: 'Timeline',          shortLabel: 'Time',    icon: Clock },
-  { key: 'insights',     label: 'Insights',          shortLabel: 'Insights', icon: BarChart3 },
-  { key: 'perceptions',  label: 'Perceptions',       shortLabel: 'Views',   icon: Eye },
-  { key: 'social',       label: 'Social',            shortLabel: 'Social',  icon: Globe },
-  { key: 'metadata',     label: 'Metadata',          shortLabel: 'Meta',    icon: Database },
+  { key: 'info',          label: 'Info',              shortLabel: 'Info',       icon: FileText },
+  { key: 'knowledge',     label: 'What I Know',       shortLabel: 'Know',       icon: Brain },
+  { key: 'chat',          label: 'Intelligence Chat', shortLabel: 'Chat',       icon: MessageSquare },
+  { key: 'relationships', label: 'Connections',       shortLabel: 'Links',      icon: Network },
+  { key: 'timeline',      label: 'Timeline',          shortLabel: 'Time',       icon: Clock },
+  { key: 'history',       label: 'History',           shortLabel: 'History',    icon: Calendar },
+  { key: 'network',       label: 'Their network',     shortLabel: 'Network',    icon: Link2 },
+  { key: 'insights',      label: 'Insights',          shortLabel: 'Insights',   icon: BarChart3 },
+  { key: 'perceptions',   label: 'Perceptions',       shortLabel: 'Views',      icon: Eye },
+  { key: 'photos',        label: 'Photo Gallery',     shortLabel: 'Photos',     icon: ImageIcon },
+  { key: 'messages',      label: 'Messages',          shortLabel: 'Msgs',       icon: MessageSquare },
+  { key: 'evidence',      label: 'Evidence Locker',   shortLabel: 'Evidence',   icon: Shield },
+  { key: 'social',        label: 'Social',            shortLabel: 'Social',     icon: Globe },
+  { key: 'metadata',      label: 'Metadata',          shortLabel: 'Meta',       icon: Database },
 ];
 
-export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp }: CharacterDetailModalProps) => {
+export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp, initialTab }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
@@ -231,6 +238,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setDeleteBusy(true);
     setDeleteError(null);
     try {
+      if (isMockDataEnabled) {
+        mockDataService.mutate.characters.upsert({
+          ...(editedCharacter as Character),
+          status: 'archived',
+        });
+        onUpdate();
+        onClose();
+        return;
+      }
       await fetchJson(`/api/characters/${character.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'archived' }),
@@ -830,13 +846,47 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [sharedMemoryCards, setSharedMemoryCards] = useState<MemoryCard[]>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>('info');
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'info');
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab, character.id]);
   // Unknown-field flow: clicking an Unknown chip jumps to the Chat tab with a
   // prefilled prompt — filling in unknowns is chat-first.
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+  const [chatIntelOpen, setChatIntelOpen] = useState(false);
   const askInChat = (prompt: string) => {
-    setChatPrefill(prompt);
-    setActiveTab('chat');
+    const romantic =
+      relationship ??
+      getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
+    if (romantic) {
+      openChatWithFocus({
+        entityId: editedCharacter.id,
+        entityName: editedCharacter.name,
+        entityType: 'character',
+        relationshipId: romantic.id,
+        relationshipName: editedCharacter.name,
+        sourceSurface: 'love',
+        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
+        knowledgeScope: 'romantic relationship from character profile',
+        initialPrompt: prompt,
+        baseline: {
+          affectionScore: Math.round((romantic.affection_score ?? 0.5) * 100),
+          healthScore: Math.round((romantic.relationship_health ?? 0.5) * 100),
+        },
+      });
+    } else {
+      openChatWithFocus({
+        entityId: editedCharacter.id,
+        entityName: editedCharacter.name,
+        entityType: 'character',
+        sourceSurface: 'characters',
+        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
+        knowledgeScope: 'character profile and connections',
+        initialPrompt: prompt,
+      });
+    }
+    onClose();
   };
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string; character_member_notes?: string }>>([]);
@@ -1321,9 +1371,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
 
-  // ── Load intelligence (dynamics + influence) when the combined chat tab opens ────
+  // ── Load intelligence (dynamics + influence) for Info and Chat tabs ────
   useEffect(() => {
-    if (activeTab !== 'chat' || dynamicsLoaded) return;
+    if ((activeTab !== 'chat' && activeTab !== 'info') || dynamicsLoaded) return;
     const name = encodeURIComponent(character.name);
 
     if (isMockDataEnabled) {
@@ -1740,6 +1790,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const handleSave = async () => {
     setLoading(true);
     try {
+      if (isMockDataEnabled) {
+        mockDataService.mutate.characters.upsert(editedCharacter as Character);
+        onUpdate();
+        onClose();
+        return;
+      }
       await fetchJson(`/api/characters/${character.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
@@ -1801,7 +1857,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const currentAttributes = characterAttributes.filter(attr => attr.isCurrent !== false);
   const attributesByType = (types: string[]) => currentAttributes.filter(attr => types.includes(attr.attributeType));
   const firstAttributeValue = (types: string[]) => attributesByType(types)[0]?.attributeValue;
-  const confidenceLabel = (confidence?: number) => confidence == null ? null : `${Math.round(confidence * 100)}% confidence`;
+  const confidenceLabel = (confidence?: number) => confidence == null ? null : formatEpistemicPercent(confidence);
   const prettyAttributeType = (type: string) => type.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
   const HONORIFIC_RE = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir|dame|lord|lady|rev|fr|father)\.?$/i;
   const nameParts = editedCharacter.name.trim().split(/\s+/);
@@ -1883,6 +1939,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
     .slice(0, 5);
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
+
+  const resolvedRomanticRelationship = useMemo(() => {
+    if (relationship) return relationship;
+    if (!isMockDataEnabled) return undefined;
+    return getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
+  }, [relationship, isMockDataEnabled, editedCharacter.id, editedCharacter.name]);
 
   return (
     <div
@@ -2116,10 +2178,41 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           </div>
         </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
-          {/* Tab Navigation — vertical stack, no horizontal scroll */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {/* Mobile: compact grid nav — 2 rows, minimal vertical footprint */}
           <nav
-            className="flex-shrink-0 border-b md:border-b-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20 flex flex-col min-h-0"
+            className="md:hidden flex-shrink-0 border-b border-border/60 bg-black/30 px-1.5 py-1"
+            aria-label="Character sections"
+          >
+            <div className="grid grid-cols-7 gap-0.5">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex flex-col items-center justify-center gap-px rounded-md px-0.5 py-1 min-h-[34px] text-[8px] font-medium leading-none transition touch-manipulation ${
+                      isActive
+                        ? 'bg-primary/25 text-primary border border-primary/40'
+                        : 'text-white/50 border border-transparent hover:text-white/80 hover:bg-white/[0.06]'
+                    }`}
+                    aria-current={isActive ? 'page' : undefined}
+                    aria-label={tab.label}
+                  >
+                    <Icon className="h-3 w-3 flex-shrink-0" />
+                    <span className="w-full text-center truncate">{tab.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
+          {/* Desktop: vertical sidebar */}
+          <nav
+            className="hidden md:flex flex-shrink-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20 flex-col min-h-0"
             aria-label="Character sections"
           >
             <div className="flex flex-col flex-1 min-h-0">
@@ -2165,7 +2258,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             )}
           </nav>
 
-          <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-8 bg-black/40 min-h-0 pb-[max(5rem,env(safe-area-inset-bottom,0px))] sm:pb-32">
+          <div
+            ref={contentRef}
+            className={`flex-1 min-h-0 bg-black/40 ${
+              activeTab === 'chat'
+                ? 'flex flex-col overflow-hidden'
+                : 'overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-8 pb-[max(4rem,env(safe-area-inset-bottom,0px))] sm:pb-32'
+            }`}
+          >
             {loadingDetails && (
               <div className="text-center py-12 text-white/60">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -2173,1150 +2273,29 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               </div>
             )}
             {!loadingDetails && activeTab === 'info' && (
-              <div className="space-y-8">
-                {/* About the Character - First so users see the narrative first */}
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
-                      <FileText className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-white">About the Character</h2>
-                      <p className="text-sm text-white/60 mt-0.5">What you&apos;ve said about them</p>
-                    </div>
-                  </div>
-                  <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
-                    <CardContent className="p-6">
-                      <div className="text-white text-lg leading-relaxed min-h-[120px]">
-                        {editedCharacter.summary ? (
-                          <p className="whitespace-pre-wrap">{editedCharacter.summary}</p>
-                        ) : (
-                          <div className="space-y-3">
-                            <p className="text-white/50 italic text-base">
-                              Lorebook doesn&apos;t know {editedCharacter.name}&apos;s story yet.
-                            </p>
-                            <UnknownField
-                              label="Their story"
-                              prompt={`Let me tell you about ${editedCharacter.name}: `}
-                              onAskInChat={askInChat}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Profile Intelligence — identity, work, relationships, behavior */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-500/40">
-                      <Brain className="h-5 w-5 text-cyan-300" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-white">Profile Intelligence</h2>
-                      <p className="text-sm text-white/60 mt-0.5">
-                        The living character sheet LoreBook builds from conversations, facts, and relationships.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid lg:grid-cols-2 gap-4">
-                    <Card className="bg-gradient-to-br from-rose-950/25 via-black/50 to-black/70 border border-rose-500/25">
-                      <CardHeader className="pb-2">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <Heart className="h-4 w-4 text-rose-300" />
-                          Relationship Status
-                        </h3>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {relationshipStatus ? (
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Current status</p>
-                            <Badge variant="outline" className="bg-rose-500/15 text-rose-300 border-rose-500/30 px-3 py-1 capitalize">
-                              {relationshipStatus}
-                            </Badge>
-                          </div>
-                        ) : (
-                          <UnknownField
-                            label="Relationship status"
-                            prompt={`${editedCharacter.name}'s relationship status is `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-
-                        {romanticConnections.length > 0 ? (
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-white/35 mb-2">Romantic links</p>
-                            <div className="space-y-2">
-                              {romanticConnections.map(rel => (
-                                <button
-                                  key={rel.id ?? rel.character_id}
-                                  type="button"
-                                  onClick={() => void openCharacterByRelationship(rel)}
-                                  className="w-full rounded-lg border border-rose-500/20 bg-black/35 px-3 py-2 text-left hover:border-rose-400/50 hover:bg-rose-500/10 transition-colors"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="text-sm font-medium text-white">{rel.character_name}</span>
-                                    <span className="text-[10px] uppercase tracking-wide text-rose-300">{rel.relationship_type.replace(/_/g, ' ')}</span>
-                                  </div>
-                                  {rel.summary && <p className="text-xs text-white/45 mt-1 line-clamp-2">{rel.summary}</p>}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-white/35">
-                            No partner, dating, spouse, or crush connection is linked yet. When learned, the person appears here as a clickable card.
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-br from-amber-950/25 via-black/50 to-black/70 border border-amber-500/25">
-                      <CardHeader className="pb-2">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <Briefcase className="h-4 w-4 text-amber-300" />
-                          Work, Brands & Occupations
-                        </h3>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {workAttributes.length > 0 || companyOrganizations.length > 0 ? (
-                          <>
-                            {occupations.length > 0 && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">What they do</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {occupations.map(value => (
-                                    <Badge key={value} variant="outline" className="bg-amber-500/15 text-amber-300 border-amber-500/30">{value}</Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {(workplaces.length > 0 || companyOrganizations.length > 0) && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Where / companies</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {workplaces.map(value => (
-                                    <Badge key={value} variant="outline" className="bg-orange-500/15 text-orange-300 border-orange-500/30">{value}</Badge>
-                                  ))}
-                                  {companyOrganizations.map(org => (
-                                    <button
-                                      key={org.id}
-                                      type="button"
-                                      onClick={() => setSelectedOrganization(org)}
-                                      className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs text-orange-200 hover:bg-orange-500/20 transition-colors"
-                                    >
-                                      {org.name}{org.character_role ? ` — ${org.character_role}` : ''}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {sideHustles.length > 0 && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Side hustles / brands</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {sideHustles.map(value => (
-                                    <Badge key={value} variant="outline" className="bg-yellow-500/15 text-yellow-200 border-yellow-500/30">{value}</Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {workAttributes.slice(0, 3).map(attr => attr.evidence && (
-                              <p key={`${attr.attributeType}-${attr.attributeValue}`} className="text-[11px] text-white/35 italic line-clamp-2">
-                                {attr.evidence}
-                              </p>
-                            ))}
-                          </>
-                        ) : (
-                          <UnknownField
-                            label="Work"
-                            prompt={`What ${editedCharacter.name} does for work, brands, side hustles, or occupations: `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="grid lg:grid-cols-3 gap-4">
-                    <Card className="bg-black/45 border border-white/10">
-                      <CardHeader className="pb-2">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <UserCircle className="h-4 w-4 text-cyan-300" />
-                          Identity & Life
-                        </h3>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        {lifeMap.map(item => (
-                          <div key={item.label} className="flex items-start justify-between gap-3 rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
-                            <span className="text-xs text-white/35">{item.label}</span>
-                            {item.value ? (
-                              <span className="text-xs text-white/80 text-right">{item.value}</span>
-                            ) : (
-                              <button type="button" onClick={() => askInChat(item.prompt)} className="text-xs text-primary hover:text-primary/80">Add</button>
-                            )}
-                          </div>
-                        ))}
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-black/45 border border-white/10">
-                      <CardHeader className="pb-2">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <Smile className="h-4 w-4 text-violet-300" />
-                          Personality & Patterns
-                        </h3>
-                      </CardHeader>
-                      <CardContent>
-                        {behaviorAttributes.length > 0 ? (
-                          <div className="space-y-2">
-                            {behaviorAttributes.slice(0, 8).map(attr => (
-                              <div key={`${attr.attributeType}-${attr.attributeValue}`} className="rounded-lg border border-violet-500/15 bg-violet-500/5 px-3 py-2">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="text-sm text-white/85">{attr.attributeValue}</span>
-                                  <span className="text-[10px] text-violet-300/70">{prettyAttributeType(attr.attributeType)}</span>
-                                </div>
-                                {attr.evidence && <p className="text-[10px] text-white/35 mt-1 line-clamp-2">{attr.evidence}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <UnknownField
-                            label="Personality"
-                            prompt={`How ${editedCharacter.name} behaves, communicates, and reacts under stress: `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-black/45 border border-white/10">
-                      <CardHeader className="pb-2">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <Network className="h-4 w-4 text-emerald-300" />
-                          Social Standing
-                        </h3>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
-                          <p className="text-xs text-white/35 mb-1">Role in your network</p>
-                          <p className="text-sm text-white/85 capitalize">
-                            {socialStanding?.tier?.replace(/_/g, ' ') ?? editedCharacter.importance_level ?? 'Still learning'}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
-                          <p className="text-xs text-white/35 mb-1">Connections</p>
-                          <p className="text-sm text-white/85">{editedCharacter.relationship_count ?? editedCharacter.relationships?.length ?? 0} known links</p>
-                        </div>
-                        <p className="text-[11px] text-white/35 leading-relaxed">
-                          Calculated from mentions, relationship links, organizations, influence, reputation signals, and how often they shape your story.
-                        </p>
-                        {isPublicFigureChar && publicFigureConnection && (
-                          <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 px-3 py-2 space-y-2">
-                            <p className="text-xs text-fuchsia-200/80 font-medium">Public figure connection</p>
-                            <p className="text-sm text-white/85 capitalize">
-                              {connectionStageLabels[publicFigureConnection.stage ?? ''] ?? publicFigureConnection.stage?.replace(/_/g, ' ')}
-                              {publicFigureConnection.inferred_met ? ' · met in your story' : ' · not yet met'}
-                            </p>
-                            {(publicFigureConnection.interactions ?? []).slice(0, 2).map((hit, i) => (
-                              <p key={i} className="text-[10px] text-white/40 line-clamp-2" title={hit.evidence}>
-                                {hit.type?.replace(/_/g, ' ')} — {hit.evidence}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                        {isMainCharacter && sceneNetwork && (
-                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 space-y-1">
-                            <p className="text-xs text-amber-200/80 font-medium">Scene network</p>
-                            <p className="text-sm text-white/85 capitalize">
-                              {sceneNetwork.tier?.replace(/_/g, ' ')} · score {sceneNetwork.score ?? 0}
-                            </p>
-                            <p className="text-[10px] text-white/40">
-                              {sceneNetwork.public_figure_count ?? 0} public figure{(sceneNetwork.public_figure_count ?? 0) === 1 ? '' : 's'} in your orbit
-                              {sceneNetwork.deepest_stage ? ` · deepest: ${connectionStageLabels[sceneNetwork.deepest_stage] ?? sceneNetwork.deepest_stage}` : ''}
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {(strongestConnections.length > 0 || storyGroups.length > 0) && (
-                    <div className="grid lg:grid-cols-2 gap-4">
-                      {strongestConnections.length > 0 && (
-                        <Card className="bg-gradient-to-br from-emerald-950/20 via-black/45 to-black/70 border border-emerald-500/20">
-                          <CardHeader className="pb-2">
-                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                              <Users className="h-4 w-4 text-emerald-300" />
-                              Strongest Connections
-                            </h3>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {strongestConnections.map(rel => (
-                              <button
-                                key={rel.id ?? rel.character_id}
-                                type="button"
-                                onClick={() => void openCharacterByRelationship(rel)}
-                                className="w-full rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-left hover:border-emerald-400/45 hover:bg-emerald-500/10 transition-colors"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="text-sm font-medium text-white">{rel.character_name}</span>
-                                  <span className="text-xs text-emerald-300">{rel.closeness_score ?? 0}/10</span>
-                                </div>
-                                <p className="text-[11px] text-white/40 capitalize">
-                                  {rel.relationship_type.replace(/_/g, ' ')}{rel.status ? ` · ${rel.status}` : ''}
-                                </p>
-                              </button>
-                            ))}
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {storyGroups.length > 0 && (
-                        <Card className="bg-gradient-to-br from-blue-950/20 via-black/45 to-black/70 border border-blue-500/20">
-                          <CardHeader className="pb-2">
-                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                              <Building2 className="h-4 w-4 text-blue-300" />
-                              Story Groups & Organizations
-                            </h3>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {storyGroups.slice(0, 6).map((org: any) => (
-                              <button
-                                key={org.id}
-                                type="button"
-                                onClick={() => setSelectedOrganization(org)}
-                                className="w-full rounded-lg border border-blue-500/15 bg-blue-500/5 px-3 py-2 text-left hover:border-blue-400/45 hover:bg-blue-500/10 transition-colors"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="text-sm font-medium text-white truncate">{org.name}</span>
-                                  <span className="text-[10px] text-blue-300 capitalize">{String(org.group_type ?? org.type ?? 'group').replace(/_/g, ' ')}</span>
-                                </div>
-                                {(org.character_role || org.character_member_notes) && (
-                                  <p className="text-[11px] text-white/40 line-clamp-1">
-                                    {org.character_role ?? org.character_member_notes}
-                                  </p>
-                                )}
-                              </button>
-                            ))}
-                            <p className="text-[11px] text-white/35 pt-1">
-                              Groups are inferred from shared scenes, repeated co-mentions, organizations, communities, venues, and story clusters.
-                            </p>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  )}
-
-                  <Card className="bg-gradient-to-br from-cyan-950/20 via-black/45 to-violet-950/20 border border-cyan-500/20">
-                    <CardContent className="p-4">
-                      <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-                        <Lightbulb className="h-4 w-4 text-cyan-300" />
-                        How LoreBook will build this profile
-                      </h3>
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs text-white/55">
-                        {[
-                          'Who they are: names, aliases, pronouns, location, culture',
-                          'Who matters to them: partners, family, friends, coworkers',
-                          'What they do: jobs, industries, companies, brands, side hustles',
-                          'What they care about: values, interests, goals, preferences',
-                          'What happened: life events, accomplishments, failures, history',
-                          'How they behave: personality, communication, habits, stress patterns',
-                          'How they are seen: reputation, influence, community role',
-                          'How they change: timeline, old attributes, current state',
-                        ].map(item => (
-                          <div key={item} className="rounded-lg border border-white/8 bg-white/[0.03] p-2 leading-snug">{item}</div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Relationship Section */}
-                {relationship && (
-                  <Card className="bg-gradient-to-br from-pink-950/20 via-purple-950/20 to-pink-950/20 border-2 border-pink-500/30 shadow-xl">
-                    <CardContent className="p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 rounded-lg bg-pink-500/20 border border-pink-500/40">
-                          <Heart className="h-6 w-6 text-pink-400" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white">Relationship Status</h2>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <Badge 
-                            variant="outline" 
-                            className={`text-sm px-3 py-1 ${
-                              relationship.status === 'active' 
-                                ? 'bg-green-500/20 text-green-300 border-green-500/30' 
-                                : relationship.status === 'ended'
-                                ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-                                : relationship.status === 'on_break'
-                                ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                                : 'bg-white/10 text-white/70 border-white/20'
-                            }`}
-                          >
-                            <Heart 
-                              className="w-4 h-4 mr-1" 
-                              style={{
-                                fill: relationship.is_current && relationship.status === 'active' 
-                                  ? `rgba(244, 114, 182, ${relationship.affection_score})` 
-                                  : 'transparent',
-                                stroke: 'currentColor',
-                                strokeWidth: 2
-                              }}
-                            />
-                            {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </Badge>
-                          {relationship.is_situationship && (
-                            <Badge variant="outline" className="text-sm px-3 py-1 bg-purple-500/20 text-purple-300 border-purple-500/30">
-                              Situationship
-                            </Badge>
-                          )}
-                          {relationship.exclusivity_status && (
-                            <Badge variant="outline" className="text-sm px-3 py-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
-                              {relationship.exclusivity_status}
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
-                            <p className="text-xs text-white/60 mb-1">Compatibility</p>
-                            <div className="flex items-center gap-2">
-                              <p className={`text-lg font-semibold ${
-                                relationship.compatibility_score >= 0.7 ? 'text-green-400' :
-                                relationship.compatibility_score >= 0.5 ? 'text-yellow-400' : 'text-red-400'
-                              }`}>
-                                {Math.round(relationship.compatibility_score * 100)}%
-                              </p>
-                              {relationship.compatibility_score >= 0.7 ? (
-                                <TrendingUp className="w-4 h-4 text-green-400" />
-                              ) : relationship.compatibility_score < 0.4 ? (
-                                <TrendingDown className="w-4 h-4 text-red-400" />
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
-                            <p className="text-xs text-white/60 mb-1">Relationship Health</p>
-                            <div className="flex items-center gap-2">
-                              <p className={`text-lg font-semibold ${
-                                relationship.relationship_health >= 0.7 ? 'text-green-400' :
-                                relationship.relationship_health >= 0.5 ? 'text-yellow-400' : 'text-red-400'
-                              }`}>
-                                {Math.round(relationship.relationship_health * 100)}%
-                              </p>
-                              {relationship.relationship_health >= 0.7 ? (
-                                <TrendingUp className="w-4 h-4 text-green-400" />
-                              ) : relationship.relationship_health < 0.4 ? (
-                                <TrendingDown className="w-4 h-4 text-red-400" />
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Interest Levels */}
-                        {(() => {
-                          const compat = relationship.compatibility_score ?? 0.5;
-                          const health = relationship.relationship_health ?? 0.5;
-                          const intensity = relationship.emotional_intensity ?? 0.5;
-                          let theirInterest = (compat * 0.4) + (health * 0.4) + (intensity * 0.2);
-                          if (!relationship.is_current || relationship.status === 'ended') theirInterest *= 0.7;
-                          theirInterest = Math.min(1.0, Math.max(0.0, theirInterest));
-                          const getInterestColor = (score: number) => {
-                            if (score >= 0.7) return 'text-green-400';
-                            if (score >= 0.4) return 'text-yellow-400';
-                            return 'text-red-400';
-                          };
-                          return (
-                            <div className="grid grid-cols-2 gap-4 mt-4">
-                              <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
-                                <p className="text-xs text-white/60 mb-1 flex items-center gap-1">
-                                  <Heart className="w-3 h-3" />
-                                  Your Interest
-                                </p>
-                                <p className={`text-lg font-semibold ${getInterestColor(relationship.affection_score)}`}>
-                                  {Math.round(relationship.affection_score * 100)}%
-                                </p>
-                              </div>
-                              <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
-                                <p className="text-xs text-white/60 mb-1 flex items-center gap-1">
-                                  <Users className="w-3 h-3" />
-                                  Their Interest
-                                </p>
-                                <p className={`text-lg font-semibold ${getInterestColor(theirInterest)}`}>
-                                  {Math.round(theirInterest * 100)}%
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {relationship.start_date && (
-                          <div className="text-sm text-white/70">
-                            <span className="text-white/50">Started: </span>
-                            {new Date(relationship.start_date).toLocaleDateString('en-US', { 
-                              month: 'long', 
-                              day: 'numeric', 
-                              year: 'numeric' 
-                            })}
-                          </div>
-                        )}
-
-                        {(relationship.pros.length > 0 || relationship.cons.length > 0) && (
-                          <div className="grid grid-cols-2 gap-4 mt-4">
-                            {relationship.pros.length > 0 && (
-                              <div>
-                                <p className="text-sm font-semibold text-green-400 mb-2">Pros ({relationship.pros.length})</p>
-                                <ul className="space-y-1">
-                                  {relationship.pros.slice(0, 3).map((pro, idx) => (
-                                    <li key={idx} className="text-xs text-white/70 flex items-start gap-2">
-                                      <span className="text-green-400 mt-1">•</span>
-                                      <span>{pro}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {relationship.cons.length > 0 && (
-                              <div>
-                                <p className="text-sm font-semibold text-red-400 mb-2">Cons ({relationship.cons.length})</p>
-                                <ul className="space-y-1">
-                                  {relationship.cons.slice(0, 3).map((con, idx) => (
-                                    <li key={idx} className="text-xs text-white/70 flex items-start gap-2">
-                                      <span className="text-red-400 mt-1">•</span>
-                                      <span>{con}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Subtle auto-update note */}
-                <p className="text-[11px] text-white/30 flex items-center gap-1.5">
-                  <Info className="h-3 w-3 flex-shrink-0" />
-                  Attributes are auto-detected from your conversations. Use the Chat tab to update them.
-                </p>
-
-                {/* Detected Attributes — clean grouped rows */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold text-white/50 flex items-center gap-1.5 uppercase tracking-widest">
-                      <UserCircle className="h-3.5 w-3.5" />
-                      Detected Attributes
-                    </h3>
-                    {characterAttributes.length > 0 && (
-                      <span className="text-[10px] text-white/25">{characterAttributes.length} detected</span>
-                    )}
-                  </div>
-
-                  {loadingAttributes && (
-                    <div className="flex items-center gap-2 py-4 text-white/40 text-sm">
-                      <Clock className="h-4 w-4 animate-spin" />
-                      <span>Loading...</span>
-                    </div>
-                  )}
-
-                  {!loadingAttributes && characterAttributes.length === 0 && (
-                    <p className="text-sm text-white/30 py-3">
-                      No attributes detected yet — keep journaling about {editedCharacter.name.split(' ')[0]}.
-                    </p>
-                  )}
-
-                  {!loadingAttributes && characterAttributes.length > 0 && (
-                    <div className="space-y-3">
-                      {[
-                        {
-                          label: 'Work',
-                          types: ['employment_status','occupation','workplace','financial_status'],
-                          icon: <Briefcase className="h-3.5 w-3.5" />,
-                          color: { label: 'text-amber-400', icon: 'text-amber-400', border: 'border-amber-500/25', bg: 'bg-amber-950/20', divider: 'divide-amber-500/10', rowHover: 'hover:bg-amber-500/8', typePill: 'bg-amber-500/15 text-amber-300 border-amber-500/25' },
-                        },
-                        {
-                          label: 'Life',
-                          types: ['relationship_status','living_situation'],
-                          icon: <HeartIcon className="h-3.5 w-3.5" />,
-                          color: { label: 'text-rose-400', icon: 'text-rose-400', border: 'border-rose-500/25', bg: 'bg-rose-950/20', divider: 'divide-rose-500/10', rowHover: 'hover:bg-rose-500/8', typePill: 'bg-rose-500/15 text-rose-300 border-rose-500/25' },
-                        },
-                        {
-                          label: 'Lifestyle',
-                          types: ['lifestyle_pattern','health_condition'],
-                          icon: <Activity className="h-3.5 w-3.5" />,
-                          color: { label: 'text-teal-400', icon: 'text-teal-400', border: 'border-teal-500/25', bg: 'bg-teal-950/20', divider: 'divide-teal-500/10', rowHover: 'hover:bg-teal-500/8', typePill: 'bg-teal-500/15 text-teal-300 border-teal-500/25' },
-                        },
-                        {
-                          label: 'Personality',
-                          types: ['personality_trait'],
-                          icon: <Smile className="h-3.5 w-3.5" />,
-                          color: { label: 'text-violet-400', icon: 'text-violet-400', border: 'border-violet-500/25', bg: 'bg-violet-950/20', divider: 'divide-violet-500/10', rowHover: 'hover:bg-violet-500/8', typePill: 'bg-violet-500/15 text-violet-300 border-violet-500/25' },
-                        },
-                      ].concat(
-                        (() => {
-                          const known = ['employment_status','occupation','workplace','financial_status','relationship_status','living_situation','lifestyle_pattern','health_condition','personality_trait'];
-                          const extra = characterAttributes.filter(a => !known.includes(a.attributeType));
-                          return extra.length ? [{
-                            label: 'Other', types: extra.map(a => a.attributeType), icon: <Tag className="h-3.5 w-3.5" />,
-                            color: { label: 'text-sky-400', icon: 'text-sky-400', border: 'border-sky-500/25', bg: 'bg-sky-950/20', divider: 'divide-sky-500/10', rowHover: 'hover:bg-sky-500/8', typePill: 'bg-sky-500/15 text-sky-300 border-sky-500/25' },
-                          }] : [];
-                        })()
-                      )
-                      .map(group => {
-                        const attrs = characterAttributes.filter(a => group.types.includes(a.attributeType));
-                        if (!attrs.length) return null;
-                        const c = group.color;
-                        const confDot = (v: number) => v >= 0.8 ? 'bg-emerald-400' : v >= 0.6 ? 'bg-yellow-400' : 'bg-orange-400';
-                        const TYPE_LABELS: Record<string, string> = { employment_status: 'Status', occupation: 'Role', workplace: 'Where', financial_status: 'Finances', relationship_status: 'Relationship', living_situation: 'Living', lifestyle_pattern: 'Habit', personality_trait: 'Trait', health_condition: 'Health' };
-                        return (
-                          <div key={group.label}>
-                            {/* Colored group header */}
-                            <div className="flex items-center gap-1.5 mb-1.5">
-                              <span className={c.icon}>{group.icon}</span>
-                              <span className={`text-[10px] font-semibold uppercase tracking-widest ${c.label}`}>{group.label}</span>
-                            </div>
-                            {/* Colored card */}
-                            <div className={`rounded-xl border ${c.border} ${c.bg} overflow-hidden divide-y ${c.divider}`}>
-                              {attrs.map((attr, idx) => (
-                                <div key={idx} className={`flex items-start gap-3 px-3 py-2.5 transition-colors ${c.rowHover}`}>
-                                  {/* Colored type pill */}
-                                  <span className={`text-[9px] font-semibold border rounded px-1.5 py-0.5 mt-0.5 flex-shrink-0 uppercase tracking-wider ${c.typePill}`}>
-                                    {TYPE_LABELS[attr.attributeType] ?? attr.attributeType.replace(/_/g, ' ')}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-white/90 font-medium leading-snug">{attr.attributeValue}</p>
-                                    {attr.evidence && (
-                                      <p className="text-[10px] text-white/40 mt-0.5 leading-snug line-clamp-2 italic">
-                                        {attr.evidence.length > 100 ? attr.evidence.substring(0, 100) + '…' : attr.evidence}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <Tooltip content={`${Math.round(attr.confidence * 100)}% confidence`}>
-                                    <div className={`h-2 w-2 rounded-full mt-2 flex-shrink-0 ${confDot(attr.confidence)}`} />
-                                  </Tooltip>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Provenance — origin story ── */}
-                {(provenance || isMockDataEnabled) && (() => {
-                  const mockProvenanceMap: Record<string, any> = {
-                    'Sarah Chen':    { mentionCount: 156, firstMentionedAt: '2018-09-20T00:00:00Z', lastMentionedAt: new Date(Date.now() - 7 * 86400000).toISOString(), sourceUtterances: [{ content: `I had coffee with Sarah today — she was the first person I told about wanting to leave tech for creative work. She just listened, then said "what's stopping you?"`, created_at: '2018-09-20T00:00:00Z' }] },
-                    'Marcus Johnson': { mentionCount: 98,  firstMentionedAt: '2020-03-12T00:00:00Z', lastMentionedAt: new Date(Date.now() - 14 * 86400000).toISOString(), sourceUtterances: [{ content: `Met Marcus at that entrepreneurship event. He spent an hour talking to me about creative courage. Something he said stuck: "most people protect their dreams by never starting them."`, created_at: '2020-03-12T00:00:00Z' }] },
-                    'Alex':           { mentionCount: 210, firstMentionedAt: '2023-06-03T00:00:00Z', lastMentionedAt: new Date(Date.now() - 2 * 86400000).toISOString(),  sourceUtterances: [{ content: `Sarah introduced me to her friend Alex at the coffee shop today. We ended up talking for three hours. She asked me to play her one of my songs and I actually did.`, created_at: '2023-06-03T00:00:00Z' }] },
-                    'Jordan Kim':     { mentionCount: 312, firstMentionedAt: '1995-06-15T00:00:00Z', lastMentionedAt: new Date(Date.now() - 5 * 86400000).toISOString(),   sourceUtterances: [{ content: `Jordan and I ran in the park this morning. We didn't talk much. That's the thing about Jordan — sometimes you don't need to.`, created_at: '2022-03-01T00:00:00Z' }] },
-                  };
-                  const p = isMockDataEnabled ? mockProvenanceMap[editedCharacter.name] : provenance;
-                  if (!p) return null;
-                  return (
-                    <div className="p-4 rounded-xl border border-white/10 bg-white/4 space-y-3">
-                      <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5" />
-                        How LoreBook learned about {editedCharacter.name.split(' ')[0]}
-                      </h4>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
-                        {p.mentionCount > 0 && <span><span className="text-white/75 font-semibold">{p.mentionCount}</span> mentions</span>}
-                        {p.firstMentionedAt && <span>First: <span className="text-white/65">{new Date(p.firstMentionedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>}
-                        {p.lastMentionedAt && <span>Last: <span className="text-white/65">{new Date(p.lastMentionedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>}
-                      </div>
-                      {p.sourceUtterances?.[0] && (
-                        <blockquote className="pl-3 border-l-2 border-white/15">
-                          <p className="text-xs text-white/55 italic leading-relaxed line-clamp-3">
-                            "{p.sourceUtterances[0].content}"
-                          </p>
-                          <p className="text-[10px] text-white/25 mt-1">
-                            — {new Date(p.sourceUtterances[0].created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                          </p>
-                        </blockquote>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* ── Temporal Attribute History ── */}
-                {allAttributes.length > 0 && (() => {
-                  const historical = allAttributes.filter(a => !a.isCurrent);
-                  const current = allAttributes.filter(a => a.isCurrent);
-                  if (historical.length === 0) return null;
-                  const grouped: Record<string, any[]> = {};
-                  for (const a of [...current, ...historical]) {
-                    if (!grouped[a.attributeType]) grouped[a.attributeType] = [];
-                    grouped[a.attributeType].push(a);
-                  }
-                  const typesWithHistory = Object.entries(grouped).filter(([, items]) => items.length > 1);
-                  if (typesWithHistory.length === 0) return null;
-                  return (
-                    <div className="p-4 rounded-xl border border-white/10 bg-white/4 space-y-3">
-                      <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Attribute Evolution</h4>
-                      <div className="space-y-3">
-                        {typesWithHistory.map(([type, items]) => (
-                          <div key={type}>
-                            <p className="text-[10px] text-white/30 mb-1.5 capitalize">{type.replace(/_/g, ' ')}</p>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {items.sort((a, b) => (a.isCurrent ? 1 : -1) - (b.isCurrent ? 1 : -1)).map((a, i) => (
-                                <div key={i} className="flex items-center gap-1">
-                                  <span className={`text-xs px-2 py-0.5 rounded-full border ${a.isCurrent ? 'border-primary/30 bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-white/40 line-through'}`}>
-                                    {a.attributeValue}
-                                  </span>
-                                  {!a.isCurrent && a.endTime && (
-                                    <span className="text-[9px] text-white/25">until {new Date(a.endTime).getFullYear()}</span>
-                                  )}
-                                  {i < items.length - 1 && <span className="text-white/20 text-xs">→</span>}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Name Section */}
-                <Card className="bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-2 border-primary/30 shadow-lg">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                      <h3 className="text-xl font-bold text-white">Name Information</h3>
-                    </div>
-                    
-	                    <div className="grid grid-cols-2 gap-6 mb-6">
-	                      <div>
-	                        <Tooltip content={hasHonorificFirstName ? 'Title/Prefix: This is an honorific, not a first name. LoreBook preserves the full display name instead.' : 'First Name: The given name LoreBook extracted from this person’s full name.'}>
-	                          <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide cursor-help">
-	                            {hasHonorificFirstName ? 'Title / Prefix' : 'First Name'}
-	                          </label>
-	                        </Tooltip>
-	                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
-	                          {editedCharacter.first_name || <span className="text-white/40 italic">Not specified</span>}
-	                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Last Name</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
-                          {editedCharacter.last_name || <span className="text-white/40 italic">Not specified</span>}
-                        </div>
-                      </div>
-                    </div>
-
-	                    <div className="mb-6">
-	                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide flex items-center gap-3">
-	                      Display Name
-	                      {editedCharacter.is_nickname && (
-	                          <Tooltip content={getNicknameTooltip()}>
-	                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-300 border-yellow-500/30 text-xs px-2 py-1 font-semibold cursor-help">
-	                          Alias-based
-	                        </Badge>
-	                          </Tooltip>
-	                      )}
-	                    </label>
-                      <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-2 border-primary/40 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-lg">
-                        {editedCharacter.name}
-                      </div>
-	                      {!hasHonorificFirstName && editedCharacter.first_name && editedCharacter.last_name && (
-	                        <p className="text-sm text-white/60 mt-2 font-medium">
-	                          Full name: <span className="text-white/80">{editedCharacter.first_name} {editedCharacter.last_name}</span>
-	                        </p>
-                      )}
-                  </div>
-
-                  <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Aliases / Nicknames</label>
-                      {editedCharacter.alias && editedCharacter.alias.length > 0 ? (
-                        <div className="flex flex-wrap gap-3">
-                          {editedCharacter.alias.map((alias) => (
-                            <Tooltip key={alias} content={getAliasTooltip(alias)}>
-                              <Badge variant="outline" className="bg-primary/20 text-primary border-primary/40 text-sm px-4 py-2 font-semibold shadow-md cursor-help">
-                                {alias}
-                              </Badge>
-                            </Tooltip>
-                          ))}
-                  </div>
-                      ) : (
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/50 text-sm min-h-[48px] flex items-center italic">
-                          No aliases recorded
-                </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Importance Section */}
-                {(editedCharacter.importance_level || editedCharacter.importance_score !== null) && (
-                  <Card className="bg-gradient-to-br from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg">
-                    <CardContent className="p-6">
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/40">
-                          <TrendingUp className="h-5 w-5 text-purple-300" />
-                        </div>
-                        <h3 className="text-xl font-bold text-white">Importance Level</h3>
-                    </div>
-                    
-                      <div className="flex items-center gap-6 mb-4">
-                      {editedCharacter.importance_level && (
-                        <div className="flex items-center gap-2">
-                            <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
-                          <Badge 
-                            variant="outline" 
-                                className={`${getImportanceColor(editedCharacter.importance_level)} text-base px-4 py-2 flex items-center gap-2 font-bold shadow-md cursor-help`}
-                          >
-                            {getImportanceIcon(editedCharacter.importance_level)}
-                            <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
-                          </Badge>
-                            </Tooltip>
-                        </div>
-                      )}
-                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
-                          <div className="flex items-center gap-3 bg-black/40 rounded-lg px-4 py-2 border border-purple-500/30">
-                            <span className="text-sm font-semibold text-white/70 uppercase tracking-wide">Score:</span>
-                            <span className="text-2xl font-bold text-purple-300">{Math.round(editedCharacter.importance_score)}/100</span>
-                        </div>
-                      )}
-                    </div>
-                      {/* Rare in story but high impact on you */}
-                      {((editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
-                        ((typeof (editedCharacter.metadata as any)?.impact_override === 'number'
-                          ? (editedCharacter.metadata as any).impact_override
-                          : editedCharacter.analytics?.character_influence_on_user) ?? 0) >= 70) && (
-                        <div className="mb-4 flex items-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
-                          <Zap className="h-5 w-5 text-purple-400 flex-shrink-0" />
-                          <p className="text-sm font-medium text-purple-200">
-                            Rare in your story, but high impact on you — they shape your choices and thoughts even with limited presence.
-                          </p>
-                        </div>
-                      )}
-                      <div className="bg-black/40 rounded-lg p-3 border border-purple-500/20">
-                        <p className="text-sm text-white/80 flex items-start gap-2 leading-relaxed">
-                          <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-purple-300" />
-                      <span>Importance is automatically calculated based on mentions, relationships, role significance, and interaction frequency. This helps identify major vs. minor characters in your story.</span>
-                    </p>
-                  </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Your Ranking — user overrides for computed standing + impact */}
-                {(() => {
-                  const meta = (editedCharacter.metadata ?? {}) as Record<string, any>;
-                  const standing = meta.social_standing as { tier?: string; score?: number } | undefined;
-                  const overrideTier: string | null = meta.standing_override?.tier ?? null;
-                  const impactOverride: number | null = typeof meta.impact_override === 'number' ? meta.impact_override : null;
-                  const tierLabels: Record<string, string> = {
-                    inner_circle: 'Inner circle', close: 'Close', regular: 'Regular',
-                    peripheral: 'Peripheral', public_figure: 'Public figure',
-                  };
-                  const setMeta = (key: string, value: unknown) => {
-                    setEditedCharacter((prev) => ({
-                      ...prev,
-                      metadata: { ...((prev.metadata ?? {}) as Record<string, any>), [key]: value },
-                    }));
-                  };
-                  // Persist right away — the Info tab has no save button; the
-                  // server merges metadata and treats null as "clear override".
-                  const persistOverride = async (key: string, value: unknown) => {
-                    setMeta(key, value);
-                    try {
-                      await fetchJson(`/api/characters/${character.id}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify({ metadata: { [key]: value } }),
-                      });
-                      onUpdate();
-                    } catch (err) {
-                      console.error('Failed to save ranking override:', err);
-                    }
-                  };
-                  return (
-                    <Card className="bg-gradient-to-br from-emerald-500/20 via-emerald-600/15 to-emerald-500/20 border-2 border-emerald-500/40 shadow-lg">
-                      <CardContent className="p-6">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40">
-                            <Star className="h-5 w-5 text-emerald-300" />
-                          </div>
-                          <h3 className="text-xl font-bold text-white">Your Ranking</h3>
-                        </div>
-                        <p className="text-sm text-white/70 mb-5">
-                          You know your people better than the math does. Pin where this person stands
-                          and how much impact they have on you — your choice always wins over the computed ranking.
-                        </p>
-
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          <div>
-                            <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Standing</label>
-                            <select
-                              data-testid="standing-override-select"
-                              aria-label="Standing tier override"
-                              title="Standing tier override"
-                              value={overrideTier ?? 'auto'}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                void persistOverride('standing_override', v === 'auto'
-                                  ? null
-                                  : { tier: v, set_at: new Date().toISOString() });
-                              }}
-                              className="w-full bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-sm focus:border-emerald-500/60 focus:outline-none"
-                            >
-                              <option value="auto">
-                                Auto{standing?.tier ? ` — computed: ${tierLabels[standing.tier] ?? standing.tier}` : ''}
-                              </option>
-                              <option value="inner_circle">Inner circle</option>
-                              <option value="close">Close</option>
-                              <option value="regular">Regular</option>
-                              <option value="peripheral">Peripheral</option>
-                            </select>
-                            {overrideTier && (
-                              <p className="text-xs text-emerald-300/80 mt-2">Set by you — overrides the computed tier.</p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">
-                              Impact on me
-                              {impactOverride !== null && <span className="ml-2 text-emerald-300">{impactOverride}/100</span>}
-                            </label>
-                            {impactOverride === null ? (
-                              <button
-                                type="button"
-                                data-testid="impact-override-enable"
-                                onClick={() => void persistOverride('impact_override',
-                                  Math.round(editedCharacter.analytics?.character_influence_on_user ?? 50))}
-                                className="w-full bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/70 text-sm text-left hover:border-emerald-500/60 transition-colors"
-                              >
-                                Auto ({Math.round(editedCharacter.analytics?.character_influence_on_user ?? 0)}/100 computed) — click to set your own
-                              </button>
-                            ) : (
-                              <div className="bg-black/80 border-2 border-emerald-500/40 rounded-lg px-4 py-3">
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={100}
-                                  value={impactOverride}
-                                  aria-label="Impact on me"
-                                  title="Impact on me"
-                                  data-testid="impact-override-slider"
-                                  onChange={(e) => setMeta('impact_override', Number(e.target.value))}
-                                  onPointerUp={(e) => void persistOverride('impact_override', Number((e.currentTarget as HTMLInputElement).value))}
-                                  className="w-full accent-emerald-400"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => void persistOverride('impact_override', null)}
-                                  className="text-xs text-white/50 hover:text-white/80 mt-1"
-                                >
-                                  Reset to auto
-                                </button>
-                              </div>
-                            )}
-                            <p className="text-xs text-white/50 mt-2">
-                              Someone can be a minor presence in your story and still shape you deeply.
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })()}
-
-                {/* Relationship Proximity Section */}
-                <Card className="bg-gradient-to-br from-orange-500/20 via-orange-600/15 to-orange-500/20 border-2 border-orange-500/40 shadow-lg">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-orange-500/20 border border-orange-500/40">
-                        <Network className="h-5 w-5 text-orange-300" />
-                      </div>
-                      <h3 className="text-xl font-bold text-white">Relationship & Proximity</h3>
-                  </div>
-
-                    <div className="grid grid-cols-2 gap-6 mb-6">
-                    <div>
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Proximity Level</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
-                          {editedCharacter.proximity_level ? (
-                            <Tooltip content={getProximityTooltip(editedCharacter.proximity_level)}>
-                              <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/50 text-sm px-4 py-2 font-semibold shadow-md cursor-help">
-                                {editedCharacter.proximity_level === 'direct' ? 'Direct (Know them directly)' :
-                                 editedCharacter.proximity_level === 'indirect' ? 'Indirect (Through someone else)' :
-                                 editedCharacter.proximity_level === 'distant' ? 'Distant (Barely know them)' :
-                                 editedCharacter.proximity_level === 'unmet' ? 'Unmet (Never met)' :
-                                 editedCharacter.proximity_level === 'third_party' ? 'Third Party (Mentioned by others)' :
-                                 editedCharacter.proximity_level}
-                              </Badge>
-                            </Tooltip>
-                          ) : (
-                            <UnknownField
-                              label="Proximity"
-                              prompt={`How directly I know ${editedCharacter.name}: `}
-                              onAskInChat={askInChat}
-                            />
-                          )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Relationship Depth</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
-                          {editedCharacter.relationship_depth ? (
-                            <Tooltip content={getRelationshipDepthTooltip(editedCharacter.relationship_depth)}>
-                              <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/50 text-sm px-4 py-2 font-semibold capitalize shadow-md cursor-help">
-                                {editedCharacter.relationship_depth}
-                              </Badge>
-                            </Tooltip>
-                          ) : (
-                            <UnknownField
-                              label="Relationship depth"
-                              prompt={`How close ${editedCharacter.name} and I are: `}
-                              onAskInChat={askInChat}
-                            />
-                          )}
-                        </div>
-                    </div>
-                  </div>
-
-                    <div className="grid grid-cols-2 gap-6 mb-6">
-                      <div className="flex items-center gap-4 bg-black/40 rounded-lg p-4 border border-orange-500/30">
-                        {editedCharacter.has_met == null ? (
-                          <UnknownField
-                            label="Met in person"
-                            prompt={`Have I met ${editedCharacter.name} in person? `}
-                            onAskInChat={askInChat}
-                          />
-                        ) : (
-                          <div className={`w-6 h-6 rounded border-2 flex items-center justify-center shadow-md ${
-                            editedCharacter.has_met ? 'bg-green-500 border-green-400' : 'bg-black/60 border-border/50'
-                          }`}>
-                            {editedCharacter.has_met && <span className="text-white text-sm font-bold">✓</span>}
-                          </div>
-                        )}
-                        <label className="text-base font-semibold text-white">
-                        Have met in person
-                      </label>
-                    </div>
-
-                    <div>
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Likelihood to Meet</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
-                          {editedCharacter.likelihood_to_meet ? (
-                            <Tooltip content={getLikelihoodToMeetTooltip(editedCharacter.likelihood_to_meet)}>
-                              <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/50 text-sm px-4 py-2 font-semibold capitalize shadow-md cursor-help">
-                                {editedCharacter.likelihood_to_meet}
-                              </Badge>
-                            </Tooltip>
-                          ) : (
-                            <UnknownField
-                              label="Likelihood to meet"
-                              prompt={`Whether I'm likely to meet ${editedCharacter.name}: `}
-                              onAskInChat={askInChat}
-                            />
-                          )}
-                        </div>
-                    </div>
-                  </div>
-
-                  {editedCharacter.context_of_mention && (
-                      <div className="mb-6">
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Context of Mention</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg p-4 text-white text-base min-h-[80px] leading-relaxed shadow-inner">
-                          {editedCharacter.context_of_mention}
-                        </div>
-                    </div>
-                  )}
-
-                    <div className="bg-black/40 rounded-lg p-4 border border-orange-500/20">
-                      <p className="text-sm text-white/80 flex items-start gap-2 leading-relaxed">
-                        <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-orange-300" />
-                    <span>Proximity tracks how directly you know this person. Use "Third Party" for people mentioned by others that you don't know personally.</span>
-                  </p>
-                </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-3 gap-6">
-                  <Card className="bg-gradient-to-br from-green-500/20 via-green-600/15 to-green-500/20 border-2 border-green-500/40 shadow-lg">
-                    <CardContent className="p-5">
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Pronouns</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.pronouns || (
-                          <UnknownField
-                            label="Pronouns"
-                            prompt={`${editedCharacter.name}'s pronouns are `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-                  </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-gradient-to-br from-pink-500/20 via-pink-600/15 to-pink-500/20 border-2 border-pink-500/40 shadow-lg">
-                    <CardContent className="p-5">
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Archetype</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.archetype || (
-                          <UnknownField
-                            label="Archetype"
-                            prompt={`The role ${editedCharacter.name} plays in my story: `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-                  </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-gradient-to-br from-cyan-500/20 via-cyan-600/15 to-cyan-500/20 border-2 border-cyan-500/40 shadow-lg">
-                    <CardContent className="p-5">
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Role</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.role || (
-                          <UnknownField
-                            label="Role"
-                            prompt={`${editedCharacter.name}'s role in my life: `}
-                            onAskInChat={askInChat}
-                          />
-                        )}
-                  </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card className="bg-gradient-to-br from-indigo-500/20 via-indigo-600/15 to-indigo-500/20 border-2 border-indigo-500/40 shadow-lg">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40">
-                        <Tag className="h-5 w-5 text-indigo-300" />
-                      </div>
-                      <h3 className="text-xl font-bold text-white">Tags</h3>
-                    </div>
-                    {editedCharacter.tags && editedCharacter.tags.length > 0 ? (
-                      <div className="flex flex-wrap gap-3">
-                        {editedCharacter.tags.map((tag) => (
-                          <Tooltip key={tag} content={getTagTooltip(tag)}>
-                      <Badge
-                        variant="outline"
-                              className="px-4 py-2 text-sm bg-indigo-500/20 text-indigo-300 border-indigo-500/50 font-semibold shadow-md cursor-help"
-                      >
-                        {tag}
-                      </Badge>
-                          </Tooltip>
-                    ))}
-                  </div>
-                    ) : (
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/50 text-base min-h-[52px] flex items-center italic">
-                        No tags assigned
-                </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+              <CharacterInfoPanel
+                editedCharacter={editedCharacter}
+                setEditedCharacter={setEditedCharacter}
+                characterId={editedCharacter.id ?? character.id}
+                onUpdate={onUpdate}
+                relationship={resolvedRomanticRelationship}
+                dynamics={dynamics}
+                askInChat={askInChat}
+                relationshipStatus={relationshipStatus}
+                romanticConnections={romanticConnections}
+                strongestConnections={strongestConnections}
+                lifeMap={lifeMap}
+                occupations={occupations}
+                workplaces={workplaces}
+                sideHustles={sideHustles}
+                behaviorAttributes={behaviorAttributes}
+                socialStanding={socialStanding}
+                characterAttributes={currentAttributes}
+                loadingAttributes={loadingAttributes}
+                provenance={provenance}
+                isMockDataEnabled={isMockDataEnabled}
+                openCharacterByRelationship={openCharacterByRelationship}
+              />
             )}
 
             {!loadingDetails && activeTab === 'social' && (
@@ -3632,7 +2611,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
                           {org.character_role && <span className="text-white/50">{org.character_role}</span>}
                           {org.member_count > 0 && <span>{org.member_count} members</span>}
-                          {org.confidence != null && <span>{Math.round(org.confidence * 100)}% confidence</span>}
+                          {org.confidence != null && <span>{formatEpistemicPercent(org.confidence)}</span>}
                         </div>
                         {org.character_member_notes && (
                           <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{org.character_member_notes}</p>
@@ -3914,94 +2893,107 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
             {/* Chat Tab */}
             {!loadingDetails && activeTab === 'chat' && (
-              <div className="space-y-4">
-	                <div className="mb-4">
-	                  <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-	                    <MessageSquare className="h-6 w-6 text-primary" />
-	                    Intelligence Chat about {displayName}
-	                  </h3>
-	                  <p className="text-base text-white/70">
-	                    Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
-	                  </p>
-	                  <p className="text-xs text-white/40 mt-2">
-	                    This chat is scoped to {displayName} — LoreBook loads their knowledge base, connected people, timeline, and relationship signals into every reply.
-	                  </p>
-	                </div>
+              <div className="flex flex-col flex-1 min-h-0 h-full" data-testid="character-chat-panel">
+                <div className="flex-shrink-0 overflow-y-auto overscroll-contain max-h-[36vh] sm:max-h-none px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-2 space-y-3 border-b border-white/10">
+                  <div>
+                    <h3 className="text-base sm:text-xl font-bold text-white mb-1 flex items-center gap-2 min-w-0">
+                      <MessageSquare className="h-5 w-5 text-primary shrink-0" />
+                      <span className="truncate">Chat about {displayName}</span>
+                    </h3>
+                    <p className="text-xs sm:text-sm text-white/60 hidden sm:block">
+                      Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
+                    </p>
+                  </div>
 
-	                <Card className="bg-yellow-500/10 border-yellow-500/25">
-	                  <CardContent className="p-4 space-y-3">
-	                    <div className="flex items-start justify-between gap-3">
-	                      <div>
-	                        <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-	                          <Zap className="h-4 w-4 text-yellow-300" />
-	                          Relationship Intelligence
-	                        </h4>
-	                        <p className="text-xs text-white/45 mt-1">
-	                          These signals are loaded into the conversation so you can ask why they matter or correct them.
-	                        </p>
-	                      </div>
-	                      {(dynamicsLoading || influenceLoading) && <Loader2 className="h-4 w-4 animate-spin text-yellow-300 flex-shrink-0" />}
-	                    </div>
+                  <Card className="bg-yellow-500/10 border-yellow-500/25">
+                    <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-yellow-300 shrink-0" />
+                            Relationship Intelligence
+                          </h4>
+                          <p className="text-xs text-white/45 mt-1 hidden sm:block">
+                            These signals are loaded into the conversation so you can ask why they matter or correct them.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {(dynamicsLoading || influenceLoading) && (
+                            <Loader2 className="h-4 w-4 animate-spin text-yellow-300" />
+                          )}
+                          <button
+                            type="button"
+                            className="sm:hidden text-[11px] text-yellow-300/90 px-2 py-1 rounded border border-yellow-500/25"
+                            onClick={() => setChatIntelOpen((open) => !open)}
+                          >
+                            {chatIntelOpen ? 'Hide' : 'Signals'}
+                          </button>
+                        </div>
+                      </div>
 
-	                    {!dynamicsLoading && !influenceLoading && !influenceProfile && !dynamics && (
-	                      <p className="text-sm text-white/45 rounded-lg border border-white/8 bg-black/25 p-3">
-	                        LoreBook is still learning how {firstName} affects your life. Add context in this chat to build influence, trust, health, and dynamic signals.
-	                      </p>
-	                    )}
+                      <div className={`${chatIntelOpen ? 'block' : 'hidden'} sm:block space-y-2 sm:space-y-3`}>
+                        {!dynamicsLoading && !influenceLoading && !influenceProfile && !dynamics && (
+                          <p className="text-xs sm:text-sm text-white/45 rounded-lg border border-white/8 bg-black/25 p-3">
+                            LoreBook is still learning how {firstName} affects your life. Add context in this chat to build influence, trust, health, and dynamic signals.
+                          </p>
+                        )}
 
-	                    {!dynamicsLoading && !influenceLoading && (influenceProfile || dynamics) && (
-	                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-	                        {influenceProfile && (
-	                          <Tooltip content={`Net influence estimates how strongly ${displayName} affects your emotions, behavior, and decisions based on recorded interactions.`}>
-	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
-	                              <p className="text-[10px] text-white/40 mb-1">Net Influence</p>
-	                              <p className="text-lg font-semibold text-yellow-300">{Math.round((influenceProfile.net_influence ?? 0) * 100)}%</p>
-	                            </div>
-	                          </Tooltip>
-	                        )}
-	                        {dynamics?.health && (
-	                          <Tooltip content="Relationship health combines support, trust, conflict, sentiment, and consistency from your conversations.">
-	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
-	                              <p className="text-[10px] text-white/40 mb-1">Health</p>
-	                              <p className="text-lg font-semibold text-white">{dynamics.health.health_score ?? 0}<span className="text-xs text-white/40">/100</span></p>
-	                            </div>
-	                          </Tooltip>
-	                        )}
-	                        {dynamics?.metrics && (
-	                          <Tooltip content="Interaction frequency is estimated from mentions, shared memories, and timeline activity.">
-	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
-	                              <p className="text-[10px] text-white/40 mb-1">Freq / mo</p>
-	                              <p className="text-lg font-semibold text-white">{dynamics.metrics.interaction_frequency?.toFixed(1) ?? '—'}</p>
-	                            </div>
-	                          </Tooltip>
-	                        )}
-	                      </div>
-	                    )}
+                        {!dynamicsLoading && !influenceLoading && (influenceProfile || dynamics) && (
+                          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                            {influenceProfile && (
+                              <Tooltip content={`Net influence estimates how strongly ${displayName} affects your emotions, behavior, and decisions.`}>
+                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
+                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Influence</p>
+                                  <p className="text-sm sm:text-lg font-semibold text-yellow-300">{Math.round((influenceProfile.net_influence ?? 0) * 100)}%</p>
+                                </div>
+                              </Tooltip>
+                            )}
+                            {dynamics?.health && (
+                              <Tooltip content="Relationship health combines support, trust, conflict, sentiment, and consistency.">
+                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
+                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Health</p>
+                                  <p className="text-sm sm:text-lg font-semibold text-white">{dynamics.health.health_score ?? 0}<span className="text-[10px] text-white/40">/100</span></p>
+                                </div>
+                              </Tooltip>
+                            )}
+                            {dynamics?.metrics && (
+                              <Tooltip content="Interaction frequency from mentions, shared memories, and timeline activity.">
+                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
+                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Freq/mo</p>
+                                  <p className="text-sm sm:text-lg font-semibold text-white">{dynamics.metrics.interaction_frequency?.toFixed(1) ?? '—'}</p>
+                                </div>
+                              </Tooltip>
+                            )}
+                          </div>
+                        )}
 
-	                    {!dynamicsLoading && !influenceLoading && influenceInsights.length > 0 && (
-	                      <div className="space-y-2">
-	                        {influenceInsights.slice(0, 2).map((insight: any, index: number) => (
-	                          <p key={index} className="text-xs text-white/70 rounded-lg border border-yellow-500/15 bg-yellow-950/10 p-2">
-	                            {insight.message}
-	                          </p>
-	                        ))}
-	                      </div>
-	                    )}
-	                  </CardContent>
-	                </Card>
-	                
-	                {/* Messages Area - Chat composer moved to sticky area */}
-                <div className="space-y-4">
+                        {!dynamicsLoading && !influenceLoading && influenceInsights.length > 0 && (
+                          <div className="space-y-2">
+                            {influenceInsights.slice(0, 2).map((insight: { message?: string }, index: number) => (
+                              <p key={index} className="text-xs text-white/70 rounded-lg border border-yellow-500/15 bg-yellow-950/10 p-2">
+                                {insight.message}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div
+                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 lg:px-8 py-3 space-y-3 sm:space-y-4"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
                   {chatMessages.length === 0 ? (
-                    <div className="text-center py-12 text-white/60">
-                      <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-50 text-primary" />
-                      <p className="text-lg mb-2">Start a conversation about {editedCharacter.name}</p>
-                      <div className="mt-4 space-y-2 text-sm text-white/50">
-                        <p className="font-semibold text-white/70">Try asking:</p>
-                        <p>"Tell me more about {editedCharacter.name}"</p>
-                        <p>"What do I know about {editedCharacter.name}?"</p>
-                        <p>"Update {editedCharacter.name}'s role to..."</p>
-                        <p>"Add to {editedCharacter.name}'s story: ..."</p>
+                    <div className="text-center py-8 sm:py-12 text-white/60 px-2">
+                      <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-3 sm:mb-4 opacity-50 text-primary" />
+                      <p className="text-base sm:text-lg mb-2">Start a conversation about {editedCharacter.name}</p>
+                      <div className="mt-3 space-y-1.5 text-xs sm:text-sm text-white/50 text-left max-w-sm mx-auto">
+                        <p className="font-semibold text-white/70 text-center">Try asking:</p>
+                        <p>&quot;Tell me more about {editedCharacter.name}&quot;</p>
+                        <p>&quot;What do I know about {editedCharacter.name}?&quot;</p>
+                        <p>&quot;Update {editedCharacter.name}&apos;s role to...&quot;</p>
                       </div>
                     </div>
                   ) : (
@@ -4010,23 +3002,24 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         id: msg.id,
                         role: msg.role,
                         content: msg.content,
-                        timestamp: msg.timestamp
+                        timestamp: msg.timestamp,
                       };
                       return (
-                        <ChatMessage
-                          key={msg.id}
-                          message={message}
-                          onCopy={() => navigator.clipboard.writeText(msg.content)}
-                        />
+                        <div key={msg.id} className="max-w-full min-w-0 overflow-hidden">
+                          <ChatMessage
+                            message={message}
+                            onCopy={() => navigator.clipboard.writeText(msg.content)}
+                          />
+                        </div>
                       );
                     })
                   )}
                   {(chatLoading || isStreaming) && !streamingMessageId && (
-                    <div className="flex justify-start">
-                      <Card className="bg-black/40 border-border/50 max-w-[80%]">
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2 text-white/60">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    <div className="flex justify-start max-w-full">
+                      <Card className="bg-black/40 border-border/50 max-w-[min(100%,20rem)] sm:max-w-[80%]">
+                        <CardContent className="p-3 sm:p-4">
+                          <div className="flex items-center gap-2 text-white/60 text-sm">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
                             <span>Thinking...</span>
                           </div>
                         </CardContent>
@@ -4036,9 +3029,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Composer — sticky at bottom of scroll area on mobile */}
-                <div className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-t border-white/10 bg-black/95 backdrop-blur-md">
+                <div className="flex-shrink-0 border-t border-white/10">
                   <ChatComposer
+                    variant="embedded"
+                    placeholder={`Ask about ${firstName}...`}
                     onSubmit={handleChatSubmit}
                     loading={chatLoading || isStreaming}
                     initialPrompt={chatPrefill}
@@ -4489,7 +3483,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                                 <div key={i} className={`p-3 rounded-lg border ${cls}`}>
                                   <p className="text-xs leading-relaxed">{insight.message}</p>
                                   {insight.confidence && (
-                                    <p className="text-[10px] opacity-50 mt-1">{Math.round(insight.confidence * 100)}% confidence</p>
+                                    <p className="text-[10px] opacity-50 mt-1">{formatEpistemicPercent(insight.confidence)}</p>
                                   )}
                                 </div>
                               );
@@ -4764,6 +3758,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               </div>
             )}
           </div>
+        </div>
         </div>
 
 

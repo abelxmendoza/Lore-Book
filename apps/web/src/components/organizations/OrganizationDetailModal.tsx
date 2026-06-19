@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine } from 'lucide-react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -20,9 +20,19 @@ import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { OrganizationProfilePanel } from './OrganizationProfilePanel';
 import { GroupDetailPanel } from './GroupDetailPanel';
+import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { getMockOrganizationDerivedEvents } from '../../mocks/organizationTimeline';
+import {
+  getMockOrganizationFacts,
+  getMockMemberAffiliations,
+  getMockOrganizationRelationships,
+  enrichOrganizationForDemo,
+} from '../../mocks/modalDemoData';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
@@ -37,7 +47,7 @@ type OrganizationDetailModalProps = {
   onUpdate?: () => void;
 };
 
-type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family';
+type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family' | 'danger';
 
 // Events & locations inferred from the group's members across chat threads /
 // journal entries (served by GET /api/organizations/:id/derived-context).
@@ -122,12 +132,18 @@ const BASE_TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = 
 ];
 
 export const OrganizationDetailModal = ({ organization, allOrganizations = [], onSelectOrganization, onClose, onUpdate }: OrganizationDetailModalProps) => {
-  const [editedOrg, setEditedOrg] = useState<Organization>(organization);
+  const isMockDataEnabled = useShouldUseMockData();
+  const resolvedOrganization = useMemo(
+    () => (isMockDataEnabled ? enrichOrganizationForDemo(organization) : organization),
+    [isMockDataEnabled, organization],
+  );
+  const [editedOrg, setEditedOrg] = useState<Organization>(resolvedOrganization);
   const tabs = useMemo(() => {
     const list = [...BASE_TABS];
     if (editedOrg.group_type === 'family') {
       list.splice(4, 0, { key: 'family', label: 'Family Tree', icon: TreePine });
     }
+    list.push({ key: 'danger', label: 'Delete', icon: Trash2 });
     return list;
   }, [editedOrg.group_type]);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
@@ -144,24 +160,24 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const { streamChat, isStreaming, cancel } = useChatStream();
 
   // Members state
-  const [members, setMembers] = useState<OrganizationMember[]>(organization.members || []);
+  const [members, setMembers] = useState<OrganizationMember[]>(resolvedOrganization.members || []);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMember, setNewMember] = useState({ character_name: '', role: '', status: 'active' as const });
 
   // Stories state
-  const [stories, setStories] = useState<OrganizationStory[]>(organization.stories || []);
+  const [stories, setStories] = useState<OrganizationStory[]>(resolvedOrganization.stories || []);
   const [showAddStory, setShowAddStory] = useState(false);
   const [newStory, setNewStory] = useState({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
   const [storyLoading, setStoryLoading] = useState(false);
 
   // Events state
-  const [events, setEvents] = useState<OrganizationEvent[]>(organization.events || []);
+  const [events, setEvents] = useState<OrganizationEvent[]>(resolvedOrganization.events || []);
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' as OrganizationEvent['type'] });
   const [eventLoading, setEventLoading] = useState(false);
 
   // Locations state
-  const [locations, setLocations] = useState<OrganizationLocation[]>(organization.locations || []);
+  const [locations, setLocations] = useState<OrganizationLocation[]>(resolvedOrganization.locations || []);
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocation, setNewLocation] = useState({ location_name: '' });
   const [locationLoading, setLocationLoading] = useState(false);
@@ -192,8 +208,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   });
   const [relationshipSaving, setRelationshipSaving] = useState(false);
 
-  // Delete state
+  // Delete state — two-step confirmation in the Delete tab
+  const [deleteStep, setDeleteStep] = useState<null | 'warn' | 'type'>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Knowledge / entity facts state
   const [orgFacts, setOrgFacts] = useState<any[]>([]);
@@ -206,16 +225,24 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   
   useEffect(() => {
+    setEditedOrg(resolvedOrganization);
+    setMembers(resolvedOrganization.members || []);
+    setStories(resolvedOrganization.stories || []);
+    setEvents(resolvedOrganization.events || []);
+    setLocations(resolvedOrganization.locations || []);
+  }, [resolvedOrganization]);
+
+  useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length === 0) {
       const welcomeMessage: ChatMessage = {
         id: 'welcome',
         role: 'assistant',
-        content: `Hi! I'm here to help you discuss **${organization.name}** using what LoreBook already knows.\n\nYou can ask about known facts, correct details, add members, record stories/events, link locations, or explain how this group fits into your life.\n\nWhat should we focus on?`,
+        content: `Hi! I'm here to help you discuss **${resolvedOrganization.name}** using what LoreBook already knows.\n\nYou can ask about known facts, correct details, add members, record stories/events, link locations, or explain how this group fits into your life.\n\nWhat should we focus on?`,
         timestamp: new Date()
       };
       setChatMessages([welcomeMessage]);
     }
-  }, [activeTab, organization.name]);
+  }, [activeTab, resolvedOrganization.name, chatMessages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -229,6 +256,20 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
   useEffect(() => {
     if ((activeTab !== 'events' && activeTab !== 'locations' && activeTab !== 'timeline' && activeTab !== 'relationships') || derivedLoaded || !organization.id) return;
+    if (isMockDataEnabled) {
+      setDerivedEvents(getMockOrganizationDerivedEvents(organization));
+      setDerivedLocations(
+        (organization.locations ?? []).map((loc) => ({
+          id: loc.id,
+          location_name: loc.location_name,
+          visit_count: loc.visit_count,
+          last_visited: loc.last_visited,
+        })),
+      );
+      setDerivedHierarchy({ subgroups: [], related: [] });
+      setDerivedLoaded(true);
+      return;
+    }
     setDerivedLoading(true);
     fetchJson<{ success: boolean; events: DerivedEvent[]; locations: DerivedLocation[]; hierarchy?: DerivedHierarchy }>(
       `/api/organizations/${organization.id}/derived-context`
@@ -242,21 +283,32 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       })
       .catch(() => {})
       .finally(() => { setDerivedLoading(false); setDerivedLoaded(true); });
-  }, [activeTab, organization.id, derivedLoaded]);
+  }, [activeTab, organization, derivedLoaded, isMockDataEnabled]);
 
   useEffect(() => {
-    if (activeTab !== 'chat' || factsLoaded || !organization.id) return;
+    if (factsLoaded || !organization.id) return;
+    if (isMockDataEnabled) {
+      setOrgFacts(getMockOrganizationFacts(organization));
+      setFactsLoaded(true);
+      return;
+    }
+    if (activeTab !== 'chat') return;
     setFactsLoading(true);
     fetchJson<{ success: boolean; facts: any[] }>(`/api/organizations/${organization.id}/facts`)
       .then(r => { if (r.success) setOrgFacts(r.facts); })
       .catch(() => {})
       .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
-  }, [activeTab, organization.id, factsLoaded]);
+  }, [activeTab, organization, factsLoaded, isMockDataEnabled]);
 
   const loadMemberAffiliations = async () => {
-    if (!organization.id || organization.id.startsWith('org-')) return;
+    if (!organization.id) return;
     setAffiliationsLoading(true);
     try {
+      if (isMockDataEnabled) {
+        setMemberAffiliations(getMockMemberAffiliations(organization, allOrganizations));
+        return;
+      }
+      if (organization.id.startsWith('org-')) return;
       const r = await fetchJson<{
         success: boolean;
         affiliations: Record<string, Array<{ id: string; name: string; group_type?: string }>>;
@@ -285,6 +337,15 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const loadRelationships = async () => {
     setRelationshipsLoading(true);
     try {
+      if (isMockDataEnabled) {
+        const { relationships, relatedOrgs: peers } = getMockOrganizationRelationships(
+          organization,
+          allOrganizations,
+        );
+        setRelationships(relationships);
+        setRelatedOrgs(peers);
+        return;
+      }
       const [relResult, orgResult] = await Promise.all([
         fetchJson<{ success: boolean; relationships: OrganizationRelationship[] }>(
           `/api/organizations/${organization.id}/relationships`
@@ -307,6 +368,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   };
 
   const openLinkedOrg = (orgId: string) => {
+    if (isMockDataEnabled) {
+      const linked = allOrganizations.find((o) => o.id === orgId);
+      if (!linked) return;
+      if (onSelectOrganization) {
+        onSelectOrganization(linked);
+      } else {
+        setSelectedLinkedOrg(linked);
+      }
+      return;
+    }
     void fetchJson<{ success: boolean; organization: Organization }>(`/api/organizations/${orgId}`)
       .then(r => { if (r.success && r.organization) setSelectedLinkedOrg(r.organization); })
       .catch(() => {});
@@ -326,11 +397,6 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
-  const laneKeyForEvent = (e: DerivedEvent): string => {
-    if (e.audience === 'with_user' || e.user_was_present) return 'with';
-    if (e.audience === 'group_wide') return 'group_wide';
-    return 'without';
-  };
 
   const handleAddRelationship = async () => {
     if (!newRelationship.to_org_id) return;
@@ -417,6 +483,21 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     } finally {
       setSaving(false);
     }
+  };
+
+  const openOrgMainChat = (prompt?: string) => {
+    onClose();
+    openChatWithFocus({
+      entityId: editedOrg.id,
+      entityName: editedOrg.name,
+      entityType: 'organization',
+      sourceSurface: 'organizations',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
+      knowledgeScope: 'group membership, culture, and dynamics',
+      initialPrompt:
+        prompt ??
+        `Tell me about ${editedOrg.name} — who belongs, how it works, and what I should know.`,
+    });
   };
 
   const handleChatSubmit = async () => {
@@ -749,68 +830,75 @@ User's message: ${currentInput}`;
     }
   };
 
+  const resetDeleteFlow = () => {
+    setDeleteStep(null);
+    setDeleteConfirmText('');
+    setDeleteError(null);
+  };
+
   const handleDelete = async () => {
-    if (!window.confirm(`Delete "${organization.name}"? This cannot be undone.`)) return;
+    if (deleteConfirmText.trim() !== organization.name) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await fetchJson(`/api/organizations/${organization.id}`, { method: 'DELETE' });
       onUpdate?.();
       onClose();
     } catch (error) {
       console.error('Failed to delete organization:', error);
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete group');
       setDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'danger') {
+      setDeleteStep(prev => prev ?? 'warn');
+    } else {
+      resetDeleteFlow();
+    }
+  }, [activeTab]);
 
   return (
     <>
     <Modal isOpen={true} onClose={onClose} size="xl">
       <div className="flex flex-col h-full max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border/50">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
-              <Building2 className="h-6 w-6 text-purple-400" />
+        <div className="flex items-center justify-between p-3 sm:p-6 border-b border-border/50 gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1">
+            <div className="p-2 sm:p-3 rounded-lg bg-purple-500/20 border border-purple-500/30 shrink-0">
+              <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">{editedOrg.name}</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className={getTypeColor(editedOrg.type)}>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-2xl font-bold text-white truncate">{editedOrg.name}</h2>
+              <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 sm:mt-1 flex-wrap">
+                <Badge variant="outline" className={`text-[10px] sm:text-xs ${getTypeColor(editedOrg.type)}`}>
                   {getTypeLabel(editedOrg.type)}
                 </Badge>
-                <Badge variant="outline" className={editedOrg.status === 'active' ? 'bg-green-500/20 text-green-400 border-green-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'}>
+                <Badge variant="outline" className={`text-[10px] sm:text-xs ${editedOrg.status === 'active' ? 'bg-green-500/20 text-green-400 border-green-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'}`}>
                   {editedOrg.status}
                 </Badge>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleDelete()}
-              disabled={deleting}
-              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="shrink-0">
+            <X className="h-5 w-5" />
+          </Button>
         </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-6 pt-4 border-b border-border/50">
-            {/* Wrapping, auto-height tab bar so every tab stays fully visible
-                (no horizontal scroll / clipped labels), with a clear active state. */}
-            <TabsList className="flex flex-wrap h-auto w-full justify-start gap-1.5 bg-black/40 p-1.5">
+          <div className="px-3 sm:px-6 pt-2 sm:pt-4 border-b border-border/50">
+            <TabsList className="flex flex-nowrap sm:flex-wrap h-auto w-full justify-start gap-1 sm:gap-1.5 bg-black/40 p-1 sm:p-1.5 overflow-x-auto overscroll-x-contain snap-x snap-mandatory sm:snap-none scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0 [&_[role=tab]]:snap-start">
               {tabs.map(tab => (
                 <TabsTrigger
                   key={tab.key}
                   value={tab.key}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm text-white/55 hover:text-white/80 data-[state=active]:bg-purple-500/25 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-purple-400/40 data-[state=active]:shadow-sm rounded-md"
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-[11px] sm:text-sm rounded-md whitespace-nowrap ${
+                    tab.key === 'danger'
+                      ? 'text-red-300/70 hover:text-red-200 data-[state=active]:bg-red-500/15 data-[state=active]:text-red-100 data-[state=active]:border data-[state=active]:border-red-500/30'
+                      : 'text-white/55 hover:text-white/80 data-[state=active]:bg-purple-500/25 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-purple-400/40 data-[state=active]:shadow-sm'
+                  }`}
                 >
                   <tab.icon className="h-3.5 w-3.5 shrink-0" />
                   {tab.label}
@@ -819,11 +907,11 @@ User's message: ${currentInput}`;
             </TabsList>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6">
             {/* Info Tab */}
-            <TabsContent value="info" className="space-y-6 mt-4">
+            <TabsContent value="info" className="space-y-4 sm:space-y-6 mt-2 sm:mt-4">
               <GroupDetailPanel
-                organization={organization}
+                organization={resolvedOrganization}
                 allOrganizations={allOrganizations}
                 onSelectOrganization={onSelectOrganization}
                 onOpenMembersTab={() => setActiveTab('members')}
@@ -1030,7 +1118,9 @@ User's message: ${currentInput}`;
               {/* Rich organization profile — mission, culture, structure, reputation, … */}
               <OrganizationProfilePanel
                 organization={editedOrg}
-                onAddInfo={() => setActiveTab('chat')}
+                onAddInfo={() =>
+                  openOrgMainChat(`Let me tell you more about ${editedOrg.name}: `)
+                }
               />
 
               {/* Stats */}
@@ -1230,6 +1320,15 @@ User's message: ${currentInput}`;
             {/* Knowledge Chat Tab */}
             <TabsContent value="chat" className="mt-4">
               <div className="space-y-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2 border-violet-500/30 text-violet-200 hover:bg-violet-500/10"
+                  onClick={() => openOrgMainChat()}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Open main chat with {editedOrg.name} focus
+                </Button>
                 <Card className="bg-violet-500/10 border-violet-500/25">
                   <CardContent className="pt-4 pb-4">
                     <div className="flex items-start justify-between gap-3 mb-3">
@@ -2038,39 +2137,80 @@ User's message: ${currentInput}`;
 
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="mt-4 space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-purple-400" />
-                  Event Timeline
-                </h3>
-                <p className="text-xs text-white/45 mt-1">
-                  Events involving {organization.name}'s members (including subgroups), split by your involvement and group-wide impact.
-                </p>
-              </div>
-              <EventTimelineSwimlanes
-                loading={derivedLoading}
-                lanes={[
-                  { key: 'with', label: 'With you', accent: 'emerald', hint: 'You were there' },
-                  { key: 'without', label: 'Without you', accent: 'violet', hint: 'Member-only — you weren\'t present' },
-                  { key: 'group_wide', label: 'Group-wide', accent: 'amber', hint: 'Affects the whole group or multiple members' },
-                ]}
-                events={derivedEvents.map((e): SwimlaneEvent => ({
-                  id: e.id,
-                  title: e.title,
-                  date: e.date ?? '',
-                  laneKey: laneKeyForEvent(e),
-                  type: e.type,
-                  summary: e.summary,
-                  meta: [
-                    e.involved.length > 0
-                      ? `with ${e.involved.slice(0, 4).join(', ')}${e.involved.length > 4 ? ` +${e.involved.length - 4}` : ''}`
-                      : null,
-                    e.subgroup_names?.length ? `via ${e.subgroup_names.join(', ')}` : null,
-                  ].filter(Boolean).join(' · ') || undefined,
-                }))}
-                emptyTitle="No events yet"
-                emptyHint={`Events show up here as ${organization.name}'s members come up in your conversations.`}
+              <OrganizationTimelinePanel
+                organization={resolvedOrganization}
+                mockMode={isMockDataEnabled}
+                active={activeTab === 'timeline'}
               />
+            </TabsContent>
+
+            {/* Delete Tab — two-step confirmation, away from the close button */}
+            <TabsContent value="danger" className="mt-4 space-y-4">
+              <Card className="bg-red-500/5 border-red-500/25">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      {deleteStep === 'warn' && (
+                        <>
+                          <h3 className="text-lg font-semibold text-white">Delete {editedOrg.name}?</h3>
+                          <p className="text-sm text-white/60 mt-1">
+                            Deleting a group removes it from your Groups &amp; Organizations book. Member links and conversation-derived context may be affected. This cannot be undone.
+                          </p>
+                          <p className="text-xs text-white/45 mt-2">
+                            Step 1 of 2 — continue to type the group name.
+                          </p>
+                        </>
+                      )}
+                      {deleteStep === 'type' && (
+                        <>
+                          <h3 className="text-lg font-semibold text-white">Type the name to confirm</h3>
+                          <p className="text-sm text-white/60 mt-1">
+                            Enter <span className="font-mono text-red-200">{editedOrg.name}</span> to delete this group.
+                          </p>
+                          <Input
+                            className="mt-3 bg-black/40 border-red-500/20"
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                            placeholder={editedOrg.name}
+                            autoFocus
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {deleteError && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                      {deleteError}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" onClick={() => setActiveTab('info')} disabled={deleting}>
+                      Cancel
+                    </Button>
+                    {deleteStep === 'warn' && (
+                      <Button
+                        onClick={() => setDeleteStep('type')}
+                        className="bg-red-500/15 hover:bg-red-500/25 text-red-100 border border-red-500/30"
+                      >
+                        Continue
+                      </Button>
+                    )}
+                    {deleteStep === 'type' && (
+                      <Button
+                        onClick={() => void handleDelete()}
+                        disabled={deleting || deleteConfirmText.trim() !== editedOrg.name}
+                        className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30 disabled:opacity-40"
+                        leftIcon={<Trash2 className="h-4 w-4" />}
+                      >
+                        {deleting ? 'Deleting…' : 'Delete group'}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
           </div>

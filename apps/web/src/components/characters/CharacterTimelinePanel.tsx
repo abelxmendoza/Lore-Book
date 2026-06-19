@@ -35,6 +35,8 @@ interface Props {
   mockMode?: boolean;
   /** When false, skip fetching until the tab is opened. */
   active?: boolean;
+  /** When true, copy is for the app user's own life timeline. */
+  isSelfProfile?: boolean;
 }
 
 function fmtEventDate(iso: string): string {
@@ -65,8 +67,24 @@ export function CharacterTimelinePanel({
   characterName,
   mockMode = false,
   active = true,
+  isSelfProfile = false,
 }: Props) {
   const firstName = characterName.split(' ')[0];
+  const withLabel = isSelfProfile ? 'With others' : 'With you';
+  const withoutLabel = isSelfProfile ? 'Your story' : 'Without you';
+  const timelineTitle = isSelfProfile ? 'Your Timeline' : `${firstName}'s Timeline`;
+  const timelineDescription = isSelfProfile
+    ? 'Key moments from your life — shared experiences with others and your own story, oldest to newest.'
+    : `Events you lived through together, and things ${firstName} went through without you — oldest to newest.`;
+  const emptyTitle = isSelfProfile ? 'No timeline events for you yet' : `No timeline events for ${firstName} yet`;
+  const emptyHint = isSelfProfile
+    ? 'As you share your life in chat, milestones and shared moments will appear here in order.'
+    : `As you mention ${firstName} in your conversations, shared experiences and their own story will appear here in order.`;
+  const swimEmptyHint = isSelfProfile
+    ? 'As you share your life in chat, milestones will plot here.'
+    : `As you mention ${firstName} in your conversations, shared experiences and their own story will plot here.`;
+  const countWithLabel = isSelfProfile ? 'with others' : 'with you';
+  const countWithoutLabel = isSelfProfile ? 'your story' : 'without you';
   const [sharedExperiences, setSharedExperiences] = useState<CharTimelineEvent[]>([]);
   const [loreEvents, setLoreEvents] = useState<CharTimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -156,18 +174,25 @@ export function CharacterTimelinePanel({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Clock className="h-5 w-5 text-primary" />
-            {firstName}&apos;s Timeline
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary shrink-0" />
+            {timelineTitle}
           </h3>
           <p className="text-xs text-white/45 mt-1">
-            Events you lived through together, and things {firstName} went through without you — oldest to newest.
+            {isSelfProfile ? (
+              <>
+                <span className="sm:hidden">Your life moments, oldest to newest.</span>
+                <span className="hidden sm:inline">{timelineDescription}</span>
+              </>
+            ) : (
+              timelineDescription
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-start">
           <div className="flex rounded-lg border border-white/10 overflow-hidden">
             <button
               type="button"
@@ -221,9 +246,9 @@ export function CharacterTimelinePanel({
         ) : chronologicalList.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center gap-2 px-6 text-center">
             <Clock className="h-8 w-8 text-white/20" />
-            <p className="text-white/60 font-medium">No timeline events for {firstName} yet</p>
+            <p className="text-white/60 font-medium">{emptyTitle}</p>
             <p className="text-white/30 text-sm max-w-sm">
-              As you mention {firstName} in your conversations, shared experiences and their own story will appear here in order.
+              {emptyHint}
             </p>
           </div>
         ) : (
@@ -248,7 +273,7 @@ export function CharacterTimelinePanel({
                             : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
                         }`}
                       >
-                        {isWith ? 'With you' : 'Without you'}
+                        {isWith ? withLabel : withoutLabel}
                       </Badge>
                       {event.eventType && (
                         <Badge variant="outline" className="text-[10px] text-white/50">
@@ -286,21 +311,21 @@ export function CharacterTimelinePanel({
         <EventTimelineSwimlanes
           loading={loading}
           lanes={[
-            { key: 'with', label: 'With you', accent: 'emerald' },
-            { key: 'without', label: 'Without you', accent: 'sky' },
+            { key: 'with', label: withLabel, accent: 'emerald' },
+            { key: 'without', label: withoutLabel, accent: 'sky' },
           ]}
           events={swimEvents}
-          emptyTitle={`No timeline events for ${firstName} yet`}
-          emptyHint={`As you mention ${firstName} in your conversations, shared experiences and their own story will plot here.`}
+          emptyTitle={emptyTitle}
+          emptyHint={swimEmptyHint}
         />
       )}
 
       <div className="flex items-center gap-4 text-xs text-white/40 pt-1">
         <span>
-          <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span> with you
+          <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span> {countWithLabel}
         </span>
         <span>
-          <span className="text-sky-300 font-medium">{loreEvents.length}</span> without you
+          <span className="text-sky-300 font-medium">{loreEvents.length}</span> {countWithoutLabel}
         </span>
         {chronologicalList.length > 0 && (
           <span className="text-white/30">

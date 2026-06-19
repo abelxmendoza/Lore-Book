@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { Modal } from '../ui/modal';
 import { VerificationBadge } from './VerificationBadge';
 import type { EntryVerification } from '../../api/verification';
+import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 
 type VerificationDetailsModalProps = {
   verification: EntryVerification;
@@ -54,9 +55,9 @@ export const VerificationDetailsModal = ({ verification, onClose }: Verification
         {/* Statistics */}
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-lg border border-white/10 bg-black/40 p-3">
-            <div className="text-xs text-white/60">Confidence Score</div>
+            <div className="text-xs text-white/60">Certainty</div>
             <div className="mt-1 text-lg font-bold text-white">
-              {(verification.confidence_score * 100).toFixed(0)}%
+              {formatEpistemicPercent(verification.confidence_score)}
             </div>
           </div>
           <div className="rounded-lg border border-white/10 bg-black/40 p-3">

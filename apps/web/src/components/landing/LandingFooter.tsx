@@ -29,8 +29,8 @@ export const LandingFooter = () => {
           {/* Brand Column */}
           <div className="col-span-1 sm:col-span-2 md:col-span-1">
             <Logo size="md" showText={true} />
-            <p className="mt-3 sm:mt-4 text-sm text-white/60">
-              The Memory OS That Remembers for You.
+            <p className="mt-3 sm:mt-4 text-sm text-white/60 leading-relaxed">
+              A life memory system — conversation in, lasting lore out.
             </p>
             <p className="mt-2 text-xs text-white/40">
               © {currentYear} Omega Technologies

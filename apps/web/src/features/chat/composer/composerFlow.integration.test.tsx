@@ -16,6 +16,19 @@ vi.mock('../../../lib/cache', () => ({
   apiCache: { delete: vi.fn() },
 }));
 
+vi.mock('../../../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'test-token' } },
+      }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
+  },
+}));
+
 vi.mock('../../../hooks/useMoodEngine', () => ({
   useMoodEngine: () => ({
     mood: { score: 0, label: 'neutral', color: '#888' },
@@ -71,6 +84,12 @@ describe('Composer entity chip flow (integration)', () => {
 
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
     expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('composer-entity-highlight-character-uuid-abel', { hidden: true })
+    ).toHaveTextContent('Abel');
+    expect(
+      screen.getByTestId('composer-entity-highlight-character-sug:character:kelly', { hidden: true })
+    ).toHaveTextContent('Kel');
 
     fireEvent.click(screen.getByTestId('composer-entity-dismiss-character-uuid-abel'));
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));

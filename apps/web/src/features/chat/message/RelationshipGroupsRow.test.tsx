@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { RelationshipGroupsRow } from './RelationshipGroupsRow';
 
 describe('RelationshipGroupsRow', () => {
-  it('renders scope labels and entity names', () => {
+  it('renders compact scope chips with truncated names', () => {
     render(
       <RelationshipGroupsRow
         groups={[
@@ -13,10 +13,10 @@ describe('RelationshipGroupsRow', () => {
       />
     );
 
-    expect(screen.getByText('relationships:')).toBeInTheDocument();
-    expect(screen.getByText(/family:/)).toBeInTheDocument();
-    expect(screen.getByText(/Marcus, Grandma Rose/)).toBeInTheDocument();
-    expect(screen.getByText(/work:/)).toBeInTheDocument();
+    expect(screen.getByText('relationships')).toBeInTheDocument();
+    expect(screen.getByText('family')).toBeInTheDocument();
+    expect(screen.getByText(/Marcus \+1/)).toBeInTheDocument();
+    expect(screen.getByText('work')).toBeInTheDocument();
     expect(screen.getByText('Armstrong Robotics')).toBeInTheDocument();
   });
 

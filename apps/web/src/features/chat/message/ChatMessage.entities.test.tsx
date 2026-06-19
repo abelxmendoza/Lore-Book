@@ -28,12 +28,12 @@ describe('ChatMessage — entity chips on assistant replies', () => {
       ],
     });
 
-    expect(screen.getByText('detected:')).toBeInTheDocument();
+    expect(screen.getByText('detected')).toBeInTheDocument();
     expect(screen.getByText('Tía Maria')).toBeInTheDocument();
     expect(screen.getByText('San Diego')).toBeInTheDocument();
   });
 
-  it('does not show entity chips on user messages', () => {
+  it('renders inline entity pills in user message text when thread entities are known', () => {
     renderMessage({
       id: 'u1',
       role: 'user',
@@ -43,7 +43,21 @@ describe('ChatMessage — entity chips on assistant replies', () => {
     });
 
     expect(screen.queryByText('detected:')).not.toBeInTheDocument();
-    expect(screen.queryByText('Tía Maria')).not.toBeInTheDocument();
+    expect(screen.getByTestId('entity-mention-pill-character-c1')).toHaveTextContent('Tía Maria');
+  });
+
+  it('highlights entity names inside assistant message prose', () => {
+    renderMessage({
+      ...base,
+      content: 'Your visit with Tía Maria in San Diego sounds meaningful.',
+      mentionedEntities: [
+        { id: 'c1', name: 'Tía Maria', type: 'character' },
+        { id: 'l1', name: 'San Diego', type: 'location' },
+      ],
+    });
+
+    expect(screen.getByTestId('entity-mention-pill-character-c1')).toHaveTextContent('Tía Maria');
+    expect(screen.getByTestId('entity-mention-pill-location-l1')).toHaveTextContent('San Diego');
   });
 
   it('hides chips when assistant message has no mentionedEntities', () => {
@@ -67,10 +81,10 @@ describe('ChatMessage — entity chips on assistant replies', () => {
       },
     });
 
-    expect(screen.getByText('relationships:')).toBeInTheDocument();
-    expect(screen.getByText(/family:/)).toBeInTheDocument();
+    expect(screen.getByText('relationships')).toBeInTheDocument();
+    expect(screen.getByText('family')).toBeInTheDocument();
     expect(screen.getByText('Marcus')).toBeInTheDocument();
-    expect(screen.getByText(/work:/)).toBeInTheDocument();
+    expect(screen.getByText('work')).toBeInTheDocument();
     expect(screen.getByText('Armstrong Robotics')).toBeInTheDocument();
   });
 });

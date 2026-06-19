@@ -19,6 +19,7 @@ import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
 import { format, subDays } from 'date-fns';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
+import { mockDataService } from '../../services/mockDataService';
 
 const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
 
@@ -38,6 +39,37 @@ type SkillCategoryFilter =
   | 'physical_type'
   | 'technical_type';
 type SortOption = 'name_asc' | 'name_desc' | 'level_desc' | 'level_asc' | 'xp_desc' | 'xp_asc' | 'practice_desc' | 'practice_asc' | 'recent';
+
+const CATEGORY_LABELS: Partial<Record<SkillCategoryFilter, string>> = {
+  all: 'All',
+  recent: 'Recent',
+  active: 'Active',
+  inactive: 'Inactive',
+  auto_detected: 'Auto',
+  paid: 'Paid',
+  hobby: 'Hobby',
+  improving: 'Growing',
+  high_proficiency: 'High Prof',
+  high_level: 'High Lv',
+  low_level: 'Low Lv',
+  physical_type: 'Physical',
+  technical_type: 'Technical',
+  professional: 'Pro',
+  creative: 'Creative',
+  physical: 'Physical',
+  social: 'Social',
+  intellectual: 'Intellectual',
+  emotional: 'Emotional',
+  practical: 'Practical',
+  artistic: 'Artistic',
+  technical: 'Technical',
+  other: 'Other',
+};
+
+function formatCategoryLabel(category: SkillCategoryFilter): string {
+  if (CATEGORY_LABELS[category]) return CATEGORY_LABELS[category]!;
+  return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
 
 // Generate mock skills for demonstration
 const generateMockSkills = (): Skill[] => {
@@ -144,13 +176,28 @@ export const SkillsBook: React.FC = () => {
   const [filterConfidenceMax, setFilterConfidenceMax] = useState(1);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [mockRegistryTick, setMockRegistryTick] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  const skills = useMemo(
-    () => (isMockDataEnabled ? MOCK_SKILLS : (data?.skills ?? [])),
-    [data, isMockDataEnabled]
-  );
+  useEffect(() => {
+    if (mockDataService.get.skills().length === 0) {
+      mockDataService.register.skills(MOCK_SKILLS);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isMockDataEnabled) return;
+    return mockDataService.subscribe(() => setMockRegistryTick((tick) => tick + 1));
+  }, [isMockDataEnabled]);
+
+  const skills = useMemo(() => {
+    if (isMockDataEnabled) {
+      const registered = mockDataService.get.skills();
+      return registered.length > 0 ? registered : MOCK_SKILLS;
+    }
+    return data?.skills ?? [];
+  }, [data, isMockDataEnabled, mockRegistryTick]);
 
   const loadSkills = async () => {
     setError(null);
@@ -430,7 +477,7 @@ export const SkillsBook: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-24">
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
           <p className="text-white/60">Loading skills...</p>
@@ -440,19 +487,18 @@ export const SkillsBook: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden pb-4 sm:pb-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-8 w-8 text-primary" />
-            <div>
-              <h1 className="text-3xl font-bold text-white">Skills Book</h1>
-              <p className="text-white/60">
-                {sortedSkills.length} skill{sortedSkills.length !== 1 ? 's' : ''} found
-              </p>
-              <BookTrustSummary domain="skills" className="mt-1" />
-            </div>
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-primary/15 border border-primary/30 shrink-0">
+            <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white tracking-tight">Skills Book</h1>
+            <p className="text-xs sm:text-sm text-white/55">
+              {sortedSkills.length} skill{sortedSkills.length !== 1 ? 's' : ''} found
+            </p>
+            <BookTrustSummary domain="skills" className="mt-1" />
           </div>
         </div>
 
@@ -465,14 +511,14 @@ export const SkillsBook: React.FC = () => {
 
         {/* Search and Filters */}
         <Card className="bg-black/40 border-white/10">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-4">
-              <div className="relative">
-                <div className="flex items-center gap-2">
-                  <Search className="h-5 w-5 text-white/40" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <div className="relative min-w-0">
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 min-h-[44px]">
+                  <Search className="h-4 w-4 text-white/40 shrink-0" />
                   <Input
                     ref={searchInputRef}
-                    placeholder="Search skills or browse recommendations..."
+                    placeholder="Search skills…"
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -482,7 +528,7 @@ export const SkillsBook: React.FC = () => {
                     }}
                     onFocus={() => setShowSuggestions(true)}
                     onKeyDown={handleSearchKeyDown}
-                    className="bg-black/40 border-white/20 text-white text-sm sm:text-base"
+                    className="flex-1 min-w-0 border-0 bg-transparent px-0 py-2.5 text-base sm:text-sm text-white shadow-none focus-visible:ring-0 placeholder:text-white/35"
                   />
                   {searchTerm && (
                     <Button
@@ -493,7 +539,8 @@ export const SkillsBook: React.FC = () => {
                         setShowSuggestions(false);
                         setCurrentPage(1);
                       }}
-                      className="h-8 w-8 p-0"
+                      className="h-8 w-8 p-0 shrink-0"
+                      aria-label="Clear search"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -502,8 +549,9 @@ export const SkillsBook: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowAdvancedFilters(v => !v)}
-                    className={`h-8 w-8 p-0 ${showAdvancedFilters ? 'text-primary' : 'text-white/50'}`}
+                    className={`h-8 w-8 p-0 shrink-0 ${showAdvancedFilters ? 'text-primary' : 'text-white/50'}`}
                     title="Advanced filters"
+                    aria-label="Advanced filters"
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </Button>
@@ -643,34 +691,41 @@ export const SkillsBook: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Category Tabs */}
-        <Tabs value={activeCategory} onValueChange={(v) => {
-          setActiveCategory(v as SkillCategoryFilter);
-          setCurrentPage(1);
-        }}>
-          <TabsList className="w-full bg-black/40 border-white/10 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
-            {availableCategories.map(category => (
-              <TabsTrigger
-                key={category}
-                value={category}
-                className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-              >
-                {category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* Category filters */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <Tabs
+            value={activeCategory}
+            onValueChange={(v) => {
+              setActiveCategory(v as SkillCategoryFilter);
+              setCurrentPage(1);
+            }}
+            className="min-w-0 flex-1"
+          >
+            <TabsList className="flex flex-wrap gap-1 justify-center sm:justify-start w-full h-auto min-h-0 bg-violet-950/40 border border-violet-400/25 p-1 rounded-lg shadow-none">
+              {availableCategories.map(category => (
+                <TabsTrigger
+                  key={category}
+                  value={category}
+                  className="rounded-md px-2 py-1 text-[11px] font-semibold leading-none shadow-none transition-colors data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-[0_0_10px_rgba(154,77,255,0.45)] data-[state=inactive]:bg-white/10 data-[state=inactive]:text-white data-[state=inactive]:hover:bg-white/18"
+                >
+                  {formatCategoryLabel(category)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
 
-        {/* View Controls */}
-        <div className="flex items-center justify-center sm:justify-end">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 sm:pt-0.5">
+            <label htmlFor="skills-sort" className="sr-only">
+              Sort skills
+            </label>
             <select
+              id="skills-sort"
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value as SortOption);
                 setCurrentPage(1);
               }}
-              className="bg-black/40 border border-white/20 text-white rounded px-3 py-1 text-sm"
+              className="w-full sm:w-auto min-w-[9.5rem] bg-violet-950/50 border border-violet-400/30 text-white rounded-lg px-2.5 py-1.5 text-xs font-medium"
             >
               <option value="name_asc">Name (A-Z)</option>
               <option value="name_desc">Name (Z-A)</option>
@@ -702,13 +757,14 @@ export const SkillsBook: React.FC = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
             {paginatedSkills.map(skill => (
               <SkillProfileCard
                 key={skill.id}
                 skill={skill}
                 onClick={() => handleSkillClick(skill)}
                 showProgress={true}
+                className="h-full"
               />
             ))}
           </div>
@@ -756,7 +812,6 @@ export const SkillsBook: React.FC = () => {
             onUpdate={loadSkills}
           />
         )}
-      </div>
     </div>
   );
 };

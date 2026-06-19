@@ -44,53 +44,52 @@ export const QuestSuggestions = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-semibold text-white">AI Quest Suggestions</h2>
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Sparkles className="h-3.5 w-3.5 text-primary" />
+        <h2 className="text-xs font-semibold text-white sm:text-sm">AI Quest Suggestions</h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         {suggestions.map((suggestion, index) => (
-          <div
+          <article
             key={index}
-            className="bg-black/40 border border-border/60 rounded-lg p-4 hover:border-primary/50 transition-colors"
+            title={suggestion.reasoning}
+            className="flex items-center gap-2 rounded-md border border-border/60 bg-black/40 px-2 py-1.5 hover:border-primary/50 transition-colors"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-base font-semibold text-white">{suggestion.title}</h3>
-                  <Badge variant="outline" className="text-xs">
-                    {suggestion.quest_type}
-                  </Badge>
-                  {suggestion.confidence && (
-                    <Badge variant="outline" className="text-xs text-white/60">
-                      {Math.round(suggestion.confidence * 100)}% confidence
-                    </Badge>
-                  )}
-                </div>
-                {suggestion.description && (
-                  <p className="text-sm text-white/70 mb-2">{suggestion.description}</p>
-                )}
-                {suggestion.reasoning && (
-                  <p className="text-xs text-white/50 italic mb-2">{suggestion.reasoning}</p>
-                )}
-                <div className="flex items-center gap-4 text-xs text-white/60">
-                  {suggestion.priority && <span>Priority: {suggestion.priority}</span>}
-                  {suggestion.importance && <span>Importance: {suggestion.importance}</span>}
-                  {suggestion.impact && <span>Impact: {suggestion.impact}</span>}
-                </div>
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex items-center gap-1 min-w-0">
+                <Badge variant="outline" className="shrink-0 px-1 py-px text-[8px] uppercase">
+                  {suggestion.quest_type}
+                </Badge>
+                <h3 className="truncate text-[11px] font-semibold text-white sm:text-xs">
+                  {suggestion.title}
+                </h3>
               </div>
-              <Button
-                size="sm"
-                onClick={() => handleCreateQuest(suggestion)}
-                disabled={createQuest.isPending}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Create Quest
-              </Button>
+              {suggestion.description && (
+                <p className="line-clamp-1 text-[10px] text-white/50">{suggestion.description}</p>
+              )}
+              <div className="flex flex-wrap items-center gap-x-2 text-[9px] text-white/40">
+                {suggestion.confidence != null && (
+                  <span>{Math.round(suggestion.confidence * 100)}%</span>
+                )}
+                {suggestion.priority != null && (
+                  <>
+                    <span>·</span>
+                    <span>P{suggestion.priority}</span>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+            <Button
+              size="sm"
+              onClick={() => handleCreateQuest(suggestion)}
+              disabled={createQuest.isPending}
+              className="h-6 shrink-0 px-2 text-[10px]"
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </article>
         ))}
       </div>
     </div>

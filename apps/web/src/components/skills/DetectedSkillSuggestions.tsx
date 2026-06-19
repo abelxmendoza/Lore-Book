@@ -9,6 +9,9 @@ import { skillsApi, type SkillSuggestion } from '../../api/skills';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { monetizationLabel, usageLabel } from '../../lib/skillProfile';
 import { getMockSkillSuggestions } from '../../mocks/skillSuggestions';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { mockDataService } from '../../services/mockDataService';
+import { triggerCelebration } from '../../lib/celebrations';
 
 interface Props {
   onSkillAdded?: () => void;
@@ -42,6 +45,8 @@ export const DetectedSkillSuggestions = ({
   demoMode = false,
   existingSkillNames = [],
 }: Props) => {
+  const shouldUseMock = useShouldUseMockData();
+  const showDemo = demoMode || shouldUseMock;
   const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
@@ -51,8 +56,11 @@ export const DetectedSkillSuggestions = ({
   const [adding, setAdding] = useState<string | null>(null);
 
   const fetchSuggestions = useCallback(async (opts?: { rescan?: boolean; silent?: boolean }) => {
-    if (demoMode) {
-      setSuggestions(getMockSkillSuggestions());
+    if (showDemo) {
+      const existing = mockDataService.get.skillSuggestions();
+      const list = existing.length > 0 ? existing : getMockSkillSuggestions();
+      mockDataService.register.skillSuggestions(list);
+      setSuggestions(list);
       setLoading(false);
       return;
     }
@@ -66,18 +74,22 @@ export const DetectedSkillSuggestions = ({
       setLoading(false);
       setRescanning(false);
     }
-  }, [demoMode]);
+  }, [showDemo]);
 
   useEffect(() => {
     void fetchSuggestions();
   }, [fetchSuggestions]);
 
   useEffect(() => {
-    if (demoMode) return;
-    return onStoryDataUpdated(() => {
-      void fetchSuggestions({ silent: true });
-    }, 'skills');
-  }, [fetchSuggestions, demoMode]);
+    if (!showDemo) {
+      return onStoryDataUpdated(() => {
+        void fetchSuggestions({ silent: true });
+      }, 'skills');
+    }
+    const refresh = () => { void fetchSuggestions({ silent: true }); };
+    window.addEventListener('lk:skills-updated', refresh);
+    return () => window.removeEventListener('lk:skills-updated', refresh);
+  }, [fetchSuggestions, showDemo]);
 
   const existingSet = useMemo(
     () => new Set(existingSkillNames.map(n => n.toLowerCase())),
@@ -99,12 +111,18 @@ export const DetectedSkillSuggestions = ({
     const k = keyFor(s);
     setAdding(k);
     try {
-      if (demoMode) {
-        setAdded(prev => new Set(prev).add(k));
-        onSkillAdded?.();
-        return;
+      if (showDemo) {
+        mockDataService.mutate.skills.createFromSuggestion(s);
+        mockDataService.mutate.skills.removeSuggestion({ id: s.id, skill_name: s.skill_name });
+      } else {
+        await skillsApi.materializeSuggestion(s);
+        triggerCelebration({
+          variant: 'skill',
+          label: `${s.skill_name} added to Skills`,
+          subtitle: s.skill_category ? `${s.skill_category} skill unlocked` : 'New skill unlocked',
+          xp: 35,
+        });
       }
-      await skillsApi.materializeSuggestion(s);
       setAdded(prev => new Set(prev).add(k));
       setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
       onSkillAdded?.();
@@ -119,13 +137,15 @@ export const DetectedSkillSuggestions = ({
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
-    if (!demoMode) {
-      try {
-        if (s.id) await skillsApi.rejectSuggestion(s.id);
-        else await skillsApi.rejectSuggestionByName(s.skill_name);
-      } catch {
-        /* non-blocking */
-      }
+    if (showDemo) {
+      mockDataService.mutate.skills.removeSuggestion({ id: s.id, skill_name: s.skill_name });
+      return;
+    }
+    try {
+      if (s.id) await skillsApi.rejectSuggestion(s.id);
+      else await skillsApi.rejectSuggestionByName(s.skill_name);
+    } catch {
+      /* non-blocking */
     }
   };
 
@@ -179,7 +199,7 @@ export const DetectedSkillSuggestions = ({
               No pending skill suggestions. Use the refresh button to scan your chats again, or keep talking about what you practice and build.
             </p>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 max-h-[28rem] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 max-h-[min(28rem,50vh)] overflow-y-auto pr-0.5">
               {visible.map(s => {
                 const k = keyFor(s);
                 const quote = evidenceQuote(s);

@@ -9,29 +9,140 @@ interface FamilyTreeViewProps {
   compact?: boolean;
 }
 
-const RELATION_COLORS: Record<string, string> = {
-  parent:       'border-violet-500/60 bg-violet-950/30',
-  grandparent:  'border-purple-500/60 bg-purple-950/30',
-  sibling:      'border-cyan-500/60 bg-cyan-950/30',
-  twin:         'border-cyan-500/60 bg-cyan-950/30',
-  cousin:       'border-teal-500/60 bg-teal-950/30',
-  spouse:       'border-rose-500/60 bg-rose-950/30',
-  child:        'border-emerald-500/60 bg-emerald-950/30',
-  grandchild:   'border-green-500/60 bg-green-950/30',
-  aunt:         'border-amber-500/60 bg-amber-950/30',
-  uncle:        'border-amber-500/60 bg-amber-950/30',
-  in_law:       'border-orange-500/60 bg-orange-950/30',
-  step_parent:  'border-violet-500/40 bg-violet-950/20',
-  step_sibling: 'border-cyan-500/40 bg-cyan-950/20',
-  half_sibling: 'border-cyan-500/50 bg-cyan-950/25',
-  default:      'border-white/20 bg-white/5',
+type RelationStyle = {
+  node: string;
+  shadow: string;
+  swatch: string;
+  badge: string;
+  label: string;
 };
 
+const RELATION_STYLES: Record<string, RelationStyle> = {
+  parent: {
+    node: 'border-[3px] border-violet-400 bg-violet-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(167,139,250,0.55)]',
+    swatch: 'bg-violet-400 border-violet-200',
+    badge: 'bg-violet-500/30 border-violet-300/80 text-violet-100',
+    label: 'Parent',
+  },
+  grandparent: {
+    node: 'border-[3px] border-purple-400 bg-purple-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(192,132,252,0.5)]',
+    swatch: 'bg-purple-400 border-purple-200',
+    badge: 'bg-purple-500/30 border-purple-300/80 text-purple-100',
+    label: 'Grandparent',
+  },
+  sibling: {
+    node: 'border-[3px] border-cyan-400 bg-cyan-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(34,211,238,0.5)]',
+    swatch: 'bg-cyan-400 border-cyan-200',
+    badge: 'bg-cyan-500/30 border-cyan-300/80 text-cyan-100',
+    label: 'Sibling',
+  },
+  twin: {
+    node: 'border-[3px] border-cyan-400 bg-cyan-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(34,211,238,0.5)]',
+    swatch: 'bg-cyan-400 border-cyan-200',
+    badge: 'bg-cyan-500/30 border-cyan-300/80 text-cyan-100',
+    label: 'Twin',
+  },
+  half_sibling: {
+    node: 'border-[3px] border-sky-400 bg-sky-500/25',
+    shadow: 'shadow-[0_0_10px_rgba(56,189,248,0.45)]',
+    swatch: 'bg-sky-400 border-sky-200',
+    badge: 'bg-sky-500/30 border-sky-300/80 text-sky-100',
+    label: 'Half-sibling',
+  },
+  step_sibling: {
+    node: 'border-[3px] border-cyan-300 bg-cyan-500/20',
+    shadow: 'shadow-[0_0_10px_rgba(103,232,249,0.4)]',
+    swatch: 'bg-cyan-300 border-cyan-100',
+    badge: 'bg-cyan-500/25 border-cyan-200/80 text-cyan-100',
+    label: 'Step-sibling',
+  },
+  cousin: {
+    node: 'border-[3px] border-teal-400 bg-teal-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(45,212,191,0.5)]',
+    swatch: 'bg-teal-400 border-teal-200',
+    badge: 'bg-teal-500/30 border-teal-300/80 text-teal-100',
+    label: 'Cousin',
+  },
+  spouse: {
+    node: 'border-[3px] border-rose-400 bg-rose-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(251,113,133,0.55)]',
+    swatch: 'bg-rose-400 border-rose-200',
+    badge: 'bg-rose-500/30 border-rose-300/80 text-rose-100',
+    label: 'Partner',
+  },
+  child: {
+    node: 'border-[3px] border-emerald-400 bg-emerald-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(52,211,153,0.5)]',
+    swatch: 'bg-emerald-400 border-emerald-200',
+    badge: 'bg-emerald-500/30 border-emerald-300/80 text-emerald-100',
+    label: 'Child',
+  },
+  grandchild: {
+    node: 'border-[3px] border-green-400 bg-green-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(74,222,128,0.5)]',
+    swatch: 'bg-green-400 border-green-200',
+    badge: 'bg-green-500/30 border-green-300/80 text-green-100',
+    label: 'Grandchild',
+  },
+  aunt: {
+    node: 'border-[3px] border-amber-400 bg-amber-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(251,191,36,0.5)]',
+    swatch: 'bg-amber-400 border-amber-200',
+    badge: 'bg-amber-500/30 border-amber-300/80 text-amber-100',
+    label: 'Aunt',
+  },
+  uncle: {
+    node: 'border-[3px] border-amber-400 bg-amber-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(251,191,36,0.5)]',
+    swatch: 'bg-amber-400 border-amber-200',
+    badge: 'bg-amber-500/30 border-amber-300/80 text-amber-100',
+    label: 'Uncle',
+  },
+  in_law: {
+    node: 'border-[3px] border-orange-400 bg-orange-500/30',
+    shadow: 'shadow-[0_0_12px_rgba(251,146,60,0.5)]',
+    swatch: 'bg-orange-400 border-orange-200',
+    badge: 'bg-orange-500/30 border-orange-300/80 text-orange-100',
+    label: 'In-law',
+  },
+  step_parent: {
+    node: 'border-[3px] border-violet-300 bg-violet-500/20',
+    shadow: 'shadow-[0_0_10px_rgba(196,181,253,0.4)]',
+    swatch: 'bg-violet-300 border-violet-100',
+    badge: 'bg-violet-500/25 border-violet-200/80 text-violet-100',
+    label: 'Step-parent',
+  },
+  default: {
+    node: 'border-[3px] border-white/40 bg-white/10',
+    shadow: 'shadow-[0_0_8px_rgba(255,255,255,0.15)]',
+    swatch: 'bg-white/50 border-white/70',
+    badge: 'bg-white/10 border-white/40 text-white/80',
+    label: 'Relative',
+  },
+};
+
+const LEGEND_GROUPS: Array<{ keys: string[]; label: string }> = [
+  { keys: ['parent', 'grandparent', 'step_parent'], label: 'Parents & grandparents' },
+  { keys: ['sibling', 'twin', 'half_sibling', 'step_sibling'], label: 'Siblings' },
+  { keys: ['spouse', 'in_law'], label: 'Partner & in-laws' },
+  { keys: ['cousin'], label: 'Cousins' },
+  { keys: ['aunt', 'uncle'], label: 'Aunts & uncles' },
+  { keys: ['child', 'grandchild'], label: 'Children & grandchildren' },
+];
+
+function relationStyle(relation: string): RelationStyle {
+  return RELATION_STYLES[relation] ?? RELATION_STYLES.default;
+}
+
 const SIDE_ACCENT: Record<string, string> = {
-  maternal: 'ring-rose-400/40',
-  paternal: 'ring-blue-400/40',
-  partner:  'ring-emerald-400/40',
-  other:    'ring-white/20',
+  maternal: 'ring-2 ring-rose-400/80 ring-offset-1 ring-offset-black/80',
+  paternal: 'ring-2 ring-blue-400/80 ring-offset-1 ring-offset-black/80',
+  partner:  'ring-2 ring-emerald-400/80 ring-offset-1 ring-offset-black/80',
+  other:    'ring-2 ring-amber-300/60 ring-offset-1 ring-offset-black/80',
 };
 
 const closenessRing = (closeness?: number) => {
@@ -142,11 +253,12 @@ const PersonNode = ({
   compact?: boolean;
   onNodeRef?: (id: string, el: HTMLButtonElement | null) => void;
 }) => {
+  const style = relationStyle(member.relation);
   const borderCls = member.is_self
-    ? 'border-primary/70 bg-primary/10 shadow-[0_0_12px_rgba(124,58,237,0.4)]'
+    ? 'border-[3px] border-primary bg-primary/15 shadow-[0_0_14px_rgba(124,58,237,0.55)]'
     : member.is_placeholder
-      ? 'border-dashed border-white/25 bg-white/[0.03]'
-    : RELATION_COLORS[member.relation] ?? RELATION_COLORS.default;
+      ? 'border-[3px] border-dashed border-white/40 bg-white/[0.06]'
+      : `${style.node} ${style.shadow}`;
   const sideCls = member.side ? SIDE_ACCENT[member.side] ?? '' : '';
   const closenessCls = closenessRing(member.closeness);
 
@@ -159,7 +271,7 @@ const PersonNode = ({
       className={`flex flex-col items-center gap-1 group ${onClick && !member.is_placeholder ? 'cursor-pointer' : 'cursor-default'} ${member.is_placeholder ? 'opacity-70' : ''}`}
       title={`${member.name}${member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase() ? ` (${member.kinship_title})` : ''} — ${member.relation_label}`}
     >
-      <div className={`rounded-full border-2 ${borderCls} ${sideCls} ${closenessCls} overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 ${compact ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'}`}>
+      <div className={`rounded-full ${borderCls} ${sideCls} ${closenessCls} overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 ${compact ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'}`}>
         {member.is_self ? (
           <User className={`${compact ? 'h-5 w-5' : 'h-6 w-6'} text-primary`} />
         ) : member.is_placeholder ? (
@@ -183,6 +295,11 @@ const PersonNode = ({
             ? `${member.relation_label} · ${member.kinship_title}`
             : member.relation_label}
         </p>
+        {!member.is_self && !member.is_placeholder && !compact && (
+          <span className={`inline-block mt-0.5 px-1.5 py-px rounded-full text-[8px] font-semibold uppercase tracking-wide border ${style.badge}`}>
+            {style.label}
+          </span>
+        )}
         {member.deceased && <p className="text-[8px] text-white/25 italic">†</p>}
       </div>
     </button>
@@ -320,15 +437,28 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
         </svg>
       )}
 
-      {/* Branch legend */}
+      {/* Branch legend — family side ring colors */}
       {!compact && tree.branches.length > 0 && (
-        <div className="flex flex-wrap gap-2 relative" style={{ zIndex: 1 }}>
-          {tree.branches.map(b => (
-            <span key={b.side} className="text-[9px] text-white/40 flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full inline-block" style={{ background: b.color }} />
-              {b.label}
-            </span>
-          ))}
+        <div className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2.5 relative" style={{ zIndex: 1 }}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-2">Family side rings</p>
+          <div className="flex flex-wrap gap-2">
+            {tree.branches.map((b) => (
+              <span
+                key={b.side}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 text-[11px] text-white/75"
+              >
+                <span
+                  className="h-4 w-4 rounded-full border-2 shrink-0"
+                  style={{
+                    borderColor: b.color,
+                    boxShadow: `0 0 8px ${b.color}88`,
+                    background: `${b.color}22`,
+                  }}
+                />
+                {b.label}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -361,19 +491,26 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
 
       {/* Relation color legend */}
       {!compact && (
-        <div className="pt-2 border-t border-white/8 flex flex-wrap gap-x-4 gap-y-1 relative" style={{ zIndex: 1 }}>
-          {[
-            { color: 'bg-violet-400', label: 'Parent / Grandparent' },
-            { color: 'bg-cyan-400',   label: 'Sibling' },
-            { color: 'bg-rose-400',   label: 'Partner' },
-            { color: 'bg-teal-400',   label: 'Cousin' },
-            { color: 'bg-amber-400',  label: 'Aunt / Uncle' },
-          ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1 text-[9px] text-white/30">
-              <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
-              {label}
-            </span>
-          ))}
+        <div className="pt-3 mt-1 border-t border-white/15 relative rounded-xl bg-white/[0.03] px-3 py-3" style={{ zIndex: 1 }}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-2.5">
+            Relationship colors
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {LEGEND_GROUPS.map(({ keys, label }) => {
+              const style = relationStyle(keys[0]);
+              return (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-black/35 px-2.5 py-1.5 text-[11px] text-white/80"
+                >
+                  <span
+                    className={`h-4 w-4 rounded-full border-2 shrink-0 ${style.swatch} ${style.shadow}`}
+                  />
+                  {label}
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@ import { fetchJson } from '../lib/api';
 import { booksApi } from '../api/books';
 import { useLoreKeeper } from './useLoreKeeper';
 import { useShouldUseMockData } from './useShouldUseMockData';
-import { getDemoLorebookById } from '../mocks/lorebooks';
+import { resolveDemoLorebookById } from '../lib/storyForge/forgeDemoLibrary';
 import { isDemoBookId } from '../lib/lorebookLibrary';
 
 export type BiographySection = {
@@ -143,7 +143,7 @@ export const useLoreNavigatorData = (bookId?: string | null) => {
       // Book-scoped editor: load sections for a specific saved or demo lorebook
       if (bookId) {
         if (isDemoBookId(bookId)) {
-          const demo = getDemoLorebookById(bookId);
+          const demo = resolveDemoLorebookById(bookId);
           if (demo) {
             setData({
               biography: demo.outline.sections.map((s) => ({

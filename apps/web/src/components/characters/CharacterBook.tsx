@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, Star } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { MyFamilyModal } from '../family/MyFamilyModal';
@@ -2320,12 +2320,143 @@ export const dummyCharacters: Character[] = [
     social_media: {},
     memory_count: 4,
     relationship_count: 2
-  }
+  },
+  {
+    id: 'demo-enemy-viktor',
+    name: 'Viktor Hale',
+    first_name: 'Viktor',
+    last_name: 'Hale',
+    alias: ['Viktor'],
+    pronouns: 'he/him',
+    archetype: 'antagonist',
+    role: 'Former bandmate',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 72,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'moderate',
+    summary: 'A toxic former bandmate I had a falling out with. We had bad blood after he backstabbed the Midnight Circuit by leaking unfinished demos online. I hate running into him at shows and can\'t stand being in the same room.',
+    tags: ['enemy', 'rival', 'toxic', 'music', 'conflict', 'band'],
+    metadata: {
+      relationship_type: 'enemy_of',
+      relationship_types: ['enemy_of'],
+      categories: ['enemies'],
+      closeness_score: 28,
+    },
+    social_media: {},
+    memory_count: 14,
+    relationship_count: 2,
+  },
+  {
+    id: 'demo-rival-jess',
+    name: 'Jess Park',
+    first_name: 'Jess',
+    last_name: 'Park',
+    alias: ['Jess'],
+    pronouns: 'she/her',
+    archetype: 'rival',
+    role: 'Rival producer',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 58,
+    is_nickname: false,
+    proximity_level: 'indirect',
+    has_met: true,
+    relationship_depth: 'casual',
+    summary: 'A rival producer in the local scene. Constant tension and subtle competition — not enemies, but we fell out after a messy collaboration and there is still drama whenever our names come up.',
+    tags: ['rival', 'creative', 'tension', 'drama', 'music'],
+    metadata: {
+      relationship_type: 'rival_of',
+      relationship_types: ['rival_of'],
+      categories: ['rivals'],
+      closeness_score: 38,
+    },
+    social_media: {},
+    memory_count: 11,
+    relationship_count: 3,
+  },
+  {
+    id: 'demo-estranged-uncle-ray',
+    name: 'Uncle Ray',
+    first_name: 'Ray',
+    last_name: null,
+    alias: ['Uncle Ray'],
+    pronouns: 'he/him',
+    archetype: 'family',
+    role: 'Estranged uncle',
+    status: 'inactive',
+    importance_level: 'minor',
+    importance_score: 35,
+    is_nickname: false,
+    proximity_level: 'distant',
+    has_met: true,
+    relationship_depth: 'casual',
+    summary: 'Estranged from the family after a fight years ago. Jordan still mentions him sometimes, but we are not on speaking terms and I cut him off after the fallout.',
+    tags: ['family', 'estranged', 'conflict'],
+    metadata: {
+      relationship_type: 'family',
+      relationship_types: ['family', 'estranged'],
+      categories: ['estranged', 'family'],
+      closeness_score: 15,
+    },
+    social_media: {},
+    memory_count: 6,
+    relationship_count: 1,
+  },
+  {
+    id: 'demo-acquaintance-lena',
+    name: 'Lena Vale',
+    first_name: 'Lena',
+    last_name: 'Vale',
+    alias: ['Lena'],
+    pronouns: 'she/her',
+    archetype: 'acquaintance',
+    role: 'Coffee shop regular',
+    status: 'active',
+    importance_level: 'minor',
+    importance_score: 28,
+    is_nickname: false,
+    proximity_level: 'distant',
+    has_met: true,
+    relationship_depth: 'casual',
+    summary: 'Someone I recognize from the coffee shop and occasional open mic nights. Friendly small talk, but we have never hung out outside those settings.',
+    tags: ['acquaintance', 'casual', 'local'],
+    metadata: {
+      relationship_type: 'acquaintance',
+      categories: ['acquaintances'],
+      closeness_score: 22,
+    },
+    social_media: {},
+    memory_count: 3,
+    relationship_count: 0,
+  },
 ];
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
-type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'romantic_peripheral' | 'rivals' | 'mentors' | 'professional' | 'creative' | 'public_figure' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+type CharacterCategory =
+  | 'all'
+  | 'family'
+  | 'friends'
+  | 'romantic'
+  | 'romantic_peripheral'
+  | 'exes'
+  | 'enemies'
+  | 'rivals'
+  | 'estranged'
+  | 'acquaintances'
+  | 'mentors'
+  | 'professional'
+  | 'creative'
+  | 'public_figure'
+  | 'mentioned'
+  | 'direct'
+  | 'indirect'
+  | 'distant'
+  | 'unmet'
+  | 'third_party';
 
 const isPublicFigure = isPublicFigureCharacter;
 
@@ -2375,17 +2506,42 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
   if (/\b(summit staffing|northwind logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
   if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) signals.add('creative');
   if (/\b(friend|ally|buddy|roommate|homie|new friends?)\b/.test(text)) signals.add('friend');
-  // Adversarial: people you have conflicts with / don't get along with.
-  if (/\b(enemy|enemies|rival|rivalry|adversary|nemesis|opponent|conflict|feud|beef|fell out|fall(?:ing)? out|fallout|fight(?:ing)? with|hate|can'?t stand|toxic|estranged|cut (?:them )?off|ex.?friend|drama|tension|dislike|not on speaking terms|bad blood|backstabb)\b/.test(text)) {
+  // Strong adversarial — enemies tab (active hostility).
+  if (/\b(enemy|enemies|hate|nemesis|toxic|bad blood|backstab|can'?t stand|despise|loathe)\b/.test(text)) {
+    signals.add('enemy');
+  }
+  // Softer adversarial — rivals tab (tension, competition, fallouts).
+  if (/\b(rival|rivalry|adversary|opponent|conflict|feud|beef|fell out|fall(?:ing)? out|fallout|fight(?:ing)? with|ex.?friend|drama|tension|dislike)\b/.test(text)) {
     signals.add('rival');
   }
-  // Normalize detector relationship_types (enemy_of, rival_of, ex_friend_of) → rival.
+  if (/\b(estranged|cut (?:them )?off|not on speaking terms)\b/.test(text)) {
+    signals.add('estranged');
+  }
+  if (/\b(acquaintance|small talk|recognize from|see around|friendly stranger)\b/.test(text)) {
+    signals.add('acquaintance');
+  }
+  // Past romantic — exes tab.
+  if (
+    char.archetype === 'past_romantic'
+    || /\b(ex.?girlfriend|ex.?boyfriend|ex.?lover|ex.?partner|ex.?wife|ex.?husband|my ex\b|former (?:partner|girlfriend|boyfriend|lover))\b/.test(text)
+    || (/\b(ex|past|ended|breakup|broke up)\b/.test(text) && /\b(romantic|dating|relationship|girlfriend|boyfriend|lover|partner)\b/.test(text))
+  ) {
+    signals.add('ex');
+  }
+  // Normalize detector relationship_types.
   for (const s of signals) {
-    if (/\b(enemy|rival|adversary|nemesis|opponent)\b/.test(s) || /(enemy|rival|adversary|ex_friend)_of/.test(s)) {
-      signals.add('rival');
-      break;
+    if (/\benemy\b/.test(s) || /enemy_of/.test(s)) signals.add('enemy');
+    if (/\brival\b/.test(s) || /rival_of/.test(s) || /ex_friend_of/.test(s)) signals.add('rival');
+    if (/^ex_/.test(s) || s === 'past_romantic') signals.add('ex');
+    if (s === 'estranged') signals.add('estranged');
+    if (s === 'acquaintance' || s === 'antagonist') {
+      if (s === 'antagonist') signals.add('enemy');
+      else signals.add('acquaintance');
     }
   }
+  if (char.archetype === 'antagonist') signals.add('enemy');
+  if (char.archetype === 'rival') signals.add('rival');
+  if (char.archetype === 'acquaintance') signals.add('acquaintance');
 
   // Potential categories explain "maybe later" cases without promoting them to
   // confirmed filters too early.
@@ -2413,8 +2569,19 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
       return met && (signals.has('professional') || signals.has('colleague') || signals.has('coworker') || signals.has('co-worker') || signals.has('recruiter'));
     case 'creative':
       return met && (signals.has('creative') || signals.has('collaborator') || signals.has('bandmate'));
+    case 'exes':
+      return signals.has('ex') || char.archetype === 'past_romantic' || /^ex_/.test(String(char.metadata?.relationship_type ?? ''));
+    case 'enemies':
+      return signals.has('enemy') || signals.has('nemesis');
     case 'rivals':
-      return signals.has('rival') || signals.has('enemy') || signals.has('adversary') || signals.has('nemesis') || signals.has('opponent');
+      return (signals.has('rival') || signals.has('adversary') || signals.has('opponent')) && !signals.has('enemy');
+    case 'estranged':
+      return signals.has('estranged');
+    case 'acquaintances':
+      return met && (signals.has('acquaintance') || char.archetype === 'acquaintance' || (
+        char.relationship_depth === 'casual'
+        && (char.proximity_level === 'distant' || (char.metadata?.closeness_score ?? char.importance_score ?? 100) < 45)
+      ));
     default:
       return true;
   }
@@ -2478,17 +2645,21 @@ export const CharacterBook = () => {
   });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
-  // Register demo characters only for unauthenticated sessions; clear registry on login
-  // so stale demo rows can never leak into authenticated fetches.
+  // Seed demo characters once per session; never overwrite in-memory demo edits on remount.
   useEffect(() => {
     if (user) {
       mockDataService.register.characters([]);
       return;
     }
-    mockDataService.register.characters(dummyCharacters);
+    if (mockDataService.get.characters().length === 0) {
+      mockDataService.register.characters(dummyCharacters);
+    }
   }, [user]);
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [characterModalInitialTab, setCharacterModalInitialTab] = useState<
+    import('../../lib/openCharacterBookModal').CharacterBookModalTab | undefined
+  >(undefined);
   const [mainCharacterModalOpen, setMainCharacterModalOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -2498,7 +2669,13 @@ export const CharacterBook = () => {
   const [rescanError, setRescanError] = useState<string | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [mockRegistryTick, setMockRegistryTick] = useState(0);
   const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
+
+  useEffect(() => {
+    if (!isMockEnabled && !isMockDataEnabled) return;
+    return mockDataService.subscribe(() => setMockRegistryTick((tick) => tick + 1));
+  }, [isMockEnabled, isMockDataEnabled]);
 
   const serverCharacters = useMemo((): Character[] => {
     if (isMockEnabled || isMockDataEnabled) {
@@ -2524,6 +2701,7 @@ export const CharacterBook = () => {
     isGuest,
     guestId,
     guestState?.guestId,
+    mockRegistryTick,
   ]);
 
   const characters = demoCharacterOverride ?? serverCharacters;
@@ -2691,9 +2869,16 @@ export const CharacterBook = () => {
     if (bookLoading || characters.length === 0) return;
     const id = sessionStorage.getItem('highlightItem');
     if (!id) return;
+    const tabRaw = sessionStorage.getItem('characterModalTab');
     sessionStorage.removeItem('highlightItem');
+    sessionStorage.removeItem('characterModalTab');
     const match = characters.find(c => c.id === id);
-    if (match) setSelectedCharacter(match);
+    if (match) {
+      if (tabRaw) {
+        setCharacterModalInitialTab(tabRaw as import('../../lib/openCharacterBookModal').CharacterBookModalTab);
+      }
+      setSelectedCharacter(match);
+    }
   }, [bookLoading, characters]);
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
@@ -2761,7 +2946,11 @@ export const CharacterBook = () => {
           case 'family':
           case 'friends':
           case 'romantic':
+          case 'exes':
+          case 'enemies':
           case 'rivals':
+          case 'estranged':
+          case 'acquaintances':
           case 'mentors':
           case 'professional':
           case 'creative':
@@ -3099,7 +3288,7 @@ export const CharacterBook = () => {
               <Users className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Friends</span>
             </TabsTrigger>
-            <TabsTrigger 
+            <TabsTrigger
               value="romantic"
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400 text-xs sm:text-sm flex-shrink-0"
             >
@@ -3107,12 +3296,41 @@ export const CharacterBook = () => {
               <span>Romantic</span>
             </TabsTrigger>
             <TabsTrigger
+              value="exes"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300 text-xs sm:text-sm flex-shrink-0"
+            >
+              <HeartCrack className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Exes</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="enemies"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-red-600/20 data-[state=active]:text-red-300 text-xs sm:text-sm flex-shrink-0"
+            >
+              <Skull className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Enemies</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="rivals"
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 text-xs sm:text-sm flex-shrink-0"
             >
               <Flame className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Rivals & Conflicts</span>
+              <span className="hidden sm:inline">Rivals & Tension</span>
               <span className="sm:hidden">Rivals</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="estranged"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-stone-500/20 data-[state=active]:text-stone-300 text-xs sm:text-sm flex-shrink-0"
+            >
+              <UserMinus className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Estranged</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="acquaintances"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-slate-500/20 data-[state=active]:text-slate-300 text-xs sm:text-sm flex-shrink-0"
+            >
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Acquaintances</span>
+              <span className="sm:hidden">Acquaint.</span>
             </TabsTrigger>
             <TabsTrigger
               value="mentors"
@@ -3674,6 +3892,7 @@ export const CharacterBook = () => {
       {mainCharacterModalOpen && (
         <MainCharacterDetailModal
           character={mainCharacter}
+          user={user}
           onClose={() => setMainCharacterModalOpen(false)}
           onUpdate={() => {
             void loadCharacters();
@@ -3686,13 +3905,16 @@ export const CharacterBook = () => {
         <CharacterDetailModal
           character={selectedCharacter}
           relationship={relationships.get(selectedCharacter.id)}
+          initialTab={characterModalInitialTab}
           onClose={() => {
             setSelectedCharacter(null);
+            setCharacterModalInitialTab(undefined);
           }}
           onUpdate={() => {
             void loadCharacters();
             void loadRelationships();
             setSelectedCharacter(null);
+            setCharacterModalInitialTab(undefined);
           }}
         />
       )}

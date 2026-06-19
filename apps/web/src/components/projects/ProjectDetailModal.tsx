@@ -1,108 +1,203 @@
-import { useState } from 'react';
-import { Briefcase, X, CalendarClock, Tag, MessageSquare } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Briefcase,
+  X,
+  FileText,
+  Clock,
+  Users,
+  Wrench,
+  BookOpen,
+  MessageSquare,
+} from 'lucide-react';
 import { Modal } from '../ui/modal';
-import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Badge } from '../ui/badge';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import {
+  enrichProjectForDemo,
+  getProjectDetailProfile,
+} from '../../mocks/projectModalDemoData';
 import type { ProjectCardData } from './ProjectProfileCard';
+import {
+  ProjectOverviewTab,
+  ProjectTimelineTab,
+  ProjectPeopleTab,
+  ProjectSkillsTab,
+  ProjectStoryTab,
+  ProjectChatTab,
+  ProjectHeroStats,
+  STATUS_CONFIG,
+  TYPE_GRADIENT,
+} from './ProjectDetailPanels';
 
-const STATUSES = ['active', 'paused', 'completed', 'abandoned'];
+const STATUSES = ['active', 'paused', 'completed', 'abandoned'] as const;
+
+type TabKey = 'overview' | 'timeline' | 'people' | 'skills' | 'story' | 'chat';
+
+const TABS: Array<{ key: TabKey; label: string; short: string; icon: typeof FileText }> = [
+  { key: 'overview', label: 'Overview', short: 'Brief', icon: FileText },
+  { key: 'timeline', label: 'Timeline', short: 'Arc', icon: Clock },
+  { key: 'people', label: 'People', short: 'Team', icon: Users },
+  { key: 'skills', label: 'Skills & files', short: 'Links', icon: Wrench },
+  { key: 'story', label: 'Story', short: 'History', icon: BookOpen },
+  { key: 'chat', label: 'Chat', short: 'Ask', icon: MessageSquare },
+];
 
 type Props = {
   project: ProjectCardData;
   onClose: () => void;
   onPatch: (id: string, patch: Partial<ProjectCardData>) => Promise<void>;
-  onAskInChat?: (prompt: string) => void;
+  onAskInChat?: (prompt: string, project: ProjectCardData) => void;
 };
 
 export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: Props) {
-  const [local, setLocal] = useState(project);
+  const demo = useShouldUseMockData();
+  const enriched = useMemo(
+    () => (demo ? enrichProjectForDemo(project) : project),
+    [project, demo]
+  );
+  const profile = useMemo(
+    () => getProjectDetailProfile(enriched, demo),
+    [enriched, demo]
+  );
+
+  const [local, setLocal] = useState(enriched);
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+
+  useEffect(() => {
+    setLocal(demo ? enrichProjectForDemo(project) : project);
+    setActiveTab('overview');
+  }, [project.id, demo, project]);
+
   const isFallback = local.metadata?.source === 'organizations_fallback';
   const readOnly = isFallback;
+  const status = (local.status ?? 'active') as keyof typeof STATUS_CONFIG;
+  const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  const typeKey = (local.type ?? 'default').toLowerCase();
+  const gradient = TYPE_GRADIENT[typeKey] ?? TYPE_GRADIENT.default;
 
   const save = async (patch: Partial<ProjectCardData>) => {
     if (readOnly) return;
     await onPatch(local.id, patch);
   };
 
+  const handleAsk = (prompt: string) => {
+    onAskInChat?.(prompt, local);
+    onClose();
+  };
+
   return (
-    <Modal isOpen onClose={onClose} maxWidth="2xl">
-      <div className="flex items-start gap-3 mb-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 border border-primary/30">
-          <Briefcase className="h-6 w-6 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-bold text-white truncate">{local.name}</h2>
-          <p className="text-sm text-white/45 mt-0.5">{local.type?.replace(/_/g, ' ') ?? 'Project'}</p>
-        </div>
-        <button type="button" onClick={onClose} className="text-white/40 hover:text-white p-1" aria-label="Close">
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      {readOnly && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          This card is from your communities graph. Create a named project to unlock full editing.
-        </div>
-      )}
-
-      <label className="block text-xs text-white/40 mb-1" htmlFor="project-modal-status">Status</label>
-      <select
-        id="project-modal-status"
-        disabled={readOnly}
-        value={local.status ?? 'active'}
-        onChange={(e) => {
-          const status = e.target.value;
-          setLocal((p) => ({ ...p, status }));
-          void save({ status });
-        }}
-        className="w-full mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white disabled:opacity-50"
+    <Modal isOpen onClose={onClose} maxWidth="3xl">
+      <div
+        className="flex flex-col min-h-0 h-full sm:max-h-[90vh]"
+        style={{ paddingBottom: 'max(0px, env(safe-area-inset-bottom))' }}
       >
-        {STATUSES.map((s) => (
-          <option key={s} value={s} className="bg-gray-900">{s}</option>
-        ))}
-      </select>
+        {/* Hero */}
+        <div className={`relative shrink-0 px-4 sm:px-6 pt-4 sm:pt-5 pb-4 bg-gradient-to-br ${gradient} border-b border-white/10`}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 text-white/50 hover:text-white p-2 rounded-lg hover:bg-white/10 z-10"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
 
-      <label className="block text-xs text-white/40 mb-1">Description</label>
-      <Textarea
-        value={local.description ?? ''}
-        disabled={readOnly}
-        onChange={(e) => setLocal((p) => ({ ...p, description: e.target.value }))}
-        onBlur={() => void save({ description: local.description ?? '' })}
-        rows={5}
-        placeholder="What is this project about? Goals, scope, why it matters…"
-        className="mb-4 bg-black/50 border-white/10 text-white placeholder:text-white/25"
-      />
+          <div className="flex items-start gap-3 pr-10">
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-black/40 border-2 border-white/20 shrink-0 shadow-lg">
+              <Briefcase className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words">{local.name}</h2>
+                <Badge variant="outline" className={statusCfg.badge}>
+                  {statusCfg.label}
+                </Badge>
+              </div>
+              <p className="text-sm text-white/55 capitalize">
+                {local.type?.replace(/_/g, ' ') ?? 'Project'}
+                {local.started_at ? ` · since ${new Date(local.started_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}
+              </p>
+              <p className="text-sm text-white/75 mt-2 italic leading-snug">&ldquo;{profile.purpose}&rdquo;</p>
+              <p className="text-xs text-primary/80 mt-1 font-medium">{profile.currentPhase}</p>
+            </div>
+          </div>
 
-      {(local.started_at || local.updated_at) && (
-        <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
-          <CalendarClock className="h-3.5 w-3.5" />
-          Updated {new Date(local.updated_at).toLocaleDateString()}
+          <div className="mt-4">
+            <ProjectHeroStats profile={profile} />
+          </div>
         </div>
-      )}
 
-      {local.tags && local.tags.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap mb-6">
-          <Tag className="h-3.5 w-3.5 text-white/40" />
-          {local.tags.map((t) => (
-            <span key={t} className="text-[11px] rounded-full bg-white/5 text-white/60 px-2 py-0.5">{t}</span>
-          ))}
-        </div>
-      )}
+        {readOnly && (
+          <div className="mx-4 sm:mx-6 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            From your communities graph — save as a named project to unlock full editing and timeline tracking.
+          </div>
+        )}
 
-      {onAskInChat && (
-        <Button
-          type="button"
-          variant="default"
-          className="w-full gap-2"
-          onClick={() => {
-            onAskInChat(`Tell me about my project "${local.name}" — status, progress, and what I should focus on.`);
-            onClose();
-          }}
+        {/* Tabs */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as TabKey)}
+          className="flex flex-col flex-1 min-h-0 px-4 sm:px-6 pt-3"
         >
-          <MessageSquare className="h-4 w-4" />
-          Ask LoreBook about this project
-        </Button>
-      )}
+          <TabsList className="w-full flex-shrink-0 h-auto p-1 bg-white/5 border border-white/10 rounded-xl overflow-x-auto justify-start flex-nowrap gap-0.5 mb-3">
+            {TABS.map(({ key, label, short, icon: Icon }) => (
+              <TabsTrigger
+                key={key}
+                value={key}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary-100 rounded-lg shrink-0"
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{short}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <div className="flex-1 min-h-0 overflow-y-auto pb-4 sm:pb-6 -mx-1 px-1">
+            <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
+              <ProjectOverviewTab
+                project={local}
+                profile={profile}
+                readOnly={readOnly}
+                localDescription={local.description ?? ''}
+                localSummary={(local as { summary?: string }).summary ?? profile.purpose}
+                onDescriptionChange={(v) => setLocal((p) => ({ ...p, description: v }))}
+                onSummaryChange={(v) => setLocal((p) => ({ ...p, summary: v }))}
+                onDescriptionBlur={() => void save({ description: local.description ?? '' })}
+                onSummaryBlur={() =>
+                  void save({ summary: (local as { summary?: string }).summary ?? '' } as Partial<ProjectCardData>)
+                }
+                onStatusChange={(statusValue) => {
+                  if (!STATUSES.includes(statusValue as (typeof STATUSES)[number])) return;
+                  setLocal((p) => ({ ...p, status: statusValue }));
+                  void save({ status: statusValue });
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="timeline" className="mt-0 focus-visible:outline-none">
+              <ProjectTimelineTab profile={profile} />
+            </TabsContent>
+
+            <TabsContent value="people" className="mt-0 focus-visible:outline-none">
+              <ProjectPeopleTab profile={profile} />
+            </TabsContent>
+
+            <TabsContent value="skills" className="mt-0 focus-visible:outline-none">
+              <ProjectSkillsTab profile={profile} />
+            </TabsContent>
+
+            <TabsContent value="story" className="mt-0 focus-visible:outline-none">
+              <ProjectStoryTab profile={profile} />
+            </TabsContent>
+
+            <TabsContent value="chat" className="mt-0 focus-visible:outline-none">
+              <ProjectChatTab project={local} profile={profile} onAsk={handleAsk} />
+            </TabsContent>
+          </div>
+        </Tabs>
+      </div>
     </Modal>
   );
 }

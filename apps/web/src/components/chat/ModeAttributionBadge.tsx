@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BookOpen, Brain, Heart, MessageSquare, ListChecks, HelpCircle, Layers } from 'lucide-react';
+import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 
 type ModeDecision = {
   mode: string;
@@ -87,7 +88,7 @@ export const ModeAttributionBadge = ({ modeDecision }: Props) => {
         <div className="absolute bottom-full left-0 mb-2 z-20 w-64 rounded-lg bg-black/80 border border-white/10 px-3 py-2 shadow-xl pointer-events-none">
           <p className="text-xs text-white/60 leading-relaxed">{reasoning}</p>
           <p className="text-xs text-white/25 mt-1 font-mono">
-            {Math.round(confidence * 100)}% confidence
+            {formatEpistemicPercent(confidence)}
           </p>
         </div>
       )}

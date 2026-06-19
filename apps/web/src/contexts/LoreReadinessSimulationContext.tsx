@@ -21,6 +21,7 @@ import type {
   LoreReadinessCompiledMode,
   LoreReadinessKnowledgePreset,
 } from '../mocks/loreReadiness';
+import type { CompiledLorebook } from '../hooks/useLoreReadiness';
 
 const STORAGE_KEY = 'lore_readiness_simulation_v1';
 
@@ -28,6 +29,7 @@ type StoredSimulation = {
   enabled: boolean;
   preset: LoreReadinessKnowledgePreset;
   compiledMode: LoreReadinessCompiledMode;
+  generatedBooks: CompiledLorebook[];
 };
 
 type LoreReadinessSimulationContextValue = {
@@ -35,9 +37,11 @@ type LoreReadinessSimulationContextValue = {
   simulationEnabled: boolean;
   preset: LoreReadinessKnowledgePreset;
   compiledMode: LoreReadinessCompiledMode;
+  generatedBooks: CompiledLorebook[];
   setSimulationEnabled: (enabled: boolean) => void;
   setPreset: (preset: LoreReadinessKnowledgePreset) => void;
   setCompiledMode: (mode: LoreReadinessCompiledMode) => void;
+  addGeneratedBook: (book: CompiledLorebook) => void;
   showSimulator: boolean;
 };
 
@@ -45,6 +49,7 @@ const DEFAULT_STORED: StoredSimulation = {
   enabled: true,
   preset: 'rich',
   compiledMode: 'two',
+  generatedBooks: [],
 };
 
 function readStored(): StoredSimulation {
@@ -56,6 +61,7 @@ function readStored(): StoredSimulation {
       enabled: parsed.enabled ?? DEFAULT_STORED.enabled,
       preset: parsed.preset ?? DEFAULT_STORED.preset,
       compiledMode: parsed.compiledMode ?? DEFAULT_STORED.compiledMode,
+      generatedBooks: parsed.generatedBooks ?? DEFAULT_STORED.generatedBooks,
     };
   } catch {
     return DEFAULT_STORED;
@@ -100,18 +106,33 @@ export function LoreReadinessSimulationProvider({ children }: { children: ReactN
     setStored((prev) => ({ ...prev, enabled: true, compiledMode }));
   }, []);
 
+  const addGeneratedBook = useCallback((book: CompiledLorebook) => {
+    setStored((prev) => {
+      if (prev.generatedBooks.some((existing) => existing.id === book.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        enabled: true,
+        generatedBooks: [book, ...prev.generatedBooks],
+      };
+    });
+  }, []);
+
   const value = useMemo(
     (): LoreReadinessSimulationContextValue => ({
       isSimulating,
       simulationEnabled: stored.enabled,
       preset: stored.preset,
       compiledMode: stored.compiledMode,
+      generatedBooks: stored.generatedBooks,
       setSimulationEnabled,
       setPreset,
       setCompiledMode,
+      addGeneratedBook,
       showSimulator,
     }),
-    [isSimulating, stored, setSimulationEnabled, setPreset, setCompiledMode, showSimulator]
+    [isSimulating, stored, setSimulationEnabled, setPreset, setCompiledMode, addGeneratedBook, showSimulator]
   );
 
   return (

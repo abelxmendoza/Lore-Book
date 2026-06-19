@@ -9,6 +9,11 @@ import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfile
 import { useConversationStore } from './useConversationStore';
 import { invalidateAfterChatIngestion } from '../../../store/invalidateEntityCache';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
+import {
+  isDemoChatMockup,
+  simulateDemoChatSend,
+  buildDemoChatResponse,
+} from '../../../services/demoChatSimulation';
 import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
@@ -17,6 +22,9 @@ import type { Message, ChatSource } from '../message/ChatMessage';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
+import { useAppDispatch } from '../../../store/hooks';
+import { recordChatFocusMessage } from '../../../store/slices/selectionSlice';
+import type { ChatFocus } from '../../../types/chatFocus';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
@@ -28,9 +36,13 @@ import {
 } from '../../../lib/certifiedEntityMatch';
 
 export type ChatSendOptions = {
-  entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'ENTITY'; id: string };
+  entityContext?: {
+    type: 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ROMANTIC_RELATIONSHIP';
+    id: string;
+  };
   threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
   composerEntities?: CertifiedEntityMatch[];
+  chatFocus?: ChatFocus;
 };
 
 // Guest sessions have no auth token — treat auth failures like an unavailable backend.
@@ -84,7 +96,7 @@ function isOpenAIError(error: string): boolean {
 // Map a raw error string to a user-facing message.
 function friendlyErrorMessage(errMsg: string): string {
   if (isBackendUnavailable(errMsg)) {
-    return 'The LoreBook server is busy or restarting — often after the Characters page syncs chat history. Wait a few seconds and try again.';
+    return 'Server is temporarily unavailable. Try again in a moment.';
   }
   if (isOpenAIRateLimited(errMsg)) {
     if (
@@ -122,7 +134,7 @@ function getDemoResponse(message: string): string {
 export const useChat = () => {
   const navigate = useNavigate();
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
-  const { createThread, setActiveThreadId, getThread, mutateThreadMessagesForThread, hydrateThreadMessages } = useChatThreadContext();
+  const { createThread, setActiveThreadId, getThread, updateThread, mutateThreadMessagesForThread, hydrateThreadMessages } = useChatThreadContext();
   const conversationStore = useConversationStore();
   const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming } = useChatStream();
@@ -132,6 +144,7 @@ export const useChat = () => {
   const soulProfileChat = useSoulProfileChatContextOptional();
   const soulProfileContext = soulProfileChat?.soulProfileContext ?? undefined;
   const { user } = useAuth();
+  const dispatch = useAppDispatch();
   
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
@@ -271,7 +284,12 @@ export const useChat = () => {
       messageLength: messageText.trim().length,
       hasSlashCommand: messageText.trim().startsWith('/'),
       isGuest: isGuest,
+      chatFocusSurface: options?.chatFocus?.sourceSurface,
     });
+
+    if (options?.chatFocus) {
+      dispatch(recordChatFocusMessage({ message: messageText.trim() }));
+    }
 
     // Build conversation history from canonical thread cache (not stale React closure)
     const priorMessages = getThread(threadId)?.messages ?? messages;
@@ -363,6 +381,60 @@ export const useChat = () => {
     };
 
     try {
+      if (isDemoChatMockup()) {
+        const demoResult = await simulateDemoChatSend({
+          message: messageText.trim(),
+          chatFocus: options?.chatFocus,
+          conversationHistory,
+          onStage: (stage, progress) => {
+            setLoadingStage(stage);
+            setLoadingProgress(progress);
+          },
+          onChunk: (chunk) => {
+            accumulatedContent += chunk;
+            updateStreamMessage(assistantMessageId, { content: accumulatedContent });
+          },
+        });
+
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        setLoadingStage('generating');
+        setLoadingProgress(100);
+
+        updateStreamMessage(
+          assistantMessageId,
+          {
+            content: accumulatedContent,
+            isStreaming: false,
+            persistStatus: 'saved',
+            mentionedEntities: demoResult.mentionedEntities,
+            connections: demoResult.connections,
+            timelineUpdates: demoResult.timelineUpdates,
+            modeDecision: demoResult.modeDecision,
+          },
+          { touchActivity: true }
+        );
+        updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+
+        if (demoResult.subtitle || demoResult.dominantEntities) {
+          updateThread(streamThreadId, {
+            subtitle: demoResult.subtitle,
+            dominantEntities: demoResult.dominantEntities,
+            touchActivity: true,
+          });
+        }
+
+        setTimeout(() => {
+          setLoading(false);
+          setStreamingMessageId(null);
+          setLoadingStage('analyzing');
+          setLoadingProgress(0);
+        }, 300);
+        return;
+      }
+
       await streamChat(
         messageText.trim(),
         conversationHistory.slice(0, -1),
@@ -531,7 +603,9 @@ export const useChat = () => {
             (isGuest && (isBackendUnavailable(error) || isGuestStreamBlocked(error))) ||
             (getGlobalMockDataEnabled() && isBackendUnavailable(error));
           updateStreamMessage(assistantMessageId, {
-            content: useDemoFallback ? getDemoResponse(messageText) : friendlyErrorMessage(String(error)),
+            content: useDemoFallback
+              ? buildDemoChatResponse(messageText.trim(), options?.chatFocus).content
+              : friendlyErrorMessage(String(error)),
             isStreaming: false,
             persistStatus: 'failed',
           });
@@ -547,7 +621,8 @@ export const useChat = () => {
         threadId,
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,
         options?.composerEntities,
-        isGuest && guestState?.guestId ? { guestId: guestState.guestId } : undefined
+        isGuest && guestState?.guestId ? { guestId: guestState.guestId } : undefined,
+        options?.chatFocus
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -564,7 +639,7 @@ export const useChat = () => {
 
       if (useDemoFallback) {
         updateStreamMessage(assistantMessageId, {
-          content: getDemoResponse(messageText),
+          content: buildDemoChatResponse(messageText.trim(), options?.chatFocus).content,
           isStreaming: false,
         });
       } else {
@@ -576,7 +651,7 @@ export const useChat = () => {
         });
       }
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, navigate, mutateThreadMessagesForThread, hydrateThreadMessages]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, updateThread, navigate, mutateThreadMessagesForThread, hydrateThreadMessages, dispatch]);
 
   const clearConversation = useCallback(() => {
     clearConversationStore();

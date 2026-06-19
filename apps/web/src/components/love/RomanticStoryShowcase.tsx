@@ -132,11 +132,11 @@ export const RomanticStoryShowcase = ({ demoMode = true }: Props) => {
             })}
           </div>
 
-          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          <div className="grid max-h-80 grid-cols-2 gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
             {visibleCases.map((tc) => (
               <div
                 key={tc.id}
-                className="rounded-lg border border-white/8 bg-black/25 px-3 py-2.5"
+                className="flex h-full flex-col rounded-lg border border-white/8 bg-black/25 px-2.5 py-2 sm:px-3 sm:py-2.5"
                 data-testid={`lore-test-case-${tc.id}`}
               >
                 <div className="flex items-start gap-2 flex-wrap">

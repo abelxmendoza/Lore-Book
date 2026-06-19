@@ -51,8 +51,8 @@ export const GoalsAndValuesPanel = () => {
     }
   }, [activeGoals, selectedGoalIds.length]);
 
-  // Mock data is already registered when module loads (see mocks/goalsValues.ts)
-  // This useEffect ensures it's registered if the module hasn't loaded yet
+  // Mock data is registered via useGoalsAndValues.ensureSeed() in demo mode.
+  // Fallback registration if the panel mounts before the hook runs.
   useEffect(() => {
     const existing = mockDataService.get.goalsValues();
     if (!existing) {

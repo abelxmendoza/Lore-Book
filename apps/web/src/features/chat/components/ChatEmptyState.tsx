@@ -65,7 +65,7 @@ export const ChatEmptyState = () => {
   if (isLoveSurface) return <LoveEmptyState />;
 
   return (
-    <div className="text-center py-16 sm:py-20 lg:py-24 text-white/60 px-4 sm:px-6 lg:px-8 max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto">
+    <div className="text-center py-16 sm:py-20 lg:py-24 text-white/60 px-4 sm:px-6 lg:px-8 max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto chat-message-enter-system">
       <Bot className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 mx-auto mb-6 sm:mb-8 text-primary/50" />
       <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold mb-2 sm:mb-3 text-white">AI Life Guidance Chat</h2>
       <p className="text-sm sm:text-base text-primary/80 mb-4 sm:mb-5 max-w-xl mx-auto">

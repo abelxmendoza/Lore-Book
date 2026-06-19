@@ -7,16 +7,13 @@ import { RelationshipGroupsRow } from '../message/RelationshipGroupsRow';
 
 interface ThreadEntityChipsProps {
   messages: Message[];
-  /** Inline above messages (legacy) vs sticky strip above the composer */
   variant?: 'inline' | 'composer';
   selectedEntityId?: string | null;
   onSelectEntity?: (entity: ThreadEntity | null) => void;
 }
 
 /**
- * Thread-level confirmed entity strip — every resolved entity the conversation
- * has established. In composer mode, clicking a chip focuses the next message
- * on that entity so LoreBook builds on existing knowledge.
+ * Thread-level entity strip above the composer — compact chips for established context.
  */
 export const ThreadEntityChips = ({
   messages,
@@ -35,21 +32,15 @@ export const ThreadEntityChips = ({
     <div
       className={
         isComposer
-          ? 'flex-shrink-0 border-t border-white/10 bg-black/50 backdrop-blur-sm'
+          ? 'flex-shrink-0 border-t border-white/8 bg-black/45 backdrop-blur-sm px-3 sm:px-4 lg:px-10 xl:px-12 py-0.5'
           : 'px-4 pt-1 flex-shrink-0'
       }
     >
-      <div
-        className={
-          isComposer
-            ? 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2'
-            : undefined
-        }
-      >
+      <div className={isComposer ? 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] space-y-0.5' : 'space-y-0.5'}>
         <EntityChipsRow
           entities={entities}
-          label={isComposer ? 'building on:' : 'this thread knows:'}
-          max={isComposer ? 10 : 8}
+          label={isComposer ? 'Thread' : 'Thread'}
+          max={isComposer ? 8 : 6}
           mode={isComposer ? 'focus' : 'navigate'}
           selectedId={selectedEntityId}
           onSelect={
@@ -64,18 +55,9 @@ export const ThreadEntityChips = ({
         {relationshipGroups.length > 0 && (
           <RelationshipGroupsRow
             groups={relationshipGroups}
-            label={isComposer ? 'relationship context:' : 'relationships in thread:'}
-            max={isComposer ? 5 : 4}
+            label={isComposer ? 'Rel' : 'Rel'}
+            max={isComposer ? 4 : 3}
           />
-        )}
-        {isComposer && selectedEntityId && (
-          <p className="mt-1 text-[10px] text-white/35">
-            Next message focuses on{' '}
-            <span className="text-white/55">
-              {entities.find((e) => e.id === selectedEntityId)?.name ?? 'this entity'}
-            </span>
-            . Click again to clear.
-          </p>
         )}
       </div>
     </div>

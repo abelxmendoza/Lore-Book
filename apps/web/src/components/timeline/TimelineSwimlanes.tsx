@@ -15,6 +15,8 @@
 
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import { isNarrativeConsolidationArc } from '../../lib/lifeArcLabels';
 import { StoryArcBadge, storyArcTooltipSubtitle } from './StoryArcBadge';
@@ -26,15 +28,31 @@ import {
   formatEventDateShort,
   sortEntriesChronologically,
 } from './timelineEventUtils';
+import {
+  TIMELINE_RULER_AXIS_H,
+  TimelineRulerAxis,
+  TimelineRulerGridline,
+  TimelineRulerTick,
+} from './TimelineDateDisplay';
+import { buildSwimlaneAxisTicks, getMonthsBetween } from './timelineRulerTicks';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_PPD      = 3;    // pixels per day at zoom 1× (~1100px per year)
 const SUBLANE_H     = 44;   // px per sub-lane within a track row
-const AXIS_H        = 48;   // px for the year/month axis (prominent dates)
+const AXIS_H        = TIMELINE_RULER_AXIS_H;
 const MEM_H         = 96;   // px for labeled memory markers
 const LABEL_W       = 96;   // px for the fixed track-label column (desktop)
-const LABEL_W_MOBILE = 72;
+const LABEL_W_MOBILE = 36;
+const TRACK_SHORT: Record<ArcTrack, string> = {
+  career: 'Work',
+  relationships: 'Rel',
+  creative: 'Art',
+  health: 'Body',
+  inner: 'Inner',
+  mixed: 'Mix',
+  custom: '•',
+};
 const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
 const MIN_ZOOM      = 0.3;
@@ -96,20 +114,8 @@ function clampDate(d: Date, min: Date, max: Date): Date {
   return new Date(Math.min(Math.max(d.getTime(), min.getTime()), max.getTime()));
 }
 
-function getYears(start: Date, end: Date): number[] {
-  const years: number[] = [];
-  for (let y = start.getFullYear(); y <= end.getFullYear() + 1; y++) years.push(y);
-  return years;
-}
-
 function getMonths(start: Date, end: Date): Date[] {
-  const months: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  while (cur <= end) {
-    months.push(new Date(cur));
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
+  return getMonthsBetween(start, end);
 }
 
 // Assign an entry to the track of its best-matching arc by date range.
@@ -210,10 +216,10 @@ const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }
       className="flex flex-col items-center gap-0.5 touch-manipulation z-[5]"
     >
       <span
-        className={`text-[9px] sm:text-[10px] font-semibold whitespace-nowrap px-1.5 py-0.5 rounded-md border ${
+        className={`text-[9px] sm:text-[10px] font-bold font-mono whitespace-nowrap px-1.5 py-0.5 rounded-md border shadow-[0_0_8px_rgba(99,102,241,0.2)] ${
           selected
-            ? 'text-primary border-primary/40 bg-primary/15'
-            : 'text-white/70 border-white/15 bg-black/60'
+            ? 'text-white border-primary/55 bg-primary/30'
+            : 'text-white border-primary/35 bg-primary/15'
         }`}
       >
         {dateLabel}
@@ -276,13 +282,16 @@ export const TimelineSwimlanes = ({
 }: TimelineSwimlanesProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
+  const isMobile = useIsMobile();
   const { openMemory } = useEntityModal();
   const [zoom, setZoom] = useState(1);
   const [hoveredArc, setHoveredArc]     = useState<LifeArc | null>(null);
   const [hoveredEntry, setHoveredEntry] = useState<ChronologyEntry | null>(null);
   const [selectedArc, setSelectedArc]   = useState<LifeArc | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<ChronologyEntry | null>(null);
-  const [showEventsList, setShowEventsList] = useState(true);
+  const [showEventsList, setShowEventsList] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 640 : true
+  );
 
   const sortedEntries = useMemo(() => sortEntriesChronologically(entries), [entries]);
 
@@ -312,22 +321,13 @@ export const TimelineSwimlanes = ({
     return Math.round(daysBetween(timelineStart, d) * ppd);
   }, [timelineStart, ppd]);
 
-  // ── Axis ticks ──────────────────────────────────────────────────────────────
-  const showMonths = zoom >= 3;
-  const axisTicks = useMemo(() => {
-    if (showMonths) {
-      return getMonths(timelineStart, today).map(d => ({
-        x: xOf(d),
-        label: d.toLocaleDateString('en-US', { month: 'short', year: d.getMonth() === 0 ? 'numeric' : undefined }),
-        major: d.getMonth() === 0,
-      }));
-    }
-    return getYears(timelineStart, today).map(y => ({
-      x: xOf(new Date(y, 0, 1)),
-      label: String(y),
-      major: true,
-    }));
-  }, [showMonths, timelineStart, today, xOf]);
+  // ── Axis ticks: all months when zoomed in; Jan 'YY every 4 years when zoomed out ──
+  const showAllMonthLabels = zoom >= 2;
+  const showMonthGrid = zoom >= 1.5;
+  const axisTicks = useMemo(
+    () => buildSwimlaneAxisTicks(timelineStart, today, xOf, showAllMonthLabels),
+    [showAllMonthLabels, timelineStart, today, xOf],
+  );
 
   // ── Sub-lane layout (overlap stacking per track) ────────────────────────────
   const subLaneData = useMemo(() => {
@@ -355,18 +355,26 @@ export const TimelineSwimlanes = ({
   const zoomReset = () => setZoom(1);
 
   const handleSelectArc = useCallback((arc: LifeArc) => {
+    if (isMobile) setShowEventsList(false);
+    // Mobile: preview in bottom sheet first; full stitched view via "Full timeline" in sheet.
+    if (isMobile && onOpenArcTimeline) {
+      setSelectedArc(arc);
+      setSelectedEntry(null);
+      return;
+    }
     if (onOpenArcTimeline) {
       onOpenArcTimeline(arc);
       return;
     }
     setSelectedArc(arc);
     setSelectedEntry(null);
-  }, [onOpenArcTimeline]);
+  }, [onOpenArcTimeline, isMobile]);
 
   const handleSelectEntry = useCallback((entry: ChronologyEntry) => {
+    if (isMobile) setShowEventsList(false);
     setSelectedEntry(entry);
     setSelectedArc(null);
-  }, []);
+  }, [isMobile]);
 
   const todayX = xOf(today);
 
@@ -420,32 +428,53 @@ export const TimelineSwimlanes = ({
   const displayEntry = selectedEntry ?? hoveredEntry;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-black">
-      {/* ── Zoom controls ─────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between sm:justify-end gap-1 px-3 sm:px-4 py-2 border-b border-white/6">
-        <p className="text-[10px] text-white/25 sm:hidden">Pinch or scroll horizontally · tap arcs for details</p>
-        <div className="flex items-center gap-1 shrink-0">
-        <span className="text-xs text-white/25 font-mono mr-1 sm:mr-2">{zoom.toFixed(1)}×</span>
-        <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
-          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
-          <ZoomOut className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" onClick={zoomReset}
-          className="px-2.5 h-8 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono touch-manipulation">
-          1×
-        </button>
-        <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
-          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
-          <ZoomIn className="h-3.5 w-3.5" />
-        </button>
+    <div className="h-full flex flex-col overflow-hidden bg-black relative">
+      {/* ── Zoom controls — toolbar on desktop, FAB on mobile ─────────── */}
+      {isMobile ? (
+        <div className="absolute right-3 bottom-3 z-20 flex flex-col gap-1.5 pointer-events-none">
+          <div className="pointer-events-auto flex flex-col gap-1 rounded-2xl border border-white/12 bg-black/85 backdrop-blur-md p-1 shadow-lg">
+            <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
+              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 disabled:opacity-25 flex items-center justify-center touch-manipulation"
+              aria-label="Zoom in">
+              <ZoomIn className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={zoomReset}
+              className="w-10 h-10 rounded-xl text-[10px] font-mono text-white/50 active:bg-white/10 touch-manipulation"
+              aria-label="Reset zoom">
+              {zoom.toFixed(1)}×
+            </button>
+            <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
+              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 disabled:opacity-25 flex items-center justify-center touch-manipulation"
+              aria-label="Zoom out">
+              <ZoomOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-shrink-0 flex items-center justify-end gap-1 px-4 py-2 border-b border-white/6">
+          <span className="text-xs text-white/25 font-mono mr-2">{zoom.toFixed(1)}×</span>
+          <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
+            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={zoomReset}
+            className="px-2.5 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono">
+            1×
+          </button>
+          <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
+            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Main layout: labels | scrollable canvas ───────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Fixed track labels — height mirrors the canvas track rows */}
         <div
-          className="flex-shrink-0 border-r border-white/6 bg-black flex flex-col overflow-y-hidden w-[4.5rem] sm:w-24"
+          className={`flex-shrink-0 border-r border-white/6 bg-black flex flex-col overflow-y-hidden ${
+            isMobile ? 'w-9' : 'w-24'
+          }`}
         >
           <div style={{ height: AXIS_H }} className="border-b border-white/6 flex-shrink-0" />
 
@@ -458,26 +487,44 @@ export const TimelineSwimlanes = ({
               <div
                 key={track}
                 style={{ height: h, flexShrink: 0 }}
-                className="flex flex-col justify-center px-1.5 sm:px-3 border-b border-white/4"
+                className={`flex flex-col justify-center border-b border-white/4 ${isMobile ? 'items-center px-0.5' : 'px-3'}`}
+                title={`${TRACK_LABELS[track]}${count > 0 ? ` · ${count} arc${count !== 1 ? 's' : ''}` : ''}`}
               >
-                <div className="flex items-center gap-1 sm:gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dotBg}`} />
-                  <span className={`text-[10px] sm:text-[11px] font-medium leading-tight ${c.text}`}>{TRACK_LABELS[track]}</span>
-                </div>
-                {count > 0 && (
-                  <span className="text-[9px] sm:text-[10px] text-white/25 mt-0.5 pl-2.5 sm:pl-3 hidden sm:block">
-                    {count} arc{count !== 1 ? 's' : ''}
-                    {lanes > 1 && <span className="text-white/20 ml-1">· {lanes} lanes</span>}
+                <span className={`rounded-full flex-shrink-0 ${isMobile ? 'w-2 h-2' : 'w-1.5 h-1.5'} ${c.dotBg}`} />
+                {isMobile ? (
+                  <span className={`text-[8px] font-semibold leading-none mt-1 ${c.text}`}>
+                    {TRACK_SHORT[track]}
                   </span>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5 mt-0">
+                      <span className={`text-[11px] font-medium leading-tight ${c.text}`}>{TRACK_LABELS[track]}</span>
+                    </div>
+                    {count > 0 && (
+                      <span className="text-[10px] text-white/25 mt-0.5 pl-3">
+                        {count} arc{count !== 1 ? 's' : ''}
+                        {lanes > 1 && <span className="text-white/20 ml-1">· {lanes} lanes</span>}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             );
           })}
 
-          <div style={{ height: MEM_H, flexShrink: 0 }} className="flex flex-col justify-center px-1.5 sm:px-3">
-            <span className="text-[10px] sm:text-[11px] text-white/30 font-medium leading-tight">Memories</span>
-            {entries.length > 0 && (
-              <span className="text-[10px] text-white/20 mt-0.5">{entries.length}</span>
+          <div
+            style={{ height: MEM_H, flexShrink: 0 }}
+            className={`flex flex-col justify-center ${isMobile ? 'items-center px-0.5' : 'px-3'}`}
+          >
+            {isMobile ? (
+              <span className="text-[8px] text-white/30 font-medium leading-none">Mem</span>
+            ) : (
+              <>
+                <span className="text-[11px] text-white/30 font-medium leading-tight">Memories</span>
+                {entries.length > 0 && (
+                  <span className="text-[10px] text-white/20 mt-0.5">{entries.length}</span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -492,39 +539,22 @@ export const TimelineSwimlanes = ({
             className="relative"
             style={{ width: totalWidth + 60, height: totalH }}
           >
-            {/* ── Year / month axis ──────────────────────────────────── */}
-            <div
-              className="absolute top-0 left-0 right-0 border-b border-white/8"
-              style={{ height: AXIS_H }}
-            >
+            {/* ── Year / month ruler axis ──────────────────────────────── */}
+            <TimelineRulerAxis height={AXIS_H}>
               {axisTicks.map((tick, i) => (
-                <div
-                  key={i}
-                  className="absolute flex flex-col items-start"
-                  style={{ left: tick.x }}
-                >
-                  <div className={`w-px ${tick.major ? 'h-4 bg-white/30' : 'h-2.5 bg-white/12'}`} />
-                  <span
-                    className={`mt-1 whitespace-nowrap ${
-                      tick.major
-                        ? 'text-[11px] sm:text-xs font-bold text-white/75 px-1.5 py-0.5 rounded bg-white/8 border border-white/10'
-                        : 'text-[10px] font-medium text-white/35'
-                    }`}
-                  >
-                    {tick.label}
-                  </span>
-                </div>
+                <TimelineRulerTick key={i} x={tick.x} label={tick.label} major={tick.major} />
               ))}
-              {/* Month grid lines */}
-              {showMonths &&
-                getMonths(timelineStart, today).map((d, i) => (
-                  <div
-                    key={`grid-${i}`}
-                    className="absolute top-0 bottom-0 w-px bg-white/[0.04] pointer-events-none"
-                    style={{ left: xOf(d) }}
-                  />
-                ))}
-            </div>
+            </TimelineRulerAxis>
+            {showMonthGrid &&
+              getMonths(timelineStart, today).map((d, i) => (
+                <TimelineRulerGridline
+                  key={`grid-${i}`}
+                  x={xOf(d)}
+                  top={0}
+                  height={totalH}
+                  major={d.getMonth() === 0}
+                />
+              ))}
 
             {/* ── Track rows — height expands with sub-lane count ─────── */}
             {TRACK_ORDER.map((track, rowIdx) => {
@@ -602,8 +632,8 @@ export const TimelineSwimlanes = ({
         </div>
       </div>
 
-      {/* ── Stitched timeline (moments + events, reorderable) ─────────── */}
-      {!loading && (
+      {/* ── Stitched timeline — desktop only (mobile uses Events tab) ─── */}
+      {!loading && !isMobile && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/80">
           <button
             type="button"
@@ -622,14 +652,78 @@ export const TimelineSwimlanes = ({
             </span>
           </button>
           {showEventsList && (
-            <div className="max-h-[38vh] sm:max-h-[42vh] overflow-hidden flex flex-col min-h-[200px]">
+            <div className="max-h-[28vh] sm:max-h-[42vh] overflow-hidden flex flex-col min-h-[140px] sm:min-h-[200px]">
               <TimelineStitchedView embedded hideHeader />
             </div>
           )}
         </div>
       )}
 
-      {/* ── Selected event detail ─────────────────────────────────────── */}
+      {/* ── Selected event detail — desktop inline, mobile sheet ──────── */}
+      {isMobile ? (
+        <>
+          <MobileBottomSheet
+            open={Boolean(selectedEntry && !selectedArc)}
+            onClose={() => setSelectedEntry(null)}
+            title={selectedEntry ? formatEventDateShort(selectedEntry.start_time) : undefined}
+            footer={
+              selectedEntry ? (
+                <button
+                  type="button"
+                  onClick={() => openMemory(selectedEntry)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-white text-sm font-semibold active:bg-primary/90"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open memory
+                </button>
+              ) : undefined
+            }
+          >
+            {selectedEntry && (
+              <p className="text-sm text-white/75 leading-relaxed">{selectedEntry.content}</p>
+            )}
+          </MobileBottomSheet>
+
+          <MobileBottomSheet
+            open={Boolean(selectedArc)}
+            onClose={() => setSelectedArc(null)}
+            title={selectedArc?.title}
+            footer={
+              selectedArc && onOpenArcTimeline ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenArcTimeline(selectedArc);
+                    setSelectedArc(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary/20 border border-primary/40 text-primary text-sm font-semibold active:bg-primary/30"
+                >
+                  <Layers className="h-4 w-4" />
+                  Full timeline
+                </button>
+              ) : undefined
+            }
+          >
+            {selectedArc && (
+              <div className="space-y-3 pb-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].bg} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].border} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].text}`}>
+                    {TRACK_LABELS[(selectedArc.track ?? 'inner') as ArcTrack]}
+                  </span>
+                  <StoryArcBadge arc={selectedArc} variant="full" />
+                </div>
+                <p className="text-xs text-white/40">
+                  {selectedArc.start_date?.slice(0, 10)} – {selectedArc.end_date?.slice(0, 10) ?? 'ongoing'}
+                </p>
+                {selectedArc.summary && (
+                  <p className="text-sm text-white/65 leading-relaxed">{selectedArc.summary}</p>
+                )}
+              </div>
+            )}
+          </MobileBottomSheet>
+        </>
+      ) : (
+        <>
       {selectedEntry && !selectedArc && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex-1 min-w-0 w-full">
@@ -660,7 +754,7 @@ export const TimelineSwimlanes = ({
         </div>
       )}
 
-      {/* ── Arc detail panel (shows when arc is clicked) ──────────────── */}
+      {/* ── Arc detail panel (desktop) ─────────────────────────────────── */}
       {selectedArc && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex-1 min-w-0 w-full">
@@ -707,9 +801,13 @@ export const TimelineSwimlanes = ({
           </div>
         </div>
       )}
+        </>
+      )}
 
-      {/* ── Hover / tap tooltips ────────────────────────────────────────────── */}
-      <Tooltip arc={displayArc} entry={displayEntry} />
+      {/* ── Hover tooltips (desktop only) ─────────────────────────────── */}
+      {!isMobile && (displayArc || displayEntry) && (
+        <Tooltip arc={displayArc} entry={displayEntry} />
+      )}
     </div>
   );
 };

@@ -24,7 +24,6 @@ const AuthCallback = lazy(() => import('../routes/AuthCallback'));
 const NotFound = lazy(() => import('../routes/NotFound'));
 const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
-const UserGuide = lazy(() => import('../components/guide/UserGuide'));
 const WhatAIKnows = lazy(() => import('../routes/WhatAIKnows'));
 const OntologyExplorerPage = lazy(() => import('../routes/OntologyExplorer'));
 
@@ -168,6 +167,10 @@ export const Router = () => {
             <AuthGate><App defaultSurface="memoir" /></AuthGate>
           </LazyRoute>
         } 
+      />
+      <Route
+        path="/lorebookLibrary"
+        element={<Navigate to="/lorebook/library" replace />}
       />
       <Route
         path="/lorebook"
@@ -433,13 +436,13 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/guide" 
+      <Route
+        path="/guide"
         element={
           <LazyRoute>
-            <AuthGate><UserGuide /></AuthGate>
+            <AuthGate><App defaultSurface="guide" /></AuthGate>
           </LazyRoute>
-        } 
+        }
       />
 
       {/* Identity custody */}

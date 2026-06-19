@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User } from 'lucide-react';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2 } from 'lucide-react';
 import { characterSuggestionsApi, type CharacterSuggestion } from '../../api/entitySuggestions';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { romanticRelationshipsApi } from '../../api/romanticRelationships';
@@ -9,9 +9,10 @@ import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { invalidateEntityTags } from '../../store/invalidateEntityCache';
+import { RomanticAddCelebration } from '../love/RomanticAddCelebration';
 
 type Props = {
-  onCharacterAdded?: () => void;
+  onCharacterAdded?: (suggestion: CharacterSuggestion) => void;
   onRescanComplete?: (summary?: {
     charactersPromoted: number;
     restoredFromEvidence: number;
@@ -45,6 +46,9 @@ export const DetectedCharacterSuggestions = ({
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
+  const [exiting, setExiting] = useState<Set<string>>(new Set());
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
@@ -82,6 +86,12 @@ export const DetectedCharacterSuggestions = ({
       clearInterval(interval);
     };
   }, [fetchSuggestions, dataUpdatedAt]);
+
+  useEffect(() => {
+    if (!successNotice) return;
+    const timer = window.setTimeout(() => setSuccessNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [successNotice]);
 
   const visible = useMemo(
     () =>
@@ -151,21 +161,47 @@ export const DetectedCharacterSuggestions = ({
     setAdding(k);
     setError(null);
     try {
-      if (!showDemo) {
+      if (showDemo) {
+        await new Promise(resolve => window.setTimeout(resolve, 680));
+      } else {
         apiCache.deletePattern(/\/api\/(characters|knowledge)/);
         await characterSuggestionsApi.add(s);
       }
+
+      if (variant === 'romantic') {
+        setCelebrate(true);
+        setSuccessNotice(`${s.name} added to your love story`);
+      } else if (showDemo) {
+        setSuccessNotice(`${s.name} added to your Character Book (demo)`);
+      }
+
+      setExiting(prev => new Set(prev).add(k));
+      await new Promise(resolve => window.setTimeout(resolve, 360));
+
       setAdded(prev => new Set(prev).add(k));
-      onCharacterAdded?.();
+      onCharacterAdded?.(s);
       invalidateEntityTags(['Character']);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add character');
+      setExiting(prev => {
+        const next = new Set(prev);
+        next.delete(k);
+        return next;
+      });
     } finally {
       setAdding(null);
     }
   };
 
   return (
+    <>
+      {variant === 'romantic' && (
+        <RomanticAddCelebration
+          active={celebrate}
+          label={successNotice ?? undefined}
+          onDone={() => setCelebrate(false)}
+        />
+      )}
     <div className="rounded-lg border border-amber-500/30 bg-gradient-to-br from-amber-950/30 via-black/40 to-black/40 overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
@@ -230,6 +266,12 @@ export const DetectedCharacterSuggestions = ({
               {rescanNotice}
             </p>
           )}
+          {successNotice && variant !== 'romantic' && (
+            <p className="flex items-center gap-2 text-xs text-pink-100 rounded border border-pink-500/30 bg-pink-500/10 px-3 py-2 animate-romantic-enter">
+              <Check className="h-3.5 w-3.5 text-pink-300 shrink-0" />
+              {successNotice}
+            </p>
+          )}
           {loading && visible.length === 0 ? (
             <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
           ) : visible.length === 0 ? (
@@ -248,13 +290,75 @@ export const DetectedCharacterSuggestions = ({
               </button>
             </div>
           ) : (
-            visible.map(s => {
+            <div className={variant === 'romantic' ? 'grid grid-cols-2 gap-2 lg:grid-cols-3' : 'space-y-2'}>
+            {visible.map(s => {
               const k = keyFor(s);
+              const isExiting = exiting.has(k);
+              const isAdding = adding === k;
               return (
                 <div
                   key={k}
-                  className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2.5"
+                  className={
+                    variant === 'romantic'
+                      ? `flex h-full flex-col gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-2.5 sm:px-3 transition-all ${
+                          isExiting ? 'animate-romantic-exit pointer-events-none' : ''
+                        } ${isAdding ? 'ring-2 ring-pink-500/40 ring-offset-1 ring-offset-black/80' : ''}`
+                      : `flex items-start gap-3 rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 ${
+                          isExiting ? 'animate-romantic-exit pointer-events-none' : ''
+                        }`
+                  }
                 >
+                  {variant === 'romantic' ? (
+                    <>
+                      <div className="flex items-start gap-2">
+                        <User className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300/80" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white">{s.name}</p>
+                          {s.context && (
+                            <p className="mt-0.5 line-clamp-2 text-[10px] text-white/45 sm:text-[11px]">{s.context}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="rounded border border-amber-500/20 bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-200/80">
+                          {SOURCE_LABEL[s.source]}
+                        </span>
+                        {s.mentionCount > 1 && (
+                          <span className="text-[9px] text-white/35">{s.mentionCount} mentions</span>
+                        )}
+                      </div>
+                      <div className="mt-auto flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label={`Add ${s.name}`}
+                          onClick={() => void handleAdd(s)}
+                          disabled={isAdding || isExiting}
+                          className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/30 bg-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-100 hover:bg-amber-500/30 disabled:opacity-50 sm:text-[11px] transition-colors"
+                        >
+                          {isAdding ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Adding…
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3 w-3" />
+                              Add
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDismissed(prev => new Set(prev).add(k))}
+                          className="rounded p-1 text-white/30 hover:bg-white/10 hover:text-white/70"
+                          aria-label="Dismiss"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
                   <User className="h-4 w-4 text-amber-300/80 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-white truncate">{s.name}</p>
@@ -273,12 +377,22 @@ export const DetectedCharacterSuggestions = ({
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       type="button"
+                      aria-label={`Add ${s.name}`}
                       onClick={() => void handleAdd(s)}
-                      disabled={adding === k}
+                      disabled={isAdding || isExiting}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 border border-amber-500/30 disabled:opacity-50"
                     >
-                      <Plus className="h-3 w-3" />
-                      Add
+                      {isAdding ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Adding…
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-3 w-3" />
+                          Add
+                        </>
+                      )}
                     </button>
                     <button
                       type="button"
@@ -289,12 +403,16 @@ export const DetectedCharacterSuggestions = ({
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
+                    </>
+                  )}
                 </div>
               );
-            })
+            })}
+            </div>
           )}
         </div>
       )}
     </div>
+    </>
   );
 };

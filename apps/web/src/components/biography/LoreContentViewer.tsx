@@ -10,6 +10,7 @@ import { Textarea } from '../ui/textarea';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { DateRangeDisplay } from '../temporal/DateRangeDisplay';
 import { RichTextEditor } from './RichTextEditor';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { LoreNavigatorData, BiographySection } from '../../hooks/useLoreNavigatorData';
 import type { SelectedItem } from './LoreNavigator';
 import type { SectionChatResult } from '../../api/lorebookEditor';
@@ -40,6 +41,7 @@ const BiographySectionView = ({
   onSaveSection?: LoreContentViewerProps['onSaveSection'];
   onSectionChat?: LoreContentViewerProps['onSectionChat'];
 }) => {
+  const isMobile = useIsMobile(768);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(section.title);
   const [editContent, setEditContent] = useState(section.content);
@@ -157,19 +159,19 @@ const BiographySectionView = ({
   const canRedo = historyIndex < history.length - 1;
 
   return (
-    <Card className="bg-black/40 border-border/50">
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
+    <Card className="bg-black/40 border-border/50 border-0 sm:border rounded-none sm:rounded-lg shadow-none sm:shadow-sm">
+      <CardHeader className="px-3 py-3 sm:px-6 sm:py-6 sticky top-0 z-10 bg-black/80 sm:bg-transparent backdrop-blur-sm sm:backdrop-blur-none border-b border-border/30 sm:border-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <Input
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="bg-black/60 border-border/50 text-white text-xl font-semibold mb-2"
+                className="bg-black/60 border-border/50 text-white text-base sm:text-xl font-semibold mb-2 min-h-[44px]"
                 placeholder="Section title"
               />
             ) : (
-              <CardTitle className="text-2xl text-white mb-2">{section.title}</CardTitle>
+              <CardTitle className="text-lg sm:text-2xl text-white mb-1 sm:mb-2 leading-snug">{section.title}</CardTitle>
             )}
             {section.period && !isEditing && (
               <DateRangeDisplay
@@ -181,21 +183,22 @@ const BiographySectionView = ({
               />
             )}
           </div>
-          <div className="flex flex-wrap gap-1 shrink-0">
+          <div className="flex flex-wrap gap-1.5 shrink-0 w-full sm:w-auto">
             {section.originalContent && section.isEdited && !isEditing && (
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => setShowOriginal((v) => !v)}
                 leftIcon={showOriginal ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                className="text-xs min-h-[40px]"
               >
-                {showOriginal ? 'Current' : 'Original'}
+                <span className="hidden sm:inline">{showOriginal ? 'Current' : 'Original'}</span>
               </Button>
             )}
             {isEditing && (
               <>
-                <Button size="sm" variant="ghost" onClick={undo} disabled={!canUndo} leftIcon={<Undo2 className="h-3 w-3" />} />
-                <Button size="sm" variant="ghost" onClick={redo} disabled={!canRedo} leftIcon={<Redo2 className="h-3 w-3" />} />
+                <Button size="sm" variant="ghost" onClick={undo} disabled={!canUndo} leftIcon={<Undo2 className="h-3 w-3" />} aria-label="Undo" className="min-h-[40px] min-w-[40px]" />
+                <Button size="sm" variant="ghost" onClick={redo} disabled={!canRedo} leftIcon={<Redo2 className="h-3 w-3" />} aria-label="Redo" className="min-h-[40px] min-w-[40px]" />
               </>
             )}
             {!isEditing && onSectionChat && (
@@ -204,47 +207,50 @@ const BiographySectionView = ({
                 variant="ghost"
                 onClick={() => { setShowSectionChat((v) => !v); setIsEditing(false); }}
                 leftIcon={<MessageSquare className="h-3 w-3" />}
+                className="text-xs min-h-[40px]"
               >
-                AI Edit
+                <span className="sm:hidden">AI</span>
+                <span className="hidden sm:inline">AI Edit</span>
               </Button>
             )}
             {!isEditing ? (
-              <Button size="sm" variant="outline" onClick={startEditing} leftIcon={<Edit className="h-3 w-3" />}>
+              <Button size="sm" variant="outline" onClick={startEditing} leftIcon={<Edit className="h-3 w-3" />} className="text-xs min-h-[40px] flex-1 sm:flex-none">
                 Edit
               </Button>
             ) : (
               <>
-                <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving}>
+                <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving} className="text-xs min-h-[40px]">
                   Cancel
                 </Button>
-                <Button size="sm" onClick={() => void saveEdit()} disabled={saving} leftIcon={saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}>
+                <Button size="sm" onClick={() => void saveEdit()} disabled={saving} leftIcon={saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} className="min-h-[40px]">
                   Save
                 </Button>
               </>
             )}
             {!isEditing && (
-              <Button size="sm" variant="ghost" onClick={onEdit} leftIcon={<Sparkles className="h-3 w-3" />}>
-                Chat
+              <Button size="sm" variant="ghost" onClick={onEdit} leftIcon={<Sparkles className="h-3 w-3" />} className="min-h-[40px]">
+                <span className="sm:hidden">Chat</span>
+                <span className="hidden sm:inline">Chat</span>
               </Button>
             )}
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6">
         {isEditing ? (
           <RichTextEditor
             value={editContent}
             onChange={setEditContent}
             onSave={() => void saveEdit()}
             placeholder="Edit your lorebook section… Markdown supported."
-            minHeight="420px"
+            minHeight={isMobile ? '240px' : '420px'}
             autoFocus
             className="w-full"
           />
         ) : (
           <div className="space-y-3">
-            <div className="prose prose-invert max-w-none">
-              <MarkdownRenderer content={displayContent || '*No content yet. Ask me to write this section.*'} />
+            <div className="prose prose-sm sm:prose-base prose-invert max-w-none">
+              <MarkdownRenderer content={displayContent || '*No content yet. Tap Edit to write this section.*'} />
             </div>
             {section.isEdited && (
               <div className="text-xs text-primary/70 flex items-center gap-1">
@@ -318,12 +324,12 @@ export const LoreContentViewer = ({
 }: LoreContentViewerProps) => {
   if (!selectedItem) {
     return (
-      <div className="h-full flex items-center justify-center p-12">
-        <div className="text-center">
-          <BookOpen className="h-16 w-16 mx-auto mb-4 text-white/20" />
-          <h3 className="text-xl font-semibold text-white/60 mb-2">Select an item to view</h3>
+      <div className="h-full flex items-center justify-center p-6 sm:p-12">
+        <div className="text-center max-w-sm">
+          <BookOpen className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4 text-white/20" />
+          <h3 className="text-lg sm:text-xl font-semibold text-white/60 mb-2">Select an item to view</h3>
           <p className="text-sm text-white/40">
-            Choose a biography section, character, location, or chapter from the sidebar
+            Choose a section, character, location, or chapter from Browse
           </p>
         </div>
       </div>
@@ -465,7 +471,7 @@ export const LoreContentViewer = ({
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-0 sm:p-4 min-h-0">
       <div className="max-w-4xl mx-auto">
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
           {renderContent()}

@@ -19,6 +19,13 @@
 
 import { useMemo, useRef, useState, useCallback } from 'react';
 import { ZoomIn, ZoomOut, CalendarClock } from 'lucide-react';
+import {
+  TIMELINE_RULER_AXIS_H,
+  TimelineRulerAxis,
+  TimelineRulerGridline,
+  TimelineRulerTick,
+} from './TimelineDateDisplay';
+import { buildSwimlaneAxisTicks } from './timelineRulerTicks';
 
 export type LaneAccent = 'emerald' | 'sky' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate';
 
@@ -50,7 +57,7 @@ interface Props {
 
 // ─── Visual constants ───────────────────────────────────────────────────────
 const BASE_PPD = 3;     // px/day at 1× (~1100px/yr)
-const AXIS_H = 40;      // taller axis so month+year read clearly
+const AXIS_H = TIMELINE_RULER_AXIS_H;
 const ROW_H = 48;       // taller rows to fit a title + a prominent date line
 const ROW_VPAD = 6;
 const LABEL_W = 120;
@@ -72,20 +79,6 @@ const ACCENTS: Record<LaneAccent, { pill: string; bar: string; dot: string; labe
 // ─── Date helpers ───────────────────────────────────────────────────────────
 function daysBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / 86_400_000;
-}
-function getYears(start: Date, end: Date): number[] {
-  const years: number[] = [];
-  for (let y = start.getFullYear(); y <= end.getFullYear() + 1; y++) years.push(y);
-  return years;
-}
-function getMonths(start: Date, end: Date): Date[] {
-  const months: Date[] = [];
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  while (cur <= end) {
-    months.push(new Date(cur));
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
 }
 function fmtDate(d: string | Date): string {
   const date = typeof d === 'string' ? new Date(d) : d;
@@ -138,17 +131,11 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     [timelineStart, ppd]
   );
 
-  const showMonths = zoom >= 3;
-  const axisTicks = useMemo(() => {
-    if (showMonths) {
-      return getMonths(timelineStart, today).map(d => ({
-        x: xOf(d),
-        label: d.toLocaleDateString('en-US', { month: 'short', year: d.getMonth() === 0 ? 'numeric' : undefined }),
-        major: d.getMonth() === 0,
-      }));
-    }
-    return getYears(timelineStart, today).map(y => ({ x: xOf(new Date(y, 0, 1)), label: String(y), major: true }));
-  }, [showMonths, timelineStart, today, xOf]);
+  const showAllMonthLabels = zoom >= 2;
+  const axisTicks = useMemo(
+    () => buildSwimlaneAxisTicks(timelineStart, today, xOf, showAllMonthLabels),
+    [showAllMonthLabels, timelineStart, today, xOf],
+  );
 
   // Greedy sub-row packing per lane so pills never overlap.
   const { laneLayout, laneTops, totalHeight } = useMemo(() => {
@@ -272,23 +259,18 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
         {/* Scrollable canvas */}
         <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ scrollBehavior: 'smooth' }}>
           <div className="relative" style={{ width: totalWidth + 40, height: totalHeight }}>
-            {/* Axis + full-height gridlines so dates line up with events */}
-            <div className="absolute top-0 left-0 right-0 border-b border-white/10" style={{ height: AXIS_H }}>
+            <TimelineRulerAxis height={AXIS_H}>
               {axisTicks.map((tick, i) => (
-                <div key={i} className="absolute flex flex-col items-start" style={{ left: tick.x }}>
-                  <span className={`mt-1.5 px-1.5 py-0.5 rounded font-mono whitespace-nowrap ${tick.major ? 'text-[12px] font-semibold text-white/75 bg-white/8' : 'text-[10px] text-white/35'}`}>
-                    {tick.label}
-                  </span>
-                  <div className={`mt-1 w-px ${tick.major ? 'h-2.5 bg-white/25' : 'h-1.5 bg-white/12'}`} />
-                </div>
+                <TimelineRulerTick key={i} x={tick.x} label={tick.label} major={tick.major} />
               ))}
-            </div>
-            {/* Vertical gridlines spanning lanes */}
+            </TimelineRulerAxis>
             {axisTicks.map((tick, i) => (
-              <div
+              <TimelineRulerGridline
                 key={`grid-${i}`}
-                className={`absolute pointer-events-none ${tick.major ? 'bg-white/[0.06]' : 'bg-white/[0.025]'}`}
-                style={{ left: tick.x, top: AXIS_H, width: 1, height: totalHeight - AXIS_H }}
+                x={tick.x}
+                top={AXIS_H}
+                height={totalHeight - AXIS_H}
+                major={tick.major}
               />
             ))}
 
@@ -314,7 +296,7 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
                         style={{ position: 'absolute', left: x, width, top: row * ROW_H + ROW_VPAD, height: ROW_H - 6 }}
                         className={`flex flex-col justify-center gap-0 px-2 py-0.5 rounded-md border text-left transition-all cursor-pointer overflow-hidden ${isBar ? a.bar : a.pill}`}
                       >
-                        <span className="text-[10px] font-semibold font-mono text-white/75 leading-none tracking-tight">
+                        <span className="text-[10px] font-bold font-mono text-primary/90 leading-none tracking-tight">
                           {fmtPillDate(event.date)}
                         </span>
                         <span className="text-[11px] font-medium text-white truncate leading-tight mt-0.5">{event.title}</span>

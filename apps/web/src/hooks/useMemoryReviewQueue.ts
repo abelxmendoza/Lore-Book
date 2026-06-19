@@ -7,6 +7,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
 import { useShouldUseMockData } from './useShouldUseMockData';
 import { mockDataService } from '../services/mockDataService';
+import { MOCK_MEMORY_PROPOSALS } from '../mocks/memoryProposals';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export type ProposalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EDITED' | 'DEFERRED';
@@ -51,15 +52,15 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     setError(null);
     try {
       if (shouldUseMock) {
-        const result = mockDataService.getWithFallback.memoryProposals(null, true);
-        setProposals(result.data);
+        const proposals = mockDataService.mutate.memoryProposals.ensureSeed(MOCK_MEMORY_PROPOSALS);
+        setProposals(proposals);
       } else {
         const result = await fetchJson<{ items: MemoryProposal[] }>('/api/mrq/pending');
         setProposals(result.items || []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load memory proposals');
-      setProposals(shouldUseMock ? mockDataService.getWithFallback.memoryProposals(null, true).data : []);
+      setProposals(shouldUseMock ? mockDataService.get.memoryProposals() : []);
     } finally {
       setLoading(false);
     }
@@ -67,6 +68,11 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
 
   const approveProposal = useCallback(async (id: string) => {
     try {
+      if (shouldUseMock) {
+        mockDataService.mutate.memoryProposals.approve(id);
+        setProposals(mockDataService.get.memoryProposals());
+        return;
+      }
       await fetchJson(`/api/mrq/proposals/${id}/approve`, {
         method: 'POST',
         headers: {
@@ -77,10 +83,15 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to approve proposal');
     }
-  }, [fetchProposals]);
+  }, [fetchProposals, shouldUseMock]);
 
   const rejectProposal = useCallback(async (id: string, reason?: string) => {
     try {
+      if (shouldUseMock) {
+        mockDataService.mutate.memoryProposals.reject(id);
+        setProposals(mockDataService.get.memoryProposals());
+        return;
+      }
       await fetchJson(`/api/mrq/proposals/${id}/reject`, {
         method: 'POST',
         headers: {
@@ -92,10 +103,15 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to reject proposal');
     }
-  }, [fetchProposals]);
+  }, [fetchProposals, shouldUseMock]);
 
   const editProposal = useCallback(async (id: string, newText: string, newConfidence?: number) => {
     try {
+      if (shouldUseMock) {
+        mockDataService.mutate.memoryProposals.edit(id, newText, newConfidence);
+        setProposals(mockDataService.get.memoryProposals());
+        return;
+      }
       await fetchJson(`/api/mrq/proposals/${id}/edit`, {
         method: 'POST',
         headers: {
@@ -110,10 +126,15 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to edit proposal');
     }
-  }, [fetchProposals]);
+  }, [fetchProposals, shouldUseMock]);
 
   const deferProposal = useCallback(async (id: string) => {
     try {
+      if (shouldUseMock) {
+        mockDataService.mutate.memoryProposals.defer(id);
+        setProposals(mockDataService.get.memoryProposals());
+        return;
+      }
       await fetchJson(`/api/mrq/proposals/${id}/defer`, {
         method: 'POST',
         headers: {
@@ -124,11 +145,18 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to defer proposal');
     }
-  }, [fetchProposals]);
+  }, [fetchProposals, shouldUseMock]);
 
   useEffect(() => {
     void fetchProposals();
   }, [fetchProposals]);
+
+  useEffect(() => {
+    if (!shouldUseMock) return;
+    return mockDataService.subscribe(() => {
+      setProposals(mockDataService.get.memoryProposals());
+    });
+  }, [shouldUseMock]);
 
   return {
     proposals,

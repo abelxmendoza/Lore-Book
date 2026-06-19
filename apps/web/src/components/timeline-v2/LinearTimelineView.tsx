@@ -2,6 +2,8 @@ import React, { useRef, useState, useMemo } from 'react';
 import { ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 import { MemoryCard } from './MemoryCard';
+import { TIMELINE_RULER_AXIS_H, TimelineRulerTick } from '../timeline/TimelineDateDisplay';
+import { buildMonthlyAxisTicks, buildQuadrennialAxisTicks } from '../timeline/timelineRulerTicks';
 
 interface LinearTimelineViewProps {
   entries: ChronologyEntry[];
@@ -111,28 +113,21 @@ export const LinearTimelineView: React.FC<LinearTimelineViewProps> = ({ entries,
             </div>
           )}
 
-          {/* Date Ruler */}
-          <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10 h-12 flex items-center">
-            {Array.from({ length: Math.ceil(totalDays / 365) + 1 }).map((_, i) => {
-              const year = startDate.getFullYear() + i;
-              const yearStart = new Date(year, 0, 1);
-              const position = getPositionForDate(yearStart);
-              return (
-                <div
-                  key={year}
-                  className="absolute border-l border-gray-300 dark:border-gray-600"
-                  style={{ left: `${position}px`, height: '100%' }}
-                >
-                  <span className="absolute top-1 left-1 text-xs text-gray-600 dark:text-gray-400">
-                    {year}
-                  </span>
-                </div>
-              );
-            })}
+          {/* Date ruler — months; Jan 'YY every 4 years when zoomed out */}
+          <div
+            className="sticky top-0 border-b-2 border-primary/40 bg-gradient-to-b from-primary/[0.14] via-gray-900 to-gray-950 z-10 relative"
+            style={{ height: TIMELINE_RULER_AXIS_H }}
+          >
+            {(pixelsPerDay >= 2
+              ? buildMonthlyAxisTicks(startDate, endDate, (d) => getPositionForDate(d))
+              : buildQuadrennialAxisTicks(startDate, endDate, (d) => getPositionForDate(d))
+            ).map((tick, i) => (
+              <TimelineRulerTick key={i} x={tick.x} label={tick.label} major={tick.major} />
+            ))}
           </div>
 
           {/* Entries */}
-          <div className="mt-12">
+          <div style={{ marginTop: TIMELINE_RULER_AXIS_H }}>
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />

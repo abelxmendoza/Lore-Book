@@ -24,6 +24,7 @@
     "migrate": "npx tsx scripts/migrate.ts",
     "migrate:base": "npx tsx scripts/migrate.ts base",
     "migrate:engine": "npx tsx scripts/migrate.ts engine",
+    "migrate:quests": "npx tsx scripts/migrate.ts quests",
     "migrate:ontology": "npx tsx scripts/migrate.ts ontology",
     "normalize:ontology": "npx tsx scripts/run-ontology-normalize.ts",
     "inference:sync": "npx tsx scripts/run-inference-sync.ts",

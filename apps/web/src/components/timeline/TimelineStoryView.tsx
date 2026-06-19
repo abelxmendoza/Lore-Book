@@ -9,11 +9,13 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { Star, ChevronLeft } from 'lucide-react';
+import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
+import { TimelineMonthBanner } from './TimelineDateDisplay';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,30 +66,35 @@ const ChapterItem = ({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all group ${
+      className={`w-full text-left px-3 sm:px-4 py-3 border-b border-white/5 transition-all group touch-manipulation ${
         selected
-          ? 'bg-white/8 border-l-2 ' + c.border
-          : 'hover:bg-white/4 border-l-2 border-transparent'
+          ? 'bg-primary/10 border-l-2 border-l-primary sm:bg-white/8'
+          : 'hover:bg-white/4 border-l-2 border-l-transparent active:bg-white/6'
       }`}
     >
-      <div className="flex items-start gap-2">
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${c.dotBg}`} />
+      <div className="flex items-start gap-3">
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${c.dotBg}`} />
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium leading-snug truncate ${selected ? 'text-white' : 'text-white/70 group-hover:text-white/90'}`}>
+          <p className={`text-sm font-medium leading-snug ${selected ? 'text-white' : 'text-white/75 group-hover:text-white/90'}`}>
             {arc.title}
           </p>
-          <p className="text-[11px] text-white/30 mt-0.5">{formatDateRange(arc)}</p>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className={`text-[10px] ${c.text}`}>{TRACK_LABELS[track]}</span>
+          <p className="text-[11px] mt-1">
+            <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/15 px-2 py-0.5 font-mono font-bold text-white text-[10px] sm:text-[11px] shadow-[0_0_10px_rgba(99,102,241,0.2)]">
+              {formatDateRange(arc)}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${c.bg} ${c.text}`}>{TRACK_LABELS[track]}</span>
             <StoryArcBadge arc={arc} variant="compact" />
             {entryCount > 0 && (
-              <span className="text-[10px] text-white/20">{entryCount} memor{entryCount === 1 ? 'y' : 'ies'}</span>
+              <span className="text-[10px] text-white/25">{entryCount} mem.</span>
             )}
             {arc.is_active && (
               <span className="text-[10px] text-emerald-400/80">● active</span>
             )}
           </div>
         </div>
+        <ChevronRight className="h-4 w-4 text-white/20 shrink-0 mt-1 sm:hidden" />
       </div>
     </button>
   );
@@ -137,7 +144,7 @@ const ArcPanel = ({
             <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1" style={{ fontFamily: 'Georgia, serif' }}>
               {arc.title}
             </h2>
-            <p className="text-xs text-white/35">{formatDateRange(arc)}</p>
+            <TimelineMonthBanner label={formatDateRange(arc)} sublabel={arc.is_active ? 'Ongoing chapter' : 'Chapter span'} />
             {getSourceEventCount(arc) != null && (
               <p className="text-[11px] text-white/30 mt-1">
                 {getSourceEventCount(arc)} linked moment{getSourceEventCount(arc) === 1 ? '' : 's'}
@@ -181,6 +188,7 @@ interface TimelineStoryViewProps {
 }
 
 export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewProps) => {
+  const isMobile = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
@@ -248,14 +256,17 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
     <div className="h-full flex overflow-hidden">
       {/* ── Table of contents ────────────────────────────────────────── */}
       <div
-        className={`w-full md:w-64 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50 ${
+        className={`w-full md:w-72 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50 ${
           mobileReaderOpen ? 'hidden md:block' : 'block'
         }`}
       >
-        <div className="px-4 py-3 border-b border-white/8 sticky top-0 bg-black/90 backdrop-blur-sm z-10">
-          <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono text-center md:text-left">
+        <div className="px-3 sm:px-4 py-3 border-b border-white/8 sticky top-0 bg-black/95 backdrop-blur-sm z-10">
+          <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">
             {sortedArcs.length} chapter{sortedArcs.length !== 1 ? 's' : ''}
           </p>
+          {isMobile && (
+            <p className="text-xs text-white/40 mt-1">Tap a chapter to read</p>
+          )}
         </div>
 
         {sortedArcs.map(arc => (

@@ -3,6 +3,7 @@ import { Image, FileText, X, CheckCircle, AlertCircle, Loader2, MapPin, Calendar
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
+import { DemoUploadProgressPanel, type DemoUploadProgress, type DemoUploadStage } from '../../../components/demo/DemoUploadProgressPanel';
 
 interface PhotoAnalysis {
   photoType: 'memory' | 'document' | 'junk';
@@ -37,6 +38,8 @@ interface PhotoUploadReviewProps {
   }) => Promise<void>;
   onReject: () => void;
   loading?: boolean;
+  processProgress?: DemoUploadProgress | null;
+  processStages?: DemoUploadStage[];
 }
 
 export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
@@ -44,7 +47,9 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
   analysis,
   onApprove,
   onReject,
-  loading = false
+  loading = false,
+  processProgress = null,
+  processStages = [],
 }) => {
   const [addToLoreBook, setAddToLoreBook] = useState(analysis.photoType === 'memory');
   const [extractTextOnly, setExtractTextOnly] = useState(analysis.photoType === 'document');
@@ -261,6 +266,13 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
       </div>
 
       {/* Actions */}
+      {loading && processProgress && processStages.length > 0 ? (
+        <DemoUploadProgressPanel
+          progress={processProgress}
+          stages={processStages}
+          icon={Image}
+        />
+      ) : null}
       <div className="flex items-center justify-between pt-2 border-t border-border/60">
         <Button
           variant="outline"
