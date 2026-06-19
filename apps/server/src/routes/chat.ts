@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
+import { shouldBlockAnonymousAiChat } from '../config/runtimePolicy';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { rateLimitMiddleware, createRateLimiter } from '../middleware/rateLimit';
 import { checkAiRequestLimit } from '../middleware/subscription';
@@ -33,6 +34,13 @@ const aiRateLimit = createRateLimiter(30);
 const personaRL = new ChatPersonaRL();
 
 const router = Router();
+
+function sendAnonymousAiBlocked(res: import('express').Response) {
+  return res.status(403).json({
+    error: 'Guest chat is simulation-only in production',
+    message: 'Use /api/guest/stream for unauthenticated guest preview chat, or sign in to use the full AI chat pipeline.',
+  });
+}
 
 const currentContextSchema = z.object({
   kind: z.enum(['none', 'timeline', 'thread']),
@@ -150,6 +158,9 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
 
     const { message, conversationHistory = [], threadId, entityContext, chatFocus, soulProfileContext, threadEntities, composerEntities } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
+    if (shouldBlockAnonymousAiChat(req.user)) {
+      return sendAnonymousAiBlocked(res);
+    }
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     let validatedComposerEntities = composerEntities;
@@ -370,6 +381,9 @@ router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: Aut
 
     const { message, conversationHistory = [], stream, threadId, entityContext, soulProfileContext } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
+    if (shouldBlockAnonymousAiChat(req.user)) {
+      return sendAnonymousAiBlocked(res);
+    }
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // If streaming requested but endpoint is /, redirect to /stream

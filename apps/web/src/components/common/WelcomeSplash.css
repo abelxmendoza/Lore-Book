@@ -3,10 +3,17 @@
 .welcome-splash {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 9999;
   opacity: 1;
   cursor: pointer;
+  touch-action: manipulation;
+  background: #050308;
   animation: welcome-splash-in 0.5s ease both;
+  padding:
+    max(env(safe-area-inset-top, 0px), 0.75rem)
+    max(env(safe-area-inset-right, 0px), 0.75rem)
+    max(env(safe-area-inset-bottom, 0px), 0.75rem)
+    max(env(safe-area-inset-left, 0px), 0.75rem);
 }
 
 .welcome-splash--leaving {
@@ -16,7 +23,23 @@
 }
 
 .welcome-splash__screen {
+  min-height: 100%;
   height: 100%;
+  max-height: 100dvh;
+  justify-content: center;
+  padding: 1rem 0.75rem 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.welcome-splash__screen .lore-generating-title {
+  padding-inline: 0.75rem;
+  font-size: clamp(1.35rem, 5vw, 2rem);
+}
+
+.welcome-splash__screen .lore-generating-stage {
+  padding-inline: 1rem;
+  max-width: 22rem;
 }
 
 .welcome-splash__hint {
@@ -27,6 +50,8 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.3);
+  padding-inline: 0.5rem;
+  text-align: center;
 }
 
 @keyframes welcome-splash-in {

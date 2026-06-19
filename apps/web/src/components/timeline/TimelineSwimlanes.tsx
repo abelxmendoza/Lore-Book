@@ -17,6 +17,7 @@ import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
+import { omniTimelineBottomInset } from './omniTimelineLayout';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import { isNarrativeConsolidationArc } from '../../lib/lifeArcLabels';
 import { StoryArcBadge, storyArcTooltipSubtitle } from './StoryArcBadge';
@@ -236,7 +237,15 @@ const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
-const Tooltip = ({ arc, entry }: { arc: LifeArc | null; entry: ChronologyEntry | null }) => {
+const Tooltip = ({
+  arc,
+  entry,
+  reserveBottomNav = false,
+}: {
+  arc: LifeArc | null;
+  entry: ChronologyEntry | null;
+  reserveBottomNav?: boolean;
+}) => {
   const item = arc ?? entry;
   if (!item) return null;
 
@@ -253,7 +262,11 @@ const Tooltip = ({ arc, entry }: { arc: LifeArc | null; entry: ChronologyEntry |
   return (
     <div
       className="pointer-events-none fixed z-50 max-w-[calc(100vw-2rem)] w-[min(20rem,calc(100vw-2rem))] px-4 py-3 rounded-2xl border border-white/15 bg-black/90 backdrop-blur-md shadow-2xl left-1/2 -translate-x-1/2"
-      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      style={{
+        bottom: reserveBottomNav
+          ? `calc(${omniTimelineBottomInset} + 0.75rem)`
+          : 'max(1rem, env(safe-area-inset-bottom))',
+      }}
     >
       <p className="text-xs text-white/40 mb-0.5">{sub}</p>
       <p className="text-sm font-semibold text-white leading-snug mb-1">{title}</p>
@@ -806,7 +819,7 @@ export const TimelineSwimlanes = ({
 
       {/* ── Hover tooltips (desktop only) ─────────────────────────────── */}
       {!isMobile && (displayArc || displayEntry) && (
-        <Tooltip arc={displayArc} entry={displayEntry} />
+        <Tooltip arc={displayArc} entry={displayEntry} reserveBottomNav={isMobile} />
       )}
     </div>
   );

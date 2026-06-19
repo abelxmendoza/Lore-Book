@@ -23,15 +23,23 @@
 
 @media (max-width: 767px) {
   .hero-layout {
-    gap: 1rem;
+    gap: 0.5rem;
   }
 
   .hero-headline-panel {
-    margin-bottom: -0.25rem;
+    margin-bottom: -0.75rem;
+  }
+
+  .hero-headline-panel .hero-headline-stage {
+    min-height: 4rem;
   }
 
   .hero-logo-column {
-    margin-top: -0.5rem;
+    margin-top: -1.25rem;
+  }
+
+  .hero-logo-frame--hero {
+    margin-top: 0;
   }
 }
 

@@ -12,6 +12,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
 import { ChatGPTImport } from '../components/ChatGPTImport';
+import { LoreReadinessQuestChips } from '../components/LoreReadinessQuestChips';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 
@@ -113,6 +114,16 @@ export const ChatComposer = ({
             Filling gap from {new Date(initialDate).toLocaleDateString()}
           </div>
         </div>
+      )}
+
+      {/* Lore readiness quest chips — fill gaps for upcoming lorebooks */}
+      {!embedded && (
+        <LoreReadinessQuestChips
+          onSelectPrompt={(prompt) => {
+            setInput(prompt);
+            setTimeout(() => textareaRef.current?.focus(), 50);
+          }}
+        />
       )}
 
       {/* Certified entity chips — detected from book index, load KB into pipeline */}

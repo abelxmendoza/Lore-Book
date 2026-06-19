@@ -10,10 +10,11 @@ import { useConversationStore } from './useConversationStore';
 import { invalidateAfterChatIngestion } from '../../../store/invalidateEntityCache';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
 import {
-  isDemoChatMockup,
+  isSimulatedChatRuntime,
   simulateDemoChatSend,
   buildDemoChatResponse,
 } from '../../../services/demoChatSimulation';
+import { shouldSimulateChat, shouldUseMockData } from '../../../hooks/useShouldUseMockData';
 import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
@@ -381,11 +382,14 @@ export const useChat = () => {
     };
 
     try {
-      if (isDemoChatMockup()) {
+      if (isSimulatedChatRuntime()) {
+        const chatMode = shouldUseMockData() ? 'demo' as const : 'guest' as const;
         const demoResult = await simulateDemoChatSend({
           message: messageText.trim(),
           chatFocus: options?.chatFocus,
           conversationHistory,
+          mode: chatMode,
+          guestId: guestState?.guestId,
           onStage: (stage, progress) => {
             setLoadingStage(stage);
             setLoadingProgress(progress);
@@ -395,6 +399,16 @@ export const useChat = () => {
             updateStreamMessage(assistantMessageId, { content: accumulatedContent });
           },
         });
+
+        if (isGuest && guestState?.guestId && demoResult.loreUpdates) {
+          applyGuestLoreUpdates(guestState.guestId, demoResult.loreUpdates);
+          Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
+          const characterIds = demoResult.loreUpdates.mentionedEntities
+            ?.filter((e) => e.type === 'character')
+            .map((e) => e.id);
+          invalidateAfterChatIngestion({ characterIds });
+          dispatchStoryDataUpdated({ scopes: ['all'], characterIds });
+        }
 
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
@@ -600,11 +614,18 @@ export const useChat = () => {
           // In guest/mock-data mode, swap backend-unavailable errors for a demo response
           // so there is no console spam and no scary error text.
           const useDemoFallback =
+            isSimulatedChatRuntime() ||
             (isGuest && (isBackendUnavailable(error) || isGuestStreamBlocked(error))) ||
             (getGlobalMockDataEnabled() && isBackendUnavailable(error));
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback
-              ? buildDemoChatResponse(messageText.trim(), options?.chatFocus).content
+              ? buildDemoChatResponse(
+                  messageText.trim(),
+                  options?.chatFocus,
+                  undefined,
+                  shouldUseMockData() ? 'demo' : 'guest',
+                  guestState?.guestId,
+                ).content
               : friendlyErrorMessage(String(error)),
             isStreaming: false,
             persistStatus: 'failed',
@@ -634,12 +655,19 @@ export const useChat = () => {
 
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
       const useDemoFallback =
+        isSimulatedChatRuntime() ||
         (isGuest && (isBackendUnavailable(errMsg) || isGuestStreamBlocked(errMsg))) ||
         (getGlobalMockDataEnabled() && isBackendUnavailable(errMsg));
 
       if (useDemoFallback) {
         updateStreamMessage(assistantMessageId, {
-          content: buildDemoChatResponse(messageText.trim(), options?.chatFocus).content,
+          content: buildDemoChatResponse(
+            messageText.trim(),
+            options?.chatFocus,
+            undefined,
+            shouldUseMockData() ? 'demo' : 'guest',
+            guestState?.guestId,
+          ).content,
           isStreaming: false,
         });
       } else {

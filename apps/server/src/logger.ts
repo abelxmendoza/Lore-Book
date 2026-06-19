@@ -15,5 +15,11 @@ export const logger = pino({
     error: errSerializer,
     e: errSerializer,
   },
-  transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined
+  // Pretty in dev by default. Set LOG_PRETTY=false to emit raw JSON in dev too —
+  // needed to capture structured telemetry (ingestion.cost / stage.timing with
+  // their steps[]/stages[] arrays) that pino-pretty would otherwise flatten away.
+  transport:
+    process.env.NODE_ENV !== 'production' && process.env.LOG_PRETTY !== 'false'
+      ? { target: 'pino-pretty' }
+      : undefined
 });

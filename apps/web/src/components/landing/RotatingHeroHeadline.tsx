@@ -15,7 +15,7 @@ const CROSSFADE_MS = 800;
 const serifStyle = { fontFamily: 'Georgia, "Times New Roman", serif' } as const;
 
 const HEADLINE_SIZE_CLASS =
-  'text-[1.5rem] leading-[1.12] sm:text-3xl md:text-4xl lg:text-5xl xl:text-[3.25rem] max-w-[18ch] sm:max-w-none mx-auto md:mx-0';
+  'text-[1.5rem] leading-[1.12] sm:text-3xl md:text-4xl lg:text-5xl xl:text-[3.25rem] max-w-[22ch] sm:max-w-none mx-auto md:mx-0 text-balance';
 
 function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'] }) {
   if (phraseId === 'remembers') {
@@ -56,11 +56,17 @@ function HeadlineContent({ phraseId }: { phraseId: (typeof PHRASES)[number]['id'
   if (phraseId === 'learns') {
     return (
       <>
-        <span className="text-white/95">It </span>
-        <span className="bg-gradient-to-r from-white via-purple-100 to-pink-100 bg-clip-text text-transparent">
-          learns who you are
+        <span className="text-white/95">It&nbsp;</span>
+        <span className="relative inline-block">
+          <span
+            className="absolute -inset-x-2 -inset-y-1 bg-gradient-to-r from-purple-500/25 via-pink-500/20 to-violet-500/25 blur-xl rounded-full pointer-events-none hero-headline-glow"
+            aria-hidden
+          />
+          <span className="relative bg-gradient-to-r from-white via-purple-100 to-pink-100 bg-clip-text text-transparent">
+            learns
+          </span>
         </span>
-        <span className="text-white/95">.</span>
+        <span className="text-white/95"> who you are.</span>
       </>
     );
   }
@@ -143,7 +149,9 @@ export function RotatingHeroHeadline({ className }: RotatingHeroHeadlineProps) {
               )}
               aria-hidden={!isActive}
             >
-              <HeadlineContent phraseId={item.id} />
+              <span className="hero-headline-phrase">
+                <HeadlineContent phraseId={item.id} />
+              </span>
             </span>
             );
           })}

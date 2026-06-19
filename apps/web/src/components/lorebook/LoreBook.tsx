@@ -24,6 +24,12 @@ import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
 import { compileDemoLorebook } from '../../lib/storyForge/demoLorebookWorkflow';
 import { useLoreReadinessSimulation } from '../../contexts/LoreReadinessSimulationContext';
 import { isDemoBookId, lorebookEditUrl, lorebookEditorUrlForCompiledBooks, lorebookReadUrl } from '../../lib/lorebookLibrary';
+import {
+  compileLorebookFromQuery,
+  compileLorebookFromSpec,
+  formatCompileBlockMessage,
+  shouldConfirmForceCompile,
+} from '../../lib/lorebookCompile';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { useLorebookShell } from './LorebookShell';
 import type { LoreTopicId } from '../../lib/loreReadiness';
@@ -667,7 +673,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   }, [addGeneratedBook, openDemoBookForReading, preset, refreshCompiledBooks]);
 
-  const handleGenerateFromQuery = async (query: string) => {
+  const handleGenerateFromQuery = async (query: string, options?: { force?: boolean }) => {
     if (shouldUseMock || isSimulated) {
       await runDemoCompile({ query }, query);
       return;
@@ -679,14 +685,30 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowLibrary(false);
     setGenerationError(null);
     try {
-      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
-        method: 'POST',
-        body: JSON.stringify({ query })
-      });
-      if (result.biography) {
-        handleLoadBiography(result.biography);
+      let result = await compileLorebookFromQuery(query, options?.force ?? false);
+
+      if (!result.ok && shouldConfirmForceCompile(result.conflict)) {
+        const proceed = window.confirm(
+          `${result.conflict.message}\n\nCompile a thinner book anyway?`
+        );
+        if (proceed) {
+          result = await compileLorebookFromQuery(query, true);
+        } else {
+          setGenerationError(formatCompileBlockMessage(result.conflict));
+          return;
+        }
+      } else if (!result.ok) {
+        setGenerationError(formatCompileBlockMessage(result.conflict));
+        return;
+      }
+
+      if (result.data.biography) {
+        handleLoadBiography(result.data.biography as Biography);
         setIsCoverVisible(true);
-        navigate(lorebookReadUrl(result.biography.id), { replace: true });
+        navigate(lorebookReadUrl((result.data.biography as Biography).id), { replace: true });
+      }
+      if (result.warning) {
+        setGenerationError(result.warning);
       }
     } catch (error) {
       console.error('Failed to generate biography:', error);
@@ -707,7 +729,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     await runDemoCompile({ topicId: topicId as LoreTopicId }, null);
   };
 
-  const handleGenerateFromSpec = async (spec: any, _type?: string) => {
+  const handleGenerateFromSpec = async (spec: any, _type?: string, options?: { force?: boolean }) => {
     if (shouldUseMock || isSimulated) {
       const query = spec?.title ?? spec?.lorebookName ?? spec?.themes ?? 'My LoreBook';
       await runDemoCompile({ query: String(query) }, String(query));
@@ -720,14 +742,30 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowLibrary(false);
     setGenerationError(null);
     try {
-      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
-        method: 'POST',
-        body: JSON.stringify(spec)
-      });
-      if (result.biography) {
-        handleLoadBiography(result.biography);
+      let result = await compileLorebookFromSpec(spec, options?.force ?? false);
+
+      if (!result.ok && shouldConfirmForceCompile(result.conflict)) {
+        const proceed = window.confirm(
+          `${result.conflict.message}\n\nCompile a thinner book anyway?`
+        );
+        if (proceed) {
+          result = await compileLorebookFromSpec(spec, true);
+        } else {
+          setGenerationError(formatCompileBlockMessage(result.conflict));
+          return;
+        }
+      } else if (!result.ok) {
+        setGenerationError(formatCompileBlockMessage(result.conflict));
+        return;
+      }
+
+      if (result.data.biography) {
+        handleLoadBiography(result.data.biography as Biography);
         setIsCoverVisible(true);
-        navigate(lorebookReadUrl(result.biography.id), { replace: true });
+        navigate(lorebookReadUrl((result.data.biography as Biography).id), { replace: true });
+      }
+      if (result.warning) {
+        setGenerationError(result.warning);
       }
     } catch (error) {
       console.error('Failed to generate biography from spec:', error);
@@ -794,8 +832,8 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   if (showLibrary) {
     return (
       <LibraryLanding
-        onGenerate={(query) => {
-          void handleGenerateFromQuery(query);
+        onGenerate={(query, options) => {
+          void handleGenerateFromQuery(query, options);
         }}
         onGenerateTopic={(topicId) => {
           if (shouldUseMock || isSimulated) {

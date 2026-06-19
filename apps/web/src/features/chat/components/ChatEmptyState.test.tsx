@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '../../../test/utils';
 import { ChatEmptyState } from './ChatEmptyState';
+
+vi.mock('./LoreReadinessQuestChips', () => ({
+  LoreReadinessQuestChips: () => null,
+}));
 
 describe('ChatEmptyState', () => {
   it('renders chat-first messaging: "This is where your story is built"', () => {

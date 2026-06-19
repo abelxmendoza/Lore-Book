@@ -388,7 +388,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
    * This prevents black screens even if auth logic fails silently.
    * A visible loading state is always better than silent emptiness.
    */
-  if (loading) {
+  if (loading && !isGuest) {
     return (
       <BookGhostLoader
         fullScreen

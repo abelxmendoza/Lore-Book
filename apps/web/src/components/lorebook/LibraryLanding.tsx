@@ -27,10 +27,14 @@ const CATEGORIES: BookCategory[] = [
 ];
 
 import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
+import { cn } from '../../lib/cn';
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 import { LorebookGeneratorSectionTitle, LorebookLibraryHero } from './LorebookSectionTitles';
 import { LoreReadinessPanel } from './LoreReadinessPanel';
+import { useLorebookShell } from './LorebookShell';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { useQueryReadiness } from '../../hooks/useQueryReadiness';
+import { READINESS_COLORS, READINESS_LABELS } from '../../lib/loreReadiness';
 import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
 
 const LIBRARY_BOOK_STYLES = [
@@ -56,7 +60,7 @@ function libraryBookPresentation(book: CompiledLorebook, index: number) {
 }
 
 interface LibraryLandingProps {
-  onGenerate: (query: string) => void;
+  onGenerate: (query: string, options?: { force?: boolean }) => void;
   onGenerateTopic?: (topicId: string) => void;
   onReadBook?: (bookId: string) => void;
   onEditBook?: (bookId: string) => void;
@@ -76,9 +80,11 @@ export const LibraryLanding = ({
   bottomSlot,
 }: LibraryLandingProps) => {
   const navigate = useNavigate();
-  const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
+  const inShell = useLorebookShell();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
+  const { evaluation: queryEvaluation, loading: queryEvaluating } = useQueryReadiness(query);
 
   const handleCategoryClick = (cat: BookCategory) => {
     setActiveCategory(cat.id);
@@ -93,29 +99,42 @@ export const LibraryLanding = ({
     }, 50);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (force = false) => {
     if (!query.trim() || generating) return;
-    onGenerate(query.trim());
+
+    if (!force && queryEvaluation && !queryEvaluation.canGenerate) {
+      if (queryEvaluation.progress >= 0.45) {
+        const proceed = window.confirm(
+          `This book is ${Math.round(queryEvaluation.progress * 100)}% ready — compile a thinner version anyway?`
+        );
+        if (!proceed) return;
+        onGenerate(query.trim(), { force: true });
+        return;
+      }
+      return;
+    }
+
+    onGenerate(query.trim(), force ? { force: true } : undefined);
   };
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-black via-[#0d0814] to-black overflow-y-auto">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-black via-[#0d0814] to-black">
       {/* Atmospheric background layers */}
-      <div className="fixed inset-0 pointer-events-none">
+      <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(139,92,246,0.08),transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_80%,rgba(236,72,153,0.06),transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(88,28,135,0.04),transparent_70%)]" />
       </div>
 
-      <div className="relative z-10 flex flex-col flex-1 px-4 sm:px-8 lg:px-16 py-6 sm:py-12 max-w-5xl mx-auto w-full">
+      <div className={`relative z-10 mx-auto flex w-full min-w-0 max-w-5xl flex-1 flex-col px-4 py-6 sm:px-8 sm:py-12 lg:px-16 ${inShell ? 'pb-4' : ''}`}>
 
         <LorebookLibraryHero subtitle="Generate a book from your life, or open one you've made." />
 
         {/* Generation search bar */}
         <div className="mb-6 sm:mb-8">
           <LorebookGeneratorSectionTitle />
-          <div className="relative flex items-center gap-2 sm:gap-3">
-            <div className="flex-1 relative">
+          <div className="relative flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/25 pointer-events-none" />
               <input
                 id="library-search-input"
@@ -129,8 +148,8 @@ export const LibraryLanding = ({
               />
             </div>
             <Button
-              onClick={handleSubmit}
-              disabled={!query.trim() || generating}
+              onClick={() => handleSubmit()}
+              disabled={!query.trim() || generating || (queryEvaluation != null && !queryEvaluation.canGenerate && queryEvaluation.progress < 0.45)}
               className="h-14 w-14 sm:w-auto sm:px-6 rounded-2xl bg-primary hover:bg-primary/90 text-white font-semibold shrink-0 disabled:opacity-40"
             >
               {generating ? (
@@ -143,6 +162,28 @@ export const LibraryLanding = ({
               )}
             </Button>
           </div>
+          {query.trim().length >= 3 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              {queryEvaluating ? (
+                <span className="inline-flex items-center gap-1.5 text-white/40">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Checking knowledge for this book…
+                </span>
+              ) : queryEvaluation ? (
+                <>
+                  <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium', READINESS_COLORS[queryEvaluation.level])}>
+                    {READINESS_LABELS[queryEvaluation.level]} · {Math.round(queryEvaluation.progress * 100)}%
+                  </span>
+                  <span className="text-white/35 font-mono">
+                    {queryEvaluation.atomCount} atoms · ~{queryEvaluation.estimatedPages} pages
+                  </span>
+                  {!queryEvaluation.canGenerate && queryEvaluation.suggestions[0] && (
+                    <span className="text-amber-400/75">{queryEvaluation.suggestions[0]}</span>
+                  )}
+                </>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {/* Category chips */}

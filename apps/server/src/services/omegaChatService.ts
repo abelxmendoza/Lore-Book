@@ -5,6 +5,7 @@ import type OpenAI from 'openai';
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
+import { StageTimer } from '../lib/stageTimer';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 import type { ChatContextExtension } from '../types/timelineInsight';
@@ -703,7 +704,12 @@ When updating relationship analytics or emotional signals from this thread, weig
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     entityContext?: { type: string; id: string }
-  ): Promise<{ messageId: string; pipelineResult?: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult } | undefined> {
+  ): Promise<{ messageId: string; interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> } | undefined> {
+    // Critical-path latency: this method runs BEFORE the assistant response is
+    // set up (durable save + interpretation pipeline + enqueue). The interpretation
+    // step is the prime candidate to push fully async — this timer quantifies it.
+    const timer = new StageTimer('chat.persist_early', { userId, sessionId });
+
     if (isTrivialMessage(message)) {
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
@@ -716,6 +722,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         })
         .select('id')
         .single();
+      timer.mark('save_trivial');
       if (saveError || !savedMessage?.id) {
         logger.warn({ error: saveError, userId, sessionId }, 'Failed to persist trivial user message');
         return undefined;
@@ -725,10 +732,9 @@ When updating relationship analytics or emotional signals from this thread, weig
         .update({ updated_at: new Date().toISOString() })
         .eq('id', sessionId)
         .eq('user_id', userId);
+      timer.flush({ path: 'trivial' });
       return savedMessage.id ? { messageId: savedMessage.id } : undefined;
     }
-
-    let pipelineResult: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
 
     const { data: savedMessage, error: saveError } = await supabaseAdmin
       .from('chat_messages')
@@ -745,54 +751,84 @@ When updating relationship analytics or emotional signals from this thread, weig
       logger.error({ error: saveError, userId, sessionId }, 'Failed to persist user message before routing');
       throw new Error('Failed to save your message. Please try again.');
     }
+    timer.mark('save');
+    const messageId = savedMessage.id;
 
     await supabaseAdmin
       .from('conversation_sessions')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', sessionId)
       .eq('user_id', userId);
+    timer.mark('session_touch');
 
-    if (!isTrivialMessage(message)) {
-      try {
-        const interpretation = await runLoreInterpretationPipeline({
-          userId,
-          messageId: savedMessage.id,
-          text: message,
-          threadId: sessionId,
-        });
-        pipelineResult = interpretation;
-
-        // System Cognition / Agent Layer — observe & propose (never mutates core
-        // memory). Fire-and-forget behind a flag so it can't affect chat latency.
-        if (config.enableLoreAgents) {
-          void runLoreAgents({
-            userId,
-            threadId: sessionId,
-            messageId: savedMessage.id,
-            userMessage: message,
-            pipelineResult: interpretation,
-          }).catch((agentErr) => {
-            logger.warn({ err: agentErr, messageId: savedMessage.id }, 'Lore agents failed — continuing chat');
-          });
-        }
-      } catch (pipeErr) {
-        logger.warn({ err: pipeErr, messageId: savedMessage.id }, 'Lore interpretation pipeline failed — continuing chat');
-      }
-    }
-
+    // Enqueue the heavy background ingestion job. Cheap in-memory push; explicitly
+    // NOT gated on interpretation so it starts regardless.
     if (!entityContext) {
       ingestionQueue.enqueue(
-        {
-          userId,
-          chatMessageId: savedMessage.id,
-          sessionId,
-          conversationHistory,
-        },
+        { userId, chatMessageId: messageId, sessionId, conversationHistory },
         'NORMAL'
       );
     }
 
-    return { messageId: savedMessage.id, pipelineResult };
+    // Interpretation pipeline + lore agents moved OFF the chat critical path.
+    // They start concurrently here and run in the background; the response path
+    // no longer awaits them (the prime first-token latency win — they were the
+    // dominant `chat.persist_early` stage). The pipeline still runs on every
+    // message, so extraction/persona semantics are unchanged — only the *timing*
+    // moves. The persona-evidence path may opt to await this promise (bounded)
+    // when it genuinely needs same-turn pipeline meaning.
+    const interpretationPromise = runLoreInterpretationPipeline({
+      userId,
+      messageId,
+      text: message,
+      threadId: sessionId,
+    })
+      .then((interpretation) => {
+        if (config.enableLoreAgents) {
+          void runLoreAgents({
+            userId,
+            threadId: sessionId,
+            messageId,
+            userMessage: message,
+            pipelineResult: interpretation,
+          }).catch((agentErr) => {
+            logger.warn({ err: agentErr, messageId }, 'Lore agents failed — continuing chat');
+          });
+        }
+        return interpretation;
+      })
+      .catch((pipeErr) => {
+        logger.warn({ err: pipeErr, messageId }, 'Lore interpretation pipeline failed — continuing chat');
+        return undefined;
+      });
+
+    timer.mark('enqueue_dispatch');
+    timer.flush({ path: 'full', enqueuedIngestion: !entityContext });
+
+    return { messageId, interpretationPromise };
+  }
+
+  /**
+   * Resolve the (background) interpretation promise for the persona-evidence
+   * block, bounded by a timeout so a slow pipeline can never stall a chat. By the
+   * time the evidence block is built (after RAG + scoring) the promise has had a
+   * long head start and is usually already resolved — so this rarely waits.
+   * Non-persona chats never call this, so they never await interpretation at all.
+   */
+  private async resolveInterpretationForEvidence(
+    promise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined,
+    timeoutMs = 1200
+  ): Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> {
+    if (!promise) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async chatStream(
@@ -825,7 +861,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     let entryId: string | undefined;
-    let pipelineResultForEvidence: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
+    let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
     try {
       const earlyPersist = await this.persistUserMessageEarly(
         userId,
@@ -835,7 +871,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         entityContext
       );
       entryId = earlyPersist?.messageId;
-      pipelineResultForEvidence = earlyPersist?.pipelineResult;
+      interpretationPromise = earlyPersist?.interpretationPromise;
     } catch (persistErr) {
       logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed');
       throw persistErr;
@@ -1516,7 +1552,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const agentEvidenceBlockStream = personaBlend
       ? buildPersonaEvidenceBlock({
           personaId: personaBlend.primary,
-          pipelineResult: pipelineResultForEvidence,
+          pipelineResult: await this.resolveInterpretationForEvidence(interpretationPromise),
         })
       : null;
 
@@ -1972,7 +2008,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     let entryId: string | undefined;
-    let pipelineResultForEvidence: import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined;
+    let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
     try {
       const earlyPersist = await this.persistUserMessageEarly(
         userId,
@@ -1982,7 +2018,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         entityContext
       );
       entryId = earlyPersist?.messageId;
-      pipelineResultForEvidence = earlyPersist?.pipelineResult;
+      interpretationPromise = earlyPersist?.interpretationPromise;
     } catch (persistErr) {
       logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed (non-stream)');
       throw persistErr;
@@ -2301,7 +2337,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const agentEvidenceBlock = personaBlend
       ? buildPersonaEvidenceBlock({
           personaId: personaBlend.primary,
-          pipelineResult: pipelineResultForEvidence,
+          pipelineResult: await this.resolveInterpretationForEvidence(interpretationPromise),
         })
       : null;
 

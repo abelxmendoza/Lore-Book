@@ -9,6 +9,7 @@ import {
   READINESS_LABELS,
   type LoreReadinessLevel,
   type LoreTopicReadiness,
+  type ReadinessGap,
 } from '../../lib/loreReadiness';
 import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
 import type { LoreReadinessSummary } from '../../lib/loreReadiness';
@@ -38,6 +39,20 @@ function ProgressBar({ value, level }: { value: number; level: LoreReadinessLeve
     <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
       <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${Math.round(value * 100)}%` }} />
     </div>
+  );
+}
+
+function GapList({ gaps }: { gaps: ReadinessGap[] }) {
+  if (gaps.length === 0) return null;
+  const top = gaps.slice(0, 2);
+  return (
+    <ul className="mt-1.5 space-y-1">
+      {top.map((gap) => (
+        <li key={gap.id} className={cn('text-[11px]', gap.severity === 'blocker' ? 'text-amber-400/85' : 'text-white/45')}>
+          {gap.suggestion ?? `${gap.label}: ${gap.current}/${gap.required}`}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -73,9 +88,15 @@ function TopicCard({
           </Button>
         )}
       </div>
-      {topic.level === 'needs_more' && (
+      {topic.level === 'needs_more' && !topic.gaps?.length && (
         <p className="text-[11px] text-amber-400/80 mt-1.5">
           Need ~{topic.atomsNeeded} more atoms · chat about {topic.topic.label.toLowerCase()}
+        </p>
+      )}
+      {topic.gaps && topic.gaps.length > 0 && <GapList gaps={topic.gaps} />}
+      {topic.entityCandidates && topic.entityCandidates.length > 0 && (
+        <p className="text-[10px] text-white/35 mt-1.5 truncate">
+          Top: {topic.entityCandidates.slice(0, 2).map((c) => `${c.name} (${Math.round(c.progress * 100)}%)`).join(' · ')}
         </p>
       )}
     </div>
@@ -112,7 +133,7 @@ export const LoreReadinessPanel = ({
       {/* Flow strip */}
       <div className={cn('rounded-2xl border border-white/10 bg-black/30 p-4', compact && 'p-3')}>
         <p className="text-xs font-mono uppercase tracking-widest text-white/35 mb-3">How lorebooks are made</p>
-        <div className="grid grid-cols-4 gap-2">
+        <div className={cn('grid gap-2', compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-4')}>
           {FLOW_STEPS.map((step, idx) => {
             const Icon = step.icon;
             const isActive = idx === activeStep;
@@ -144,18 +165,18 @@ export const LoreReadinessPanel = ({
 
       {/* Overall meter */}
       <div className={cn('rounded-2xl border border-white/10 bg-white/3 p-5', compact && 'p-4')}>
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <div>
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold text-white" style={{ fontFamily: 'Georgia, serif' }}>
               Knowledge for lorebooks
             </h3>
-            <p className="text-sm text-white/45 mt-1">
+            <p className="mt-1 text-sm text-white/45">
               {readiness.canGenerateAnyBook
                 ? 'You have enough material to compile lorebooks. Generate first, then edit.'
                 : 'Keep chatting — LoreBook tracks what it knows per topic and unlocks compilation when ready.'}
             </p>
           </div>
-          <div className="text-right shrink-0">
+          <div className="shrink-0 sm:text-right">
             <p className="text-2xl font-bold text-white tabular-nums">{readiness.knowledgeScore}</p>
             <p className="text-[10px] font-mono text-white/35 uppercase">Knowledge score</p>
           </div>

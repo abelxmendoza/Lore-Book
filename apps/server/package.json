@@ -22,6 +22,8 @@
     "test:governance": "vitest run tests/services/claimGovernanceBridge.test.ts tests/services/omegaMemoryMrqGovernance.test.ts tests/services/ingestionMemoryBridge.test.ts tests/integration/mrqClaimGovernance.integration.test.ts tests/integration/governancePipelineE2E.test.ts",
     "test:temporal": "vitest run tests/utils/temporalResolver.test.ts tests/utils/temporalNormalization.test.ts tests/integration/temporalResolverMigration.integration.test.ts",
     "check-env": "tsx scripts/check-env.ts",
+    "cost:ingestion": "node scripts/aggregate-ingestion-cost.mjs",
+    "capture:ingestion-sample": "bash scripts/capture-ingestion-sample.sh",
     "typecheck": "tsc --noEmit",
     "runtime-health": "tsx scripts/runtime-health.ts",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts"

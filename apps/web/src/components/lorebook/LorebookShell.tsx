@@ -107,19 +107,15 @@ export function LorebookShell({ children, onOpenAppSidebar }: LorebookShellProps
           </header>
         )}
 
-        <div
-          className={cn(
-            'min-h-0 flex-1 overflow-hidden',
-            'pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:pb-0',
-          )}
-        >
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           {children}
         </div>
 
-        {/* Route switcher — always visible on mobile within LoreBooks */}
+        {/* Route switcher — hidden while reading (reader has its own chrome) */}
+        {!isReading && (
         <nav
-          className="shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md lg:hidden"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          className="z-10 shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md lg:hidden"
+          style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}
           aria-label="LoreBooks navigation"
         >
           <div className="flex items-stretch px-1 pt-1">
@@ -160,6 +156,7 @@ export function LorebookShell({ children, onOpenAppSidebar }: LorebookShellProps
               })}
           </div>
         </nav>
+        )}
       </div>
     </LorebookShellContext.Provider>
   );

@@ -24,7 +24,7 @@ export function LorebookLibraryHero({
   const ornamentClass = isEmerald ? 'text-emerald-400/35' : 'text-primary/35';
 
   return (
-    <div className={cn('text-center mb-7 sm:mb-10', className)}>
+    <div className={cn('text-center mb-7 sm:mb-10 px-1', className)}>
       <p className={cn('font-serif text-xs sm:text-sm mb-3 tracking-[0.35em]', ornamentClass)}>
         {ORNAMENT}
       </p>

@@ -4,12 +4,11 @@ import { render, screen, act } from '@testing-library/react';
 import { WelcomeSplash } from './WelcomeSplash';
 import { resetWelcomeSplash } from '../../lib/welcomeSplash';
 
-// Minimal context stubs — the splash only reads isGuest / useMockData for copy.
-vi.mock('../../contexts/GuestContext', () => ({
-  useGuest: () => ({ isGuest: false }),
-}));
-vi.mock('../../contexts/MockDataContext', () => ({
-  useMockData: () => ({ useMockData: false }),
+// Minimal context stubs — the splash reads runtime identity for copy.
+vi.mock('../../hooks/useRuntimeIdentity', () => ({
+  useRuntimeIdentity: () => ({
+    is: { demo: false, guest: false, realUser: true, degraded: false },
+  }),
 }));
 
 describe('WelcomeSplash', () => {

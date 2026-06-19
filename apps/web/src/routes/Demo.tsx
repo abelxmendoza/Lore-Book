@@ -14,6 +14,7 @@
 import { useEffect } from 'react';
 import { useMockData } from '../contexts/MockDataContext';
 import { useGuest } from '../contexts/GuestContext';
+import { resetWelcomeSplash } from '../lib/welcomeSplash';
 import App from '../pages/App';
 
 const DEMO_SESSION_KEY = 'lk_demo_runtime';
@@ -28,6 +29,9 @@ export default function DemoRuntime() {
 
     // Activate synthetic cognition — no-op if already set by MockDataContext init
     setUseMockData(true);
+
+    // Fresh demo entry should always show the welcome splash once.
+    resetWelcomeSplash();
 
     // Create an ephemeral guest identity if none exists
     if (!isGuest) startGuestSession();

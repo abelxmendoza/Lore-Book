@@ -1,6 +1,10 @@
 import type { ChatFocus } from '../types/chatFocus';
-import { shouldUseMockData } from '../hooks/useShouldUseMockData';
+import { shouldSimulateChat, shouldUseMockData } from '../hooks/useShouldUseMockData';
 import { getDemoFocusResponse, streamDemoFocusReply } from '../lib/demoFocusChat';
+import {
+  getGuestLoreSnapshot,
+  type GuestLoreUpdates,
+} from './guestLoreStore';
 import { deriveTitleFromFirstUserMessage } from '../features/chat/utils/threadTitleUtils';
 import type { Message } from '../features/chat/message/ChatMessage';
 import type { ChatThread } from '../features/chat/hooks/useChatThreads';
@@ -31,7 +35,10 @@ export type DemoChatSendResult = {
   modeDecision?: Message['modeDecision'];
   subtitle?: string;
   dominantEntities?: string[];
+  loreUpdates?: GuestLoreUpdates;
 };
+
+export type ChatSimulationMode = 'demo' | 'guest';
 
 const DEMO_KNOWN_ENTITIES = DEMO_ENTITY_FALLBACKS;
 
@@ -48,8 +55,14 @@ const STAGE_DELAYS: Array<{ stage: DemoChatLoadingStage; progress: number; ms: n
   { stage: 'generating', progress: 88, ms: 360 },
 ];
 
+/** Demo-only surfaces (seed threads, etc.) — not blank guest mode. */
 export function isDemoChatMockup(): boolean {
   return shouldUseMockData();
+}
+
+/** Guest + demo chat — never hits OpenAI. */
+export function isSimulatedChatRuntime(): boolean {
+  return shouldSimulateChat();
 }
 
 export function createDemoSeedThreads(): ChatThread[] {
@@ -79,13 +92,90 @@ export function deriveDemoThreadMeta(messages: Message[]): {
   };
 }
 
+function simulationLabel(mode: ChatSimulationMode): string {
+  return mode === 'guest' ? 'Guest preview — simulated response' : 'Demo mode — simulated response';
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function snapshotFallbackEntities(guestId?: string): typeof DEMO_ENTITY_FALLBACKS {
+  if (!guestId) return [];
+  const snapshot = getGuestLoreSnapshot(guestId);
+  return [
+    ...snapshot.characters.map((c) => ({
+      pattern: new RegExp(`\\b${escapeRegex(c.name)}\\b`, 'i'),
+      id: c.id,
+      name: c.name,
+      type: 'character' as const,
+    })),
+    ...snapshot.locations.map((l) => ({
+      pattern: new RegExp(`\\b${escapeRegex(l.name)}\\b`, 'i'),
+      id: l.id,
+      name: l.name,
+      type: 'location' as const,
+    })),
+  ];
+}
+
+/** Lexical guest-lore extraction — no LLM. */
+export function extractSimulatedGuestLore(
+  message: string,
+  guestId?: string,
+): GuestLoreUpdates {
+  const snapshot = guestId ? getGuestLoreSnapshot(guestId) : { characters: [], entries: [], locations: [] };
+  const lore = compileChatLoreContext(message, {
+    fallbackEntities: snapshotFallbackEntities(guestId),
+  });
+
+  const characters = lore.entities
+    .filter((e) => e.type === 'character')
+    .map((e) => ({
+      name: e.name,
+      summary: `Mentioned in chat: ${message.slice(0, 120)}`,
+    }));
+
+  const locations = lore.entities
+    .filter((e) => e.type === 'location')
+    .map((e) => ({
+      name: e.name,
+      summary: `Mentioned in chat`,
+    }));
+
+  const mentionedEntities = [
+    ...characters.map((c) => ({
+      id: snapshot.characters.find((s) => s.name.toLowerCase() === c.name.toLowerCase())?.id ?? c.name,
+      name: c.name,
+      type: 'character' as const,
+    })),
+    ...locations.map((l) => ({
+      id: snapshot.locations.find((s) => s.name.toLowerCase() === l.name.toLowerCase())?.id ?? l.name,
+      name: l.name,
+      type: 'location' as const,
+    })),
+  ];
+
+  return {
+    characters,
+    locations,
+    entries: message.trim()
+      ? [{ content: message.trim(), summary: message.trim().slice(0, 120) }]
+      : [],
+    mentionedEntities,
+  };
+}
+
 function buildGenericDemoResponse(
   message: string,
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  mode: ChatSimulationMode = 'demo',
+  guestId?: string,
 ): DemoChatSendResult {
+  const fallbacks = mode === 'demo' ? DEMO_KNOWN_ENTITIES : snapshotFallbackEntities(guestId);
   const noted = maybeNotedSignatureResponse({ message, conversationHistory });
   if (noted) {
-    const lore = compileChatLoreContext(message, { fallbackEntities: DEMO_KNOWN_ENTITIES });
+    const lore = compileChatLoreContext(message, { fallbackEntities: fallbacks });
     const entities = lore.entities;
     return {
       content: noted,
@@ -99,7 +189,7 @@ function buildGenericDemoResponse(
   }
 
   const lower = message.toLowerCase();
-  const lore = compileChatLoreContext(message, { fallbackEntities: DEMO_KNOWN_ENTITIES });
+  const lore = compileChatLoreContext(message, { fallbackEntities: fallbacks });
   const entities = lore.entities;
   const names = entities.map((e) => e.name);
   const entityLine =
@@ -123,8 +213,11 @@ function buildGenericDemoResponse(
   let body: string;
   if (/remember|recall|what do you know|what did i/.test(lower)) {
     body =
-      "In demo mode I'm simulating memory recall. I'd surface matching journal entries, characters, and timeline events tied to what you asked about.\n\n" +
-      entityLine;
+      mode === 'guest'
+        ? "In this guest preview I'm simulating memory recall from your temporary session lore — nothing is sent to OpenAI.\n\n" +
+          entityLine
+        : "In demo mode I'm simulating memory recall. I'd surface matching journal entries, characters, and timeline events tied to what you asked about.\n\n" +
+          entityLine;
   } else if (/villain|character|who is|tell me about/.test(lower)) {
     body =
       "I'd extract that person into your **Characters** book with relationship context and let you confirm or refine the details.\n\n" +
@@ -139,9 +232,13 @@ function buildGenericDemoResponse(
       entityLine;
   } else {
     body =
-      "Thanks for sharing that. In demo mode this simulates how LoreBook reflects back, connects dots, and updates your story surfaces without calling the server.\n\n" +
-      entityLine +
-      '\n\nWhat feels most important to explore next?';
+      mode === 'guest'
+        ? "Thanks for sharing that. This guest preview simulates how LoreBook listens and updates your temporary story — no account and no AI API calls.\n\n" +
+          entityLine +
+          '\n\nWhat feels most important to explore next?'
+        : "Thanks for sharing that. In demo mode this simulates how LoreBook reflects back, connects dots, and updates your story surfaces without calling the server.\n\n" +
+          entityLine +
+          '\n\nWhat feels most important to explore next?';
   }
 
   const timelineUpdates =
@@ -149,14 +246,17 @@ function buildGenericDemoResponse(
       ? entities.slice(0, 2).map((e) => `📅 Noted ${e.name} on your timeline`)
       : ['📅 Conversation logged to your demo timeline'];
 
+  const loreUpdates = mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined;
+
   return {
-    content: `*(Demo mode — simulated response)*\n\n${body}${ontologyLine}${relationshipLine}${priorLine}`,
+    content: `*(${simulationLabel(mode)})*\n\n${body}${ontologyLine}${relationshipLine}${priorLine}`,
     mentionedEntities: entities.length > 0 ? toMessageMentionedEntities(entities) : undefined,
     connections: names.length > 0 ? [`Linked to ${names.join(', ')}`] : ['Added to your running conversation context'],
     timelineUpdates,
-    modeDecision: { mode: 'SUPPORTIVE', confidence: 0.92, reasoning: 'Demo simulation — supportive reflection' },
+    modeDecision: { mode: 'SUPPORTIVE', confidence: 0.92, reasoning: `${mode} simulation — supportive reflection` },
     subtitle: deriveDemoSubtitle(message),
     dominantEntities: names.slice(0, 3),
+    loreUpdates,
   };
 }
 
@@ -164,6 +264,8 @@ export function buildDemoChatResponse(
   message: string,
   chatFocus?: ChatFocus,
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  mode: ChatSimulationMode = 'demo',
+  guestId?: string,
 ): DemoChatSendResult {
   if (chatFocus) {
     const content = getDemoFocusResponse(message, chatFocus);
@@ -188,9 +290,10 @@ export function buildDemoChatResponse(
       modeDecision: { mode: 'SOCIAL_FOCUS', confidence: 0.95, reasoning: 'Demo focus chat simulation' },
       subtitle: chatFocus.sourceLabel,
       dominantEntities: [chatFocus.entityName],
+      loreUpdates: mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined,
     };
   }
-  return buildGenericDemoResponse(message, conversationHistory);
+  return buildGenericDemoResponse(message, conversationHistory, mode, guestId);
 }
 
 export async function runDemoLoadingStages(
@@ -207,14 +310,24 @@ export async function simulateDemoChatSend(options: {
   message: string;
   chatFocus?: ChatFocus;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  mode?: ChatSimulationMode;
+  guestId?: string;
   onStage?: (stage: DemoChatLoadingStage, progress: number) => void;
   onChunk: (chunk: string) => void;
 }): Promise<DemoChatSendResult> {
+  const mode = options.mode ?? (shouldUseMockData() ? 'demo' : 'guest');
+
   if (options.onStage) {
     await runDemoLoadingStages(options.onStage);
   }
 
-  const result = buildDemoChatResponse(options.message, options.chatFocus, options.conversationHistory);
+  const result = buildDemoChatResponse(
+    options.message,
+    options.chatFocus,
+    options.conversationHistory,
+    mode,
+    options.guestId,
+  );
   await streamDemoFocusReply(result.content, options.onChunk, { chunkSize: 12, delayMs: 22 });
 
   const primaryEntity = result.mentionedEntities?.[0]?.name;

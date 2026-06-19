@@ -5,6 +5,50 @@
 
 export type LoreReadinessLevel = 'needs_more' | 'building' | 'ready';
 
+export type ReadinessGapSeverity = 'blocker' | 'warning';
+
+export type ReadinessGap = {
+  id: string;
+  label: string;
+  severity: ReadinessGapSeverity;
+  suggestion?: string;
+  current: number;
+  required: number;
+};
+
+export type ReadinessDimensionScores = {
+  volume: number;
+  diversity: number;
+  anchoring: number;
+  temporal: number;
+  evidence: number;
+};
+
+export type EntityReadinessCandidate = {
+  id: string;
+  name: string;
+  atomCount: number;
+  entryCount: number;
+  progress: number;
+  canGenerate: boolean;
+};
+
+export type LoreReadinessEvaluation = {
+  label: string;
+  level: LoreReadinessLevel;
+  progress: number;
+  canGenerate: boolean;
+  atomCount: number;
+  entryCount: number;
+  wordCount: number;
+  estimatedPages: number;
+  atomsNeeded: number;
+  entriesNeeded: number;
+  gaps: ReadinessGap[];
+  dimensionScores: ReadinessDimensionScores;
+  suggestions: string[];
+};
+
 export type LoreTopicId =
   | 'full_life'
   | 'professional'
@@ -145,9 +189,13 @@ export type LoreTopicReadiness = {
   progress: number;
   atomCount: number;
   entryCount: number;
+  wordCount?: number;
   atomsNeeded: number;
   entriesNeeded: number;
   canGenerate: boolean;
+  gaps?: ReadinessGap[];
+  dimensionScores?: ReadinessDimensionScores;
+  entityCandidates?: EntityReadinessCandidate[];
 };
 
 export type LoreReadinessSummary = {

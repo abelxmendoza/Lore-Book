@@ -179,6 +179,9 @@ class IngestionQueue {
       }
 
       if (runId) await pipelineRunService.complete(runId, attemptStart);
+      void import('../loreReadiness/loreReadinessService').then(({ loreReadinessService }) => {
+        loreReadinessService.invalidateCache(job.userId);
+      });
       logger.debug(
         { jobId: job.id, userId: job.userId, attempt: job.attempts },
         'IngestionQueue: job completed'

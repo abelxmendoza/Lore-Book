@@ -19,6 +19,7 @@ import { TimelineStoryView } from './TimelineStoryView';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
+import { useGetChaptersQuery } from '../../store/api/loreApi';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 
 type View = OmniTimelineView;
@@ -59,6 +60,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   const { arcs, activeArcs, arcsByTrack, loading: arcsLoading } = useLifeArcs();
   const { entries, loading: entriesLoading } = useChronology();
+
+  // Birth-year-anchored life eras (Childhood / Twenties / …). These are the
+  // `lifestage-*` chapter candidates produced server-side from resolved event
+  // times; surfaced here as a compact "Life Chapters" overview strip. RTK Query
+  // dedupes with the LoreKeeper context's chapters fetch, so this is ~free.
+  const { data: chaptersData } = useGetChaptersQuery(undefined, { skip: isDemoMode });
+  const lifeEras = useMemo(
+    () => (chaptersData?.candidates ?? []).filter((c) => c.id.startsWith('lifestage-')),
+    [chaptersData],
+  );
 
   const loading = arcsLoading || entriesLoading;
 
@@ -413,6 +424,35 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               )}
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
+      {!loading && !genQuery && lifeEras.length > 0 && (
+        <div className="flex-shrink-0 border-b border-white/8 bg-black/60 px-3 sm:px-6 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wide text-white/40 shrink-0">Life Chapters</span>
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+              {lifeEras.map((era) => {
+                const startYear = new Date(era.start_date).getFullYear();
+                const endYear = new Date(era.end_date).getFullYear();
+                const count = era.entry_ids?.length ?? 0;
+                return (
+                  <div
+                    key={era.id}
+                    title={era.summary}
+                    className="shrink-0 px-2.5 py-1 rounded-full border border-primary/25 bg-primary/10 text-[11px] text-primary/90"
+                  >
+                    <span className="font-medium">{era.chapter_title}</span>
+                    <span className="text-white/40 ml-1">
+                      {startYear === endYear ? startYear : `${startYear}–${endYear}`}
+                    </span>
+                    {count > 0 && <span className="text-white/30 ml-1">· {count}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

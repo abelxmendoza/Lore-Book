@@ -198,14 +198,14 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   };
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-black via-[#0d0814] to-black overflow-y-auto">
-      <div className="fixed inset-0 pointer-events-none">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-br from-black via-[#0d0814] to-black">
+      <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(139,92,246,0.08),transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_80%,rgba(236,72,153,0.06),transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(88,28,135,0.04),transparent_70%)]" />
       </div>
 
-      <div className="relative z-10 flex flex-col flex-1 px-4 sm:px-8 lg:px-16 py-4 sm:py-8 max-w-6xl mx-auto w-full">
+      <div className={`relative z-10 mx-auto flex w-full min-w-0 max-w-6xl flex-1 flex-col px-4 py-4 sm:px-8 sm:py-8 lg:px-16 ${inShell ? 'pb-4' : ''}`}>
         <div className={cn('flex items-center justify-between gap-3 mb-6 sm:mb-8', inShell && 'hidden lg:flex')}>
           <div className="flex items-center gap-2 min-w-0">
             {onOpenAppSidebar && (

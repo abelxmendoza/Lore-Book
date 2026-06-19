@@ -682,7 +682,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           </div>
         </div>
 
-        {isGuest && <GuestExperienceCard variant="compact" showEndSession={false} />}
+        {isGuest && messages.length === 0 && (
+          <GuestExperienceCard variant="compact" showEndSession={false} />
+        )}
 
         {/* Runtime status banner — hidden when global offline bar is already shown */}
         {backendStatus && !statusDismissed && !backendUnavailable && (

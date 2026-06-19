@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { BookGhostScene } from './BookGhostScene';
-import { useGuest } from '../../contexts/GuestContext';
-import { useMockData } from '../../contexts/MockDataContext';
+import { useRuntimeIdentity } from '../../hooks/useRuntimeIdentity';
 import { wasWelcomeSplashSeen, markWelcomeSplashSeen } from '../../lib/welcomeSplash';
 import './WelcomeSplash.css';
 
@@ -22,8 +21,7 @@ type Phase = 'hidden' | 'visible' | 'leaving';
  * Renders nothing once it has been seen this session.
  */
 export function WelcomeSplash() {
-  const { isGuest } = useGuest();
-  const isDemo = useMockData().useMockData;
+  const { is } = useRuntimeIdentity();
 
   const [phase, setPhase] = useState<Phase>(() =>
     wasWelcomeSplashSeen() ? 'hidden' : 'visible'
@@ -46,10 +44,10 @@ export function WelcomeSplash() {
 
   if (phase === 'hidden') return null;
 
-  const title = isDemo ? 'Welcome to the LoreBook demo' : 'Welcome to LoreBook';
-  const subtitle = isDemo
+  const title = is.demo ? 'Welcome to the LoreBook demo' : 'Welcome to LoreBook';
+  const subtitle = is.demo
     ? 'Exploring with sample data…'
-    : isGuest
+    : is.guest
       ? 'Your guest story begins…'
       : 'Summoning your story from the pages…';
 

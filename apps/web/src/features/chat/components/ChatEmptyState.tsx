@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Bot, Heart, Paperclip, FileText, MessageSquare, Image as ImageIcon, Lock } from 'lucide-react';
+import { LoreReadinessQuestChips } from './LoreReadinessQuestChips';
 
 const LOVE_STARTERS = [
   'I went on a date last night…',
@@ -71,6 +72,23 @@ export const ChatEmptyState = () => {
       <p className="text-sm sm:text-base text-primary/80 mb-4 sm:mb-5 max-w-xl mx-auto">
         This is where your story is built. Timelines, characters, and quests fill in as you talk.
       </p>
+
+      <div className="mb-8 max-w-2xl mx-auto text-left">
+        <LoreReadinessQuestChips
+          compact
+          className="rounded-xl overflow-hidden border border-violet-500/20"
+          onSelectPrompt={(prompt) => {
+            const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message Lore Book"]');
+            if (input) {
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+              nativeInputValueSetter?.call(input, prompt);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.focus();
+            }
+          }}
+        />
+      </div>
+
       <p className="text-base sm:text-lg lg:text-xl mb-8 sm:mb-10 text-white/70 leading-relaxed sm:leading-loose">
         Dump everything freely here. I&apos;ll reflect back, make connections,<br />
         and help you understand your story while automatically updating your timeline.

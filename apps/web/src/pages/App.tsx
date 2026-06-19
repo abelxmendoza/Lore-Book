@@ -392,7 +392,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'timeline' && (
-          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
+          <div className="fixed inset-0 z-10 lg:relative lg:inset-auto lg:z-auto h-full w-full overflow-hidden">
             <OmniTimeline onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
@@ -535,7 +535,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           }}
         />
 
-        {activeSurface !== 'chat' && activeSurface !== 'quests' && <Footer />}
+        {!VIEWPORT_LOCKED_SURFACES.has(activeSurface) && <Footer />}
       </main>
       </div>
       <ModeBadge />

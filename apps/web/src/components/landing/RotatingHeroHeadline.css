@@ -40,6 +40,12 @@
   z-index: 0;
 }
 
+/* Keep phrase inline so flex doesn't treat each word span as a separate line item */
+.hero-headline-phrase {
+  display: inline;
+  text-align: inherit;
+}
+
 .hero-headline-layer--active {
   opacity: 1;
   transform: translateY(0);

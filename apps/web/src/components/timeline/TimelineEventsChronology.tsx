@@ -121,8 +121,8 @@ export const TimelineEventsChronology = ({
   }
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-8 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-8 pb-6 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
         {groups.map((group) => (
           <section key={group.dateKey} aria-label={group.label}>
             <TimelineDateHeader

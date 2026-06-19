@@ -36,6 +36,14 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
   }),
 }));
 
+vi.mock('../../hooks/useQueryReadiness', () => ({
+  useQueryReadiness: () => ({ evaluation: null, loading: false }),
+}));
+
+vi.mock('../../features/chat/components/LoreReadinessQuestChips', () => ({
+  LoreReadinessQuestChips: () => null,
+}));
+
 // LibraryLanding calls useNavigate(), so it must render inside a Router
 const render: typeof rtlRender = (ui, options) =>
   rtlRender(<MemoryRouter>{ui}</MemoryRouter>, options);
@@ -81,7 +89,7 @@ describe('LibraryLanding', () => {
     const generateBtn = screen.getByRole('button', { name: /generate/i });
     fireEvent.click(generateBtn);
 
-    expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music');
+    expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music', undefined);
   });
 
   it('pre-fills query when a category is clicked', async () => {
@@ -101,7 +109,7 @@ describe('LibraryLanding', () => {
     fireEvent.change(input, { target: { value: 'the story of my first job' } });
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
 
-    expect(mockOnGenerate).toHaveBeenCalledWith('the story of my first job');
+    expect(mockOnGenerate).toHaveBeenCalledWith('the story of my first job', undefined);
   });
 
   it('does not call onGenerate when query is empty', () => {

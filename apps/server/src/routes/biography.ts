@@ -16,7 +16,8 @@ import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { recompileCoreLorebook } from '../services/biographyGeneration/recompileCoreLorebook';
 import { omegaChatService } from '../services/omegaChatService';
-import { timeEngine } from '../services/timeEngine';
+import { loreReadinessService, checkCompileGate, getQuestPrompts } from '../services/loreReadiness';
+import type { LoreTopicId } from '../services/loreReadiness';
 
 const router = Router();
 
@@ -285,7 +286,10 @@ const generateBiographySchema = z.object({
   depth: z.enum(['summary', 'detailed', 'epic']).default('detailed'),
   audience: z.enum(['self', 'public', 'professional']).default('self'),
   version: z.enum(['main', 'safe', 'explicit', 'private']).default('main'), // Build flag
-  includeIntrospection: z.boolean().optional() // Derived from version
+  includeIntrospection: z.boolean().optional(), // Derived from version
+  force: z.boolean().optional(),
+  characterIds: z.array(z.string().uuid()).optional(),
+  locationIds: z.array(z.string().uuid()).optional(),
 });
 
 router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -295,10 +299,34 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const spec: BiographySpec = parsed.data;
+    const { force, characterIds, locationIds, ...specFields } = parsed.data;
+    const spec: BiographySpec & { characterIds?: string[]; locationIds?: string[] } = {
+      ...specFields,
+      characterIds,
+      locationIds,
+    };
+
+    const gate = await checkCompileGate(req.user!.id, { spec, depth: spec.depth }, { force });
+    if (!gate.allowed) {
+      return res.status(409).json({
+        error: 'Not ready to compile',
+        message: gate.message,
+        canForce: gate.canForce,
+        mode: gate.mode,
+        evaluation: gate.evaluation,
+      });
+    }
+
     const biography = await biographyGenerationEngine.generateBiography(req.user!.id, spec);
 
-    res.json({ biography });
+    res.json({
+      biography,
+      readiness: {
+        mode: gate.mode,
+        warning: gate.warning,
+        progress: gate.evaluation.progress,
+      },
+    });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to generate biography');
     res.status(500).json({ 
@@ -458,6 +486,95 @@ router.get('/recommendations', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 /**
+ * GET /api/biography/readiness
+ * Server-owned lore readiness summary (topics, gaps, knowledge score)
+ */
+router.get('/readiness', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const readiness = await loreReadinessService.getSummary(req.user!.id);
+    res.json({ readiness });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get lore readiness');
+    res.status(500).json({ error: 'Failed to get lore readiness' });
+  }
+});
+
+const evaluateReadinessSchema = z.object({
+  query: z.string().optional(),
+  topicId: z.string().optional(),
+  characterId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
+  depth: z.enum(['summary', 'detailed', 'epic']).optional(),
+  spec: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * POST /api/biography/readiness/evaluate
+ * Evaluate readiness for a dynamic query, entity, or custom spec
+ */
+router.post('/readiness/evaluate', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = evaluateReadinessSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const body = parsed.data;
+    if (!body.query && !body.topicId && !body.characterId && !body.locationId && !body.spec) {
+      return res.status(400).json({ error: 'Provide query, topicId, characterId, locationId, or spec' });
+    }
+
+    const evaluation = await loreReadinessService.evaluate(req.user!.id, {
+      query: body.query,
+      topicId: body.topicId as LoreTopicId | undefined,
+      characterId: body.characterId,
+      locationId: body.locationId,
+      depth: body.depth,
+      spec: body.spec as any,
+    });
+
+    res.json({ evaluation });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to evaluate lore readiness');
+    res.status(500).json({ error: 'Failed to evaluate lore readiness' });
+  }
+});
+
+/**
+ * GET /api/biography/readiness/quests
+ * Chat quest prompts derived from readiness gaps
+ */
+router.get('/readiness/quests', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const quests = await getQuestPrompts(req.user!.id);
+    res.json({ quests });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get lore readiness quests');
+    res.status(500).json({ error: 'Failed to get lore readiness quests' });
+  }
+});
+
+/**
+ * GET /api/biography/readiness/:templateId
+ * Single topic template readiness
+ */
+router.get('/readiness/:templateId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const topic = await loreReadinessService.getTopicReadiness(
+      req.user!.id,
+      req.params.templateId as LoreTopicId
+    );
+    if (!topic) {
+      return res.status(404).json({ error: 'Unknown readiness template' });
+    }
+    res.json({ topic });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id, templateId: req.params.templateId }, 'Failed to get topic readiness');
+    res.status(500).json({ error: 'Failed to get topic readiness' });
+  }
+});
+
+/**
  * GET /api/biography/stats
  * Get comprehensive lore statistics
  */
@@ -558,6 +675,7 @@ router.get('/capacity/:targetPages', requireAuth, async (req: AuthenticatedReque
  */
 const searchSchema = z.object({
   query: z.string().min(1),
+  force: z.boolean().optional(),
 });
 
 router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -567,13 +685,31 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const { query } = parsed.data;
-    const parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, query);
+    const { query, force } = parsed.data;
 
-    // Generate biography from parsed query
+    const gate = await checkCompileGate(req.user!.id, { query, depth: 'detailed' }, { force });
+    if (!gate.allowed) {
+      return res.status(409).json({
+        error: 'Not ready to compile',
+        message: gate.message,
+        canForce: gate.canForce,
+        mode: gate.mode,
+        evaluation: gate.evaluation,
+      });
+    }
+
+    const parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, query);
     const biography = await biographyGenerationEngine.generateBiography(req.user!.id, parsedQuery as BiographySpec);
 
-    res.json({ biography, parsedQuery });
+    res.json({
+      biography,
+      parsedQuery,
+      readiness: {
+        mode: gate.mode,
+        warning: gate.warning,
+        progress: gate.evaluation.progress,
+      },
+    });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to search lorebooks');
     res.status(500).json({ 

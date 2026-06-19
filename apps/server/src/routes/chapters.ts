@@ -6,6 +6,7 @@ import { openai } from '../lib/openai.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { chapterInsightsService } from '../services/chapterInsightsService';
 import { chapterService } from '../services/chapterService';
+import { lifeStageChapterService } from '../services/lifeStageChapterService';
 
 const router = Router();
 
@@ -33,9 +34,15 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const chapters = await chapterService.listChapters(req.user!.id);
-  const candidates = await chapterInsightsService.detectCandidates(req.user!.id);
-  res.json({ chapters, candidates });
+  const [chapters, tagCandidates, lifeStageCandidates] = await Promise.all([
+    chapterService.listChapters(req.user!.id),
+    chapterInsightsService.detectCandidates(req.user!.id),
+    // Coarse, birth-year-anchored life-era chapters (the biography skeleton).
+    // Empty when no birth year is known; never throws.
+    lifeStageChapterService.generateLifeStageChapters(req.user!.id).catch(() => []),
+  ]);
+  // Life-era chapters lead; fine-grained tag-cluster candidates follow.
+  res.json({ chapters, candidates: [...lifeStageCandidates, ...tagCandidates] });
 });
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {

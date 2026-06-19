@@ -69,12 +69,16 @@ import { narrativeContinuityService } from '../narrativeContinuityService';
 import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
+import { IngestionCostMeter } from '../ingestion/ingestionCostMeter';
+import { evaluateEntityCandidates } from '../ontology/entityCandidateGate';
+import { StageTimer } from '../../lib/stageTimer';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
 import {
   collectAdditionalTemporalReferences,
   mapTemporalWindowToIngestionRef,
 } from '../../utils/temporalResolver';
-import { scanTemporalMentions } from '../ontology/temporalLexicon';
+import { scanTemporalMentions, hasHistoricalDistanceCue } from '../ontology/temporalLexicon';
+import { temporalAnchorProfileService } from '../temporal/temporalAnchorProfileService';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
 /**
@@ -555,6 +559,9 @@ export class ConversationIngestionPipeline {
     const { resolveUserTimezone, clampOccurrenceDate } = await import('../../utils/temporalOccurrence');
     await resolveUserTimezone(userId);
     const now = new Date();
+    // Per-user birth-year anchor (cached) so "when I was 19" / "in high school"
+    // resolve to absolute years instead of defaulting to ingest-time.
+    const anchorProfile = await temporalAnchorProfileService.getProfile(userId);
     const text = originalText || normalizedText;
     const references: Array<{
       timestamp: Date;
@@ -567,7 +574,7 @@ export class ConversationIngestionPipeline {
 
     const seenLabels = new Set<string>();
 
-    for (const mention of scanTemporalMentions(text, now)) {
+    for (const mention of scanTemporalMentions(text, now, anchorProfile)) {
       if (!mention.window) continue;
       const label = mention.window.label;
       if (seenLabels.has(label)) continue;
@@ -629,6 +636,39 @@ export class ConversationIngestionPipeline {
     }
 
     return references.sort((a, b) => b.confidence - a.confidence);
+  }
+
+  /**
+   * Build temporal_context when no concrete date resolved (extractTemporalReferences
+   * returned empty). Honest-occurrence policy:
+   *  - Historical-but-undated ("used to", "back then") → DO NOT stamp ingest-time as
+   *    the occurrence. Leave start_time absent (consumers like eventAssemblyService
+   *    already fall back to created_at = recorded date) and flag occurrence_unknown.
+   *  - Otherwise (recent/real-time chat) → ingest-time is a fair occurrence estimate.
+   * This kills the created_at-as-occurrence conflation for life-story narration while
+   * preserving the sensible default for "had coffee with Maria"-style recent entries.
+   */
+  private buildUnresolvedTemporalContext(
+    text: string,
+    base: Record<string, any>
+  ): Record<string, any> {
+    if (hasHistoricalDistanceCue(text)) {
+      return {
+        ...base,
+        precision: 'unknown',
+        confidence: 0.1,
+        occurrence_unknown: true,
+        source: 'unresolved_past',
+      };
+    }
+    return {
+      ...base,
+      start_time: new Date().toISOString(),
+      precision: 'minute',
+      confidence: 0.7,
+      inferred: true,
+      source: 'current_time',
+    };
   }
 
   /**
@@ -963,6 +1003,20 @@ export class ConversationIngestionPipeline {
       // This is a placeholder - adjust based on your chat service implementation
       const messageId = await this.ensureMessageSaved(userId, threadId, sender, rawText);
 
+      // Cost meter: records which per-message LLM steps were eligible / invoked /
+      // productive. Flushed once at the end as `ingestion.cost`. See plan: measure
+      // skip-rate and waste-rate before further detector consolidation.
+      const costMeter = new IngestionCostMeter(userId, messageId);
+      // Latency-by-stage for the heavy background path (companion to costMeter).
+      const stageTimer = new StageTimer('ingestion.message', { userId, messageId });
+
+      // Capture a stated birth year ("born in 1995", "I'm 28") to the self
+      // character so later life-stage/age phrases resolve to absolute years.
+      // Cheap when absent (regex only); fire-and-forget so it never blocks ingest.
+      if (sender === 'USER') {
+        void temporalAnchorProfileService.captureFromText(userId, rawText).catch(() => {});
+      }
+
       // Step 2: Split into utterances
       const utteranceTexts = normalizationService.splitIntoUtterances(rawText);
 
@@ -1033,8 +1087,16 @@ export class ConversationIngestionPipeline {
         if (normalizedUtterances.length > 0) {
           const fullNormalizedText = normalizedUtterances.map(u => u.normalized_text).join(' ');
           const { omegaMemoryService } = await import('../omegaMemoryService');
+          // Mirror the gate inside extractEntities so the meter can attribute the
+          // skip to this message (same deterministic function — no divergence).
+          const entityGateOpen = evaluateEntityCandidates(fullNormalizedText).hasCandidates;
           const candidateEntities = await omegaMemoryService.extractEntities(fullNormalizedText);
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
+          costMeter.record('entity_extraction', {
+            eligible: entityGateOpen,
+            invoked: entityGateOpen,
+            productive: resolved.length > 0,
+          });
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
 
           for (const e of resolved) {
@@ -1160,6 +1222,7 @@ export class ConversationIngestionPipeline {
       } catch (error) {
         logger.warn({ error }, 'Failed to resolve entities for enrichment, continuing without');
       }
+      stageTimer.mark('entity_resolution');
 
       // Step 4.2: Resolve entity names (shadow baseline) + detect relationships/scopes
       // Sprint P (shadow-mode integrity): name resolution must run for ANY
@@ -1202,6 +1265,12 @@ export class ConversationIngestionPipeline {
               messageId,
               undefined // journal entry ID if available
             );
+
+            costMeter.record('relationship_detection', {
+              eligible: true,
+              invoked: true,
+              productive: detection.relationships.length > 0 || detection.scopes.length > 0,
+            });
 
             // Capture for shadow baseline
             _shadowBaseline.relationships = detection.relationships.map(r => ({
@@ -1279,6 +1348,12 @@ export class ConversationIngestionPipeline {
                 }
               }
 
+              costMeter.record('attribute_detection', {
+                eligible: true,
+                invoked: true,
+                productive: attributes.length > 0,
+              });
+
               if (attributes.length > 0) {
                 logger.debug(
                   { userId, attributesFound: attributes.length },
@@ -1293,6 +1368,7 @@ export class ConversationIngestionPipeline {
           logger.warn({ error }, 'Entity relationship detection failed (non-blocking)');
         }
       }
+      stageTimer.mark('relationship_attribute_detection');
 
       // Solo first-person messages with no resolved entities still carry self knowledge
       const soloSelfReference =
@@ -1392,15 +1468,10 @@ export class ConversationIngestionPipeline {
                   label: temporalRefs[0].label,
                 };
               } else {
-                // Default to current time for real-time chat
-                temporalContext = {
-                  ...temporalContext,
-                  start_time: new Date().toISOString(),
-                  precision: 'minute',
-                  confidence: 0.7,
-                  inferred: true,
-                  source: 'current_time'
-                };
+                temporalContext = this.buildUnresolvedTemporalContext(
+                  utteranceTexts[i] || normalized.normalized_text,
+                  temporalContext
+                );
               }
             }
 
@@ -1474,15 +1545,10 @@ export class ConversationIngestionPipeline {
                   label: temporalRefs[0].label,
                 };
               } else {
-                // Default to current time for real-time chat
-                temporalContext = {
-                  ...temporalContext,
-                  start_time: new Date().toISOString(),
-                  precision: 'minute', // More precise for real-time chat
-                  confidence: 0.7,
-                  inferred: true,
-                  source: 'current_time'
-                };
+                temporalContext = this.buildUnresolvedTemporalContext(
+                  utteranceTexts[i] || normalized.normalized_text,
+                  temporalContext
+                );
               }
             }
 
@@ -2394,6 +2460,11 @@ export class ConversationIngestionPipeline {
           }).catch(() => {});
         });
       }
+
+      // Emit the per-message LLM cost summary (ingestion.cost) and stage latency.
+      stageTimer.mark('detectors_and_assembly');
+      costMeter.flush();
+      stageTimer.flush();
 
       // Return the results
       return {

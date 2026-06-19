@@ -18,6 +18,7 @@ import { classifyEntity, toOmegaType } from './entities/entityClassifier';
 import { expandEntityCandidates } from './kinship/multiEntitySplitter';
 import { extractKinshipMentions } from './kinship/kinshipGlossary';
 import { resolveWithCore } from './entities/entityResolutionBridge';
+import { evaluateEntityCandidates } from './ontology/entityCandidateGate';
 import type { ResolutionContext } from './entities/entityResolutionCore';
 import type {
   Entity,
@@ -157,6 +158,21 @@ export class OmegaMemoryService {
     }
 
     const deterministicCandidates = this.extractDeterministicEntities(text);
+
+    // Pre-LLM gate: skip the extraction call entirely when the text has no
+    // entity candidates (no proper noun, glossary entity, or describable
+    // person/place cue). This was the last always-on LLM call per ingested
+    // message. Fails open — any candidate signal lets the LLM run as before.
+    const gate = evaluateEntityCandidates(text);
+    if (!gate.hasCandidates) {
+      logger.debug({ reason: gate.reason }, 'ingestion.entity_extraction.skipped');
+      return uniqueEntities(
+        deterministicCandidates.map((e) => ({
+          name: e.name,
+          type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
+        }))
+      ).filter((entity) => entity.type !== 'UNKNOWN');
+    }
 
     try {
       const completion = await openai.chat.completions.create({

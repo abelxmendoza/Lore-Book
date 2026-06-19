@@ -29,6 +29,7 @@ import {
   deriveDemoThreadMeta,
   deriveDemoThreadTitle,
   isDemoChatMockup,
+  isSimulatedChatRuntime,
 } from '../../../services/demoChatSimulation';
 
 const GREETING_MIN_GAP_HOURS = 12;
@@ -333,7 +334,7 @@ export const useConversationRuntime = () => {
   // ── Return greeting ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!threadIdParam || authLoading || threadsLoading) return;
-    if (isDemoChatMockup()) return;
+    if (isSimulatedChatRuntime()) return;
 
     if (greetingThreadRef.current !== threadIdParam) {
       setGreetingMessage(null);

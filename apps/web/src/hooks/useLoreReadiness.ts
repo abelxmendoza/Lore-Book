@@ -11,6 +11,7 @@ import { useLoreReadinessSimulation } from '../contexts/LoreReadinessSimulationC
 import { runForgeForPreset } from '../lib/storyForge/forgeReadinessBridge';
 import { syncSimulationDemoLibrary } from '../lib/storyForge/demoLorebookWorkflow';
 import { resolveDemoLorebookById } from '../lib/storyForge/forgeDemoLibrary';
+import { onStoryDataUpdated } from '../lib/storyRefresh';
 
 export type CompiledLorebook = {
   id: string;
@@ -68,6 +69,18 @@ function mergeCompiledBooks(
   return [...merged.values()];
 }
 
+function normalizeReadiness(raw: LoreReadinessSummary | undefined, statsFallback: ContentStatsSnapshot): LoreReadinessSummary {
+  if (!raw) return computeLoreReadiness(statsFallback);
+  return {
+    ...raw,
+    stats: normalizeStats(raw.stats),
+    topics: (raw.topics ?? []).map((topic) => ({
+      ...topic,
+      gaps: topic.gaps ?? [],
+    })),
+  };
+}
+
 export function useLoreReadiness(): UseLoreReadinessResult {
   const { isSimulating, preset, compiledMode, generatedBooks } = useLoreReadinessSimulation();
   const generatedBooksKey = useMemo(
@@ -91,16 +104,21 @@ export function useLoreReadiness(): UseLoreReadinessResult {
         return;
       }
 
-      let stats = EMPTY_CONTENT_STATS;
       let books: CompiledLorebook[] = [];
 
-      const [statsResult, listResult] = await Promise.allSettled([
-        fetchJson<{ stats: ContentStatsSnapshot }>('/api/biography/stats'),
+      const [readinessResult, listResult] = await Promise.allSettled([
+        fetchJson<{ readiness: LoreReadinessSummary }>('/api/biography/readiness'),
         fetchJson<{ biographies: Array<Record<string, unknown>> }>('/api/biography/list'),
       ]);
 
-      if (statsResult.status === 'fulfilled') {
-        stats = normalizeStats(statsResult.value.stats);
+      let nextReadiness = computeLoreReadiness(EMPTY_CONTENT_STATS);
+      if (readinessResult.status === 'fulfilled') {
+        nextReadiness = normalizeReadiness(readinessResult.value.readiness, EMPTY_CONTENT_STATS);
+      } else {
+        const statsResult = await fetchJson<{ stats: ContentStatsSnapshot }>('/api/biography/stats').catch(() => null);
+        if (statsResult?.stats) {
+          nextReadiness = computeLoreReadiness(normalizeStats(statsResult.stats));
+        }
       }
 
       if (listResult.status === 'fulfilled') {
@@ -117,7 +135,7 @@ export function useLoreReadiness(): UseLoreReadinessResult {
         }).filter((b) => b.id);
       }
 
-      setReadiness(computeLoreReadiness(stats));
+      setReadiness(nextReadiness);
       setCompiledBooks(books);
     } finally {
       setLoading(false);
@@ -127,6 +145,13 @@ export function useLoreReadiness(): UseLoreReadinessResult {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (isSimulating) return;
+    return onStoryDataUpdated(() => {
+      void load();
+    });
+  }, [isSimulating, load]);
 
   return {
     readiness,

@@ -59,9 +59,29 @@ export function shouldSimulateUploadFlow(): boolean {
   return shouldUseMockData();
 }
 
+/**
+ * Chat simulation policy:
+ * - Logged-in users: real chat.
+ * - Deployed production guest/demo: always simulated, so unauthenticated
+ *   runtime can never reach the LLM/OpenAI chat path.
+ * - Development guest clean-slate: may use /api/guest/stream freely for testing
+ *   the guest backend path. Demo/mock still simulates locally.
+ */
+export function useShouldSimulateChat(): boolean {
+  const { user, loading: authLoading } = useAuth();
+  const { isGuest } = useGuest();
+  const mockEnabled = useShouldUseMockData();
 
+  if (user) return false;
+  if (config.env.isProduction && isGuest) return true;
+  if (isGuest) return mockEnabled;
+  if (authLoading) return false;
+  return mockEnabled;
+}
 
-
-
-
-
+export function shouldSimulateChat(): boolean {
+  if (getIsUserLoggedIn()) return false;
+  if (config.env.isProduction && getGlobalIsGuest()) return true;
+  if (getGlobalIsGuest()) return shouldUseMockData();
+  return shouldUseMockData();
+}
