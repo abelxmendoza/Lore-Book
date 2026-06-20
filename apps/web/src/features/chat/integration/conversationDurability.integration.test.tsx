@@ -16,6 +16,13 @@ vi.mock('../../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
+// Hydrate from the real (mocked) API, not the demo seed (demo defaults ON in vitest).
+vi.mock('../../../services/demoChatSimulation', async (orig) => ({
+  ...(await orig<typeof import('../../../services/demoChatSimulation')>()),
+  isDemoChatMockup: () => false,
+  seedDemoChatThreadsIfEmpty: (threads: unknown) => threads,
+}));
+
 vi.mock('../../services/runtimeDiagnostics', () => ({
   runtimeDiagnostics: { record: vi.fn(), startTimer: vi.fn(), recordTimed: vi.fn() },
 }));

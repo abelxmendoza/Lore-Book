@@ -58,8 +58,9 @@ describe('ThreadEntityChips', () => {
         />
       </MemoryRouter>
     );
-    expect(screen.getByText('building on:')).toBeInTheDocument();
-    expect(screen.getByText(/focuses on/i)).toBeInTheDocument();
+    expect(screen.getByText('building on')).toBeInTheDocument();
+    // Focus mode: the selected entity exposes a "clear focus" affordance.
+    expect(screen.getByTitle('Clear focus on Maya')).toBeInTheDocument();
     expect(screen.getAllByText('Maya').length).toBeGreaterThanOrEqual(1);
   });
 });
