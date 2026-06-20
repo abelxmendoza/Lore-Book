@@ -15,6 +15,14 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({ threadId: 'thread-entities-1' }),
 }));
 
+// Real (non-simulated) chat path; demo simulation defaults ON under vitest.
+vi.mock('../../../../services/demoChatSimulation', async (orig) => ({
+  ...(await orig<typeof import('../../../../services/demoChatSimulation')>()),
+  isSimulatedChatRuntime: () => false,
+  isDemoChatMockup: () => false,
+  seedDemoChatThreadsIfEmpty: (threads: unknown) => threads,
+}));
+
 vi.mock('../../../../contexts/ChatThreadContext', () => ({
   useChatThreadContext: () => ({
     createThread: vi.fn(() => 'new-thread'),
@@ -82,6 +90,13 @@ vi.mock('../../../../lib/api', () => ({
 }));
 
 import { useChat } from '../useChat';
+import { createElement, type ReactNode } from 'react';
+import { Provider } from 'react-redux';
+import { makeStore } from '../../../../store';
+
+// useChat uses useAppDispatch, so it must render inside a Redux Provider.
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(Provider, { store: makeStore() }, children);
 
 const mentionedEntities = [
   { id: 'c1', name: 'Tía Maria', type: 'character' as const },
@@ -141,7 +156,7 @@ describe('useChat — entity chips from stream metadata', () => {
       }
     );
 
-    const { result } = renderHook(() => useChat());
+    const { result } = renderHook(() => useChat(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage('I visited Tía Maria in San Diego.');
@@ -178,7 +193,7 @@ describe('useChat — entity chips from stream metadata', () => {
       }
     );
 
-    const { result } = renderHook(() => useChat());
+    const { result } = renderHook(() => useChat(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage('Tell me about Abel.', { composerEntities });

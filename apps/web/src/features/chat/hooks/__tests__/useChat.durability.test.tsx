@@ -12,6 +12,14 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({ threadId: 'thread-chat-1' }),
 }));
 
+// Real (non-simulated) chat path; demo simulation defaults ON under vitest.
+vi.mock('../../../../services/demoChatSimulation', async (orig) => ({
+  ...(await orig<typeof import('../../../../services/demoChatSimulation')>()),
+  isSimulatedChatRuntime: () => false,
+  isDemoChatMockup: () => false,
+  seedDemoChatThreadsIfEmpty: (threads: unknown) => threads,
+}));
+
 vi.mock('../../../../contexts/ChatThreadContext', () => ({
   useChatThreadContext: () => ({
     createThread: vi.fn(() => 'new-thread'),
@@ -79,6 +87,13 @@ vi.mock('../../../../lib/api', () => ({
 }));
 
 import { useChat } from '../useChat';
+import { createElement, type ReactNode } from 'react';
+import { Provider } from 'react-redux';
+import { makeStore } from '../../../../store';
+
+// useChat uses useAppDispatch, so it must render inside a Redux Provider.
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(Provider, { store: makeStore() }, children);
 
 describe('useChat — assistant bubble durability', () => {
   beforeEach(() => {
@@ -112,7 +127,7 @@ describe('useChat — assistant bubble durability', () => {
       }
     );
 
-    const { result } = renderHook(() => useChat());
+    const { result } = renderHook(() => useChat(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage('Hello durability');
@@ -134,7 +149,7 @@ describe('useChat — assistant bubble durability', () => {
   it('keeps assistant bubble on outer catch instead of removing it', async () => {
     mockStreamChat.mockRejectedValue(new Error('Stream exploded'));
 
-    const { result } = renderHook(() => useChat());
+    const { result } = renderHook(() => useChat(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage('This should not vanish');

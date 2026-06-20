@@ -32,7 +32,7 @@ describe('ThreadEntityChips', () => {
     ]);
     expect(screen.getAllByText('Maya')).toHaveLength(1);
     expect(screen.getAllByText('San Diego')).toHaveLength(1);
-    expect(screen.getByText('this thread knows:')).toBeInTheDocument();
+    expect(screen.getByText('Thread')).toBeInTheDocument();
   });
 
   it('orders chips by mention count, most mentioned first', () => {

@@ -11,6 +11,14 @@ vi.mock('../../../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
+// Tests exercise the real (non-demo) runtime; demo mode is ON by default under
+// vitest (config.dev.allowMockData), so disable the demo seed/branch here.
+vi.mock('../../../../services/demoChatSimulation', async (orig) => ({
+  ...(await orig<typeof import('../../../../services/demoChatSimulation')>()),
+  isDemoChatMockup: () => false,
+  seedDemoChatThreadsIfEmpty: (threads: unknown) => threads,
+}));
+
 // runtimeDiagnostics is a side-effect singleton; stub it to keep tests quiet
 vi.mock('../../services/runtimeDiagnostics', () => ({
   runtimeDiagnostics: {
