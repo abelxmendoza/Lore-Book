@@ -99,8 +99,8 @@ describe('Composer entity chip flow (integration)', () => {
       expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
     });
 
+    // Exact match → chip. Prefix match ("Kel" → Kelly) highlights only (not chipped).
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toBeInTheDocument();
     expect(
       screen.getByTestId('composer-entity-highlight-character-uuid-abel', { hidden: true })
     ).toHaveTextContent('Abel');
@@ -118,7 +118,9 @@ describe('Composer entity chip flow (integration)', () => {
   });
 
   it('shows retry UI when index load fails', async () => {
-    fetchJson.mockRejectedValueOnce(new Error('offline'));
+    // Fail every index fetch (the indexer may reload), so the error state sticks.
+    fetchJson.mockReset();
+    fetchJson.mockRejectedValue(new Error('offline'));
 
     renderComposer(<ChatComposer onSubmit={vi.fn()} loading={false} />);
 

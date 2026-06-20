@@ -8,6 +8,7 @@ type CompactEntityChipProps = {
   onClick?: () => void;
   disabled?: boolean;
   'data-testid'?: string;
+  'data-entity-status'?: string;
 } & Pick<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'aria-label'>;
 
 const BASE =
@@ -23,6 +24,7 @@ export function CompactEntityChip({
   onClick,
   disabled,
   'data-testid': testId,
+  'data-entity-status': entityStatus,
   type = 'button',
   'aria-label': ariaLabel,
 }: CompactEntityChipProps) {
@@ -33,6 +35,7 @@ export function CompactEntityChip({
       <button
         type={type}
         data-testid={testId}
+        data-entity-status={entityStatus}
         title={title}
         aria-label={ariaLabel}
         disabled={disabled}
@@ -45,7 +48,7 @@ export function CompactEntityChip({
   }
 
   return (
-    <span data-testid={testId} title={title} className={classes}>
+    <span data-testid={testId} data-entity-status={entityStatus} title={title} className={classes}>
       {children}
     </span>
   );

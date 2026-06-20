@@ -39,7 +39,7 @@ export const ThreadEntityChips = ({
       <div className={isComposer ? 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] space-y-0.5' : 'space-y-0.5'}>
         <EntityChipsRow
           entities={entities}
-          label={isComposer ? 'Thread' : 'Thread'}
+          label={isComposer ? 'building on' : 'Thread'}
           max={isComposer ? 8 : 6}
           mode={isComposer ? 'focus' : 'navigate'}
           selectedId={selectedEntityId}
