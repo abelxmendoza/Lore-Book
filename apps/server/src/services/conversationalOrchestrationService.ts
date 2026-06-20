@@ -20,6 +20,7 @@ import type {
 import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
 import { decisionMemoryService } from './decisionMemoryService';
 import { appendMemoryEvent } from './memory/memoryEventService';
+import { detectCorrectionIntent } from './memory/correctionDetection';
 import { embeddingService } from './embeddingService';
 import { expressionRoutingService } from './expressionRoutingService';
 import { goalValueAlignmentService } from './goalValueAlignmentService';
@@ -1062,6 +1063,27 @@ Return JSON:
         extractionMethod: 'chat',
         userConfirmed: role === 'user',
       });
+
+      // If the user is correcting prior info ("actually, her name is Maya"),
+      // also emit a first-class correction event so consolidation can later
+      // turn it into a fact lifecycle transition. Best-effort, never blocking.
+      if (role === 'user') {
+        const correction = detectCorrectionIntent(content);
+        if (correction.isCorrection) {
+          void appendMemoryEvent({
+            userId,
+            kind: 'correction',
+            actor: 'user',
+            sessionId,
+            sourceMessageId: message.id,
+            content,
+            confidence: correction.confidence,
+            extractionMethod: 'heuristic',
+            userConfirmed: true,
+            payload: { pattern: correction.matchedPattern },
+          });
+        }
+      }
     }
 
     return message.id;
