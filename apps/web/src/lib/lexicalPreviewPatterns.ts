@@ -106,8 +106,7 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   L({ id: 'event_went_on_trip', literal: 'went on the trip', type: 'EVENT', subtype: 'EVENT_TRAVEL', colorKey: 'event', confidenceBase: 0.85, priority: 4 }),
   L({ id: 'event_trip', literal: 'trip', type: 'EVENT', subtype: 'EVENT_TRAVEL', colorKey: 'event', confidenceBase: 0.78, priority: 3 }),
   L({ id: 'language_japanese', literal: 'Japanese', type: 'LANGUAGE', subtype: 'SUBJECT', colorKey: 'language', confidenceBase: 0.86, caseSensitive: true, priority: 2 }),
-  // NOTE: no 'went to Japan' EVENT pattern — it would contain (and via dedupe
-  // shadow) the 'Japan' PLACE span. The place + the trip noun carry the meaning.
+  L({ id: 'travel_went_to_japan', literal: 'went to Japan', type: 'EVENT', subtype: 'TRAVEL_EVENT', colorKey: 'event', confidenceBase: 0.87, priority: 22 }),
   L({ id: 'school_japanese_class', literal: 'Japanese class', literalVariants: ['Japanese Class', 'school Japanese Class'], type: 'GROUP', subtype: 'SCHOOL_CLASS', colorKey: 'group', confidenceBase: 0.9, requiresReview: true, priority: 21, contextRules: ['school_class_japanese'] }),
 
   // ── Neighborhood / misc literals ───────────────────────────────────────────

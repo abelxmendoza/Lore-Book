@@ -8,7 +8,6 @@
 import { Express } from 'express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import { resolveSwaggerApiFiles } from './config/swaggerApiFiles';
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -63,28 +62,13 @@ const options: swaggerJsdoc.Options = {
       { name: 'Admin', description: 'Admin operations' },
     ],
   },
-  // Explicit file list (no '**') — see resolveSwaggerApiFiles for why.
-  apis: resolveSwaggerApiFiles(['src/routes']),
+  apis: [
+    './src/routes/*.ts',
+    './src/routes/**/*.ts',
+  ],
 };
 
-/**
- * Generate the OpenAPI spec defensively. swagger-jsdoc scans source files with
- * an old bundled `glob`; a newer `minimatch` encodes `**` as a GLOBSTAR Symbol
- * that `pattern.join('/')` cannot stringify, which threw at import time and
- * crashed the server on boot. API docs are dev-only — never let them take down
- * the API. Fall back to the base definition (no per-route annotations).
- */
-const swaggerSpec: object = (() => {
-  try {
-    return swaggerJsdoc(options) as object;
-  } catch (err) {
-    console.warn(
-      '[swagger] Spec generation failed; serving base definition without route annotations.',
-      err instanceof Error ? err.message : err
-    );
-    return { ...options.definition, paths: {} } as object;
-  }
-})();
+const swaggerSpec = swaggerJsdoc(options);
 
 export const setupSwagger = (app: Express) => {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

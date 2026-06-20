@@ -48,8 +48,7 @@ describe('useChatComposer', () => {
     act(() => {
       result.current.setInput('Tell me about Abel');
     });
-    // analyze now receives the active threadId as a second arg (undefined here).
-    expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined);
+    expect(analyze).toHaveBeenCalledWith('Tell me about Abel');
 
     act(() => {
       result.current.setInput('');
