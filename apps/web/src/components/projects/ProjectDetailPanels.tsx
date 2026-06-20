@@ -27,6 +27,9 @@ import { Textarea } from '../ui/textarea';
 import { formatMilestoneKind } from '../../mocks/projectModalDemoData';
 import type { ProjectCardData } from './ProjectProfileCard';
 import type { ProjectDetailProfile, ProjectStatus } from './projectModalTypes';
+import { LoreEntityLegend } from '../lore/LoreEntityLegend';
+import { LoreEntityChip } from '../lore/LoreEntityChip';
+import type { LoreEntityKind } from '../../lib/loreEntities';
 
 export const STATUS_CONFIG: Record<
   ProjectStatus,
@@ -103,8 +106,22 @@ export function ProjectOverviewTab({
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
   const StatusIcon = statusCfg.icon;
 
+  const linkedEntityKinds: LoreEntityKind[] = [
+    'project',
+    ...(profile.contributors.length > 0 ? (['person'] as const) : []),
+    ...(profile.locations.length > 0 ? (['place'] as const) : []),
+    ...(profile.skills.length > 0 ? (['skill'] as const) : []),
+    ...(profile.milestones.length > 0 ? (['event', 'memory'] as const) : []),
+  ];
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
+      <LoreEntityLegend
+        compact
+        title="Lore entities on this project"
+        activeKinds={linkedEntityKinds}
+      />
+
       {/* Project brief */}
       <Card className="border-white/10 bg-gradient-to-br from-white/[0.06] to-black/40">
         <CardHeader className="pb-2">
@@ -274,11 +291,13 @@ export function ProjectPeopleTab({ profile }: { profile: ProjectDetailProfile })
         {profile.contributors.map((c) => (
           <Card key={c.id} className="border-white/10 bg-black/30 hover:border-violet-500/30 transition-colors">
             <CardContent className="pt-4 flex gap-3">
-              <div className="h-10 w-10 rounded-full bg-violet-500/20 border-2 border-violet-400/40 flex items-center justify-center shrink-0">
-                <Users className="h-4 w-4 text-violet-300" />
+              <div className="h-10 w-10 rounded-full border-2 border-blue-500/40 bg-blue-500/15 flex items-center justify-center shrink-0">
+                <Users className="h-4 w-4 text-blue-300" />
               </div>
-              <div className="min-w-0">
-                <p className="font-medium text-white truncate">{c.name}</p>
+              <div className="min-w-0 flex-1">
+                <LoreEntityChip kind="person" className="mb-1.5">
+                  {c.name}
+                </LoreEntityChip>
                 <p className="text-xs text-white/50">{c.role}</p>
                 <p className="text-[11px] text-white/35 mt-1">
                   {c.momentCount} moment{c.momentCount !== 1 ? 's' : ''}
@@ -296,9 +315,9 @@ export function ProjectPeopleTab({ profile }: { profile: ProjectDetailProfile })
           </h4>
           <div className="flex flex-wrap gap-2">
             {profile.locations.map((loc) => (
-              <Badge key={loc.id} variant="outline" className="border-cyan-500/30 text-cyan-200 bg-cyan-500/10">
+              <LoreEntityChip key={loc.id} kind="place">
                 {loc.name}
-              </Badge>
+              </LoreEntityChip>
             ))}
           </div>
         </div>
@@ -323,14 +342,10 @@ export function ProjectSkillsTab({ profile }: { profile: ProjectDetailProfile })
         </h4>
         <div className="flex flex-wrap gap-2">
           {profile.skills.map((s) => (
-            <Badge
-              key={s.id}
-              variant="outline"
-              className="border-primary/35 bg-primary/10 text-primary-100 px-3 py-1 text-xs"
-            >
+            <LoreEntityChip key={s.id} kind="skill">
               {s.name}
-              {s.level ? <span className="ml-1.5 text-primary/60">· {s.level}</span> : null}
-            </Badge>
+              {s.level ? ` · ${s.level}` : ''}
+            </LoreEntityChip>
           ))}
         </div>
       </section>
@@ -486,19 +501,19 @@ export function ProjectHeroStats({ profile }: { profile: ProjectDetailProfile })
   const items = [
     { label: 'Moments', value: profile.stats.momentCount },
     { label: 'Threads', value: profile.stats.threadCount },
-    { label: 'Days active', value: profile.stats.dayCount },
-    { label: 'Last active', value: profile.stats.lastActiveLabel },
+    { label: 'Days', value: profile.stats.dayCount },
+    { label: 'Last', value: profile.stats.lastActiveLabel },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+    <div className="grid grid-cols-4 gap-1 sm:gap-2">
       {items.map(({ label, value }) => (
         <div
           key={label}
-          className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-center sm:text-left"
+          className="rounded-md sm:rounded-lg border border-white/10 bg-black/30 px-1.5 py-1 sm:px-2.5 sm:py-2 text-center min-w-0"
         >
-          <p className="text-[10px] uppercase tracking-wider text-white/35">{label}</p>
-          <p className="text-lg font-semibold text-white tabular-nums">{value}</p>
+          <p className="text-[8px] sm:text-[10px] uppercase tracking-wide text-white/35 truncate">{label}</p>
+          <p className="text-xs sm:text-base font-semibold text-white tabular-nums truncate">{value}</p>
         </div>
       ))}
     </div>

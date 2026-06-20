@@ -30,6 +30,7 @@ describe('demoMutationEffects', () => {
   it('only toasts high-signal demo actions', () => {
     expect(shouldShowDemoToast('quest_completed')).toBe(true);
     expect(shouldShowDemoToast('quest_updated')).toBe(false);
+    expect(shouldShowDemoToast('skill_added')).toBe(false);
     expect(shouldShowDemoToast('memory_rejected')).toBe(false);
     expect(shouldShowDemoToast('memory_deferred')).toBe(false);
   });

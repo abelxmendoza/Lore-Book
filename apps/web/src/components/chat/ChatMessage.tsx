@@ -289,7 +289,12 @@ export const ChatMessage = ({
 
             {/* "How LoreBook Understood This" — agents observe the USER message */}
             {isUser && showCognitiveTrace && (
-              <HowLoreBookUnderstoodThis messageId={message.id} visible={showCognitiveTrace} />
+              <HowLoreBookUnderstoodThis
+                messageId={message.id}
+                visible={showCognitiveTrace}
+                messageContent={message.content}
+                mentionedEntities={message.mentionedEntities}
+              />
             )}
             
             {/* Inline Citations */}

@@ -12,6 +12,7 @@ import type {
 import type { Character } from '../components/characters/CharacterProfileCard';
 import type { Achievement } from '../types/achievement';
 import type { Skill, SkillMetadata, SkillProgress } from '../types/skill';
+import { enrichSkillProfileForStory } from './skillStoryDemoData';
 import type { MemoryCard, LinkedMemory } from '../types/memory';
 import type { QuestHistory } from '../types/quest';
 import { getMockQuestHistory } from './quests';
@@ -349,41 +350,42 @@ export function getMockOrganizationFacts(org: Organization): ModalFact[] {
 }
 
 export function enrichSkillForDemo(skill: Skill): Skill {
-  const profile = skill.metadata?.skill_profile as Record<string, unknown> | undefined;
-  if (skill.metadata?.skill_details) return skill;
-  const details: SkillMetadata = {
-    years_practiced: 2,
-    why_started: {
-      reason: skill.description ?? `You picked up ${skill.skill_name} through practice and curiosity.`,
-      entry_id: 'demo',
-      extracted_at: skill.created_at,
-    },
-    learned_from: [
-      {
-        character_id: 'dummy-1',
-        character_name: 'Alex',
-        relationship_type: 'peer',
-        first_mentioned: skill.first_mentioned_at,
-        evidence_entry_ids: [],
-      },
-    ],
-    practiced_at: [
-      {
-        location_id: 'dummy-loc-1',
-        location_name: 'Home studio',
-        practice_count: Math.max(skill.practice_count, 3),
-        last_practiced: skill.last_practiced_at ?? skill.updated_at,
-        evidence_entry_ids: [],
-      },
-    ],
-  };
-  return {
-    ...skill,
-    metadata: {
-      ...skill.metadata,
-      skill_details: details,
-    },
-  };
+  const withDetails = skill.metadata?.skill_details
+    ? skill
+    : {
+        ...skill,
+        metadata: {
+          ...skill.metadata,
+          skill_details: {
+            years_practiced: 2,
+            why_started: {
+              reason: skill.description ?? `You picked up ${skill.skill_name} through practice and curiosity.`,
+              entry_id: 'demo',
+              extracted_at: skill.created_at,
+            },
+            learned_from: [
+              {
+                character_id: 'dummy-1',
+                character_name: 'Alex',
+                relationship_type: 'peer' as const,
+                first_mentioned: skill.first_mentioned_at,
+                evidence_entry_ids: [],
+              },
+            ],
+            practiced_at: [
+              {
+                location_id: 'dummy-loc-1',
+                location_name: 'Home studio',
+                practice_count: Math.max(skill.practice_count, 3),
+                last_practiced: skill.last_practiced_at ?? skill.updated_at,
+                evidence_entry_ids: [],
+              },
+            ],
+          } satisfies SkillMetadata,
+        },
+      };
+
+  return enrichSkillProfileForStory(withDetails);
 }
 
 export function getMockSkillConnections(
@@ -470,22 +472,56 @@ export function getMockSkillTimeline(skill: Skill): Array<{
   description: string;
   date: string;
 }> {
-  return [
-    {
-      id: `tl-${skill.id}-1`,
+  const details = skill.metadata?.skill_details;
+  const events: Array<{ id: string; type: string; title: string; description: string; date: string }> = [];
+
+  if (details?.why_started) {
+    events.push({
+      id: `tl-${skill.id}-why`,
       type: 'journal_entry',
-      title: `Started focusing on ${skill.skill_name}`,
-      description: skill.description ?? 'First serious mention in your journal.',
+      title: 'Why you started',
+      description: details.why_started.reason,
+      date: details.why_started.extracted_at ?? skill.first_mentioned_at,
+    });
+  }
+
+  if (details?.learned_when) {
+    events.push({
+      id: `tl-${skill.id}-learned`,
+      type: 'journal_entry',
+      title: `Started learning ${skill.skill_name}`,
+      description: details.learned_when.context ?? skill.description ?? 'First serious practice logged.',
+      date: details.learned_when.date,
+    });
+  } else {
+    events.push({
+      id: `tl-${skill.id}-first`,
+      type: 'journal_entry',
+      title: `First mention of ${skill.skill_name}`,
+      description: skill.description ?? 'Showed up in your journal for the first time.',
       date: skill.first_mentioned_at,
-    },
-    {
-      id: `tl-${skill.id}-2`,
-      type: 'achievement',
-      title: 'Practice milestone',
-      description: `Logged ${skill.practice_count} practice sessions.`,
-      date: skill.last_practiced_at ?? skill.updated_at,
-    },
-  ];
+    });
+  }
+
+  if (skill.last_practiced_at) {
+    events.push({
+      id: `tl-${skill.id}-practice`,
+      type: 'journal_entry',
+      title: 'Recent practice',
+      description: `${skill.practice_count} total sessions — last one logged recently.`,
+      date: skill.last_practiced_at,
+    });
+  }
+
+  events.push({
+    id: `tl-${skill.id}-level`,
+    type: 'achievement',
+    title: `Level ${skill.current_level} reached`,
+    description: `${skill.total_xp.toLocaleString()} XP total · ${skill.xp_to_next_level} XP to next level.`,
+    date: skill.updated_at,
+  });
+
+  return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export function getMockSkillPhotos(skill: Skill): Array<{

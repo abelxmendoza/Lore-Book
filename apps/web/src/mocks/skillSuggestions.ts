@@ -57,5 +57,62 @@ export function getMockSkillSuggestions(): SkillSuggestion[] {
       evidence: ['Line cook shifts at River Café during college'],
       source: 'journal',
     },
+    {
+      id: 'sug-typescript',
+      skill_name: 'TypeScript',
+      skill_category: 'technical',
+      skill_type: 'technical',
+      monetization: 'paid',
+      proficiency: 70,
+      confidence: 0.84,
+      enjoyment: 74,
+      usage_frequency: 'daily',
+      trajectory: 'improving',
+      description: 'Typed JavaScript for LoreBook and Atlas Notes',
+      origin_story: 'Adopted after shipping a few untyped React prototypes',
+      related_projects: ['LoreBook', 'Atlas Notes'],
+      evidence: ['Refactoring the composer and entity indexer in TypeScript'],
+      source: 'chat',
+    },
+    {
+      id: 'sug-ux-research',
+      skill_name: 'UX Research',
+      skill_category: 'intellectual',
+      skill_type: 'professional',
+      monetization: 'potentially_paid',
+      proficiency: 62,
+      confidence: 0.77,
+      enjoyment: 68,
+      usage_frequency: 'monthly',
+      trajectory: 'improving',
+      description: 'Interviewing users and mapping lorebook workflows',
+      origin_story: 'Picked up while validating onboarding flows',
+      evidence: ['Ran three demo interviews about timeline navigation'],
+      source: 'journal',
+    },
+    {
+      id: 'sug-weightlifting',
+      skill_name: 'Weightlifting',
+      skill_category: 'physical',
+      skill_type: 'physical',
+      monetization: 'hobby_only',
+      proficiency: 58,
+      confidence: 0.79,
+      enjoyment: 82,
+      usage_frequency: 'weekly',
+      trajectory: 'improving',
+      description: 'Compound lifts for strength and recovery',
+      origin_story: 'Started after kickboxing to balance conditioning',
+      evidence: ['Tracking squat and deadlift progress in the journal'],
+      source: 'chat',
+    },
   ];
+}
+
+/** Demo pool minus skills already in the book (by name). */
+export function getAvailableMockSkillSuggestions(existingNames: string[]): SkillSuggestion[] {
+  const inBook = new Set(existingNames.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  const pool = getMockSkillSuggestions();
+  const available = pool.filter((s) => !inBook.has(s.skill_name.trim().toLowerCase()));
+  return available.length > 0 ? available : pool;
 }

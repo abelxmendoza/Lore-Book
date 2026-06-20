@@ -3,7 +3,8 @@
  * Runs before any OpenAI call so the model receives structured, deduped context.
  */
 
-import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEntity';
+import type { CertifiedEntity, CertifiedEntityType, CharacterVariant } from '../types/certifiedEntity';
+import type { LoreEntityKind } from './loreEntities';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import {
   buildEntityMatchIndex,
@@ -30,6 +31,8 @@ export type CompiledEntityMention = {
   type: CertifiedEntityType;
   status: 'confirmed' | 'draft';
   source: 'certified' | 'lexical' | 'fallback';
+  characterVariant?: CharacterVariant;
+  loreKind?: LoreEntityKind;
 };
 
 export type ChatLoreContext = {
@@ -62,6 +65,8 @@ export type CompileChatLoreContextOptions = {
     id: string;
     name: string;
     type: CertifiedEntityType;
+    characterVariant?: CharacterVariant;
+    loreKind?: LoreEntityKind;
   }>;
   historyWindow?: number;
 };
@@ -157,6 +162,8 @@ function detectEntitiesInText(
         type: entity.type,
         status: 'confirmed',
         source: 'fallback',
+        characterVariant: entity.characterVariant,
+        loreKind: entity.loreKind,
       });
     }
   }
@@ -294,6 +301,18 @@ export function compileChatLoreContext(
 /** Map compiled entities to chat message metadata shape. */
 export function toMessageMentionedEntities(
   entities: CompiledEntityMention[],
-): Array<{ id: string; name: string; type: CertifiedEntityType }> {
-  return entities.map(({ id, name, type }) => ({ id, name, type }));
+): Array<{
+  id: string;
+  name: string;
+  type: CertifiedEntityType;
+  characterVariant?: CharacterVariant;
+  loreKind?: LoreEntityKind;
+}> {
+  return entities.map(({ id, name, type, characterVariant, loreKind }) => ({
+    id,
+    name,
+    type,
+    ...(characterVariant ? { characterVariant } : {}),
+    ...(loreKind ? { loreKind } : {}),
+  }));
 }

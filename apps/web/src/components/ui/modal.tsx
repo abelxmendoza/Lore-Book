@@ -53,7 +53,7 @@ export const Modal = ({ isOpen, onClose, title, children, maxWidth, size }: Moda
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className={`flex-1 min-h-0 ${w === 'full' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {children}
         </div>
       </div>

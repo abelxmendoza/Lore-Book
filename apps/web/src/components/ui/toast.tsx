@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Info, AlertTriangle, Briefcase } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+/** Optional book-domain styling for suggestion-add toasts */
+export type ToastTone = 'default' | 'project' | 'quest';
 
 export interface Toast {
   id: string;
   message: string;
   type: ToastType;
   duration?: number;
+  tone?: ToastTone;
 }
 
 type ToastProps = Toast & {
   onClose: () => void;
 };
 
-const ToastComponent = ({ id, message, type, duration = 5000, onClose }: ToastProps) => {
+const ToastComponent = ({ id, message, type, duration = 5000, tone = 'default', onClose }: ToastProps) => {
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(() => {
@@ -39,13 +43,28 @@ const ToastComponent = ({ id, message, type, duration = 5000, onClose }: ToastPr
     warning: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
   };
 
-  const Icon = icons[type];
+  const toneStyles: Record<ToastTone, string> = {
+    default: 'animate-in slide-in-from-bottom-4 fade-in zoom-in-95 duration-300 sm:slide-in-from-top-5',
+    project:
+      'bg-emerald-500/15 border-emerald-400/45 text-emerald-100 shadow-lg shadow-emerald-500/15 animate-in slide-in-from-bottom-6 fade-in zoom-in-95 duration-500 sm:slide-in-from-top-6',
+    quest:
+      'bg-amber-500/15 border-amber-400/45 text-amber-100 shadow-lg shadow-amber-500/15 animate-in slide-in-from-bottom-6 fade-in zoom-in-95 duration-500 sm:slide-in-from-top-6',
+  };
+
+  const toneIcons: Partial<Record<ToastTone, typeof CheckCircle2>> = {
+    project: Briefcase,
+    quest: CheckCircle2,
+  };
+
+  const Icon = (type === 'success' && toneIcons[tone]) ? toneIcons[tone]! : icons[type];
+  const typeStyle = type === 'success' && tone !== 'default' ? '' : styles[type];
 
   return (
     <div
       className={cn(
-        'flex items-start gap-2.5 sm:items-center sm:gap-3 rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 shadow-lg backdrop-blur-sm animate-in slide-in-from-bottom-4 sm:slide-in-from-top-5 w-full sm:max-w-sm',
-        styles[type]
+        'flex items-start gap-2.5 sm:items-center sm:gap-3 rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 backdrop-blur-sm w-full sm:max-w-sm',
+        typeStyle,
+        toneStyles[tone]
       )}
       role="alert"
       aria-live="polite"
@@ -109,9 +128,14 @@ export const useToast = (options: UseToastOptions = {}) => {
   const maxVisible = options.maxVisible ?? 2;
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = (message: string, type: ToastType = 'info', duration?: number) => {
+  const showToast = (
+    message: string,
+    type: ToastType = 'info',
+    duration?: number,
+    tone: ToastTone = 'default'
+  ) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    const newToast: Toast = { id, message, type, duration };
+    const newToast: Toast = { id, message, type, duration, tone };
     setToasts((prev) => [...prev, newToast].slice(-maxVisible));
     return id;
   };
@@ -120,7 +144,8 @@ export const useToast = (options: UseToastOptions = {}) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
-  const success = (message: string, duration?: number) => showToast(message, 'success', duration);
+  const success = (message: string, duration?: number, tone?: ToastTone) =>
+    showToast(message, 'success', duration, tone ?? 'default');
   const error = (message: string, duration?: number) => showToast(message, 'error', duration);
   const info = (message: string, duration?: number) => showToast(message, 'info', duration);
   const warning = (message: string, duration?: number) => showToast(message, 'warning', duration);

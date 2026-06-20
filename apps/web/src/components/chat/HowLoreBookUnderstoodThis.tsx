@@ -1,11 +1,20 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Brain, ChevronDown, ChevronRight, RefreshCw, FileCode2, AlertTriangle } from 'lucide-react';
 import { getLoreAgentTrace, type LoreAgentTrace } from '../../api/loreAgents';
+import { buildDemoLoreAgentTrace } from '../../lib/demoAgentTrace';
+import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { LoreEntityLegend } from '../lore/LoreEntityLegend';
+import { loreKindForChip, type LoreEntityKind } from '../../lib/loreEntities';
+import type { EntityChip } from '../../features/chat/message/EntityChipsRow';
+import { compileChatLoreContext, toMessageMentionedEntities } from '../../lib/chatLoreContext';
+import { DEMO_ENTITY_FALLBACKS } from '../../lib/demoEntityFallbacks';
 
 interface Props {
   /** The user message id the agents observed. */
   messageId: string;
   visible: boolean;
+  messageContent?: string;
+  mentionedEntities?: EntityChip[];
 }
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -28,23 +37,52 @@ const AGENT_COLORS: Record<string, string> = {
  * System Cognition / Agent Layer output for a single message: pipeline stages,
  * agents triggered, observations, proposed actions, confidence, and evidence.
  */
-export const HowLoreBookUnderstoodThis = ({ messageId, visible }: Props) => {
+export const HowLoreBookUnderstoodThis = ({
+  messageId,
+  visible,
+  messageContent,
+  mentionedEntities,
+}: Props) => {
   const [expanded, setExpanded] = useState(false);
   const [trace, setTrace] = useState<LoreAgentTrace | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const demoMode = shouldUseMockData();
+
+  const activeKinds = useMemo((): LoreEntityKind[] => {
+    const kinds = new Set<LoreEntityKind>();
+    const source =
+      mentionedEntities ??
+      (messageContent
+        ? toMessageMentionedEntities(
+            compileChatLoreContext(messageContent, { fallbackEntities: DEMO_ENTITY_FALLBACKS }).entities,
+          )
+        : []);
+    for (const entity of source) {
+      kinds.add(loreKindForChip(entity));
+    }
+    return [...kinds];
+  }, [mentionedEntities, messageContent]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      if (demoMode && messageContent) {
+        setTrace(buildDemoLoreAgentTrace(messageId, messageContent, mentionedEntities));
+        return;
+      }
       setTrace(await getLoreAgentTrace(messageId));
     } catch {
-      setError('Could not load agent trace.');
+      if (demoMode && messageContent) {
+        setTrace(buildDemoLoreAgentTrace(messageId, messageContent, mentionedEntities));
+      } else {
+        setError('Could not load agent trace.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [messageId]);
+  }, [demoMode, messageContent, mentionedEntities, messageId]);
 
   const toggle = () => {
     const next = !expanded;
@@ -69,6 +107,9 @@ export const HowLoreBookUnderstoodThis = ({ messageId, visible }: Props) => {
         <div className="flex items-center gap-2">
           <Brain className="h-3 w-3 text-white/30" />
           <span className="text-xs text-white/40 font-medium">How LoreBook understood this</span>
+          {demoMode && (
+            <span className="text-[10px] text-cyan-300/50 border border-cyan-500/20 rounded px-1">demo</span>
+          )}
           {trace && (
             <span className="text-[11px] text-white/30">
               {trace.runs.length} agent{trace.runs.length !== 1 ? 's' : ''}
@@ -89,6 +130,21 @@ export const HowLoreBookUnderstoodThis = ({ messageId, visible }: Props) => {
                 <p className="text-[11px] text-amber-300/70">
                   Agent layer is disabled (ENABLE_LORE_AGENTS=false). Showing any prior trace.
                 </p>
+              )}
+
+              {demoMode && trace.pipeline?.factuality === 'simulated' && (
+                <p className="text-[11px] text-cyan-200/60">
+                  Demo simulation — lexical entity resolution and agent proposals without server calls.
+                </p>
+              )}
+
+              {activeKinds.length > 0 && (
+                <LoreEntityLegend
+                  compact
+                  title="Entity types in this message"
+                  activeKinds={activeKinds}
+                  className="border-white/8 bg-black/30"
+                />
               )}
 
               {/* Pipeline stages */}

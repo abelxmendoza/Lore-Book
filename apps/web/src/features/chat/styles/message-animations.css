@@ -57,6 +57,21 @@
   }
 }
 
+@keyframes threadBump {
+  0% {
+    transform: translateY(6px);
+    opacity: 0.72;
+  }
+  55% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @keyframes threadActiveBar {
   from {
     transform: scaleY(0.4);
@@ -145,6 +160,10 @@
 
 .chat-thread-enter {
   animation: threadEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-thread-bump {
+  animation: threadBump 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .chat-thread-active-bar {
@@ -304,6 +323,7 @@
   .chat-message-enter,
   .chat-date-header-enter,
   .chat-thread-enter,
+  .chat-thread-bump,
   .chat-thread-active-bar,
   .chat-bubble-streaming,
   .chat-avatar-thinking,

@@ -210,6 +210,17 @@ export const ProjectBook = () => {
     });
   }, [projects, search, statusFilter, typeFilter]);
 
+  useEffect(() => {
+    if (projects.length === 0) return;
+    const id = sessionStorage.getItem('highlightItem');
+    if (!id) return;
+    sessionStorage.removeItem('highlightItem');
+    const match = projects.find(
+      (p) => p.id === id || p.name.toLowerCase() === id.toLowerCase(),
+    );
+    if (match) setActive(match);
+  }, [projects]);
+
   // Reset to the first page whenever the result set changes.
   useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter]);
 

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Calendar, Clock, AlertCircle, Sparkles, ArrowRight, Filter, HelpCircle, X, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Sparkles, ArrowRight, Filter, HelpCircle, X, MessageCircle, ArrowLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
@@ -12,6 +12,7 @@ import {
   MOCK_VOID_PERIODS,
   MOCK_VOID_STATS,
 } from '../../mocks/knowledgeGaps';
+import { useGoBack } from '../../hooks/useGoBack';
 
 interface EntityKnowledgeGap {
   id: string;
@@ -53,6 +54,7 @@ interface VoidStats {
 
 export const KnowledgeGapDashboard: React.FC = () => {
   const { useMockData: isMockData } = useMockData();
+  const { goBack, backLabel } = useGoBack('/');
   const [significanceFilter, setSignificanceFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [voidData, setVoidData] = useState<{ voids: VoidPeriod[]; totalGaps: number } | null>(null);
   const [statsData, setStatsData] = useState<VoidStats | null>(null);
@@ -152,7 +154,17 @@ export const KnowledgeGapDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 sm:p-6">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={goBack}
+        className="border-white/15 bg-white/[0.03] text-white/70 hover:bg-white/[0.06] hover:text-white min-h-[44px] touch-manipulation"
+      >
+        <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+        {backLabel}
+      </Button>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

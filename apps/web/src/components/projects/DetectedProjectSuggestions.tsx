@@ -9,6 +9,17 @@ import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRed
 import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { getMockProjectSuggestions } from '../../mocks/projectSuggestions';
+import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { useToast } from '../ui/toast';
+import { cn } from '../../lib/cn';
+
+const ADD_TOAST_MS = 4500;
+const CARD_EXIT_MS = 340;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 interface Props {
   onProjectAdded?: () => void;
@@ -42,12 +53,17 @@ export const DetectedProjectSuggestions = ({
   existingProjectNames = [],
   existingBookEntries = [],
 }: Props) => {
+  const { success, error, ToastContainer } = useToast();
   const [suggestions, setSuggestions] = useState<ProjectSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
-  const { rescan: rescanChats, rescanning, RescanToastContainer } = useSuggestionRescan('projects');
+  const { rescan: rescanChats, rescanning } = useSuggestionRescan('projects', {
+    notify: { success, error },
+    showToast: false,
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [exiting, setExiting] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
 
   const fetchSuggestions = useCallback(async (opts?: { silent?: boolean }) => {
@@ -65,12 +81,6 @@ export const DetectedProjectSuggestions = ({
       setLoading(false);
     }
   }, [demoMode]);
-
-  const handleRescan = useCallback(async () => {
-    if (demoMode) return;
-    await rescanChats();
-    await fetchSuggestions({ silent: true });
-  }, [demoMode, rescanChats, fetchSuggestions]);
 
   useEffect(() => {
     void fetchSuggestions();
@@ -121,22 +131,52 @@ export const DetectedProjectSuggestions = ({
     return getMockProjectSuggestions();
   }, [demoMode, loading, rescanning, visible.length]);
 
+  const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
+    'projects',
+    visible.length,
+    { loading, scanning: rescanning },
+  );
+
+  const handleRescan = useCallback(async () => {
+    if (demoMode) return;
+    reopenPanel();
+    await rescanChats();
+    await fetchSuggestions({ silent: true });
+  }, [demoMode, rescanChats, fetchSuggestions, reopenPanel]);
+
   const handleAdd = async (s: ProjectSuggestion) => {
     const k = keyFor(s);
     setAdding(k);
     try {
       if (demoMode) {
+        setExiting((prev) => new Set(prev).add(k));
+        success(`"${s.name}" added to your Projects book.`, ADD_TOAST_MS, 'project');
+        await delay(CARD_EXIT_MS);
         setAdded((prev) => new Set(prev).add(k));
+        setExiting((prev) => {
+          const next = new Set(prev);
+          next.delete(k);
+          return next;
+        });
         onProjectAdded?.();
         return;
       }
       await projectsApi.materializeSuggestion(s);
+      setExiting((prev) => new Set(prev).add(k));
+      success(`"${s.name}" added to your Projects book.`, ADD_TOAST_MS, 'project');
+      await delay(CARD_EXIT_MS);
       setAdded((prev) => new Set(prev).add(k));
       setSuggestions((prev) => prev.filter((item) => keyFor(item) !== k));
+      setExiting((prev) => {
+        const next = new Set(prev);
+        next.delete(k);
+        return next;
+      });
       window.dispatchEvent(new Event('lk:projects-updated'));
       onProjectAdded?.();
     } catch (err) {
       console.error('Failed to add project from suggestion:', err);
+      error('Could not add project. Please try again.');
     } finally {
       setAdding(null);
     }
@@ -160,8 +200,13 @@ export const DetectedProjectSuggestions = ({
     }
   };
 
+  if (hidePanel) {
+    return <ToastContainer />;
+  }
+
   return (
     <>
+    <ToastContainer />
     <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/10 via-black/40 to-black/40 overflow-hidden mb-6">
       <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
@@ -207,8 +252,8 @@ export const DetectedProjectSuggestions = ({
               {rescanning ? 'Re-reading your story for new projects…' : 'Loading project suggestions…'}
             </p>
           ) : visible.length === 0 && previewExamples.length > 0 ? (
-            <>
-              <p className="text-xs text-white/45 py-2 leading-relaxed">
+            <div className="space-y-3">
+              <p className="text-xs text-white/45 py-1 leading-relaxed">
                 Mention what you&apos;re building in chat — LoreBook spots initiatives like these:
               </p>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 opacity-80">
@@ -225,11 +270,22 @@ export const DetectedProjectSuggestions = ({
                   </div>
                 ))}
               </div>
-            </>
+              <SuggestionPanelEmptyState
+                message="Nothing to confirm right now. Close this panel until LoreBook detects a new project in your story."
+                onDismiss={dismissEmptyPanel}
+                onRescan={demoMode ? undefined : () => void handleRescan()}
+                rescanning={rescanning}
+                rescanLabel="Rescan for projects"
+              />
+            </div>
           ) : visible.length === 0 ? (
-            <p className="text-xs text-white/45 py-3 leading-relaxed">
-              No pending project suggestions. Mention what you&apos;re building in chat — LoreBook uses lexical intelligence to spot initiatives and suggest them here.
-            </p>
+            <SuggestionPanelEmptyState
+              message="No pending project suggestions. Mention what you're building in chat — LoreBook uses lexical intelligence to spot initiatives and suggest them here."
+              onDismiss={dismissEmptyPanel}
+              onRescan={demoMode ? undefined : () => void handleRescan()}
+              rescanning={rescanning}
+              rescanLabel="Rescan for projects"
+            />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 max-h-[min(20rem,50dvh)] sm:max-h-[28rem] overflow-y-auto overscroll-contain pr-1 -mr-1">
               {visible.map((s) => {
@@ -239,7 +295,10 @@ export const DetectedProjectSuggestions = ({
                 return (
                   <div
                     key={k}
-                    className="relative rounded-lg border border-white/10 bg-black/40 p-3.5 sm:p-4 hover:border-primary/40 transition-colors"
+                    className={cn(
+                      'relative rounded-lg border border-white/10 bg-black/40 p-3.5 sm:p-4 hover:border-primary/40 transition-colors',
+                      exiting.has(k) && 'animate-romantic-exit pointer-events-none'
+                    )}
                   >
                     <button
                       type="button"
@@ -323,7 +382,6 @@ export const DetectedProjectSuggestions = ({
         </div>
       )}
     </div>
-    {RescanToastContainer ? <RescanToastContainer /> : null}
     </>
   );
 };

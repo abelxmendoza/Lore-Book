@@ -1,4 +1,4 @@
-import { Building2, Users, Home, MapPin, CalendarDays, TreePine, Briefcase, Globe } from 'lucide-react';
+import { Building2, Users, Home, MapPin, CalendarDays, TreePine, Briefcase, Globe, ChevronRight } from 'lucide-react';
 import type { Organization } from './OrganizationProfileCard';
 import {
   computeChildHouseholds,
@@ -10,6 +10,7 @@ import {
   isHouseholdGroup,
   SOCIAL_CATEGORY_META,
 } from '../../lib/groupTaxonomy';
+import { cn } from '../../lib/cn';
 
 type Props = {
   organization: Organization;
@@ -19,6 +20,7 @@ type Props = {
   onOpenLocationsTab?: () => void;
   onOpenTimelineTab?: () => void;
   onOpenFamilyTab?: () => void;
+  compact?: boolean;
 };
 
 export const GroupDetailPanel = ({
@@ -29,6 +31,7 @@ export const GroupDetailPanel = ({
   onOpenLocationsTab,
   onOpenTimelineTab,
   onOpenFamilyTab,
+  compact = false,
 }: Props) => {
   const category = getSocialCategory(organization);
   const meta = SOCIAL_CATEGORY_META[category] ?? SOCIAL_CATEGORY_META.UNKNOWN;
@@ -46,15 +49,72 @@ export const GroupDetailPanel = ({
     ? allOrganizations.find((o) => o.id === organization.parent_group_id)
     : undefined;
 
-  const shellClass = isFamily
-    ? 'rounded-xl border bg-rose-500/5 border-rose-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
-    : isHousehold
-      ? 'rounded-xl border bg-purple-500/5 border-purple-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
-      : isCommunity
-        ? 'rounded-xl border bg-violet-500/5 border-violet-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4'
-        : 'rounded-xl border bg-blue-500/5 border-blue-500/20 p-3 sm:p-4 space-y-3 sm:space-y-4';
+  const shellClass = cn(
+    'rounded-xl border space-y-2.5',
+    compact ? 'p-2.5 sm:p-3' : 'p-3 sm:p-4 space-y-3 sm:space-y-4',
+    isFamily && 'bg-rose-500/5 border-rose-500/20',
+    isHousehold && 'bg-purple-500/5 border-purple-500/20',
+    isCommunity && 'bg-violet-500/5 border-violet-500/20',
+    isCompany && 'bg-blue-500/5 border-blue-500/20'
+  );
 
   const title = isFamily ? 'Family' : isHousehold ? 'Household' : isCommunity ? 'Community' : 'Company';
+
+  if (compact) {
+    return (
+      <div className={shellClass}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {isFamily ? <TreePine className="h-3.5 w-3.5 text-rose-300 shrink-0" /> : isHousehold ? <Home className="h-3.5 w-3.5 text-purple-300 shrink-0" /> : isCommunity ? <Globe className="h-3.5 w-3.5 text-violet-300 shrink-0" /> : <Building2 className="h-3.5 w-3.5 text-blue-300 shrink-0" />}
+            <span className="text-xs font-semibold text-white truncate">{title}</span>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full border shrink-0 ${meta.color}`}>{meta.label}</span>
+          </div>
+        </div>
+
+        {parentFamily && onSelectOrganization && (
+          <p className="text-[11px] text-white/50">
+            Part of{' '}
+            <button type="button" onClick={() => onSelectOrganization(parentFamily)} className="text-rose-300 font-medium">
+              {parentFamily.name}
+            </button>
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-1.5">
+          {isFamily && households.slice(0, 4).map((hh) => (
+            <button
+              key={hh.id}
+              type="button"
+              onClick={() => onSelectOrganization?.(hh)}
+              className="text-[10px] px-2 py-1 rounded-lg bg-black/35 border border-white/10 text-white/70"
+            >
+              🏠 {hh.name}
+            </button>
+          ))}
+          {isCommunity && (venues.length > 0 ? venues : (organization.locations ?? []).map((l) => l.location_name)).slice(0, 5).map((name) => (
+            <span key={name} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200">
+              {name}
+            </span>
+          ))}
+          {isCompany && onOpenTimelineTab && (
+            <button type="button" onClick={onOpenTimelineTab} className="text-[10px] px-2 py-1 rounded-lg border border-blue-500/25 bg-blue-500/10 text-blue-200 flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" /> Timeline
+            </button>
+          )}
+          {isFamily && onOpenFamilyTab && (
+            <button type="button" onClick={onOpenFamilyTab} className="text-[10px] px-2 py-1 rounded-lg border border-rose-500/25 bg-rose-500/10 text-rose-200">
+              Family tree
+            </button>
+          )}
+          {members.length > 0 && onOpenMembersTab && (
+            <button type="button" onClick={onOpenMembersTab} className="text-[10px] text-teal-300/90 flex items-center gap-0.5 ml-auto">
+              {members.length} members <ChevronRight className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={shellClass}>
@@ -76,16 +136,6 @@ export const GroupDetailPanel = ({
         </p>
       )}
 
-      {isHousehold && parentFamily && onSelectOrganization && (
-        <p className="text-xs text-white/55">
-          This household is part of{' '}
-          <button type="button" onClick={() => onSelectOrganization(parentFamily)} className="text-purple-300 hover:underline font-medium">
-            {parentFamily.name}
-          </button>
-        </p>
-      )}
-
-      {/* Members */}
       <section>
         <p className="text-[10px] uppercase tracking-wider text-white/35 mb-2 flex items-center gap-1.5">
           <Users className="h-3 w-3" />
@@ -115,7 +165,6 @@ export const GroupDetailPanel = ({
         )}
       </section>
 
-      {/* Family: households + family tree shortcut */}
       {isFamily && (
         <>
           <section>
@@ -124,7 +173,7 @@ export const GroupDetailPanel = ({
               Households ({households.length})
             </p>
             {households.length === 0 ? (
-              <p className="text-xs text-white/30 italic">No nested households — Tía Grace Household, Anaheim Family Home, etc. appear here after normalization.</p>
+              <p className="text-xs text-white/30 italic">No nested households yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {households.map((hh) => (
@@ -133,7 +182,7 @@ export const GroupDetailPanel = ({
                     type="button"
                     onClick={() => onSelectOrganization?.(hh)}
                     disabled={!onSelectOrganization}
-                    className="text-xs px-3 py-2 rounded-lg bg-black/35 border border-white/10 text-white/75 hover:border-purple-500/40 hover:text-purple-200 transition-colors"
+                    className="text-xs px-3 py-2 rounded-lg bg-black/35 border border-white/10 text-white/75 hover:border-purple-500/40"
                   >
                     🏠 {hh.name}
                   </button>
@@ -142,19 +191,18 @@ export const GroupDetailPanel = ({
             )}
           </section>
           {onOpenFamilyTab && (
-            <button type="button" onClick={onOpenFamilyTab} className="w-full text-xs py-2 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-200/80 hover:bg-rose-500/15">
+            <button type="button" onClick={onOpenFamilyTab} className="w-full text-xs py-2 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-200/80">
               Open family tree →
             </button>
           )}
         </>
       )}
 
-      {/* Community: venues */}
       {isCommunity && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/35 mb-2 flex items-center gap-1.5">
             <MapPin className="h-3 w-3" />
-            Venues & places ({venues.length || (organization.locations?.length ?? 0)})
+            Venues & places
           </p>
           <div className="flex flex-wrap gap-2">
             {(venues.length > 0 ? venues : (organization.locations ?? []).map((l) => l.location_name)).map((name) => (
@@ -162,9 +210,6 @@ export const GroupDetailPanel = ({
                 {name}
               </span>
             ))}
-            {venues.length === 0 && !(organization.locations?.length) && (
-              <span className="text-xs text-white/30 italic">Club Metro, First Street Pool, Gothicumbia attach here.</span>
-            )}
           </div>
           {onOpenLocationsTab && (
             <button type="button" onClick={onOpenLocationsTab} className="mt-2 text-[11px] text-teal-300/80 hover:text-teal-200">
@@ -174,18 +219,11 @@ export const GroupDetailPanel = ({
         </section>
       )}
 
-      {/* Company: timeline shortcut */}
       {isCompany && onOpenTimelineTab && (
-        <section>
-          <p className="text-[10px] uppercase tracking-wider text-white/35 mb-2 flex items-center gap-1.5">
-            <Briefcase className="h-3 w-3" />
-            Employment & projects
-          </p>
-          <button type="button" onClick={onOpenTimelineTab} className="w-full text-xs py-2 rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-200/80 hover:bg-blue-500/15 flex items-center justify-center gap-1.5">
-            <CalendarDays className="h-3.5 w-3.5" />
-            View employment timeline →
-          </button>
-        </section>
+        <button type="button" onClick={onOpenTimelineTab} className="w-full text-xs py-2 rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-200/80 flex items-center justify-center gap-1.5">
+          <CalendarDays className="h-3.5 w-3.5" />
+          View employment timeline →
+        </button>
       )}
     </div>
   );

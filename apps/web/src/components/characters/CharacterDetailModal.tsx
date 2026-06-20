@@ -3808,6 +3808,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               <CharacterKnowledgeBase
                 characterId={character.id}
                 characterName={editedCharacter.name}
+                character={editedCharacter as Character}
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'knowledge'}
                 onAskInChat={askInChat}

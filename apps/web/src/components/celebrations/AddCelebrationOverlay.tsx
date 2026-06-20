@@ -273,12 +273,12 @@ export const AddCelebrationOverlay = ({
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-[18%] z-[85] flex justify-center"
+      className="pointer-events-none fixed inset-x-0 bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))] sm:bottom-auto sm:top-[18%] z-[85] flex justify-center"
       aria-live="polite"
       role="status"
       data-testid={`celebration-overlay-${variant}`}
     >
-      <div className="relative w-full max-w-sm px-6 min-h-[120px] flex flex-col items-center justify-end pb-2">
+      <div className="relative w-full max-w-[min(100%,20rem)] sm:max-w-sm px-4 sm:px-6 min-h-[100px] sm:min-h-[120px] flex flex-col items-center justify-end pb-1 sm:pb-2">
         {variant === 'romantic' && <RomanticLayer label={label} />}
         {variant === 'skill' && <SkillLayer label={label} subtitle={subtitle} xp={xp} />}
         {variant === 'character' && <CharacterLayer label={label} subtitle={subtitle} />}

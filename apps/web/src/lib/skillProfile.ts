@@ -30,9 +30,23 @@ export type SkillProfile = {
   first_learned_context?: string;
   related_jobs?: string[];
   related_projects?: string[];
+  related_skill_names?: string[];
   evidence?: SkillEvidence[];
   last_used_at?: string;
   is_active?: boolean;
+  /** Canonical narrative — what this skill means in the user's story */
+  story_summary?: string;
+  /** e.g. Robotics → Software */
+  category_domain?: string;
+  category_subdomain?: string;
+  evidence_score?: number;
+  proficiency_breakdown?: {
+    knowledge: number;
+    experience: number;
+    recency: number;
+    confidence: number;
+  };
+  ai_insights?: string[];
 };
 
 export function readSkillProfile(metadata: Record<string, unknown> | null | undefined): SkillProfile | undefined {

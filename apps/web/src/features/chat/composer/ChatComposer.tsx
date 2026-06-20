@@ -1,4 +1,4 @@
-import { Send, Loader2, Paperclip, MessageSquare, Maximize2 } from 'lucide-react';
+import { Send, Loader2, Paperclip, MessageSquare, Maximize2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useChatComposer } from '../hooks/useChatComposer';
 import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
@@ -31,6 +31,8 @@ type ChatComposerProps = {
   variant?: 'default' | 'embedded';
   placeholder?: string;
   threadId?: string;
+  /** Mobile: start collapsed to leave room for messages (e.g. when thread has history). */
+  defaultCollapsed?: boolean;
 };
 
 const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
@@ -46,6 +48,7 @@ export const ChatComposer = ({
   variant = 'default',
   placeholder,
   threadId,
+  defaultCollapsed = false,
 }: ChatComposerProps) => {
   const embedded = variant === 'embedded';
   const isMobile = useIsMobile();
@@ -70,17 +73,52 @@ export const ChatComposer = ({
     setPreviewCorrections,
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
-  useEffect(() => {
-    if (initialPrompt && !input) {
-      setInput(initialPrompt);
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    }
-  }, [initialPrompt, input, setInput, textareaRef]);
-
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [journalModeOpen, setJournalModeOpen] = useState(false);
+  const [mobileCollapsed, setMobileCollapsed] = useState(
+    () => isMobile && !embedded && defaultCollapsed
+  );
+
+  useEffect(() => {
+    if (!isMobile || embedded) return;
+    setMobileCollapsed(defaultCollapsed);
+    setShowUpload(false);
+    setShowChatGPTImport(false);
+  }, [threadId, defaultCollapsed, isMobile, embedded]);
+
+  const expandComposer = useCallback(() => {
+    setMobileCollapsed(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [textareaRef]);
+
+  const collapseComposer = useCallback(() => {
+    setMobileCollapsed(true);
+    setShowUpload(false);
+    setShowChatGPTImport(false);
+    textareaRef.current?.blur();
+    setIsFocused(false);
+  }, [textareaRef]);
+
+  const submitAndMaybeCollapse = useCallback(
+    (e?: React.FormEvent) => {
+      handleSubmit(e);
+      if (isMobile && !embedded) {
+        setMobileCollapsed(true);
+        setIsFocused(false);
+      }
+    },
+    [handleSubmit, isMobile, embedded]
+  );
+
+  useEffect(() => {
+    if (initialPrompt && !input) {
+      setInput(initialPrompt);
+      if (isMobile && !embedded) setMobileCollapsed(false);
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [initialPrompt, input, setInput, textareaRef, isMobile, embedded]);
 
   const resolvedPlaceholder = placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
   const stats = getComposerStats(input);
@@ -97,9 +135,9 @@ export const ChatComposer = ({
   };
 
   const submitAndCloseJournal = useCallback(() => {
-    handleSubmit();
+    submitAndMaybeCollapse();
     setJournalModeOpen(false);
-  }, [handleSubmit]);
+  }, [submitAndMaybeCollapse]);
 
   const openJournalMode = () => {
     setJournalModeOpen(true);
@@ -116,7 +154,7 @@ export const ChatComposer = ({
       )}
       style={{ paddingBottom: keyboardInset > 0 && !journalModeOpen ? keyboardInset : undefined }}
     >
-      {showCommandSuggestions && commandSuggestions.length > 0 && (
+      {showCommandSuggestions && commandSuggestions.length > 0 && !(isMobile && mobileCollapsed) && (
         <CommandSuggestions suggestions={commandSuggestions} onSelect={insertSuggestion} />
       )}
 
@@ -128,10 +166,11 @@ export const ChatComposer = ({
         </div>
       )}
 
-      {!embedded && (
+      {!embedded && !(isMobile && mobileCollapsed) && (
         <LoreReadinessQuestChips
           onSelectPrompt={(prompt) => {
             setInput(prompt);
+            if (isMobile) setMobileCollapsed(false);
             setTimeout(() => textareaRef.current?.focus(), 50);
           }}
         />
@@ -167,7 +206,7 @@ export const ChatComposer = ({
         </div>
       )}
 
-      {showUpload && (
+      {showUpload && !(isMobile && mobileCollapsed) && (
         <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 max-h-[300px] sm:max-h-[350px] overflow-y-auto">
           <DocumentUpload
             compact
@@ -182,7 +221,7 @@ export const ChatComposer = ({
         </div>
       )}
 
-      {showChatGPTImport && (
+      {showChatGPTImport && !(isMobile && mobileCollapsed) && (
         <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 max-h-[400px] sm:max-h-[450px] overflow-y-auto">
           <ChatGPTImport
             onImportComplete={async (importStats) => {
@@ -197,13 +236,47 @@ export const ChatComposer = ({
         </div>
       )}
 
+      {isMobile && !embedded && mobileCollapsed && !journalModeOpen && (
+        <div className="mx-auto w-full max-w-5xl px-3 py-2 sm:px-4">
+          <div className="journal-composer-collapsed">
+            <button
+              type="button"
+              onClick={expandComposer}
+              className="journal-composer-collapsed__main"
+              aria-label="Expand message composer"
+              data-testid="journal-composer-expand-bar"
+            >
+              <ChevronUp className="journal-composer-collapsed__chevron h-4 w-4 shrink-0" aria-hidden />
+              <span className={cn('journal-composer-collapsed__label truncate', input.trim() && 'text-white/85')}>
+                {input.trim() ? input : resolvedPlaceholder}
+              </span>
+            </button>
+            {input.trim() && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  submitAndMaybeCollapse();
+                }}
+                disabled={loading || disabled}
+                className="journal-composer-collapsed__send"
+                aria-label="Send message"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <form
-        onSubmit={handleSubmit}
+        onSubmit={submitAndMaybeCollapse}
         className={cn(
           embedded
             ? 'w-full px-2 sm:px-3 py-2'
             : 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2.5 sm:py-3',
           journalModeOpen && 'hidden',
+          isMobile && !embedded && mobileCollapsed && 'hidden',
         )}
       >
         <div
@@ -289,6 +362,18 @@ export const ChatComposer = ({
                 >
                   <MessageSquare className="h-4 w-4" />
                 </button>
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={collapseComposer}
+                    disabled={loading || disabled}
+                    className="journal-composer-tool sm:hidden"
+                    aria-label="Collapse composer"
+                    data-testid="journal-composer-collapse"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                )}
                 {isMobile && (
                   <button
                     type="button"

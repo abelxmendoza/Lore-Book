@@ -14,6 +14,8 @@ import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import { RomanticAddCelebration } from '../love/RomanticAddCelebration';
+import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 
 type Props = {
   onCharacterAdded?: (suggestion: CharacterSuggestion) => void;
@@ -120,6 +122,13 @@ export const DetectedCharacterSuggestions = ({
     [suggestions, dismissed, added, bookEntries]
   );
 
+  const panelDomain = variant === 'romantic' ? 'characters-romantic' : 'characters';
+  const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
+    panelDomain,
+    visible.length,
+    { loading, scanning: rescanning },
+  );
+
   const panelTitle =
     variant === 'romantic'
       ? 'Romantic interests detected in your chats'
@@ -134,6 +143,7 @@ export const DetectedCharacterSuggestions = ({
       );
       return;
     }
+    reopenPanel();
     setRescanning(true);
     setRescanNotice(null);
     setError(null);
@@ -250,6 +260,16 @@ export const DetectedCharacterSuggestions = ({
     }
   };
 
+  if (hidePanel) {
+    return variant === 'romantic' ? (
+      <RomanticAddCelebration
+        active={celebrate}
+        label={successNotice ?? undefined}
+        onDone={() => setCelebrate(false)}
+      />
+    ) : null;
+  }
+
   return (
     <>
       {variant === 'romantic' && (
@@ -332,20 +352,13 @@ export const DetectedCharacterSuggestions = ({
           {loading && visible.length === 0 ? (
             <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
           ) : visible.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-3 space-y-2">
-              <p className="text-xs text-white/55 leading-relaxed">
-                No new people to add right now. Rescan your full chat and journal history to surface anyone missing from your book — including characters removed by mistake.
-              </p>
-              <button
-                type="button"
-                onClick={() => void handleRescan()}
-                disabled={rescanning}
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} />
-                {rescanning ? 'Rescanning conversations…' : 'Rescan conversations'}
-              </button>
-            </div>
+            <SuggestionPanelEmptyState
+              message="No new people to add right now. Rescan your full chat and journal history to surface anyone missing from your book — including characters removed by mistake."
+              onDismiss={dismissEmptyPanel}
+              onRescan={showDemo ? undefined : () => void handleRescan()}
+              rescanning={rescanning}
+              rescanLabel={variant === 'romantic' ? 'Rescan love story' : 'Rescan conversations'}
+            />
           ) : (
             <div className={variant === 'romantic' ? 'grid grid-cols-2 gap-2 lg:grid-cols-3' : 'space-y-2'}>
             {visible.map(s => {

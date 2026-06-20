@@ -1,9 +1,13 @@
 import type { Message } from '../message/ChatMessage';
+import type { CertifiedEntityType, CharacterVariant } from '../../../types/certifiedEntity';
+import type { LoreEntityKind } from '../../../lib/loreEntities';
 
 export type ThreadEntity = {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'organization';
+  type: CertifiedEntityType;
+  characterVariant?: CharacterVariant;
+  loreKind?: LoreEntityKind;
 };
 
 /** Aggregate confirmed entities surfaced across a thread's messages (most-mentioned first). */
@@ -17,6 +21,8 @@ export function collectThreadEntities(messages: Message[]): ThreadEntity[] {
         existing.lastIndex = i;
         existing.name = e.name;
         existing.type = e.type;
+        existing.characterVariant = e.characterVariant;
+        existing.loreKind = e.loreKind;
       } else {
         byId.set(e.id, { ...e, count: 1, lastIndex: i });
       }
@@ -24,7 +30,13 @@ export function collectThreadEntities(messages: Message[]): ThreadEntity[] {
   });
   return [...byId.values()]
     .sort((a, b) => b.count - a.count || b.lastIndex - a.lastIndex)
-    .map(({ id, name, type }) => ({ id, name, type }));
+    .map(({ id, name, type, characterVariant, loreKind }) => ({
+      id,
+      name,
+      type,
+      characterVariant,
+      loreKind,
+    }));
 }
 
 export function toEntityContext(entity: ThreadEntity): {

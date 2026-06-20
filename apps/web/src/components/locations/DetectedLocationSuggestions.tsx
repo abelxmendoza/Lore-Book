@@ -10,6 +10,8 @@ import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRed
 import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
+import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 
 type Props = {
   onLocationAdded?: () => void;
@@ -58,21 +60,6 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const handleRescan = useCallback(async () => {
-    if (showDemo) return;
-    apiCache.deletePattern(/\/api\/locations/);
-    await rescanChats();
-    setLoading(true);
-    try {
-      const res = await locationSuggestionsApi.list();
-      setSuggestions(res.suggestions ?? []);
-    } catch {
-      setSuggestions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showDemo, rescanChats]);
 
   const fetchSuggestions = useCallback(async () => {
     if (showDemo) {
@@ -126,7 +113,27 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     [suggestions, dismissed, added, bookEntries]
   );
 
-  if (!loading && visible.length === 0) return null;
+  const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
+    'locations',
+    visible.length,
+    { loading, scanning: rescanning },
+  );
+
+  const handleRescan = useCallback(async () => {
+    if (showDemo) return;
+    reopenPanel();
+    apiCache.deletePattern(/\/api\/locations/);
+    await rescanChats();
+    setLoading(true);
+    try {
+      const res = await locationSuggestionsApi.list();
+      setSuggestions(res.suggestions ?? []);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [showDemo, rescanChats, reopenPanel]);
 
   const handleAdd = async (s: LocationSuggestion) => {
     const k = keyFor(s);
@@ -192,6 +199,10 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     }
   };
 
+  if (hidePanel) {
+    return RescanToastContainer ? <RescanToastContainer /> : null;
+  }
+
   return (
     <>
     <div className="rounded-lg border border-teal-500/30 bg-gradient-to-br from-teal-950/25 via-black/40 to-black/40 overflow-hidden">
@@ -234,6 +245,14 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
           )}
           {loading && visible.length === 0 ? (
             <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
+          ) : visible.length === 0 ? (
+            <SuggestionPanelEmptyState
+              message="No pending place suggestions. Rescan your chats to find locations mentioned in your story."
+              onDismiss={dismissEmptyPanel}
+              onRescan={showDemo ? undefined : () => void handleRescan()}
+              rescanning={rescanning}
+              rescanLabel="Rescan for places"
+            />
           ) : (
             visible.map(s => {
               const k = keyFor(s);

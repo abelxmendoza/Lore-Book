@@ -12,7 +12,7 @@ import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Modal } from '../ui/modal';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Tabs, TabsContent } from '../ui/tabs';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
@@ -20,8 +20,14 @@ import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { OrganizationProfilePanel } from './OrganizationProfilePanel';
-import { GroupDetailPanel } from './GroupDetailPanel';
+import { OrganizationModalHeader } from './OrganizationModalHeader';
+import { OrganizationModalNav, ORG_MODAL_BASE_TABS, type OrgModalTabKey } from './OrganizationModalNav';
+import {
+  OrganizationInfluencePanel,
+  OrganizationInsightsPanel,
+  OrganizationLorePanel,
+} from './OrganizationLorePanels';
+import { OrganizationModalOverview } from './OrganizationModalOverview';
 import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
@@ -47,7 +53,7 @@ type OrganizationDetailModalProps = {
   onUpdate?: () => void;
 };
 
-type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family' | 'danger';
+type TabKey = OrgModalTabKey;
 
 // Events & locations inferred from the group's members across chat threads /
 // journal entries (served by GET /api/organizations/:id/derived-context).
@@ -120,16 +126,9 @@ const AUDIENCE_BADGE: Record<NonNullable<DerivedEvent['audience']>, string> = {
 
 const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
 
-const BASE_TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'info', label: 'Info', icon: FileText },
-  { key: 'chat', label: 'Knowledge Chat', icon: Brain },
-  { key: 'members', label: 'Members', icon: Users },
-  { key: 'stories', label: 'Stories', icon: BookOpen },
-  { key: 'events', label: 'Events', icon: Calendar },
-  { key: 'locations', label: 'Locations', icon: MapPin },
-  { key: 'relationships', label: 'Relationships', icon: Link2 },
-  { key: 'timeline', label: 'Timeline', icon: Clock },
-];
+const BASE_TABS = ORG_MODAL_BASE_TABS;
+const TAB_PANEL = 'mt-0 space-y-3';
+const TAB_HEADING = 'text-base sm:text-lg font-semibold text-white';
 
 export const OrganizationDetailModal = ({ organization, allOrganizations = [], onSelectOrganization, onClose, onUpdate }: OrganizationDetailModalProps) => {
   const isMockDataEnabled = useShouldUseMockData();
@@ -141,9 +140,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const tabs = useMemo(() => {
     const list = [...BASE_TABS];
     if (editedOrg.group_type === 'family') {
-      list.splice(4, 0, { key: 'family', label: 'Family Tree', icon: TreePine });
+      list.splice(4, 0, { key: 'family', label: 'Family Tree', shortLabel: 'Family', icon: TreePine });
     }
-    list.push({ key: 'danger', label: 'Delete', icon: Trash2 });
+    list.push({ key: 'danger', label: 'Delete', shortLabel: 'Delete', icon: Trash2 });
     return list;
   }, [editedOrg.group_type]);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
@@ -861,476 +860,61 @@ User's message: ${currentInput}`;
 
   return (
     <>
-    <Modal isOpen={true} onClose={onClose} size="xl">
-      <div className="flex flex-col h-full max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between p-3 sm:p-6 border-b border-border/50 gap-2">
-          <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1">
-            <div className="p-2 sm:p-3 rounded-lg bg-purple-500/20 border border-purple-500/30 shrink-0">
-              <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-lg sm:text-2xl font-bold text-white truncate">{editedOrg.name}</h2>
-              <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 sm:mt-1 flex-wrap">
-                <Badge variant="outline" className={`text-[10px] sm:text-xs ${getTypeColor(editedOrg.type)}`}>
-                  {getTypeLabel(editedOrg.type)}
-                </Badge>
-                <Badge variant="outline" className={`text-[10px] sm:text-xs ${editedOrg.status === 'active' ? 'bg-green-500/20 text-green-400 border-green-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'}`}>
-                  {editedOrg.status}
-                </Badge>
-              </div>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="shrink-0">
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
+    <Modal isOpen={true} onClose={onClose} size="full">
+      <div className="flex flex-col h-[100dvh] sm:h-[min(90vh,900px)] min-h-0">
+        <OrganizationModalHeader
+          organization={editedOrg}
+          memberCount={members.length}
+          onClose={onClose}
+          onOpenChat={() => {
+            setActiveTab('chat');
+            openOrgMainChat();
+          }}
+        />
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-3 sm:px-6 pt-2 sm:pt-4 border-b border-border/50">
-            <TabsList className="flex flex-nowrap sm:flex-wrap h-auto w-full justify-start gap-1 sm:gap-1.5 bg-black/40 p-1 sm:p-1.5 overflow-x-auto overscroll-x-contain snap-x snap-mandatory sm:snap-none scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0 [&_[role=tab]]:snap-start">
-              {tabs.map(tab => (
-                <TabsTrigger
-                  key={tab.key}
-                  value={tab.key}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-[11px] sm:text-sm rounded-md whitespace-nowrap ${
-                    tab.key === 'danger'
-                      ? 'text-red-300/70 hover:text-red-200 data-[state=active]:bg-red-500/15 data-[state=active]:text-red-100 data-[state=active]:border data-[state=active]:border-red-500/30'
-                      : 'text-white/55 hover:text-white/80 data-[state=active]:bg-purple-500/25 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-purple-400/40 data-[state=active]:shadow-sm'
-                  }`}
-                >
-                  <tab.icon className="h-3.5 w-3.5 shrink-0" />
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
+        <OrganizationModalNav
+          placement="top"
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          showFamilyTab={editedOrg.group_type === 'family'}
+        />
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-            {/* Info Tab */}
-            <TabsContent value="info" className="space-y-4 sm:space-y-6 mt-2 sm:mt-4">
-              <GroupDetailPanel
-                organization={resolvedOrganization}
-                allOrganizations={allOrganizations}
-                onSelectOrganization={onSelectOrganization}
-                onOpenMembersTab={() => setActiveTab('members')}
-                onOpenLocationsTab={() => setActiveTab('locations')}
-                onOpenTimelineTab={() => setActiveTab('timeline')}
-                onOpenFamilyTab={() => setActiveTab('family')}
-              />
-
-              {/* Read-Only Notice */}
-              <Card className="bg-gradient-to-r from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg shadow-purple-500/10">
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/40">
-                      <Info className="h-6 w-6 text-purple-300 flex-shrink-0" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-base font-bold text-purple-200 mb-2">Organization Information is Read-Only</p>
-                      <p className="text-sm text-purple-100/90 leading-relaxed">
-                        Organization information is automatically updated through conversations. To update this organization's information, use the Chat tab to tell the system about them.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Basic Information - Enhanced Read-Only Display */}
-              <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
-                      <Building2 className="h-6 w-6 text-primary" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-white">Basic Information</h3>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Name Section */}
-                  <div>
-                    <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Organization Name</label>
-                    <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-2 border-primary/40 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-lg">
-                      {editedOrg.name}
-                    </div>
-                  </div>
-
-                  {/* Type and Status */}
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Type</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
-                        <Badge variant="outline" className={getTypeColor(editedOrg.type)}>
-                          {getTypeLabel(editedOrg.type)}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Status</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
-                        <Badge 
-                          variant="outline" 
-                          className={editedOrg.status === 'active' 
-                            ? 'bg-green-500/20 text-green-300 border-green-500/40 text-sm px-4 py-2 font-semibold shadow-md' 
-                            : editedOrg.status === 'inactive'
-                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40 text-sm px-4 py-2 font-semibold shadow-md'
-                            : 'bg-gray-500/20 text-gray-300 border-gray-500/40 text-sm px-4 py-2 font-semibold shadow-md'
-                          }
-                        >
-                          {editedOrg.status === 'active' ? 'Active' : editedOrg.status === 'inactive' ? 'Inactive' : 'Dissolved'}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Description Section */}
-                  <div>
-                    <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Description</label>
-                    <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-4 text-white text-base min-h-[120px] flex items-start font-medium shadow-inner">
-                      {editedOrg.description ? (
-                        <p className="whitespace-pre-wrap leading-relaxed">{editedOrg.description}</p>
-                      ) : (
-                        <span className="text-white/40 italic">No description available yet. Information will appear here as you talk about this organization.</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Location and Founded Date */}
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Location</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
-                        {editedOrg.location || <span className="text-white/40 italic">Not specified</span>}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Founded Date</label>
-                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
-                        {editedOrg.founded_date 
-                          ? new Date(editedOrg.founded_date).toLocaleDateString('en-US', {
-                              month: 'long',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })
-                          : <span className="text-white/40 italic">Not specified</span>
-                        }
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Aliases */}
-                  {editedOrg.aliases && editedOrg.aliases.length > 0 && (
-                    <div>
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Aliases</label>
-                      <div className="flex flex-wrap gap-3">
-                        {editedOrg.aliases.map((alias) => (
-                          <Badge key={alias} variant="outline" className="bg-primary/20 text-primary border-primary/40 text-sm px-4 py-2 font-semibold shadow-md">
-                            {alias}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* G1 Intelligence Panel */}
-              <Card className="bg-black/40 border border-purple-500/30">
-                <CardHeader className="pb-3">
-                  <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-purple-400" />
-                    Group Intelligence
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Your Relationship */}
-                    <div>
-                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Your Relationship</p>
-                      <Badge variant="outline" className={(() => {
-                        const r = editedOrg.user_relationship;
-                        if (['founder','leader'].includes(r)) return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
-                        if (r === 'member') return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-                        if (r === 'former_member' || r === 'alumnus') return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
-                        if (['adjacent','collaborator'].includes(r)) return 'bg-teal-500/20 text-teal-300 border-teal-500/30';
-                        if (r === 'fan') return 'bg-pink-500/20 text-pink-300 border-pink-500/30';
-                        return 'bg-white/10 text-white/50 border-white/20';
-                      })()}>
-                        {editedOrg.user_relationship?.replace(/_/g, ' ')}
-                      </Badge>
-                    </div>
-
-                    {/* Membership Model */}
-                    <div>
-                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Membership</p>
-                      <Badge variant="outline" className={
-                        editedOrg.membership_model === 'strict' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
-                        editedOrg.membership_model === 'fuzzy' ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' :
-                        'bg-gray-500/20 text-gray-300 border-gray-500/30'
-                      }>
-                        {editedOrg.membership_model === 'strict' ? 'Defined roster' :
-                         editedOrg.membership_model === 'fuzzy' ? 'Participatory' :
-                         'Reference only'}
-                      </Badge>
-                    </div>
-
-                    {/* Group Type (canonical) */}
-                    <div>
-                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Group Type</p>
-                      <Badge variant="outline" className="bg-white/10 text-white/60 border-white/20">
-                        {editedOrg.group_type?.replace(/_/g, ' ')}
-                      </Badge>
-                    </div>
-
-                    {typeof editedOrg.metadata?.subcategory === 'string' && editedOrg.metadata.subcategory && (
-                      <div>
-                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Subcategory</p>
-                        <Badge variant="outline" className="bg-white/10 text-white/60 border-white/20">
-                          {String(editedOrg.metadata.subcategory).replace(/_/g, ' ')}
-                        </Badge>
-                      </div>
-                    )}
-
-                    {/* Public Entity */}
-                    {editedOrg.is_public_entity && (
-                      <div>
-                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Entity Class</p>
-                        <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                          Public entity
-                        </Badge>
-                      </div>
-                    )}
-
-                    {/* Lifecycle years */}
-                    {(editedOrg.founded_year || editedOrg.dissolved_year) && (
-                      <div className="col-span-2">
-                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Lifecycle</p>
-                        <p className="text-sm text-white/70">
-                          {editedOrg.founded_year ?? '?'} – {editedOrg.dissolved_year ?? 'present'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Rich organization profile — mission, culture, structure, reputation, … */}
-              <OrganizationProfilePanel
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 sm:py-4 min-h-0">
+            {/* Overview Tab */}
+            <TabsContent value="info" className="mt-0 space-y-0">
+              <OrganizationModalOverview
                 organization={editedOrg}
-                onAddInfo={() =>
-                  openOrgMainChat(`Let me tell you more about ${editedOrg.name}: `)
-                }
+                allOrganizations={allOrganizations}
+                members={members}
+                stories={stories}
+                events={events}
+                locationCount={locations.length}
+                onSelectOrganization={onSelectOrganization}
+                onTabChange={setActiveTab}
+                onOpenChat={(prompt) => {
+                  setActiveTab('chat');
+                  openOrgMainChat(prompt);
+                }}
               />
-
-              {/* Stats */}
-              <div className="grid grid-cols-4 gap-4">
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <Users className="h-8 w-8 text-purple-400 mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-white">{members.length}</div>
-                      <div className="text-xs text-white/60">Members</div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <BookOpen className="h-8 w-8 text-blue-400 mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-white">{stories.length}</div>
-                      <div className="text-xs text-white/60">Stories</div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <Calendar className="h-8 w-8 text-green-400 mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-white">{events.length}</div>
-                      <div className="text-xs text-white/60">Events</div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <MapPin className="h-8 w-8 text-yellow-400 mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-white">{locations.length}</div>
-                      <div className="text-xs text-white/60">Locations</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Analytics Dashboard */}
-              {editedOrg.analytics && (
-                <Card className="bg-gradient-to-br from-purple-500/10 via-purple-600/10 to-purple-500/10 border-purple-500/30">
-                  <CardHeader>
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-purple-400" />
-                      Analytics & Rankings
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {/* Key Metrics Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Your Ranking</div>
-                        <div className="text-2xl font-bold text-amber-400">#{editedOrg.analytics.user_ranking}</div>
-                        <div className="text-xs text-white/50 mt-1">in group</div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Involvement</div>
-                        <div className="text-2xl font-bold text-blue-400">{editedOrg.analytics.user_involvement_score}%</div>
-                        <div className="text-xs text-white/50 mt-1">active participation</div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Importance</div>
-                        <div className="text-2xl font-bold text-purple-400">{editedOrg.analytics.importance_score}%</div>
-                        <div className="text-xs text-white/50 mt-1">to you</div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Priority</div>
-                        <div className="text-2xl font-bold text-green-400">{editedOrg.analytics.priority_score}%</div>
-                        <div className="text-xs text-white/50 mt-1">urgency level</div>
-                      </div>
-                    </div>
-
-                    {/* Influence Metrics */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-sm text-white/70 mb-2">Group Influence on You</div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all"
-                              style={{ width: `${editedOrg.analytics.group_influence_on_user}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold text-white">{editedOrg.analytics.group_influence_on_user}%</span>
-                        </div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-4 border border-border/30">
-                        <div className="text-sm text-white/70 mb-2">Your Influence Over Group</div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
-                              style={{ width: `${editedOrg.analytics.user_influence_over_group}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold text-white">{editedOrg.analytics.user_influence_over_group}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Additional Metrics */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-black/40 rounded-lg p-3 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Value</div>
-                        <div className="text-lg font-semibold text-yellow-400">{editedOrg.analytics.value_score}%</div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-3 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Cohesion</div>
-                        <div className="text-lg font-semibold text-pink-400">{editedOrg.analytics.cohesion_score}%</div>
-                      </div>
-                      <div className="bg-black/40 rounded-lg p-3 border border-border/30">
-                        <div className="text-xs text-white/60 mb-1">Activity</div>
-                        <div className="text-lg font-semibold text-green-400">{editedOrg.analytics.activity_level}%</div>
-                      </div>
-                    </div>
-
-                    {/* Trend */}
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-white/70">Trend:</span>
-                      {editedOrg.analytics.trend === 'increasing' && (
-                        <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                          Increasing
-                        </Badge>
-                      )}
-                      {editedOrg.analytics.trend === 'decreasing' && (
-                        <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
-                          <TrendingDown className="h-3 w-3 mr-1" />
-                          Decreasing
-                        </Badge>
-                      )}
-                      {editedOrg.analytics.trend === 'stable' && (
-                        <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500/30">
-                          <Minus className="h-3 w-3 mr-1" />
-                          Stable
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* SWOT Analysis */}
-                    {((editedOrg.analytics.strengths?.length ?? 0) > 0 ||
-                      (editedOrg.analytics.weaknesses?.length ?? 0) > 0 ||
-                      (editedOrg.analytics.opportunities?.length ?? 0) > 0 ||
-                      (editedOrg.analytics.threats?.length ?? 0) > 0) && (
-                      <div className="grid grid-cols-2 gap-4 mt-4">
-                        {editedOrg.analytics.strengths && editedOrg.analytics.strengths.length > 0 && (
-                          <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
-                            <div className="text-sm font-semibold text-green-400 mb-2">Strengths</div>
-                            <ul className="space-y-1">
-                              {editedOrg.analytics.strengths.map((strength, i) => (
-                                <li key={i} className="text-xs text-white/70">• {strength}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {editedOrg.analytics.weaknesses && editedOrg.analytics.weaknesses.length > 0 && (
-                          <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
-                            <div className="text-sm font-semibold text-red-400 mb-2">Weaknesses</div>
-                            <ul className="space-y-1">
-                              {editedOrg.analytics.weaknesses.map((weakness, i) => (
-                                <li key={i} className="text-xs text-white/70">• {weakness}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {editedOrg.analytics.opportunities && editedOrg.analytics.opportunities.length > 0 && (
-                          <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
-                            <div className="text-sm font-semibold text-blue-400 mb-2">Opportunities</div>
-                            <ul className="space-y-1">
-                              {editedOrg.analytics.opportunities.map((opp, i) => (
-                                <li key={i} className="text-xs text-white/70">• {opp}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {editedOrg.analytics.threats && editedOrg.analytics.threats.length > 0 && (
-                          <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
-                            <div className="text-sm font-semibold text-orange-400 mb-2">Threats</div>
-                            <ul className="space-y-1">
-                              {editedOrg.analytics.threats.map((threat, i) => (
-                                <li key={i} className="text-xs text-white/70">• {threat}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
             </TabsContent>
 
             {/* Knowledge Chat Tab */}
-            <TabsContent value="chat" className="mt-4">
-              <div className="space-y-4">
+            <TabsContent value="chat" className={TAB_PANEL}>
+              <div className="space-y-3">
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full gap-2 border-violet-500/30 text-violet-200 hover:bg-violet-500/10"
+                  size="sm"
+                  className="w-full gap-2 border-violet-500/30 text-violet-200 hover:bg-violet-500/10 sm:hidden"
                   onClick={() => openOrgMainChat()}
                 >
                   <MessageSquare className="h-4 w-4" />
-                  Open main chat with {editedOrg.name} focus
+                  Open main chat
                 </Button>
                 <Card className="bg-violet-500/10 border-violet-500/25">
-                  <CardContent className="pt-4 pb-4">
+                  <CardContent className="p-3 sm:pt-4 sm:pb-4">
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <h3 className="text-base font-semibold text-white flex items-center gap-2">
@@ -1440,22 +1024,23 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Members Tab */}
-            <TabsContent value="members" className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Members</h3>
+            <TabsContent value="members" className={TAB_PANEL}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className={TAB_HEADING}>People ({members.length})</h3>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="shrink-0 h-8 px-2.5 text-xs"
                   onClick={() => setShowAddMember(!showAddMember)}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Member
+                  <Plus className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Add</span>
                 </Button>
               </div>
 
               {showAddMember && (
                 <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 space-y-4">
+                  <CardContent className="p-3 sm:pt-6 space-y-3">
                     <Input
                       placeholder="Member name"
                       value={newMember.character_name}
@@ -1483,7 +1068,7 @@ User's message: ${currentInput}`;
               <div className="space-y-2">
                 {members.length === 0 ? (
                   <Card className="bg-black/40 border-border/50">
-                    <CardContent className="pt-6 text-center text-white/60">
+                    <CardContent className="py-6 text-center text-sm text-white/60">
                       No members yet. Add one to get started!
                     </CardContent>
                   </Card>
@@ -1491,7 +1076,7 @@ User's message: ${currentInput}`;
                   members.map((member) => (
                     <Card 
                       key={member.id} 
-                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
+                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all active:scale-[0.99]"
                       onClick={async () => {
                         if (member.character_id) {
                           try {
@@ -1523,21 +1108,26 @@ User's message: ${currentInput}`;
                         }
                       }}
                     >
-                      <CardContent className="pt-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-semibold text-white">{member.character_name}</div>
+                      <CardContent className="p-3 sm:pt-4">
+                        <div className="flex items-center gap-3">
+                          <div className="shrink-0 h-9 w-9 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-sm font-bold text-white/80">
+                            {member.character_name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-white text-sm truncate">{member.character_name}</div>
                             {member.role && (
-                              <div className="text-sm text-white/60">{member.role}</div>
+                              <div className="text-xs text-white/55 truncate">{member.role}</div>
                             )}
                             {member.notes && (
-                              <div className="text-xs text-white/40 mt-1">{member.notes}</div>
+                              <div className="text-[11px] text-white/40 mt-0.5 line-clamp-1">{member.notes}</div>
                             )}
-                            <Badge variant="outline" className="mt-2">
-                              {member.status}
-                            </Badge>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                                {member.status}
+                              </Badge>
+                            </div>
                             {member.character_id && memberAffiliations[member.character_id]?.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
+                              <div className="flex flex-wrap gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
                                 {memberAffiliations[member.character_id].map(org => (
                                   <Badge
                                     key={org.id}
@@ -1565,12 +1155,13 @@ User's message: ${currentInput}`;
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="shrink-0 h-8 w-8 p-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRemoveMember(member.id);
                             }}
                           >
-                            <Trash2 className="h-4 w-4 text-red-400" />
+                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
                           </Button>
                         </div>
                       </CardContent>
@@ -1581,9 +1172,9 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Stories Tab */}
-            <TabsContent value="stories" className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Stories</h3>
+            <TabsContent value="stories" className={TAB_PANEL}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className={TAB_HEADING}>Stories ({stories.length})</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddStory(v => !v)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Story
@@ -1651,9 +1242,9 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Events Tab */}
-            <TabsContent value="events" className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Events</h3>
+            <TabsContent value="events" className={TAB_PANEL}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className={TAB_HEADING}>Events ({events.length})</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddEvent(v => !v)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Event
@@ -1796,7 +1387,7 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Locations Tab */}
-            <TabsContent value="locations" className="mt-4 space-y-4">
+            <TabsContent value="locations" className={TAB_PANEL}>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">Locations</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddLocation(v => !v)}>
@@ -1908,7 +1499,7 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Relationships Tab */}
-            <TabsContent value="relationships" className="mt-4 space-y-4">
+            <TabsContent value="relationships" className={TAB_PANEL}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h3 className="text-lg font-semibold text-white">Relationships</h3>
                 <div className="flex gap-2">
@@ -2110,14 +1701,14 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Family Tree Tab (family groups) */}
-            <TabsContent value="family" className="mt-4 space-y-4">
+            <TabsContent value="family" className={TAB_PANEL}>
               <div>
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <TreePine className="h-5 w-5 text-emerald-400" />
-                  {editedOrg.name} — Family Tree
+                <h3 className={`${TAB_HEADING} flex items-center gap-2`}>
+                  <TreePine className="h-4 w-4 text-emerald-400" />
+                  Family tree
                 </h3>
                 <p className="text-xs text-white/45 mt-1">
-                  Positions inferred from your conversations. Updates as you share more about who is related to whom.
+                  Built from your conversations — share who is related to whom.
                 </p>
               </div>
               <FamilyTreePanel
@@ -2136,7 +1727,7 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Timeline Tab */}
-            <TabsContent value="timeline" className="mt-4 space-y-4">
+            <TabsContent value="timeline" className={TAB_PANEL}>
               <OrganizationTimelinePanel
                 organization={resolvedOrganization}
                 mockMode={isMockDataEnabled}
@@ -2144,8 +1735,23 @@ User's message: ${currentInput}`;
               />
             </TabsContent>
 
+            {/* Influence Tab — how this group changed the user */}
+            <TabsContent value="influence" className={TAB_PANEL}>
+              <OrganizationInfluencePanel organization={resolvedOrganization} />
+            </TabsContent>
+
+            {/* Insights Tab — AI-style observations (curated/derived for now) */}
+            <TabsContent value="insights" className={TAB_PANEL}>
+              <OrganizationInsightsPanel organization={resolvedOrganization} />
+            </TabsContent>
+
+            {/* Lore Tab — archetype, themes, symbols, story role */}
+            <TabsContent value="lore" className={TAB_PANEL}>
+              <OrganizationLorePanel organization={resolvedOrganization} />
+            </TabsContent>
+
             {/* Delete Tab — two-step confirmation, away from the close button */}
-            <TabsContent value="danger" className="mt-4 space-y-4">
+            <TabsContent value="danger" className={TAB_PANEL}>
               <Card className="bg-red-500/5 border-red-500/25">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-start gap-3">
@@ -2216,8 +1822,16 @@ User's message: ${currentInput}`;
           </div>
         </Tabs>
 
-        {/* Sticky Chatbox - Always visible at bottom */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
+        <OrganizationModalNav
+          placement="bottom"
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          showFamilyTab={editedOrg.group_type === 'family'}
+        />
+
+        {/* Sticky chatbox — desktop quick input; mobile uses Chat tab */}
+        <div className="hidden sm:block sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
           <div className="flex gap-2 items-end">
             <Textarea
               ref={chatInputRef}

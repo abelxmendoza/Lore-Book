@@ -92,64 +92,94 @@ export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: P
         className="flex flex-col min-h-0 h-full sm:max-h-[90vh]"
         style={{ paddingBottom: 'max(0px, env(safe-area-inset-bottom))' }}
       >
-        {/* Hero */}
-        <div className={`relative shrink-0 px-4 sm:px-6 pt-4 sm:pt-5 pb-4 bg-gradient-to-br ${gradient} border-b border-white/10`}>
+        {/* Hero — compact on mobile */}
+        <div className={`relative shrink-0 border-b border-white/10 bg-gradient-to-br ${gradient}`}>
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 text-white/50 hover:text-white p-2 rounded-lg hover:bg-white/10 z-10"
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 text-white/45 hover:text-white p-1.5 rounded-lg hover:bg-white/10 z-10 touch-manipulation"
             aria-label="Close"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
 
-          <div className="flex items-start gap-3 pr-10">
-            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-black/40 border-2 border-white/20 shrink-0 shadow-lg">
-              <Briefcase className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight break-words">{local.name}</h2>
-                <Badge variant="outline" className={statusCfg.badge}>
-                  {statusCfg.label}
-                </Badge>
+          {/* Mobile */}
+          <div
+            className="sm:hidden px-3 py-2 pr-11 min-w-0"
+            style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/40 border border-white/15 shrink-0">
+                <Briefcase className="h-3.5 w-3.5 text-primary" />
               </div>
-              <p className="text-sm text-white/55 capitalize">
-                {local.type?.replace(/_/g, ' ') ?? 'Project'}
-                {local.started_at ? ` · since ${new Date(local.started_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}
-              </p>
-              <p className="text-sm text-white/75 mt-2 italic leading-snug">&ldquo;{profile.purpose}&rdquo;</p>
-              <p className="text-xs text-primary/80 mt-1 font-medium">{profile.currentPhase}</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h2 className="text-sm font-bold text-white truncate leading-tight">{local.name}</h2>
+                  <Badge variant="outline" className={`text-[9px] px-1 py-0 shrink-0 ${statusCfg.badge}`}>
+                    {statusCfg.label}
+                  </Badge>
+                </div>
+                <p className="text-[10px] text-white/45 truncate mt-0.5 capitalize">
+                  {local.type?.replace(/_/g, ' ') ?? 'Project'}
+                  {profile.currentPhase ? ` · ${profile.currentPhase}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2">
+              <ProjectHeroStats profile={profile} />
             </div>
           </div>
 
-          <div className="mt-4">
-            <ProjectHeroStats profile={profile} />
+          {/* Desktop */}
+          <div className="hidden sm:block px-5 py-3.5 pr-14">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-black/40 border border-white/15 shrink-0">
+                <Briefcase className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold text-white leading-tight">{local.name}</h2>
+                  <Badge variant="outline" className={statusCfg.badge}>
+                    {statusCfg.label}
+                  </Badge>
+                </div>
+                <p className="text-xs text-white/50 capitalize mt-1">
+                  {local.type?.replace(/_/g, ' ') ?? 'Project'}
+                  {local.started_at
+                    ? ` · since ${new Date(local.started_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                    : ''}
+                  {profile.currentPhase ? ` · ${profile.currentPhase}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <ProjectHeroStats profile={profile} />
+            </div>
           </div>
         </div>
 
         {readOnly && (
-          <div className="mx-4 sm:mx-6 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <div className="mx-3 sm:mx-5 mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] sm:text-xs text-amber-200">
             From your communities graph — save as a named project to unlock full editing and timeline tracking.
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs — stacked grid on mobile */}
         <Tabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as TabKey)}
-          className="flex flex-col flex-1 min-h-0 px-4 sm:px-6 pt-3"
+          className="flex flex-col flex-1 min-h-0 px-3 sm:px-5 pt-2 sm:pt-3"
         >
-          <TabsList className="w-full flex-shrink-0 h-auto p-1 bg-white/5 border border-white/10 rounded-xl overflow-x-auto justify-start flex-nowrap gap-0.5 mb-3">
+          <TabsList className="w-full flex-shrink-0 h-auto p-1 bg-white/5 border border-white/10 rounded-lg grid grid-cols-3 sm:flex sm:flex-wrap gap-1 mb-2 sm:mb-3 overflow-visible">
             {TABS.map(({ key, label, short, icon: Icon }) => (
               <TabsTrigger
                 key={key}
                 value={key}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary-100 rounded-lg shrink-0"
+                className="flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary-100 rounded-md min-h-[2.25rem] sm:min-h-0 w-full sm:w-auto"
               >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
                 <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{short}</span>
+                <span className="sm:hidden leading-none mt-0.5">{short}</span>
               </TabsTrigger>
             ))}
           </TabsList>
