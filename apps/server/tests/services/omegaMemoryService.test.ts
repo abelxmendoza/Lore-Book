@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
@@ -39,6 +39,8 @@ vi.mock('../../src/logger', () => ({
 
 describe('OmegaMemoryService', () => {
   beforeEach(() => {
+    // Legacy resolver path (EntityResolutionCore is authoritative by default).
+    vi.stubEnv('ENTITY_RESOLUTION_CORE', 'off');
     vi.clearAllMocks();
     openaiCreateFn.mockResolvedValue({
       choices: [{
@@ -51,6 +53,10 @@ describe('OmegaMemoryService', () => {
         },
       }],
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe('resolveEntities', () => {
