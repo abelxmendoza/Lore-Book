@@ -151,8 +151,6 @@ type OrganizationProfileCardProps = {
   onClick?: () => void;
   selectionMode?: boolean;
   selected?: boolean;
-  /** Briefly emphasize a card (e.g. after navigating to it). */
-  highlighted?: boolean;
 };
 
 // ── Per-type visual config ────────────────────────────────────────────
@@ -243,26 +241,6 @@ const TYPE_VISUALS: Record<GroupType, VisualConfig> = {
     icon: Users,
     iconCls: 'text-teal-400/60 group-hover:text-teal-400',
   },
-  household: {
-    grad: 'from-rose-500/20 via-pink-600/20 to-rose-500/20',
-    icon: Heart,
-    iconCls: 'text-rose-400/60 group-hover:text-rose-400',
-  },
-  team: {
-    grad: 'from-cyan-500/20 via-blue-600/20 to-cyan-500/20',
-    icon: Users,
-    iconCls: 'text-cyan-400/60 group-hover:text-cyan-400',
-  },
-  project: {
-    grad: 'from-indigo-500/20 via-violet-600/20 to-indigo-500/20',
-    icon: Layers,
-    iconCls: 'text-indigo-400/60 group-hover:text-indigo-400',
-  },
-  event_group: {
-    grad: 'from-pink-500/20 via-fuchsia-600/20 to-pink-500/20',
-    icon: Zap,
-    iconCls: 'text-pink-400/60 group-hover:text-pink-400',
-  },
   other: {
     grad: 'from-gray-500/20 via-gray-600/20 to-gray-500/20',
     icon: Building2,
@@ -294,7 +272,7 @@ function relBadgeCls(rel: UserRelationship): string {
   return 'bg-white/10 text-white/40 border-white/20';
 }
 
-export const OrganizationProfileCard = ({ organization, onClick, selectionMode, selected, highlighted }: OrganizationProfileCardProps) => {
+export const OrganizationProfileCard = ({ organization, onClick, selectionMode, selected }: OrganizationProfileCardProps) => {
   const gt = organization.group_type ?? 'other';
   const visual = TYPE_VISUALS[gt] ?? TYPE_VISUALS.other;
   const Icon = visual.icon;
@@ -326,9 +304,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
       className={`group relative cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-0.5 sm:hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 overflow-hidden flex flex-col min-h-0 ${isFormer ? 'opacity-75' : ''} ${
         selected
           ? 'border-purple-500/50 ring-1 ring-purple-500/40 bg-purple-500/10'
-          : highlighted
-            ? 'border-primary/60 ring-2 ring-primary/50'
-            : 'border-border/50'
+          : 'border-border/50'
       }`}
       onClick={onClick}
     >
