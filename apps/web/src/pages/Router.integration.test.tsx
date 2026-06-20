@@ -5,10 +5,16 @@ import { Router } from './Router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GuestProvider } from '../contexts/GuestContext';
 import { EntityModalProvider } from '../contexts/EntityModalContext';
+import { MockDataProvider } from '../contexts/MockDataContext';
 import { ReduxProvider } from '../store/ReduxProvider';
 
 function renderRouter(ui: React.ReactElement) {
-  return render(<ReduxProvider>{ui}</ReduxProvider>);
+  // MockDataProvider is required by useRuntimeIdentity (used in the router tree).
+  return render(
+    <ReduxProvider>
+      <MockDataProvider>{ui}</MockDataProvider>
+    </ReduxProvider>
+  );
 }
 
 // Mock AuthGate to bypass auth for testing

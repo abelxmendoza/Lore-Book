@@ -24,6 +24,7 @@ vi.mock('../../services/mockDataService', () => ({
     getWithFallback: {
       characters: (...args: unknown[]) => mockGetWithFallbackCharacters(...args),
     },
+    subscribe: vi.fn(() => vi.fn()),
   },
 }));
 

@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { GuestProvider } from '../../contexts/GuestContext';
 import { MockDataProvider } from '../../contexts/MockDataContext';
 import { CurrentContextProvider } from '../../contexts/CurrentContextContext';
+import { ChatThreadProvider } from '../../contexts/ChatThreadContext';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
 import { ReduxProvider } from '../../store/ReduxProvider';
 
@@ -97,7 +98,9 @@ function ChatWrapper({ children }: { children: React.ReactNode }) {
         <MockDataProvider>
           <CurrentContextProvider>
             <GuestProvider>
-              {children}
+              <ChatThreadProvider>
+                {children}
+              </ChatThreadProvider>
             </GuestProvider>
           </CurrentContextProvider>
         </MockDataProvider>

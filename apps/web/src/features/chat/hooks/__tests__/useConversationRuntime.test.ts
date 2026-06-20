@@ -11,6 +11,13 @@ vi.mock('../../../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
+// Exercise the real (non-demo) runtime; demo mode defaults ON under vitest.
+vi.mock('../../../../services/demoChatSimulation', async (orig) => ({
+  ...(await orig<typeof import('../../../../services/demoChatSimulation')>()),
+  isDemoChatMockup: () => false,
+  seedDemoChatThreadsIfEmpty: (threads: unknown) => threads,
+}));
+
 vi.mock('../../services/runtimeDiagnostics', () => ({
   runtimeDiagnostics: {
     record: vi.fn(),
