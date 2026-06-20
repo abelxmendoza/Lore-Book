@@ -68,7 +68,24 @@ const options: swaggerJsdoc.Options = {
   ],
 };
 
-const swaggerSpec = swaggerJsdoc(options);
+/**
+ * Generate the OpenAPI spec defensively. swagger-jsdoc scans source files with
+ * an old bundled `glob`; a newer `minimatch` encodes `**` as a GLOBSTAR Symbol
+ * that `pattern.join('/')` cannot stringify, which threw at import time and
+ * crashed the server on boot. API docs are dev-only — never let them take down
+ * the API. Fall back to the base definition (no per-route annotations).
+ */
+const swaggerSpec: object = (() => {
+  try {
+    return swaggerJsdoc(options) as object;
+  } catch (err) {
+    console.warn(
+      '[swagger] Spec generation failed; serving base definition without route annotations.',
+      err instanceof Error ? err.message : err
+    );
+    return { ...options.definition, paths: {} } as object;
+  }
+})();
 
 export const setupSwagger = (app: Express) => {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
