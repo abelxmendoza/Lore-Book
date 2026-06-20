@@ -8,6 +8,7 @@
 import { Express } from 'express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import { resolveSwaggerApiFiles } from './config/swaggerApiFiles';
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -62,10 +63,8 @@ const options: swaggerJsdoc.Options = {
       { name: 'Admin', description: 'Admin operations' },
     ],
   },
-  apis: [
-    './src/routes/*.ts',
-    './src/routes/**/*.ts',
-  ],
+  // Explicit file list (no '**') — see resolveSwaggerApiFiles for why.
+  apis: resolveSwaggerApiFiles(['src/routes']),
 };
 
 /**
