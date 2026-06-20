@@ -15,9 +15,9 @@ const DEMO_FALLBACK = [
   { pattern: /\bmarcus\b/i, id: 'demo-char-marcus', name: 'Marcus', type: 'character' as const },
   { pattern: /\bsan diego\b/i, id: 'demo-loc-sd', name: 'San Diego', type: 'location' as const },
   {
-    pattern: /\barmstrong robotics\b/i,
-    id: 'demo-org-armstrong',
-    name: 'Armstrong Robotics',
+    pattern: /\bvanguard robotics\b/i,
+    id: 'demo-org-vanguard',
+    name: 'Vanguard Robotics',
     type: 'organization' as const,
   },
 ];
@@ -101,11 +101,11 @@ describe('chatLoreContext — pre-LLM lore compilation', () => {
       const history = [
         {
           role: 'user' as const,
-          content: 'Marcus mentioned Armstrong Robotics might have a deployment tech opening',
+          content: 'Marcus mentioned Vanguard Robotics might have a deployment tech opening',
         },
         {
           role: 'assistant' as const,
-          content: 'Worth tracking — Armstrong Robotics aligns with your field-deployment thread.',
+          content: 'Worth tracking — Vanguard Robotics aligns with your field-deployment thread.',
         },
       ];
 
@@ -115,7 +115,7 @@ describe('chatLoreContext — pre-LLM lore compilation', () => {
       });
 
       expect(ctx.priorMentionedNames).toContain('Marcus');
-      expect(ctx.priorMentionedNames.some((n) => /Armstrong/i.test(n))).toBe(true);
+      expect(ctx.priorMentionedNames.some((n) => /Vanguard/i.test(n))).toBe(true);
       expect(ctx.loreBrief).toContain('PRIOR_THREAD');
     });
 
@@ -176,7 +176,7 @@ describe('chatLoreContext — pre-LLM lore compilation', () => {
   describe('loreBrief efficiency for LLM injection', () => {
     it('produces a compact structured brief with entities and ontology', () => {
       const ctx = compileChatLoreContext(
-        'I worked at Armstrong Robotics and I am getting better at ROS2',
+        'I worked at Vanguard Robotics and I am getting better at ROS2',
         { fallbackEntities: DEMO_FALLBACK },
       );
 
@@ -187,7 +187,7 @@ describe('chatLoreContext — pre-LLM lore compilation', () => {
     });
 
     it('does not duplicate current entities in PRIOR_THREAD line', () => {
-      const ctx = compileChatLoreContext('Tell me more about Marcus at Armstrong Robotics', {
+      const ctx = compileChatLoreContext('Tell me more about Marcus at Vanguard Robotics', {
         fallbackEntities: DEMO_FALLBACK,
       });
 

@@ -33,7 +33,7 @@ describe('Abel Mendoza reference resumes (golden)', () => {
 
     const companies = parsed.employment.map((j) => j.company);
     expect(companies).toContain('RLH Industries, Inc.');
-    expect(companies).toContain('Armstrong Robotics');
+    expect(companies).toContain('Vanguard Robotics');
     expect(companies).toContain('Serve Robotics');
 
     const rlh = parsed.employment.find((j) => j.company.includes('RLH'));
@@ -41,9 +41,9 @@ describe('Abel Mendoza reference resumes (golden)', () => {
     expect(rlh?.isCurrent).toBe(true);
     expect(rlh?.startDate).toBe('2026-04-01');
 
-    const armstrong = parsed.employment.find((j) => j.company.includes('Armstrong'));
-    expect(armstrong?.startDate).toBe('2025-01-01');
-    expect(armstrong?.endDate).toBe('2025-12-01');
+    const vanguard = parsed.employment.find((j) => j.company.includes('Vanguard'));
+    expect(vanguard?.startDate).toBe('2025-01-01');
+    expect(vanguard?.endDate).toBe('2025-12-01');
   });
 
   it('extracts projects, skills, and certifications from robotics resume', () => {
@@ -81,10 +81,10 @@ describe('Abel Mendoza reference resumes (golden)', () => {
   it('detects no large gaps between Abel jobs (overlapping Serve field role)', () => {
     const structured = parseResumeHeuristics(roboticsText);
     structured.employmentGaps = detectEmploymentGaps(structured.employment);
-    // Armstrong Jan 2025 - Dec 2025 and Serve Mar-May 2025 overlap — no 2+ month gap between RLH and Armstrong
-    const betweenRlhAndArmstrong = structured.employmentGaps.filter((g) =>
-      g.label.includes('RLH') && g.label.includes('Armstrong')
+    // Vanguard Jan 2025 - Dec 2025 and Serve Mar-May 2025 overlap — no 2+ month gap between RLH and Vanguard
+    const betweenRlhAndVanguard = structured.employmentGaps.filter((g) =>
+      g.label.includes('RLH') && g.label.includes('Vanguard')
     );
-    expect(betweenRlhAndArmstrong.length).toBe(0);
+    expect(betweenRlhAndVanguard.length).toBe(0);
   });
 });

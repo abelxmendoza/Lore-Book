@@ -96,7 +96,7 @@ export const LEXICAL_ONTOLOGY_CORPUS: LexicalCorpusCase[] = [
   {
     id: 'skills-org-improving-mainthing',
     description: 'employer + improving tech skill + "main thing" hobby in one message',
-    text: "I worked at Armstrong Robotics and I'm getting better at ROS2, but Muay Thai is still my main thing.",
+    text: "I worked at Vanguard Robotics and I'm getting better at ROS2, but Muay Thai is still my main thing.",
     tags: ['skills', 'entities', 'events', 'ontology'],
     expect: {
       skills: [
@@ -104,12 +104,12 @@ export const LEXICAL_ONTOLOGY_CORPUS: LexicalCorpusCase[] = [
         { nameIncludes: 'muay thai', hobby_or_paid: 'hobby', proficiency_hint: 'advanced', enjoyment_hint: 'high' },
       ],
       entities: [
-        { type: 'ORGANIZATION', surfaceIncludes: 'Armstrong Robotics' },
+        { type: 'ORGANIZATION', surfaceIncludes: 'Vanguard Robotics' },
         { type: 'SKILL', surfaceIncludes: 'ros2' },
       ],
       events: ['job_started', 'learning_moment'],
       ontologyCandidates: [
-        { predicate: 'worked_for', objectIncludes: 'armstrong' },
+        { predicate: 'worked_for', objectIncludes: 'vanguard' },
         { predicate: 'is_learning', objectIncludes: 'ros2' },
         { predicate: 'practices', objectIncludes: 'muay thai' },
       ],

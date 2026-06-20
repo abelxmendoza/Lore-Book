@@ -11,13 +11,13 @@ const seed = [
       {
         id: 'guest-u-rel',
         role: 'user',
-        content: 'My cousin Marcus works at Armstrong Robotics.',
+        content: 'My cousin Marcus works at Vanguard Robotics.',
         timestamp: new Date().toISOString(),
         metadata: {
           ontology_enrichment: {
             relationship_groups: [
               { scope: 'FAMILY', entityNames: ['Marcus'], confidence: 0.9 },
-              { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'], confidence: 0.85 },
+              { scope: 'PROFESSIONAL', entityNames: ['Vanguard Robotics'], confidence: 0.85 },
             ],
           },
         },
@@ -25,7 +25,7 @@ const seed = [
       {
         id: 'guest-a-rel',
         role: 'assistant',
-        content: 'Marcus and Armstrong Robotics are noted.',
+        content: 'Marcus and Vanguard Robotics are noted.',
         timestamp: new Date().toISOString(),
         isStreaming: false,
       },
@@ -61,14 +61,14 @@ test.describe('Chat relationship groups — guest UI', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(600);
 
-    await expect(page.getByText('My cousin Marcus works at Armstrong Robotics.')).toBeVisible({
+    await expect(page.getByText('My cousin Marcus works at Vanguard Robotics.')).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByText('relationships:')).toBeVisible();
     await expect(page.getByText(/family:/).first()).toBeVisible();
     await expect(page.getByText('Marcus').first()).toBeVisible();
     await expect(page.getByText(/work:/).first()).toBeVisible();
-    await expect(page.getByText('Armstrong Robotics').first()).toBeVisible();
+    await expect(page.getByText('Vanguard Robotics').first()).toBeVisible();
     await expect(page.getByText('relationship context:')).toBeVisible();
   });
 });

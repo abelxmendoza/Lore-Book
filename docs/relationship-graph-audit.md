@@ -62,7 +62,7 @@ All protagonist → family edges (Mom, Abuela, Tío Juan, Step Dad Ben, Tía Gra
 ### Still missing
 
 - Daisy (no protagonist edge — only Juan↔Daisy)
-- Amazon / Armstrong Robotics / Serve Robotics (org membership edges)
+- Amazon / Vanguard Robotics / Serve Robotics (org membership edges)
 - LoreBook project collaborator edges
 - Household "lives with" edges (facts too vague: "Lives with someone")
 - `romantic_relationships` not synced into character_relationships

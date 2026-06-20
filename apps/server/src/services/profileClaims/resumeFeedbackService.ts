@@ -102,7 +102,7 @@ export function buildResumeChatFeedback(params: {
     '',
     '### How your timelines are organized',
     '',
-    '**Career track** (Omni Timeline → Events / Swimlanes): each job becomes a dated **resolved event** and journal entry on the **career** lane. Stories you add about RLH, Armstrong, Serve Robotics, etc. can be tagged to those date ranges.',
+    '**Career track** (Omni Timeline → Events / Swimlanes): each job becomes a dated **resolved event** and journal entry on the **career** lane. Stories you add about RLH, Vanguard, Serve Robotics, etc. can be tagged to those date ranges.',
     '',
     '**Education track**: each school is a dated **education** event. Memories from college or coursework attach to that window so you can browse “CSU Fullerton era” vs “Rio Hondo coursework” separately.',
     '',

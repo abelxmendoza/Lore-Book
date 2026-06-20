@@ -115,7 +115,7 @@ The AI doesn't force you back to old topics—it follows where your mind wants t
 When you **select a timeline node** (era, saga, or arc) or **choose a thread** in the timeline or threads view, that becomes your current focus. Chat uses it automatically:
 
 - **Memory scope**: The AI draws from memories in that era/saga/arc or in that thread, so answers stay relevant to where you are.
-- **Timeline context**: If that node has empty time spans (hierarchy gaps) or overlapping arcs/sagas (parallels), the AI is told briefly—e.g. “This saga has 2 empty time spans and 1 explicit parallel (3 overlaps).” It can gently explore gaps (“What happened in that quiet year?”) or contextualize interruptions (“Omega1 paused while Armstrong and Love Life overlapped”) when it fits.
+- **Timeline context**: If that node has empty time spans (hierarchy gaps) or overlapping arcs/sagas (parallels), the AI is told briefly—e.g. “This saga has 2 empty time spans and 1 explicit parallel (3 overlaps).” It can gently explore gaps (“What happened in that quiet year?”) or contextualize interruptions (“Omega1 paused while Vanguard and Love Life overlapped”) when it fits.
 - **“Add here”**: New entries can be created under the focused chapter or linked to the focused thread without you choosing a target each time.
 
 You never pick “context” in a dropdown—where you navigate is where the AI focuses. No extra steps.

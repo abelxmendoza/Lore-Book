@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { clientLexicalPreviewSpans } from './clientLexicalPreview';
 
 const ROBOTICS_WORKPLACE_FIXTURE_TEXT =
-  "I worked at Armstrong Robotics as a robot tech with Gary and Jeff. I was doing ArUco calibration, gripper swaps, and live robot support at Denny's in Hollywood.";
+  "I worked at Vanguard Robotics as a robot tech with Gary and Jeff. I was doing ArUco calibration, gripper swaps, and live robot support at Denny's in Hollywood.";
 
 describe('clientLexicalPreviewSpans — robotics workplace fixture', () => {
-  it('highlights Armstrong Robotics as ORGANIZATION', () => {
+  it('highlights Vanguard Robotics as ORGANIZATION', () => {
     const spans = clientLexicalPreviewSpans(ROBOTICS_WORKPLACE_FIXTURE_TEXT);
-    expect(spans.some((s) => s.text === 'Armstrong Robotics' && s.type === 'ORGANIZATION')).toBe(true);
+    expect(spans.some((s) => s.text === 'Vanguard Robotics' && s.type === 'ORGANIZATION')).toBe(true);
   });
 
   it('highlights robot tech as ROLE', () => {

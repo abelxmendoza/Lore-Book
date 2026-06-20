@@ -61,13 +61,13 @@ describe('correctedPreviewSpanReducer', () => {
     state = applyCorrectionAction(state, {
       kind: 'set_parent',
       spanId: id,
-      parentEntityId: 'org-armstrong',
-      parentEntityName: 'Armstrong Robotics',
+      parentEntityId: 'org-vanguard',
+      parentEntityName: 'Vanguard Robotics',
       parentEntityType: 'ORGANIZATION',
     });
 
-    expect(state.byId.get(id)?.parentEntityName).toBe('Armstrong Robotics');
-    expect(state.byId.get(id)?.parentContext).toContain('Armstrong Robotics');
+    expect(state.byId.get(id)?.parentEntityName).toBe('Vanguard Robotics');
+    expect(state.byId.get(id)?.parentContext).toContain('Vanguard Robotics');
   });
 
   it('correction state is included in send payload', () => {

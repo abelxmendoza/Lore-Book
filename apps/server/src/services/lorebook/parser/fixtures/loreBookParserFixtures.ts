@@ -45,7 +45,7 @@ export const FIXTURE_FAMILY_HOUSEHOLD_TEXT =
   "Yesterday was my cousin Leslie's Graduation Party at my Tio Ralph's house.";
 
 export const FIXTURE_WORKSITE_EMPLOYER_TEXT =
-  "I worked at Armstrong Robotics as a robot tech doing gripper swaps at Denny's in Hollywood.";
+  "I worked at Vanguard Robotics as a robot tech doing gripper swaps at Denny's in Hollywood.";
 
 export const FIXTURE_TRAVEL_CLASS_TEXT =
   'I went to Japan last summer with my school Japanese Class.';
@@ -220,10 +220,10 @@ export const LOREBOOK_PARSER_FIXTURE_PACK: LoreBookParserFixtureSpec[] = [
     forbidden: [{ kind: 'suggest_add', nameMatch: /^Tio$/i }],
   },
   {
-    id: 'worksite_vs_employer_armstrong',
+    id: 'worksite_vs_employer_vanguard',
     text: FIXTURE_WORKSITE_EMPLOYER_TEXT,
     expected: [
-      { kind: 'suggest_add', domain: 'organizations', nameMatch: /Armstrong Robotics/i },
+      { kind: 'suggest_add', domain: 'organizations', nameMatch: /Vanguard Robotics/i },
       { kind: 'suggest_add', domain: 'skills', nameMatch: /gripper/i },
       { kind: 'suggest_add', domain: 'locations', nameMatch: /Denny/i },
     ],

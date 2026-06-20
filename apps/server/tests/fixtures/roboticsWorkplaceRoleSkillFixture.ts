@@ -12,8 +12,8 @@ const span = (result: LexicalPreviewResult, re: RegExp) =>
   result.spans.find((s) => re.test(s.text));
 
 export function assertWorkplacePreviewSpans(result: LexicalPreviewResult): void {
-  const org = span(result, /Armstrong Robotics/i);
-  expect(org, 'ORGANIZATION Armstrong Robotics').toBeDefined();
+  const org = span(result, /Vanguard Robotics/i);
+  expect(org, 'ORGANIZATION Vanguard Robotics').toBeDefined();
   expect(org!.type).toBe('ORGANIZATION');
   expect(org!.colorKey).toBe('organization');
 
@@ -60,13 +60,13 @@ export function assertWorkplacePreviewSpans(result: LexicalPreviewResult): void 
 export function assertWorkplaceInference(result: InferenceAssociationResult): void {
   expect(
     result.inferredRelationships.some(
-      (r) => r.relationshipType === 'worked_for' && /Armstrong Robotics/i.test(r.objectName)
+      (r) => r.relationshipType === 'worked_for' && /Vanguard Robotics/i.test(r.objectName)
     ),
-    'worked_for Armstrong Robotics'
+    'worked_for Vanguard Robotics'
   ).toBe(true);
 
   expect(
-    result.inferredGroups.some((g) => g.type === 'company' && /Armstrong Robotics/i.test(g.name)),
+    result.inferredGroups.some((g) => g.type === 'company' && /Vanguard Robotics/i.test(g.name)),
     'employer organization'
   ).toBe(true);
 
@@ -110,13 +110,13 @@ export function assertWorkplaceInference(result: InferenceAssociationResult): vo
   expect(result.inferredRelationships.every((r) => r.inferredNotConfirmed)).toBe(true);
 
   expect(
-    result.memoryReviewCandidates.some((c) => /Armstrong Robotics Community/i.test(c.claim)),
+    result.memoryReviewCandidates.some((c) => /Vanguard Robotics Community/i.test(c.claim)),
     'career community'
   ).toBe(true);
 }
 
 export function assertWorkplaceKnownWhenIndexed(result: LexicalPreviewResult): void {
-  const org = span(result, /Armstrong Robotics/i);
+  const org = span(result, /Vanguard Robotics/i);
   expect(org!.entityStatus).toBe('known');
   const gary = span(result, /^Gary$/);
   expect(gary!.entityStatus).toBe('known');
@@ -138,7 +138,7 @@ export function assertCareerTimeline(timeline: {
   role?: string;
   skillsGained: string[];
 }): void {
-  expect(timeline.organization).toMatch(/Armstrong Robotics/i);
+  expect(timeline.organization).toMatch(/Vanguard Robotics/i);
   expect(timeline.role).toMatch(/Robot Technician/i);
   expect(timeline.skillsGained.length).toBeGreaterThan(0);
 }

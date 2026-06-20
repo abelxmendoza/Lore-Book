@@ -25,7 +25,7 @@ export class TimeExtractor {
         { cat: 'learning', regex: /(duolingo|studied|read|course|learned|education|training|tutorial)/i },
         { cat: 'sleep', regex: /(slept|nap|tired|rested|bed|woke up|asleep)/i },
         { cat: 'eating', regex: /(ate|food|dinner|lunch|breakfast|meal|restaurant|cooking)/i },
-        { cat: 'work', regex: /(shift|restaurant|serve robotics|armstrong|job|work|office|meeting)/i },
+        { cat: 'work', regex: /(shift|restaurant|serve robotics|vanguard|job|work|office|meeting)/i },
         { cat: 'rest', regex: /(rested|relaxed|chilled|took a break|recovery|rest)/i },
         { cat: 'errands', regex: /(errands|shopping|grocery|store|bank|appointment|chores)/i },
         { cat: 'entertainment', regex: /(movie|show|anime|game|played|watched|streaming|netflix)/i },

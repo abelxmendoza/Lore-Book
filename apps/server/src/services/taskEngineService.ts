@@ -91,7 +91,7 @@ const CATEGORY_KEYWORDS: Record<TaskCategory, string[]> = {
   school: ['lesson', 'kanji', 'homework', 'class', 'study', 'assignment', 'japanese'],
   home: ['house', 'mom', 'family', 'kitchen', 'clean', 'yard'],
   content: ['youtube', 'content', 'video', 'edit', 'post', 'omega technologies', 'newsletter'],
-  work: ['work', 'project', 'client', 'armstrong', 'serve'],
+  work: ['work', 'project', 'client', 'vanguard', 'serve'],
   admin: []
 };
 

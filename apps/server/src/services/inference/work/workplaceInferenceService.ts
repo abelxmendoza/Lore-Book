@@ -27,12 +27,12 @@ import {
 import type { CareerTimelineEntry, SkillProgressionRecord } from './workplaceTypes';
 
 export const ROBOTICS_WORKPLACE_FIXTURE_TEXT =
-  "I worked at Armstrong Robotics as a robot tech with Gary and Jeff. I was doing ArUco calibration, gripper swaps, and live robot support at Denny's in Hollywood.";
+  "I worked at Vanguard Robotics as a robot tech with Gary and Jeff. I was doing ArUco calibration, gripper swaps, and live robot support at Denny's in Hollywood.";
 
 export function isRoboticsWorkplaceFixtureText(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    t.includes('armstrong robotics') &&
+    t.includes('vanguard robotics') &&
     t.includes('robot tech') &&
     (t.includes('gary') || t.includes('jeff')) &&
     t.includes('aruco')

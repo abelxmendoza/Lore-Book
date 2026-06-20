@@ -2,7 +2,7 @@ import type { LexicalFixtureSpec } from '../../../src/services/lexical/intellige
 
 export const WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_ID = 'workplace_social_conflict_martial_arts';
 export const WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_TEXT =
-  "Mike from my old job at Armstrong was talking crazy at the show last night and Charlie almost swung on him. " +
+  "Mike from my old job at Vanguard was talking crazy at the show last night and Charlie almost swung on him. " +
   "I stayed calm because I've been training Muay Thai and boxing but I still felt heated.";
 
 export const FAMILY_IDENTITY_COLLISION_ID = 'family_identity_collision';
@@ -28,12 +28,12 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
     expected: [
       { label: 'Mike', match: /^Mike$/, type: 'PERSON', minConfidence: 0.75 },
       {
-        label: 'Armstrong',
-        match: /^Armstrong$/,
+        label: 'Vanguard',
+        match: /^Vanguard$/,
         type: 'ORGANIZATION',
         subtype: 'WORKPLACE',
         minConfidence: 0.78,
-        rulesFired: ['workplace_armstrong_context'],
+        rulesFired: ['workplace_vanguard_context'],
       },
       {
         label: 'old job',

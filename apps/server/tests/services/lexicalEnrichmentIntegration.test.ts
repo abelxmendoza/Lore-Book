@@ -37,7 +37,7 @@ describe('lexical → ontology enrichment integration', () => {
 
     // The lexical → ontology candidate bridge preserved the employer + skills.
     const candidates = meta.lexical_ontology_candidates as Array<{ predicate: string; object: string }>;
-    expect(candidates.some((c) => c.predicate === 'worked_for' && /armstrong/i.test(c.object))).toBe(true);
+    expect(candidates.some((c) => c.predicate === 'worked_for' && /vanguard/i.test(c.object))).toBe(true);
     expect(candidates.some((c) => c.predicate === 'is_learning' && /ros2/i.test(c.object))).toBe(true);
   });
 

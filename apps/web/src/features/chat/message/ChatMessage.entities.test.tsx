@@ -69,13 +69,13 @@ describe('ChatMessage — entity chips on assistant replies', () => {
     renderMessage({
       id: 'u2',
       role: 'user',
-      content: 'My cousin Marcus works at Armstrong Robotics.',
+      content: 'My cousin Marcus works at Vanguard Robotics.',
       timestamp: new Date(),
       metadata: {
         ontology_enrichment: {
           relationship_groups: [
             { scope: 'FAMILY', entityNames: ['Marcus'] },
-            { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'] },
+            { scope: 'PROFESSIONAL', entityNames: ['Vanguard Robotics'] },
           ],
         },
       },
@@ -85,6 +85,6 @@ describe('ChatMessage — entity chips on assistant replies', () => {
     expect(screen.getByText('family')).toBeInTheDocument();
     expect(screen.getByText('Marcus')).toBeInTheDocument();
     expect(screen.getByText('work')).toBeInTheDocument();
-    expect(screen.getByText('Armstrong Robotics')).toBeInTheDocument();
+    expect(screen.getByText('Vanguard Robotics')).toBeInTheDocument();
   });
 });

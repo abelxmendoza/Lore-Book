@@ -97,7 +97,7 @@ export const LEXICAL_FIXTURE_PACK: LexicalFixtureSpec[] = [
     id: ROBOTICS_WORKPLACE_FIXTURE_ID,
     text: ROBOTICS_WORKPLACE_FIXTURE_TEXT,
     expected: [
-      { label: 'Armstrong Robotics', match: /Armstrong Robotics/i, type: 'ORGANIZATION', minConfidence: 0.88, rulesFired: ['employer_worked_at'] },
+      { label: 'Vanguard Robotics', match: /Vanguard Robotics/i, type: 'ORGANIZATION', minConfidence: 0.88, rulesFired: ['employer_worked_at'] },
       { label: 'robot tech', match: /robot tech/i, type: 'ROLE', minConfidence: 0.85 },
       { label: 'Gary', match: /^Gary$/, type: 'PERSON', minConfidence: 0.8 },
       { label: 'ArUco calibration', match: /ArUco calibration/i, type: 'SKILL', minConfidence: 0.85 },

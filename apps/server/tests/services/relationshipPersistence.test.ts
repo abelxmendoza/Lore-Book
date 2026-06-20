@@ -57,7 +57,7 @@ describe('relationshipPersistenceService', () => {
         return chain({ data: [{ id: 'self-char', name: 'Me', alias: [] }], error: null });
       }
       if (table === 'organizations') {
-        return chain({ data: [{ id: 'org-1', name: 'Armstrong Robotics' }], error: null });
+        return chain({ data: [{ id: 'org-1', name: 'Vanguard Robotics' }], error: null });
       }
       if (table === 'omega_entities') {
         return chain({ data: [], error: null });
@@ -73,18 +73,18 @@ describe('relationshipPersistenceService', () => {
     const lexical = {
       entityLinks: [{
         subject: 'self',
-        object: 'Armstrong Robotics',
+        object: 'Vanguard Robotics',
         relationshipType: 'WORKS_FOR',
         scope: 'PROFESSIONAL',
-        cue: 'I work at Armstrong Robotics',
+        cue: 'I work at Vanguard Robotics',
         confidence: 0.9,
       }],
     } as LexicalAnalysisResult;
 
     const meaning = {
       resolvedEntities: [{
-        surface: 'Armstrong Robotics',
-        normalized: 'armstrong robotics',
+        surface: 'Vanguard Robotics',
+        normalized: 'vanguard robotics',
         kind: 'ORGANIZATION',
         entityId: 'org-1',
         confidence: 0.9,
@@ -313,18 +313,18 @@ describe('relationshipPersistenceService', () => {
     const lexical = {
       entityLinks: [{
         subject: 'self',
-        object: 'Armstrong Robotics',
+        object: 'Vanguard Robotics',
         relationshipType: 'WORKS_FOR',
         scope: 'PROFESSIONAL',
-        cue: 'I work at Armstrong Robotics',
+        cue: 'I work at Vanguard Robotics',
         confidence: 0.9,
       }],
     } as LexicalAnalysisResult;
 
     const meaning = {
       resolvedEntities: [{
-        surface: 'Armstrong Robotics',
-        normalized: 'armstrong robotics',
+        surface: 'Vanguard Robotics',
+        normalized: 'vanguard robotics',
         kind: 'ORGANIZATION',
         entityId: 'org-1',
         confidence: 0.9,

@@ -39,7 +39,7 @@ rective actions and product reliability improvements
 • Performed firmware flashing, embedded hardware bring-up, and industrial Ethernet device deployment using PIC32-
 based systems, MPLAB ICD3, MPFS2, USB Blaster, and Quartus
 Robotics Deployment Technician Jan 2025 – Dec 2025
-Armstrong Robotics, Hollywood, CA
+Vanguard Robotics, Hollywood, CA
 • Diagnosed and resolved hardware, sensor, communication, and control system failures during live deployment of au-
 tonomous robotic systems
 • Performed failure investigation and corrective actions across mechanical, electrical, and electromechanical subsystems

@@ -54,7 +54,7 @@ vi.mock('../../src/services/perspectiveService', () => ({
 }));
 
 const EXAMPLE =
-  "I worked at Armstrong Robotics and I'm getting better at ROS2, but Muay Thai is still my main thing.";
+  "I worked at Vanguard Robotics and I'm getting better at ROS2, but Muay Thai is still my main thing.";
 
 describe('lexicalAnalyzerService', () => {
   const baseInput = {
@@ -84,7 +84,7 @@ describe('lexicalAnalyzerService', () => {
 
   it('detects organizations and roles', () => {
     const entities = extractLexicalEntities(EXAMPLE);
-    expect(entities.some((e) => e.type === 'ORGANIZATION' && /armstrong robotics/i.test(e.surface))).toBe(true);
+    expect(entities.some((e) => e.type === 'ORGANIZATION' && /vanguard robotics/i.test(e.surface))).toBe(true);
     expect(entities.some((e) => e.type === 'SKILL' && /ros2/i.test(e.surface))).toBe(true);
   });
 
@@ -122,10 +122,10 @@ describe('lexicalAnalyzerService', () => {
     expect(matches.some((m) => m.category === 'RELATIONSHIP_VERB' || m.relationshipHint === 'FAMILY_RELATIONSHIP')).toBe(true);
   });
 
-  it('produces ontology candidates for the Armstrong Robotics example', () => {
+  it('produces ontology candidates for the Vanguard Robotics example', () => {
     const result = lexicalAnalyzerService.analyzeMessage(baseInput);
 
-    expect(result.ontologyCandidates.some((c) => c.predicate === 'worked_for' && /armstrong/i.test(c.object))).toBe(true);
+    expect(result.ontologyCandidates.some((c) => c.predicate === 'worked_for' && /vanguard/i.test(c.object))).toBe(true);
     expect(result.ontologyCandidates.some((c) => c.predicate === 'is_learning' && /ros2/i.test(c.object))).toBe(true);
     expect(result.ontologyCandidates.some((c) => c.predicate === 'practices' && /muay thai/i.test(c.object))).toBe(true);
   });

@@ -85,7 +85,7 @@
 3. Household / lives-with from group_candidates
 4. Merge duplicate characters (Tío/Tio Juan) for cleaner graph
 5. Daisy protagonist edge
-6. Career orgs: Amazon, Armstrong, Serve Robotics
+6. Career orgs: Amazon, Vanguard, Serve Robotics
 7. Inter-character edges beyond protagonist star graph
 8. Relationship status (ended/blocked) from Sol facts
 9. Confidence scoring in recall ranking

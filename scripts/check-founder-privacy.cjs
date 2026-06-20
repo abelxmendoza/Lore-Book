@@ -33,6 +33,8 @@ const blockedInLiterals = [
   'Club Metro',
   'Building LoreBook',
   'Bathroom Guardian',
+  'Armstrong Robotics',
+  'Armstrong',
 ];
 
 const allowedLinePatterns = [

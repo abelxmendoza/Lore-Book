@@ -23,20 +23,20 @@ describe('relationshipDiscovery', () => {
   });
 
   it('links self to org from work pattern', () => {
-    const text = 'I work at Armstrong Robotics on ROS2 projects.';
+    const text = 'I work at Vanguard Robotics on ROS2 projects.';
     const links = discoverEntityLinks(text, [
-      { surface: 'Armstrong Robotics', normalized: 'armstrong robotics', type: 'ORGANIZATION', confidence: 0.85, source: 'test' },
+      { surface: 'Vanguard Robotics', normalized: 'vanguard robotics', type: 'ORGANIZATION', confidence: 0.85, source: 'test' },
     ], []);
     const workLink = links.find((l) => l.relationshipType === 'WORKS_FOR');
-    expect(workLink?.object).toMatch(/Armstrong Robotics/i);
+    expect(workLink?.object).toMatch(/Vanguard Robotics/i);
     expect(workLink?.scope).toBe('PROFESSIONAL');
   });
 
   it('groups family and professional inputs separately', () => {
-    const text = 'My cousin Marcus came over. I work at Armstrong Robotics.';
+    const text = 'My cousin Marcus came over. I work at Vanguard Robotics.';
     const entities = [
       { surface: 'Marcus', normalized: 'marcus', type: 'PERSON' as const, confidence: 0.8, source: 'test' },
-      { surface: 'Armstrong Robotics', normalized: 'armstrong robotics', type: 'ORGANIZATION' as const, confidence: 0.85, source: 'test' },
+      { surface: 'Vanguard Robotics', normalized: 'vanguard robotics', type: 'ORGANIZATION' as const, confidence: 0.85, source: 'test' },
     ];
     const links = discoverEntityLinks(text, entities, []);
     const groups = groupInputsByRelationshipScope(text, links, entities, []);
@@ -56,15 +56,15 @@ describe('relationshipDiscovery', () => {
   });
 
   it('sanitizes captured names and skips role-only links', () => {
-    expect(sanitizeRelationshipName('Armstrong Robotics. We hung')).toBe('Armstrong Robotics');
+    expect(sanitizeRelationshipName('Vanguard Robotics. We hung')).toBe('Vanguard Robotics');
     expect(sanitizeRelationshipName('Juan too.')).toBe('Juan');
     expect(isValidRelationshipEndpoint('friend')).toBe(false);
     expect(isValidRelationshipEndpoint('coworker')).toBe(false);
 
-    const text = 'My cousin Marcus works at Armstrong Robotics. We hung out with Juan too.';
+    const text = 'My cousin Marcus works at Vanguard Robotics. We hung out with Juan too.';
     const entities = [
       { surface: 'Marcus', normalized: 'marcus', type: 'PERSON' as const, confidence: 0.8, source: 'test' },
-      { surface: 'Armstrong Robotics', normalized: 'armstrong robotics', type: 'ORGANIZATION' as const, confidence: 0.85, source: 'test' },
+      { surface: 'Vanguard Robotics', normalized: 'vanguard robotics', type: 'ORGANIZATION' as const, confidence: 0.85, source: 'test' },
       { surface: 'Juan', normalized: 'juan', type: 'PERSON' as const, confidence: 0.75, source: 'test' },
     ];
     const relationships = [
@@ -77,7 +77,7 @@ describe('relationshipDiscovery', () => {
 
     expect(objects).toContain('Marcus');
     expect(objects).toContain('Juan');
-    expect(objects.some((o) => /Armstrong Robotics/i.test(o))).toBe(true);
+    expect(objects.some((o) => /Vanguard Robotics/i.test(o))).toBe(true);
     expect(objects).not.toContain('friend');
     expect(objects).not.toContain('coworker');
     expect(objects).not.toContain('cousin');
@@ -91,7 +91,7 @@ describe('relationshipKnowledgeService', () => {
     const result = lexicalAnalyzerService.analyzeMessage({
       userId: 'u1',
       messageId: 'm1',
-      text: 'My cousin Marcus works at Armstrong Robotics. We hung out with Juan too.',
+      text: 'My cousin Marcus works at Vanguard Robotics. We hung out with Juan too.',
     });
     const knowledge = relationshipKnowledgeService.buildFromLexical(result);
     const endpoints = [
@@ -106,7 +106,7 @@ describe('relationshipKnowledgeService', () => {
     expect(knowledge.entityKnowledge['Marcus']?.scopes).toContain('FAMILY');
     expect(objects).toContain('Marcus');
     expect(objects).toContain('Juan');
-    expect(endpoints.some((name) => /Armstrong Robotics/i.test(String(name)))).toBe(true);
+    expect(endpoints.some((name) => /Vanguard Robotics/i.test(String(name)))).toBe(true);
     expect(objects).not.toContain('friend');
     expect(objects).not.toContain('coworker');
   });

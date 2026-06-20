@@ -150,7 +150,7 @@ export function EntityCorrectionMenu({
       <label className="block text-[10px] text-white/40">Set parent entity</label>
       <input
         data-testid="entity-correction-parent-input"
-        placeholder="e.g. Armstrong Robotics"
+        placeholder="e.g. Vanguard Robotics"
         defaultValue={span.parentEntityName ?? ''}
         className="w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-white text-xs mb-1"
         onKeyDown={(e) => {

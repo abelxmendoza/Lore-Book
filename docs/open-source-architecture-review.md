@@ -48,7 +48,7 @@ A short, honest baseline — everything below is verified in code.
 - **Wiring gaps:** `entity_conflicts` has **no application writer**; the resolution dashboard may show empty conflicts.
 
 ### 1.4 Temporal intelligence
-- **Fragmented.** `date-fns` is used for math/formatting only. Relative NL dates ("today/yesterday/last year/when I worked at Armstrong") are resolved by **4+ independent regex engines**: `utils/temporalAnchorResolver.ts` (solid, chat windows), `services/timeEngine.ts`, `knowledgeTypeEngineService.ts`, `semanticExtractionService.ts`, `essenceRefinementEngine.ts`, `ruleBasedFactExtraction.ts`.
+- **Fragmented.** `date-fns` is used for math/formatting only. Relative NL dates ("today/yesterday/last year/when I worked at Vanguard") are resolved by **4+ independent regex engines**: `utils/temporalAnchorResolver.ts` (solid, chat windows), `services/timeEngine.ts`, `knowledgeTypeEngineService.ts`, `semanticExtractionService.ts`, `essenceRefinementEngine.ts`, `ruleBasedFactExtraction.ts`.
 - **Two temporal-scope enums** (`MOMENT|PERIOD|ONGOING|UNKNOWN` vs `PAST|PRESENT|FUTURE|ONGOING`). **No chrono-node / Duckling / Luxon.** Event extraction often relies on entry metadata dates, not text.
 
 ### 1.5 Memory lifecycle & retrieval
@@ -126,7 +126,7 @@ Fit = strategic value of the *idea* to LoreBook (1–5). Complexity = integratio
 
 **What it is.** Facebook's probabilistic NL parser (Haskell) for dates, times, durations, ranges, numbers. Runs as a **separate service**.
 
-**Where it overlaps LoreBook.** Squarely on a real, painful gap: LoreBook resolves "today / yesterday / last year / when I worked at Armstrong" across **4+ duplicated regex engines** with **two incompatible scope enums** and no shared library. This is textbook reinvention.
+**Where it overlaps LoreBook.** Squarely on a real, painful gap: LoreBook resolves "today / yesterday / last year / when I worked at Vanguard" across **4+ duplicated regex engines** with **two incompatible scope enums** and no shared library. This is textbook reinvention.
 
 **Should LoreBook integrate Duckling, or keep building internally?** *Neither extreme.* Keep building the **domain-specific** parts internally (entity-anchored windows like "when Sol and I…", employment-era resolution) — Duckling can't do those. But **stop hand-rolling generic relative-date parsing**.
 

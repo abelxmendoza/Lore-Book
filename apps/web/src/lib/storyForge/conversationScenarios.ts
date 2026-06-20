@@ -41,7 +41,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       {
         role: 'user',
         content:
-          'Marcus mentioned Armstrong Robotics might have a field deployment tech opening — wondering if it fits my trajectory.',
+          'Marcus mentioned Vanguard Robotics might have a field deployment tech opening — wondering if it fits my trajectory.',
       },
       {
         role: 'assistant',
@@ -156,7 +156,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       {
         role: 'user',
         content:
-          'I nailed the Armstrong Robotics demo yesterday. Marcus said it was the clearest technical story he has heard from me.',
+          'I nailed the Vanguard Robotics demo yesterday. Marcus said it was the clearest technical story he has heard from me.',
       },
       {
         role: 'assistant',
@@ -164,7 +164,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
       {
         role: 'user',
-        content: 'Bump my public speaking skill confidence and link Marcus and Armstrong to this moment.',
+        content: 'Bump my public speaking skill confidence and link Marcus and Vanguard to this moment.',
       },
     ],
   },
@@ -202,7 +202,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       {
         role: 'user',
         content:
-          'Marcus walked me through how he scopes deployments at Armstrong Robotics. It felt more mentor than friend today.',
+          'Marcus walked me through how he scopes deployments at Vanguard Robotics. It felt more mentor than friend today.',
       },
       {
         role: 'assistant',
@@ -221,7 +221,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       {
         role: 'user',
         content:
-          'Jamie pushed the last commit — our Northwind Labs project is live. Marcus brought Armstrong people to the launch call.',
+          'Jamie pushed the last commit — our Northwind Labs project is live. Marcus brought Vanguard people to the launch call.',
       },
       {
         role: 'assistant',
@@ -254,7 +254,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
   },
   {
     id: 'work-boundary',
-    title: 'Saying no at Armstrong',
+    title: 'Saying no at Vanguard',
     subtitle: 'Career · identity',
     domains: ['career', 'identity', 'health'],
     description: 'Setting a boundary after burnout at work.',
@@ -263,7 +263,7 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       {
         role: 'user',
         content:
-          'I told my manager at Armstrong Robotics I cannot take another deployment this month. I was shaking but it felt right.',
+          'I told my manager at Vanguard Robotics I cannot take another deployment this month. I was shaking but it felt right.',
       },
       {
         role: 'assistant',

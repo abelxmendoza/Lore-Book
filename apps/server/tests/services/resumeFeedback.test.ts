@@ -14,7 +14,7 @@ const abelResume: ParsedResume = {
       isCurrent: true,
     },
     {
-      company: 'Armstrong Robotics',
+      company: 'Vanguard Robotics',
       title: 'Robotics Deployment Technician',
       startDate: '2025-01-01',
       endDate: '2025-12-01',

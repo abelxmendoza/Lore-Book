@@ -35,7 +35,7 @@ export function buildContextRuleSession(fullText: string): ContextRuleSession {
   const fullTextLower = fullText.toLowerCase();
   return {
     fullTextLower,
-    hasWorkOrg: /\b(?:robotics|armstrong|employer|worked at|with gary|with jeff|robot tech|old job)\b/i.test(
+    hasWorkOrg: /\b(?:robotics|vanguard|employer|worked at|with gary|with jeff|robot tech|old job)\b/i.test(
       fullTextLower
     ),
   };
@@ -91,7 +91,7 @@ export function applyContextRules(
     confidenceDelta += 0.04;
   }
 
-  // "worked at Armstrong Robotics" → EMPLOYER
+  // "worked at Vanguard Robotics" → EMPLOYER
   if (/worked\s+at/i.test(window.before) && type === 'ORGANIZATION') {
     subtype = 'EMPLOYER';
     rulesFired.push('employer_worked_at');
@@ -180,10 +180,10 @@ export function applyContextRules(
     evidence.push('school context nearby');
   }
 
-  if (/old job/i.test(ctx) && /^Armstrong$/i.test(window.match)) {
+  if (/old job/i.test(ctx) && /^Vanguard$/i.test(window.match)) {
     type = 'ORGANIZATION';
     subtype = 'WORKPLACE';
-    rulesFired.push('workplace_armstrong_context');
+    rulesFired.push('workplace_vanguard_context');
     needsReview = true;
     confidenceDelta += 0.04;
   }

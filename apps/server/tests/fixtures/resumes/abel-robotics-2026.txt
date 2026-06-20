@@ -41,7 +41,7 @@ and known-good reference hardware (“golden boards”)
 • Assisted with FPGA programming, board-level validation, and integration testing for industrial communication and
 supervisory control systems
 Robotics Deployment Technician Jan 2025 – Dec 2025
-Armstrong Robotics — Hollywood, CA
+Vanguard Robotics — Hollywood, CA
 • Maintained 24/7 deployment of an autonomous robotic system in a high-volume production environment as the sole
 on-site technical owner
 • Assembled and integrated new hardware components to improve system autonomy and operational reliability

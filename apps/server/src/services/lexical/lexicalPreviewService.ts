@@ -58,7 +58,7 @@ function filterNoiseSpans(spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
     return true;
   });
 
-  // Drop PERSON spans that overlap an ORGANIZATION (e.g. "Armstrong Robotics").
+  // Drop PERSON spans that overlap an ORGANIZATION (e.g. "Vanguard Robotics").
   const orgSpans = filtered.filter((s) => s.type === 'ORGANIZATION');
   return filtered.filter((s) => {
     if (s.type !== 'PERSON') return true;

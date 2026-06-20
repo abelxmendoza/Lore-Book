@@ -74,7 +74,7 @@ describe('workplaceInference — robotics fixture', () => {
   });
 
   it('marks organization and coworkers as known when in LoreBook', async () => {
-    mockOrgs = [{ id: 'org-1', name: 'Armstrong Robotics', type: 'company' }];
+    mockOrgs = [{ id: 'org-1', name: 'Vanguard Robotics', type: 'company' }];
     mockCharacters = [
       { id: 'char-gary', name: 'Gary', aliases: [] },
       { id: 'char-jeff', name: 'Jeff', aliases: [] },
@@ -101,7 +101,7 @@ describe('workplaceInference — robotics fixture', () => {
     assertSkillConfidenceGrowth(boosted, 8);
   });
 
-  it('does not treat Denny\'s as employer when Armstrong Robotics exists', async () => {
+  it('does not treat Denny\'s as employer when Vanguard Robotics exists', async () => {
     const history = await loadHistoryContext(USER);
     const result = inferWorkplaceAssociations(ROBOTICS_WORKPLACE_FIXTURE_TEXT, 'msg-2', history);
     const dennysEmployer = result.groups.find(
@@ -111,11 +111,11 @@ describe('workplaceInference — robotics fixture', () => {
     expect(result.ambiguities.some((a) => /deployment/i.test(a.code))).toBe(true);
   });
 
-  it('generates Armstrong Robotics community membership', async () => {
+  it('generates Vanguard Robotics community membership', async () => {
     const history = await loadHistoryContext(USER);
     const result = inferWorkplaceAssociations(ROBOTICS_WORKPLACE_FIXTURE_TEXT, 'msg-3', history);
     expect(
-      result.memoryReviewCandidates.some((c) => /Armstrong Robotics Community/i.test(c))
+      result.memoryReviewCandidates.some((c) => /Vanguard Robotics Community/i.test(c))
     ).toBe(true);
     expect(
       result.relationships.some((r) => r.relationshipType === 'member_of' && /Community/i.test(r.objectName))

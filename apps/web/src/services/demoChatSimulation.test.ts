@@ -83,7 +83,7 @@ describe('demoChatSimulation', () => {
     const history = [
       {
         role: 'user' as const,
-        content: 'Marcus mentioned Armstrong Robotics might have an opening',
+        content: 'Marcus mentioned Vanguard Robotics might have an opening',
       },
     ];
     const lore = compileChatLoreContext('What did he say about the role?', {
@@ -122,7 +122,7 @@ describe('demoChatSimulation', () => {
     const stages: string[] = [];
 
     const promise = simulateDemoChatSend({
-      message: 'Tell me about Marcus at Armstrong Robotics',
+      message: 'Tell me about Marcus at Vanguard Robotics',
       onStage: (stage) => stages.push(stage),
       onChunk: (chunk) => chunks.push(chunk),
     });
@@ -144,7 +144,7 @@ describe('demoChatSimulation', () => {
   });
 
   it('aligns demo response entities with compileChatLoreContext output', () => {
-    const message = 'I worked at Armstrong Robotics and trained in Muay Thai with Marcus';
+    const message = 'I worked at Vanguard Robotics and trained in Muay Thai with Marcus';
     const lore = compileChatLoreContext(message);
     const result = buildDemoChatResponse(message);
 

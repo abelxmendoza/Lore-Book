@@ -68,7 +68,7 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   L({ id: 'conflict_swung_on_him', literal: 'swung on him', type: 'CONFLICT', subtype: 'THREAT_EVENT', colorKey: 'event', confidenceBase: 0.86, requiresReview: true, priority: 31, contextRules: ['conflict_threat_review_first'] }),
   L({ id: 'time_last_night', literal: 'last night', type: 'TIME_PERIOD', subtype: 'RELATIVE', colorKey: 'time', confidenceBase: 0.88, requiresReview: true, priority: 30 }),
   L({ id: 'event_show', literal: 'show', type: 'EVENT', subtype: 'EVENT_OR_VENUE', colorKey: 'event', confidenceBase: 0.78, requiresReview: true, priority: 29 }),
-  L({ id: 'org_armstrong', literal: 'Armstrong', type: 'ORGANIZATION', subtype: 'WORKPLACE', colorKey: 'organization', confidenceBase: 0.82, requiresReview: true, priority: 28, contextRules: ['workplace_armstrong_context'] }),
+  L({ id: 'org_vanguard', literal: 'Vanguard', type: 'ORGANIZATION', subtype: 'WORKPLACE', colorKey: 'organization', confidenceBase: 0.82, requiresReview: true, priority: 28, contextRules: ['workplace_vanguard_context'] }),
 
   // ── Friendship / music scene ───────────────────────────────────────────────
   L({ id: 'emotion_never_had_friends', literal: 'never had friends like him', literalVariants: ['never had any other friends like him'], type: 'EMOTIONAL_SIGNIFICANCE', subtype: 'IRREPLACEABILITY', colorKey: 'emotional_significance', confidenceBase: 0.93, requiresReview: true, priority: 24 }),

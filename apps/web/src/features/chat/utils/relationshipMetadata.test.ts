@@ -18,7 +18,7 @@ describe('extractRelationshipGroups', () => {
           },
           {
             scope: 'PROFESSIONAL',
-            entityNames: ['Armstrong Robotics'],
+            entityNames: ['Vanguard Robotics'],
             confidence: 0.85,
           },
         ],
@@ -28,7 +28,7 @@ describe('extractRelationshipGroups', () => {
     expect(groups).toHaveLength(2);
     expect(groups[0].scope).toBe('FAMILY');
     expect(groups[0].entityNames).toEqual(['Marcus', 'Grandma Rose']);
-    expect(groups[1].entityNames).toEqual(['Armstrong Robotics']);
+    expect(groups[1].entityNames).toEqual(['Vanguard Robotics']);
   });
 
   it('filters empty groups and missing metadata', () => {
@@ -82,7 +82,7 @@ describe('collectThreadRelationshipGroups', () => {
           ontology_enrichment: {
             relationship_groups: [
               { scope: 'FAMILY', entityNames: ['Grandma Rose'] },
-              { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'] },
+              { scope: 'PROFESSIONAL', entityNames: ['Vanguard Robotics'] },
             ],
           },
         },
@@ -92,6 +92,6 @@ describe('collectThreadRelationshipGroups', () => {
     expect(groups).toHaveLength(2);
     const family = groups.find((g) => g.scope === 'FAMILY');
     expect(family?.entityNames).toEqual(['Marcus', 'Grandma Rose']);
-    expect(groups.find((g) => g.scope === 'PROFESSIONAL')?.entityNames).toEqual(['Armstrong Robotics']);
+    expect(groups.find((g) => g.scope === 'PROFESSIONAL')?.entityNames).toEqual(['Vanguard Robotics']);
   });
 });

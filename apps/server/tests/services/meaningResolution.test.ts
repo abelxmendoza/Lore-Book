@@ -136,8 +136,8 @@ describe('meaningResolutionService', () => {
   });
 
   it('detects past work vs present work', () => {
-    const past = resolveTemporalContext('I worked at Armstrong Robotics.', lexicalAnalyzerService.analyzeMessage({ ...base, text: 'I worked at Armstrong Robotics.' }));
-    const present = resolveTemporalContext('I work at Armstrong Robotics.', lexicalAnalyzerService.analyzeMessage({ ...base, text: 'I work at Armstrong Robotics.' }));
+    const past = resolveTemporalContext('I worked at Vanguard Robotics.', lexicalAnalyzerService.analyzeMessage({ ...base, text: 'I worked at Vanguard Robotics.' }));
+    const present = resolveTemporalContext('I work at Vanguard Robotics.', lexicalAnalyzerService.analyzeMessage({ ...base, text: 'I work at Vanguard Robotics.' }));
     expect(past.defaultStatus).toBe('past');
     expect(present.defaultStatus).toBe('present');
   });
@@ -193,7 +193,7 @@ describe('meaningResolutionService', () => {
               eq: vi.fn().mockReturnValue({
                 eq: vi.fn().mockReturnValue({
                   ilike: vi.fn().mockResolvedValue({
-                    data: [{ fact: 'Works at Armstrong Robotics' }],
+                    data: [{ fact: 'Works at Vanguard Robotics' }],
                   }),
                 }),
               }),

@@ -165,7 +165,7 @@ function domainsForContent(content: string, scenario: ConversationScenario | nul
   const base = scenario?.domains ?? [];
   const extra: StoryDomain[] = [];
   if (/romantic|partner|love|alex|kelly/i.test(content)) extra.push('romance');
-  if (/marcus|armstrong|career|job|mentor/i.test(content)) extra.push('career');
+  if (/marcus|vanguard|career|job|mentor/i.test(content)) extra.push('career');
   if (/t[ií]a|family|abuela/i.test(content)) extra.push('family');
   if (/san diego|mission beach|move/i.test(content)) extra.push('place');
   if (/northwind|crew|group|jamie/i.test(content)) extra.push('social');

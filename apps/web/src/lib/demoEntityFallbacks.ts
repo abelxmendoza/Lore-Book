@@ -24,9 +24,9 @@ export const DEMO_ENTITY_FALLBACKS: DemoEntityFallback[] = [
   { pattern: /\bsan diego\b/i, id: 'demo-loc-sd', name: 'San Diego', type: 'location' },
   { pattern: /\bmission beach\b/i, id: 'demo-loc-mission-beach', name: 'Mission Beach', type: 'location' },
   {
-    pattern: /\barmstrong robotics\b/i,
-    id: 'demo-org-armstrong',
-    name: 'Armstrong Robotics',
+    pattern: /\bvanguard robotics\b/i,
+    id: 'demo-org-vanguard',
+    name: 'Vanguard Robotics',
     type: 'organization',
   },
   {

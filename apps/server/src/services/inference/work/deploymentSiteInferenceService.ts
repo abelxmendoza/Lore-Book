@@ -2,7 +2,7 @@
  * Deployment site inference — "at Denny's in Hollywood".
  *
  * Hard rule: when an employer organization is already established in the same
- * message (e.g. Armstrong Robotics), the customer venue is a DEPLOYMENT SITE,
+ * message (e.g. Vanguard Robotics), the customer venue is a DEPLOYMENT SITE,
  * NOT a second employer.
  */
 import type {

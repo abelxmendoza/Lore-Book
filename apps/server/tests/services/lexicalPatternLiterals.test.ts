@@ -32,7 +32,7 @@ describe('PreviewPattern explicit literals', () => {
   });
 
   it('literal and regex patterns both produce candidates', () => {
-    const text = 'best friend worked at Armstrong Robotics yesterday';
+    const text = 'best friend worked at Vanguard Robotics yesterday';
     const candidates = extractPatternCandidates(text);
     expect(candidates.some((c) => c.patternLiteral === 'best friend')).toBe(true);
     expect(candidates.some((c) => c.patternRegexSource?.includes('worked'))).toBe(true);

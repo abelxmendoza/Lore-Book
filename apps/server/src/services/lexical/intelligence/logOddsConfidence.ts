@@ -17,7 +17,7 @@ export const RULE_LOG_ODDS: Record<string, number> = {
   activity_bike_repair: 0.22,
   activity_gardening: 0.2,
   past_employment_old_job: 0.28,
-  workplace_armstrong_context: 0.26,
+  workplace_vanguard_context: 0.26,
   conflict_threat_review_first: 0.22,
   relationship_estranged_father: 0.3,
   identity_collision_event: 0.34,

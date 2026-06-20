@@ -8,7 +8,7 @@ describe('RelationshipGroupsRow', () => {
       <RelationshipGroupsRow
         groups={[
           { scope: 'FAMILY', entityNames: ['Marcus', 'Grandma Rose'], confidence: 0.9 },
-          { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'] },
+          { scope: 'PROFESSIONAL', entityNames: ['Vanguard Robotics'] },
         ]}
       />
     );
@@ -17,7 +17,7 @@ describe('RelationshipGroupsRow', () => {
     expect(screen.getByText('family')).toBeInTheDocument();
     expect(screen.getByText(/Marcus \+1/)).toBeInTheDocument();
     expect(screen.getByText('work')).toBeInTheDocument();
-    expect(screen.getByText('Armstrong Robotics')).toBeInTheDocument();
+    expect(screen.getByText('Vanguard Robotics')).toBeInTheDocument();
   });
 
   it('returns null when groups are empty', () => {
