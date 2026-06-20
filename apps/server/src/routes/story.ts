@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { compileBookOutline } from '../services/narrative/bookCompilerService';
+import { historyEngineService } from '../services/narrative/history';
 import { narrativeCompilerService } from '../services/narrative/narrativeCompilerService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
@@ -21,6 +22,31 @@ router.get(
     const ir = await narrativeCompilerService.compile(req.user!.id);
     res.json({ success: true, ir });
   })
+);
+
+/** GET /api/story/life-history — classified events, life chapters, turning points */
+router.get(
+  '/life-history',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const history = await historyEngineService.compile(req.user!.id);
+    res.json({ success: true, history });
+  }),
+);
+
+/** GET /api/story/life-chapters */
+router.get(
+  '/life-chapters',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const history = await historyEngineService.compile(req.user!.id);
+    res.json({
+      success: true,
+      generatedAt: history.generatedAt,
+      chapters: history.chapters,
+      eventCount: history.eventCount,
+    });
+  }),
 );
 
 /** GET /api/story/current-chapter */

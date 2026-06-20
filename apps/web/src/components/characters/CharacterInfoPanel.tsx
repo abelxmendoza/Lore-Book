@@ -20,6 +20,8 @@ import { fetchJson } from '../../lib/api';
 import type { Character } from './CharacterProfileCard';
 import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel';
+import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
+import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 
 type Relationship = {
@@ -75,6 +77,9 @@ export type CharacterInfoPanelProps = {
   provenance: { mentionCount?: number; firstMentionedAt?: string; lastMentionedAt?: string; sourceUtterances?: { content: string; created_at: string }[] } | null;
   isMockDataEnabled: boolean;
   openCharacterByRelationship: (rel: Relationship) => void;
+  loreProfile?: CharacterLoreProfile | null;
+  loreProfileLoading?: boolean;
+  onOpenCharacterById?: (characterId: string) => void;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -109,6 +114,9 @@ export function CharacterInfoPanel({
   provenance,
   isMockDataEnabled,
   openCharacterByRelationship,
+  loreProfile,
+  loreProfileLoading = false,
+  onOpenCharacterById,
 }: CharacterInfoPanelProps) {
   const meta = (editedCharacter.metadata ?? {}) as Record<string, unknown>;
   const standingOverride = (meta.standing_override as { tier?: string } | null)?.tier ?? null;
@@ -227,6 +235,15 @@ export function CharacterInfoPanel({
           )}
         </div>
       </section>
+
+      {/* ── Skills, hobbies, groups, people (mention-derived lore) ───── */}
+      <CharacterLoreProfileSection
+        profile={loreProfile ?? null}
+        loading={loreProfileLoading}
+        characterFirstName={editedCharacter.name.split(' ')[0]}
+        onAskInChat={askInChat}
+        onOpenCharacter={onOpenCharacterById}
+      />
 
       {/* ── 3. Your relationship (romantic / close) ──────────────────── */}
       {relationship && (

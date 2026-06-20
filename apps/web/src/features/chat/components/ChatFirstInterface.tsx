@@ -159,7 +159,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   }, [focusedEntityId, threadEntities, chatFocus]);
 
   // Wrap sendMessage: clear the greeting and track analytics before sending.
-  const handleSubmit = (msg: string, certifiedEntities?: CertifiedEntityMatch[]) => {
+  const handleSubmit = (
+    msg: string,
+    certifiedEntities?: CertifiedEntityMatch[],
+    previewCorrections?: import('../../../lib/entityCorrectionTypes').CorrectedPreviewSpan[]
+  ) => {
     if (greetingMessage) {
       analytics.track('greeting_responded', {
         threadId: activeThreadId,
@@ -170,6 +174,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     sendMessage(msg, {
       ...chatSendOptions,
       composerEntities: certifiedEntities?.length ? certifiedEntities : chatSendOptions.composerEntities,
+      previewCorrections,
     });
   };
 

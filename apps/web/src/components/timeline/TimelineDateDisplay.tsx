@@ -3,6 +3,32 @@
  */
 
 import { formatEventDateShort, formatEventTime } from './timelineEventUtils';
+import type { TimePrecision } from '../../types/timelineV2';
+
+/**
+ * Honest occurrence label from temporal precision/confidence. Surfaces uncertainty
+ * instead of presenting every date as exact:
+ *   approximate / very low confidence → "date unknown"
+ *   year precision                    → "around YYYY"
+ *   month precision                   → "around MON YYYY"
+ * Returns null when the date is precise enough to show as-is.
+ */
+export function occurrenceUncertaintyLabel(
+  iso: string,
+  precision?: TimePrecision,
+  confidence?: number,
+): string | null {
+  if (precision === 'approximate' || (typeof confidence === 'number' && confidence < 0.2)) {
+    return 'date unknown';
+  }
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  if (precision === 'year') return `around ${d.getFullYear()}`;
+  if (precision === 'month') {
+    return `around ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+  }
+  return null;
+}
 
 export const TIMELINE_RULER_AXIS_H = 56;
 
@@ -140,13 +166,20 @@ export function TimelineInlineDate({
   iso,
   showTime = true,
   size = 'md',
+  precision,
+  confidence,
 }: {
   iso: string;
   showTime?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  precision?: TimePrecision;
+  confidence?: number;
 }) {
   const parsed = parseTimelineDate(iso);
-  const time = showTime ? formatEventTime(iso) : null;
+  // Suppress the exact clock time when occurrence is uncertain — an "around 2018"
+  // memory has no meaningful minute.
+  const uncertainty = occurrenceUncertaintyLabel(iso, precision, confidence);
+  const time = showTime && !uncertainty ? formatEventTime(iso) : null;
   const box =
     size === 'lg'
       ? 'min-w-[3.25rem] py-1.5 px-2'
@@ -169,7 +202,13 @@ export function TimelineInlineDate({
         <div className="min-w-0 hidden sm:block">
           <p className="text-sm font-bold text-white leading-tight">{formatEventDateShort(iso)}</p>
           {time && <p className="text-[10px] text-white/45 font-mono">{time}</p>}
+          {uncertainty && (
+            <p className="text-[10px] text-amber-300/80 italic leading-tight">{uncertainty}</p>
+          )}
         </div>
+      )}
+      {uncertainty && size === 'sm' && (
+        <span className="text-[9px] text-amber-300/80 italic shrink-0">{uncertainty}</span>
       )}
     </div>
   );

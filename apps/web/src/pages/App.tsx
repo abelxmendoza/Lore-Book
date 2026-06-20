@@ -1,6 +1,6 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { PlusCircle, Menu } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -71,6 +71,7 @@ import { HomeScreen } from '../components/HomeScreen';
 import { PhotoGallery } from '../components/PhotoGallery';
 import { getSurfaceFromRoute, getRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
 import { isLorebookLibraryRoute } from '../lib/lorebookLibrary';
+import { scrollToTop } from '../lib/scrollToTop';
 
 
 
@@ -108,6 +109,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     [dispatch]
   );
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const mainContentRef = useRef<HTMLElement>(null);
 
   // Keep Redux in sync with URL (for selectors, e2e, keyboard shortcuts)
   useLayoutEffect(() => {
@@ -115,6 +117,11 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       dispatch(setActiveSurfaceAction(activeSurface));
     }
   }, [activeSurface, reduxActiveSurface, dispatch]);
+
+  // Mobile + book surfaces scroll inside <main> and nested panels — reset on route change.
+  useLayoutEffect(() => {
+    scrollToTop({ mainEl: mainContentRef.current });
+  }, [location.pathname, location.search]);
 
   // Listen for navigation events from subscription components
   useEffect(() => {
@@ -353,6 +360,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       >
       <DemoModeBanner />
       <main
+        ref={mainContentRef}
         id="main-content"
         className={`flex-1 min-h-0 text-white overflow-x-hidden flex flex-col ${
           isViewportLocked
@@ -416,14 +424,14 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
                           </div>
                         )}
                         {activeSurface === 'photos' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6 space-y-6">
+                          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6 space-y-6">
                             <PhotoGallery />
                             <PhotoAlbum />
                           </div>
                         )}
                         {/* Memories now live inside the Life Log surface. */}
                         {activeSurface === 'perceptions' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-x-hidden overflow-y-auto p-3 sm:p-6 min-w-0">
+                          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-x-hidden overflow-y-auto p-3 sm:p-6 min-w-0">
                             <PerceptionsView showCreateButton={true} />
                           </div>
                         )}
@@ -442,22 +450,22 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'pricing' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
             <PricingPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
           </div>
         )}
         {activeSurface === 'security' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacySecurityPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
           </div>
         )}
         {activeSurface === 'privacy-settings' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacySettings onBack={() => setActiveSurface('security')} />
           </div>
         )}
         {activeSurface === 'privacy-policy' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacyPolicy onBack={() => setActiveSurface('security')} />
           </div>
         )}
@@ -467,7 +475,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'love' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <LoveAndRelationshipsView />
           </div>
         )}
@@ -477,7 +485,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'gaps' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
+                          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
                             <KnowledgeGapDashboard />
                           </div>
                         )}
@@ -488,7 +496,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'continuity' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <ContinuityDashboard />
           </div>
         )}

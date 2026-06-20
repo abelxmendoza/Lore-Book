@@ -11,6 +11,7 @@ export const LandingFooter = () => {
   const footerLinks = {
     Product: [
       { path: '/features', label: 'Features' },
+      { path: '/lore', label: 'Lore' },
       { path: '/about', label: 'About' },
       { path: '/login', label: 'Sign In' },
     ],

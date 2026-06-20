@@ -71,6 +71,8 @@ export interface ResolvedSkill extends ResolvedBase {
   usageFrequencyHint: string;
   enjoymentHint: string;
   loreContext: string;
+  durationHint?: string;
+  startDateHint?: string;
 }
 
 export interface ResolvedPlace extends ResolvedBase {
@@ -84,6 +86,7 @@ export interface ResolvedEvent extends ResolvedBase {
   subject?: string;
   cue: string;
   temporalStatus?: TemporalStatus;
+  needsReview?: boolean;
 }
 
 export interface ResolvedReference {
@@ -93,6 +96,8 @@ export interface ResolvedReference {
   relation?: string;
   confidence: number;
   resolutionReason: string;
+  needsResolution?: boolean;
+  requiresConfirmation?: boolean;
 }
 
 export interface MeaningAmbiguity {
@@ -129,6 +134,10 @@ export interface TemporalContext {
     status: TemporalStatus;
     cue: string;
   }>;
+  /** Ongoing skill/training status when distinct from narrative event time. */
+  trainingStatus?: TemporalStatus;
+  startHint?: string;
+  durationHint?: string;
 }
 
 export type OntologyActionKind =
@@ -136,6 +145,20 @@ export type OntologyActionKind =
   | 'distinct_from_self'
   | 'merge_into_self'
   | 'add_skill'
+  | 'add_person'
+  | 'add_place'
+  | 'add_event'
+  | 'review_conflict'
+  | 'identify_unresolved'
+  | 'create_street_community'
+  | 'mark_neighbor_candidate'
+  | 'add_hobby_candidate'
+  | 'add_inferred_skill'
+  | 'mark_social_contact'
+  | 'create_group'
+  | 'associate_group'
+  | 'add_group_event'
+  | 'review_club_details'
   | 'set_relationship'
   | 'resolve_duplicate'
   | 'navigate_surface'

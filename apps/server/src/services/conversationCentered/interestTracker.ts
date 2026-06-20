@@ -68,7 +68,8 @@ export class InterestTracker {
     userId: string,
     detected: DetectedInterest,
     entryId?: string,
-    messageId?: string
+    messageId?: string,
+    relatedCharacterIds?: string[],
   ): Promise<string> {
     try {
       const normalizedName = interestDetector.normalizeInterestName(detected.interest_name);
@@ -89,6 +90,9 @@ export class InterestTracker {
         // Update evidence quotes (keep last 10)
         const updatedQuotes = [...(existing.evidence_quotes || []), detected.evidence].slice(-10);
         const updatedSourceIds = [...new Set([...(existing.source_entry_ids || []), entryId].filter(Boolean))];
+        const mergedCharacterIds = [
+          ...new Set([...(existing.related_character_ids || []), ...(relatedCharacterIds ?? [])]),
+        ];
 
         const { data: updated, error } = await supabaseAdmin
           .from('interests')
@@ -98,6 +102,7 @@ export class InterestTracker {
             last_mentioned_at: new Date().toISOString(),
             evidence_quotes: updatedQuotes,
             source_entry_ids: updatedSourceIds,
+            related_character_ids: mergedCharacterIds.length > 0 ? mergedCharacterIds : existing.related_character_ids,
             updated_at: new Date().toISOString()
           })
           .eq('id', existing.id)
@@ -153,6 +158,7 @@ export class InterestTracker {
             last_mentioned_at: new Date().toISOString(),
             evidence_quotes: [detected.evidence],
             source_entry_ids: entryId ? [entryId] : [],
+            related_character_ids: relatedCharacterIds ?? [],
             description: detected.context,
             tags: detected.interest_category ? [detected.interest_category] : [],
             metadata: {

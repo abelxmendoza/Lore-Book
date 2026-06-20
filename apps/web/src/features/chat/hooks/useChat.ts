@@ -26,6 +26,7 @@ import { analytics } from '../../../lib/monitoring';
 import { useAppDispatch } from '../../../store/hooks';
 import { recordChatFocusMessage } from '../../../store/slices/selectionSlice';
 import type { ChatFocus } from '../../../types/chatFocus';
+import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
@@ -43,6 +44,7 @@ export type ChatSendOptions = {
   };
   threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
   composerEntities?: CertifiedEntityMatch[];
+  previewCorrections?: CorrectedPreviewSpan[];
   chatFocus?: ChatFocus;
 };
 
@@ -643,7 +645,8 @@ export const useChat = () => {
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,
         options?.composerEntities,
         isGuest && guestState?.guestId ? { guestId: guestState.guestId } : undefined,
-        options?.chatFocus
+        options?.chatFocus,
+        options?.previewCorrections
       );
     } catch (error) {
       if (progressIntervalRef.current) {

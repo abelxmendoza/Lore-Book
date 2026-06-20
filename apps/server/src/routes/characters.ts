@@ -2394,6 +2394,24 @@ router.get('/:id/knowledge-base', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
+// GET /api/characters/:id/lore-profile
+// Skills, hobbies, interests, groups, and people associations from mention-derived lore.
+router.get('/:id/lore-profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { characterLoreProfileService } = await import('../services/characters/characterLoreProfileService');
+    const profile = await characterLoreProfileService.compile(userId, characterId);
+    if (!profile) return res.status(404).json({ error: 'Character not found' });
+    res.json({ success: true, profile });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character lore profile');
+    res.status(500).json({ error: 'Failed to get character lore profile' });
+  }
+});
+
 // GET /api/characters/:id/facts
 // Returns all known facts about this character extracted from conversations.
 // Facts are grouped by category and include confidence, status, and update history.

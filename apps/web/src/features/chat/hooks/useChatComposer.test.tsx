@@ -85,7 +85,7 @@ describe('useChatComposer', () => {
       result.current.handleSubmit();
     });
 
-    expect(onSubmit).toHaveBeenCalledWith('Tell me about Abel', [match]);
+    expect(onSubmit).toHaveBeenCalledWith('Tell me about Abel', [match], []);
     expect(result.current.input).toBe('');
     expect(store.getState().composer.draftText).toBe('');
   });
@@ -120,6 +120,6 @@ describe('useChatComposer', () => {
       result.current.handleSubmit();
     });
 
-    expect(onSubmit).toHaveBeenCalledWith('Abel', []);
+    expect(onSubmit).toHaveBeenCalledWith('Abel', [], []);
   });
 });

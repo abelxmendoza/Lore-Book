@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 
 import { AuthGate } from './AuthGate';
+import { WelcomeSplash } from './common/WelcomeSplash';
 import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
 // Guest/demo runtime: needs neither auth nor terms — this is the early-return
@@ -45,13 +46,14 @@ describe('AuthGate — welcome splash on guest/demo entry', () => {
     resetWelcomeSplash();
   });
 
-  it('mounts the welcome splash on the guest/demo path', () => {
+  it('shows the global welcome splash when guest enters the app', () => {
     render(
-      <BrowserRouter>
+      <MemoryRouter initialEntries={['/home']}>
+        <WelcomeSplash />
         <AuthGate>
           <div data-testid="app-content">App Content</div>
         </AuthGate>
-      </BrowserRouter>
+      </MemoryRouter>
     );
 
     // Both the splash and the app content render (splash overlays the app).

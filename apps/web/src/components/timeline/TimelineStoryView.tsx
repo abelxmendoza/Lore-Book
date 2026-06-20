@@ -16,6 +16,7 @@ import type { ChronologyEntry } from '../../types/timelineV2';
 import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineMonthBanner } from './TimelineDateDisplay';
+import { LifeHistoryChaptersPanel } from '../narrative/LifeHistoryChaptersPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,6 +268,10 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
           {isMobile && (
             <p className="text-xs text-white/40 mt-1">Tap a chapter to read</p>
           )}
+        </div>
+
+        <div className="p-3 border-b border-white/8">
+          <LifeHistoryChaptersPanel compact maxChapters={3} />
         </div>
 
         {sortedArcs.map(arc => (

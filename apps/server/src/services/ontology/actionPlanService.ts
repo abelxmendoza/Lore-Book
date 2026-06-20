@@ -62,6 +62,137 @@ function mapOntologyAction(action: OntologyActionCandidate): ChatSuggestedAction
         },
         successMessage: `Skill "${action.payload.skillName}" queued for your profile.`,
       };
+    case 'add_person':
+      return {
+        id: `add-person-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/characters/suggestions/materialize',
+        apiBody: { name: action.payload.name, source: 'meaning_resolution' },
+        successMessage: `Person "${action.payload.name}" queued for review.`,
+      };
+    case 'add_place':
+      return {
+        id: `add-place-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/places/suggestions/materialize',
+        apiBody: action.payload,
+        successMessage: `Place "${action.payload.name}" queued for review.`,
+      };
+    case 'add_event':
+      return {
+        id: `add-event-${String(action.payload.place ?? action.payload.eventKind).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/events/suggestions/materialize',
+        apiBody: action.payload,
+        successMessage: 'Event queued for review.',
+      };
+    case 'review_conflict':
+      return {
+        id: 'review-conflict-details',
+        label: action.label,
+        kind: 'navigate',
+        surface: 'memory-review',
+      };
+    case 'identify_unresolved':
+      return {
+        id: 'identify-unresolved-homie',
+        label: action.label,
+        kind: 'navigate',
+        surface: 'characters',
+      };
+    case 'create_street_community':
+      return {
+        id: `create-street-community-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/communities/suggestions/materialize',
+        apiBody: action.payload,
+        successMessage: 'Street community queued for review.',
+      };
+    case 'mark_neighbor_candidate':
+      return {
+        id: `neighbor-candidate-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/relationships/suggestions/neighbor',
+        apiBody: action.payload,
+        successMessage: 'Neighbor candidate queued for review.',
+      };
+    case 'add_hobby_candidate':
+      return {
+        id: `hobby-candidate-${String(action.payload.name)}-${String(action.payload.hobby)}`.toLowerCase().replace(/\s+/g, '-'),
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/skills/suggestions/hobby-candidate',
+        apiBody: action.payload,
+        successMessage: 'Hobby candidate queued for review.',
+      };
+    case 'add_inferred_skill':
+      return {
+        id: `inferred-skill-${String(action.payload.name)}-${String(action.payload.skill)}`.toLowerCase().replace(/\s+/g, '-'),
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/skills/suggestions/inferred',
+        apiBody: action.payload,
+        successMessage: 'Inferred skill queued for review.',
+      };
+    case 'mark_social_contact':
+      return {
+        id: `social-contact-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/relationships/suggestions/social-contact',
+        apiBody: action.payload,
+        successMessage: 'Social contact candidate queued for review.',
+      };
+    case 'create_group':
+      return {
+        id: `create-group-${String(action.payload.name).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/groups/suggestions/materialize',
+        apiBody: action.payload,
+        successMessage: 'Group candidate queued for review.',
+      };
+    case 'associate_group':
+      return {
+        id: `associate-group-${String(action.payload.groupName).toLowerCase().replace(/\s+/g, '-')}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/groups/suggestions/associate',
+        apiBody: action.payload,
+        successMessage: 'Group association queued for review.',
+      };
+    case 'add_group_event':
+      return {
+        id: `group-event-${String(action.payload.title).toLowerCase().replace(/\s+/g, '-').slice(0, 40)}`,
+        label: action.label,
+        kind: 'crud_confirm',
+        apiMethod: 'POST',
+        apiPath: '/api/events/suggestions/group-meetup',
+        apiBody: action.payload,
+        successMessage: 'Group event queued for review.',
+      };
+    case 'review_club_details':
+      return {
+        id: 'review-club-details',
+        label: action.label,
+        kind: 'navigate',
+        surface: 'memory-review',
+      };
     case 'set_relationship':
       return {
         id: `set-rel-${String(action.payload.role)}`,
@@ -133,14 +264,19 @@ export async function buildOntologySuggestedActions(
   return buildActionsFromMeaning(meaningOrMessage);
 }
 
-/** Phase 3→4: Planner receives resolved meaning only. */
-export function buildActionsFromMeaning(meaning: MeaningResolutionResult): ChatSuggestedAction[] {
+/** Map ontology action candidates → confirm-first UI chips. */
+export function buildActionsFromOntologyCandidates(
+  candidates: OntologyActionCandidate[]
+): ChatSuggestedAction[] {
   const actions: ChatSuggestedAction[] = [];
-
-  for (const candidate of meaning.ontologyActionCandidates) {
+  for (const candidate of candidates) {
     const mapped = mapOntologyAction(candidate);
     if (mapped) addUnique(actions, mapped);
   }
+  return actions.slice(0, 24);
+}
 
-  return actions.slice(0, 6);
+/** Phase 3→4: Planner receives resolved meaning (+ optional inference candidates). */
+export function buildActionsFromMeaning(meaning: MeaningResolutionResult): ChatSuggestedAction[] {
+  return buildActionsFromOntologyCandidates(meaning.ontologyActionCandidates);
 }

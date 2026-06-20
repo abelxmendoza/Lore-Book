@@ -6,6 +6,12 @@ import { resolveReferences } from '../../src/services/meaning/referenceResolutio
 import { resolveTemporalContext } from '../../src/services/meaning/temporalResolutionService';
 import { resolveFactuality } from '../../src/services/meaning/factualityResolutionService';
 import { buildActionsFromMeaning } from '../../src/services/ontology/actionPlanService';
+import {
+  assertMessyActionChips,
+  assertMessyMeaningSnapshot,
+  MESSY_SHOW_CONFLICT_KICKBOXING_ID,
+  MESSY_SHOW_CONFLICT_KICKBOXING_TEXT,
+} from '../fixtures/messyShowConflictKickboxing';
 import type { MeaningResolutionInput } from '../../src/services/meaning/meaningResolutionTypes';
 
 vi.mock('../../src/services/supabaseClient', () => ({
@@ -224,5 +230,33 @@ describe('meaningResolutionService', () => {
     const meaning = await resolve("Abel Mendoza is actually me but it's also my estranged father");
     const actions = buildActionsFromMeaning(meaning);
     expect(actions.length).toBeGreaterThan(0);
+  });
+});
+
+describe(`regression fixture: ${MESSY_SHOW_CONFLICT_KICKBOXING_ID}`, () => {
+  it('resolves messy show/conflict/kickboxing meaning snapshot', async () => {
+    const result = await resolve(MESSY_SHOW_CONFLICT_KICKBOXING_TEXT);
+    assertMessyMeaningSnapshot(result);
+  });
+
+  it('routes conflict memories to review queue only', async () => {
+    const result = await resolve(MESSY_SHOW_CONFLICT_KICKBOXING_TEXT);
+    const conflictMemories = result.memoryReviewCandidates.filter((c) =>
+      /fight|conflict|charlie|fasbender/i.test(c.claim)
+    );
+    expect(conflictMemories.length).toBeGreaterThan(0);
+    expect(conflictMemories.every((c) => c.requiresConfirmation)).toBe(true);
+  });
+
+  it('does not link Michael Fasbender to a celebrity entity', async () => {
+    const result = await resolve(MESSY_SHOW_CONFLICT_KICKBOXING_TEXT);
+    expect(result.resolvedEntities.some((e) => /fassbender/i.test(e.surface))).toBe(false);
+    expect(result.identityCollisions.some((c) => /celebrity|actor/i.test(c.name))).toBe(false);
+  });
+
+  it('produces ontology action chips from meaning resolution', async () => {
+    const result = await resolve(MESSY_SHOW_CONFLICT_KICKBOXING_TEXT);
+    const actions = buildActionsFromMeaning(result);
+    assertMessyActionChips(actions);
   });
 });

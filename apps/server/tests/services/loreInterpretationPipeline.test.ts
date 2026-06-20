@@ -8,6 +8,30 @@ const mockEnrichMeaning = vi.fn();
 const mockProcessMemory = vi.fn();
 const mockFrom = vi.fn();
 
+vi.mock('../../src/services/inference/inferenceAssociationService', () => ({
+  inferenceAssociationService: {
+    inferAndQueueReview: vi.fn().mockResolvedValue({
+      confidence: 0.5,
+      inferredPeople: [],
+      inferredGroups: [],
+      inferredCommunities: [],
+      inferredSkills: [],
+      inferredHobbies: [],
+      inferredRelationships: [],
+      inferredPlaces: [],
+      inferredEvents: [],
+      ambiguities: [],
+      actionCandidates: [],
+      memoryReviewCandidates: [],
+      messageId: 'msg-1',
+      userId: 'user-1',
+      rawText: '',
+      createdAt: new Date().toISOString(),
+    }),
+    validateInferredNotConfirmed: () => true,
+  },
+}));
+
 vi.mock('../../src/services/lexical/lexicalAnalyzerService', () => ({
   lexicalAnalyzerService: { analyzeMessage: (...args: unknown[]) => mockLexicalAnalyze(...args) },
 }));

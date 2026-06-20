@@ -10,6 +10,7 @@ import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { resolveCharacterIdByName } from './relationshipFoundationService';
 import { supabaseAdmin } from './supabaseClient';
+import { ingestResolvedEvent } from './narrativeSpine/narrativeSpineIngestion';
 
 export type EventRecoveryPattern = {
   key: string;
@@ -217,6 +218,8 @@ class EventRecoveryService {
         stats.skipped++;
         continue;
       }
+
+      ingestResolvedEvent(userId, resolvedId);
 
       for (const characterId of charIds) {
         const connectionNames = (pattern.people ?? []).filter((n) => !/^me$/i.test(n));

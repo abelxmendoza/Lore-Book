@@ -181,6 +181,7 @@ export function discoverEntities(text: string): DiscoveredEntity[] {
   // Glossary alias scan (longest-first; skip hint-only categories and time cues).
   for (const { alias, entry } of glossaryAliases()) {
     if (HINT_ONLY_CATEGORIES.has(entry.category) || entry.domain === 'TIME') continue;
+    if (entry.category === 'VENUE' && ['school', 'university', 'college', 'campus', 'classroom', 'gym', 'bar', 'restaurant', 'cafe', 'office'].includes(alias)) continue;
     if (t.includes(` ${alias} `) || t.includes(` ${alias}'s `)) {
       out.push({ surface: alias, name: titleCase(alias), domain: entry.domain, category: entry.category, subcategory: entry.subcategory, confidence: entry.confidence, reason: `glossary:${entry.domain}/${entry.category}` });
     }
@@ -348,6 +349,7 @@ export function inferRelationshipRole(text: string): string | undefined {
   if (/\b(grandfather|abuelo|grandpa)\b/.test(t)) return 'grandfather';
   if (/\b(brother|sister|sibling)\b/.test(t)) return 'sibling';
   if (/\b(estranged|estranged from)\b/.test(t)) return 'estranged';
+  if (/\b(is|was)\s+my\s+friend\b/.test(t) || /\bmy\s+friend\b/.test(t)) return 'friend';
   return undefined;
 }
 

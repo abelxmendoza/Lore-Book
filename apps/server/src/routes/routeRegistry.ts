@@ -157,6 +157,7 @@ import lifeArcRouter from './lifeArc';
 import lifeArcRecentRouter from './lifeArcRecent';
 import { lifeRouter } from './life';
 import { storyRouter } from './story';
+import { cognitionRouter } from './cognition';
 import { ontologyRouter } from './ontology';
 import { lexicalRouter } from './lexical';
 import { meaningRouter } from './meaning';
@@ -621,6 +622,12 @@ export const routeRegistry: RouteEntry[] = [
     router: storyRouter,
     classification: 'CORE_RUNTIME',
     description: 'Narrative IR — chapters, arcs, turning points, story surfaces',
+  },
+  {
+    path: '/api/cognition',
+    router: cognitionRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Cognition graph — nodes, edges, epistemic state, salience, life history',
   },
   {
     path: '/api/ontology',

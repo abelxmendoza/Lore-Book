@@ -120,7 +120,7 @@ export const ListTimelineView: React.FC<ListTimelineViewProps> = ({
                         openMemory(entry);
                       }}
                     >
-                      <TimelineInlineDate iso={entry.start_time} size="lg" showTime={false} />
+                      <TimelineInlineDate iso={entry.start_time} size="lg" showTime={false} precision={entry.time_precision} confidence={entry.time_confidence} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white/90 mb-2 line-clamp-3">{entry.content}</p>
                         {entry.timeline_names && entry.timeline_names.length > 0 && (

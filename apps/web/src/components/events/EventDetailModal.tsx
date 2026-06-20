@@ -23,6 +23,7 @@ import {
   epistemicLabel,
   formatEpistemicPercent,
 } from '../../lib/epistemicLabels';
+import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1677,6 +1678,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
             {/* ══ EVIDENCE ══ */}
             <TabsContent value="evidence" className="mt-0 p-5 sm:p-6 space-y-6">
+
+              <NarrativeProvenancePanel
+                sourceTable="resolved_events"
+                sourceId={eventData.id}
+                title="What evidence supports this event?"
+              />
 
               {/* Confidence */}
               {eventData.confidence_history && eventData.confidence_history.length > 0 ? (

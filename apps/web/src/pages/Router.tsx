@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthGate } from '../components/AuthGate';
+import { WelcomeSplash } from '../components/common/WelcomeSplash';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { ScrollToTopOnNavigate } from '../components/ScrollToTopOnNavigate';
 
 // Lazy load main app
 const App = lazy(() => import('./App'));
@@ -32,6 +34,7 @@ const Landing = lazy(() => import('../routes/Landing'));
 const Features = lazy(() => import('../routes/Features'));
 const Investors = lazy(() => import('../routes/Investors'));
 const About = lazy(() => import('../routes/About'));
+const Lore = lazy(() => import('../routes/Lore'));
 
 /** Legacy /search URLs → Timeline search tab */
 const SearchRedirect = () => {
@@ -65,6 +68,9 @@ const LazyRoute = ({ children }: { children: React.ReactNode }) => (
 
 export const Router = () => {
   return (
+    <>
+    <ScrollToTopOnNavigate />
+    <WelcomeSplash />
     <Routes>
       {/* Landing Pages - Public routes */}
       <Route
@@ -98,6 +104,14 @@ export const Router = () => {
             <About />
           </LazyRoute>
         } 
+      />
+      <Route
+        path="/lore"
+        element={
+          <LazyRoute>
+            <Lore />
+          </LazyRoute>
+        }
       />
 
       {/* /home — authenticated dashboard */}
@@ -508,6 +522,7 @@ export const Router = () => {
         } 
       />
     </Routes>
+    </>
   );
 };
 

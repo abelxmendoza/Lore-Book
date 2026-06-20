@@ -13,7 +13,6 @@ import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
 import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
 import { InferenceSyncProvider } from './InferenceSyncProvider';
-import { WelcomeSplash } from './common/WelcomeSplash';
 import { BookGhostLoader } from './common/BookGhostLoader';
 import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
@@ -301,15 +300,13 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   }, [isConfigured, needsAuth, debug]);
   
   // DEV-only escape hatch — never reaches production.
-  if (DEV_DISABLE_AUTH) return <><WelcomeSplash />{children}</>;
+  if (DEV_DISABLE_AUTH) return <>{children}</>;
 
   // Non-REAL_USER runtimes need neither auth nor terms.
   // GUEST_USER  → ephemeral sandbox, no account to bind terms to.
   // DEMO_RUNTIME → synthetic showcase, fully public.
   // DEGRADED_RUNTIME → user is already authenticated; backend is just temporarily down.
-  // Guest/demo enter the app here (not via the real-user return below), so the
-  // welcome splash must be mounted on this path too.
-  if (!needsAuth && !needsTerms) return <><WelcomeSplash />{children}</>;
+  if (!needsAuth && !needsTerms) return <>{children}</>;
 
 
   const handleEmailLogin = async (email: string) => {
@@ -427,7 +424,6 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
   return (
     <InferenceSyncProvider>
-      <WelcomeSplash />
       {children}
     </InferenceSyncProvider>
   );

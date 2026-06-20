@@ -68,6 +68,30 @@ function weekendWindow(d: Date): [Date, Date] {
   return [startOf('day', saturday), endOf('day', sunday)];
 }
 
+/** Most recent completed calendar season before `now` (e.g. last summer from today). */
+export function resolveLastSeasonYear(
+  now: Date,
+  season: 'spring' | 'summer' | 'fall' | 'winter'
+): number {
+  const y = now.getFullYear();
+  const [, end] = seasonWindow(y, season);
+  if (now > end) return y;
+  return y - 1;
+}
+
+/** Calendar year for "this {season}" relative to `now`. */
+export function resolveThisSeasonYear(
+  now: Date,
+  season: 'spring' | 'summer' | 'fall' | 'winter'
+): number {
+  const y = now.getFullYear();
+  const [start, end] = seasonWindow(y, season);
+  if (now >= start && now <= end) return y;
+  if (now > end) return y;
+  if (season === 'winter' && now.getMonth() <= 1) return y - 1;
+  return y;
+}
+
 // ── Main resolver ─────────────────────────────────────────────────────────────
 
 /**
@@ -219,11 +243,18 @@ export function resolveTemporalAnchor(
 
   for (const [re, season, label] of seasonPatterns) {
     if (re.test(t)) {
-      // "summer of 2023" — extract explicit year
       const yearMatch = t.match(re)?.[1];
-      const targetYear = yearMatch ? parseInt(yearMatch, 10) : (label.startsWith('last') ? y - 1 : y);
+      let targetYear: number;
+      if (yearMatch) {
+        targetYear = parseInt(yearMatch, 10);
+      } else if (label.startsWith('last')) {
+        targetYear = resolveLastSeasonYear(now, season);
+      } else {
+        targetYear = resolveThisSeasonYear(now, season);
+      }
       const [start, end] = seasonWindow(targetYear, season);
-      return { start, end, precision: 'season', label: label || `${season} ${targetYear}`, confidence: 0.9 };
+      const confidence = label.startsWith('last') ? 0.82 : 0.9;
+      return { start, end, precision: 'season', label: label || `${season} ${targetYear}`, confidence };
     }
   }
 

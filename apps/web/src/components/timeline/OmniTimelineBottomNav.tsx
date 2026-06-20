@@ -37,8 +37,8 @@ export const OmniTimelineBottomNav = ({
               active ? 'omni-timeline-bottom-nav__tab--active' : 'omni-timeline-bottom-nav__tab--inactive'
             }`}
           >
-            <Icon className={`h-5 w-5 ${active ? 'drop-shadow-[0_0_8px_rgba(168,85,247,0.45)]' : ''}`} />
-            <span className="text-[10px] font-medium leading-none">{label}</span>
+            <Icon className="h-5 w-5" />
+            <span className="omni-timeline-bottom-nav__label">{label}</span>
           </button>
         );
       })}

@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { logger } from '../../logger';
+import { ingestCrystallizedKnowledge } from '../narrativeSpine/narrativeSpineIngestion';
 import { supabaseAdmin } from '../supabaseClient';
 import type {
   UpsertClaimPayload,
@@ -99,6 +100,8 @@ export async function upsertClaim(
     { userId, knowledgeId: claim.id, machine_claim: payload.machine_claim, confidence: payload.confidence },
     'claimLifecycleManager: claim upserted'
   );
+
+  ingestCrystallizedKnowledge(userId, claim.id);
 
   return claim as CrystallizedKnowledge;
 }

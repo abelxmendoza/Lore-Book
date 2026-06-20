@@ -1,8 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { BookGhostScene } from './BookGhostScene';
 import { useRuntimeIdentity } from '../../hooks/useRuntimeIdentity';
-import { wasWelcomeSplashSeen, markWelcomeSplashSeen } from '../../lib/welcomeSplash';
+import {
+  clearWelcomeSplashPending,
+  markWelcomeSplashSeen,
+  shouldShowWelcomeSplash,
+  subscribeWelcomeSplash,
+} from '../../lib/welcomeSplash';
 import './WelcomeSplash.css';
 
 /** How long the splash stays before it auto-dismisses. */
@@ -17,20 +23,45 @@ type Phase = 'hidden' | 'visible' | 'leaving';
  * session for real, guest, and demo users — persists across refresh and resets
  * on logout (see lib/welcomeSplash + AuthGate / GuestContext).
  *
+ * Mounted globally from Router so it can appear immediately when Guest/Demo is
+ * clicked on the login screen, before lazy-loaded routes finish loading.
+ *
  * Auto-dismisses after {@link VISIBLE_MS}; tapping anywhere skips it early.
  * Renders nothing once it has been seen this session.
  */
 export function WelcomeSplash() {
+  const { pathname } = useLocation();
   const { is } = useRuntimeIdentity();
 
-  const [phase, setPhase] = useState<Phase>(() =>
-    wasWelcomeSplashSeen() ? 'hidden' : 'visible'
+  const wantsSplash = useCallback(
+    () => shouldShowWelcomeSplash(pathname),
+    [pathname],
   );
+
+  const [phase, setPhase] = useState<Phase>(() =>
+    wantsSplash() ? 'visible' : 'hidden',
+  );
+
+  // Re-evaluate when route changes or guest/demo entry requests the splash.
+  useEffect(() => {
+    return subscribeWelcomeSplash(() => {
+      if (wantsSplash()) {
+        setPhase('visible');
+      }
+    });
+  }, [wantsSplash]);
+
+  useEffect(() => {
+    if (wantsSplash() && phase === 'hidden') {
+      setPhase('visible');
+    }
+  }, [pathname, wantsSplash, phase]);
 
   // Mark as seen + schedule auto-dismiss as soon as it becomes visible.
   useEffect(() => {
     if (phase !== 'visible') return;
     markWelcomeSplashSeen();
+    clearWelcomeSplashPending();
     const timer = setTimeout(() => setPhase('leaving'), VISIBLE_MS);
     return () => clearTimeout(timer);
   }, [phase]);

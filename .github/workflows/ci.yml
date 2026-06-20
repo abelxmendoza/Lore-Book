@@ -176,6 +176,10 @@ jobs:
         working-directory: apps/server
         run: npm run test:temporal
 
+      - name: Narrative cognition regressions (unit + integration + e2e)
+        working-directory: apps/server
+        run: npm run test:narrative-cognition
+
   web-regression-tests:
     name: Web Regression Tests
     runs-on: ubuntu-latest
@@ -208,6 +212,10 @@ jobs:
       - name: Composer entity chip regressions (matching, redux, typing UX)
         working-directory: apps/web
         run: npm run test:composer-chips
+
+      - name: Cognition API client regressions
+        working-directory: apps/web
+        run: npm run test:unit -- src/api/cognition.test.ts
 
       - name: Demo privacy guard
         working-directory: apps/web

@@ -1,6 +1,7 @@
 import { LogIn, Sparkles, Crown, X, User, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGuest } from '../../contexts/GuestContext';
+import { useGuestExperienceDismiss } from '../../hooks/useGuestExperienceDismiss';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import {
@@ -15,6 +16,8 @@ type GuestExperienceCardProps = {
   variant?: GuestExperienceVariant;
   onEndSession?: () => void;
   showEndSession?: boolean;
+  /** Allow hiding the compact guest bar for the current session. Default true for compact. */
+  dismissible?: boolean;
   className?: string;
 };
 
@@ -42,15 +45,81 @@ function UsageMeter({ used, limit, percentUsed, compact }: {
   );
 }
 
+function GuestExperienceCompactBar({
+  used,
+  limit,
+  remaining,
+  percentUsed,
+  canDismiss,
+  onDismiss,
+  onSignUp,
+  onPlans,
+  className,
+}: {
+  used: number;
+  limit: number;
+  remaining: number;
+  percentUsed: number;
+  canDismiss: boolean;
+  onDismiss: () => void;
+  onSignUp: () => void;
+  onPlans: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-2 border-b border-primary/15 bg-primary/5 px-3 py-2 flex-shrink-0 ${className ?? ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-xs text-white/80 truncate">
+            Guest · {remaining}/{limit} messages left
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onSignUp}
+            className="text-xs font-medium text-primary hover:text-primary/80 px-2 py-1"
+          >
+            Sign up
+          </button>
+          <button
+            type="button"
+            onClick={onPlans}
+            className="text-xs text-white/50 hover:text-white px-2 py-1"
+          >
+            Plans
+          </button>
+          {canDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Dismiss guest banner"
+              data-testid="guest-experience-dismiss"
+              className="rounded-md p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+      <UsageMeter used={used} limit={limit} percentUsed={percentUsed} compact />
+    </div>
+  );
+}
+
 export const GuestExperienceCard = ({
   variant = 'panel',
   onEndSession,
   showEndSession = true,
+  dismissible,
   className = '',
 }: GuestExperienceCardProps) => {
   const navigate = useNavigate();
   const { guestState, endGuestSession } = useGuest();
+  const { dismissed, dismiss } = useGuestExperienceDismiss();
   const { used, limit, remaining, limitReached, percentUsed } = getGuestUsage(guestState);
+  const canDismiss = dismissible ?? variant === 'compact';
 
   const handleEndSession = () => {
     if (onEndSession) onEndSession();
@@ -59,6 +128,8 @@ export const GuestExperienceCard = ({
 
   const goSignUp = () => navigate('/login');
   const goPlans = () => navigate('/upgrade');
+
+  if (canDismiss && dismissed) return null;
 
   if (variant === 'banner') {
     return (
@@ -126,35 +197,17 @@ export const GuestExperienceCard = ({
   }
 
   if (variant === 'compact') {
-    return (
-      <div className={`flex flex-col gap-2 border-b border-primary/15 bg-primary/5 px-3 py-2 flex-shrink-0 ${className}`}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <MessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="text-xs text-white/80 truncate">
-              Guest · {remaining}/{limit} messages left
-            </span>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={goSignUp}
-              className="text-xs font-medium text-primary hover:text-primary/80 px-2 py-1"
-            >
-              Sign up
-            </button>
-            <button
-              type="button"
-              onClick={goPlans}
-              className="text-xs text-white/50 hover:text-white px-2 py-1"
-            >
-              Plans
-            </button>
-          </div>
-        </div>
-        <UsageMeter used={used} limit={limit} percentUsed={percentUsed} compact />
-      </div>
-    );
+    return <GuestExperienceCompactBar
+      used={used}
+      limit={limit}
+      remaining={remaining}
+      percentUsed={percentUsed}
+      canDismiss={canDismiss}
+      onDismiss={dismiss}
+      onSignUp={goSignUp}
+      onPlans={goPlans}
+      className={className}
+    />;
   }
 
   if (variant === 'prompt') {

@@ -9,6 +9,11 @@ import { detectLexicalEmotions } from '../../src/services/lexical/lexicalEmotion
 import { mapGlossaryMatches } from '../../src/services/lexical/lexicalGlossaryMapper';
 import { processLexicalMemoryCandidates } from '../../src/services/lexical/lexicalMemoryBridge';
 import { enrichFromLexicalAnalysis } from '../../src/services/ontology/ontologyEnrichmentService';
+import {
+  assertMessyLexicalSnapshot,
+  MESSY_SHOW_CONFLICT_KICKBOXING_ID,
+  MESSY_SHOW_CONFLICT_KICKBOXING_TEXT,
+} from '../fixtures/messyShowConflictKickboxing';
 
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
@@ -144,5 +149,38 @@ describe('lexicalAnalyzerService', () => {
     const { queued } = await processLexicalMemoryCandidates('user-1', 'msg-1', result);
     expect(queued).toBeGreaterThan(0);
     expect(memoryReviewQueueService.ingestMemory).toHaveBeenCalled();
+  });
+});
+
+describe(`regression fixture: ${MESSY_SHOW_CONFLICT_KICKBOXING_ID}`, () => {
+  const baseInput = {
+    userId: 'user-messy',
+    messageId: 'msg-messy-lex',
+    text: MESSY_SHOW_CONFLICT_KICKBOXING_TEXT,
+    threadId: 'thread-messy',
+  };
+
+  it('handles messy show/conflict/kickboxing narrative (lexical snapshot)', () => {
+    const result = lexicalAnalyzerService.analyzeMessage(baseInput);
+    assertMessyLexicalSnapshot(result);
+  });
+
+  it('preserves Michael Fasbender surface form (no celebrity auto-correction)', () => {
+    const result = lexicalAnalyzerService.analyzeMessage(baseInput);
+    const michael = result.entities.find((e) => /michael/i.test(e.surface));
+    expect(michael?.surface).toMatch(/Fasbender/i);
+    expect(michael?.surface).not.toMatch(/Fassbender/i);
+  });
+
+  it('marks conflict fight as review-only via ambiguity flags', () => {
+    const result = lexicalAnalyzerService.analyzeMessage(baseInput);
+    expect(result.ambiguityFlags.some((f) => /fight|grammar|conflict/i.test(f))).toBe(true);
+    const conflict = result.events.find((e) => e.kind === 'conflict');
+    expect(conflict?.confidence).toBeLessThan(0.85);
+  });
+
+  it('does not create a durable person entity for homie', () => {
+    const result = lexicalAnalyzerService.analyzeMessage(baseInput);
+    expect(result.entities.some((e) => e.type === 'PERSON' && /^homie$/i.test(e.surface))).toBe(false);
   });
 });

@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
-import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
 // ── Left-side feature statements ─────────────────────────────────────────────
 
@@ -94,14 +93,12 @@ export default function Login() {
   };
 
   const enterDemo = () => {
-    resetWelcomeSplash();
     setUseMockData(true);
     startGuestSession();
     navigate('/demo');
   };
 
   const enterGuest = () => {
-    resetWelcomeSplash();
     setUseMockData(false);
     startGuestSession();
     navigate('/home');

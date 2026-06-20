@@ -17,13 +17,13 @@ import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
+import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
 import { omniTimelineBottomInset } from './omniTimelineLayout';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import { isNarrativeConsolidationArc } from '../../lib/lifeArcLabels';
 import { StoryArcBadge, storyArcTooltipSubtitle } from './StoryArcBadge';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import { useEntityModal } from '../../contexts/EntityModalContext';
-import { TimelineStitchedView } from './TimelineStitchedView';
 import {
   formatEventDateCompact,
   formatEventDateShort,
@@ -302,10 +302,6 @@ export const TimelineSwimlanes = ({
   const [hoveredEntry, setHoveredEntry] = useState<ChronologyEntry | null>(null);
   const [selectedArc, setSelectedArc]   = useState<LifeArc | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<ChronologyEntry | null>(null);
-  const [showEventsList, setShowEventsList] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 640 : true
-  );
-
   const sortedEntries = useMemo(() => sortEntriesChronologically(entries), [entries]);
 
   const ppd = BASE_PPD * zoom;
@@ -368,7 +364,6 @@ export const TimelineSwimlanes = ({
   const zoomReset = () => setZoom(1);
 
   const handleSelectArc = useCallback((arc: LifeArc) => {
-    if (isMobile) setShowEventsList(false);
     // Mobile: preview in bottom sheet first; full stitched view via "Full timeline" in sheet.
     if (isMobile && onOpenArcTimeline) {
       setSelectedArc(arc);
@@ -406,7 +401,7 @@ export const TimelineSwimlanes = ({
   // ── Empty/loading states ─────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="min-h-[280px] flex items-center justify-center">
         <div className="space-y-3 w-full max-w-lg px-8">
           {TRACK_ORDER.slice(0, 4).map(t => (
             <div key={t} className="flex items-center gap-3">
@@ -421,7 +416,7 @@ export const TimelineSwimlanes = ({
 
   if (arcs.length === 0 && entries.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-4 px-8 text-center">
+      <div className="min-h-[280px] flex flex-col items-center justify-center gap-4 px-8 text-center">
         <div className="w-16 h-16 rounded-2xl border border-white/10 bg-white/4 flex items-center justify-center">
           <Maximize2 className="h-7 w-7 text-white/25" />
         </div>
@@ -441,7 +436,7 @@ export const TimelineSwimlanes = ({
   const displayEntry = selectedEntry ?? hoveredEntry;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-black relative">
+    <div className="timeline-swimlanes-root flex flex-col bg-black relative w-full min-h-[280px]">
       {/* ── Zoom controls — toolbar on desktop, FAB on mobile ─────────── */}
       {isMobile ? (
         <div className="absolute right-3 bottom-3 z-20 flex flex-col gap-1.5 pointer-events-none">
@@ -482,7 +477,7 @@ export const TimelineSwimlanes = ({
       )}
 
       {/* ── Main layout: labels | scrollable canvas ───────────────────── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex shrink-0 overflow-hidden" style={{ height: totalH }}>
         {/* Fixed track labels — height mirrors the canvas track rows */}
         <div
           className={`flex-shrink-0 border-r border-white/6 bg-black flex flex-col overflow-y-hidden ${
@@ -545,8 +540,8 @@ export const TimelineSwimlanes = ({
         {/* Scrollable canvas */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x"
-          style={{ scrollBehavior: 'smooth' }}
+          className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+          style={{ scrollBehavior: 'smooth', touchAction: 'pan-x pan-y' }}
         >
           <div
             className="relative"
@@ -645,33 +640,6 @@ export const TimelineSwimlanes = ({
         </div>
       </div>
 
-      {/* ── Stitched timeline — desktop only (mobile uses Events tab) ─── */}
-      {!loading && !isMobile && (
-        <div className="flex-shrink-0 border-t border-white/10 bg-black/80">
-          <button
-            type="button"
-            onClick={() => setShowEventsList(v => !v)}
-            className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary/70" />
-              <span className="text-xs font-semibold text-white/80">
-                Stitched timeline
-                {sortedEntries.length > 0 && ` · ${sortedEntries.length} memor${sortedEntries.length === 1 ? 'y' : 'ies'}`}
-              </span>
-            </div>
-            <span className="text-[10px] text-white/35 uppercase tracking-wider">
-              {showEventsList ? 'Hide' : 'Show'}
-            </span>
-          </button>
-          {showEventsList && (
-            <div className="max-h-[28vh] sm:max-h-[42vh] overflow-hidden flex flex-col min-h-[140px] sm:min-h-[200px]">
-              <TimelineStitchedView embedded hideHeader />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Selected event detail — desktop inline, mobile sheet ──────── */}
       {isMobile ? (
         <>
@@ -693,7 +661,16 @@ export const TimelineSwimlanes = ({
             }
           >
             {selectedEntry && (
-              <p className="text-sm text-white/75 leading-relaxed">{selectedEntry.content}</p>
+              <div className="space-y-4">
+                <p className="text-sm text-white/75 leading-relaxed">{selectedEntry.content}</p>
+                <NarrativeProvenancePanel
+                  sourceTable="journal_entries"
+                  sourceId={selectedEntry.journal_entry_id}
+                  compact
+                  defaultExpanded={false}
+                  title="What supports this memory?"
+                />
+              </div>
             )}
           </MobileBottomSheet>
 
@@ -745,6 +722,15 @@ export const TimelineSwimlanes = ({
               {formatEventDateShort(selectedEntry.start_time)}
             </p>
             <p className="text-sm text-white/70 leading-relaxed line-clamp-4">{selectedEntry.content}</p>
+            <div className="mt-3">
+              <NarrativeProvenancePanel
+                sourceTable="journal_entries"
+                sourceId={selectedEntry.journal_entry_id}
+                compact
+                defaultExpanded={false}
+                title="What supports this memory?"
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
             <button

@@ -20,11 +20,15 @@ import { requireAdmin } from '../middleware/rbac';
 import { resolveAccountAuthorityFromAuthUser } from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
 
+import { chronicleAdminRouter } from './chronicleAdmin';
+
 const router = Router();
 
 // All admin routes require authentication and admin role
 router.use(requireAuth);
 router.use(requireAdmin);
+
+router.use('/chronicle', chronicleAdminRouter);
 
 /**
  * Log admin action

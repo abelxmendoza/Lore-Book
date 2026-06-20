@@ -4,9 +4,94 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { NarrativeEngine } from '../services/narrative/narrativeEngine';
+import {
+  getClaimView,
+  getProvenanceByClaimId,
+  getProvenanceBySource,
+} from '../services/narrativeSpine';
+import type { NarrativeSourceTable } from '../services/narrativeSpine/types';
 
 const router = Router();
 const narrativeEngine = new NarrativeEngine();
+
+const SOURCE_TABLES = new Set<NarrativeSourceTable>([
+  'entry_ir',
+  'resolved_events',
+  'crystallized_knowledge',
+  'event_interpretations',
+  'utterances',
+  'conversation_messages',
+  'journal_entries',
+]);
+
+/**
+ * GET /api/narrative/provenance/lookup?sourceTable=&sourceId=
+ * Bridge a legacy artifact into the narrative spine and return provenance.
+ */
+router.get(
+  '/provenance/lookup',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const sourceTable = req.query.sourceTable as string | undefined;
+    const sourceId = req.query.sourceId as string | undefined;
+
+    if (!sourceTable || !sourceId) {
+      return res.status(400).json({ error: 'sourceTable and sourceId are required' });
+    }
+    if (!SOURCE_TABLES.has(sourceTable as NarrativeSourceTable)) {
+      return res.status(400).json({ error: `Unsupported sourceTable: ${sourceTable}` });
+    }
+
+    const report = await getProvenanceBySource(userId, {
+      sourceTable: sourceTable as NarrativeSourceTable,
+      sourceId,
+    });
+
+    if (!report) {
+      return res.status(404).json({ error: 'Could not resolve narrative provenance for source' });
+    }
+
+    res.json(report);
+  }),
+);
+
+/**
+ * GET /api/narrative/provenance/:claimId
+ * Full explainability chain for a narrative claim.
+ */
+router.get(
+  '/provenance/:claimId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { claimId } = req.params;
+
+    const report = await getProvenanceByClaimId(userId, claimId);
+    if (!report) {
+      return res.status(404).json({ error: 'Narrative claim not found' });
+    }
+
+    res.json(report);
+  }),
+);
+
+/**
+ * GET /api/narrative/claims/:claimId
+ * Single claim view (bridges legacy rows on demand).
+ */
+router.get(
+  '/claims/:claimId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const claim = await getClaimView(userId, req.params.claimId);
+    if (!claim) {
+      return res.status(404).json({ error: 'Narrative claim not found' });
+    }
+    res.json({ claim });
+  }),
+);
 
 /**
  * POST /api/narrative/build

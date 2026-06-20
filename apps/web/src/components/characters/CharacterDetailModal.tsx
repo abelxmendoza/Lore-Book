@@ -18,6 +18,7 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { UnknownField } from '../ui/UnknownField';
@@ -896,6 +897,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [selectedCharacterForModal, setSelectedCharacterForModal] = useState<Character | null>(null);
   const [characterAttributes, setCharacterAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const [loreProfile, setLoreProfile] = useState<CharacterLoreProfile | null>(null);
+  const [loreProfileLoading, setLoreProfileLoading] = useState(false);
   const [knowledgeClaims, setKnowledgeClaims] = useState<any[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeLoaded, setKnowledgeLoaded] = useState(false);
@@ -1316,6 +1319,28 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     };
     void loadAttributes();
   }, [character.id, character.name, isMainCharacter, isMockDataEnabled]);
+
+  useEffect(() => {
+    if (isMockDataEnabled || !character.id || character.id.startsWith('dummy-') || character.id.startsWith('temp-')) {
+      setLoreProfile(null);
+      return;
+    }
+    let cancelled = false;
+    setLoreProfileLoading(true);
+    fetchCharacterLoreProfile(character.id)
+      .then((profile) => {
+        if (!cancelled) setLoreProfile(profile);
+      })
+      .catch(() => {
+        if (!cancelled) setLoreProfile(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoreProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id, isMockDataEnabled]);
 
   // Load insights when Insights tab is active and ensure analytics exist
   useEffect(() => {
@@ -1934,6 +1959,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       name: rel.character_name || 'Unknown',
     } as Character);
   };
+
+  const openCharacterById = async (characterId: string) => {
+    if (isMockDataEnabled) return;
+    try {
+      const related = await fetchJson<Character>(`/api/characters/${characterId}`);
+      setSelectedCharacterForModal(related);
+    } catch {
+      // ignore — card stays non-clickable fallback
+    }
+  };
+
   const strongestConnections = [...(editedCharacter.relationships ?? [])]
     .filter(rel => rel.character_name && rel.character_name !== 'You')
     .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
@@ -2295,6 +2331,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 provenance={provenance}
                 isMockDataEnabled={isMockDataEnabled}
                 openCharacterByRelationship={openCharacterByRelationship}
+                loreProfile={loreProfile}
+                loreProfileLoading={loreProfileLoading}
+                onOpenCharacterById={openCharacterById}
               />
             )}
 

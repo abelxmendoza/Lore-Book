@@ -62,24 +62,37 @@ export async function resolveEntities(
 
     const charMatch = kind === 'PERSON' ? charByName.get(e.normalized) : undefined;
     const orgMatch = kind === 'ORGANIZATION' ? orgByName.get(e.normalized) : undefined;
+    const linkedId = e.linkedEntityId;
+    const linkedType = e.linkedEntityType;
+
+    let entityId = charMatch?.id ?? orgMatch?.id;
+    let resolutionReason = charMatch || orgMatch ? `matched_existing:${e.source}` : `lexical:${e.source}`;
+
+    if (linkedId) {
+      entityId = linkedId;
+      resolutionReason = linkedType
+        ? `user_linked:${linkedType}:${linkedId}`
+        : `user_linked:${linkedId}`;
+    }
+
     const isSelf =
       e.type === 'IDENTITY_CLAIM' ||
       (claimedName && e.normalized === claimedName.toLowerCase() && /\bis\s+me\b/i.test(text)) ||
-      (selfId && charMatch?.id === selfId);
+      (selfId && (charMatch?.id === selfId || entityId === selfId));
 
     resolved.push({
       surface: e.surface,
       normalized: e.normalized,
       kind,
-      entityId: charMatch?.id ?? orgMatch?.id,
+      entityId,
       isSelf,
-      isUnresolved: kind === 'PERSON' && !charMatch && e.confidence < 0.7,
+      isUnresolved: kind === 'PERSON' && !entityId && e.confidence < 0.7,
       temporalStatus: kind === 'ORGANIZATION'
         ? temporal.statements.find((s) => s.object.toLowerCase() === e.normalized)?.status
         : undefined,
       confidence: e.confidence,
-      resolutionReason: charMatch || orgMatch ? `matched_existing:${e.source}` : `lexical:${e.source}`,
-      requiresConfirmation: isSelf || kind === 'ORGANIZATION',
+      resolutionReason,
+      requiresConfirmation: linkedId ? false : isSelf || kind === 'ORGANIZATION',
     });
   }
 

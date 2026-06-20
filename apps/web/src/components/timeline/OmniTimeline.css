@@ -1,0 +1,527 @@
+/* ─── Omni Timeline — cinematic lorebook shell ──────────────────────────── */
+
+.omni-timeline-root {
+  --omni-timeline-chrome: 13rem;
+  --omni-accent: 139, 92, 246;
+  --omni-accent-2: 236, 72, 153;
+  --omni-accent-3: 59, 130, 246;
+  --omni-glass: rgba(12, 12, 20, 0.72);
+  --omni-glass-border: rgba(167, 139, 250, 0.14);
+  --omni-glow: rgba(139, 92, 246, 0.35);
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(var(--omni-accent-3), 0.14), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 100% 35%, rgba(var(--omni-accent-2), 0.1), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 0% 75%, rgba(var(--omni-accent), 0.12), transparent 45%),
+    linear-gradient(180deg, #050508 0%, #030305 45%, #020203 100%);
+}
+
+.omni-timeline-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, transparent 70%);
+}
+
+.omni-timeline-root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle at 50% 20%, rgba(var(--omni-accent), 0.06), transparent 42%);
+  animation: omni-timeline-ambient 8s ease-in-out infinite alternate;
+}
+
+@keyframes omni-timeline-ambient {
+  from { opacity: 0.55; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.04); }
+}
+
+.omni-timeline-root > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Header ────────────────────────────────────────────────────────────── */
+
+.omni-timeline-header {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-bottom: 0.625rem;
+  background: linear-gradient(180deg, rgba(8, 8, 16, 0.94) 0%, rgba(8, 8, 14, 0.82) 100%);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom: 1px solid var(--omni-glass-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-header {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+.omni-timeline-header__row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.omni-timeline-title {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  background: linear-gradient(135deg, #ffffff 0%, #f5d0fe 42%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(var(--omni-accent), 0.25));
+}
+
+.omni-timeline-title--mobile {
+  font-size: 1rem;
+}
+
+.omni-timeline-title--desktop {
+  font-size: 1.25rem;
+}
+
+.omni-timeline-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.38);
+  letter-spacing: 0.01em;
+}
+
+.omni-timeline-gen-label {
+  margin: 0.125rem 0 0;
+  font-size: 0.6875rem;
+  color: rgba(196, 181, 253, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.omni-timeline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.omni-timeline-badge--demo {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.12);
+}
+
+.omni-timeline-badge--stats {
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.omni-timeline-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.55);
+  transition: border-color 0.2s, background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
+  touch-action: manipulation;
+}
+
+.omni-timeline-icon-btn:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.omni-timeline-icon-btn:active {
+  transform: scale(0.96);
+}
+
+.omni-timeline-icon-btn--active {
+  border-color: rgba(var(--omni-accent), 0.45);
+  background: linear-gradient(135deg, rgba(var(--omni-accent), 0.22), rgba(var(--omni-accent-2), 0.12));
+  color: rgb(216, 180, 254);
+  box-shadow: 0 0 20px rgba(var(--omni-accent), 0.25);
+}
+
+/* Desktop view tabs */
+.omni-timeline-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.omni-timeline-view-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.48);
+  transition: color 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  touch-action: manipulation;
+}
+
+.omni-timeline-view-tab:hover {
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.omni-timeline-view-tab--active {
+  color: #fff;
+  border-color: rgba(var(--omni-accent), 0.35);
+  background: linear-gradient(135deg, rgba(var(--omni-accent), 0.85), rgba(var(--omni-accent-2), 0.65));
+  box-shadow:
+    0 4px 20px rgba(var(--omni-accent), 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.omni-timeline-view-tab--active svg {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35));
+}
+
+/* ─── Scroll body ───────────────────────────────────────────────────────── */
+
+.omni-timeline-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--omni-accent), 0.4) transparent;
+}
+
+.omni-timeline-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.omni-timeline-body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(var(--omni-accent), 0.5), rgba(var(--omni-accent-2), 0.35));
+  border-radius: 999px;
+}
+
+.omni-timeline-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ─── Active arcs strip ─────────────────────────────────────────────────── */
+
+.omni-timeline-active-arcs {
+  flex-shrink: 0;
+  margin: 0.75rem 0.75rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(var(--omni-accent), 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-active-arcs {
+    margin-left: 1.5rem;
+    margin-right: 1.5rem;
+  }
+}
+
+.omni-timeline-section-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.omni-timeline-arc-pill {
+  max-width: 100%;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.72);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  touch-action: manipulation;
+}
+
+.omni-timeline-arc-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(var(--omni-accent), 0.25);
+  box-shadow: 0 0 16px rgba(var(--omni-accent), 0.12);
+}
+
+.omni-timeline-arc-pill:active {
+  transform: scale(0.98);
+}
+
+/* ─── Life chapters ─────────────────────────────────────────────────────── */
+
+.omni-timeline-life-chapters {
+  flex-shrink: 0;
+  margin: 0.5rem 0.75rem 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(var(--omni-accent), 0.12);
+  background: linear-gradient(90deg, rgba(var(--omni-accent), 0.08), rgba(var(--omni-accent-2), 0.04));
+  backdrop-filter: blur(8px);
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-life-chapters {
+    margin-left: 1.5rem;
+    margin-right: 1.5rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+.omni-timeline-era-pill {
+  flex-shrink: 0;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--omni-accent), 0.22);
+  background: rgba(var(--omni-accent), 0.08);
+  font-size: 0.6875rem;
+  color: rgba(216, 180, 254, 0.92);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
+  touch-action: manipulation;
+}
+
+.omni-timeline-era-pill:hover {
+  border-color: rgba(var(--omni-accent), 0.4);
+  background: rgba(var(--omni-accent), 0.14);
+}
+
+.omni-timeline-era-pill--active {
+  border-color: rgba(var(--omni-accent), 0.55);
+  background: linear-gradient(135deg, rgba(var(--omni-accent), 0.45), rgba(var(--omni-accent-2), 0.25));
+  color: #fff;
+  box-shadow: 0 0 20px rgba(var(--omni-accent), 0.25);
+}
+
+.omni-timeline-era-clear {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.2s;
+}
+
+.omni-timeline-era-clear:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── Main content frame ────────────────────────────────────────────────── */
+
+.omni-timeline-main {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.65rem 0.65rem 1rem;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(var(--omni-accent), 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.35) 100%),
+    rgba(0, 0, 0, 0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.4);
+  overflow: visible;
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-main {
+    margin-left: 1.25rem;
+    margin-right: 1.25rem;
+    margin-bottom: 1.5rem;
+    border-radius: 1.25rem;
+  }
+}
+
+/* Views size to content so the page scroll area grows past the swimlanes canvas */
+.omni-timeline-main > * {
+  width: 100%;
+  max-width: 100%;
+  min-height: clamp(320px, 50vh, 560px);
+  height: clamp(320px, 50vh, 560px);
+}
+
+/* Swimlanes grows with track rows + detail panels; page scrolls vertically */
+.omni-timeline-main > .timeline-swimlanes-root {
+  height: auto;
+  min-height: 280px;
+}
+
+.omni-timeline-main .timeline-gen-screen {
+  min-height: min(360px, calc(100dvh - var(--omni-timeline-chrome)));
+  height: min(420px, calc(100dvh - var(--omni-timeline-chrome)));
+  border-radius: inherit;
+}
+
+/* ─── Error banner ──────────────────────────────────────────────────────── */
+
+.omni-timeline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.75rem 0.75rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(127, 29, 29, 0.08));
+  box-shadow: 0 8px 24px rgba(127, 29, 29, 0.15);
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-error {
+    margin-left: 1.5rem;
+    margin-right: 1.5rem;
+  }
+}
+
+.omni-timeline-error__text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: rgba(254, 226, 226, 0.92);
+}
+
+.omni-timeline-error__retry {
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fecaca;
+  transition: background 0.2s;
+  touch-action: manipulation;
+}
+
+.omni-timeline-error__retry:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Library panel (used via className on component) ─────────────────────── */
+
+.omni-timeline-library {
+  margin: 0.65rem 0.75rem 0;
+  border-radius: 1rem;
+  border: 1px solid rgba(var(--omni-accent), 0.16);
+  background: linear-gradient(145deg, rgba(var(--omni-accent), 0.07), rgba(0, 0, 0, 0.35));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+@media (min-width: 641px) {
+  .omni-timeline-library {
+    margin-left: 1.5rem;
+    margin-right: 1.5rem;
+  }
+}
+
+.omni-timeline-library__toggle {
+  transition: background 0.2s;
+}
+
+.omni-timeline-library__toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.omni-timeline-library__count {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  color: rgb(216, 180, 254);
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+}
+
+.omni-timeline-library__item {
+  transition: background 0.2s;
+}
+
+.omni-timeline-library__item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.omni-timeline-library__item--active {
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.14), rgba(236, 72, 153, 0.08));
+  box-shadow: inset 3px 0 0 rgba(139, 92, 246, 0.7);
+}
+
+@media (max-width: 640px) {
+  .omni-timeline-root {
+    --omni-timeline-chrome: 11rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omni-timeline-root::after {
+    animation: none;
+  }
+
+  .omni-timeline-icon-btn:active,
+  .omni-timeline-arc-pill:active,
+  .omni-timeline-view-tab--active {
+    transform: none;
+  }
+}

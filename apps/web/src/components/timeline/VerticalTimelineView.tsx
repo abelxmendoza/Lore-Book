@@ -130,7 +130,7 @@ export const VerticalTimelineView: React.FC<VerticalTimelineViewProps> = ({
                   >
                     {/* Date ruler badge */}
                     <div className={`mb-3 ${isLeft ? 'flex justify-start' : 'flex justify-end'}`}>
-                      <TimelineInlineDate iso={entry.start_time} size="lg" />
+                      <TimelineInlineDate iso={entry.start_time} size="lg" precision={entry.time_precision} confidence={entry.time_confidence} />
                     </div>
 
                     {/* Tag */}

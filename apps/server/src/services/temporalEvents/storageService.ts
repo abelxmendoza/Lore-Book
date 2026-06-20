@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { ingestResolvedEvent } from '../narrativeSpine/narrativeSpineIngestion';
 
 import type { ResolvedEvent, TemporalSignal, EventMention } from './types';
 
@@ -81,6 +82,8 @@ export class EventStorage {
 
       // Save mentions
       await this.saveMentions(data.id, signals);
+
+      ingestResolvedEvent(userId, data.id);
 
       return {
         id: data.id,

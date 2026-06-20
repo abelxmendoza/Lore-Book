@@ -3,6 +3,7 @@ import { Brain, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { knowledgeApi, KNOWLEDGE_TYPE_LABELS, KNOWLEDGE_TYPE_COLORS } from '../../../api/knowledge';
 import type { KnowledgeClaim } from '../../../api/knowledge';
 import { useNavigate } from 'react-router-dom';
+import { EvidenceInspectorModal } from '../../../components/perceptions/EvidenceInspectorModal';
 
 const MAX_VISIBLE = 4;
 
@@ -13,6 +14,7 @@ export const WhatLoreBookKnows = () => {
   const [claims, setClaims] = useState<KnowledgeClaim[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export const WhatLoreBookKnows = () => {
   const visible = expanded ? claims : claims.slice(0, MAX_VISIBLE);
 
   return (
+    <>
     <div className="mx-4 mb-1">
       {/* Collapsed trigger */}
       {!panelOpen ? (
@@ -84,7 +87,13 @@ export const WhatLoreBookKnows = () => {
           {/* Claims list */}
           <div className="px-3 py-2 space-y-1.5">
             {visible.map(claim => (
-              <div key={claim.id} className="flex items-start gap-2.5">
+              <button
+                key={claim.id}
+                type="button"
+                onClick={() => setSelectedClaimId(claim.id)}
+                className="w-full flex items-start gap-2.5 text-left rounded-lg px-1 py-1 -mx-1 hover:bg-indigo-500/10 transition-colors"
+                title="Inspect evidence"
+              >
                 <span className={`text-[10px] font-bold tabular-nums mt-0.5 w-7 flex-shrink-0 ${confidenceColor(claim.confidence)}`}>
                   {Math.round(claim.confidence * 100)}%
                 </span>
@@ -94,7 +103,7 @@ export const WhatLoreBookKnows = () => {
                     {KNOWLEDGE_TYPE_LABELS[claim.knowledge_type] ?? claim.knowledge_type}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -111,5 +120,12 @@ export const WhatLoreBookKnows = () => {
         </div>
       )}
     </div>
+    {selectedClaimId && (
+      <EvidenceInspectorModal
+        claimId={selectedClaimId}
+        onClose={() => setSelectedClaimId(null)}
+      />
+    )}
+    </>
   );
 };

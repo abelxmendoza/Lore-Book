@@ -88,7 +88,8 @@ export const useChatStream = () => {
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
     composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>,
     guestOptions?: { guestId: string },
-    chatFocus?: ChatFocus
+    chatFocus?: ChatFocus,
+    previewCorrections?: import('../lib/entityCorrectionTypes').CorrectedPreviewSpan[]
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -141,6 +142,9 @@ export const useChatStream = () => {
                   : {}),
                 ...(entityContext ? { entityContext } : {}),
                 ...(chatFocus ? { chatFocus } : {}),
+                ...(previewCorrections && previewCorrections.length > 0
+                  ? { previewCorrections }
+                  : {}),
                 ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
                 ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
               }

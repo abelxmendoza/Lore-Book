@@ -34,9 +34,12 @@ function chipTitle(entity: CertifiedEntityMatch): string {
     entity.status === 'draft'
       ? 'new — tap to add'
       : entity.status === 'suggestion'
-        ? 'detected — tap to confirm'
+        ? entity.composerChipKind === 'needs_clarification'
+          ? 'needs detail — tap to review'
+          : 'detected — tap to confirm'
         : 'in context';
-  return `${entity.name} (${ENTITY_VISUAL_LABELS[visual]}, ${status}) — ${kind}`;
+  const label = entity.actionLabel ?? entity.name;
+  return `${label} (${ENTITY_VISUAL_LABELS[visual]}, ${status}) — ${kind}`;
 }
 
 function isConfirmable(entity: CertifiedEntityMatch): boolean {
@@ -81,7 +84,7 @@ export const ComposerEntityChips = ({
                   aria-label={canConfirm ? `Confirm ${entity.name}` : undefined}
                 >
                   <Icon className="h-2 w-2 flex-shrink-0 opacity-75" />
-                  <span className="truncate">{entity.name}</span>
+                  <span className="truncate">{entity.actionLabel ?? entity.name}</span>
                   {entity.matchKind === 'prefix' && !confirming && (
                     <span className="text-[7px] opacity-45">…</span>
                   )}

@@ -703,7 +703,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     sessionId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
-    entityContext?: { type: string; id: string }
+    entityContext?: { type: string; id: string },
+    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[]
   ): Promise<{ messageId: string; interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> } | undefined> {
     // Critical-path latency: this method runs BEFORE the assistant response is
     // set up (durable save + interpretation pipeline + enqueue). The interpretation
@@ -743,6 +744,9 @@ When updating relationship analytics or emotional signals from this thread, weig
         session_id: sessionId,
         role: 'user',
         content: message,
+        ...(previewCorrections?.length
+          ? { metadata: { preview_corrections: previewCorrections } }
+          : {}),
       })
       .select('id')
       .single();
@@ -782,6 +786,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       messageId,
       text: message,
       threadId: sessionId,
+      previewCorrections,
     })
       .then((interpretation) => {
         if (config.enableLoreAgents) {
@@ -841,7 +846,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     threadId?: string,
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
     composerEntities?: Array<{ id: string; name: string; type: string }>,
-    chatFocus?: ChatFocusPayload
+    chatFocus?: ChatFocusPayload,
+    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[]
   ): Promise<StreamingChatResponse> {
     // Derive entity context from modal/book focus when not explicitly set
     if (!entityContext && chatFocus?.relationshipId) {
@@ -868,7 +874,8 @@ When updating relationship analytics or emotional signals from this thread, weig
         sessionId,
         message,
         conversationHistory,
-        entityContext
+        entityContext,
+        previewCorrections
       );
       entryId = earlyPersist?.messageId;
       interpretationPromise = earlyPersist?.interpretationPromise;

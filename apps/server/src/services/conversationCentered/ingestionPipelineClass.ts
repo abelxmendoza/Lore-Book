@@ -79,6 +79,11 @@ import {
 } from '../../utils/temporalResolver';
 import { scanTemporalMentions, hasHistoricalDistanceCue } from '../ontology/temporalLexicon';
 import { temporalAnchorProfileService } from '../temporal/temporalAnchorProfileService';
+import {
+  resolveEventRelativeAnchor,
+  hasEventRelativeCue,
+  type DatedEvent,
+} from '../../utils/eventRelativeResolver';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
 /**
@@ -648,10 +653,36 @@ export class ConversationIngestionPipeline {
    * This kills the created_at-as-occurrence conflation for life-story narration while
    * preserving the sensible default for "had coffee with Maria"-style recent entries.
    */
-  private buildUnresolvedTemporalContext(
+  private async buildUnresolvedTemporalContext(
+    userId: string,
     text: string,
     base: Record<string, any>
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
+    // 1. Event-relative bound ("before the move") — turns an otherwise-undated
+    //    statement into a one-sided ordering bound against a known dated event.
+    //    Checked first: "before the move" is neither a historical-distance cue nor
+    //    present-tense, so without this it would wrongly default to ingest-time.
+    if (hasEventRelativeCue(text)) {
+      const events = await this.getDatedEvents(userId);
+      const anchor = events.length ? resolveEventRelativeAnchor(text, events) : null;
+      if (anchor) {
+        return {
+          ...base,
+          // No start_time (this is a bound, not a point); consumers fall back to
+          // created_at for ordering, but the bounds drive biography sequencing.
+          ...(anchor.occurredBefore ? { occurred_before: anchor.occurredBefore } : {}),
+          ...(anchor.occurredAfter ? { occurred_after: anchor.occurredAfter } : {}),
+          relative_to_event_id: anchor.matchedEventId,
+          relative_to_event: anchor.matchedEventTitle,
+          relation: anchor.relation,
+          precision: 'relative',
+          confidence: anchor.confidence,
+          source: 'event_relative',
+        };
+      }
+    }
+
+    // 2. Historical-but-undated → honest unknown (no fabricated date).
     if (hasHistoricalDistanceCue(text)) {
       return {
         ...base,
@@ -661,6 +692,8 @@ export class ConversationIngestionPipeline {
         source: 'unresolved_past',
       };
     }
+
+    // 3. Recent/real-time chat → ingest-time is a fair occurrence estimate.
     return {
       ...base,
       start_time: new Date().toISOString(),
@@ -669,6 +702,28 @@ export class ConversationIngestionPipeline {
       inferred: true,
       source: 'current_time',
     };
+  }
+
+  private datedEventsCache = new Map<string, { events: DatedEvent[]; at: number }>();
+
+  /** User's dated resolved events for event-relative anchoring (cached 5 min). */
+  private async getDatedEvents(userId: string): Promise<DatedEvent[]> {
+    const cached = this.datedEventsCache.get(userId);
+    if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.events;
+    try {
+      const { data } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, start_time, end_time')
+        .eq('user_id', userId)
+        .not('start_time', 'is', null)
+        .order('start_time', { ascending: false })
+        .limit(500);
+      const events = (data ?? []) as DatedEvent[];
+      this.datedEventsCache.set(userId, { events, at: Date.now() });
+      return events;
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1468,7 +1523,8 @@ export class ConversationIngestionPipeline {
                   label: temporalRefs[0].label,
                 };
               } else {
-                temporalContext = this.buildUnresolvedTemporalContext(
+                temporalContext = await this.buildUnresolvedTemporalContext(
+                  userId,
                   utteranceTexts[i] || normalized.normalized_text,
                   temporalContext
                 );
@@ -1545,7 +1601,8 @@ export class ConversationIngestionPipeline {
                   label: temporalRefs[0].label,
                 };
               } else {
-                temporalContext = this.buildUnresolvedTemporalContext(
+                temporalContext = await this.buildUnresolvedTemporalContext(
+                  userId,
                   utteranceTexts[i] || normalized.normalized_text,
                   temporalContext
                 );
@@ -2155,14 +2212,16 @@ export class ConversationIngestionPipeline {
           .detectInterests(userId, rawText, undefined, messageId)
           .then(async (detectedInterests) => {
             if (detectedInterests.length > 0) {
+              const { findCoMentionedCharacterIds } = await import('../characters/characterLoreProfileService');
+              const coMentionedIds = await findCoMentionedCharacterIds(userId, rawText);
               for (const detected of detectedInterests) {
                 try {
-                  // Save or update interest
                   const interestId = await interestTracker.saveInterest(
                     userId,
                     detected,
-                    undefined, // entryId (could be linked later)
-                    messageId
+                    undefined,
+                    messageId,
+                    coMentionedIds,
                   );
 
                   // Add to scope if category is provided

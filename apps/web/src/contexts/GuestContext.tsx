@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { setGlobalIsGuest } from './MockDataContext';
 import { clearGuestLore } from '../services/guestLoreStore';
-import { resetWelcomeSplash } from '../lib/welcomeSplash';
+import { requestWelcomeSplash } from '../lib/welcomeSplash';
+import { resetGuestExperienceDismissed } from '../hooks/useGuestExperienceDismiss';
 
 export interface GuestState {
   isGuest: boolean;
@@ -69,7 +70,8 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   const startGuestSession = () => {
     // Fresh guest/demo entry is a "login" — show the welcome splash again.
     // Only runs on the explicit Continue-as-Guest / Demo click, never on refresh.
-    resetWelcomeSplash();
+    requestWelcomeSplash();
+    resetGuestExperienceDismissed();
     const newGuestState: GuestState = {
       isGuest: true,
       guestId: generateGuestId(),

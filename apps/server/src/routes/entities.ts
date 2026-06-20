@@ -10,6 +10,8 @@ import {
   listMentionableEntities,
   matchMentionableEntitiesInText,
 } from '../services/entities/entityMentionIndexService';
+import { searchEntities } from '../services/search/entitySearchService';
+import type { EntitySearchType } from '../services/search/entitySearchTypes';
 
 const router = Router();
 
@@ -24,6 +26,49 @@ router.get(
     const userId = req.user!.id;
     const entities = await listMentionableEntities(userId);
     res.json({ entities, count: entities.length });
+  })
+);
+
+const SEARCH_TYPES = new Set<EntitySearchType>([
+  'person',
+  'organization',
+  'place',
+  'group',
+  'community',
+  'skill',
+  'event',
+]);
+
+/**
+ * GET /api/entities/search?q=&types=&limit=
+ * Search LoreBook entities for correction popover link picker.
+ */
+router.get(
+  '/search',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const q = String(req.query.q ?? '').trim();
+    const limitRaw = parseInt(String(req.query.limit ?? '10'), 10);
+    const limit = Number.isFinite(limitRaw) ? limitRaw : 10;
+    const typesParam = String(req.query.types ?? '')
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter((t): t is EntitySearchType => SEARCH_TYPES.has(t as EntitySearchType));
+
+    const preferredPreviewType = req.query.previewType
+      ? String(req.query.previewType).toUpperCase()
+      : undefined;
+
+    const result = await searchEntities({
+      userId,
+      query: q,
+      types: typesParam.length ? typesParam : undefined,
+      limit,
+      preferredPreviewType,
+    });
+
+    res.json(result);
   })
 );
 

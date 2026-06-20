@@ -23,6 +23,43 @@ describe('Corrections API Routes', () => {
     });
   });
 
+  describe('POST /api/corrections/apply-preview', () => {
+    it('applies preview corrections and returns audit metadata', async () => {
+      const response = await request(app)
+        .post('/api/corrections/apply-preview')
+        .send({
+          messageId: 'msg-1',
+          threadId: 'thread-1',
+          text: "Denny's in Hollywood",
+          corrections: [
+            {
+              id: '0:20:ORG',
+              text: "Denny's in Hollywood",
+              start: 0,
+              end: 20,
+              originalType: 'ORGANIZATION',
+              correctedType: 'DEPLOYMENT_SITE',
+              entityStatus: 'new',
+              correctionAction: 'mark_worksite',
+              correctionSource: 'composer',
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body).toHaveProperty('auditId');
+      expect(response.body.correctedSpans).toHaveLength(1);
+      expect(response.body.correctedSpans[0].correctedType).toBe('DEPLOYMENT_SITE');
+    });
+
+    it('returns 400 for invalid body', async () => {
+      await request(app)
+        .post('/api/corrections/apply-preview')
+        .send({ messageId: '', corrections: [] })
+        .expect(400);
+    });
+  });
+
   describe('GET /api/corrections/:entryId', () => {
     it('should return entry with corrections', async () => {
       const entry = { id: 'e1', content: 'x', corrections: [] };

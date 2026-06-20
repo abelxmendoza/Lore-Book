@@ -90,3 +90,21 @@ describe('POST /api/lexical/analyze', () => {
     expect(res.body.rawText).toBe('hi there');
   });
 });
+
+describe('POST /api/lexical/preview', () => {
+  it('returns preview spans without persistence', async () => {
+    const { TRAVEL_JAPAN_SCHOOL_JAPANESE_CLASS_TEXT } = await import(
+      '../fixtures/travelJapanSchoolJapaneseClass'
+    );
+
+    const res = await request(app)
+      .post('/api/lexical/preview')
+      .send({ text: TRAVEL_JAPAN_SCHOOL_JAPANESE_CLASS_TEXT, mode: 'composer_preview' })
+      .expect(200);
+
+    expect(Array.isArray(res.body.spans)).toBe(true);
+    expect(res.body.spans.length).toBeGreaterThan(0);
+    expect(res.body.spans.every((s: { temporary: boolean }) => s.temporary === true)).toBe(true);
+    expect(res.body.spans.some((s: { text: string }) => s.text === 'Japan')).toBe(true);
+  });
+});

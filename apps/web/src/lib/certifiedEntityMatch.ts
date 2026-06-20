@@ -9,9 +9,14 @@ export type { CertifiedEntity, CertifiedEntityType };
 
 export type EntityMatchKind = 'full' | 'prefix';
 
+export type ComposerChipKind = 'entity' | 'relationship' | 'shared_history' | 'needs_clarification';
+
 export type CertifiedEntityMatch = CertifiedEntity & {
   matchedLabel: string;
   matchKind?: EntityMatchKind;
+  /** Semantic chip from lexical composer parse (relationship, unresolved ref, …). */
+  composerChipKind?: ComposerChipKind;
+  actionLabel?: string;
 };
 
 type MatchEntry = {

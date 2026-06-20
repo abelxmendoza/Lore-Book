@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useEntityIndexer } from '../../../hooks/useEntityIndexer';
@@ -17,15 +18,27 @@ import { confirmComposerEntity } from '../../../lib/confirmComposerEntity';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 
+type UseChatComposerOptions = {
+  /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
+  submitOnEnter?: boolean;
+};
+
 export const useChatComposer = (
-  onSubmit: (message: string, certifiedEntities?: CertifiedEntityMatch[]) => void,
-  initialValue?: string | null
+  onSubmit: (
+    message: string,
+    certifiedEntities?: CertifiedEntityMatch[],
+    previewCorrections?: CorrectedPreviewSpan[]
+  ) => void,
+  initialValue?: string | null,
+  options: UseChatComposerOptions = {},
 ) => {
+  const { submitOnEnter = true } = options;
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
   const [input, setInputState] = useState(initialValue || '');
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [previewCorrections, setPreviewCorrections] = useState<CorrectedPreviewSpan[]>([]);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -71,28 +84,27 @@ export const useChatComposer = (
     }
   }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
-    }
-  }, [input]);
-
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim()) return;
 
     const parsed = parseSlashCommand(input);
-    const entitiesToSend = visibleMatches.filter((m) => m.status !== 'draft');
+    const entitiesToSend = visibleMatches.filter(
+      (m) =>
+        m.status !== 'draft' &&
+        m.composerChipKind !== 'needs_clarification' &&
+        m.composerChipKind !== 'relationship' &&
+        m.composerChipKind !== 'shared_history',
+    );
     if (parsed) {
-      onSubmit(input.trim(), entitiesToSend);
+      onSubmit(input.trim(), entitiesToSend, previewCorrections);
     } else {
-      onSubmit(input.trim(), entitiesToSend);
+      onSubmit(input.trim(), entitiesToSend, previewCorrections);
     }
     setInput('');
+    setPreviewCorrections([]);
     dispatch(clearComposerState());
-  }, [input, onSubmit, visibleMatches, setInput, dispatch]);
+  }, [input, onSubmit, visibleMatches, previewCorrections, setInput, dispatch]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {
@@ -121,11 +133,12 @@ export const useChatComposer = (
   );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!submitOnEnter) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
-  }, [handleSubmit]);
+  }, [handleSubmit, submitOnEnter]);
 
   const insertSuggestion = useCallback((command: string) => {
     setInput(`${command} `);
@@ -154,7 +167,9 @@ export const useChatComposer = (
     confirmMatch,
     handleSubmit,
     handleKeyDown,
-    insertSuggestion
+    insertSuggestion,
+    previewCorrections,
+    setPreviewCorrections,
   };
 };
 

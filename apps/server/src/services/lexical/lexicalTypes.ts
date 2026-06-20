@@ -2,6 +2,7 @@
  * Lexical Analyzer — shared types for the pre-ontology signal extraction layer.
  * Signals are candidates, not canonical truth; cognition/provenance confirms writes.
  */
+import type { CorrectedPreviewSpan } from '../corrections/correctionTypes';
 
 export type LexicalEntityType =
   | 'PERSON'
@@ -92,6 +93,7 @@ export type LifeEventKind =
   | 'financial_change'
   | 'project_milestone'
   | 'social_event'
+  | 'protective_exit'
   | 'rejection'
   | 'reconciliation'
   | 'learning_moment';
@@ -113,6 +115,9 @@ export interface LexicalEntity {
   endOffset?: number;
   confidence: number;
   source: string;
+  /** User-linked LoreBook entity from preview correction */
+  linkedEntityId?: string;
+  linkedEntityType?: string;
 }
 
 export interface LexicalIntent {
@@ -229,6 +234,7 @@ export interface AnalyzeMessageInput {
   text: string;
   threadId?: string;
   timestamp?: string;
+  previewCorrections?: CorrectedPreviewSpan[];
 }
 
 /** Confidence threshold for auto-queuing memory without user confirmation. */

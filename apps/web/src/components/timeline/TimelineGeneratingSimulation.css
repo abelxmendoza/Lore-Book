@@ -1,0 +1,922 @@
+/* Timeline generation — ghost walks a horizontal life-rail as lore compiles */
+
+.timeline-gen-screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: min(520px, 70vh);
+  width: 100%;
+  padding: 2rem 1.25rem 2.5rem;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 20%, rgba(59, 130, 246, 0.12), transparent 50%),
+    radial-gradient(ellipse at 20% 80%, rgba(139, 92, 246, 0.1), transparent 45%),
+    linear-gradient(180deg, #050508 0%, #0a0a12 100%);
+}
+
+.timeline-gen-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 55%, rgba(167, 139, 250, 0.08), transparent 42%);
+  animation: timeline-gen-glow-pulse 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.timeline-gen-title {
+  position: relative;
+  z-index: 2;
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.15rem, 3.5vw, 1.5rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+}
+
+.timeline-gen-query {
+  position: relative;
+  z-index: 2;
+  margin: 0 0 1.75rem;
+  max-width: 28rem;
+  font-size: 0.8rem;
+  color: rgba(196, 181, 253, 0.65);
+  text-align: center;
+  font-style: italic;
+}
+
+.timeline-gen-stage {
+  position: relative;
+  z-index: 2;
+  min-height: 1.25rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.85rem;
+  color: rgba(147, 197, 253, 0.85);
+  text-align: center;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.timeline-gen-stage--fade {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+/* ─── Horizontal timeline rail ─────────────────── */
+.timeline-gen-rail-wrap {
+  position: relative;
+  z-index: 2;
+  width: min(640px, 92vw);
+  margin-bottom: 1rem;
+}
+
+.timeline-gen-rail {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: visible;
+}
+
+.timeline-gen-rail-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.5), rgba(167, 139, 250, 0.95), rgba(236, 72, 153, 0.7));
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.45);
+  transition: width 0.12s linear;
+}
+
+.timeline-gen-rail-glow {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(196, 181, 253, 0.55) 0%, transparent 70%);
+  filter: blur(4px);
+  pointer-events: none;
+  transition: left 0.12s linear;
+}
+
+/* Era tick marks that pop in as progress passes */
+.timeline-gen-tick {
+  position: absolute;
+  top: -6px;
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: bottom center;
+  animation: timeline-gen-tick-in 0.45s ease forwards;
+}
+
+.timeline-gen-tick-label {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+}
+
+/* State-change pulses along the rail */
+.timeline-gen-pulse {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(167, 139, 250, 0.8);
+  animation: timeline-gen-pulse-ring 0.9s ease-out forwards;
+}
+
+/* ─── Ghost on the rail (evolves with progress) ── */
+.timeline-gen-ghost-lane {
+  position: relative;
+  height: 118px;
+  margin-top: 0.5rem;
+}
+
+.timeline-gen-ghost-anchor {
+  position: absolute;
+  bottom: 8px;
+  transform: translateX(-50%);
+  transition: left 0.12s linear;
+  z-index: 3;
+}
+
+.timeline-gen-ghost-mini {
+  position: relative;
+  width: 72px;
+  height: 86px;
+  margin-left: -36px;
+  animation: timeline-gen-ghost-bob 2s ease-in-out infinite;
+}
+
+.timeline-gen-ghost-mini-body {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(240, 235, 255, 0.95) 0%, rgba(210, 195, 255, 0.72) 100%);
+  border-radius: 50% 50% 8% 8% / 55% 55% 45% 45%;
+  overflow: hidden;
+  box-shadow:
+    0 0 20px rgba(167, 139, 250, 0.4),
+    inset 0 -6px 12px rgba(139, 92, 246, 0.12);
+  clip-path: polygon(
+    8% 0%, 92% 0%, 100% 18%, 98% 42%, 100% 68%,
+    88% 78%, 92% 88%, 78% 82%, 72% 96%, 58% 84%,
+    50% 98%, 42% 84%, 28% 96%, 22% 82%, 8% 88%,
+    12% 78%, 0% 68%, 2% 42%, 0% 18%
+  );
+  transition:
+    width 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.35s ease,
+    filter 0.35s ease,
+    background 0.45s ease,
+    box-shadow 0.45s ease;
+}
+
+.timeline-gen-ghost-mini-body::before {
+  content: '';
+  position: absolute;
+  inset: 8% 12% 18%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.32), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 72%);
+  opacity: 0.35;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.timeline-gen-ghost-mini-eye {
+  position: absolute;
+  top: 34%;
+  width: 7px;
+  height: 9px;
+  background: #2d1b4e;
+  border-radius: 50%;
+}
+
+.timeline-gen-ghost-mini-eye--l { left: 28%; }
+.timeline-gen-ghost-mini-eye--r { right: 28%; }
+
+.timeline-gen-ghost-mini-mouth {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 8px;
+  height: 5px;
+  border: 1.5px solid rgba(45, 27, 78, 0.4);
+  border-top: 0;
+  border-radius: 0 0 999px 999px;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.35s ease, width 0.35s ease;
+}
+
+.timeline-gen-ghost-core {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.9), rgba(167, 139, 250, 0.12) 68%, transparent 70%);
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.35);
+  transform: translate(-50%, -50%) scale(0.35);
+  opacity: 0;
+  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.timeline-gen-ghost-rune {
+  position: absolute;
+  left: 50%;
+  width: 18px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.72), transparent);
+  opacity: 0;
+  transform: translateX(-50%) scaleX(0.4);
+  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.timeline-gen-ghost-rune--one {
+  top: 66%;
+}
+
+.timeline-gen-ghost-rune--two {
+  top: 72%;
+  width: 12px;
+}
+
+.timeline-gen-ghost-aura {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  border-radius: 999px;
+  transform: translateX(-50%) scale(0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.timeline-gen-ghost-aura--outer {
+  width: 84px;
+  height: 84px;
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  box-shadow: 0 0 34px rgba(139, 92, 246, 0.18);
+  animation: timeline-gen-aura-spin 7s linear infinite;
+}
+
+.timeline-gen-ghost-aura--inner {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(236, 72, 153, 0.2);
+  box-shadow: inset 0 0 22px rgba(196, 181, 253, 0.14);
+  animation: timeline-gen-aura-pulse 2.4s ease-in-out infinite;
+}
+
+.timeline-gen-ghost-crown {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  width: 42px;
+  height: 16px;
+  border-top: 2px solid rgba(196, 181, 253, 0.82);
+  border-radius: 50%;
+  transform: translateX(-50%) scaleX(0.45) translateY(8px);
+  filter: drop-shadow(0 0 10px rgba(196, 181, 253, 0.55));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.timeline-gen-ghost-spark {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(196, 181, 253, 0.9);
+  box-shadow: 0 0 12px rgba(196, 181, 253, 0.75);
+  opacity: 0;
+  transform: translateY(8px) scale(0.4);
+  pointer-events: none;
+  animation: timeline-gen-spark-drift 1.9s ease-in-out infinite;
+}
+
+.timeline-gen-ghost-trail {
+  position: absolute;
+  right: 44px;
+  bottom: 26px;
+  height: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.45)),
+    repeating-linear-gradient(90deg, transparent 0 10px, rgba(236, 72, 153, 0.22) 10px 14px);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.25);
+  transform-origin: right center;
+  pointer-events: none;
+}
+
+/* Evolution stages — scale + glow */
+.timeline-gen-ghost-anchor--stage-0 .timeline-gen-ghost-mini-body {
+  width: 28px;
+  height: 36px;
+  opacity: 0.45;
+  filter: blur(0.5px);
+  background: linear-gradient(180deg, rgba(219, 234, 254, 0.82) 0%, rgba(167, 139, 250, 0.42) 100%);
+}
+
+.timeline-gen-ghost-anchor--stage-1 .timeline-gen-ghost-mini-body {
+  width: 36px;
+  height: 46px;
+  opacity: 0.72;
+  background: linear-gradient(180deg, rgba(240, 235, 255, 0.95) 0%, rgba(196, 181, 253, 0.66) 100%);
+}
+
+.timeline-gen-ghost-anchor--stage-1 .timeline-gen-ghost-aura--inner {
+  opacity: 0.42;
+  transform: translateX(-50%) scale(0.82);
+}
+
+.timeline-gen-ghost-anchor--stage-1 .timeline-gen-ghost-core {
+  opacity: 0.7;
+  transform: translate(-50%, -50%) scale(0.8);
+}
+
+.timeline-gen-ghost-anchor--stage-1 .timeline-gen-ghost-mini-mouth {
+  opacity: 0.5;
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-mini-body {
+  width: 44px;
+  height: 56px;
+  opacity: 0.9;
+  background: linear-gradient(180deg, rgba(248, 245, 255, 0.98) 0%, rgba(196, 181, 253, 0.76) 62%, rgba(139, 92, 246, 0.42) 100%);
+  box-shadow:
+    0 0 28px rgba(167, 139, 250, 0.55),
+    0 0 46px rgba(236, 72, 153, 0.14),
+    inset 0 -8px 15px rgba(139, 92, 246, 0.18);
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-aura {
+  opacity: 0.58;
+  transform: translateX(-50%) scale(0.95);
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-core {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-rune {
+  opacity: 0.68;
+  transform: translateX(-50%) scaleX(1);
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-mini-mouth {
+  width: 10px;
+  opacity: 0.72;
+}
+
+.timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-spark {
+  opacity: 0.7;
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-mini-body {
+  width: 52px;
+  height: 64px;
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(216, 202, 255, 0.88) 52%, rgba(168, 85, 247, 0.5) 100%);
+  box-shadow:
+    0 0 36px rgba(196, 181, 253, 0.65),
+    0 0 64px rgba(139, 92, 246, 0.25),
+    0 0 84px rgba(236, 72, 153, 0.18),
+    inset 0 -10px 18px rgba(139, 92, 246, 0.22);
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-aura {
+  opacity: 0.9;
+  transform: translateX(-50%) scale(1.12);
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-core {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.35);
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-rune {
+  opacity: 0.9;
+  transform: translateX(-50%) scaleX(1.18);
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-mini-mouth {
+  width: 12px;
+  opacity: 0.85;
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-crown {
+  opacity: 1;
+  transform: translateX(-50%) scaleX(1) translateY(0);
+}
+
+.timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-spark {
+  opacity: 0.95;
+}
+
+.timeline-gen-percent {
+  position: relative;
+  z-index: 2;
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+@keyframes timeline-gen-glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes timeline-gen-tick-in {
+  to { transform: translateX(-50%) scaleY(1); }
+}
+
+@keyframes timeline-gen-pulse-ring {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.8);
+  }
+}
+
+@keyframes timeline-gen-ghost-bob {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-6px) rotate(3deg); }
+}
+
+@keyframes timeline-gen-aura-spin {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@keyframes timeline-gen-aura-pulse {
+  0%, 100% { filter: blur(0); opacity: 0.45; }
+  50% { filter: blur(1px); opacity: 0.85; }
+}
+
+@keyframes timeline-gen-spark-drift {
+  0%, 100% {
+    transform: translateY(8px) scale(0.45);
+  }
+  45% {
+    transform: translateY(-4px) scale(1);
+  }
+}
+
+/* ─── Reveal: horizontal color-coded timeline ─── */
+.timeline-gen-reveal {
+  animation: timeline-gen-reveal-in 0.55s ease forwards;
+}
+
+.timeline-gen-reveal-header {
+  animation: timeline-gen-reveal-in 0.45s ease 0.05s both;
+}
+
+.timeline-gen-h-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 1rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.4) transparent;
+}
+
+.timeline-gen-h-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.timeline-gen-h-scroll::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.35);
+  border-radius: 999px;
+}
+
+.timeline-gen-h-track {
+  position: relative;
+  /* Taller rail so the generated horizontal timeline fills the vertical space
+     it occupies over the swimlanes/calendar, with more room to spread events. */
+  height: clamp(360px, 62vh, 560px);
+  padding: 0 1.5rem;
+}
+
+.timeline-gen-h-years {
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  top: 0;
+  height: 1.25rem;
+}
+
+.timeline-gen-h-year {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.timeline-gen-h-rail-wrap {
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 48px;
+}
+
+.timeline-gen-h-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 5px;
+  border-radius: 999px;
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.35),
+    0 0 40px rgba(59, 130, 246, 0.15);
+}
+
+.timeline-gen-h-node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.timeline-gen-h-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.65);
+  flex-shrink: 0;
+}
+
+.timeline-gen-h-stem {
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  opacity: 0.55;
+}
+
+.timeline-gen-h-cards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.timeline-gen-h-card {
+  position: absolute;
+  width: 168px;
+  max-width: 168px;
+  max-height: 132px;
+  overflow: hidden;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border-width: 1px;
+  border-style: solid;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.timeline-gen-h-card--above {
+  bottom: calc(50% + 36px);
+  transform: translateX(-50%);
+}
+
+.timeline-gen-h-card--below {
+  top: calc(50% + 36px);
+  transform: translateX(-50%);
+}
+
+.timeline-gen-h-card--high {
+  box-shadow:
+    0 0 0 1px var(--lane-rail, rgba(236, 72, 153, 0.5)),
+    0 0 24px color-mix(in srgb, var(--lane-rail, #ec4899) 35%, transparent),
+    0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.timeline-gen-event {
+  opacity: 0;
+  animation: timeline-gen-event-in-h 0.55s ease forwards;
+}
+
+@keyframes timeline-gen-event-in-h {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.timeline-gen-h-card--above.timeline-gen-event {
+  animation-name: timeline-gen-event-in-h-above;
+}
+
+.timeline-gen-h-card--below.timeline-gen-event {
+  animation-name: timeline-gen-event-in-h-below;
+}
+
+@keyframes timeline-gen-event-in-h-above {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes timeline-gen-event-in-h-below {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.timeline-gen-h-node.timeline-gen-event {
+  animation-name: timeline-gen-event-in-dot;
+}
+
+@keyframes timeline-gen-event-in-dot {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .timeline-gen-screen {
+    min-height: min(380px, calc(100dvh - 7rem));
+    max-height: calc(100dvh - 4rem);
+    padding:
+      max(0.75rem, env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      max(1rem, env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
+    justify-content: center;
+  }
+
+  .timeline-gen-title {
+    font-size: 1.05rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .timeline-gen-query {
+    margin-bottom: 1rem;
+    max-width: 100%;
+    padding: 0 0.25rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .timeline-gen-stage {
+    margin-bottom: 1rem;
+    font-size: 0.78rem;
+    padding: 0 0.5rem;
+    line-height: 1.35;
+  }
+
+  .timeline-gen-rail-wrap {
+    width: min(100%, calc(100vw - 2rem));
+    margin-bottom: 0.65rem;
+  }
+
+  .timeline-gen-ghost-lane {
+    height: 72px;
+    margin-top: 0.35rem;
+  }
+
+  .timeline-gen-ghost-anchor--stage-0 .timeline-gen-ghost-mini-body {
+    width: 24px;
+    height: 32px;
+  }
+
+  .timeline-gen-ghost-anchor--stage-1 .timeline-gen-ghost-mini-body {
+    width: 30px;
+    height: 38px;
+  }
+
+  .timeline-gen-ghost-anchor--stage-2 .timeline-gen-ghost-mini-body {
+    width: 36px;
+    height: 46px;
+  }
+
+  .timeline-gen-ghost-anchor--stage-3 .timeline-gen-ghost-mini-body {
+    width: 40px;
+    height: 50px;
+  }
+
+  .timeline-gen-ghost-mini-eye {
+    width: 5px;
+    height: 7px;
+  }
+
+  .timeline-gen-tick-label {
+    font-size: 8px;
+  }
+
+  .timeline-gen-percent {
+    margin-top: 0.5rem;
+    font-size: 0.65rem;
+  }
+
+  .timeline-gen-h-track {
+    height: clamp(300px, 52vh, 420px);
+    padding: 0 0.75rem;
+  }
+
+  .timeline-gen-h-years,
+  .timeline-gen-h-rail-wrap {
+    left: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .timeline-gen-h-card {
+    width: 132px;
+    max-width: 132px;
+    max-height: 118px;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .timeline-gen-h-card--above {
+    bottom: calc(50% + 28px);
+  }
+
+  .timeline-gen-h-card--below {
+    top: calc(50% + 28px);
+  }
+}
+
+@keyframes timeline-gen-reveal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ─── Mobile vertical reveal (stacked, no overlap) ─── */
+.timeline-gen-v-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.timeline-gen-v-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+  min-width: 0;
+  padding-bottom: 0.85rem;
+}
+
+.timeline-gen-v-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-gen-v-rail {
+  flex-shrink: 0;
+  width: 1.125rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.35rem;
+}
+
+.timeline-gen-v-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.65);
+  flex-shrink: 0;
+}
+
+.timeline-gen-v-line {
+  flex: 1;
+  width: 2px;
+  min-height: 0.75rem;
+  margin-top: 0.35rem;
+  border-radius: 1px;
+  background: linear-gradient(
+    180deg,
+    var(--lane-rail, rgba(167, 139, 250, 0.8)),
+    rgba(255, 255, 255, 0.08)
+  );
+}
+
+.timeline-gen-v-card {
+  flex: 1;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border-width: 1px;
+  border-style: solid;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.timeline-gen-v-card--high {
+  box-shadow:
+    0 0 0 1px var(--lane-rail, rgba(236, 72, 153, 0.5)),
+    0 0 20px color-mix(in srgb, var(--lane-rail, #ec4899) 30%, transparent),
+    0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.timeline-gen-v-item.timeline-gen-event {
+  animation-name: timeline-gen-event-in-v;
+}
+
+@keyframes timeline-gen-event-in-v {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-gen-ghost-mini,
+  .timeline-gen-ghost-aura,
+  .timeline-gen-ghost-spark,
+  .timeline-gen-screen::before,
+  .timeline-gen-pulse {
+    animation: none !important;
+  }
+
+  .timeline-gen-event {
+    opacity: 1;
+    animation: none;
+  }
+
+  .timeline-gen-h-card--above,
+  .timeline-gen-h-card--below {
+    transform: translateX(-50%);
+  }
+
+  .timeline-gen-v-item.timeline-gen-event {
+    opacity: 1;
+    animation: none;
+  }
+
+  .timeline-gen-h-node {
+    transform: translate(-50%, -50%);
+  }
+}

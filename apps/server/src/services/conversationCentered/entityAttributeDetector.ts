@@ -26,6 +26,8 @@ export type AttributeType =
   | 'nationality'
   | 'language'
   | 'skill'
+  | 'hobby'
+  | 'interest'
   | 'certification'
   | 'employment_status'      // employed, unemployed, between_jobs, retired
   | 'financial_status'        // debt, financial_struggles, stable, wealthy
@@ -299,7 +301,9 @@ Detect attributes:
 - "current_city": Where they currently live
 - "nationality": Nationality or country of origin
 - "language": Languages they speak
-- "skill": Skills they have
+- "skill": Skills they have (technical, creative, athletic, professional)
+- "hobby": Recurring leisure activities (e.g., "rock climbing", "painting", "gaming")
+- "interest": Topics they care about or follow (e.g., "AI", "soccer", "cooking") — not necessarily a skill
 - "certification": Certifications they hold
 - "employment_status": Current employment situation (e.g., "employed", "unemployed", "between_jobs", "retired", "student")
 - "financial_status": Financial situation (e.g., "debt", "financial_struggles", "stable", "wealthy", "in_debt")

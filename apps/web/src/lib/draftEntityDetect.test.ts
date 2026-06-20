@@ -35,6 +35,18 @@ describe('detectDraftEntitiesInText', () => {
     expect(drafts).toHaveLength(0);
   });
 
+  it('parses friendship + Anaheim + unresolved school without creating School entity', () => {
+    const text =
+      'Abel Mendoza is my friend we grew up together in Anaheim and he went to the same school as me';
+    const drafts = detectDraftEntitiesInText(text, INDEX, []);
+    expect(drafts.some((d) => d.name === 'Abel Mendoza' && d.type === 'character')).toBe(true);
+    expect(drafts.some((d) => d.name === 'Anaheim' && d.type === 'location')).toBe(true);
+    expect(drafts.some((d) => d.name === 'School' && d.type === 'location')).toBe(false);
+    expect(drafts.some((d) => d.composerChipKind === 'needs_clarification')).toBe(true);
+    expect(drafts.some((d) => d.composerChipKind === 'relationship')).toBe(true);
+    expect(drafts.some((d) => d.composerChipKind === 'shared_history')).toBe(true);
+  });
+
   it('does not treat sentence-leading verbs as part of a name', () => {
     const drafts = detectDraftEntitiesInText('Tell Abel about work', INDEX, []);
     expect(drafts.map((d) => d.name)).toEqual([]);

@@ -8,6 +8,7 @@ import type { KnowledgeClaim, EvidenceLink } from '../../api/knowledge';
 import { epistemicFieldLabel, formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { getMockSelfKnowledgeClaim } from '../../mocks/selfKnowledgeClaims';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
 
 interface EvidenceInspectorModalProps {
   claimId: string;
@@ -182,6 +183,15 @@ export const EvidenceInspectorModal = ({ claimId, onClose }: EvidenceInspectorMo
                 </div>
               )}
             </div>
+
+            {/* Narrative spine — epistemic chain */}
+            {!useMock && (
+              <NarrativeProvenancePanel
+                sourceTable="crystallized_knowledge"
+                sourceId={claimId}
+                title="What evidence supports this?"
+              />
+            )}
 
             {/* Supersedence chain */}
             {claim.supersedence_chain && claim.supersedence_chain.length > 0 && (

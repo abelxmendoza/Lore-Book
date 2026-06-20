@@ -21,6 +21,29 @@ import {
   buildOntologyActionCandidates,
 } from './meaningCandidateBuilder';
 import { processMeaningMemoryCandidates } from './meaningMemoryBridge';
+import {
+  enrichMessyAmbiguities,
+  enrichMessyMemoryCandidates,
+  enrichMessyOntologyActions,
+  enrichMessyReferences,
+  enrichMessyResolvedEvents,
+  enrichMessyResolvedSkills,
+  enrichMessyTemporalContext,
+} from './messyContextMeaning';
+import {
+  enrichTravelAmbiguities,
+  enrichTravelMemoryCandidates,
+  enrichTravelOntologyActions,
+  enrichTravelResolvedEvents,
+  enrichTravelTemporalContext,
+} from './travelContextMeaning';
+import {
+  enrichWorkplaceAmbiguities,
+  enrichWorkplaceMemoryCandidates,
+  enrichWorkplaceOntologyActions,
+  enrichWorkplaceResolvedEvents,
+  enrichWorkplaceTemporalContext,
+} from './workplaceContextMeaning';
 import type {
   MeaningAmbiguity,
   MeaningResolutionInput,
@@ -34,20 +57,39 @@ class MeaningResolutionService {
   async resolve(input: MeaningResolutionInput): Promise<MeaningResolutionResult> {
     const { userId, messageId, text, threadId, lexicalResult, timestamp, priorMentionedNames = [] } = input;
 
-    const temporalContext = resolveTemporalContext(text, lexicalResult);
+    const temporalContext = enrichWorkplaceTemporalContext(
+      text,
+      enrichTravelTemporalContext(
+        text,
+        enrichMessyTemporalContext(text, resolveTemporalContext(text, lexicalResult))
+      )
+    );
     const { factuality, certaintyLevel } = resolveFactuality(text, lexicalResult);
 
     const { entities: resolvedEntities, charByName } = await resolveEntities(
       userId, text, lexicalResult, temporalContext
     );
     const resolvedRelationships = resolveRelationships(text, lexicalResult, charByName);
-    const resolvedSkills = resolveSkills(text, lexicalResult, temporalContext);
+    const resolvedSkills = enrichMessyResolvedSkills(text, resolveSkills(text, lexicalResult, temporalContext));
     const resolvedPlaces = this.resolvePlaces(lexicalResult);
-    const resolvedEvents = this.resolveEvents(lexicalResult, temporalContext);
+    const resolvedEvents = enrichWorkplaceResolvedEvents(
+      text,
+      enrichTravelResolvedEvents(
+        text,
+        enrichMessyResolvedEvents(text, this.resolveEvents(lexicalResult, temporalContext))
+      )
+    );
 
     applyConfirmationRules(resolvedEntities, resolvedRelationships, factuality);
 
-    const references = resolveReferences(text, resolvedEntities, priorMentionedNames);
+    const references = enrichMessyReferences(
+      text,
+      resolveReferences(text, resolvedEntities, priorMentionedNames),
+      [
+        ...lexicalResult.places.map((p) => p.name),
+        ...lexicalResult.entities.filter((e) => e.type === 'PLACE').map((e) => e.surface),
+      ]
+    );
 
     const nameForCollision = resolvedEntities.find((e) => e.isSelf)?.surface
       ?? resolvedEntities.find((e) => e.kind === 'PERSON')?.surface;
@@ -56,7 +98,16 @@ class MeaningResolutionService {
       : [];
     const identityCollisions = detectIdentityCollisions(text, lexicalResult, charMatches);
     const contradictions = await detectContradictions(userId, temporalContext);
-    const ambiguities = this.buildAmbiguities(lexicalResult, identityCollisions, factuality);
+    const ambiguities = enrichWorkplaceAmbiguities(
+      text,
+      enrichTravelAmbiguities(
+        text,
+        enrichMessyAmbiguities(
+          text,
+          this.buildAmbiguities(lexicalResult, identityCollisions, factuality)
+        )
+      )
+    );
 
     const confidence = scoreMeaningConfidence({
       entities: resolvedEntities,
@@ -67,24 +118,45 @@ class MeaningResolutionService {
       contradictions,
     });
 
-    const ontologyActionCandidates = buildOntologyActionCandidates(
-      resolvedEntities,
-      resolvedRelationships,
-      resolvedSkills,
-      identityCollisions,
-      contradictions,
-      lexicalResult,
+    const ontologyActionCandidates = enrichWorkplaceOntologyActions(
       text,
-      factuality
+      enrichTravelOntologyActions(
+        text,
+        enrichMessyOntologyActions(
+          text,
+          buildOntologyActionCandidates(
+            resolvedEntities,
+            resolvedRelationships,
+            resolvedSkills,
+            identityCollisions,
+            contradictions,
+            lexicalResult,
+            text,
+            factuality
+          ),
+          lexicalResult
+        ),
+        lexicalResult
+      )
     );
 
-    const memoryReviewCandidates = buildMemoryReviewCandidates(
-      resolvedSkills,
-      resolvedRelationships,
-      resolvedEntities,
-      factuality,
-      confidence,
-      ambiguities
+    const memoryReviewCandidates = enrichWorkplaceMemoryCandidates(
+      text,
+      enrichTravelMemoryCandidates(
+        text,
+        enrichMessyMemoryCandidates(
+          text,
+          buildMemoryReviewCandidates(
+            resolvedSkills,
+            resolvedRelationships,
+            resolvedEntities,
+            factuality,
+            confidence,
+            ambiguities
+          ),
+          lexicalResult
+        )
+      )
     );
 
     return {
@@ -169,10 +241,11 @@ class MeaningResolutionService {
       kind: e.kind,
       subject: e.subject,
       cue: e.cue,
-      temporalStatus: temporal.defaultStatus,
+      temporalStatus: e.kind === 'training' ? (temporal.trainingStatus ?? 'present') : temporal.defaultStatus,
       confidence: e.confidence,
       resolutionReason: `lexical:${e.cue}`,
-      requiresConfirmation: e.confidence < 0.7,
+      requiresConfirmation: e.kind === 'conflict' || e.confidence < 0.7,
+      needsReview: e.kind === 'conflict',
     }));
   }
 

@@ -1,10 +1,12 @@
 /**
- * Turning Point Detection — career, relationship, life milestone signals from memory text.
+ * Turning Point Detection v2 — career, relationship, and life milestone signals.
+ * Combines classified resolved_events with journal text pattern matching.
  */
 import { randomUUID } from 'crypto';
 
 import { supabaseAdmin } from '../supabaseClient';
 import type { EnrichedLifeArc } from '../continuityRuntime/arcs/lifeArcSynthesisService';
+import { compileLifeHistory } from './history/historyEngineService';
 import type { NarrativeEvidence, NarrativeTurningPoint, TurningPointKind } from './types';
 
 type PatternRule = {
@@ -40,7 +42,7 @@ function detectInText(
   text: string,
   date: string | null,
   arcs: EnrichedLifeArc[],
-  source: string
+  source: string,
 ): NarrativeTurningPoint[] {
   const hits: NarrativeTurningPoint[] = [];
   for (const rule of TURNING_POINT_RULES) {
@@ -68,44 +70,10 @@ function detectInText(
   return hits;
 }
 
-export async function detectTurningPoints(
-  userId: string,
-  arcs: EnrichedLifeArc[]
-): Promise<NarrativeTurningPoint[]> {
-  const { data: journalRows } = await supabaseAdmin
-    .from('journal_entries')
-    .select('id, content, summary, date, created_at')
-    .eq('user_id', userId)
-    .order('date', { ascending: false })
-    .limit(80)
-    .catch(() => ({ data: [] as Array<{ id: string; content?: string; summary?: string; date?: string; created_at?: string }> }));
-
-  const { data: eventRows } = await supabaseAdmin
-    .from('resolved_events')
-    .select('id, title, description, event_date')
-    .eq('user_id', userId)
-    .order('event_date', { ascending: false })
-    .limit(60);
-
-  const all: NarrativeTurningPoint[] = [];
-
-  for (const row of journalRows ?? []) {
-    const text = String(row.content ?? '');
-    if (!text.trim()) continue;
-    const date = row.date ?? row.created_at ?? null;
-    all.push(...detectInText(text, date, arcs, 'journal'));
-  }
-
-  for (const row of eventRows ?? []) {
-    const text = `${row.title ?? ''} ${row.description ?? ''}`;
-    if (!text.trim()) continue;
-    all.push(...detectInText(text, row.event_date ?? null, arcs, 'event'));
-  }
-
-  // Dedupe by kind + date + title prefix
+function dedupeTurningPoints(points: NarrativeTurningPoint[]): NarrativeTurningPoint[] {
   const seen = new Set<string>();
   const deduped: NarrativeTurningPoint[] = [];
-  for (const tp of all.sort((a, b) => b.importance - a.importance)) {
+  for (const tp of points.sort((a, b) => b.importance - a.importance)) {
     const key = `${tp.kind}|${tp.date ?? ''}|${tp.title}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -113,3 +81,31 @@ export async function detectTurningPoints(
   }
   return deduped.slice(0, 25);
 }
+
+export async function detectTurningPoints(
+  userId: string,
+  arcs: EnrichedLifeArc[],
+): Promise<NarrativeTurningPoint[]> {
+  const history = await compileLifeHistory(userId, arcs);
+  const fromEvents = history.turningPoints;
+
+  const { data: journalRows } = await supabaseAdmin
+    .from('journal_entries')
+    .select('id, content, summary, date, created_at')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(80);
+
+  const fromJournal: NarrativeTurningPoint[] = [];
+  for (const row of journalRows ?? []) {
+    const text = String(row.content ?? '');
+    if (!text.trim()) continue;
+    const date = row.date ?? row.created_at ?? null;
+    fromJournal.push(...detectInText(text, date, arcs, 'journal'));
+  }
+
+  return dedupeTurningPoints([...fromEvents, ...fromJournal]);
+}
+
+export { detectInText, TURNING_POINT_RULES };
+export type { NarrativeEvidence };

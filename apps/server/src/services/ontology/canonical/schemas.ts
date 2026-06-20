@@ -139,6 +139,8 @@ export const meaningResolutionResultSchema = z.object({
     confidence: z.number(),
     resolutionReason: z.string(),
     requiresConfirmation: z.boolean(),
+    durationHint: z.string().optional(),
+    startDateHint: z.string().optional(),
   })),
   resolvedPlaces: z.array(z.object({
     name: z.string(),
@@ -156,6 +158,7 @@ export const meaningResolutionResultSchema = z.object({
     requiresConfirmation: z.boolean(),
     subject: z.string().optional(),
     temporalStatus: z.string().optional(),
+    needsReview: z.boolean().optional(),
   })),
   references: z.array(z.object({
     reference: z.string(),
@@ -164,6 +167,8 @@ export const meaningResolutionResultSchema = z.object({
     confidence: z.number(),
     resolutionReason: z.string(),
     relation: z.string().optional(),
+    needsResolution: z.boolean().optional(),
+    requiresConfirmation: z.boolean().optional(),
   })),
   identityCollisions: z.array(z.object({
     name: z.string(),
@@ -196,6 +201,9 @@ export const meaningResolutionResultSchema = z.object({
       status: z.string(),
       cue: z.string(),
     })),
+    trainingStatus: z.string().optional(),
+    startHint: z.string().optional(),
+    durationHint: z.string().optional(),
   }),
   factuality: z.enum(['fact', 'opinion', 'hypothetical', 'desire', 'uncertain', 'question']),
   confidence: z.number().min(0).max(1),

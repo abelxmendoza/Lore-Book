@@ -7,6 +7,7 @@ import { glossaryAliases, lookupKeyword } from '../../../server/src/services/ont
 import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEntity';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { isIndividualPersonName } from './personNameValidation';
+import { isGenericVenueAlias } from './lexicalComposerParse';
 
 const HINT_ONLY_CATEGORIES = new Set([
   'RELATIONSHIP_VERB', 'IDENTITY_VERB', 'DISAMBIGUATION', 'NAV_VERB',
@@ -92,6 +93,7 @@ function discoverGlossaryEntities(text: string): LexicalOntologyHit[] {
   for (const { alias, entry } of glossaryAliases()) {
     if (HINT_ONLY_CATEGORIES.has(entry.category) || entry.domain === 'TIME') continue;
     if (entry.category === 'GEOGRAPHY' && !alias.includes(' ')) continue;
+    if (isGenericVenueAlias(alias, entry.category)) continue;
     if (!padded.includes(` ${alias} `) && !padded.includes(` ${alias}'s `)) continue;
 
     const certifiedType = mapDomainToCertifiedType(entry.domain, entry.category);

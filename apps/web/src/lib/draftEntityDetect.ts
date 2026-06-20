@@ -6,6 +6,10 @@ import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEnt
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { isIndividualPersonName } from './personNameValidation';
 import { detectLexicalDraftEntities } from './lexicalEntityDetect';
+import {
+  composerLexicalToMatches,
+  parseComposerLexical,
+} from './lexicalComposerParse';
 
 const COMMON_TOKENS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'can', 'did', 'do', 'for', 'from',
@@ -18,6 +22,20 @@ const COMMON_TOKENS = new Set([
   'today', 'yesterday', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
   'saturday', 'sunday', 'january', 'february', 'march', 'april', 'may', 'june', 'july',
   'august', 'september', 'october', 'november', 'december',
+]);
+
+const BLOCKED_LOCATION_TOKENS = new Set([
+  'friend', 'friends', 'school', 'same', 'me', 'he', 'she', 'they', 'it', 'the', 'and', 'at',
+  'my', 'our', 'his', 'her', 'their',
+]);
+
+const GENERIC_VENUE_BLOCK = new Set([
+  'school', 'university', 'college', 'campus', 'classroom', 'gym', 'dojo', 'bar', 'restaurant',
+  'cafe', 'office', 'home', 'house', 'city', 'park',
+]);
+
+const SENTENCE_VERB_PREFIX = new Set([
+  'tell', 'ask', 'say', 'call', 'email', 'text', 'message', 'ping', 'remind', 'show', 'give',
 ]);
 
 const LOCATION_SUFFIX =
@@ -123,6 +141,7 @@ export function detectDraftEntitiesInText(
     while ((match = pattern.exec(text)) !== null) {
       const parts = match[1].trim().split(/\s+/);
       if (parts.length >= 2 && COMMON_TOKENS.has(normalizeNameKey(parts[0]))) continue;
+      if (parts.length >= 1 && SENTENCE_VERB_PREFIX.has(normalizeNameKey(parts[0]))) continue;
       const candidateKey = normalizeNameKey(match[1]);
       if (employmentOrgKeys.has(candidateKey)) continue;
       if (/\b(?:Staffing|Robotics|Labs|Technologies|Technology|Services|Solutions|Industries|Group|Agency|Partners|Consulting)\b/i.test(match[1])) {
@@ -140,7 +159,10 @@ export function detectDraftEntitiesInText(
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
       const candidate = match[1].trim();
-      if (employmentOrgKeys.has(normalizeNameKey(candidate))) continue;
+      const candidateKey = normalizeNameKey(candidate);
+      if (employmentOrgKeys.has(candidateKey)) continue;
+      if (COMMON_TOKENS.has(candidateKey) || BLOCKED_LOCATION_TOKENS.has(candidateKey)) continue;
+      if (/^same\s+/i.test(candidate)) continue;
       if (isIndividualPersonName(candidate) && !/\b(?:Street|Park|City|Beach|Avenue|Road)\b/i.test(text)) {
         continue;
       }
@@ -163,8 +185,23 @@ export function detectDraftEntitiesInText(
   for (const draft of lexicalDrafts) {
     const key = normalizeNameKey(draft.name);
     if (seen.has(`${draft.type}:${key}`)) continue;
+    if (draft.type === 'location' && GENERIC_VENUE_BLOCK.has(key)) continue;
     seen.add(`${draft.type}:${key}`);
     drafts.push(draft);
+  }
+
+  const composerMatches = composerLexicalToMatches(
+    parseComposerLexical(text),
+    index,
+    [...existingMatches, ...drafts],
+  );
+  for (const match of composerMatches) {
+    const slot = match.composerChipKind
+      ? `${match.composerChipKind}:${match.type}:${normalizeNameKey(match.name)}`
+      : `${match.type}:${normalizeNameKey(match.name)}`;
+    if (seen.has(slot)) continue;
+    seen.add(slot);
+    drafts.push(match);
   }
 
   return drafts.sort((a, b) => a.name.localeCompare(b.name));

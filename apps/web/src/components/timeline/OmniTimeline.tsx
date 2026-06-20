@@ -3,7 +3,7 @@
  * Fetches arc + chronology data once, routes between three views.
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -21,8 +21,18 @@ import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
 import { useGetChaptersQuery } from '../../store/api/loreApi';
 import type { LifeArc } from '../../hooks/useLifeArcs';
+import { TimelineGeneratingSimulation } from './TimelineGeneratingSimulation';
+import { GeneratedTimelineReveal, type GeneratedTimelineEvent } from './GeneratedTimelineReveal';
+import { GeneratedTimelineLibraryPanel } from './GeneratedTimelineLibraryPanel';
+import { buildMockGeneratedTimeline } from '../../mocks/timelineGenerationMock';
+import { useGeneratedTimelinesLibrary } from '../../hooks/useGeneratedTimelinesLibrary';
+import type { SavedGeneratedTimeline } from '../../lib/generatedTimelinesLibrary';
+import { OmniTimelineErrorBanner } from './OmniTimelineErrorBanner';
+import { UniversalTimelineSearch } from './UniversalTimelineSearch';
+import './OmniTimeline.css';
 
 type View = OmniTimelineView;
+type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
@@ -37,6 +47,18 @@ const BOTTOM_NAV = VIEWS.map(({ id, shortLabel, Icon }) => ({
   Icon,
 }));
 
+// Seed prompts for the Universal Timeline Search — show the user the *kinds* of
+// timelines they can spin up from their conversations + lorebooks. Click to run.
+const TIMELINE_SUGGESTIONS = [
+  'My nightlife era',
+  'Everything with Alex',
+  '2024 career',
+  'Family & holidays',
+  'Where I’ve lived',
+  'Heartbreaks & love',
+  'Friendships over the years',
+];
+
 type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
@@ -50,7 +72,19 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   const [genInput, setGenInput] = useState(urlQuery);
   const [genQuery, setGenQuery] = useState(urlQuery);
+  const [genPhase, setGenPhase] = useState<GenPhase>(urlQuery.trim() ? 'revealed' : 'idle');
   const [genSearchOpen, setGenSearchOpen] = useState(Boolean(urlQuery.trim()));
+  const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
+  const shouldPersistRef = useRef(false);
+
+  const {
+    library: savedTimelines,
+    saveTimeline,
+    removeTimeline,
+    setTimelineCollapsed,
+    findByQuery,
+    getById,
+  } = useGeneratedTimelinesLibrary();
 
   const { user }                     = useAuth();
   const { isGuest }                  = useGuest();
@@ -58,8 +92,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const { openMemory }               = useEntityModal();
   const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
 
-  const { arcs, activeArcs, arcsByTrack, loading: arcsLoading } = useLifeArcs();
-  const { entries, loading: entriesLoading } = useChronology();
+  const { arcs, activeArcs, arcsByTrack, loading: arcsLoading, error: arcsError, refresh: refreshArcs } = useLifeArcs();
+  const { entries, loading: entriesLoading, error: chronologyError, refetch: refetchChronology } = useChronology();
 
   // Birth-year-anchored life eras (Childhood / Twenties / …). These are the
   // `lifestage-*` chapter candidates produced server-side from resolved event
@@ -71,7 +105,33 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     [chaptersData],
   );
 
+  // Click a life-era pill to filter the timeline to that era's calendar window.
+  const [selectedEraId, setSelectedEraId] = useState<string | null>(null);
+  const selectedEra = useMemo(
+    () => lifeEras.find((e) => e.id === selectedEraId) ?? null,
+    [lifeEras, selectedEraId],
+  );
+  const displayEntries = useMemo(() => {
+    if (!selectedEra) return entries;
+    const from = new Date(selectedEra.start_date).getTime();
+    const to = new Date(selectedEra.end_date).getTime();
+    return entries.filter((e) => {
+      const t = new Date(e.start_time).getTime();
+      return Number.isFinite(t) && t >= from && t <= to;
+    });
+  }, [entries, selectedEra]);
+
   const loading = arcsLoading || entriesLoading;
+
+  const dataError = useMemo(() => {
+    if (isDemoMode || loading) return null;
+    return arcsError ?? chronologyError?.message ?? null;
+  }, [isDemoMode, loading, arcsError, chronologyError]);
+
+  const handleRetryData = useCallback(() => {
+    void refreshArcs();
+    void refetchChronology();
+  }, [refreshArcs, refetchChronology]);
 
   const statsLabel = useMemo(() => {
     if (isDemoMode) return 'Demo';
@@ -81,16 +141,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   }, [isDemoMode, arcs.length, entries.length]);
 
   const genTerms = genQuery.trim().toLowerCase().split(/\s+/).filter((t) => t.length > 2);
-  const generatedEvents = useMemo(() => {
-    if (!genQuery.trim()) return [];
-    return [...entries]
-      .filter((e) => {
-        if (genTerms.length === 0) return true;
-        const hay = `${e.content ?? ''} ${(e.timeline_names ?? []).join(' ')}`.toLowerCase();
-        return genTerms.some((t) => hay.includes(t));
-      })
-      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-  }, [genQuery, entries, genTerms]);
 
   const matchingArcs = useMemo(() => {
     if (!genQuery.trim()) return [];
@@ -104,76 +154,165 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     if (urlQuery.trim()) setGenSearchOpen(true);
   }, [urlQuery]);
 
-  const submitGenSearch = () => {
-    setGenQuery(genInput.trim());
+  useEffect(() => {
+    if (!urlQuery.trim()) return;
+    const cached = findByQuery(urlQuery);
+    if (cached) setActiveTimelineId(cached.id);
+  }, [urlQuery, findByQuery]);
+
+  const computeFreshReveal = useCallback(
+    (query: string): { events: GeneratedTimelineEvent[]; isMock: boolean } => {
+      const terms = query.trim().toLowerCase().split(/\s+/).filter((t) => t.length > 2);
+      const matched = [...entries]
+        .filter((e) => {
+          if (terms.length === 0) return true;
+          const hay = `${e.content ?? ''} ${(e.timeline_names ?? []).join(' ')}`.toLowerCase();
+          return terms.some((t) => hay.includes(t));
+        })
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      if (matched.length > 0) return { events: matched, isMock: false };
+      return { events: buildMockGeneratedTimeline(query), isMock: true };
+    },
+    [entries]
+  );
+
+  const openSavedTimeline = useCallback((saved: SavedGeneratedTimeline) => {
+    setGenInput(saved.query);
+    setGenQuery(saved.query);
+    setActiveTimelineId(saved.id);
+    setGenPhase('revealed');
+    if (isMobile) setGenSearchOpen(false);
+  }, [isMobile]);
+
+  const generateFor = (raw: string, options?: { forceRegenerate?: boolean }) => {
+    const q = raw.trim();
+    if (!q) return;
+    setGenInput(q);
+    setGenQuery(q);
+
+    if (!options?.forceRegenerate) {
+      const cached = findByQuery(q);
+      if (cached) {
+        openSavedTimeline(cached);
+        return;
+      }
+    }
+
+    setActiveTimelineId(null);
+    shouldPersistRef.current = true;
+    setGenPhase('generating');
     if (isMobile) setGenSearchOpen(false);
   };
 
-  const clearGenSearch = () => {
+  const submitGenSearch = () => generateFor(genInput);
+
+  const closeGeneratedTimeline = () => {
     setGenQuery('');
     setGenInput('');
+    setGenPhase('idle');
+    setActiveTimelineId(null);
   };
 
+  const handleGenComplete = useCallback(() => {
+    setGenPhase('revealed');
+  }, []);
+
+  const activeSaved = useMemo(() => {
+    if (activeTimelineId) return getById(activeTimelineId);
+    if (genQuery.trim()) return findByQuery(genQuery);
+    return undefined;
+  }, [activeTimelineId, genQuery, getById, findByQuery]);
+
+  const revealEvents = useMemo((): {
+    events: GeneratedTimelineEvent[];
+    isMock: boolean;
+    fromLibrary: boolean;
+    savedAt?: string;
+    collapsed: boolean;
+  } => {
+    if (!genQuery.trim()) {
+      return { events: [], isMock: false, fromLibrary: false, collapsed: false };
+    }
+
+    if (genPhase === 'revealed' && activeSaved && !shouldPersistRef.current) {
+      return {
+        events: activeSaved.events as GeneratedTimelineEvent[],
+        isMock: activeSaved.isMock,
+        fromLibrary: true,
+        savedAt: activeSaved.updatedAt,
+        collapsed: activeSaved.collapsed,
+      };
+    }
+
+    const fresh = computeFreshReveal(genQuery);
+    return { ...fresh, fromLibrary: false, collapsed: false };
+  }, [genQuery, genPhase, activeSaved, computeFreshReveal]);
+
+  useEffect(() => {
+    if (genPhase !== 'revealed' || !genQuery.trim() || !shouldPersistRef.current) return;
+    shouldPersistRef.current = false;
+    const fresh = computeFreshReveal(genQuery);
+    const saved = saveTimeline({
+      query: genQuery,
+      events: fresh.events,
+      isMock: fresh.isMock,
+      arcTitles: matchingArcs.map((a) => a.title),
+      existingId: activeTimelineId ?? activeSaved?.id,
+      preserveCollapsed: Boolean(activeSaved?.collapsed),
+    });
+    if (saved?.id) setActiveTimelineId(saved.id);
+  }, [genPhase, genQuery, computeFreshReveal, saveTimeline, matchingArcs, activeTimelineId, activeSaved]);
+
+  const handleRemoveSaved = (id: string) => {
+    removeTimeline(id);
+    if (activeTimelineId === id) closeGeneratedTimeline();
+  };
+
+  const libraryPanel = savedTimelines.length > 0 ? (
+    <GeneratedTimelineLibraryPanel
+      timelines={savedTimelines}
+      activeId={activeTimelineId}
+      onOpen={openSavedTimeline}
+      onRemove={handleRemoveSaved}
+      className="omni-timeline-library my-2"
+      defaultExpanded={!genQuery && savedTimelines.length <= 3}
+    />
+  ) : null;
+
   const renderContent = () => {
-    if (genQuery) {
+    if (genQuery && genPhase === 'generating') {
       return (
-        <div className="h-full overflow-y-auto px-3 sm:px-6 py-4 sm:py-5">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2 mb-3">
-              <h2 className="text-base sm:text-xl font-semibold text-white break-words">{genQuery}</h2>
-              <span className="text-xs text-white/40 shrink-0">
-                {generatedEvents.length} moment{generatedEvents.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            {matchingArcs.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap mb-4 pb-1">
-                {matchingArcs.slice(0, 6).map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => setStitchedArc(a)}
-                    className="shrink-0 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-xs text-primary hover:bg-primary/20"
-                  >
-                    {a.title}
-                  </button>
-                ))}
-              </div>
-            )}
-            {loading ? (
-              <p className="text-sm text-white/40 py-10 text-center">Building timeline…</p>
-            ) : generatedEvents.length === 0 ? (
-              <p className="text-sm text-white/40 py-10 text-center px-4">
-                No moments match “{genQuery}”. Try a person, place, era, or theme.
-              </p>
-            ) : (
-              <ol className="space-y-3 sm:space-y-0 sm:relative sm:border-l sm:border-white/10 sm:ml-2">
-                {generatedEvents.map((e) => (
-                  <li
-                    key={e.id}
-                    className="sm:ml-4 sm:pb-5 rounded-xl sm:rounded-none border border-white/8 sm:border-0 bg-white/[0.03] sm:bg-transparent p-3 sm:p-0"
-                  >
-                    <div className="hidden sm:block absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-primary/70 border border-black" />
-                    <div className="text-[11px] uppercase tracking-wide text-white/40">
-                      {e.start_time
-                        ? new Date(e.start_time).toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                        : 'Undated'}
-                      {e.timeline_names?.length ? ` · ${e.timeline_names.join(', ')}` : ''}
-                    </div>
-                    <button type="button" onClick={() => openMemory(e)} className="text-left mt-1 w-full touch-manipulation">
-                      <p className="text-sm text-white/90 line-clamp-4 sm:line-clamp-3 hover:text-white leading-relaxed">
-                        {e.content}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-        </div>
+        <TimelineGeneratingSimulation
+          key={genQuery}
+          query={genQuery}
+          onComplete={handleGenComplete}
+        />
+      );
+    }
+
+    if (genQuery && genPhase === 'revealed') {
+      return (
+        <GeneratedTimelineReveal
+          query={genQuery}
+          events={revealEvents.events}
+          arcs={matchingArcs}
+          isMock={revealEvents.isMock}
+          collapsed={revealEvents.collapsed}
+          fromLibrary={revealEvents.fromLibrary}
+          savedAt={revealEvents.savedAt}
+          onToggleCollapse={() => {
+            const id = activeTimelineId ?? activeSaved?.id;
+            if (id) setTimelineCollapsed(id, !revealEvents.collapsed);
+          }}
+          onClose={closeGeneratedTimeline}
+          onRegenerate={() => generateFor(genQuery, { forceRegenerate: true })}
+          onEventClick={(e) => {
+            if (!revealEvents.isMock && 'timeline_memberships' in e) {
+              openMemory(e);
+            }
+          }}
+          onArcClick={setStitchedArc}
+        />
       );
     }
 
@@ -184,7 +323,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             arcs={arcs}
             arcsByTrack={arcsByTrack}
             activeArcs={activeArcs}
-            entries={entries}
+            entries={displayEntries}
             loading={loading}
             onOpenArcTimeline={setStitchedArc}
           />
@@ -197,7 +336,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         return (
           <TimelineStoryView
             arcs={arcs}
-            entries={entries}
+            entries={displayEntries}
             loading={loading}
             onOpenArcTimeline={setStitchedArc}
           />
@@ -208,19 +347,19 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-black" data-testid="omni-timeline">
+    <div className="omni-timeline-root" data-testid="omni-timeline">
       {/* ── Mobile header ──────────────────────────────────────────────── */}
       {isMobile ? (
         <header
-          className="flex-shrink-0 border-b border-white/8 bg-black/95 backdrop-blur-md px-3 py-2.5"
+          className="omni-timeline-header"
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
         >
-          <div className="flex items-center gap-2.5">
+          <div className="omni-timeline-header__row">
             {onOpenAppSidebar && (
               <button
                 type="button"
                 onClick={onOpenAppSidebar}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/60 active:bg-white/10"
+                className="omni-timeline-icon-btn"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
@@ -228,13 +367,11 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold text-white truncate">Timeline</h1>
+                <h1 className="omni-timeline-title omni-timeline-title--mobile truncate">Timeline</h1>
                 {statsLabel && (
                   <span
-                    className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                      isDemoMode
-                        ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
-                        : 'bg-white/8 border border-white/10 text-white/45'
+                    className={`omni-timeline-badge ${
+                      isDemoMode ? 'omni-timeline-badge--demo' : 'omni-timeline-badge--stats'
                     }`}
                   >
                     {isDemoMode && <Sparkles className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />}
@@ -243,49 +380,31 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 )}
               </div>
               {genQuery && (
-                <p className="text-[11px] text-primary/80 truncate mt-0.5">Showing: {genQuery}</p>
+                <p className="omni-timeline-gen-label">Showing: {genQuery}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => {
                 if (genQuery && !genSearchOpen) {
-                  clearGenSearch();
+                  closeGeneratedTimeline();
                 } else {
                   setGenSearchOpen(v => !v);
                 }
               }}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
-                genSearchOpen || genQuery
-                  ? 'border-primary/40 bg-primary/15 text-primary'
-                  : 'border-white/10 text-white/50 active:bg-white/10'
+              className={`omni-timeline-icon-btn ${
+                genSearchOpen || genQuery ? 'omni-timeline-icon-btn--active' : ''
               }`}
               aria-label={genSearchOpen ? 'Close search' : 'Generate a timeline'}
             >
               {genSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
             </button>
           </div>
-
-          {/* Active arcs — compact strip under header on swimlanes view */}
-          {!loading && !genQuery && view === 'swimlanes' && activeArcs.length > 0 && (
-            <div className="mt-2 -mx-3 px-3 flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
-              {activeArcs.slice(0, 5).map(arc => (
-                <button
-                  key={arc.id}
-                  type="button"
-                  onClick={() => setStitchedArc(arc)}
-                  className="shrink-0 max-w-[9rem] truncate px-2.5 py-1 rounded-full border border-primary/25 bg-primary/10 text-[11px] text-primary/90 active:bg-primary/20"
-                >
-                  {arc.title}
-                </button>
-              ))}
-            </div>
-          )}
         </header>
       ) : (
         /* ── Desktop header ───────────────────────────────────────────── */
         <header
-          className="flex-shrink-0 border-b border-white/8 bg-black/90 backdrop-blur-sm px-6 py-3"
+          className="omni-timeline-header"
           style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
         >
           <ChatFirstViewHint />
@@ -293,15 +412,15 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           <div className="flex flex-row items-center justify-between gap-4 mt-1">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-semibold text-white leading-none">Timeline</h1>
+                <h1 className="omni-timeline-title omni-timeline-title--desktop">Timeline</h1>
                 {isDemoMode && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                  <span className="omni-timeline-badge omni-timeline-badge--demo">
                     <Sparkles className="h-2.5 w-2.5" />
                     Demo
                   </span>
                 )}
               </div>
-              <p className="text-xs text-white/35 mt-0.5">
+              <p className="omni-timeline-subtitle">
                 {arcs.length > 0
                   ? `${arcs.length} arc${arcs.length !== 1 ? 's' : ''} · ${entries.length} memories`
                   : entries.length > 0
@@ -310,11 +429,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               </p>
             </div>
 
-            <div
-              className="flex items-center gap-0.5 bg-white/5 border border-white/10 rounded-xl p-1"
-              role="tablist"
-              aria-label="Timeline views"
-            >
+            <div className="omni-timeline-view-tabs" role="tablist" aria-label="Timeline views">
               {VIEWS.map(({ id, label, Icon }) => (
                 <button
                   key={id}
@@ -323,11 +438,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                   onClick={() => setView(id)}
                   title={VIEWS.find(v => v.id === id)?.desc}
                   aria-selected={view === id}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    view === id
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'text-white/50 hover:text-white hover:bg-white/8'
-                  }`}
+                  className={`omni-timeline-view-tab ${view === id ? 'omni-timeline-view-tab--active' : ''}`}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
                   {label}
@@ -335,129 +446,113 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               ))}
             </div>
           </div>
-
-          <form
-            onSubmit={(e) => { e.preventDefault(); submitGenSearch(); }}
-            className="mt-3 flex items-center gap-2"
-          >
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
-              <input
-                value={genInput}
-                onChange={(e) => setGenInput(e.target.value)}
-                placeholder='Generate a timeline… e.g. "my nightlife", "everything with Sol", "2024 career"'
-                aria-label="Generate a timeline"
-                className="w-full pl-9 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-colors"
-              />
-            </div>
-            <button type="submit" className="shrink-0 px-3.5 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors">
-              Generate
-            </button>
-            {genQuery && (
-              <button
-                type="button"
-                onClick={clearGenSearch}
-                className="shrink-0 px-2.5 py-2 rounded-lg border border-white/10 text-white/60 text-sm hover:bg-white/5 transition-colors"
-              >
-                Clear
-              </button>
-            )}
-          </form>
-
-          {!loading && activeArcs.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-white/6">
-              <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono mb-2">Active now</p>
-              <div className="flex flex-wrap gap-2">
-                {activeArcs.slice(0, 4).map(arc => (
-                  <button
-                    key={arc.id}
-                    type="button"
-                    onClick={() => setStitchedArc(arc)}
-                    className="truncate px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-[11px] text-white/70 hover:bg-white/10 transition-colors"
-                    title={arc.summary ?? arc.title}
-                  >
-                    {arc.title}
-                  </button>
-                ))}
-                {activeArcs.length > 4 && (
-                  <span className="text-[11px] text-white/30 self-center">+{activeArcs.length - 4} more</span>
-                )}
-              </div>
-            </div>
-          )}
         </header>
       )}
 
-      {/* ── Mobile search overlay ──────────────────────────────────────── */}
-      {isMobile && genSearchOpen && (
-        <div className="flex-shrink-0 border-b border-white/8 bg-[#111] px-3 py-3 animate-in slide-in-from-top-2 duration-200">
-          <form
-            onSubmit={(e) => { e.preventDefault(); submitGenSearch(); }}
-            className="flex flex-col gap-2"
-          >
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
-              <input
-                autoFocus
-                value={genInput}
-                onChange={(e) => setGenInput(e.target.value)}
-                placeholder="Nightlife, 2024 career, everything with Sol…"
-                aria-label="Generate a timeline"
-                className="w-full pl-9 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-primary/50"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                className="flex-1 py-3 rounded-xl bg-primary text-white text-sm font-semibold active:bg-primary/90"
-              >
-                Generate timeline
-              </button>
-              {genQuery && (
+      <div className="omni-timeline-body" data-testid="omni-timeline-scroll">
+        {dataError && (
+          <OmniTimelineErrorBanner message={dataError} onRetry={handleRetryData} />
+        )}
+
+        {!isMobile && (
+          <UniversalTimelineSearch
+            genInput={genInput}
+            genQuery={genQuery}
+            suggestions={TIMELINE_SUGGESTIONS}
+            onInputChange={setGenInput}
+            onSubmit={submitGenSearch}
+            onClear={genQuery ? closeGeneratedTimeline : undefined}
+            onSuggestionClick={generateFor}
+            variant="desktop"
+          />
+        )}
+
+        {!loading && !genQuery && activeArcs.length > 0 && (
+          <div className="omni-timeline-active-arcs">
+            <p className="omni-timeline-section-label">Active now</p>
+            <div className="flex flex-wrap gap-2">
+              {activeArcs.slice(0, isMobile ? 5 : 4).map((arc) => (
                 <button
+                  key={arc.id}
                   type="button"
-                  onClick={clearGenSearch}
-                  className="px-4 py-3 rounded-xl border border-white/10 text-white/60 text-sm"
+                  onClick={() => setStitchedArc(arc)}
+                  className="omni-timeline-arc-pill truncate"
+                  title={arc.summary ?? arc.title}
                 >
-                  Clear
+                  {arc.title}
                 </button>
+              ))}
+              {activeArcs.length > (isMobile ? 5 : 4) && (
+                <span className="text-[11px] text-white/30 self-center">
+                  +{activeArcs.length - (isMobile ? 5 : 4)} more
+                </span>
               )}
             </div>
-          </form>
-        </div>
-      )}
+          </div>
+        )}
+
+        {isMobile && genSearchOpen && (
+          <UniversalTimelineSearch
+            genInput={genInput}
+            genQuery={genQuery}
+            suggestions={TIMELINE_SUGGESTIONS}
+            onInputChange={setGenInput}
+            onSubmit={submitGenSearch}
+            onClear={genQuery ? closeGeneratedTimeline : undefined}
+            onSuggestionClick={generateFor}
+            variant="mobile"
+            suggestionLimit={5}
+          />
+        )}
 
       {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
       {!loading && !genQuery && lifeEras.length > 0 && (
-        <div className="flex-shrink-0 border-b border-white/8 bg-black/60 px-3 sm:px-6 py-2">
+        <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wide text-white/40 shrink-0">Life Chapters</span>
+            <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>
             <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {lifeEras.map((era) => {
                 const startYear = new Date(era.start_date).getFullYear();
                 const endYear = new Date(era.end_date).getFullYear();
                 const count = era.entry_ids?.length ?? 0;
+                const active = era.id === selectedEraId;
                 return (
-                  <div
+                  <button
                     key={era.id}
+                    type="button"
                     title={era.summary}
-                    className="shrink-0 px-2.5 py-1 rounded-full border border-primary/25 bg-primary/10 text-[11px] text-primary/90"
+                    onClick={() => setSelectedEraId(active ? null : era.id)}
+                    className={`omni-timeline-era-pill ${active ? 'omni-timeline-era-pill--active' : ''}`}
                   >
                     <span className="font-medium">{era.chapter_title}</span>
-                    <span className="text-white/40 ml-1">
+                    <span className={`ml-1 ${active ? 'text-white/70' : 'text-white/40'}`}>
                       {startYear === endYear ? startYear : `${startYear}–${endYear}`}
                     </span>
-                    {count > 0 && <span className="text-white/30 ml-1">· {count}</span>}
-                  </div>
+                    {count > 0 && <span className={`ml-1 ${active ? 'text-white/60' : 'text-white/30'}`}>· {count}</span>}
+                  </button>
                 );
               })}
+              {selectedEraId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedEraId(null)}
+                  className="omni-timeline-era-clear"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Content ────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-hidden relative">{renderContent()}</div>
+      {/* ── Timelines library ─────────────────────────────────────────── */}
+      {libraryPanel}
+
+      <main className="omni-timeline-main">
+        {renderContent()}
+      </main>
+      </div>
 
       {/* ── Mobile bottom navigation ───────────────────────────────────── */}
       {isMobile && !genQuery && (

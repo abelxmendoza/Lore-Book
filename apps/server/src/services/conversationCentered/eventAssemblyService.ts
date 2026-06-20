@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { occurrenceSortMs } from '../../utils/temporalOccurrence';
 import type { ExtractedUnit, EventAssemblyResult } from '../../types/conversationCentered';
 import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
 import { confidenceTrackingService } from '../confidenceTrackingService';
@@ -153,12 +154,10 @@ export class EventAssemblyService {
    * Get time difference between units (in milliseconds)
    */
   private getTimeDifference(unit1: ExtractedUnit, unit2: ExtractedUnit): number {
-    const time1 = unit1.temporal_context?.start_time || unit1.created_at;
-    const time2 = unit2.temporal_context?.start_time || unit2.created_at;
-    
-    const date1 = new Date(time1).getTime();
-    const date2 = new Date(time2).getTime();
-    
+    // Consume occurrence bounds (occurred_before/after) — not just start_time — so
+    // a "before the move" unit clusters near the move instead of its recorded date.
+    const date1 = occurrenceSortMs(unit1.temporal_context, unit1.created_at);
+    const date2 = occurrenceSortMs(unit2.temporal_context, unit2.created_at);
     return Math.abs(date1 - date2);
   }
 
@@ -839,17 +838,23 @@ export class EventAssemblyService {
 
     const contextWindows = units
       .map(unit => {
-        const start = unit.temporal_context?.start_time;
-        if (!start) return null;
-        const startTime = new Date(start).getTime();
+        const tc = unit.temporal_context;
+        const explicit = tc?.start_time ? new Date(tc.start_time).getTime() : NaN;
+        const hasExplicit = Number.isFinite(explicit);
+        // Bounded-only units ("before the move") still position the event — at low
+        // confidence, so any explicitly-dated unit in the group always wins.
+        const hasBound = !hasExplicit && Boolean(tc?.occurred_before || tc?.occurred_after);
+        const startTime = hasExplicit ? explicit : hasBound ? occurrenceSortMs(tc, unit.created_at) : NaN;
         if (!Number.isFinite(startTime)) return null;
         return {
           start: startTime,
-          end: unit.temporal_context?.end_time ? new Date(unit.temporal_context.end_time).getTime() : null,
-          confidence: typeof unit.temporal_context?.confidence === 'number' ? unit.temporal_context.confidence : 0.7,
-          label: unit.temporal_context?.label || unit.temporal_context?.original_text,
-          precision: unit.temporal_context?.precision,
-          isCurrentFallback: unit.temporal_context?.source === 'current_time',
+          end: tc?.end_time ? new Date(tc.end_time).getTime() : null,
+          confidence: hasBound
+            ? Math.min(0.3, typeof tc?.confidence === 'number' ? tc.confidence : 0.3)
+            : (typeof tc?.confidence === 'number' ? tc.confidence : 0.7),
+          label: tc?.label || tc?.original_text || tc?.relative_to_event,
+          precision: tc?.precision,
+          isCurrentFallback: tc?.source === 'current_time',
         };
       })
       .filter((window): window is NonNullable<typeof window> => Boolean(window))

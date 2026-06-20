@@ -20,6 +20,7 @@ const ROLE_PATTERNS: Array<{ role: RelationshipRole; patterns: RegExp[] }> = [
   { role: 'rival', patterns: [/\bmy\s+rival\b/i, /\b(?:enemy|nemesis)\b/i] },
   { role: 'coach', patterns: [/\bmy\s+coach\b/i] },
   { role: 'teammate', patterns: [/\bmy\s+teammate\b/i, /\bteam\s+mate\b/i] },
+  { role: 'friend', patterns: [/\bis\s+my\s+friend\b/i, /\bmy\s+friend\b/i, /\bgood\s+friend\b/i] },
   { role: 'promoter', patterns: [/\bpromoter\b/i] },
   { role: 'vendor', patterns: [/\bvendor\b/i] },
   { role: 'community_member', patterns: [/\bcommunity\s+member\b/i] },

@@ -69,6 +69,11 @@ const PLACE_PATTERNS: PlacePattern[] = [
   },
 ];
 
+const GENERIC_VENUE_CUES = new Set([
+  'school', 'university', 'college', 'campus', 'classroom', 'gym', 'dojo', 'bar',
+  'restaurant', 'cafe', 'office', 'home', 'house', 'city', 'park', 'nightclub', 'night club',
+]);
+
 export function detectLexicalPlaces(text: string): LexicalPlaceSignal[] {
   const padded = padForScan(text);
   const places: LexicalPlaceSignal[] = [];
@@ -104,6 +109,24 @@ export function detectLexicalPlaces(text: string): LexicalPlaceSignal[] {
         });
       }
     }
+  }
+
+  // City names after "in/from/near" — e.g. "grew up together in Anaheim"
+  const cityRe = /\b(?:in|from|near|around|grew up in|lived in)\s+([A-Z][\w'&.-]{2,40})\b/g;
+  cityRe.lastIndex = 0;
+  let cityMatch: RegExpExecArray | null;
+  while ((cityMatch = cityRe.exec(text)) !== null) {
+    const name = cityMatch[1].trim();
+    const key = `city:${name.toLowerCase()}`;
+    if (GENERIC_VENUE_CUES.has(name.toLowerCase())) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    places.push({
+      name: titleCase(name),
+      category: 'city',
+      cue: cityMatch[0],
+      confidence: 0.84,
+    });
   }
 
   return places;

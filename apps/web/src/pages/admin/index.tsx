@@ -9,6 +9,7 @@ import { AdminSidebar, AdminMenuButton, type AdminSection } from '../../componen
 import { AdminCard } from '../../components/admin/AdminCard';
 import { AdminHeader } from '../../components/admin/AdminHeader';
 import { FinanceDashboard } from '../../components/admin/FinanceDashboard';
+import { ChronicleAdminDashboard } from '../../components/admin/ChronicleAdminDashboard';
 import { UserProviderBadge } from '../../components/admin/UserProviderBadge';
 import { SubscriptionStatusBadge } from '../../components/admin/SubscriptionStatusBadge';
 import { canAccessAdmin, isFounderFromAuthority } from '../../middleware/roleGuard';
@@ -113,6 +114,7 @@ function getSectionTitle(view: AdminView): string {
     case 'tools': return 'Admin Tools';
     case 'feature-flags': return 'Feature Flags';
     case 'finance': return 'Finance';
+    case 'chronicle': return 'LoreBook Chronicle';
     default: return 'Admin Console';
   }
 }
@@ -864,6 +866,9 @@ export const AdminPage = () => {
 
             {/* ── FINANCE ── */}
             {currentView === 'finance' && <FinanceDashboard />}
+
+            {/* ── CHRONICLE ── */}
+            {currentView === 'chronicle' && <ChronicleAdminDashboard />}
           </>
         )}
       </main>

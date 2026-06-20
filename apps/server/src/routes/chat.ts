@@ -108,6 +108,31 @@ const chatSchema = z.object({
     type: z.enum(['character', 'location', 'organization', 'skill', 'event']),
     status: z.enum(['confirmed', 'suggestion']).optional(),
   })).max(15).optional(),
+  previewCorrections: z.array(z.object({
+    id: z.string(),
+    text: z.string(),
+    start: z.number(),
+    end: z.number(),
+    originalType: z.string(),
+    correctedType: z.string().optional(),
+    originalSubtype: z.string().optional(),
+    correctedSubtype: z.string().optional(),
+    entityStatus: z.enum(['known', 'new', 'ignored', 'wrong', 'confirmed']),
+    linkedEntityId: z.string().optional(),
+    linkedEntityName: z.string().optional(),
+    linkedEntityType: z.string().optional(),
+    parentEntityId: z.string().optional(),
+    parentEntityName: z.string().optional(),
+    parentEntityType: z.string().optional(),
+    displayNameOverride: z.string().optional(),
+    correctionAction: z.string(),
+    confidence: z.number().optional(),
+    confidenceOverride: z.number().optional(),
+    sensitive: z.boolean().optional(),
+    requiresReview: z.boolean().optional(),
+    userConfirmed: z.boolean().optional(),
+    correctionSource: z.enum(['composer', 'chat_chip', 'review_page']),
+  })).max(50).optional(),
 });
 
 // If the client supplied a threadId but no thread context, derive it so the
@@ -156,7 +181,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], threadId, entityContext, chatFocus, soulProfileContext, threadEntities, composerEntities } = parsed.data;
+    const { message, conversationHistory = [], threadId, entityContext, chatFocus, soulProfileContext, threadEntities, composerEntities, previewCorrections } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     if (shouldBlockAnonymousAiChat(req.user)) {
       return sendAnonymousAiBlocked(res);
@@ -191,7 +216,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
-      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities, chatFocus ?? undefined);
+      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities, chatFocus ?? undefined, previewCorrections);
     } catch (setupError) {
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))

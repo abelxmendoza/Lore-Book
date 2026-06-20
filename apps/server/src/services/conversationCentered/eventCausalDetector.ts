@@ -9,6 +9,7 @@ import { config } from '../../config';
 import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { ingestCausalLink } from '../cognition/causalBridgeService';
 
 
 export type CausalType =
@@ -284,9 +285,18 @@ Only include links with confidence >= 0.6. Be conservative. Focus on clear causa
             },
           })
           .eq('id', existing.id);
+
+        ingestCausalLink(userId, {
+          causeEventId: link.causeEventId,
+          effectEventId: link.effectEventId,
+          causalType: link.causalType,
+          confidence: Math.max(existing.confidence, link.confidence),
+          causalLinkId: existing.id,
+          evidence: link.evidence,
+        });
       } else {
         // Insert new link
-        await supabaseAdmin.from('event_causal_links').insert({
+        const { data: inserted } = await supabaseAdmin.from('event_causal_links').insert({
           user_id: userId,
           cause_event_id: link.causeEventId,
           effect_event_id: link.effectEventId,
@@ -300,7 +310,18 @@ Only include links with confidence >= 0.6. Be conservative. Focus on clear causa
             evidence: link.evidence,
             detected_at: new Date().toISOString(),
           },
-        });
+        }).select('id').single();
+
+        if (inserted?.id) {
+          ingestCausalLink(userId, {
+            causeEventId: link.causeEventId,
+            effectEventId: link.effectEventId,
+            causalType: link.causalType,
+            confidence: link.confidence,
+            causalLinkId: inserted.id,
+            evidence: link.evidence,
+          });
+        }
       }
     } catch (error) {
       // Ignore unique constraint violations (link already exists)

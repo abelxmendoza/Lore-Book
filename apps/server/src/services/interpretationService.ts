@@ -16,6 +16,7 @@
 
 import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
+import { ingestEventInterpretation } from './narrativeSpine/narrativeSpineIngestion';
 
 export type InterpretationParams = {
   eventId?: string;
@@ -72,6 +73,8 @@ class InterpretationService {
       logger.error({ error, userId }, 'Failed to add interpretation');
       throw error;
     }
+
+    ingestEventInterpretation(userId, data.id);
 
     return data as EventInterpretation;
   }

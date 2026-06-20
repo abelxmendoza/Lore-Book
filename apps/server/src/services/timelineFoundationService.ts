@@ -26,6 +26,7 @@ import { logger } from '../logger';
 import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
 import { computeSourceInputVersion } from './projectionVersion';
 import { supabaseAdmin } from './supabaseClient';
+import { ingestResolvedEvent } from './narrativeSpine/narrativeSpineIngestion';
 
 // ── Event type classification ─────────────────────────────────────────────────
 
@@ -332,6 +333,7 @@ class TimelineFoundationService {
         resolvedByEntry.set(entry.id, resolvedEventId);
         if (contentHash) resolvedByHash.set(contentHash, resolvedEventId);
         stats.resolvedEventsCreated++;
+        ingestResolvedEvent(userId, resolvedEventId);
       } else if (contentHash) {
         resolvedByHash.set(contentHash, resolvedEventId);
       }

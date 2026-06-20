@@ -21,6 +21,7 @@
     "test:composer-chips": "vitest run tests/services/entityMentionIndex.test.ts tests/routes/entityComposer.test.ts tests/integration/composerEntitiesChat.integration.test.ts",
     "test:governance": "vitest run tests/services/claimGovernanceBridge.test.ts tests/services/omegaMemoryMrqGovernance.test.ts tests/services/ingestionMemoryBridge.test.ts tests/integration/mrqClaimGovernance.integration.test.ts tests/integration/governancePipelineE2E.test.ts",
     "test:temporal": "vitest run tests/utils/temporalResolver.test.ts tests/utils/temporalNormalization.test.ts tests/integration/temporalResolverMigration.integration.test.ts",
+    "test:narrative-cognition": "vitest run src/services/cognition src/services/narrativeSpine src/services/conversationCentered/eventCausalDetector.cognition.test.ts src/services/characters/characterLoreProfileService.test.ts tests/routes/cognition.test.ts tests/integration/cognitionPipeline.integration.test.ts tests/integration/cognitionGraphE2E.test.ts",
     "check-env": "tsx scripts/check-env.ts",
     "cost:ingestion": "node scripts/aggregate-ingestion-cost.mjs",
     "capture:ingestion-sample": "bash scripts/capture-ingestion-sample.sh",

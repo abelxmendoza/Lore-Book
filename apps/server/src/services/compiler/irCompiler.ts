@@ -14,6 +14,7 @@ import { supabaseAdmin } from '../supabaseClient';
 import { epistemicInvariants } from './epistemicInvariants';
 import { epistemicLatticeService } from './epistemicLattice';
 import { provenanceEdgeService } from '../provenance/provenanceEdgeService';
+import { ingestEntryIr } from '../narrativeSpine/narrativeSpineIngestion';
 import type { EntryIR, KnowledgeType, CertaintySource, EntityRef, EmotionSignal, ThemeSignal, CanonStatus } from './types';
 
 export class IRCompiler {
@@ -112,6 +113,9 @@ export class IRCompiler {
         relation:   'EXTRACTED_FROM',
         confidence: safeIR.confidence,
       }).catch((e) => logger.warn({ e, irId: safeIR.id }, 'Provenance edge write failed'));
+
+      // Narrative spine: materialize epistemic claim (fact | interpretation | event)
+      ingestEntryIr(userId, safeIR);
 
       // Provenance: utterance → entity (MENTIONED_ENTITY) for each extracted entity
       if (entities.length > 0) {
