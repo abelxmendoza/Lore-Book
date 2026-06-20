@@ -1,6 +1,7 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 
 import { config } from '../config.js';
+import { resolveSwaggerApiFiles } from './swaggerApiFiles';
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -121,7 +122,8 @@ const options: swaggerJsdoc.Options = {
       },
     ],
   },
-  apis: ['./src/routes/**/*.ts', './src/controllers/**/*.ts'],
+  // Explicit file list (no '**') — see resolveSwaggerApiFiles for why.
+  apis: resolveSwaggerApiFiles(['src/routes', 'src/controllers']),
 };
 
 /**
