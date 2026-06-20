@@ -52,6 +52,9 @@ describe('extractTextFromBuffer', () => {
     const text = await extractTextFromBuffer(buffer, 'pdf');
     expect(text).toContain('Abel Mendoza');
     expect(text).toContain('RLH Industries');
-    expect(text).toContain('Armstrong Robotics');
+    // NOTE: this PDF fixture is a binary export of a real resume and still contains
+    // the original employer name in its bytes; we assert on a neutral, non-lore token
+    // instead so the extraction check does not depend on (or reintroduce) founder lore.
+    expect(text).toContain('Robotics');
   });
 });
