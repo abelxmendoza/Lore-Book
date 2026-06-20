@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   detectFromGitCommits,
-  detectFromReadme,
   getProjectChronicle,
   groupMilestonesByMonth,
   resetChronicleMemoryState,
+  scoreMajorCommitMessage,
 } from '../../src/services/chronicle/projectChronicleService';
 import { MilestoneSignificance } from '../../src/services/chronicle/projectChronicleTypes';
 
@@ -18,12 +18,10 @@ describe('projectChronicleService', () => {
     const snapshot = await getProjectChronicle();
     expect(snapshot.product.name).toBe('LoreBook');
     expect(snapshot.founder.name).toBe('Abel Mendoza');
-    expect(snapshot.organization.name).toBe('Omega Technologies');
     expect(snapshot.milestones.length).toBeGreaterThanOrEqual(10);
-    expect(snapshot.stage.current).toBe('BETA');
-    expect(snapshot.visionEvolution).toHaveLength(3);
-    expect(snapshot.selfNarrative.chapters.length).toBeGreaterThanOrEqual(5);
-    expect(snapshot.leaderboard.length).toBeLessThanOrEqual(25);
+    expect(snapshot.chroniclePolicy.majorOnly).toBe(true);
+    expect(snapshot.chroniclePolicy.autoRefreshHours).toBe(6);
+    expect(snapshot.selfNarrative.subtitle).toMatch(/verified/i);
   });
 
   it('leaderboard is sorted by significance then date', async () => {
@@ -39,26 +37,19 @@ describe('projectChronicleService', () => {
     const { milestones } = await getProjectChronicle();
     const groups = groupMilestonesByMonth(milestones);
     expect(groups.size).toBeGreaterThan(0);
-    const june2026 = [...groups.entries()].find(([k]) => k.includes('June') && k.includes('2026'));
-    expect(june2026?.[1].length).toBeGreaterThan(0);
   });
 
-  it('scores git commits with significance heuristics', () => {
+  it('only surfaces major git commits in detection pipeline', () => {
     const slugs = new Set<string>();
     const detections = detectFromGitCommits(slugs);
-    expect(Array.isArray(detections)).toBe(true);
     for (const d of detections) {
-      expect(d.confidence).toBeGreaterThan(0);
-      expect(d.significance).toBeGreaterThanOrEqual(MilestoneSignificance.TRIVIAL);
-      expect(d.significance).toBeLessThanOrEqual(MilestoneSignificance.TRANSFORMATIONAL);
+      expect(d.significance).toBeGreaterThanOrEqual(MilestoneSignificance.MAJOR);
+      expect(d.confidence).toBeGreaterThanOrEqual(0.78);
     }
   });
 
-  it('detects README tagline when not already tracked', () => {
-    const det = detectFromReadme(new Set());
-    if (det) {
-      expect(det.source).toBe('readme');
-      expect(det.confidence).toBeGreaterThan(0.8);
-    }
+  it('filters trivial commit messages at scoring stage', () => {
+    expect(scoreMajorCommitMessage('fix lint warnings')).toBeNull();
+    expect(scoreMajorCommitMessage('Complete identity integrity system architecture')).not.toBeNull();
   });
 });

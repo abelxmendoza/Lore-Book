@@ -33,6 +33,8 @@ export type EntityType =
   | 'EMOTIONAL_SIGNIFICANCE'
   | 'INTEREST'
   | 'WORK_ACTIVITY'
+  | 'WORK_CONTEXT'
+  | 'CONFLICT'
   | 'UNKNOWN';
 
 export type DetectionSource = 'pattern' | 'history' | 'alias' | 'model' | 'correction';
@@ -68,6 +70,9 @@ export type LexicalIntelligenceSpan = {
   /** Rule ids that influenced this span */
   rulesFired?: string[];
   parentSpanId?: string;
+  patternId?: string;
+  patternLiteral?: string;
+  patternRegexSource?: string;
   colorKey?: string;
   needsReview?: boolean;
 };
@@ -101,6 +106,8 @@ export type RawSpanCandidate = {
   baseConfidence: number;
   detectionSource: DetectionSource;
   patternId?: string;
+  patternLiteral?: string;
+  patternRegexSource?: string;
   evidencePhrases: string[];
   needsReview?: boolean;
 };

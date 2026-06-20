@@ -21,6 +21,7 @@ import {
   MESSY_SHOW_CONFLICT_KICKBOXING_TEXT,
 } from '../../../../tests/fixtures/messyShowConflictKickboxing';
 import { lexicalAnalyzerService } from '../lexicalAnalyzerService';
+import { MESSY_REAL_USER_FIXTURES } from '../../../../tests/fixtures/lexical/messyRealUserFixtures';
 
 export type FixtureSpanExpectation = {
   label: string;
@@ -30,6 +31,7 @@ export type FixtureSpanExpectation = {
   minConfidence?: number;
   rulesFired?: string[];
   forbidden?: boolean;
+  requiresReview?: boolean;
 };
 
 export type LexicalFixtureSpec = {
@@ -113,6 +115,7 @@ export const LEXICAL_FIXTURE_PACK: LexicalFixtureSpec[] = [
       { label: 'kickboxing', match: /kickboxing/i, type: 'SKILL', minConfidence: 0.5 },
     ],
   },
+  ...MESSY_REAL_USER_FIXTURES,
 ];
 
 export function runFixture(spec: LexicalFixtureSpec): LexicalIntelligenceResult | { analyzer: true } {
@@ -145,12 +148,17 @@ export function assertFixtureExpectations(
         span.type === exp.type ||
           (exp.type === 'GROUP' && ['GROUP', 'SCHOOL_CLUB', 'SCHOOL_TEAM', 'FRIEND_GROUP'].includes(span.type))
       ).toBe(true);
+    } else if (exp.type === 'WORK_CONTEXT' || exp.type === 'CONFLICT' || exp.type === 'COMMUNITY' || exp.type === 'EMOTION') {
+      expect(span.type).toBe(exp.type);
     } else {
       expect(span.type).toBe(exp.type);
     }
 
     if (exp.subtype) expect(span.subtype).toBe(exp.subtype);
     if (exp.minConfidence) expect(span.confidence).toBeGreaterThanOrEqual(exp.minConfidence);
+    if (exp.requiresReview) {
+      expect(span.needsReview === true || span.status === 'needs_review').toBe(true);
+    }
     if (exp.rulesFired?.length) {
       for (const rule of exp.rulesFired) {
         expect(span.rulesFired ?? result.rulesFired).toContain(rule);

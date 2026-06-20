@@ -1,12 +1,38 @@
+.lore-of-lorebook {
+  overflow-x: clip;
+}
+
 .lore-page-hero-glow {
   background:
     radial-gradient(ellipse 80% 60% at 50% -20%, rgba(168, 85, 247, 0.35), transparent 55%),
     radial-gradient(ellipse 50% 40% at 80% 50%, rgba(236, 72, 153, 0.12), transparent 50%);
 }
 
+.lore-tab-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lore-tab-btn {
+  min-width: 0;
+  justify-content: center;
+}
+
 .lore-tab-active {
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(236, 72, 153, 0.12));
   box-shadow: 0 0 24px rgba(168, 85, 247, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.lore-sticky-tabs {
+  top: 4rem;
+}
+
+@supports (top: max(0px)) {
+  .lore-sticky-tabs {
+    top: max(4rem, calc(4rem + env(safe-area-inset-top, 0px)));
+  }
 }
 
 .lore-timeline-rail {
@@ -18,12 +44,24 @@
   );
 }
 
+.lore-timeline-list {
+  padding-left: 1.75rem;
+}
+
+.lore-timeline-rail-pos {
+  left: 0.4375rem;
+}
+
+.lore-timeline-dot {
+  left: -1.75rem;
+}
+
 .lore-vision-step::before {
   content: '';
   position: absolute;
-  left: 1.25rem;
-  top: 3rem;
-  bottom: -1.5rem;
+  left: 1.125rem;
+  top: 2.75rem;
+  bottom: -1.25rem;
   width: 2px;
   background: linear-gradient(180deg, rgba(168, 85, 247, 0.4), rgba(168, 85, 247, 0.05));
 }
@@ -32,15 +70,57 @@
   display: none;
 }
 
+.lore-vision-badge {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 0.75rem;
+}
+
+.lore-vision-content {
+  padding-left: 3rem;
+}
+
 .lore-chapter-card {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
   transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-.lore-chapter-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(168, 85, 247, 0.35);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 0 30px rgba(168, 85, 247, 0.08);
+@media (hover: hover) and (pointer: fine) {
+  .lore-chapter-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(168, 85, 247, 0.35);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 0 30px rgba(168, 85, 247, 0.08);
+  }
+}
+
+@media (min-width: 640px) {
+  .lore-timeline-list {
+    padding-left: 2.5rem;
+  }
+
+  .lore-timeline-rail-pos {
+    left: 0.9375rem;
+  }
+
+  .lore-timeline-dot {
+    left: -2.5rem;
+  }
+
+  .lore-vision-step::before {
+    left: 1.25rem;
+    top: 3rem;
+    bottom: -1.5rem;
+  }
+
+  .lore-vision-badge {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 0.875rem;
+  }
+
+  .lore-vision-content {
+    padding-left: 4rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

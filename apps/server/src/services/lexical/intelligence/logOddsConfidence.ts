@@ -16,6 +16,20 @@ export const RULE_LOG_ODDS: Record<string, number> = {
   emotional_irreplaceability: 0.48,
   activity_bike_repair: 0.22,
   activity_gardening: 0.2,
+  past_employment_old_job: 0.28,
+  workplace_armstrong_context: 0.26,
+  conflict_threat_review_first: 0.22,
+  relationship_estranged_father: 0.3,
+  identity_collision_event: 0.34,
+  identity_self_name_candidate: 0.32,
+  school_club_from_phrase: 0.28,
+  school_day_lunch: 0.16,
+  school_group_robotics_kids: 0.24,
+  school_place_gym: 0.18,
+  school_class_japanese: 0.22,
+  music_scene_la_ska: 0.26,
+  fuzzy_time_before_covid: 0.18,
+  relationship_past_dormant: 0.2,
 };
 
 const SOURCE_LLR: Record<DetectionSource, number> = {

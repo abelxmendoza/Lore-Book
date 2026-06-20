@@ -100,6 +100,18 @@ export interface PendingDetection {
   sourceRef?: string;
   detectedAt: string;
   status: 'pending' | 'accepted' | 'rejected';
+  /** Whether working progress was verified from evidence (tests, migrations, settling). */
+  verified?: boolean;
+  verificationScore?: number;
+  verificationReasons?: string[];
+}
+
+export interface ChroniclePolicySnapshot {
+  majorOnly: boolean;
+  autoRefreshHours: number;
+  maxPendingQueue: number;
+  maxAutoPromotesPerWeek: number;
+  minAutoPromoteConfidence: number;
 }
 
 export interface FounderStats {
@@ -133,7 +145,9 @@ export interface ProjectChronicleSnapshot {
     chapters: SelfNarrativeChapter[];
   };
   pendingDetections: PendingDetection[];
+  chroniclePolicy: ChroniclePolicySnapshot;
   lastRefreshedAt: string;
+  lastAutoPromotedAt?: string;
   generatedAt: string;
 }
 

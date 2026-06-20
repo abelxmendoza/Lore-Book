@@ -18,13 +18,13 @@ describe('LoreOfLoreBookContent', () => {
 
   it('switches to timeline tab', () => {
     render(<LoreOfLoreBookContent />);
-    fireEvent.click(screen.getByRole('button', { name: /Timeline/i }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }));
     expect(screen.getByText('LoreBook Created')).toBeInTheDocument();
   });
 
   it('switches to chapters tab', () => {
     render(<LoreOfLoreBookContent />);
-    fireEvent.click(screen.getByRole('button', { name: /Chapters/i }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Chapters' }));
     expect(screen.getByText('The Idea Era')).toBeInTheDocument();
     expect(screen.getByText('Social Intelligence Era')).toBeInTheDocument();
   });

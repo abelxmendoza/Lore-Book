@@ -5,6 +5,12 @@ import { join } from 'node:path';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import {
+  CHRONICLE_BACKGROUND_REFRESH_MS,
+  MAX_AUTO_PROMOTES_PER_WEEK,
+  MAX_PENDING_QUEUE,
+  MIN_AUTO_PROMOTE_CONFIDENCE,
+} from './projectChroniclePolicy';
+import {
   FOUNDER_ENTITY,
   ORGANIZATION_ENTITY,
   PRODUCT_ENTITY,
@@ -24,31 +30,21 @@ import {
   ProjectChronicleSnapshot,
   significanceToStars,
 } from './projectChronicleTypes';
+import {
+  scoreMajorCommitMessage,
+  shouldAutoPromote,
+  shouldQueuePending,
+  verifyDetection,
+} from './projectChronicleVerification';
 
 const REPO_ROOT = join(__dirname, '../../../../..');
 
-/** In-memory fallback when DB tables are unavailable (tests, pre-migration). */
 let memoryPending: PendingDetection[] = [];
 let memoryCustomMilestones: ChronicleMilestone[] = [];
 let lastRefreshedAt = new Date().toISOString();
-
-const SIGNIFICANCE_KEYWORDS: Array<{ pattern: RegExp; significance: MilestoneSignificance; category: MilestoneCategory }> = [
-  { pattern: /\b(breakthrough|transformational|architecture shift)\b/i, significance: MilestoneSignificance.TRANSFORMATIONAL, category: MilestoneCategory.ARCHITECTURE },
-  { pattern: /\b(major refactor|provenance|identity integrity|narrative engine|orchestrat)\b/i, significance: MilestoneSignificance.MAJOR, category: MilestoneCategory.ARCHITECTURE },
-  { pattern: /\b(feat|feature|launch|dashboard|timeline|chronicle)\b/i, significance: MilestoneSignificance.MODERATE, category: MilestoneCategory.NEW_CAPABILITY },
-  { pattern: /\b(fix|typo|lint|style)\b/i, significance: MilestoneSignificance.TRIVIAL, category: MilestoneCategory.OTHER },
-  { pattern: /\b(ui|ux|polish|mobile)\b/i, significance: MilestoneSignificance.MINOR, category: MilestoneCategory.UX_RELEASE },
-];
-
-function scoreCommitMessage(message: string): { significance: MilestoneSignificance; category: MilestoneCategory; confidence: number } {
-  for (const rule of SIGNIFICANCE_KEYWORDS) {
-    if (rule.pattern.test(message)) {
-      const confidence = rule.significance >= MilestoneSignificance.MAJOR ? 0.82 : 0.65;
-      return { significance: rule.significance, category: rule.category, confidence };
-    }
-  }
-  return { significance: MilestoneSignificance.MINOR, category: MilestoneCategory.OTHER, confidence: 0.45 };
-}
+let lastBackgroundRefreshAttempt = 0;
+let lastAutoPromotedAt: string | undefined;
+const memoryAutoPromoteTimestamps: string[] = [];
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
@@ -105,6 +101,27 @@ function mergeMilestones(...lists: ChronicleMilestone[][]): ChronicleMilestone[]
   return [...bySlug.values()].sort(
     (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
   );
+}
+
+function enrichPending(detection: PendingDetection): PendingDetection {
+  const verification = verifyDetection(detection);
+  return {
+    ...detection,
+    verified: verification.confirmed,
+    verificationScore: verification.score,
+    verificationReasons: verification.reasons,
+  };
+}
+
+function autoPromotesThisWeek(): number {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return memoryAutoPromoteTimestamps.filter((t) => new Date(t).getTime() >= weekAgo).length;
+}
+
+function recordAutoPromote(iso: string): void {
+  lastAutoPromotedAt = iso;
+  memoryAutoPromoteTimestamps.push(iso);
+  while (memoryAutoPromoteTimestamps.length > 20) memoryAutoPromoteTimestamps.shift();
 }
 
 async function loadDbMilestones(): Promise<ChronicleMilestone[]> {
@@ -177,96 +194,7 @@ async function persistPending(detections: PendingDetection[]): Promise<void> {
   }
 }
 
-export function detectFromGitCommits(existingSlugs: Set<string>): PendingDetection[] {
-  const commits = parseGitCommits(40);
-  const detections: PendingDetection[] = [];
-
-  for (const commit of commits) {
-    const firstLine = commit.message.split('\n')[0]?.trim() ?? '';
-    if (firstLine.length < 8) continue;
-    const slug = slugify(`git-${firstLine}`);
-    if (existingSlugs.has(slug)) continue;
-
-    const { significance, category, confidence } = scoreCommitMessage(firstLine);
-    if (significance <= MilestoneSignificance.MINOR && confidence < 0.6) continue;
-
-    detections.push({
-      id: `det-git-${commit.hash.slice(0, 8)}`,
-      title: firstLine,
-      summary: `Git commit ${commit.hash.slice(0, 7)} — potential project milestone.`,
-      confidence,
-      significance,
-      category,
-      source: DetectionSource.GIT_COMMIT,
-      sourceRef: commit.hash,
-      detectedAt: commit.date,
-      status: 'pending',
-    });
-    existingSlugs.add(slug);
-  }
-
-  return detections.slice(0, 15);
-}
-
-export function detectFromReadme(existingTitles: Set<string>): PendingDetection | null {
-  const tagline = parseReadmeMission();
-  if (!tagline || existingTitles.has('readme-tagline')) return null;
-  return {
-    id: 'det-readme-tagline',
-    title: 'README tagline sync',
-    summary: `Landing/README mission: "${tagline}"`,
-    confidence: 0.91,
-    significance: MilestoneSignificance.MODERATE,
-    category: MilestoneCategory.VISION,
-    source: DetectionSource.README,
-    sourceRef: 'README.md',
-    detectedAt: new Date().toISOString(),
-    status: 'pending',
-  };
-}
-
-export async function refreshChronicleSources(): Promise<{ newDetections: number }> {
-  const dbMilestones = await loadDbMilestones();
-  const allMilestones = mergeMilestones(SEED_MILESTONES, dbMilestones, memoryCustomMilestones);
-  const existingSlugs = new Set(allMilestones.map((m) => m.slug));
-  const existingTitles = new Set(allMilestones.map((m) => m.title.toLowerCase()));
-
-  const fromGit = detectFromGitCommits(new Set(existingSlugs));
-  const fromReadme = detectFromReadme(existingTitles);
-  const incoming = [...fromGit, ...(fromReadme ? [fromReadme] : [])];
-
-  const dbPending = (await loadDbPending()) ?? memoryPending;
-  const existingIds = new Set(dbPending.map((d) => d.id));
-  const novel = incoming.filter((d) => !existingIds.has(d.id));
-
-  if (novel.length) {
-    memoryPending = [...novel, ...memoryPending].slice(0, 50);
-    await persistPending(novel);
-  }
-
-  lastRefreshedAt = new Date().toISOString();
-  return { newDetections: novel.length };
-}
-
-export async function acceptDetection(detectionId: string): Promise<ChronicleMilestone | null> {
-  const dbPending = (await loadDbPending()) ?? memoryPending;
-  const detection = dbPending.find((d) => d.id === detectionId);
-  if (!detection) return null;
-
-  const milestone: ChronicleMilestone = {
-    id: `ms-${slugify(detection.title)}-${Date.now()}`,
-    slug: slugify(detection.title),
-    title: detection.title,
-    summary: detection.summary,
-    occurredAt: detection.detectedAt,
-    significance: detection.significance,
-    category: detection.category,
-    source: detection.source,
-    stars: significanceToStars(detection.significance),
-  };
-
-  memoryCustomMilestones.push(milestone);
-
+async function persistMilestone(milestone: ChronicleMilestone): Promise<void> {
   try {
     await supabaseAdmin.from('project_chronicle_milestones').upsert({
       id: milestone.id,
@@ -278,6 +206,124 @@ export async function acceptDetection(detectionId: string): Promise<ChronicleMil
       category: milestone.category,
       source: milestone.source ?? DetectionSource.MANUAL,
     });
+  } catch {
+    /* memory fallback */
+  }
+}
+
+function milestoneFromDetection(detection: PendingDetection): ChronicleMilestone {
+  return {
+    id: `ms-${slugify(detection.title)}-${Date.now()}`,
+    slug: slugify(detection.title),
+    title: detection.title,
+    summary: detection.summary,
+    occurredAt: detection.detectedAt,
+    significance: detection.significance,
+    category: detection.category,
+    source: detection.source,
+    stars: significanceToStars(detection.significance),
+  };
+}
+
+/** Major git commits only — minor work is intentionally excluded. */
+export function detectFromGitCommits(existingSlugs: Set<string>): PendingDetection[] {
+  const commits = parseGitCommits(50);
+  const detections: PendingDetection[] = [];
+
+  for (const commit of commits) {
+    const firstLine = commit.message.split('\n')[0]?.trim() ?? '';
+    const score = scoreMajorCommitMessage(firstLine);
+    if (!score) continue;
+
+    const slug = slugify(`git-${firstLine}`);
+    if (existingSlugs.has(slug)) continue;
+
+    const candidate: PendingDetection = {
+      id: `det-git-${commit.hash.slice(0, 8)}`,
+      title: firstLine,
+      summary: `Verified major change from commit ${commit.hash.slice(0, 7)}.`,
+      confidence: score.confidence,
+      significance: score.significance,
+      category: score.category,
+      source: DetectionSource.GIT_COMMIT,
+      sourceRef: commit.hash,
+      detectedAt: commit.date,
+      status: 'pending',
+    };
+
+    const verification = verifyDetection(candidate);
+    if (!shouldQueuePending(candidate, verification)) continue;
+
+    detections.push(enrichPending(candidate));
+    existingSlugs.add(slug);
+  }
+
+  return detections.slice(0, MAX_PENDING_QUEUE);
+}
+
+export async function refreshChronicleSources(): Promise<{
+  newDetections: number;
+  autoPromoted: number;
+}> {
+  const dbMilestones = await loadDbMilestones();
+  const allMilestones = mergeMilestones(SEED_MILESTONES, dbMilestones, memoryCustomMilestones);
+  const existingSlugs = new Set(allMilestones.map((m) => m.slug));
+
+  const fromGit = detectFromGitCommits(new Set(existingSlugs));
+  const dbPending = (await loadDbPending()) ?? memoryPending;
+  const existingIds = new Set(dbPending.map((d) => d.id));
+  const novel = fromGit.filter((d) => !existingIds.has(d.id));
+
+  let autoPromoted = 0;
+  const toQueue: PendingDetection[] = [];
+  const canAutoPromote = autoPromotesThisWeek() < MAX_AUTO_PROMOTES_PER_WEEK;
+
+  for (const det of novel) {
+    const verification = verifyDetection(det);
+    if (canAutoPromote && shouldAutoPromote(det, verification)) {
+      const milestone = milestoneFromDetection(det);
+      memoryCustomMilestones.push(milestone);
+      await persistMilestone(milestone);
+      recordAutoPromote(new Date().toISOString());
+      autoPromoted += 1;
+      logger.info(
+        { title: det.title, significance: det.significance, score: verification.score },
+        'Chronicle: auto-promoted verified major milestone',
+      );
+      try {
+        await supabaseAdmin
+          .from('project_chronicle_pending_detections')
+          .update({ status: 'accepted' })
+          .eq('id', det.id);
+      } catch {
+        /* optional */
+      }
+      continue;
+    }
+
+    toQueue.push(enrichPending(det));
+  }
+
+  if (toQueue.length) {
+    const merged = [...toQueue, ...memoryPending.filter((d) => !toQueue.some((n) => n.id === d.id))];
+    memoryPending = merged.slice(0, MAX_PENDING_QUEUE);
+    await persistPending(toQueue);
+  }
+
+  lastRefreshedAt = new Date().toISOString();
+  return { newDetections: toQueue.length, autoPromoted };
+}
+
+export async function acceptDetection(detectionId: string): Promise<ChronicleMilestone | null> {
+  const dbPending = (await loadDbPending()) ?? memoryPending;
+  const detection = dbPending.find((d) => d.id === detectionId);
+  if (!detection) return null;
+
+  const milestone = milestoneFromDetection(detection);
+  memoryCustomMilestones.push(milestone);
+  await persistMilestone(milestone);
+
+  try {
     await supabaseAdmin
       .from('project_chronicle_pending_detections')
       .update({ status: 'accepted' })
@@ -307,16 +353,27 @@ export async function rejectDetection(detectionId: string): Promise<boolean> {
   return true;
 }
 
-/** Test helper — reset in-memory state. */
 export function resetChronicleMemoryState(): void {
   memoryPending = [];
   memoryCustomMilestones = [];
   lastRefreshedAt = new Date().toISOString();
+  lastBackgroundRefreshAttempt = 0;
+  lastAutoPromotedAt = undefined;
+  memoryAutoPromoteTimestamps.length = 0;
+}
+
+async function maybeBackgroundRefresh(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastBackgroundRefreshAttempt < CHRONICLE_BACKGROUND_REFRESH_MS) return;
+  lastBackgroundRefreshAttempt = now;
+  await refreshChronicleSources();
 }
 
 export async function getProjectChronicle(options?: { refresh?: boolean }): Promise<ProjectChronicleSnapshot> {
   if (options?.refresh) {
     await refreshChronicleSources();
+  } else {
+    await maybeBackgroundRefresh(false);
   }
 
   const dbMilestones = await loadDbMilestones();
@@ -325,7 +382,11 @@ export async function getProjectChronicle(options?: { refresh?: boolean }): Prom
     .sort((a, b) => b.significance - a.significance || new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 25);
 
-  const pendingDetections = (await loadDbPending()) ?? memoryPending;
+  const pendingRaw = (await loadDbPending()) ?? memoryPending;
+  const pendingDetections = pendingRaw
+    .filter((d) => d.status === 'pending')
+    .map(enrichPending)
+    .slice(0, MAX_PENDING_QUEUE);
 
   const product = { ...PRODUCT_ENTITY };
   if (product.fields) {
@@ -347,16 +408,23 @@ export async function getProjectChronicle(options?: { refresh?: boolean }): Prom
     founderStats: buildFounderStats(milestones),
     selfNarrative: {
       title: 'The Story of LoreBook',
-      subtitle: 'An autobiography written from evidence, milestones, and vision.',
+      subtitle: 'An autobiography written from evidence — only major, verified progress is recorded automatically.',
       chapters: SELF_NARRATIVE_CHAPTERS,
     },
-    pendingDetections: pendingDetections.filter((d) => d.status === 'pending'),
+    pendingDetections,
+    chroniclePolicy: {
+      majorOnly: true,
+      autoRefreshHours: CHRONICLE_BACKGROUND_REFRESH_MS / (60 * 60 * 1000),
+      maxPendingQueue: MAX_PENDING_QUEUE,
+      maxAutoPromotesPerWeek: MAX_AUTO_PROMOTES_PER_WEEK,
+      minAutoPromoteConfidence: MIN_AUTO_PROMOTE_CONFIDENCE,
+    },
     lastRefreshedAt,
+    lastAutoPromotedAt,
     generatedAt: new Date().toISOString(),
   };
 }
 
-/** Group milestones by month for timeline UI. */
 export function groupMilestonesByMonth(milestones: ChronicleMilestone[]): Map<string, ChronicleMilestone[]> {
   const groups = new Map<string, ChronicleMilestone[]>();
   for (const m of milestones) {
@@ -368,3 +436,6 @@ export function groupMilestonesByMonth(milestones: ChronicleMilestone[]): Map<st
   }
   return groups;
 }
+
+// Re-export for tests
+export { scoreMajorCommitMessage, verifyDetection } from './projectChronicleVerification';

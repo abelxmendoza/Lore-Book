@@ -1,5 +1,6 @@
 import type { LexicalPreviewSpan } from '../api/lexicalPreview';
 import { PREVIEW_PATTERNS } from './lexicalPreviewPatterns';
+import { matchPreviewPattern, patternConfidence, patternNeedsReview } from './previewPatternTypes';
 
 /** Client-side fallback when preview API is unavailable (demo / offline). */
 export function clientLexicalPreviewSpans(text: string): LexicalPreviewSpan[] {
@@ -7,19 +8,17 @@ export function clientLexicalPreviewSpans(text: string): LexicalPreviewSpan[] {
 
   const spans: LexicalPreviewSpan[] = [];
   for (const pattern of PREVIEW_PATTERNS) {
-    pattern.re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = pattern.re.exec(text)) !== null) {
+    for (const m of matchPreviewPattern(text, pattern)) {
       spans.push({
-        text: m[0],
-        start: m.index,
-        end: m.index + m[0].length,
+        text: m.text,
+        start: m.start,
+        end: m.end,
         type: pattern.type,
         subtype: pattern.subtype,
         colorKey: pattern.colorKey,
-        confidence: pattern.confidence,
+        confidence: patternConfidence(pattern),
         temporary: true,
-        needsReview: pattern.needsReview,
+        needsReview: patternNeedsReview(pattern),
         entityStatus: 'new',
       });
     }

@@ -77,6 +77,17 @@ export interface PendingDetection {
   sourceRef?: string;
   detectedAt: string;
   status: 'pending' | 'accepted' | 'rejected';
+  verified?: boolean;
+  verificationScore?: number;
+  verificationReasons?: string[];
+}
+
+export interface ChroniclePolicySnapshot {
+  majorOnly: boolean;
+  autoRefreshHours: number;
+  maxPendingQueue: number;
+  maxAutoPromotesPerWeek: number;
+  minAutoPromoteConfidence: number;
 }
 
 export interface FounderStats {
@@ -104,7 +115,9 @@ export interface ProjectChronicleSnapshot {
     chapters: Array<{ chapterNumber: number; title: string; body: string }>;
   };
   pendingDetections: PendingDetection[];
+  chroniclePolicy: ChroniclePolicySnapshot;
   lastRefreshedAt: string;
+  lastAutoPromotedAt?: string;
   generatedAt: string;
 }
 

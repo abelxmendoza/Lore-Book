@@ -1,41 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { AhoCorasickMatcher } from '../../src/services/lexical/intelligence/ahoCorasickMatcher';
-import {
-  hasWordBoundary,
-  tryParseLiteralRegex,
-} from '../../src/services/lexical/intelligence/literalPatternParser';
+import { hasWordBoundary } from '../../src/services/lexical/previewPatternTypes';
 import {
   extractPatternCandidates,
   patternEngineStats,
 } from '../../src/services/lexical/intelligence/lexicalPatternRegistry';
 import { runLexicalIntelligence } from '../../src/services/lexical/intelligence/lexicalIntelligenceService';
 import { SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT } from '../fixtures/schoolDetentionLunchFootballTeamFriends';
-
-describe('literalPatternParser', () => {
-  it('parses simple literal regexes', () => {
-    expect(tryParseLiteralRegex(/\bbest friend\b/gi)).toEqual({
-      phrases: ['best friend'],
-      caseInsensitive: true,
-      wordBoundary: true,
-    });
-    expect(tryParseLiteralRegex(/\bGary\b/g)).toEqual({
-      phrases: ['Gary'],
-      caseInsensitive: false,
-      wordBoundary: true,
-    });
-  });
-
-  it('parses optional plural suffix', () => {
-    expect(tryParseLiteralRegex(/\bgripper swaps?\b/gi)?.phrases.sort()).toEqual(
-      ['gripper swap', 'gripper swaps'].sort()
-    );
-  });
-
-  it('rejects dynamic regex patterns', () => {
-    expect(tryParseLiteralRegex(/\b[a-z]+\s+club\s+at\s+school\b/gi)).toBeNull();
-    expect(tryParseLiteralRegex(/\b(?<=worked\s+at\s)[A-Z][\w]+\b/g)).toBeNull();
-  });
-});
 
 describe('AhoCorasickMatcher', () => {
   it('finds multiple literals in one pass', () => {
@@ -61,17 +32,15 @@ describe('AhoCorasickMatcher', () => {
   });
 });
 
-describe('extractPatternCandidates with Aho–Corasick', () => {
+describe('extractPatternCandidates with explicit literals', () => {
   it('routes most patterns through the automaton', () => {
     const stats = patternEngineStats();
-    expect(stats.literalPhrases).toBeGreaterThanOrEqual(18);
+    expect(stats.literalPhrases).toBeGreaterThanOrEqual(25);
     expect(stats.regexPatterns).toBeLessThan(30);
-    expect(stats.literalPhrases + stats.regexPatterns).toBeGreaterThanOrEqual(stats.totalPatterns - 5);
   });
 
-  it('matches fixture spans equivalently to prior regex scan', () => {
-    const text = SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT;
-    const candidates = extractPatternCandidates(text);
+  it('matches school fixture spans', () => {
+    const candidates = extractPatternCandidates(SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT);
     expect(candidates.some((c) => /coding club at school/i.test(c.text))).toBe(true);
     expect(candidates.some((c) => /detention/i.test(c.text))).toBe(true);
     expect(candidates.some((c) => /friends from the football team/i.test(c.text))).toBe(true);

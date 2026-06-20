@@ -35,7 +35,7 @@ export function buildContextRuleSession(fullText: string): ContextRuleSession {
   const fullTextLower = fullText.toLowerCase();
   return {
     fullTextLower,
-    hasWorkOrg: /\b(?:robotics|armstrong|employer|worked at|with gary|with jeff|robot tech)\b/i.test(
+    hasWorkOrg: /\b(?:robotics|armstrong|employer|worked at|with gary|with jeff|robot tech|old job)\b/i.test(
       fullTextLower
     ),
   };
@@ -178,6 +178,125 @@ export function applyContextRules(
 
   if (/school/i.test(ctx) && !rulesFired.includes('school_club_at_school')) {
     evidence.push('school context nearby');
+  }
+
+  if (/old job/i.test(ctx) && /^Armstrong$/i.test(window.match)) {
+    type = 'ORGANIZATION';
+    subtype = 'WORKPLACE';
+    rulesFired.push('workplace_armstrong_context');
+    needsReview = true;
+    confidenceDelta += 0.04;
+  }
+
+  if (/old job/i.test(window.match)) {
+    type = 'WORK_CONTEXT';
+    subtype = 'PAST_EMPLOYMENT';
+    rulesFired.push('past_employment_old_job');
+    needsReview = true;
+    confidenceDelta += 0.03;
+  }
+
+  if (/swung on him/i.test(window.match)) {
+    type = 'CONFLICT';
+    subtype = 'THREAT_EVENT';
+    rulesFired.push('conflict_threat_review_first');
+    needsReview = true;
+    confidenceDelta += 0.02;
+  }
+
+  if (/estranged dad/i.test(window.match)) {
+    type = 'RELATIONSHIP';
+    subtype = 'FATHER';
+    rulesFired.push('relationship_estranged_father');
+    needsReview = true;
+    confidenceDelta += 0.03;
+  }
+
+  if (/mixing us up/i.test(window.match)) {
+    type = 'EVENT';
+    subtype = 'IDENTITY_COLLISION_EVENT';
+    rulesFired.push('identity_collision_event');
+    needsReview = true;
+    confidenceDelta += 0.04;
+  }
+
+  if (/^Abel Mendoza$/i.test(window.match) && /\bis me\b/i.test(window.after)) {
+    subtype = 'SELF_NAME_CANDIDATE';
+    rulesFired.push('identity_self_name_candidate');
+    needsReview = true;
+    confidenceDelta += 0.02;
+  }
+
+  if (/club/i.test(window.match) && /from\s+[a-z]+\s+club/i.test(ctx)) {
+    if (type === 'GROUP' || type === 'SCHOOL_CLUB') {
+      type = 'SCHOOL_CLUB';
+      subtype = 'SCHOOL_CLUB';
+      rulesFired.push('school_club_from_phrase');
+      confidenceDelta += 0.04;
+    }
+  }
+
+  if (/^lunch$/i.test(window.match) && /school|yesterday|club|gym|robotics/i.test(ctx)) {
+    type = 'TIME_PERIOD';
+    subtype = 'SCHOOL_DAY_TIME';
+    rulesFired.push('school_day_lunch');
+    confidenceDelta += 0.02;
+  }
+
+  if (/robotics kids/i.test(window.match)) {
+    type = 'FRIEND_GROUP';
+    subtype = 'SCHOOL_GROUP';
+    rulesFired.push('school_group_robotics_kids');
+    needsReview = true;
+    confidenceDelta += 0.03;
+  }
+
+  if (/^gym$/i.test(window.match) && /school|lunch|club|robotics|near the gym/i.test(ctx)) {
+    subtype = 'SCHOOL_PLACE';
+    rulesFired.push('school_place_gym');
+    needsReview = true;
+    confidenceDelta += 0.02;
+  }
+
+  if (/japanese class/i.test(window.match)) {
+    type = 'GROUP';
+    subtype = 'SCHOOL_CLASS';
+    rulesFired.push('school_class_japanese');
+    needsReview = true;
+    confidenceDelta += 0.03;
+  }
+
+  if (/LA ska scene/i.test(window.match)) {
+    type = 'COMMUNITY';
+    subtype = 'MUSIC_SCENE';
+    rulesFired.push('music_scene_la_ska');
+    needsReview = true;
+    confidenceDelta += 0.03;
+  }
+
+  if (/before covid/i.test(window.match)) {
+    type = 'TIME_PERIOD';
+    subtype = 'FUZZY_TIME_PERIOD';
+    rulesFired.push('fuzzy_time_before_covid');
+    needsReview = true;
+    confidenceDelta += 0.02;
+  }
+
+  if (/best friend/i.test(window.match) && /used to be|haven't seen|since before/i.test(ctx)) {
+    rulesFired.push('relationship_past_dormant');
+    needsReview = true;
+  }
+
+  if (/hot as hell/i.test(window.match)) {
+    type = 'WEATHER_CONTEXT';
+    subtype = 'HEAT';
+    confidenceDelta += 0.02;
+  }
+
+  if (/black summer shirts/i.test(window.match)) {
+    type = 'PREFERENCE';
+    subtype = 'CLOTHING';
+    confidenceDelta += 0.02;
   }
 
   return {

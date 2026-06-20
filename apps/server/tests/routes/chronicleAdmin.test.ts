@@ -16,7 +16,7 @@ vi.mock('../../src/services/chronicle/projectChronicleService', () => ({
     milestones: [],
     pendingDetections: [],
   })),
-  refreshChronicleSources: vi.fn(async () => ({ newDetections: 2 })),
+  refreshChronicleSources: vi.fn(async () => ({ newDetections: 0, autoPromoted: 1 })),
   acceptDetection: vi.fn(async () => ({ id: 'ms-new', title: 'New' })),
   rejectDetection: vi.fn(async () => true),
 }));
@@ -46,7 +46,8 @@ describe('chronicleAdmin routes', () => {
 
   it('POST /refresh scans sources and returns chronicle', async () => {
     const res = await request(app).post('/api/admin/chronicle/refresh').expect(200);
-    expect(res.body.newDetections).toBe(2);
+    expect(res.body.newDetections).toBe(0);
+    expect(res.body.autoPromoted).toBe(1);
     expect(refreshChronicleSources).toHaveBeenCalled();
     expect(getProjectChronicle).toHaveBeenCalled();
   });

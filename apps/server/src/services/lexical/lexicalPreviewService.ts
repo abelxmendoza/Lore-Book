@@ -12,7 +12,6 @@ import {
 } from '../inference/schoolCommunityInferenceService';
 import { inferFriendshipMusicSceneAssociations } from '../inference/friendshipMusicSceneInferenceService';
 import { inferWorkplaceAssociations } from '../inference/work/workplaceInferenceService';
-import { PREVIEW_PATTERNS } from './lexicalPreviewPatterns';
 import { markKnownPreviewSpans } from './markKnownPreviewSpans';
 import {
   runLexicalIntelligence,
@@ -132,28 +131,6 @@ function mergePreviewSpans(spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
     if (!overlapsSameKind) kept.push(span);
   }
   return kept.sort((a, b) => a.start - b.start);
-}
-
-function extractPatternSpans(text: string): LexicalPreviewSpan[] {
-  const spans: LexicalPreviewSpan[] = [];
-  for (const pattern of PREVIEW_PATTERNS) {
-    pattern.re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = pattern.re.exec(text)) !== null) {
-      spans.push({
-        text: m[0],
-        start: m.index,
-        end: m.index + m[0].length,
-        type: pattern.type,
-        subtype: pattern.subtype,
-        colorKey: pattern.colorKey,
-        confidence: pattern.confidence,
-        temporary: true,
-        needsReview: pattern.needsReview,
-      });
-    }
-  }
-  return mergePreviewSpans(spans);
 }
 
 function sanitizeRoleSurface(surface: string): string {

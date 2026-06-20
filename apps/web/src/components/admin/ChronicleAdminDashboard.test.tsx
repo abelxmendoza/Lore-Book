@@ -28,6 +28,13 @@ const mockSnapshot = {
   founderStats: { entityId: 'f', name: 'Abel Mendoza', featuresAuthored: 137, majorMilestones: 8, transformationalChanges: 3, visionUpdates: 3 },
   selfNarrative: { title: 'The Story of LoreBook', subtitle: 'Autobiography', chapters: [{ chapterNumber: 1, title: 'The Idea', body: 'Continuity is the product.' }] },
   pendingDetections: [],
+  chroniclePolicy: {
+    majorOnly: true,
+    autoRefreshHours: 6,
+    maxPendingQueue: 5,
+    maxAutoPromotesPerWeek: 2,
+    minAutoPromoteConfidence: 0.88,
+  },
   lastRefreshedAt: '2026-06-18T12:00:00Z',
   generatedAt: '2026-06-18T12:00:00Z',
 };

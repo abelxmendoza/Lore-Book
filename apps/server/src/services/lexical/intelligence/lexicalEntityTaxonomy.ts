@@ -34,6 +34,8 @@ export const ENTITY_TAXONOMY: EntityType[] = [
   'EMOTIONAL_SIGNIFICANCE',
   'INTEREST',
   'WORK_ACTIVITY',
+  'WORK_CONTEXT',
+  'CONFLICT',
   'UNKNOWN',
 ];
 
@@ -90,6 +92,8 @@ export function colorKeyForType(type: EntityType, subtype?: string): string {
     case 'PREFERENCE': return 'preference';
     case 'EMOTION':
     case 'EMOTIONAL_SIGNIFICANCE': return 'emotional_significance';
+    case 'CONFLICT': return 'event';
+    case 'WORK_CONTEXT': return 'organization';
     case 'MUSIC_GENRE':
     case 'INTEREST': return 'interest';
     case 'WEATHER_CONTEXT': return 'weather';

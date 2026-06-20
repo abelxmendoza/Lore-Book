@@ -26,14 +26,26 @@ export function formatSpanWhyHighlighted(span: {
   contextWindow: { before: string; match: string; after: string };
   alternatives: Array<{ type: string; confidence: number; reason?: string }>;
   rulesFired?: string[];
+  patternId?: string;
+  patternLiteral?: string;
+  patternRegexSource?: string;
+  confidence?: number;
+  needsReview?: boolean;
 }): {
   detectedBecause: string;
   contextWords: string[];
   alternatives: string[];
+  patternSource: string;
 } {
+  const patternSource = span.patternLiteral
+    ? `literal:"${span.patternLiteral}"`
+    : span.patternRegexSource
+      ? `regex:${span.patternRegexSource}`
+      : span.patternId ?? 'n/a';
+
   const detectedBecause =
     span.detectionSource === 'pattern'
-      ? `Phrase matched ${span.type}${span.subtype ? ` / ${span.subtype}` : ''} pattern${span.rulesFired?.length ? `: ${span.rulesFired.join(', ')}` : ''}`
+      ? `Pattern ${patternSource} → ${span.type}${span.subtype ? ` / ${span.subtype}` : ''}${span.rulesFired?.length ? ` (${span.rulesFired.join(', ')})` : ''}`
       : `${span.detectionSource} signal → ${span.type}`;
 
   const contextWords = `${span.contextWindow.before} ${span.contextWindow.after}`
@@ -46,5 +58,5 @@ export function formatSpanWhyHighlighted(span: {
     (a) => `${a.type} ${Math.round(a.confidence * 100)}%${a.reason ? ` (${a.reason})` : ''}`
   );
 
-  return { detectedBecause, contextWords, alternatives };
+  return { detectedBecause, contextWords, alternatives, patternSource };
 }

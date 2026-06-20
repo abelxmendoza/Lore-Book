@@ -10,7 +10,7 @@ export default function Lore() {
     <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black overflow-x-clip">
       <LandingHeader />
 
-      <main className="pt-16">
+      <main className="pt-16 min-w-0 overflow-x-clip">
         <LoreOfLoreBookContent />
 
         <CTASection

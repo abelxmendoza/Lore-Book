@@ -133,6 +133,9 @@ function toIntelligenceSpan(
     rulesFired: context.rulesFired,
     colorKey: colorKeyForType(context.type, context.subtype),
     needsReview: context.needsReview ?? candidate.needsReview,
+    patternId: candidate.patternId,
+    patternLiteral: candidate.patternLiteral,
+    patternRegexSource: candidate.patternRegexSource,
   };
 }
 

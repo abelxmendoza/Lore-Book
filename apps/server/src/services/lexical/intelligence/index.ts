@@ -16,7 +16,7 @@ export { buildLexicalDebugReport, formatSpanWhyHighlighted } from './lexicalDebu
 export { SpanIntervalIndex, spansOverlap } from './spanIntervalIndex';
 export { buildContextRuleSession } from './contextWindowScorer';
 export { AhoCorasickMatcher } from './ahoCorasickMatcher';
-export { tryParseLiteralRegex, hasWordBoundary } from './literalPatternParser';
+export { hasWordBoundary, validatePreviewPattern } from '../previewPatternTypes';
 export { patternEngineStats } from './lexicalPatternRegistry';
 export {
   clearIntelligenceCache,
