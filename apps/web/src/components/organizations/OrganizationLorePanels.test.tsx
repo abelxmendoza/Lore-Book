@@ -53,3 +53,39 @@ describe('OrganizationLorePanel', () => {
     expect(screen.getByText(/where the Builder first proved/i)).toBeInTheDocument();
   });
 });
+
+// Logged-in users have real orgs (no curated/demo world): every panel must still
+// render meaningful DERIVED content and never crash on a sparse record.
+describe('logged-in users (derived world, no demo data)', () => {
+  const sparseRealOrg: OrgWorldInput = { name: 'Acme Holdings' }; // minimal: no type/analytics/members
+
+  it('Influence renders a derived impact band + skills for a bare org', () => {
+    render(<OrganizationInfluencePanel organization={sparseRealOrg} />);
+    expect(screen.getByTestId('org-influence-panel')).toBeInTheDocument();
+    // Some skills-gained chip is always present (no "Nothing tracked yet" empty state).
+    expect(screen.queryByText(/Nothing tracked yet/i)).not.toBeInTheDocument();
+  });
+
+  it('Insights renders at least one derived observation', () => {
+    render(<OrganizationInsightsPanel organization={sparseRealOrg} />);
+    expect(screen.getByTestId('org-insights-panel')).toBeInTheDocument();
+    expect(screen.queryByText(/No insights yet/i)).not.toBeInTheDocument();
+  });
+
+  it('Lore renders a derived archetype + role in story', () => {
+    render(<OrganizationLorePanel organization={sparseRealOrg} />);
+    expect(screen.getByTestId('org-lore-panel')).toBeInTheDocument();
+    expect(screen.getByText('The Waypoint')).toBeInTheDocument(); // 'other' archetype preset
+    expect(screen.getByText(/Acme Holdings/)).toBeInTheDocument();
+  });
+});
+
+// Guard: the differentiator tabs ship to ALL users (in the base tab set, not
+// behind a demo flag), so they can't silently regress out for logged-in users.
+describe('organization modal tabs reach logged-in users', () => {
+  it('includes Influence, Insights and Lore in the base tab set', async () => {
+    const { ORG_MODAL_BASE_TABS } = await import('./OrganizationModalNav');
+    const keys = ORG_MODAL_BASE_TABS.map((t) => t.key);
+    expect(keys).toEqual(expect.arrayContaining(['influence', 'insights', 'lore']));
+  });
+});
