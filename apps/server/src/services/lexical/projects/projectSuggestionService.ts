@@ -20,7 +20,7 @@ import {
 } from './projectSuggestionTypes';
 
 const BUILD_CUE =
-  /\b(?:working on|building|developing|creating|launching|shipping|designing|prototyping|writing|recording|producing|added (?:the )?)\s+(?:the\s+|my\s+|our\s+|a\s+|an\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[\w'&.-]{1,24}){0,4})(?=\s+(?:and|to|for|with|that|which|who|\.|,|$))/g;
+  /\b(?:[Ww]orking on|[Bb]uilding|[Dd]eveloping|[Cc]reating|[Ll]aunching|[Ss]hipping|[Dd]esigning|[Pp]rototyping|[Ww]riting|[Rr]ecording|[Pp]roducing|[Aa]dded (?:the )?)\s+(?:the\s+|my\s+|our\s+|a\s+|an\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,4})(?=\s*[.,;:!?)]|\s+\w|$)/g;
 
 const MODIFIER_NOUN =
   /\b(?:my|our|the|an|a)\s+([a-z][\w\s-]{2,48}(?:\s+(?:app|website|build|portfolio|series|demo|archive|robot|feature)))\b/gi;
@@ -40,10 +40,10 @@ const PROPER_NOUN_TAIL =
 const QUOTED_NAME = /["']([^"']{2,60})["']/g;
 
 const CALLED_PATTERN =
-  /\b([A-Za-z][\w\s-]{2,48})\s+called\s+([A-Z][\w'&.-]+)/g;
+  /\b([A-Za-z][\w\s-]{2,48})\s+called\s+([A-Z][\w'&.-]+(?:\s+[A-Z][\w'&.-]+){0,3})/g;
 
 const QUICK_PROJECT_SIGNAL =
-  /\b(project|app|startup|building|working on|developing|creating|launching|shipping|robot build|portfolio|lorebook|omega-?\d|abeliciousness|feature)\b/i;
+  /\b(project|app|startup|building|working on|developing|creating|launching|shipping|robot build|portfolio|lorebook|omega-?\d|abeliciousness|feature|recording|album|studio|training plan|marathon|workout)\b/i;
 
 function findLineForIndex(text: string, index: number): string {
   const before = text.slice(0, index);
@@ -407,6 +407,7 @@ function mapTaxonomyToLegacyType(projectType: string): string {
     hardware_project: 'hardware',
     website: 'creative',
     creative_project: 'creative',
+    fitness_project: 'fitness',
     content_series: 'creative',
     startup: 'business',
     product: 'software',

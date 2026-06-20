@@ -23,6 +23,10 @@ export type KinshipRole =
   | 'STEPFATHER'
   | 'NIECE'
   | 'NEPHEW'
+  | 'GRANDCHILD'
+  | 'STEPSIBLING'
+  | 'GODMOTHER'
+  | 'GODFATHER'
   | 'IN_LAW';
 
 export type KinshipMatch = {
@@ -82,6 +86,10 @@ const ROLE_TO_KINSHIP_STRING: Record<KinshipRole, string> = {
   STEPFATHER: 'stepfather',
   NIECE: 'niece',
   NEPHEW: 'nephew',
+  GRANDCHILD: 'grandchild',
+  STEPSIBLING: 'stepsibling',
+  GODMOTHER: 'godmother',
+  GODFATHER: 'godfather',
   IN_LAW: 'in_law',
 };
 

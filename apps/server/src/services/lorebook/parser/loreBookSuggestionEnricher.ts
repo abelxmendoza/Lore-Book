@@ -4,7 +4,8 @@
 
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { AlternativeCategory, SuggestionBookDomain } from '../../suggestionCrossBookService';
-import { buildCrossBookIndexForUser, detectAlternativeCategories } from '../../suggestionCrossBookService';
+import { detectAlternativeCategories } from '../../suggestionCrossBookService';
+import { buildCrossBookIndexForUser } from '../../lexical/projects/projectCrossBookGuard';
 import { buildCanonIndexForUser } from './canonIndexBuilder';
 import { parseLoreBookText } from './loreBookParseEngine';
 import type { CanonIndex, LoreBookDomain, LoreBookOperation, LoreBookParseResult } from './loreBookParserTypes';

@@ -120,6 +120,7 @@ describe('Characters API Routes', () => {
         chain.eq = vi.fn().mockReturnValue(chain);
         chain.ilike = vi.fn().mockReturnValue(chain);
         chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
         chain.or = vi.fn().mockReturnValue(chain);
         chain.order = vi.fn().mockReturnValue(chain);
         chain.limit = vi.fn().mockReturnValue(chain);

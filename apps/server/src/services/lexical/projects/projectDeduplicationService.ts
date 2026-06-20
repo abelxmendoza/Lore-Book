@@ -193,8 +193,15 @@ function findDescriptorParent(
   all: ProjectSuggestion[]
 ): ProjectSuggestion | undefined {
   const evidence = item.evidencePhrases.join(' ').toLowerCase();
-  if (!/\bcalled\b|\bnamed\b/i.test(evidence)) return undefined;
+  const cue = /\b(?:called|named)\b/i.exec(evidence);
+  if (!cue) return undefined;
   if (GENERIC_PROJECT_WORDS.has(canonicalProjectKey(item.text))) return undefined;
+
+  // The named entity follows the "called/named" cue; the descriptor precedes it.
+  // If this item appears at/after the cue it is the real name — never demote it
+  // into a generic descriptor parent that sits before the cue.
+  const itemPos = evidence.indexOf(item.text.toLowerCase());
+  if (itemPos >= 0 && itemPos >= cue.index) return undefined;
 
   for (const other of all) {
     if (other === item) continue;

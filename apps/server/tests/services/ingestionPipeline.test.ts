@@ -267,6 +267,9 @@ describe('ConversationIngestionPipeline', () => {
         'USER',
         'I love hiking',
         undefined,
+        undefined,
+        undefined,
+        { chatMessageId: 'chat-1' },
       );
       expect(scheduleInference).toHaveBeenCalledWith('user-1', 'chat_message');
       expect(scheduleEpisode).toHaveBeenCalledWith('user-1', 'session-1');

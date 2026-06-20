@@ -24,6 +24,7 @@ export type ProjectTaxonomyType =
   | 'hardware_project'
   | 'website'
   | 'creative_project'
+  | 'fitness_project'
   | 'content_series'
   | 'research_project'
   | 'school_project'

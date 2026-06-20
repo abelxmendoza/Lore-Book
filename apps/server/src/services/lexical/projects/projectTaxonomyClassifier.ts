@@ -35,6 +35,14 @@ export function classifyProjectTaxonomy(span: string, context = ''): ProjectTaxo
     return { projectType: 'robot_build', confidence: 0.86, rulesFired: ['robot_build_keyword'] };
   }
 
+  if (/\b(marathon|half marathon|triathlon|training plan|workout|fitness|gym|5k|10k|couch to 5k)\b/i.test(haystack)) {
+    return { projectType: 'fitness_project', confidence: 0.8, rulesFired: ['fitness_keyword'] };
+  }
+
+  if (/\b(album|ep|mixtape|single|song|track|recording|studio|novel|screenplay|short film|painting|mural|comic|zine)\b/i.test(haystack)) {
+    return { projectType: 'creative_project', confidence: 0.8, rulesFired: ['creative_keyword'] };
+  }
+
   if (/\bfeature\b/i.test(text) && text.split(/\s+/).length >= 2) {
     return { projectType: 'feature', confidence: 0.8, rulesFired: ['feature_keyword'] };
   }
