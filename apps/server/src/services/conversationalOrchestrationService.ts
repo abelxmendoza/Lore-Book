@@ -19,6 +19,7 @@ import type {
 
 import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
 import { decisionMemoryService } from './decisionMemoryService';
+import { appendMemoryEvent } from './memory/memoryEventService';
 import { embeddingService } from './embeddingService';
 import { expressionRoutingService } from './expressionRoutingService';
 import { goalValueAlignmentService } from './goalValueAlignmentService';
@@ -1045,6 +1046,22 @@ Return JSON:
 
     if (error) {
       throw error;
+    }
+
+    // Capture into the immutable memory_events log (fail-open, fire-and-forget):
+    // logging an event must never delay or break message persistence.
+    if (role === 'user' || role === 'assistant') {
+      void appendMemoryEvent({
+        userId,
+        kind: role === 'user' ? 'user_message' : 'assistant_message',
+        actor: role,
+        sessionId,
+        sourceMessageId: message.id,
+        content,
+        confidence,
+        extractionMethod: 'chat',
+        userConfirmed: role === 'user',
+      });
     }
 
     return message.id;
