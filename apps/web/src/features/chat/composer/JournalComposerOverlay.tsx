@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Send, Loader2, X } from 'lucide-react';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
+import { ComposerEntityChips } from './ComposerEntityChips';
 import { getComposerStats } from '../hooks/useVisualViewportSize';
 
 type JournalComposerOverlayProps = {
@@ -18,8 +19,9 @@ type JournalComposerOverlayProps = {
   onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   viewportHeight: number;
   keyboardInset: number;
-  moodColor?: string;
-  showHints?: boolean;
+  confirmingSlots?: string[];
+  onDismiss?: (entity: CertifiedEntityMatch) => void;
+  onConfirm?: (entity: CertifiedEntityMatch) => void;
 };
 
 export const JournalComposerOverlay = ({
@@ -36,8 +38,9 @@ export const JournalComposerOverlay = ({
   onKeyDown,
   viewportHeight,
   keyboardInset,
-  moodColor,
-  showHints,
+  confirmingSlots = [],
+  onDismiss,
+  onConfirm,
 }: JournalComposerOverlayProps) => {
   const overlayRef = useRef<HTMLDivElement>(null);
   const stats = getComposerStats(value);
@@ -102,6 +105,13 @@ export const JournalComposerOverlay = ({
         </div>
 
         <div className="journal-composer-overlay__body">
+          <ComposerEntityChips
+            variant="inline"
+            entities={matches}
+            confirmingSlots={confirmingSlots}
+            onDismiss={onDismiss}
+            onConfirm={onConfirm}
+          />
           <EntityHighlightedComposer
             value={value}
             onChange={onChange}
@@ -111,10 +121,6 @@ export const JournalComposerOverlay = ({
             disabled={disabled || loading}
             onKeyDown={onKeyDown}
             className="journal-composer-overlay__field"
-            style={{
-              borderColor: showHints ? `${moodColor}66` : undefined,
-              boxShadow: showHints ? `0 0 12px ${moodColor}22` : undefined,
-            }}
           />
         </div>
 

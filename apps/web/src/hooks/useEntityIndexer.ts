@@ -7,12 +7,19 @@ import {
   type CertifiedEntityMatch,
   type EntityMatchIndex,
 } from '../lib/certifiedEntityMatch';
+import type { LexicalPreviewSpan } from '../api/lexicalPreview';
+import type { LoreBookParseResponse } from '../api/loreBookParse';
 import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
+import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
+import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
+import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
+import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
 import { fetchJson } from '../lib/api';
 import { apiCache } from '../lib/cache';
 import { supabase } from '../lib/supabase';
 import { shouldUseMockData } from '../hooks/useShouldUseMockData';
 import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
+import { collapseOverlappingPersonComposerMatches } from '../lib/personComposerMatchCollapse';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   setComposerIndexError,
@@ -25,6 +32,7 @@ export type EntityType = CertifiedEntity['type'];
 export type EntityMatch = CertifiedEntityMatch;
 
 const INDEX_CACHE_KEY = '/api/entities/certified-index';
+const LEXICAL_PREVIEW_DEBOUNCE_MS = 280;
 
 type SharedIndexState = {
   entities: CertifiedEntity[];
@@ -159,13 +167,33 @@ export const useEntityIndexer = () => {
   const matches = useAppSelector(selectComposerMatches);
   const sharedState = useSyncExternalStore(subscribeIndex, getSharedSnapshot, getSharedSnapshot);
   const lastTextRef = useRef('');
+  const lastThreadIdRef = useRef<string | undefined>(undefined);
+  const previewTimerRef = useRef<number | null>(null);
+  const previewReqRef = useRef(0);
   const [retryTick, setRetryTick] = useState(0);
 
   const applyMatches = useCallback(
-    (text: string, matchIndex: EntityMatchIndex, entities: CertifiedEntity[]) => {
+    (
+      text: string,
+      matchIndex: EntityMatchIndex,
+      entities: CertifiedEntity[],
+      previewSpans?: LexicalPreviewSpan[],
+      loreBookParse?: LoreBookParseResponse
+    ) => {
       const indexMatches = text.trim() ? matchCertifiedEntitiesWithIndex(text, matchIndex) : [];
       const draftMatches = text.trim() ? detectDraftEntitiesInText(text, entities, indexMatches) : [];
-      const next = [...indexMatches, ...draftMatches].sort(sortCertifiedMatches);
+      const lexicalDrafts =
+        previewSpans && previewSpans.length > 0
+          ? lexicalPreviewSpansToDraftMatches(previewSpans, entities, [...indexMatches, ...draftMatches])
+          : [];
+      const base = [...indexMatches, ...draftMatches, ...lexicalDrafts];
+      const lorebookDrafts = loreBookParse
+        ? loreBookParseToComposerMatches(loreBookParse, entities, base)
+        : [];
+      const next = collapseOverlappingPersonComposerMatches(
+        text,
+        [...base, ...lorebookDrafts].sort(sortCertifiedMatches)
+      );
       dispatch(setComposerMatches(next));
     },
     [dispatch]
@@ -215,14 +243,37 @@ export const useEntityIndexer = () => {
   }, []);
 
   const analyze = useCallback(
-    (text: string) => {
+    (text: string, threadId?: string) => {
       lastTextRef.current = text;
+      lastThreadIdRef.current = threadId;
       if (!text.trim()) {
         dispatch(setComposerMatches([]));
         return;
       }
       if (!sharedState.ready) return;
       applyMatches(text, sharedState.matchIndex, sharedState.entities);
+
+      if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = window.setTimeout(() => {
+        const reqId = ++previewReqRef.current;
+        void Promise.allSettled([
+          fetchLexicalPreviewShared(text, threadId),
+          fetchLoreBookParseShared(text, threadId),
+        ]).then((results) => {
+          if (reqId !== previewReqRef.current) return;
+          if (lastTextRef.current !== text) return;
+          const preview =
+            results[0].status === 'fulfilled' ? results[0].value : { spans: [], inferredAssociations: [], ambiguities: [] };
+          const loreBookParse = results[1].status === 'fulfilled' ? results[1].value : undefined;
+          applyMatches(
+            text,
+            sharedState.matchIndex,
+            sharedState.entities,
+            preview.spans,
+            loreBookParse
+          );
+        });
+      }, LEXICAL_PREVIEW_DEBOUNCE_MS);
     },
     [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
   );

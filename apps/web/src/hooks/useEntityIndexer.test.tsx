@@ -1,12 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
 import { makeStore } from '../store';
 import { resetEntityIndexerCache, useEntityIndexer } from './useEntityIndexer';
+import { clearLexicalPreviewSharedCache } from '../lib/lexicalPreviewCache';
+import { clearLoreBookParseSharedCache } from '../lib/loreBookParseCache';
 
 const fetchJson = vi.fn();
+const mockFetchLoreBookParseShared = vi.fn();
+const mockFetchLexicalPreviewShared = vi.fn();
+
+vi.mock('../lib/loreBookParseCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/loreBookParseCache')>();
+  return {
+    ...actual,
+    fetchLoreBookParseShared: (...args: unknown[]) => mockFetchLoreBookParseShared(...args),
+  };
+});
+
+vi.mock('../lib/lexicalPreviewCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/lexicalPreviewCache')>();
+  return {
+    ...actual,
+    fetchLexicalPreviewShared: (...args: unknown[]) => mockFetchLexicalPreviewShared(...args),
+  };
+});
 
 vi.mock('../lib/api', () => ({
   fetchJson: (...args: unknown[]) => fetchJson(...args),
@@ -38,22 +58,55 @@ function wrapper({ children }: { children: ReactNode }) {
   return <Provider store={makeStore()}>{children}</Provider>;
 }
 
+const INDEX_ENTITIES = [
+  {
+    id: 'uuid-abel',
+    name: 'Abel',
+    type: 'character',
+    aliases: [],
+    mentionKeys: ['abel'],
+    status: 'confirmed',
+  },
+];
+
+function mockFetchRoutes(options?: { lorebookFails?: boolean; lexicalFails?: boolean }) {
+  mockFetchLexicalPreviewShared.mockImplementation(async () => {
+    if (options?.lexicalFails) throw new Error('lexical offline');
+    return { spans: [], inferredAssociations: [], ambiguities: [] };
+  });
+  mockFetchLoreBookParseShared.mockImplementation(async () => {
+    if (options?.lorebookFails) throw new Error('lorebook offline');
+    return {
+      operations: [
+        {
+          kind: 'suggest_add',
+          domain: 'characters',
+          name: 'Oscar Martinez',
+          confidence: 0.9,
+          gate: 'suggest',
+        },
+      ],
+      redirects: [],
+      suppressed: [],
+      warnings: [],
+      lexicalSpanCount: 1,
+    };
+  });
+  fetchJson.mockImplementation((url: string) => {
+    if (url.includes('/api/entities/certified-index')) {
+      return Promise.resolve({ entities: INDEX_ENTITIES });
+    }
+    return Promise.reject(new Error(`unexpected url ${url}`));
+  });
+}
+
 describe('useEntityIndexer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetEntityIndexerCache();
-    fetchJson.mockResolvedValue({
-      entities: [
-        {
-          id: 'uuid-abel',
-          name: 'Abel',
-          type: 'character',
-          aliases: [],
-          mentionKeys: ['abel'],
-          status: 'confirmed',
-        },
-      ],
-    });
+    clearLexicalPreviewSharedCache();
+    clearLoreBookParseSharedCache();
+    mockFetchRoutes();
   });
 
   it('re-analyzes draft text after the certified index finishes loading', async () => {
@@ -72,6 +125,50 @@ describe('useEntityIndexer', () => {
     expect(result.current.matches.some((m) => m.name === 'Abel')).toBe(true);
   });
 
+  it('merges LoreBook parse chips after debounced preview fetch', async () => {
+    const { result } = renderHook(() => useEntityIndexer(), { wrapper });
+
+    await waitFor(() => expect(result.current.indexReady).toBe(true));
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    act(() => {
+      result.current.analyze('Oscar Martinez joined the team');
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+
+    await waitFor(() => {
+      expect(mockFetchLoreBookParseShared).toHaveBeenCalledWith(
+        'Oscar Martinez joined the team',
+        undefined
+      );
+    });
+    vi.useRealTimers();
+  });
+
+  it('keeps index matches when LoreBook parse fails but lexical preview succeeds', async () => {
+    clearLoreBookParseSharedCache();
+    mockFetchRoutes({ lorebookFails: true });
+
+    const { result } = renderHook(() => useEntityIndexer(), { wrapper });
+    await waitFor(() => expect(result.current.indexReady).toBe(true));
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    act(() => {
+      result.current.analyze('Tell me about Abel');
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+
+    expect(result.current.matches.some((m) => m.name === 'Abel')).toBe(true);
+    expect(result.current.matches.some((m) => m.id.includes('draft:lorebook'))).toBe(false);
+    vi.useRealTimers();
+  });
+
   it('surfaces index load errors and clears matches', async () => {
     fetchJson.mockRejectedValueOnce(new Error('network'));
 
@@ -87,17 +184,11 @@ describe('useEntityIndexer', () => {
 
   it('retries index load after failure', async () => {
     fetchJson.mockRejectedValueOnce(new Error('network'));
-    fetchJson.mockResolvedValueOnce({
-      entities: [
-        {
-          id: 'uuid-abel',
-          name: 'Abel',
-          type: 'character',
-          aliases: [],
-          mentionKeys: ['abel'],
-          status: 'confirmed',
-        },
-      ],
+    fetchJson.mockImplementation((url: string) => {
+      if (url.includes('/api/entities/certified-index')) {
+        return Promise.resolve({ entities: INDEX_ENTITIES });
+      }
+      return Promise.resolve({ spans: [], inferredAssociations: [], ambiguities: [] });
     });
 
     const { result } = renderHook(() => useEntityIndexer(), { wrapper });

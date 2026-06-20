@@ -1,15 +1,15 @@
 // © 2026 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState } from 'react';
-import { BookOpen, Clock, Layers, Mail, Sparkles } from 'lucide-react';
+import { BookOpen, Clock, Layers, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { FounderContact } from './FounderContact';
 import {
   LOREBOOK_CHAPTERS,
   LOREBOOK_TIMELINE,
   LOREBOOK_VISIONS,
   significanceStars,
 } from '../../data/lorebookPublicChronicle';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '../../lib/contact';
 import './LoreOfLoreBook.css';
 
 type LoreTab = 'timeline' | 'chapters' | 'vision';
@@ -202,22 +202,10 @@ export function LoreOfLoreBookContent() {
       </section>
 
       <section className="px-4 sm:px-6 lg:px-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <div className="max-w-4xl mx-auto rounded-xl border border-white/10 bg-black/30 px-4 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="rounded-full bg-primary/15 border border-primary/25 p-2 shrink-0">
-              <Mail className="h-4 w-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-white">Abel Mendoza · Founder</p>
-              <p className="text-xs text-white/45">Questions about LoreBook&apos;s story or vision?</p>
-            </div>
-          </div>
-          <a
-            href={CONTACT_MAILTO}
-            className="text-sm text-primary hover:text-primary/80 transition break-all sm:break-normal text-center sm:text-right shrink-0"
-          >
-            {CONTACT_EMAIL}
-          </a>
+        <div className="max-w-4xl mx-auto rounded-xl border border-white/10 bg-black/30 px-4 py-4 sm:px-6 sm:py-5">
+          <p className="text-sm font-medium text-white mb-1">Abel Mendoza · Founder</p>
+          <p className="text-xs text-white/45 mb-0">Questions about LoreBook&apos;s story or vision?</p>
+          <FounderContact variant="block" label="Email" className="border-none pt-2 mt-2" />
         </div>
       </section>
     </div>

@@ -505,6 +505,7 @@ export const SkillsBook: React.FC = () => {
         {/* Detected skill suggestions — pulled from your chats + journal */}
         <DetectedSkillSuggestions
           demoMode={isMockDataEnabled}
+          existingBookEntries={skills.map(s => ({ id: s.id, name: s.skill_name }))}
           existingSkillNames={skills.map(s => s.skill_name)}
           onSkillAdded={() => void loadSkills()}
         />

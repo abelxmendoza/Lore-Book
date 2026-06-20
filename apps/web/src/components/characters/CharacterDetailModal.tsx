@@ -62,6 +62,8 @@ import {
   getCharacterRealName,
   getCharacterWittyTagline,
 } from '../../lib/characterDisplay';
+import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
+import { CharacterTitleSection } from './CharacterTitleSection';
 import { useChatStream } from '../../hooks/useChatStream';
 
 type SocialMedia = {
@@ -1892,11 +1894,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     : editedCharacter.first_name || (HONORIFIC_RE.test(nameParts[0] ?? '') ? editedCharacter.name : nameParts[0]) || editedCharacter.name;
   const displayName = isMainCharacter && profileRealName
     ? profileRealName
-    : hasHonorificFirstName
-    ? editedCharacter.name
-    : editedCharacter.first_name && editedCharacter.last_name
-      ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
-      : editedCharacter.name;
+    : getCharacterDisplayTitle(editedCharacter);
   const wittyTagline =
     profileWittyTagline ||
     getCharacterWittyTagline(editedCharacter) ||
@@ -2071,6 +2069,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     {wittyTagline}
                   </p>
                 )}
+                {!isMainCharacter ? (
+                  <div className="mb-3 max-w-2xl">
+                    <CharacterTitleSection
+                      character={editedCharacter}
+                      onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
+                    />
+                  </div>
+                ) : null}
                 {profileContextHooks.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {profileContextHooks.slice(0, 5).map((hook) => (

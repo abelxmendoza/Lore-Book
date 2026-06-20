@@ -3,6 +3,7 @@
 import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { CTASection } from '../components/landing/CTASection';
+import { FounderContact } from '../components/landing/FounderContact';
 import { Logo } from '../components/Logo';
 import { Shield } from 'lucide-react';
 
@@ -155,6 +156,7 @@ export default function About() {
                   <p className="text-white/60 leading-relaxed text-sm">
                     Building Omega Technologies out of Los Angeles.
                   </p>
+                  <FounderContact className="text-center sm:text-left" />
                 </div>
               </div>
             </div>

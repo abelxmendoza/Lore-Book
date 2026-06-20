@@ -10,7 +10,6 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
-import { Modal } from '../ui/modal';
 import { EntityProfileCard, type EntityCandidate } from './EntityProfileCard';
 import {
   entityResolutionApi,
@@ -23,6 +22,13 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { EntityDetailModal } from './EntityDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { EntityConsolidationDialog } from '../entity-resolution/EntityConsolidationDialog';
+import { entityAuthorityApi } from '../../api/entityAuthority';
+import {
+  consolidationModeToDecision,
+  entityTypeToAuthorityKind,
+  type ConsolidationMode,
+} from '../../lib/entityConsolidation';
 import { format, subDays, parseISO } from 'date-fns';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -308,7 +314,7 @@ const ConflictCard = ({ conflict, entities, onMerge, onDismiss, loading }: Confl
           className="text-xs border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
         >
           <Merge className="h-3 w-3 mr-1.5" />
-          Merge
+          Resolve…
         </Button>
         <Button
           variant="outline"
@@ -414,7 +420,6 @@ export const EntityResolutionBook: React.FC = () => {
 
   // ── Conflict management state ──
   const [mergingConflict, setMergingConflict] = useState<EntityConflict | null>(null);
-  const [mergeReason, setMergeReason] = useState('');
 
   const isMockDataEnabled = useShouldUseMockData();
   const { entries = [] } = useLoreKeeper();
@@ -476,23 +481,90 @@ export const EntityResolutionBook: React.FC = () => {
     }
   };
 
+  const entityById = useMemo(
+    () => new Map(entities.map((e) => [e.entity_id, e])),
+    [entities],
+  );
+
+  const resolveEntityRef = (conflict: EntityConflict, side: 'a' | 'b') => {
+    const id = side === 'a' ? conflict.entity_a_id : conflict.entity_b_id;
+    const type = side === 'a' ? conflict.entity_a_type : conflict.entity_b_type;
+    const entity = entityById.get(id);
+    return {
+      id,
+      name: entity?.primary_name ?? `${side.toUpperCase()} entity`,
+      type,
+      aliases: entity?.aliases,
+    };
+  };
+
   // ── Conflict actions ──
-  const handleMerge = async () => {
-    if (!mergingConflict || !mergeReason.trim()) return;
+  const handleConsolidate = async (payload: {
+    mode: ConsolidationMode;
+    sourceId: string;
+    targetId: string;
+    reason: string;
+  }) => {
+    if (!mergingConflict) return;
     setActionLoading(true);
     try {
-      await entityResolutionApi.mergeEntities(
-        mergingConflict.entity_a_id,
-        mergingConflict.entity_b_id,
-        mergingConflict.entity_a_type,
-        mergingConflict.entity_b_type,
-        mergeReason,
-      );
+      const entityA = resolveEntityRef(mergingConflict, 'a');
+      const entityB = resolveEntityRef(mergingConflict, 'b');
+
+      if (isMockDataEnabled) {
+        if (payload.mode === 'merge') {
+          setEntities((prev) =>
+            prev.filter((e) => e.entity_id !== payload.sourceId),
+          );
+        }
+        setConflicts((prev) => prev.filter((c) => c.id !== mergingConflict.id));
+        setMergingConflict(null);
+        return;
+      }
+
+      if (payload.mode === 'merge') {
+        const sourceType =
+          payload.sourceId === mergingConflict.entity_a_id
+            ? mergingConflict.entity_a_type
+            : mergingConflict.entity_b_type;
+        const targetType =
+          payload.targetId === mergingConflict.entity_a_id
+            ? mergingConflict.entity_a_type
+            : mergingConflict.entity_b_type;
+        await entityResolutionApi.mergeEntities(
+          payload.sourceId,
+          payload.targetId,
+          sourceType,
+          targetType,
+          payload.reason,
+        );
+      } else {
+        const result = await entityAuthorityApi.confirm({
+          a: {
+            id: entityA.id,
+            name: entityA.name,
+            kind: entityTypeToAuthorityKind(entityA.type),
+            aliases: entityA.aliases,
+          },
+          b: {
+            id: entityB.id,
+            name: entityB.name,
+            kind: entityTypeToAuthorityKind(entityB.type),
+            aliases: entityB.aliases,
+          },
+          decision: consolidationModeToDecision(payload.mode),
+          source_id: payload.sourceId,
+          target_id: payload.targetId,
+          reason: payload.reason,
+        });
+        if (result.error) throw new Error(result.error);
+      }
+
+      await entityResolutionApi.dismissConflict(mergingConflict.id);
       setMergingConflict(null);
-      setMergeReason('');
       void loadData();
-    } catch (err: any) {
-      alert(err.message ?? 'Failed to merge entities');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to resolve entities');
     } finally {
       setActionLoading(false);
     }
@@ -991,7 +1063,7 @@ export const EntityResolutionBook: React.FC = () => {
                   key={conflict.id}
                   conflict={conflict}
                   entities={entities}
-                  onMerge={c => { setMergingConflict(c); setMergeReason(''); }}
+                  onMerge={c => setMergingConflict(c)}
                   onDismiss={handleDismiss}
                   loading={actionLoading}
                 />
@@ -1040,55 +1112,14 @@ export const EntityResolutionBook: React.FC = () => {
 
       {/* ─── Merge modal ─────────────────────────────────────────────────── */}
       {mergingConflict && (
-        <Modal
-          isOpen
-          onClose={() => { setMergingConflict(null); setMergeReason(''); }}
-          title="Merge Entities"
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-white/70">
-              All references to the first entity will be redirected to the second. This is reversible from the History tab.
-            </p>
-
-            {/* Entity preview */}
-            <div className="flex items-center gap-3 p-3 bg-black/30 rounded-lg border border-border/40">
-              <div className="flex-1 text-sm">
-                <div className="font-semibold text-white">
-                  {entities.find(e => e.entity_id === mergingConflict.entity_a_id)?.primary_name ?? mergingConflict.entity_a_id.slice(0, 8)}
-                </div>
-                <div className="text-xs text-white/40">{mergingConflict.entity_a_type}</div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-white/30 shrink-0" />
-              <div className="flex-1 text-sm">
-                <div className="font-semibold text-white">
-                  {entities.find(e => e.entity_id === mergingConflict.entity_b_id)?.primary_name ?? mergingConflict.entity_b_id.slice(0, 8)}
-                </div>
-                <div className="text-xs text-white/40">{mergingConflict.entity_b_type}</div>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-white mb-2 block">
-                Reason <span className="text-white/40 font-normal">(required)</span>
-              </label>
-              <Input
-                value={mergeReason}
-                onChange={e => setMergeReason(e.target.value)}
-                placeholder="e.g. Same person referred to differently"
-                className="w-full"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => { setMergingConflict(null); setMergeReason(''); }}>
-                Cancel
-              </Button>
-              <Button onClick={handleMerge} disabled={!mergeReason.trim() || actionLoading}>
-                {actionLoading ? 'Merging…' : 'Merge Entities'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+        <EntityConsolidationDialog
+          open
+          entityA={resolveEntityRef(mergingConflict, 'a')}
+          entityB={resolveEntityRef(mergingConflict, 'b')}
+          loading={actionLoading}
+          onClose={() => setMergingConflict(null)}
+          onConfirm={handleConsolidate}
+        />
       )}
 
       {/* ─── Entity detail modal (Browse tab click-through) ──────────────── */}

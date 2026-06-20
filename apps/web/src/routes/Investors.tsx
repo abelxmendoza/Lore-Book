@@ -4,6 +4,7 @@ import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { FeatureCard } from '../components/landing/FeatureCard';
 import { CTASection } from '../components/landing/CTASection';
+import { FounderContact } from '../components/landing/FounderContact';
 import { CONTACT_MAILTO } from '../lib/contact';
 import {
   TrendingUp,
@@ -202,6 +203,7 @@ export default function Investors() {
                     <strong className="text-white">Vision:</strong> To give people self-awareness, continuity, identity clarity,
                     and a long-term companion that understands the story they're living.
                   </p>
+                  <FounderContact className="text-center sm:text-left" />
                 </div>
               </div>
             </div>

@@ -2664,6 +2664,18 @@ export const CharacterBook = () => {
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ targetId?: string; suggestionName?: string }>).detail;
+      if (!detail?.targetId) return;
+      setSelectionMode(true);
+      setSelectedForMerge(new Set([detail.targetId]));
+    };
+    window.addEventListener('lk:suggest-merge:characters', handler);
+    return () => window.removeEventListener('lk:suggest-merge:characters', handler);
+  }, []);
+
   const [restoringCast, setRestoringCast] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
@@ -3095,6 +3107,13 @@ export const CharacterBook = () => {
       <ChatFirstViewHint />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
+        existingBookEntries={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
+            : characters
+                .filter(c => c.status !== 'archived')
+                .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
+        }
         existingCharacterNames={
           isMockDataEnabled
             ? getMockCharacterSuggestionBookNames('general')

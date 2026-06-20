@@ -21,6 +21,7 @@ import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
   submitOnEnter?: boolean;
+  threadId?: string;
 };
 
 export const useChatComposer = (
@@ -32,7 +33,7 @@ export const useChatComposer = (
   initialValue?: string | null,
   options: UseChatComposerOptions = {},
 ) => {
-  const { submitOnEnter = true } = options;
+  const { submitOnEnter = true, threadId } = options;
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
@@ -61,7 +62,7 @@ export const useChatComposer = (
     if (input.trim()) {
       // Non-API operations can run immediately
       autoTagger.refreshSuggestions(input);
-      entityIndexer.analyze(input);
+      entityIndexer.analyze(input, threadId);
       
       // Check for slash commands
       if (input.startsWith('/')) {
@@ -82,7 +83,7 @@ export const useChatComposer = (
     if (input.trim()) {
       moodEngine.setScore(localHeuristic(input));
     }
-  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [input, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();

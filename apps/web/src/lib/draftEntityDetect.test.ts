@@ -51,4 +51,15 @@ describe('detectDraftEntitiesInText', () => {
     const drafts = detectDraftEntitiesInText('Tell Abel about work', INDEX, []);
     expect(drafts.map((d) => d.name)).toEqual([]);
   });
+
+  it('does not split a typed full name into a separate surname chip', () => {
+    const drafts = detectDraftEntitiesInText('Abel Mendoza', INDEX, []);
+    expect(drafts.map((d) => d.name)).toEqual(['Abel Mendoza']);
+    expect(drafts.some((d) => d.name === 'Mendoza')).toBe(false);
+  });
+
+  it('still detects a lone surname when not part of a multi-word name', () => {
+    const drafts = detectDraftEntitiesInText('I met Mendoza yesterday', INDEX, []);
+    expect(drafts.some((d) => d.name === 'Mendoza')).toBe(true);
+  });
 });

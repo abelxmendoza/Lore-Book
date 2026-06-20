@@ -116,10 +116,22 @@ function useLoreKeeperState() {
   const skipChapters =
     authLoading || isMockEnabled || (!user && !isMockEnabled);
 
-  const entriesQuery = useGetEntriesQuery(undefined, { skip: skipServerFetch });
-  const timelineQuery = useGetTimelineQuery(undefined, { skip: skipServerFetch });
-  const tagsQuery = useGetTimelineTagsQuery(undefined, { skip: skipServerFetch });
-  const chaptersQuery = useGetChaptersQuery(undefined, { skip: skipChapters });
+  const {
+    data: entriesData,
+    refetch: refetchEntriesQuery,
+  } = useGetEntriesQuery(undefined, { skip: skipServerFetch });
+  const {
+    data: timelineData,
+    refetch: refetchTimelineQuery,
+  } = useGetTimelineQuery(undefined, { skip: skipServerFetch });
+  const {
+    data: tagsData,
+    refetch: refetchTagsQuery,
+  } = useGetTimelineTagsQuery(undefined, { skip: skipServerFetch });
+  const {
+    data: chaptersData,
+    refetch: refetchChaptersQuery,
+  } = useGetChaptersQuery(undefined, { skip: skipChapters });
 
   const [createChapterMutation] = useCreateChapterMutation();
 
@@ -158,12 +170,12 @@ function useLoreKeeperState() {
     if (guestId && !isMockEnabled) return getGuestEntries(guestId);
     if (isMockEnabled) return MOCK_ENTRIES;
     if (!user && !isMockEnabled) return [];
-    return entriesQuery.data ?? cachedEntries;
+    return entriesData ?? cachedEntries;
   }, [
     guestId,
     isMockEnabled,
     user,
-    entriesQuery.data,
+    entriesData,
     cachedEntries,
   ]);
 
@@ -197,10 +209,10 @@ function useLoreKeeperState() {
       return { timeline: MOCK_TIMELINE, tags: MOCK_TAGS };
     }
     return {
-      timeline: timelineQuery.data ?? EMPTY_TIMELINE,
-      tags: tagsQuery.data ?? [],
+      timeline: timelineData ?? EMPTY_TIMELINE,
+      tags: tagsData ?? [],
     };
-  }, [guestId, isMockEnabled, user, timelineQuery.data, tagsQuery.data]);
+  }, [guestId, isMockEnabled, user, timelineData, tagsData]);
 
   const { chapters, chapterCandidates } = useMemo(() => {
     if (!user && !isMockEnabled) {
@@ -210,10 +222,10 @@ function useLoreKeeperState() {
       return { chapters: MOCK_CHAPTERS, chapterCandidates: [] as ChapterCandidate[] };
     }
     return {
-      chapters: chaptersQuery.data?.chapters ?? [],
-      chapterCandidates: chaptersQuery.data?.candidates ?? [],
+      chapters: chaptersData?.chapters ?? [],
+      chapterCandidates: chaptersData?.candidates ?? [],
     };
-  }, [user, isMockEnabled, chaptersQuery.data]);
+  }, [user, isMockEnabled, chaptersData]);
 
   const refreshEntries = useCallback(async () => {
     if (guestId && !isMockEnabled) return;
@@ -222,8 +234,8 @@ function useLoreKeeperState() {
       dispatch(loreApi.util.invalidateTags(['Entry']));
       return;
     }
-    await entriesQuery.refetch();
-  }, [guestId, isMockEnabled, user, entriesQuery, dispatch]);
+    await refetchEntriesQuery();
+  }, [guestId, isMockEnabled, user, refetchEntriesQuery, dispatch]);
 
   const refreshTimeline = useCallback(async () => {
     if (guestId && !isMockEnabled) return;
@@ -232,8 +244,8 @@ function useLoreKeeperState() {
       dispatch(loreApi.util.invalidateTags(['Timeline']));
       return;
     }
-    await Promise.all([timelineQuery.refetch(), tagsQuery.refetch()]);
-  }, [guestId, isMockEnabled, user, timelineQuery, tagsQuery, dispatch]);
+    await Promise.all([refetchTimelineQuery(), refetchTagsQuery()]);
+  }, [guestId, isMockEnabled, user, refetchTimelineQuery, refetchTagsQuery, dispatch]);
 
   const refreshChapters = useCallback(async () => {
     if (!user && !isMockEnabled) return;
@@ -241,8 +253,8 @@ function useLoreKeeperState() {
       dispatch(loreApi.util.invalidateTags(['Chapter']));
       return;
     }
-    await chaptersQuery.refetch();
-  }, [isMockEnabled, user, chaptersQuery, dispatch]);
+    await refetchChaptersQuery();
+  }, [isMockEnabled, user, refetchChaptersQuery, dispatch]);
 
   const refreshEvolution = useCallback(async (refresh = false) => {
     try {

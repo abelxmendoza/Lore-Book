@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, MapPin } from 'lucide-react';
 import { locationSuggestionsApi, type LocationSuggestion } from '../../api/entitySuggestions';
+import { suggestionDismissApi } from '../../api/suggestionDismiss';
+import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
 import { apiCache } from '../../lib/cache';
-import { isNameAlreadyInBookList } from '../../lib/suggestionBookFilter';
+import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
+import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
+import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
 
@@ -11,6 +16,7 @@ type Props = {
   demoMode?: boolean;
   /** Names already in the Places book — hide matching suggestions. */
   existingLocationNames?: string[];
+  existingBookEntries?: Array<{ id?: string; name: string; aliases?: string[] }>;
 };
 
 const SOURCE_LABEL: Record<LocationSuggestion['source'], string> = {
@@ -41,16 +47,32 @@ const DEMO_SUGGESTIONS: LocationSuggestion[] = [
   },
 ];
 
-export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existingLocationNames = [] }: Props) => {
+export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existingLocationNames = [], existingBookEntries = [] }: Props) => {
   const isMock = useShouldUseMockData();
   const showDemo = demoMode ?? isMock;
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const { rescan: rescanChats, rescanning, RescanToastContainer } = useSuggestionRescan('locations');
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleRescan = useCallback(async () => {
+    if (showDemo) return;
+    apiCache.deletePattern(/\/api\/locations/);
+    await rescanChats();
+    setLoading(true);
+    try {
+      const res = await locationSuggestionsApi.list();
+      setSuggestions(res.suggestions ?? []);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [showDemo, rescanChats]);
 
   const fetchSuggestions = useCallback(async () => {
     if (showDemo) {
@@ -83,21 +105,46 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     };
   }, [fetchSuggestions]);
 
+  const bookEntries = useMemo(() => {
+    if (existingBookEntries.length > 0) return existingBookEntries;
+    return existingLocationNames.map((name) => ({ name }));
+  }, [existingBookEntries, existingLocationNames]);
+
   const visible = useMemo(
     () =>
-      suggestions
-        .filter(s => s.name?.trim())
-        .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s)))
-        .filter(s => !existingLocationNames.length || !isNameAlreadyInBookList(s.name, existingLocationNames))
+      filterVisibleSuggestions(
+        suggestions
+          .filter(s => s.name?.trim())
+          .filter(s => s.status !== 'rejected')
+          .filter(s => !s.status || s.status === 'known' || s.status === 'new' || s.status === 'needs_review')
+          .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s))),
+        (s) => s.name,
+        bookEntries
+      )
         .sort((a, b) => (b.confidence - a.confidence) || (b.mentionCount - a.mentionCount))
         .slice(0, 12),
-    [suggestions, dismissed, added, existingLocationNames]
+    [suggestions, dismissed, added, bookEntries]
   );
 
   if (!loading && visible.length === 0) return null;
 
   const handleAdd = async (s: LocationSuggestion) => {
     const k = keyFor(s);
+    if (isSimilarSuggestion(s)) {
+      const targetId = suggestionMatchedId(s);
+      setDismissed(prev => new Set(prev).add(k));
+      if (targetId) {
+        window.dispatchEvent(
+          new CustomEvent('lk:suggest-merge:locations', { detail: { targetId, suggestionName: s.name } })
+        );
+      }
+      setError(
+        suggestionMatchedName(s)
+          ? `Use the merge panel below to combine “${s.name}” with ${suggestionMatchedName(s)}.`
+          : 'Use the merge panel below to combine possible duplicate places.'
+      );
+      return;
+    }
     setAdding(k);
     setError(null);
     try {
@@ -126,7 +173,27 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     }
   };
 
+  const handleDismiss = async (s: LocationSuggestion) => {
+    const k = keyFor(s);
+    setDismissed(prev => new Set(prev).add(k));
+    setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
+    if (showDemo) {
+      mockDataService.mutate.locations.removeSuggestion({ id: s.id, name: s.name });
+      return;
+    }
+    try {
+      await suggestionDismissApi.dismiss({
+        bookDomain: 'locations',
+        name: s.name,
+        suggestionId: s.id,
+      });
+    } catch {
+      /* non-blocking */
+    }
+  };
+
   return (
+    <>
     <div className="rounded-lg border border-teal-500/30 bg-gradient-to-br from-teal-950/25 via-black/40 to-black/40 overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
@@ -143,12 +210,12 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             type="button"
-            onClick={() => void fetchSuggestions()}
-            disabled={loading}
+            onClick={() => void handleRescan()}
+            disabled={loading || rescanning}
             className="h-8 w-8 flex items-center justify-center rounded text-white/50 hover:text-teal-300 hover:bg-teal-500/10"
-            title="Re-scan conversations"
+            title="Rescan my chats for places"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading || rescanning ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
@@ -185,10 +252,32 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-200/80 border border-teal-500/20">
                         {SOURCE_LABEL[s.source]}
                       </span>
+                      <SuggestionMergeHint item={s} bookLabel="Places book" />
                       {s.type && (
                         <span className="text-[9px] text-white/35 capitalize">{s.type.replace(/_/g, ' ')}</span>
                       )}
+                      {s.status === 'needs_review' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-200/80 border border-amber-500/20">
+                          Review
+                        </span>
+                      )}
+                      {s.privacySensitive && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-200/80 border border-purple-500/20">
+                          Private
+                        </span>
+                      )}
                     </div>
+                    <SuggestionCategoryRedirect
+                      name={s.name}
+                      fromDomain="locations"
+                      suggestionId={s.id}
+                      alternatives={s.alternative_categories}
+                      context={s.context}
+                      evidence={s.description}
+                      disabled={adding === k}
+                      onReclassified={() => void handleDismiss(s)}
+                      className="mt-1.5"
+                    />
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
@@ -198,17 +287,11 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded bg-teal-500/20 text-teal-100 hover:bg-teal-500/30 border border-teal-500/30 disabled:opacity-50"
                     >
                       <Plus className="h-3 w-3" />
-                      Add
+                      {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setDismissed(prev => new Set(prev).add(k));
-                        setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
-                        if (showDemo) {
-                          mockDataService.mutate.locations.removeSuggestion({ id: s.id, name: s.name });
-                        }
-                      }}
+                      onClick={() => void handleDismiss(s)}
                       className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10"
                       aria-label="Dismiss"
                     >
@@ -222,5 +305,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
         </div>
       )}
     </div>
+    {RescanToastContainer ? <RescanToastContainer /> : null}
+    </>
   );
 };

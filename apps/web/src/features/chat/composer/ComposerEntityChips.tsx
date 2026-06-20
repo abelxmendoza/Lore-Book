@@ -16,6 +16,9 @@ type ComposerEntityChipsProps = {
   confirmingSlots?: string[];
   onDismiss?: (entity: CertifiedEntityMatch) => void;
   onConfirm?: (entity: CertifiedEntityMatch) => void;
+  /** Inline sits inside the composer shell; bar is the legacy full-width strip. */
+  variant?: 'bar' | 'inline';
+  scanning?: boolean;
 };
 
 const ICONS: Record<EntityVisualKind, React.ComponentType<{ className?: string }>> = {
@@ -46,6 +49,12 @@ function isConfirmable(entity: CertifiedEntityMatch): boolean {
   return entity.status === 'suggestion' || entity.status === 'draft';
 }
 
+function chipDisplayName(entity: CertifiedEntityMatch): string {
+  if (entity.actionLabel) return entity.actionLabel;
+  if (entity.type === 'character') return entity.name;
+  return entity.matchedLabel ?? entity.name;
+}
+
 /**
  * Single compact row of entity chips above the chat input.
  */
@@ -54,19 +63,22 @@ export const ComposerEntityChips = ({
   confirmingSlots = [],
   onDismiss,
   onConfirm,
+  variant = 'bar',
+  scanning = false,
 }: ComposerEntityChipsProps) => {
-  if (entities.length === 0) return null;
+  const chipEntities = entities.filter((e) => e.matchKind !== 'prefix');
+  if (chipEntities.length === 0) return null;
 
-  const needsConfirm = entities.some(isConfirmable);
+  const needsConfirm = chipEntities.some(isConfirmable);
+  const stripLabel = scanning
+    ? 'Scanning…'
+    : needsConfirm
+      ? 'Detected'
+      : 'In LoreBook';
 
-  return (
-    <div
-      data-testid="composer-entity-chips"
-      className="border-b border-white/[0.04] bg-black/25 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
-    >
-      <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
-        <CompactChipStrip label={needsConfirm ? 'Detected — tap to confirm' : 'Known in LoreBook'}>
-          {entities.map((entity) => {
+  const strip = (
+    <CompactChipStrip label={stripLabel}>
+      {chipEntities.map((entity) => {
             const visual = visualKindForEntity(entity);
             const Icon = ICONS[visual];
             const slot = composerMatchSlot(entity);
@@ -84,7 +96,7 @@ export const ComposerEntityChips = ({
                   aria-label={canConfirm ? `Confirm ${entity.name}` : undefined}
                 >
                   <Icon className="h-2 w-2 flex-shrink-0 opacity-75" />
-                  <span className="truncate">{entity.actionLabel ?? entity.name}</span>
+                  <span className="truncate">{chipDisplayName(entity)}</span>
                   {entity.matchKind === 'prefix' && !confirming && (
                     <span className="text-[7px] opacity-45">…</span>
                   )}
@@ -104,7 +116,24 @@ export const ComposerEntityChips = ({
               </span>
             );
           })}
-        </CompactChipStrip>
+    </CompactChipStrip>
+  );
+
+  if (variant === 'inline') {
+    return (
+      <div data-testid="composer-entity-chips" className="composer-entity-chips-inline">
+        {strip}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="composer-entity-chips"
+      className="border-b border-white/[0.04] bg-black/25 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
+    >
+      <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
+        {strip}
       </div>
     </div>
   );

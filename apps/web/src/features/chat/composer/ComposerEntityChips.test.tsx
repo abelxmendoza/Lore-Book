@@ -24,7 +24,7 @@ const suggested: CertifiedEntityMatch = {
   mentionKeys: ['kelly'],
   status: 'suggestion',
   matchedLabel: 'Kelly',
-  matchKind: 'prefix',
+  matchKind: 'full',
 };
 
 describe('ComposerEntityChips', () => {
@@ -37,10 +37,9 @@ describe('ComposerEntityChips', () => {
     render(<ComposerEntityChips entities={[confirmed, suggested]} onConfirm={vi.fn()} />);
 
     expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
-    expect(screen.getByText('Detected — tap to confirm')).toBeInTheDocument();
+    expect(screen.getByText('Detected')).toBeInTheDocument();
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toHaveTextContent('Abel');
     expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toHaveTextContent('Kelly');
-    expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toHaveTextContent('…');
   });
 
   it('calls onConfirm when a suggestion chip is clicked', async () => {

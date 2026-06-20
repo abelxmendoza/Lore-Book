@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, GitMerge, X } from 'lucide-react';
+import { AlertTriangle, GitMerge, Layers, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { entityAuthorityApi } from '../../api/entityAuthority';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import { GROUP_TYPE_LABELS } from '../../lib/groupTypes';
 
@@ -195,6 +196,51 @@ export const GroupMergePanel = ({
     }
   };
 
+  const nestCluster = async (cluster: OrganizationDuplicateCluster, parentId: string) => {
+    const parent = cluster.organizations.find((org) => org.id === parentId);
+    const children = cluster.organizations.filter((org) => org.id !== parentId);
+    if (!parent || children.length === 0) return;
+
+    setMergeBusy(true);
+    setMergeError(null);
+    setMergeNotice(null);
+    try {
+      if (demoMode) {
+        setDuplicateClusters((prev) =>
+          prev.filter((existing) => existing.canonical_name !== cluster.canonical_name),
+        );
+        setMergeNotice(
+          `Demo preview: nested ${children.map((c) => c.name).join(', ')} under ${parent.name}.`,
+        );
+        onMerged();
+        return;
+      }
+
+      for (const child of children) {
+        const result = await entityAuthorityApi.confirm({
+          a: { id: child.id, name: child.name, kind: 'ORGANIZATION', aliases: child.aliases },
+          b: { id: parent.id, name: parent.name, kind: 'ORGANIZATION', aliases: parent.aliases },
+          decision: 'PARENT_CHILD',
+          source_id: child.id,
+          target_id: parent.id,
+          reason: `Nested subgroup under ${parent.name} from duplicate review`,
+        });
+        if (result.error) throw new Error(result.error);
+      }
+
+      await loadDuplicateClusters();
+      onMerged();
+      setMergeNotice(
+        `Nested ${children.length} group${children.length === 1 ? '' : 's'} under ${parent.name}. Both cards stay visible.`,
+      );
+      setShowMergeDialog(false);
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : 'Failed to nest duplicate groups');
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
   const mergeSelectedOrganizations = async (targetId: string) => {
     const duplicateIds = Array.from(selectedForMerge).filter(id => id !== targetId);
     if (duplicateIds.length === 0) return;
@@ -332,7 +378,9 @@ export const GroupMergePanel = ({
             <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-white/10 bg-[#0d1117] px-4 py-3">
               <div>
                 <h3 className="text-base font-semibold text-white">Review duplicate groups</h3>
-                <p className="text-xs text-white/45">Pick the card to keep. Other names become aliases on the survivor.</p>
+                <p className="text-xs text-white/45">
+                  Merge into one card, or nest one group inside another as a subgroup.
+                </p>
               </div>
               <button
                 type="button"
@@ -380,14 +428,26 @@ export const GroupMergePanel = ({
                                 : `${typeLabel}${org.member_count != null ? ` · ${org.member_count} members` : ''}`}
                             </p>
                           </div>
-                          <Button
-                            size="sm"
-                            disabled={mergeBusy || cluster.organizations.length < 2}
-                            onClick={() => void mergeCluster(cluster, org.id)}
-                            leftIcon={<GitMerge className="h-3.5 w-3.5" />}
-                          >
-                            Keep this
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              disabled={mergeBusy || cluster.organizations.length < 2}
+                              onClick={() => void mergeCluster(cluster, org.id)}
+                              leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                            >
+                              Keep this
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={mergeBusy || cluster.organizations.length < 2}
+                              onClick={() => void nestCluster(cluster, org.id)}
+                              leftIcon={<Layers className="h-3.5 w-3.5" />}
+                              className="border-primary/30 text-primary hover:bg-primary/10"
+                            >
+                              Nest others here
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}

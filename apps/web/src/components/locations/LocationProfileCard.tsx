@@ -1,5 +1,5 @@
 import { MapPin, Clock, Users, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
-import { classifyLocation, KIND_META, locationHierarchy, isHouseholdLocation, countRoomsForHousehold } from '../../lib/locationTaxonomy';
+import { classifyLocation, KIND_META, locationHierarchy, countNestedPlaces, isHouseholdLocation } from '../../lib/locationTaxonomy';
 import { formatPlaceType, getPlaceTags, resolvePlaceType } from '../../lib/placeTypes';
 
 export type LocationProfile = {
@@ -112,8 +112,8 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
   const hierarchy = locationHierarchy(location);
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
-  const roomCount = isHouseholdLocation(location) && allLocations.length > 0
-    ? countRoomsForHousehold(location, allLocations)
+  const nestedCount = allLocations.length > 0
+    ? countNestedPlaces(location, allLocations)
     : 0;
 
   return (
@@ -192,9 +192,12 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${kindMeta.color}`}>
               <span aria-hidden>{kindMeta.icon}</span> {kindMeta.label}
             </span>
-            {roomCount > 0 && (
+            {nestedCount > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-300 border-purple-500/30">
-                {roomCount} {roomCount === 1 ? 'room' : 'rooms'}
+                {nestedCount}{' '}
+                {isHouseholdLocation(location)
+                  ? nestedCount === 1 ? 'room' : 'rooms'
+                  : nestedCount === 1 ? 'nested place' : 'nested places'}
               </span>
             )}
             <span className="text-xs text-white/50">

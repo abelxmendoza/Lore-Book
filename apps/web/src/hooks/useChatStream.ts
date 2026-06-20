@@ -5,6 +5,8 @@ import { getGlobalIsGuest } from '../contexts/MockDataContext';
 import { getGuestLoreSnapshot } from '../services/guestLoreStore';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 import type { ChatFocus } from '../types/chatFocus';
+import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
+import { pollLoreBookNotice, dispatchLoreBookNotice } from '../lib/loreBookNoticeClient';
 
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
@@ -248,6 +250,9 @@ export const useChatStream = () => {
             if (onMemoryFeedback && capturedMessageId) {
               pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
             }
+            if (capturedMessageId && token) {
+              void pollLoreBookNotice(capturedMessageId, token, dispatchLoreBookNotice);
+            }
             return;
           } else if (data.type === 'error') {
             throw new Error(data.error || 'Stream error');
@@ -260,6 +265,9 @@ export const useChatStream = () => {
         onComplete();
         if (onMemoryFeedback && capturedMessageId) {
           pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
+        }
+        if (capturedMessageId && token) {
+          void pollLoreBookNotice(capturedMessageId, token, dispatchLoreBookNotice);
         }
       }
 

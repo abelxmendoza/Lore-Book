@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { getCharacterWittyTagline } from '../../lib/characterDisplay';
+import { getCharacterDisplayTitle, getCharacterSubtitle } from '../../lib/characterDisplayTitle';
 import {
   CONNECTION_STAGE_LABELS,
   getPublicFigureConnection,
@@ -248,17 +249,10 @@ export const CharacterProfileCard = ({
   const proximity = character.proximity_level ?? null;
   const relationshipDepth = character.relationship_depth ?? null;
   
-  const HONORIFIC_RE = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir|dame|lord|lady|rev|fr|father)\.?$/i;
-  const hasHonorificFirstName = Boolean(character.first_name && HONORIFIC_RE.test(character.first_name));
+  const displayName = getCharacterDisplayTitle(character);
+  const contextSubtitle = getCharacterSubtitle(character);
 
-  // Display name: preserve honorific-led names like "Mr. Chino" instead of treating "Mr." as a normal first name.
-  const displayName = hasHonorificFirstName
-    ? character.name
-    : character.first_name && character.last_name
-      ? `${character.first_name} ${character.last_name}`
-      : character.name;
-
-  const cardBlurb = getCharacterWittyTagline(character) || character.summary;
+  const cardBlurb = contextSubtitle || getCharacterWittyTagline(character) || character.summary;
 
   const getProximityColor = (level?: string | null) => {
     const colors: Record<string, string> = {

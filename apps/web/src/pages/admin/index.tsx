@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Users, FileText, Sparkles, Zap, AlertTriangle, Search,
-  RefreshCw, Crown, Clock, Gift, LogIn, Filter, Terminal,
+  RefreshCw, Crown, Clock, Gift, LogIn, Filter, Terminal, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../lib/supabase';
 import { fetchJson } from '../../lib/api';
@@ -16,6 +16,8 @@ import { canAccessAdmin, isFounderFromAuthority } from '../../middleware/roleGua
 import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { config } from '../../config/env';
 import { getUserFriendlyMessage } from '../../lib/errorHandler';
+import { evaluateStripeConfig, type StripeConfigStatus } from '../../lib/stripeConfigStatus';
+import { StripeDashboardLinks } from '../../components/admin/StripeDashboardLinks';
 import NotFound from '../../routes/NotFound';
 
 type AdminView = AdminSection;
@@ -135,6 +137,7 @@ export const AdminPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loadIssue, setLoadIssue] = useState<AdminLoadIssue | null>(null);
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigStatus | null>(null);
 
   const isAdmin = canAccessAdmin(authority);
 
@@ -169,15 +172,24 @@ export const AdminPage = () => {
         (reason) => ({ status: 'rejected' as const, reason })
       );
 
-      const [logsResult, eventsResult] = await Promise.allSettled([
+      const [logsResult, eventsResult, healthResult] = await Promise.allSettled([
         fetchJson<{ logs: Log[] }>('/api/admin/logs', undefined, ADMIN_FETCH_OPTS),
         fetchJson<{ events: AIEvent[] }>('/api/admin/ai-events', undefined, ADMIN_FETCH_OPTS),
+        fetchJson<{ envPresent?: Record<string, boolean> }>('/api/health'),
       ]);
 
       if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
       if (usersResult.status === 'fulfilled') setUsers(usersResult.value.users);
       if (logsResult.status === 'fulfilled') setLogs(logsResult.value.logs);
       if (eventsResult.status === 'fulfilled') setAiEvents(eventsResult.value.events);
+      if (healthResult.status === 'fulfilled') {
+        setStripeConfig(
+          evaluateStripeConfig(
+            healthResult.value.envPresent,
+            import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined
+          )
+        );
+      }
 
       const criticalFailures: string[] = [];
       if (metricsResult.status === 'rejected') criticalFailures.push(rejectionMessage(metricsResult));
@@ -597,16 +609,34 @@ export const AdminPage = () => {
                   <AdminCard title="AI Requests (mo)" value={userStats.totalAiThisMonth} icon={Zap} description="Across all users this month" />
                 </div>
 
-                {/* Stripe not configured notice */}
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-amber-300 font-semibold text-sm">Stripe payments not yet configured</p>
-                    <p className="text-amber-200/70 text-xs mt-1">
-                      Subscription billing is not active. All users are currently on the free tier. When Stripe is set up, paid subscriptions will appear here with status tracking.
-                    </p>
+                {/* Stripe billing readiness — status from /api/health (not a static placeholder) */}
+                {stripeConfig && !stripeConfig.fullyConfigured && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-amber-300 font-semibold text-sm">Stripe not fully configured</p>
+                      <p className="text-amber-200/70 text-xs mt-1">
+                        {stripeConfig.missing.length > 0
+                          ? `Missing on this API host: ${stripeConfig.missing.join(', ')}.`
+                          : 'Checking server environment…'}
+                        {' '}Production may already be set on Railway — this reflects the backend your browser is talking to right now.
+                      </p>
+                      <StripeDashboardLinks stripeConfig={stripeConfig} />
+                    </div>
                   </div>
-                </div>
+                )}
+                {stripeConfig?.fullyConfigured && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-emerald-300 font-semibold text-sm">Stripe billing configured</p>
+                      <p className="text-emerald-200/70 text-xs mt-1">
+                        Secret key, webhook secret, price ID, and publishable key are present on this API host.
+                      </p>
+                      <StripeDashboardLinks stripeConfig={stripeConfig} />
+                    </div>
+                  </div>
+                )}
 
                 <div className="rounded-lg border border-purple-500/30 bg-black/40 p-4">
                   <h2 className="text-xl font-semibold mb-4">All Subscribers</h2>
@@ -775,12 +805,25 @@ export const AdminPage = () => {
                     { label: 'API Server', status: 'online', detail: 'Responding normally' },
                     { label: 'Supabase DB', status: 'online', detail: 'Connected' },
                     { label: 'OpenAI', status: 'unknown', detail: 'Check API key / billing' },
-                    { label: 'Stripe', status: 'pending', detail: 'Not yet configured' },
+                    {
+                      label: 'Stripe',
+                      status: stripeConfig?.fullyConfigured ? 'online' : stripeConfig ? 'pending' : 'unknown',
+                      detail: stripeConfig?.fullyConfigured
+                        ? 'Billing env vars present on API host'
+                        : stripeConfig?.missing.length
+                          ? `Missing: ${stripeConfig.missing.join(', ')}`
+                          : 'Checking configuration…',
+                    },
                   ].map(svc => (
                     <div key={svc.label} className="flex items-center justify-between p-4 rounded-lg border border-white/10 bg-black/40">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-white">{svc.label}</p>
                         <p className="text-xs text-white/50 mt-1">{svc.detail}</p>
+                        {svc.label === 'Stripe' && stripeConfig && (
+                          <div className="mt-2">
+                            <StripeDashboardLinks stripeConfig={stripeConfig} compact />
+                          </div>
+                        )}
                       </div>
                       <span className={`h-2.5 w-2.5 rounded-full ${
                         svc.status === 'online' ? 'bg-green-400' :
@@ -844,7 +887,7 @@ export const AdminPage = () => {
                   {[
                     { key: 'demo_mode', label: 'Demo Mode', desc: 'Enable demo/guest access', enabled: true },
                     { key: 'ai_cognition', label: 'AI Cognition', desc: 'LLM-powered memory extraction', enabled: true },
-                    { key: 'stripe_billing', label: 'Stripe Billing', desc: 'Enable paid subscriptions', enabled: false },
+                    { key: 'stripe_billing', label: 'Stripe Billing', desc: 'Enable paid subscriptions', enabled: stripeConfig?.fullyConfigured ?? false },
                   ].map(flag => (
                     <div key={flag.key} className="flex items-center justify-between p-4 rounded-lg border border-white/10 bg-black/30">
                       <div>

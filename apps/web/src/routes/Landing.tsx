@@ -7,6 +7,7 @@ import { LorebookShowcaseSection } from '../components/landing/LorebookShowcaseS
 import { FeatureCard } from '../components/landing/FeatureCard';
 import { IntelligenceSection } from '../components/landing/IntelligenceSection';
 import { CTASection } from '../components/landing/CTASection';
+import { FounderContact } from '../components/landing/FounderContact';
 import {
   BookOpen,
   Users,
@@ -263,6 +264,7 @@ export default function Landing() {
                     The goal is simple: talk once, carry forward forever, and turn a life into lore you can
                     actually read.
                   </p>
+                  <FounderContact className="text-center sm:text-left" />
                 </div>
               </div>
             </div>

@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2 } from 'lucide-react';
 import { characterSuggestionsApi, type CharacterSuggestion } from '../../api/entitySuggestions';
-import { selfCharacterApi } from '../../api/selfCharacter';
-import { romanticRelationshipsApi } from '../../api/romanticRelationships';
+import { suggestionDismissApi } from '../../api/suggestionDismiss';
+import { suggestionRescanApi } from '../../api/suggestionRescan';
+import { appendLorebookParseToast } from '../../lib/suggestionRescanToast';
 import { apiCache } from '../../lib/cache';
-import { isNameAlreadyInBookList } from '../../lib/suggestionBookFilter';
+import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
+import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
+import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
@@ -20,6 +24,8 @@ type Props = {
   demoMode?: boolean;
   /** Names already in the Characters book — hide matching suggestions. */
   existingCharacterNames?: string[];
+  /** Book entries with ids for merge hints (preferred over name list). */
+  existingBookEntries?: Array<{ id: string; name: string; aliases?: string[] }>;
   /** Love & Relationships uses romantic-only individual suggestions. */
   variant?: 'general' | 'romantic';
 };
@@ -37,6 +43,7 @@ export const DetectedCharacterSuggestions = ({
   onRescanComplete,
   demoMode = false,
   existingCharacterNames = [],
+  existingBookEntries = [],
   variant = 'general',
 }: Props) => {
   const showDemo = demoMode;
@@ -93,16 +100,24 @@ export const DetectedCharacterSuggestions = ({
     return () => window.clearTimeout(timer);
   }, [successNotice]);
 
+  const bookEntries = useMemo(() => {
+    if (existingBookEntries.length > 0) return existingBookEntries;
+    return existingCharacterNames.map((name) => ({ id: undefined, name }));
+  }, [existingBookEntries, existingCharacterNames]);
+
   const visible = useMemo(
     () =>
-      suggestions
-        .filter(s => s.name?.trim())
-        .filter(s => isIndividualPersonName(s.name))
-        .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s)))
-        .filter(s => !existingCharacterNames.length || !isNameAlreadyInBookList(s.name, existingCharacterNames))
+      filterVisibleSuggestions(
+        suggestions
+          .filter(s => s.name?.trim())
+          .filter(s => isIndividualPersonName(s.name))
+          .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s))),
+        (s) => s.name,
+        bookEntries
+      )
         .sort((a, b) => (b.confidence - a.confidence) || (b.mentionCount - a.mentionCount))
         .slice(0, 12),
-    [suggestions, dismissed, added, existingCharacterNames]
+    [suggestions, dismissed, added, bookEntries]
   );
 
   const panelTitle =
@@ -123,31 +138,41 @@ export const DetectedCharacterSuggestions = ({
     setRescanNotice(null);
     setError(null);
     try {
-      apiCache.deletePattern(/\/api\/(characters|knowledge|conversation\/romantic)/);
+      apiCache.deletePattern(/\/api\/(characters|knowledge|conversation\/romantic|quests|locations|skills|projects)/);
       if (variant === 'romantic') {
-        const romanticResult = await romanticRelationshipsApi.rescan();
-        await selfCharacterApi.rescanConversations();
-        const s = romanticResult.summary;
-        const total = s.relationshipsUpserted;
+        const { summary } = await suggestionRescanApi.rescan(['romantic', 'characters']);
+        const romantic = summary.results.romantic as { relationshipsUpserted?: number; romanticEpisodes?: number } | undefined;
+        const total = romantic?.relationshipsUpserted ?? 0;
+        const episodes = romantic?.romanticEpisodes ?? 0;
         setRescanNotice(
-          total > 0
-            ? `Love story rescan — ${total} relationship${total === 1 ? '' : 's'} updated from ${s.romanticEpisodes} romantic episode${s.romanticEpisodes === 1 ? '' : 's'}.`
-            : 'Love story rescan complete — relationships are up to date.'
+          appendLorebookParseToast(
+            total > 0
+              ? `Love story rescan — ${total} relationship${total === 1 ? '' : 's'} updated from ${episodes} romantic episode${episodes === 1 ? '' : 's'}.`
+              : 'Love story rescan complete — relationships are up to date.',
+            summary
+          )
         );
         invalidateEntityTags(['Character']);
       } else {
-        const result = await selfCharacterApi.rescanConversations();
-        const promoted = result.summary?.charactersPromoted ?? 0;
-        const restored = result.summary?.restoredFromEvidence ?? 0;
+        const { summary } = await suggestionRescanApi.rescan(['characters']);
+        const charSummary = summary.results.characters as {
+          charactersPromoted?: number;
+          restoredFromEvidence?: number;
+        } | undefined;
+        const promoted = charSummary?.charactersPromoted ?? 0;
+        const restored = charSummary?.restoredFromEvidence ?? 0;
         const total = promoted + restored;
         setRescanNotice(
-          total > 0
-            ? `Rescan found ${total} character${total === 1 ? '' : 's'} to add or restore.`
-            : 'Rescan complete — your cast is up to date.'
+          appendLorebookParseToast(
+            total > 0
+              ? `Rescan found ${total} character${total === 1 ? '' : 's'} to add or restore.`
+              : 'Rescan complete — your cast is up to date.',
+            summary
+          )
         );
         onRescanComplete?.({ charactersPromoted: promoted, restoredFromEvidence: restored });
       }
-      await fetchSuggestions({ rescan: true });
+      await fetchSuggestions({ rescan: false });
       invalidateEntityTags(['Character']);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversation rescan failed');
@@ -158,6 +183,23 @@ export const DetectedCharacterSuggestions = ({
 
   const handleAdd = async (s: CharacterSuggestion) => {
     const k = keyFor(s);
+    if (isSimilarSuggestion(s)) {
+      const targetId = suggestionMatchedId(s);
+      setDismissed(prev => new Set(prev).add(k));
+      if (targetId) {
+        window.dispatchEvent(
+          new CustomEvent('lk:suggest-merge:characters', {
+            detail: { targetId, suggestionName: s.name },
+          })
+        );
+      }
+      setRescanNotice(
+        suggestionMatchedName(s)
+          ? `Use the merge panel below to combine “${s.name}” with ${suggestionMatchedName(s)}.`
+          : 'Use the merge panel below to combine possible duplicates.'
+      );
+      return;
+    }
     setAdding(k);
     setError(null);
     try {
@@ -190,6 +232,21 @@ export const DetectedCharacterSuggestions = ({
       });
     } finally {
       setAdding(null);
+    }
+  };
+
+  const handleDismiss = async (s: CharacterSuggestion) => {
+    const k = keyFor(s);
+    setDismissed(prev => new Set(prev).add(k));
+    if (showDemo) return;
+    try {
+      await suggestionDismissApi.dismiss({
+        bookDomain: 'characters',
+        name: s.name,
+        suggestionId: s.id,
+      });
+    } catch {
+      /* non-blocking */
     }
   };
 
@@ -323,10 +380,20 @@ export const DetectedCharacterSuggestions = ({
                         <span className="rounded border border-amber-500/20 bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-200/80">
                           {SOURCE_LABEL[s.source]}
                         </span>
+                        <SuggestionMergeHint item={s} bookLabel="Character Book" />
                         {s.mentionCount > 1 && (
                           <span className="text-[9px] text-white/35">{s.mentionCount} mentions</span>
                         )}
                       </div>
+                      <SuggestionCategoryRedirect
+                        name={s.name}
+                        fromDomain="characters"
+                        suggestionId={s.id}
+                        alternatives={s.alternative_categories}
+                        context={s.context}
+                        disabled={isAdding || isExiting}
+                        onReclassified={() => void handleDismiss(s)}
+                      />
                       <div className="mt-auto flex items-center gap-1">
                         <button
                           type="button"
@@ -343,13 +410,13 @@ export const DetectedCharacterSuggestions = ({
                           ) : (
                             <>
                               <Plus className="h-3 w-3" />
-                              Add
+                              {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
                             </>
                           )}
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDismissed(prev => new Set(prev).add(k))}
+                          onClick={() => void handleDismiss(s)}
                           className="rounded p-1 text-white/30 hover:bg-white/10 hover:text-white/70"
                           aria-label="Dismiss"
                         >
@@ -369,10 +436,21 @@ export const DetectedCharacterSuggestions = ({
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-200/80 border border-amber-500/20">
                         {SOURCE_LABEL[s.source]}
                       </span>
+                      <SuggestionMergeHint item={s} bookLabel="Character Book" />
                       {s.mentionCount > 1 && (
                         <span className="text-[9px] text-white/35">{s.mentionCount} mentions</span>
                       )}
                     </div>
+                    <SuggestionCategoryRedirect
+                      name={s.name}
+                      fromDomain="characters"
+                      suggestionId={s.id}
+                      alternatives={s.alternative_categories}
+                      context={s.context}
+                      disabled={isAdding || isExiting}
+                      onReclassified={() => void handleDismiss(s)}
+                      className="mt-1"
+                    />
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
@@ -390,13 +468,13 @@ export const DetectedCharacterSuggestions = ({
                       ) : (
                         <>
                           <Plus className="h-3 w-3" />
-                          Add
+                          {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
                         </>
                       )}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDismissed(prev => new Set(prev).add(k))}
+                      onClick={() => void handleDismiss(s)}
                       className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10"
                       aria-label="Dismiss"
                     >

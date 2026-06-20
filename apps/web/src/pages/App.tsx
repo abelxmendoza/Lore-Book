@@ -189,11 +189,14 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     };
   }, [dispatch, navigate]);
 
-  // Refresh data when mock data toggle changes
+  // Refresh data when mock data toggle changes (not on every render)
+  const prevMockDataEnabledRef = useRef(isMockDataEnabled);
   useEffect(() => {
-    // Only refresh if we have the refresh functions available
+    if (prevMockDataEnabledRef.current === isMockDataEnabled) return;
+    prevMockDataEnabledRef.current = isMockDataEnabled;
+
     if (!refreshEntries || !refreshTimeline || !refreshChapters) return;
-    
+
     const refreshAllData = async () => {
       try {
         // Clear any caches first

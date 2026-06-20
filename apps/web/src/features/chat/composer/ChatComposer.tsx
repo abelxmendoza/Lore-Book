@@ -3,8 +3,6 @@ import { useChatComposer } from '../hooks/useChatComposer';
 import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
-import { ComposerHints } from './ComposerHints';
-import { MoodIndicator } from './MoodIndicator';
 import { JournalComposerOverlay } from './JournalComposerOverlay';
 import { useState, useEffect, useCallback } from 'react';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
@@ -32,6 +30,7 @@ type ChatComposerProps = {
   /** Tighter layout for character/org modals — hides upload chrome, reduces padding */
   variant?: 'default' | 'embedded';
   placeholder?: string;
+  threadId?: string;
 };
 
 const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
@@ -46,6 +45,7 @@ export const ChatComposer = ({
   initialDate,
   variant = 'default',
   placeholder,
+  threadId,
 }: ChatComposerProps) => {
   const embedded = variant === 'embedded';
   const isMobile = useIsMobile();
@@ -58,10 +58,6 @@ export const ChatComposer = ({
     textareaRef,
     showCommandSuggestions,
     commandSuggestions,
-    showHints,
-    moodColor,
-    moodEngine,
-    autoTagger,
     entityIndexer,
     visibleMatches,
     confirmingSlots,
@@ -72,7 +68,7 @@ export const ChatComposer = ({
     handleKeyDown,
     insertSuggestion,
     setPreviewCorrections,
-  } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile });
+  } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
   useEffect(() => {
     if (initialPrompt && !input) {
@@ -160,13 +156,6 @@ export const ChatComposer = ({
         </div>
       )}
 
-      <ComposerEntityChips
-        entities={visibleMatches}
-        confirmingSlots={confirmingSlots}
-        onDismiss={dismissMatch}
-        onConfirm={confirmMatch}
-      />
-
       {confirmError && (
         <div
           data-testid="composer-confirm-error"
@@ -177,8 +166,6 @@ export const ChatComposer = ({
           </p>
         </div>
       )}
-
-      {showHints && <ComposerHints mood={moodEngine.mood} tagCount={autoTagger.suggestions.length} />}
 
       {showUpload && (
         <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 max-h-[300px] sm:max-h-[350px] overflow-y-auto">
@@ -227,12 +214,22 @@ export const ChatComposer = ({
             isMobile && !embedded && 'journal-composer-shell--mobile',
           )}
         >
+          <ComposerEntityChips
+            variant="inline"
+            entities={visibleMatches}
+            confirmingSlots={confirmingSlots}
+            scanning={entityIndexer.loading}
+            onDismiss={dismissMatch}
+            onConfirm={confirmMatch}
+          />
+
           <div className="journal-composer-input-wrap">
             <EntityHighlightedComposer
               value={input}
               onChange={setInput}
               textareaRef={textareaRef}
               matches={visibleMatches}
+              threadId={threadId}
               onPreviewCorrectionsChange={setPreviewCorrections}
               placeholder={resolvedPlaceholder}
               disabled={loading || disabled}
@@ -245,14 +242,7 @@ export const ChatComposer = ({
                 'journal-composer-field',
                 embedded && 'journal-composer-field--embedded',
               )}
-              style={{
-                borderColor: showHints ? `${moodColor}66` : undefined,
-                boxShadow: showHints ? `0 0 12px ${moodColor}22` : undefined,
-              }}
             />
-            {showHints && moodEngine.mood.score !== 0 && (
-              <MoodIndicator color={moodColor} label={moodEngine.mood.label} position="top-right" />
-            )}
           </div>
 
           {showStats && (
@@ -351,8 +341,9 @@ export const ChatComposer = ({
           onKeyDown={handleKeyDown}
           viewportHeight={viewportHeight}
           keyboardInset={keyboardInset}
-          moodColor={moodColor}
-          showHints={showHints}
+          confirmingSlots={confirmingSlots}
+          onDismiss={dismissMatch}
+          onConfirm={confirmMatch}
         />
       )}
     </div>

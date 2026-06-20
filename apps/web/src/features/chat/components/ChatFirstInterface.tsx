@@ -29,6 +29,7 @@ import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
 import { ChatFocusChipBar } from './ChatFocusChipBar';
 import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
+import { LoreBookNoticeHost } from '../../../components/chat/LoreBookNoticeHost';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -722,6 +723,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         )}
 
         <ChatFocusArrivalToast focus={chatFocus} />
+        {!isGuest ? <LoreBookNoticeHost /> : null}
 
         {/* Search Modal */}
         {showSearch && (
@@ -856,6 +858,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             disabled={isGuest && !canSendChatMessage()}
             initialPrompt={initialPrompt}
             initialDate={initialDate}
+            threadId={activeThreadId ?? undefined}
             onUploadComplete={async (result: UploadCompletePayload) => {
               const now = new Date();
               if (result.kind === 'resume') {

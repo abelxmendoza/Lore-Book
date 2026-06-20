@@ -142,6 +142,19 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
     ].map((q: Quest) => q.title);
   }, [board]);
 
+  const existingQuestEntries = useMemo(() => {
+    if (!board) return [];
+    const all = [
+      ...(board.main_quests || []),
+      ...(board.side_quests || []),
+      ...(board.daily_quests || []),
+      ...(board.todays_quests || []),
+      ...(board.this_weeks_quests || []),
+      ...(board.completed_quests || []),
+    ] as Quest[];
+    return all.map((q) => ({ id: q.id, name: q.title }));
+  }, [board]);
+
   // Get all unique categories from quests
   const allCategories = useMemo(() => {
     if (!board) return [];
@@ -742,6 +755,7 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
           <div data-testid="quest-board-suggestions" className="shrink-0 px-2 pt-2 sm:px-3">
             <DetectedQuestSuggestions
               existingQuestTitles={existingQuestTitles}
+              existingBookEntries={existingQuestEntries}
               onQuestAdded={() => void refetchBoard()}
             />
           </div>

@@ -1,5 +1,6 @@
 import { fetchJson } from '../lib/api';
 import { booksApi } from './books';
+import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
 import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory, SkillMetadata } from '../types/skill';
 
 import type { SkillProfile } from '../lib/skillProfile';
@@ -24,6 +25,10 @@ export interface SkillSuggestion {
   related_skill_names?: string[];
   evidence?: string[] | Array<{ text: string }>;
   source?: string;
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 }
 
 export const skillsApi = {

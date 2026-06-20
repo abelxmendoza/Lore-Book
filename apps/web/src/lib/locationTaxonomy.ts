@@ -139,20 +139,42 @@ export function locationHierarchy(loc: Pick<LocationProfile, 'name' | 'city' | '
   return parts;
 }
 
+/** Places explicitly nested under `parent` via parent_location_id (not rooms/events). */
+export function computeDirectPlaceChildren(parent: LocationProfile, all: LocationProfile[]): LocationProfile[] {
+  const parentId = parent.id;
+  return all.filter((loc) => {
+    if (loc.id === parent.id) return false;
+    if (isRoomLocation(loc) || isEventAsPlace(loc)) return false;
+    if (loc.parent_location_id === parentId) return true;
+    const meta = loc.metadata ?? {};
+    return meta.parent_location_id === parentId;
+  });
+}
+
 /**
- * Locations nested directly within `loc` — i.e. places whose city/region/country
- * names this location. Returns the closest containment match per child.
+ * Locations nested within `loc` — explicit parent_location_id links plus geographic
+ * containment (city/region/country name match). Deduped by id.
  */
 export function computeChildren(loc: LocationProfile, all: LocationProfile[]): LocationProfile[] {
+  const byId = new Map<string, LocationProfile>();
+
+  for (const child of computeDirectPlaceChildren(loc, all)) {
+    byId.set(child.id, child);
+  }
+
   const target = (loc.name ?? '').toLowerCase().trim();
-  if (!target) return [];
-  return all
-    .filter(other => other.id !== loc.id)
-    .filter(other => {
-      const fields = [other.city, other.region, other.country].map(f => (f ?? '').toLowerCase().trim());
-      return fields.includes(target);
-    })
-    .sort((a, b) => b.visitCount - a.visitCount);
+  if (target) {
+    for (const other of all) {
+      if (other.id === loc.id || byId.has(other.id)) continue;
+      if (isRoomLocation(other) || isEventAsPlace(other)) continue;
+      const fields = [other.city, other.region, other.country].map((f) => (f ?? '').toLowerCase().trim());
+      if (fields.includes(target)) {
+        byId.set(other.id, other);
+      }
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => b.visitCount - a.visitCount);
 }
 
 /** Export residential place types for server-side sync. */
@@ -279,6 +301,12 @@ export function computeHostedEvents(container: LocationProfile, all: LocationPro
 
 export function countRoomsForHousehold(parent: LocationProfile, all: LocationProfile[]): number {
   return computeRoomChildren(parent, all).length;
+}
+
+/** Nested places under a parent card (rooms for households, direct children otherwise). */
+export function countNestedPlaces(parent: LocationProfile, all: LocationProfile[]): number {
+  if (isHouseholdLocation(parent)) return countRoomsForHousehold(parent, all);
+  return computeDirectPlaceChildren(parent, all).length;
 }
 
 const ROOM_ICONS: Record<string, string> = {

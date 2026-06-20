@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, BookOpen, Building2, Check, GitCommit, Mail, RefreshCw,
+  AlertTriangle, BookOpen, Building2, Check, GitCommit, RefreshCw,
   Sparkles, Star, Target, TrendingUp, User, X,
 } from 'lucide-react';
 import {
@@ -16,7 +16,7 @@ import {
   type ProjectChronicleSnapshot,
 } from '../../api/chronicleAdmin';
 import { getUserFriendlyMessage } from '../../lib/errorHandler';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '../../lib/contact';
+import { FounderContact } from '../landing/FounderContact';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
@@ -408,22 +408,10 @@ export const ChronicleAdminDashboard = () => {
         </div>
       </section>
 
-      <section className="rounded-xl border border-white/10 bg-black/40 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="rounded-full bg-primary/15 border border-primary/25 p-2 shrink-0">
-            <Mail className="h-4 w-4 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-white">Abel Mendoza · Founder</p>
-            <p className="text-xs text-white/45">Questions about the chronicle or LoreBook&apos;s direction?</p>
-          </div>
-        </div>
-        <a
-          href={CONTACT_MAILTO}
-          className="text-sm text-primary hover:text-primary/80 transition break-all sm:break-normal"
-        >
-          {CONTACT_EMAIL}
-        </a>
+      <section className="rounded-xl border border-white/10 bg-black/40 p-4 sm:p-5 min-w-0">
+        <p className="text-sm font-medium text-white">Abel Mendoza · Founder</p>
+        <p className="text-xs text-white/45">Questions about the chronicle or LoreBook&apos;s direction?</p>
+        <FounderContact variant="block" label="Email" />
       </section>
     </div>
   );

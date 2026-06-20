@@ -6,7 +6,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, Heart, GitBranch } from 'lucide-react';
 import { skillsApi, type SkillSuggestion } from '../../api/skills';
+import { suggestionDismissApi } from '../../api/suggestionDismiss';
+import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
+import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
+import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { isSimilarSuggestion, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { monetizationLabel, usageLabel } from '../../lib/skillProfile';
 import { getMockSkillSuggestions } from '../../mocks/skillSuggestions';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -17,6 +23,7 @@ interface Props {
   onSkillAdded?: () => void;
   demoMode?: boolean;
   existingSkillNames?: string[];
+  existingBookEntries?: Array<{ id?: string; name: string }>;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -44,18 +51,19 @@ export const DetectedSkillSuggestions = ({
   onSkillAdded,
   demoMode = false,
   existingSkillNames = [],
+  existingBookEntries = [],
 }: Props) => {
   const shouldUseMock = useShouldUseMockData();
   const showDemo = demoMode || shouldUseMock;
+  const { rescan: rescanChats, rescanning, RescanToastContainer } = useSuggestionRescan('skills');
   const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rescanning, setRescanning] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
 
-  const fetchSuggestions = useCallback(async (opts?: { rescan?: boolean; silent?: boolean }) => {
+  const fetchSuggestions = useCallback(async (opts?: { silent?: boolean }) => {
     if (showDemo) {
       const existing = mockDataService.get.skillSuggestions();
       const list = existing.length > 0 ? existing : getMockSkillSuggestions();
@@ -64,17 +72,22 @@ export const DetectedSkillSuggestions = ({
       setLoading(false);
       return;
     }
-    if (opts?.rescan) setRescanning(true);
-    else if (!opts?.silent) setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
-      setSuggestions(await skillsApi.getSuggestions({ rescan: opts?.rescan }));
+      setSuggestions(await skillsApi.getSuggestions());
     } catch {
       if (!opts?.silent) setSuggestions([]);
     } finally {
       setLoading(false);
-      setRescanning(false);
     }
   }, [showDemo]);
+
+  const handleRescan = useCallback(async () => {
+    if (showDemo) return;
+    await rescanChats();
+    await fetchSuggestions({ silent: true });
+    window.dispatchEvent(new CustomEvent('lk:skills-updated', { detail: {} }));
+  }, [showDemo, rescanChats, fetchSuggestions]);
 
   useEffect(() => {
     void fetchSuggestions();
@@ -91,24 +104,31 @@ export const DetectedSkillSuggestions = ({
     return () => window.removeEventListener('lk:skills-updated', refresh);
   }, [fetchSuggestions, showDemo]);
 
-  const existingSet = useMemo(
-    () => new Set(existingSkillNames.map(n => n.toLowerCase())),
-    [existingSkillNames]
-  );
+  const bookEntries = useMemo(() => {
+    if (existingBookEntries.length > 0) return existingBookEntries;
+    return existingSkillNames.map((name) => ({ name }));
+  }, [existingBookEntries, existingSkillNames]);
 
   const visible = useMemo(
     () =>
-      suggestions
-        .filter(s => s.skill_name?.trim())
-        .filter(s => !existingSet.has(s.skill_name.trim().toLowerCase()))
-        .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s)))
+      filterVisibleSuggestions(
+        suggestions
+          .filter(s => s.skill_name?.trim())
+          .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s))),
+        (s) => s.skill_name,
+        bookEntries
+      )
         .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
         .slice(0, 12),
-    [suggestions, dismissed, added, existingSet]
+    [suggestions, dismissed, added, bookEntries]
   );
 
   const handleAdd = async (s: SkillSuggestion) => {
     const k = keyFor(s);
+    if (isSimilarSuggestion(s)) {
+      setDismissed(prev => new Set(prev).add(k));
+      return;
+    }
     setAdding(k);
     try {
       if (showDemo) {
@@ -142,14 +162,19 @@ export const DetectedSkillSuggestions = ({
       return;
     }
     try {
-      if (s.id) await skillsApi.rejectSuggestion(s.id);
-      else await skillsApi.rejectSuggestionByName(s.skill_name);
+      await suggestionDismissApi.dismiss({
+        bookDomain: 'skills',
+        name: s.skill_name,
+        suggestionId: s.id,
+        sourceMessageId: s.source_message_id,
+      });
     } catch {
       /* non-blocking */
     }
   };
 
   return (
+    <>
     <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/10 via-black/40 to-black/40 overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
@@ -171,7 +196,7 @@ export const DetectedSkillSuggestions = ({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             type="button"
-            onClick={() => void fetchSuggestions({ rescan: true })}
+            onClick={() => void handleRescan()}
             disabled={loading || rescanning}
             className="h-8 w-8 flex items-center justify-center rounded text-white/50 hover:text-primary hover:bg-primary/10 transition-colors"
             title="Re-scan my chats for new skills"
@@ -227,6 +252,7 @@ export const DetectedSkillSuggestions = ({
                           under {s.parent_skill_name}
                         </span>
                       )}
+                      <SuggestionMergeHint item={s} bookLabel="Skills book" />
                       {s.monetization && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-200 border border-emerald-500/25 flex items-center gap-0.5">
                           <Briefcase className="h-2.5 w-2.5" />
@@ -251,6 +277,18 @@ export const DetectedSkillSuggestions = ({
                       <p className="text-[11px] text-white/35 italic line-clamp-2 mb-2">&ldquo;{quote}&rdquo;</p>
                     )}
 
+                    <SuggestionCategoryRedirect
+                      name={s.skill_name}
+                      fromDomain="skills"
+                      suggestionId={s.id}
+                      alternatives={s.alternative_categories}
+                      description={s.description}
+                      evidence={quote}
+                      disabled={adding === k}
+                      onReclassified={() => void handleDismiss(s)}
+                      className="mb-2"
+                    />
+
                     <div className="flex flex-wrap gap-2 text-[10px] text-white/40 mb-3">
                       {typeof s.proficiency === 'number' && <span>Proficiency {s.proficiency}%</span>}
                       {typeof s.enjoyment === 'number' && (
@@ -265,15 +303,21 @@ export const DetectedSkillSuggestions = ({
                     </div>
 
                     <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => void handleAdd(s)}
-                        disabled={adding === k}
-                        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 disabled:opacity-50"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        {adding === k ? 'Adding…' : 'Add to skills'}
-                      </button>
+                      {isSimilarSuggestion(s) ? (
+                        <span className="text-xs text-amber-200/80 px-2 py-1">
+                          Already tracked — dismiss if not a new skill
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleAdd(s)}
+                          disabled={adding === k}
+                          className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 disabled:opacity-50"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {adding === k ? 'Adding…' : 'Add to skills'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -283,5 +327,7 @@ export const DetectedSkillSuggestions = ({
         </div>
       )}
     </div>
+    {RescanToastContainer ? <RescanToastContainer /> : null}
+    </>
   );
 };

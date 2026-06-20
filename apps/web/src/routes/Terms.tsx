@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, FileText, ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Logo } from '../components/Logo';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '../lib/contact';
+import { CONTACT_EMAIL, CONTACT_LINK_PROPS } from '../lib/contact';
 
 export default function Terms() {
   const navigate = useNavigate();
@@ -167,7 +167,7 @@ export default function Terms() {
             <h2 className="text-2xl font-bold text-white mb-4">10. Contact Information</h2>
             <p className="text-white/80 leading-relaxed">
               If you have any questions about these Terms, please contact us at{' '}
-              <a href={CONTACT_MAILTO} className="text-primary hover:underline">
+              <a {...CONTACT_LINK_PROPS} className="text-primary hover:underline">
                 {CONTACT_EMAIL}
               </a>
               .

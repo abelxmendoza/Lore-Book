@@ -6,6 +6,7 @@ import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEnt
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { isIndividualPersonName } from './personNameValidation';
 import { detectLexicalDraftEntities } from './lexicalEntityDetect';
+import { coveredKeysFromPersonMatchesInText } from './personComposerMatchCollapse';
 import {
   composerLexicalToMatches,
   parseComposerLexical,
@@ -105,6 +106,9 @@ export function detectDraftEntitiesInText(
   if (!text.trim()) return [];
 
   const covered = collectCoveredKeys(index, existingMatches);
+  for (const key of coveredKeysFromPersonMatchesInText(text, existingMatches)) {
+    covered.add(key);
+  }
   const seen = new Set<string>();
   const drafts: CertifiedEntityMatch[] = [];
 
@@ -177,7 +181,17 @@ export function detectDraftEntitiesInText(
 
   const tokens = text.trim().split(/\s+/);
   const lastToken = tokens[tokens.length - 1] ?? '';
-  if (lastToken.length >= 3 && /^[A-Z][a-z'’.-]{2,}$/.test(lastToken) && !isBlockedToken(lastToken)) {
+  const prevToken = tokens[tokens.length - 2] ?? '';
+  const endsWithMultiWordName =
+    tokens.length >= 2 &&
+    /^[A-ZÀ-Ý]/.test(prevToken) &&
+    /^[A-ZÀ-Ý][a-zà-ÿ'’.-]*$/.test(lastToken);
+  if (
+    !endsWithMultiWordName &&
+    lastToken.length >= 3 &&
+    /^[A-Z][a-z'’.-]{2,}$/.test(lastToken) &&
+    !isBlockedToken(lastToken)
+  ) {
     addDraft(lastToken, 'character');
   }
 

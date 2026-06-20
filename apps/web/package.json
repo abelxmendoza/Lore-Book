@@ -22,6 +22,7 @@
     "test:coverage:threshold": "node scripts/check-coverage-threshold.js",
     "test:unit": "vitest run",
     "test:composer-chips": "vitest run src/lib/certifiedEntityMatch.test.ts src/store/slices/composerSlice.test.ts src/features/chat/composer/ComposerEntityChips.test.tsx src/features/chat/composer/composerFlow.integration.test.tsx src/features/chat/hooks/useChatComposer.test.tsx src/hooks/useEntityIndexer.test.tsx src/features/chat/hooks/__tests__/useChat.entities.test.tsx",
+    "test:lorebook-parse": "vitest run src/lib/loreBookParse*.test.ts src/lib/loreBookNotice*.test.ts src/hooks/useEntityIndexer.test.tsx src/features/chat/composer/loreBookComposerFlow.integration.test.tsx && vitest run --config vitest.integration.config.ts src/lib/loreBookParsePipeline.integration.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:vitest": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:build": "node scripts/build-validation.test.js",

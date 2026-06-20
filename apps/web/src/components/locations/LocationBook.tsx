@@ -428,11 +428,24 @@ export const LocationBook = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ targetId?: string }>).detail;
+      if (!detail?.targetId) return;
+      setSelectionMode(true);
+      setSelectedForMerge(new Set([detail.targetId]));
+    };
+    window.addEventListener('lk:suggest-merge:locations', handler);
+    return () => window.removeEventListener('lk:suggest-merge:locations', handler);
+  }, []);
+
   const { entries = [] } = useLoreKeeper();
 
   const locations = useMemo(() => {
     if (isMockDataEnabled) {
-      return mockDataService.getWithFallback.locations(null, true).data;
+      const registered = mockDataService.get.locations();
+      return registered.length > 0 ? registered : dummyLocations;
     }
     const locationList = (data?.locations ?? []) as LocationProfile[];
     return mockDataService.getWithFallback.locations(
@@ -571,22 +584,27 @@ export const LocationBook = () => {
     return getSubTypeFiltersForCategory(locations, selectedAdvancedFilter as PlaceCategory);
   }, [selectedAdvancedFilter, locations]);
 
+  const topLevelLocations = useMemo(
+    () => locations.filter(isTopLevelPlace),
+    [locations]
+  );
+
   const lifestyleFilters = useMemo(() => {
     return PLACE_LIFESTYLE_FILTERS.map(filter => ({
       ...filter,
-      count: locations.filter(loc => placeMatchesLifestyleFilter(loc, filter.id)).length,
+      count: topLevelLocations.filter(loc => placeMatchesLifestyleFilter(loc, filter.id)).length,
     }));
-  }, [locations]);
+  }, [topLevelLocations]);
 
   const advancedFilterGroups = useMemo(() => {
     return PLACE_ADVANCED_FILTER_GROUPS.map(group => ({
       ...group,
       filters: group.filters.map(filter => ({
         ...filter,
-        count: locations.filter(loc => placeMatchesAdvancedFilter(loc, filter.id)).length,
+        count: topLevelLocations.filter(loc => placeMatchesAdvancedFilter(loc, filter.id)).length,
       })),
     }));
-  }, [locations]);
+  }, [topLevelLocations]);
 
   const activeAdvancedLabel = useMemo(() => {
     if (!selectedAdvancedFilter) return null;
@@ -599,7 +617,7 @@ export const LocationBook = () => {
 
   const kindFilters = useMemo(() => {
     const counts = new Map<LocationKind, number>();
-    for (const loc of locations) {
+    for (const loc of topLevelLocations) {
       const k = classifyLocation(loc);
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
@@ -607,7 +625,7 @@ export const LocationBook = () => {
     return order
       .filter(k => (counts.get(k) ?? 0) > 0)
       .map(k => ({ kind: k, count: counts.get(k)!, meta: KIND_META[k] }));
-  }, [locations]);
+  }, [topLevelLocations]);
 
   return (
     <div className="space-y-5">
@@ -615,6 +633,11 @@ export const LocationBook = () => {
 
       <DetectedLocationSuggestions
         demoMode={isMockDataEnabled}
+        existingBookEntries={locations.map(l => ({
+          id: l.id,
+          name: l.name,
+          aliases: Array.isArray(l.metadata?.aliases) ? (l.metadata!.aliases as string[]) : [],
+        }))}
         existingLocationNames={locations.flatMap(l => [
           l.name,
           ...(Array.isArray(l.metadata?.aliases) ? (l.metadata!.aliases as string[]) : []),
@@ -638,7 +661,7 @@ export const LocationBook = () => {
         <div>
           <h2 className="text-xl font-bold text-white">Places</h2>
           <p className="text-xs text-white/40 mt-0.5">
-            {filteredLocations.length} of {locations.length} places
+            {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
         <button

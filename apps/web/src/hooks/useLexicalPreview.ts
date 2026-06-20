@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchLexicalPreview, type LexicalPreviewResponse } from '../api/lexicalPreview';
+import type { LexicalPreviewResponse } from '../api/lexicalPreview';
+import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
 import { clientLexicalPreviewSpans } from '../lib/clientLexicalPreview';
 
 const DEBOUNCE_MS = 280;
@@ -25,7 +26,7 @@ export function useLexicalPreview(text: string, threadId?: string) {
 
       void (async () => {
         try {
-          const result = await fetchLexicalPreview(text, threadId);
+          const result = await fetchLexicalPreviewShared(text, threadId);
           if (reqId !== reqRef.current) return;
           setPreview(result);
         } catch {

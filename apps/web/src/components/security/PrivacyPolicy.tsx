@@ -1,7 +1,7 @@
 import { Shield, Lock, Database, EyeOff, Key, Server, CheckCircle2, FileText, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '../../lib/contact';
+import { CONTACT_EMAIL, CONTACT_LINK_PROPS } from '../../lib/contact';
 
 interface PrivacyPolicyProps {
   onBack?: () => void;
@@ -304,7 +304,7 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
             <p className="font-semibold text-white mb-2">Abel Mendoza · Lore Book</p>
             <p className="text-sm">
               Email:{' '}
-              <a href={CONTACT_MAILTO} className="text-primary hover:underline">
+              <a {...CONTACT_LINK_PROPS} className="text-primary hover:underline">
                 {CONTACT_EMAIL}
               </a>
             </p>

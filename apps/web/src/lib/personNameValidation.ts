@@ -1,3 +1,8 @@
+import {
+  evaluateTitleOnlyPersonGuard,
+  isMinimumPersonEntity,
+} from '../../../server/src/services/lexical/intelligence/titleOnlyEntityGuard';
+
 const PLACEHOLDER_NAME_KEYS = new Set([
   'unknown',
   'unknown person',
@@ -67,6 +72,14 @@ export function isDisplayablePersonName(name: string | null | undefined): boolea
   return !isPlaceholderPersonName(name);
 }
 
+export function isTitleOnlyPersonName(name: string | null | undefined): boolean {
+  if (name == null || !String(name).trim()) return false;
+  return evaluateTitleOnlyPersonGuard(String(name)).isTitleOnly;
+}
+
 export function isIndividualPersonName(name: string | null | undefined): boolean {
-  return isDisplayablePersonName(name) && !isCollectivePersonName(name);
+  if (!isDisplayablePersonName(name)) return false;
+  if (isCollectivePersonName(name)) return false;
+  if (isTitleOnlyPersonName(name)) return false;
+  return isMinimumPersonEntity(String(name));
 }

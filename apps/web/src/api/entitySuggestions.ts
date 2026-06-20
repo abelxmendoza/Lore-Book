@@ -1,4 +1,5 @@
 import { fetchJson } from '../lib/api';
+import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
 
 export type CharacterSuggestion = {
   id: string;
@@ -12,6 +13,10 @@ export type CharacterSuggestion = {
   mentionCount: number;
   confidence: number;
   source: 'omega_entity' | 'entity_question' | 'chat_extract';
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 };
 
 export const characterSuggestionsApi = {
@@ -52,13 +57,23 @@ export type LocationSuggestion = {
   mentionCount: number;
   confidence: number;
   source: 'chat_detect' | 'metadata';
+  status?: 'known' | 'new' | 'needs_review' | 'rejected';
+  privacySensitive?: boolean;
+  ownerDisplayName?: string;
+  rejectionReason?: string;
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 };
 
 export const locationSuggestionsApi = {
-  list: () =>
-    fetchJson<{ success: boolean; suggestions: LocationSuggestion[]; count: number }>(
-      '/api/locations/suggestions'
-    ),
+  list: (options?: { rescan?: boolean }) => {
+    const query = options?.rescan ? '?rescan=true' : '';
+    return fetchJson<{ success: boolean; suggestions: LocationSuggestion[]; count: number }>(
+      `/api/locations/suggestions${query}`
+    );
+  },
 
   accept: (suggestion: LocationSuggestion) =>
     fetchJson<{ success: boolean; location: { id: string; name: string } }>(

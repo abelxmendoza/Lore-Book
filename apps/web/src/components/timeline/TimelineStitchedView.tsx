@@ -44,6 +44,7 @@ export const TimelineStitchedView = ({
   } = useStitchedTimeline({
     life_arc_id: lifeArcId,
     scope_type: lifeArcId ? 'life_arc' : 'global',
+    scope_label: scopeLabel,
   });
 
   const [selected, setSelected] = useState<StitchedTimelineItem | null>(null);

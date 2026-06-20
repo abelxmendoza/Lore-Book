@@ -2,6 +2,8 @@
  * Frontend Quest Type Definitions
  */
 
+import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
+
 export type QuestType = 'main' | 'side' | 'daily' | 'achievement';
 export type QuestStatus = 'active' | 'paused' | 'completed' | 'abandoned' | 'archived';
 export type QuestSource = 'manual' | 'extracted' | 'suggested' | 'imported';
@@ -128,4 +130,9 @@ export interface QuestSuggestion {
   confidence: number;
   source_entry_id?: string;
   reasoning?: string;
+  source_message_id?: string | null;
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 }

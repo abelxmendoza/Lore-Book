@@ -43,11 +43,6 @@ export const fetchJson = async <T>(
     ? `${apiBaseUrl}${input}`
     : input;
   
-  // Log API call in development
-  if (config.logging.logApiCalls) {
-    log.debug(`API Call: ${typeof input === 'string' ? input : 'Request'}`, { method: init?.method || 'GET' });
-  }
-  
   const startTime = performance.now();
   
   // Check global mock data toggle — only when not logged in (logged-in users always get real data)
@@ -71,7 +66,6 @@ export const fetchJson = async <T>(
   if (cacheKey) {
     const cached = apiCache.get<T>(cacheKey);
     if (cached !== null) {
-      if (config.logging.logApiCalls) log.debug(`API Cache Hit: ${typeof input === 'string' ? input : 'Request'}`);
       return cached;
     }
     // Deduplicate: return the existing in-flight promise instead of making a duplicate request
@@ -101,6 +95,10 @@ export const fetchJson = async <T>(
     }
 
     try {
+      if (config.logging.logApiCalls) {
+        log.debug(`API Request: ${urlStr}`, { method: init?.method || 'GET' });
+      }
+
       // Pre-acquire CSRF token before mutating requests so csrfProtection middleware
       // doesn't reject the first POST/PUT/PATCH/DELETE with 403.
       const isMutatingMethod = !!init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method);
@@ -157,8 +155,8 @@ export const fetchJson = async <T>(
           errorMessage =
             'This feature is not enabled on the production API yet. Contact support if this persists after deploy.';
         }
-        const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
-          (res.status === 500 && !config.api.url);
+        // 500 from a single route ≠ backend down (Vite proxy to a running server is common in dev).
+        const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502;
         if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
           if (shouldUseMock && options?.mockData) {
             log.debug(

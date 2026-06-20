@@ -324,10 +324,13 @@ export const CharacterMergePanel = ({
         setMergeNotice('Demo: permanent delete preview only.');
         return;
       }
-      await fetchJson(`/api/characters/${character.id}?redistribute=true`, { method: 'DELETE' });
+      await fetchJson(`/api/characters/${character.id}?redistribute=true`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: 'wrong_or_duplicate_entity_card' }),
+      });
       cancelManualMerge();
       await afterConsolidation(
-        `Permanently removed ${character.name}. Conversation evidence may still suggest them again via Rescan.`
+        `Removed ${character.name}. Their conversation evidence is being reprocessed — facts were preserved and the system recorded this as a correction.`
       );
     } catch (error) {
       setMergeError(apiErrorMessage(error, 'Failed to delete character'));
@@ -358,7 +361,7 @@ export const CharacterMergePanel = ({
       icon: Trash2,
       tone: 'text-red-200 border-red-500/30 bg-red-500/10',
       when: 'Rare — fabricated junk or test cards you never want again.',
-      effect: 'Removes the card and redistributes linked facts. Use only when archive is not enough.',
+      effect: 'Removes the card but preserves facts as lore claims, records the correction for learning, and reprocesses source conversations so nothing you said is lost.',
     },
   ];
 

@@ -1,4 +1,5 @@
 import { fetchJson } from '../lib/api';
+import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
 
 export interface ProjectSuggestion {
   id: string;
@@ -13,6 +14,8 @@ export interface ProjectSuggestion {
   matched_project_id?: string | null;
   matched_project_name?: string | null;
   source?: string;
+  source_message_id?: string | null;
+  alternative_categories?: AlternativeCategory[];
 }
 
 export const projectsApi = {

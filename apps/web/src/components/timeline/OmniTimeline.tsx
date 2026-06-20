@@ -25,6 +25,7 @@ import { TimelineGeneratingSimulation } from './TimelineGeneratingSimulation';
 import { GeneratedTimelineReveal, type GeneratedTimelineEvent } from './GeneratedTimelineReveal';
 import { GeneratedTimelineLibraryPanel } from './GeneratedTimelineLibraryPanel';
 import { buildMockGeneratedTimeline } from '../../mocks/timelineGenerationMock';
+import { DEMO_GENERATED_TIMELINE_SEEDS } from '../../mocks/stitchedTimelineMock';
 import { useGeneratedTimelinesLibrary } from '../../hooks/useGeneratedTimelinesLibrary';
 import type { SavedGeneratedTimeline } from '../../lib/generatedTimelinesLibrary';
 import { OmniTimelineErrorBanner } from './OmniTimelineErrorBanner';
@@ -76,6 +77,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [genSearchOpen, setGenSearchOpen] = useState(Boolean(urlQuery.trim()));
   const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
   const shouldPersistRef = useRef(false);
+  const demoLibrarySeededRef = useRef(false);
 
   const {
     library: savedTimelines,
@@ -162,6 +164,10 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   const computeFreshReveal = useCallback(
     (query: string): { events: GeneratedTimelineEvent[]; isMock: boolean } => {
+      if (isDemoMode) {
+        return { events: buildMockGeneratedTimeline(query), isMock: true };
+      }
+
       const terms = query.trim().toLowerCase().split(/\s+/).filter((t) => t.length > 2);
       const matched = [...entries]
         .filter((e) => {
@@ -173,7 +179,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       if (matched.length > 0) return { events: matched, isMock: false };
       return { events: buildMockGeneratedTimeline(query), isMock: true };
     },
-    [entries]
+    [entries, isDemoMode]
   );
 
   const openSavedTimeline = useCallback((saved: SavedGeneratedTimeline) => {
@@ -184,7 +190,10 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     if (isMobile) setGenSearchOpen(false);
   }, [isMobile]);
 
-  const generateFor = (raw: string, options?: { forceRegenerate?: boolean }) => {
+  const generateFor = useCallback((
+    raw: string,
+    options?: { forceRegenerate?: boolean; instant?: boolean },
+  ) => {
     const q = raw.trim();
     if (!q) return;
     setGenInput(q);
@@ -200,9 +209,29 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
     setActiveTimelineId(null);
     shouldPersistRef.current = true;
-    setGenPhase('generating');
+    setGenPhase(options?.instant ? 'revealed' : 'generating');
     if (isMobile) setGenSearchOpen(false);
-  };
+  }, [findByQuery, openSavedTimeline, isMobile]);
+
+  const handleOpenArcTimeline = useCallback((arc: LifeArc) => {
+    if (isDemoMode) {
+      generateFor(arc.title, { instant: true });
+      return;
+    }
+    setStitchedArc(arc);
+  }, [isDemoMode, generateFor]);
+
+  useEffect(() => {
+    if (!isDemoMode || demoLibrarySeededRef.current || savedTimelines.length > 0) return;
+    demoLibrarySeededRef.current = true;
+    for (const query of DEMO_GENERATED_TIMELINE_SEEDS) {
+      saveTimeline({
+        query,
+        events: buildMockGeneratedTimeline(query),
+        isMock: true,
+      });
+    }
+  }, [isDemoMode, savedTimelines.length, saveTimeline]);
 
   const submitGenSearch = () => generateFor(genInput);
 
@@ -235,9 +264,14 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     }
 
     if (genPhase === 'revealed' && activeSaved && !shouldPersistRef.current) {
+      const savedEvents = activeSaved.events as GeneratedTimelineEvent[];
+      const events =
+        isDemoMode && savedEvents.length === 0
+          ? buildMockGeneratedTimeline(genQuery)
+          : savedEvents;
       return {
-        events: activeSaved.events as GeneratedTimelineEvent[],
-        isMock: activeSaved.isMock,
+        events,
+        isMock: isDemoMode ? true : activeSaved.isMock,
         fromLibrary: true,
         savedAt: activeSaved.updatedAt,
         collapsed: activeSaved.collapsed,
@@ -246,7 +280,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
     const fresh = computeFreshReveal(genQuery);
     return { ...fresh, fromLibrary: false, collapsed: false };
-  }, [genQuery, genPhase, activeSaved, computeFreshReveal]);
+  }, [genQuery, genPhase, activeSaved, computeFreshReveal, isDemoMode]);
 
   useEffect(() => {
     if (genPhase !== 'revealed' || !genQuery.trim() || !shouldPersistRef.current) return;
@@ -311,7 +345,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               openMemory(e);
             }
           }}
-          onArcClick={setStitchedArc}
+          onArcClick={handleOpenArcTimeline}
         />
       );
     }
@@ -325,7 +359,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             activeArcs={activeArcs}
             entries={displayEntries}
             loading={loading}
-            onOpenArcTimeline={setStitchedArc}
+            onOpenArcTimeline={handleOpenArcTimeline}
           />
         );
       case 'events':
@@ -338,7 +372,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             arcs={arcs}
             entries={displayEntries}
             loading={loading}
-            onOpenArcTimeline={setStitchedArc}
+            onOpenArcTimeline={handleOpenArcTimeline}
           />
         );
       default:
@@ -475,7 +509,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 <button
                   key={arc.id}
                   type="button"
-                  onClick={() => setStitchedArc(arc)}
+                  onClick={() => handleOpenArcTimeline(arc)}
                   className="omni-timeline-arc-pill truncate"
                   title={arc.summary ?? arc.title}
                 >

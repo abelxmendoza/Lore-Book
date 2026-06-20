@@ -38,8 +38,12 @@ export const CTASection = ({
             {primaryAction && (
               <Button
                 onClick={() => {
-                  if (primaryAction.path.startsWith('mailto:')) {
-                    window.location.href = primaryAction.path;
+                  if (
+                    primaryAction.path.startsWith('http://') ||
+                    primaryAction.path.startsWith('https://') ||
+                    primaryAction.path.startsWith('mailto:')
+                  ) {
+                    window.open(primaryAction.path, '_blank', 'noopener,noreferrer');
                   } else {
                     navigate(primaryAction.path);
                   }

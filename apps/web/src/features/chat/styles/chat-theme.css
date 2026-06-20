@@ -142,6 +142,29 @@
 
 .composer-highlight-layer {
   line-height: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  font-family: inherit;
+}
+
+.journal-composer-highlight-host {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+}
+
+.composer-entity-popover {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 100%;
+  margin-bottom: 0.35rem;
+  max-width: calc(100% - 1rem);
+}
+
+.composer-entity-chips-inline {
+  padding: 0 0.35rem 0.25rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  margin-bottom: 0.15rem;
 }
 
 /* ── Journal composer — long-form mobile writing ─────────────────────────── */
@@ -149,7 +172,7 @@
 .journal-composer-shell {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   border-radius: 1.25rem;
   border: 1px solid rgb(255 255 255 / 0.12);
   background: linear-gradient(
@@ -181,6 +204,9 @@
 .journal-composer-input-wrap {
   position: relative;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .journal-composer-field {
@@ -392,7 +418,7 @@
   flex-direction: column;
 }
 
-.journal-composer-overlay__body [data-testid='composer-highlight-field'] {
+.journal-composer-overlay__body [data-testid='entity-highlighted-composer'] {
   flex: 1;
   min-height: 0;
   display: flex;

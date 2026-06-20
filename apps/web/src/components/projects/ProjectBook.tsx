@@ -444,6 +444,7 @@ export const ProjectBook = () => {
 
       <DetectedProjectSuggestions
         demoMode={isMockDataEnabled}
+        existingBookEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
         existingProjectNames={projects.map((p) => p.name)}
         onProjectAdded={() => void load()}
       />

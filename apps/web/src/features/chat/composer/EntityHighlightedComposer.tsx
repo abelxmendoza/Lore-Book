@@ -9,7 +9,6 @@ import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionStat
 import { spanToId } from '../../../lib/correctedPreviewSpanReducer';
 import { EntityHighlightSpan } from './EntityHighlightSpan';
 import { EntityClassificationPopover } from './EntityClassificationPopover';
-import { LexicalPreviewEntityChips } from './LexicalPreviewEntityChips';
 
 type EntityHighlightedComposerProps = {
   value: string;
@@ -111,9 +110,7 @@ export const EntityHighlightedComposer = ({
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const {
-    loading,
     visibleSpans: spans,
-    correctedRecords,
     activeCorrectedSpan,
     openSpan,
     closeActiveSpan,
@@ -178,7 +175,7 @@ export const EntityHighlightedComposer = ({
   }, [segments, showHighlights, value, openSpan]);
 
   return (
-    <div className="relative min-w-0 flex-1" data-testid="entity-highlighted-composer">
+    <div className="journal-composer-highlight-host" data-testid="entity-highlighted-composer">
       {showHighlights && (
         <div
           ref={backdropRef}
@@ -186,18 +183,11 @@ export const EntityHighlightedComposer = ({
           className={`composer-highlight-layer pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words ${className}`}
         >
           {highlighted}
-          {'\n'}
         </div>
       )}
 
-      {loading && value.trim() && (
-        <span className="absolute right-2 top-2 z-[2] text-[9px] uppercase tracking-wide text-white/30 pointer-events-none">
-          scanning…
-        </span>
-      )}
-
       {activeCorrectedSpan && (
-        <div ref={popoverRef} className="absolute left-2 bottom-full mb-2 z-[3]">
+        <div ref={popoverRef} className="composer-entity-popover z-[3]">
           <EntityClassificationPopover
             span={activeCorrectedSpan}
             composerText={value}
@@ -206,14 +196,6 @@ export const EntityHighlightedComposer = ({
             onClose={closeActiveSpan}
           />
         </div>
-      )}
-
-      {correctedRecords.length > 0 && value.trim() && (
-        <LexicalPreviewEntityChips
-          spans={spans}
-          correctedRecords={correctedRecords}
-          onSelectSpan={(span) => openSpan(span, 'chat_chip')}
-        />
       )}
 
       <Textarea

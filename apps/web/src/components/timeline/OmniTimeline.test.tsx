@@ -184,9 +184,59 @@ describe('OmniTimeline layout and navigation', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('renders generated timeline from URL query', () => {
+  it('opens generated timeline from URL query in demo mode', () => {
     renderOmniTimeline('/timeline?q=nightlife');
     expect(screen.getByTestId('generated-timeline-reveal')).toHaveTextContent('nightlife');
+  });
+
+  it('opens generated timeline when clicking an active arc in demo mode', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useLifeArcs).mockReturnValue({
+      arcs: [
+        {
+          id: 'mock-arc-agency',
+          title: 'Agency Years',
+          arc_type: 'work',
+          track: 'career',
+          dominant_emotion: null,
+          emotional_arc: null,
+          parent_id: null,
+          start_date: '2020-01-01',
+          end_date: null,
+          is_active: true,
+          summary: 'Building career momentum',
+          confidence: 0.9,
+          source: 'inferred',
+          tags: [],
+        },
+      ],
+      activeArcs: [
+        {
+          id: 'mock-arc-agency',
+          title: 'Agency Years',
+          arc_type: 'work',
+          track: 'career',
+          dominant_emotion: null,
+          emotional_arc: null,
+          parent_id: null,
+          start_date: '2020-01-01',
+          end_date: null,
+          is_active: true,
+          summary: 'Building career momentum',
+          confidence: 0.9,
+          source: 'inferred',
+          tags: [],
+        },
+      ],
+      arcsByTrack: {},
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    renderOmniTimeline();
+    await user.click(screen.getByRole('button', { name: /Agency Years/i }));
+    expect(screen.getByTestId('generated-timeline-reveal')).toHaveTextContent('Agency Years');
   });
 });
 

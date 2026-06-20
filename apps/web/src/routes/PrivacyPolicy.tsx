@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Database, EyeOff, Key, FileText, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Logo } from '../components/Logo';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '../lib/contact';
+import { CONTACT_EMAIL, CONTACT_LINK_PROPS } from '../lib/contact';
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate();
@@ -173,7 +173,7 @@ export default function PrivacyPolicy() {
                 <p className="font-semibold text-white mb-2">Abel Mendoza · Lore Book</p>
                 <p className="text-sm">
                   Email:{' '}
-                  <a href={CONTACT_MAILTO} className="text-primary hover:underline">
+                  <a {...CONTACT_LINK_PROPS} className="text-primary hover:underline">
                     {CONTACT_EMAIL}
                   </a>
                 </p>
