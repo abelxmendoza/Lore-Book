@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Avoid initializing the real Supabase client (env/side effects) in unit tests.
 vi.mock('../supabaseClient', () => ({ supabaseAdmin: {} }));
@@ -9,10 +9,14 @@ import {
   appendMemoryEvents,
   getRecentMemoryEvents,
   getMemoryEventsForEntity,
+  __resetMemoryEventCaptureForTests,
   MEMORY_EVENT_KINDS,
   type MemoryEventClient,
   type MemoryEventRow,
 } from './memoryEventService';
+
+// The missing-table kill switch is module state — reset it between cases.
+beforeEach(() => __resetMemoryEventCaptureForTests());
 
 // ── Mock client helpers ─────────────────────────────────────────────────────
 function insertClient(result: { data?: unknown; error?: unknown } | (() => never)) {
@@ -136,6 +140,26 @@ describe('appendMemoryEvent (fail-open)', () => {
     const { client, insert } = insertClient({ error: null });
     await expect(appendMemoryEvent({ ...base, kind: 'bad' as never }, client)).resolves.toBe(false);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('disables capture after a missing-table error (no spam on every turn)', async () => {
+    const missing = insertClient({ error: { code: '42P01', message: 'relation "memory_events" does not exist' } });
+    await expect(appendMemoryEvent(base, missing.client)).resolves.toBe(false);
+
+    // Even with a healthy client, capture stays off until reset (process restart).
+    const healthy = insertClient({ error: null });
+    await expect(appendMemoryEvent(base, healthy.client)).resolves.toBe(false);
+    expect(healthy.insert).not.toHaveBeenCalled();
+
+    __resetMemoryEventCaptureForTests();
+    await expect(appendMemoryEvent(base, healthy.client)).resolves.toBe(true);
+  });
+
+  it('does NOT disable capture for ordinary (non-missing-table) errors', async () => {
+    const { client } = insertClient({ error: { message: 'boom' } });
+    await expect(appendMemoryEvent(base, client)).resolves.toBe(false);
+    const healthy = insertClient({ error: null });
+    await expect(appendMemoryEvent(base, healthy.client)).resolves.toBe(true);
   });
 });
 

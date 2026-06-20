@@ -79,6 +79,43 @@ interface MemoryEventQuery {
 
 const TABLE = 'memory_events';
 
+/**
+ * One-time kill switch: if the table doesn't exist yet (migration not applied),
+ * disable capture after the first failure so we don't spam logs on every chat
+ * turn. Re-enabled on process restart (which a migration/deploy entails).
+ */
+let captureDisabled = false;
+
+/** @internal Test-only: reset the missing-table kill switch between cases. */
+export function __resetMemoryEventCaptureForTests(): void {
+  captureDisabled = false;
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === '42P01') return true; // undefined_table
+  const msg = (e.message ?? '').toLowerCase();
+  return (
+    msg.includes('memory_events') &&
+    (msg.includes('does not exist') || msg.includes('could not find the table') || msg.includes('schema cache'))
+  );
+}
+
+/** If the error means the table isn't there yet, disable capture (logged once). */
+function handleInsertError(error: unknown): void {
+  if (isMissingRelationError(error)) {
+    if (!captureDisabled) {
+      captureDisabled = true;
+      console.warn(
+        '[memoryEvents] table not found — capture disabled until restart. Apply migration 20260624100000_memory_events.sql.'
+      );
+    }
+    return;
+  }
+  console.warn('[memoryEvents] insert failed (fail-open):', error);
+}
+
 function clampConfidence(value: number | null | undefined): number | null {
   if (value == null || !Number.isFinite(value)) return null;
   return Math.min(1, Math.max(0, value));
@@ -132,6 +169,7 @@ export async function appendMemoryEvent(
   input: MemoryEventInput,
   client: MemoryEventClient = supabaseAdmin as unknown as MemoryEventClient
 ): Promise<boolean> {
+  if (captureDisabled) return false;
   let row: MemoryEventRow;
   try {
     row = buildMemoryEventRow(input);
@@ -142,12 +180,12 @@ export async function appendMemoryEvent(
   try {
     const { error } = await client.from(TABLE).insert([row]);
     if (error) {
-      console.warn('[memoryEvents] insert failed (fail-open):', error);
+      handleInsertError(error);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('[memoryEvents] insert threw (fail-open):', err instanceof Error ? err.message : err);
+    handleInsertError(err);
     return false;
   }
 }
@@ -168,16 +206,16 @@ export async function appendMemoryEvents(
       console.warn('[memoryEvents] skipped malformed event:', err instanceof Error ? err.message : err);
     }
   }
-  if (rows.length === 0) return 0;
+  if (rows.length === 0 || captureDisabled) return 0;
   try {
     const { error } = await client.from(TABLE).insert(rows);
     if (error) {
-      console.warn('[memoryEvents] batch insert failed (fail-open):', error);
+      handleInsertError(error);
       return 0;
     }
     return rows.length;
   } catch (err) {
-    console.warn('[memoryEvents] batch insert threw (fail-open):', err instanceof Error ? err.message : err);
+    handleInsertError(err);
     return 0;
   }
 }
