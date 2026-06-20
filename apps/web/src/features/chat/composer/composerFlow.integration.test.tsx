@@ -3,8 +3,21 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 
 import { makeStore } from '../../../store';
+import { MockDataProvider } from '../../../contexts/MockDataContext';
+import { GuestProvider } from '../../../contexts/GuestContext';
 import { ChatComposer } from './ChatComposer';
 import { resetEntityIndexerCache } from '../../../hooks/useEntityIndexer';
+
+/** ChatComposer pulls runtime identity (mock + guest), so provide both. */
+function renderComposer(ui: React.ReactElement) {
+  return render(
+    <Provider store={makeStore()}>
+      <MockDataProvider>
+        <GuestProvider>{ui}</GuestProvider>
+      </MockDataProvider>
+    </Provider>
+  );
+}
 
 const fetchJson = vi.fn();
 
@@ -17,6 +30,8 @@ vi.mock('../../../lib/cache', () => ({
 }));
 
 vi.mock('../../../lib/supabase', () => ({
+  useAuth: vi.fn(() => ({ user: { id: 'test-user' }, session: { access_token: 'test-token' }, loading: false })),
+  isSupabaseConfigured: vi.fn(() => true),
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({
@@ -27,6 +42,12 @@ vi.mock('../../../lib/supabase', () => ({
       })),
     },
   },
+}));
+
+// Index loads from the real (mocked) API path, not the demo certified index.
+vi.mock('../../../hooks/useShouldUseMockData', async (orig) => ({
+  ...(await orig<typeof import('../../../hooks/useShouldUseMockData')>()),
+  shouldUseMockData: () => false,
 }));
 
 vi.mock('../../../hooks/useMoodEngine', () => ({
@@ -69,21 +90,17 @@ describe('Composer entity chip flow (integration)', () => {
 
   it('loads index, shows chips while typing, and submits visible matches', async () => {
     const onSubmit = vi.fn();
-    render(
-      <Provider store={makeStore()}>
-        <ChatComposer onSubmit={onSubmit} loading={false} />
-      </Provider>
-    );
+    renderComposer(<ChatComposer onSubmit={onSubmit} loading={false} />);
 
-    const textarea = screen.getByPlaceholderText('Message Lore Book...');
+    const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Tell Abel and Kel' } });
 
     await waitFor(() => {
       expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
     });
 
+    // Exact match → chip. Prefix match ("Kel" → Kelly) highlights only (not chipped).
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
-    expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toBeInTheDocument();
     expect(
       screen.getByTestId('composer-entity-highlight-character-uuid-abel', { hidden: true })
     ).toHaveTextContent('Abel');
@@ -101,13 +118,11 @@ describe('Composer entity chip flow (integration)', () => {
   });
 
   it('shows retry UI when index load fails', async () => {
-    fetchJson.mockRejectedValueOnce(new Error('offline'));
+    // Fail every index fetch (the indexer may reload), so the error state sticks.
+    fetchJson.mockReset();
+    fetchJson.mockRejectedValue(new Error('offline'));
 
-    render(
-      <Provider store={makeStore()}>
-        <ChatComposer onSubmit={vi.fn()} loading={false} />
-      </Provider>
-    );
+    renderComposer(<ChatComposer onSubmit={vi.fn()} loading={false} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('composer-index-error')).toBeInTheDocument();

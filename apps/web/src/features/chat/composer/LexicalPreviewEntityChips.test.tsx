@@ -47,9 +47,10 @@ describe('LexicalPreviewEntityChips', () => {
     );
 
     expect(screen.getByText(/Coding Club: GROUP/)).toBeTruthy();
+    // userConfirmed corrections display as 'confirmed' (see displayStatus).
     expect(screen.getByTestId('lexical-preview-chip-ORGANIZATION-30')).toHaveAttribute(
       'data-entity-status',
-      'known'
+      'confirmed'
     );
   });
 });

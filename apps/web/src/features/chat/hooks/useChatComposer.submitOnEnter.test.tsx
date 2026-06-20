@@ -55,7 +55,8 @@ describe('useChatComposer submitOnEnter', () => {
     });
 
     expect(prevented).toHaveBeenCalled();
-    expect(onSubmit).toHaveBeenCalledWith('Hello', []);
+    // onSubmit(text, entities, previewCorrections)
+    expect(onSubmit).toHaveBeenCalledWith('Hello', [], []);
   });
 
   it('does not submit on Enter when submitOnEnter is false (mobile journal mode)', () => {

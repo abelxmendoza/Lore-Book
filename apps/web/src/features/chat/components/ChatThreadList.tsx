@@ -291,9 +291,9 @@ function ThreadItem({
             )}
             {thread.dominantEntities && thread.dominantEntities.length > 0 && (
               <div className="flex gap-1 mt-1 flex-wrap">
-                {thread.dominantEntities.slice(0, 3).map((entity) => (
+                {[...new Set(thread.dominantEntities)].slice(0, 3).map((entity, i) => (
                   <span
-                    key={entity}
+                    key={`${entity}-${i}`}
                     className={cn(
                       'text-[8px] leading-none px-1 py-0.5 rounded truncate max-w-[5rem]',
                       isActive ? 'bg-primary/20 text-primary/80' : 'bg-white/6 text-white/30'
