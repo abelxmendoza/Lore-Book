@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
+import { guardOpenAiRoute } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { checkAiRequestLimit } from '../middleware/subscription';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
 import { characterIdentityIndexService } from '../services/characterIdentityIndexService';
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
@@ -34,6 +36,7 @@ import {
   listPeripheralsForCharacter,
   promotePeripheralToCharacter,
 } from '../services/relationshipPeripheralService';
+import { characterTitleRoutes } from './characterTitleRoutes';
 
 const router = Router();
 
@@ -1411,6 +1414,8 @@ router.post(
   })
 );
 
+router.use('/:id', characterTitleRoutes);
+
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { data: character, error } = await supabaseAdmin
@@ -1616,7 +1621,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Check if character exists and belongs to user
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('characters')
-      .select('id, metadata')
+      .select('id, name, alias, metadata')
       .eq('id', req.params.id)
       .eq('user_id', userId)
       .single();
@@ -1740,6 +1745,17 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     if (updateData.status !== undefined) {
+      if (updateData.status === 'archived') {
+        const { entityDeletionRecoveryService } = await import(
+          '../services/entityDeletionRecoveryService'
+        );
+        await entityDeletionRecoveryService.runBeforeCharacterDelete(userId, {
+          id: existing.id,
+          name: existing.name as string,
+          alias: (existing.alias as string[] | null) ?? [],
+          metadata: (existing.metadata as Record<string, unknown> | null) ?? {},
+        }, { mode: 'archive', reason: 'user_archived_character_card' });
+      }
       const { refreshCharacterGraphAfterConsolidation } = await import(
         '../services/characterGraphRefreshService'
       );
@@ -1762,8 +1778,11 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const { characterDeletionService } = await import('../services/characterDeletionService');
     const redistribute = req.query.redistribute !== 'false';
+    const reason =
+      typeof req.body?.reason === 'string' ? req.body.reason : undefined;
     const report = await characterDeletionService.deleteCharacter(userId, String(req.params.id), {
       redistribute,
+      reason,
     });
     if (!report) {
       return res.status(404).json({ error: 'Character not found' });
@@ -1791,11 +1810,11 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
  * Extract character information from chat message
  * Now also detects unnamed characters and generates nicknames
  */
-router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/extract-from-chat', ...guardOpenAiRoute(), requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const { message, conversationHistory = [] } = req.body;
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Message is required' });
+    if (!message || typeof message !== 'string' || message.length > 10_000) {
+      return res.status(400).json({ error: 'Message is required (max 10,000 chars)' });
     }
 
     // Use OpenAI to extract character information (named and unnamed)
@@ -1990,6 +2009,10 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
         _context: char.context
       }))
     ]);
+
+    incrementAiRequestCount(req.user!.id).catch((err) =>
+      logger.warn({ err, userId: req.user!.id }, 'Failed to increment AI usage')
+    );
 
     res.json({ 
       characters: allCharacters,

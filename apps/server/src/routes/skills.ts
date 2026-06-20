@@ -8,6 +8,8 @@ import { skillService } from '../services/skills/skillService';
 import { skillSuggestionService } from '../services/skills/skillSuggestionService';
 import { skillRelationshipService } from '../services/skills/skillRelationshipService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
+import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
 
 const router = Router();
 
@@ -47,7 +49,9 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       skillSuggestionService.hasAnySuggestions(userId),
     ]);
 
-    const haveNames = new Set(existing.map((s) => s.skill_name.toLowerCase()));
+    const skillBookIndex = buildBookIndexFromLabels(
+      existing.map((s) => ({ id: s.id, label: s.skill_name }))
+    );
 
     const shouldScan = rescan || (!everScanned && pending.length === 0);
 
@@ -79,7 +83,10 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       if (combined.trim()) {
         const detected = await skillExtractionService.extractSkillsFromEntry(userId, 'suggestions-scan', combined);
         for (const s of detected) {
-          if (!s.skill_name?.trim() || haveNames.has(s.skill_name.toLowerCase())) continue;
+          if (!s.skill_name?.trim()) continue;
+          if (resolveBookNameMatch(s.skill_name, skillBookIndex.exactKeys, skillBookIndex.entries).status === 'existing') {
+            continue;
+          }
           await skillSuggestionService.upsertFromExtraction(userId, s, { source: 'llm_scan' });
         }
         await skillRelationshipService.resolvePendingParentLinks(userId);
@@ -91,32 +98,49 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       : pending;
 
     const suggestions = freshPending
-      .filter((row) => !haveNames.has(row.skill_name.toLowerCase()))
-      .map((row) => ({
-        id: row.id,
-        skill_name: row.skill_name,
-        skill_category: row.skill_category,
-        skill_type: row.skill_type,
-        monetization: row.monetization,
-        proficiency: row.proficiency,
-        confidence: row.confidence,
-        enjoyment: row.enjoyment,
-        usage_frequency: row.usage_frequency,
-        trajectory: row.trajectory,
-        description: row.description,
-        origin_story: row.origin_story,
-        first_learned_context: row.first_learned_context,
-        related_jobs: row.related_jobs,
-        related_projects: row.related_projects,
-        parent_skill_name: row.parent_skill_name,
-        related_skill_names: row.related_skill_names,
-        evidence: row.evidence,
-        source: row.source ?? 'chat',
-      }))
+      .map((row) => {
+        const match = enrichNameWithBookMatch(row.skill_name, skillBookIndex);
+        return {
+          id: row.id,
+          skill_name: row.skill_name,
+          skill_category: row.skill_category,
+          skill_type: row.skill_type,
+          monetization: row.monetization,
+          proficiency: row.proficiency,
+          confidence: row.confidence,
+          enjoyment: row.enjoyment,
+          usage_frequency: row.usage_frequency,
+          trajectory: row.trajectory,
+          description: row.description,
+          origin_story: row.origin_story,
+          first_learned_context: row.first_learned_context,
+          related_jobs: row.related_jobs,
+          related_projects: row.related_projects,
+          parent_skill_name: row.parent_skill_name,
+          related_skill_names: row.related_skill_names,
+          evidence: row.evidence,
+          source: row.source ?? 'chat',
+          match_status: match.match_status,
+          matched_book_id: match.matched_book_id,
+          matched_book_name: match.matched_book_name,
+        };
+      })
+      .filter((row) => row.match_status !== 'existing')
       .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
       .slice(0, 12);
 
-    res.json({ suggestions, count: suggestions.length, scanned: shouldScan });
+    const { enrichSuggestionsWithParserAlternatives } = await import(
+      '../services/lorebook/parser/loreBookSuggestionEnricher'
+    );
+    const enriched = await enrichSuggestionsWithParserAlternatives(
+      userId,
+      'skills',
+      suggestions,
+      (row) => row.skill_name,
+      (row) => row.description ?? row.first_learned_context
+    );
+
+    res.json({ suggestions: enriched, count: enriched.length, scanned: shouldScan });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get skill suggestions');
     res.status(500).json({ error: 'Failed to get skill suggestions' });

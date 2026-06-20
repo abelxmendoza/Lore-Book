@@ -7,8 +7,16 @@ import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
-import { collectNameKeys, isNameAlreadyInBook, type BookNameEntry } from '../utils/suggestionBookFilter';
+import { collectNameKeys, resolveBookNameMatch, type BookNameEntry, type BookNameEntryWithId } from '../utils/suggestionBookFilter';
 import { characterSuggestionId } from '../utils/entitySuggestionId';
+import type { AlternativeCategory } from './suggestionCrossBookService';
+import { enrichSuggestionsWithParserAlternatives } from './lorebook/parser/loreBookSuggestionEnricher';
+import {
+  buildEntityQualityContext,
+  filterQualityCandidates,
+  gateSuggestionCandidate,
+} from './lorebook/quality/entityQualityGateService';
+import { suggestionDismissalService } from './suggestionDismissalService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type CharacterSuggestion = {
@@ -23,6 +31,10 @@ export type CharacterSuggestion = {
   mentionCount: number;
   confidence: number;
   source: 'omega_entity' | 'entity_question' | 'chat_extract';
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 };
 
 export type CharacterSuggestionContext = 'general' | 'romantic';
@@ -43,28 +55,52 @@ class CharacterSuggestionService {
     options?: { context?: CharacterSuggestionContext }
   ): Promise<CharacterSuggestion[]> {
     const context = options?.context ?? 'general';
-    const suggestions = await this.collectSuggestions(userId);
-    if (context === 'romantic') {
-      return this.filterRomanticSuggestions(userId, suggestions);
-    }
-    return suggestions;
+    const qualityCtx = await buildEntityQualityContext(userId);
+    const suggestions = await this.collectSuggestions(userId, qualityCtx);
+    const visible = await suggestionDismissalService.filterNames(
+      userId,
+      'characters',
+      context === 'romantic'
+        ? await this.filterRomanticSuggestions(userId, suggestions, qualityCtx)
+        : suggestions,
+      (s) => s.name
+    );
+    const gated = filterQualityCandidates('characters', visible, {
+      ...qualityCtx,
+      getEvidence: (s) => s.context,
+    });
+    return enrichSuggestionsWithParserAlternatives(userId, 'characters', gated, (s) => s.name, (s) => s.context);
   }
 
-  private async collectSuggestions(userId: string): Promise<CharacterSuggestion[]> {
+  private async collectSuggestions(
+    userId: string,
+    qualityCtx: Awaited<ReturnType<typeof buildEntityQualityContext>>
+  ): Promise<CharacterSuggestion[]> {
     const suggestions: CharacterSuggestion[] = [];
     const seen = new Set<string>();
 
     let bookExact = new Set<string>();
-    let bookEntries: BookNameEntry[] = [];
+    let bookEntries: BookNameEntryWithId[] = [];
 
-    const add = (s: Omit<CharacterSuggestion, 'id'>) => {
-      const key = normalizeNameKey(s.name);
+    const add = (s: Omit<CharacterSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'>) => {
+      const gated = gateSuggestionCandidate(s.name, 'characters', s.context ?? '', qualityCtx);
+      if (!gated) return;
+      const safeName = gated.name;
+      const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
-      if (!isIndividualPersonName(s.name)) return;
-      if (classifyMentionKind(s.name).kind !== 'person') return;
-      if (isNameAlreadyInBook(s.name, bookExact, bookEntries)) return;
+      if (!isIndividualPersonName(safeName)) return;
+      if (classifyMentionKind(safeName).kind !== 'person') return;
+      const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
+      if (match.status === 'existing') return;
       seen.add(key);
-      suggestions.push({ ...s, id: characterSuggestionId(s) });
+      suggestions.push({
+        ...s,
+        name: safeName,
+        id: characterSuggestionId({ ...s, name: safeName }),
+        match_status: match.status,
+        matched_book_id: match.matchedId ?? null,
+        matched_book_name: match.matchedName ?? null,
+      });
     };
 
     try {
@@ -100,29 +136,37 @@ class CharacterSuggestionService {
 
       const bookCharacterIds = new Set<string>();
       const allNames: string[] = [];
+      const bookRows: Array<{ id: string; names: string[] }> = [];
 
       for (const c of characters ?? []) {
         const meta = (c.metadata as Record<string, unknown>) ?? {};
         if (meta.is_self || meta.is_user) continue;
         if (c.status === 'archived') continue;
         bookCharacterIds.add(c.id);
-        allNames.push(c.name);
-        if (Array.isArray(c.alias)) {
-          for (const a of c.alias) {
-            if (typeof a === 'string') allNames.push(a);
-          }
-        }
+        const aliases = Array.isArray(c.alias)
+          ? c.alias.filter((a): a is string => typeof a === 'string')
+          : [];
+        allNames.push(c.name, ...aliases);
+        bookRows.push({ id: c.id, names: [c.name, ...aliases] });
       }
 
       for (const row of indexRows ?? []) {
         if (bookCharacterIds.has(row.character_id) && typeof row.mention === 'string') {
           allNames.push(row.mention);
+          const owner = bookRows.find((b) => b.id === row.character_id);
+          if (owner) owner.names.push(row.mention);
         }
       }
 
       const book = collectNameKeys(allNames);
       bookExact = book.exactKeys;
-      bookEntries = book.entries;
+      bookEntries = bookRows.flatMap((row) =>
+        row.names.map((label) => ({
+          norm: normalizeNameKey(label),
+          label: label.trim(),
+          id: row.id,
+        }))
+      ).filter((e) => e.norm.length >= 2);
 
       for (const row of indexRows ?? []) {
         const mention = String(row.mention ?? '').trim();
@@ -138,7 +182,7 @@ class CharacterSuggestionService {
       }
 
       for (const e of omegaEntities ?? []) {
-        if (isNameAlreadyInBook(e.primary_name, bookExact, bookEntries)) continue;
+        if (resolveBookNameMatch(e.primary_name, bookExact, bookEntries).status === 'existing') continue;
         const meta = (e.metadata as Record<string, unknown> | null) ?? {};
         add({
           name: e.primary_name,
@@ -154,7 +198,7 @@ class CharacterSuggestionService {
 
       for (const q of questions ?? []) {
         const mention = String(q.mention_text ?? '').trim();
-        if (!mention || isNameAlreadyInBook(mention, bookExact, bookEntries)) continue;
+        if (!mention || resolveBookNameMatch(mention, bookExact, bookEntries).status === 'existing') continue;
 
         const candidates = (q.candidates as Array<{ character_id?: string; name?: string }>) ?? [];
         const candidateInBook = candidates.some(
@@ -176,7 +220,7 @@ class CharacterSuggestionService {
       if (combined.length > 20) {
         const extracted = await this.extractNamesFromText(combined);
         for (const name of extracted) {
-          if (isNameAlreadyInBook(name, bookExact, bookEntries)) continue;
+          if (resolveBookNameMatch(name, bookExact, bookEntries).status === 'existing') continue;
           add({
             name,
             mentionCount: 2,
@@ -197,11 +241,12 @@ class CharacterSuggestionService {
 
   private async filterRomanticSuggestions(
     userId: string,
-    suggestions: CharacterSuggestion[]
+    suggestions: CharacterSuggestion[],
+    qualityCtx: Awaited<ReturnType<typeof buildEntityQualityContext>>
   ): Promise<CharacterSuggestion[]> {
     const [romanticFromChat, fromRelationships] = await Promise.all([
-      this.extractRomanticIndividualsFromRecentText(userId),
-      this.suggestionsFromRomanticRelationships(userId),
+      this.extractRomanticIndividualsFromRecentText(userId, qualityCtx),
+      this.suggestionsFromRomanticRelationships(userId, qualityCtx),
     ]);
     const merged = new Map<string, CharacterSuggestion>();
 
@@ -231,7 +276,10 @@ class CharacterSuggestionService {
     return ROMANTIC_KEYWORDS.some((kw) => blob.includes(kw));
   }
 
-  private async extractRomanticIndividualsFromRecentText(userId: string): Promise<CharacterSuggestion[]> {
+  private async extractRomanticIndividualsFromRecentText(
+    userId: string,
+    qualityCtx: Awaited<ReturnType<typeof buildEntityQualityContext>>
+  ): Promise<CharacterSuggestion[]> {
     const text = await this.loadRecentText(userId);
     if (text.length < 20) return [];
 
@@ -256,9 +304,17 @@ class CharacterSuggestionService {
       const romanticNearby = ROMANTIC_KEYWORDS.some((kw) => window.includes(kw));
       if (!romanticNearby) continue;
 
+      const gated = gateSuggestionCandidate(
+        gate.cleanName,
+        'characters',
+        'Mentioned near romantic language in your chats',
+        qualityCtx
+      );
+      if (!gated) continue;
+
       out.push({
-        id: characterSuggestionId({ name: gate.cleanName }),
-        name: gate.cleanName,
+        id: characterSuggestionId({ name: gated.name }),
+        name: gated.name,
         mentionCount: 2,
         confidence: 0.72,
         source: 'chat_extract',
@@ -271,7 +327,10 @@ class CharacterSuggestionService {
     return out;
   }
 
-  private async suggestionsFromRomanticRelationships(userId: string): Promise<CharacterSuggestion[]> {
+  private async suggestionsFromRomanticRelationships(
+    userId: string,
+    qualityCtx: Awaited<ReturnType<typeof buildEntityQualityContext>>
+  ): Promise<CharacterSuggestion[]> {
     const { data: relationships } = await supabaseAdmin
       .from('romantic_relationships')
       .select('person_id, person_type, relationship_type, metadata')
@@ -308,13 +367,20 @@ class CharacterSuggestionService {
           ? characters?.find((c) => c.id === rel.person_id)?.name
           : entities?.find((e) => e.id === rel.person_id)?.primary_name;
       if (!name || !isIndividualPersonName(name)) continue;
-      if (isNameAlreadyInBook(name, book.exactKeys, book.entries)) continue;
+      if (resolveBookNameMatch(name, book.exactKeys, book.entries).status === 'existing') continue;
+      const gated = gateSuggestionCandidate(
+        name,
+        'characters',
+        `Tracked as ${String(rel.relationship_type).replace(/_/g, ' ')} — add to your Character Book`,
+        qualityCtx
+      );
+      if (!gated) continue;
       out.push({
         id: characterSuggestionId({
-          name,
+          name: gated.name,
           omegaEntityId: rel.person_type === 'omega_entity' ? rel.person_id : undefined,
         }),
-        name,
+        name: gated.name,
         mentionCount: 2,
         confidence: 0.78,
         source: 'chat_extract',

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { externalApiLimit } from '../middleware/apiProtection';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validateRequest';
 import { memoryService } from '../services/memoryService';

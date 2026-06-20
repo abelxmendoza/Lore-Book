@@ -22,7 +22,10 @@ const entitySchema = z.object({
 const pairSchema = z.object({
   a: entitySchema,
   b: entitySchema,
-  decision: z.enum(['MERGE', 'ALIAS', 'PARENT_CHILD', 'LINK', 'IGNORE']).optional(), // user override
+  decision: z.enum(['MERGE', 'ALIAS', 'PARENT_CHILD', 'LINK', 'IGNORE']).optional(),
+  source_id: z.string().uuid().optional(),
+  target_id: z.string().uuid().optional(),
+  reason: z.string().min(1).max(500).optional(),
 });
 
 function toEntity(e: z.infer<typeof entitySchema>): AuthorityEntity {
@@ -47,10 +50,24 @@ router.post('/confirm', requireAuth, asyncHandler(async (req: AuthenticatedReque
   const decision = parsed.data.decision ?? verdict.decision;
   if (decision === 'IGNORE') return res.status(400).json({ error: 'Nothing to apply (IGNORE)' });
 
-  // canonical side = target (survivor / parent). Default to b when unknown.
-  const canonicalIsA = verdict.canonical === 'a';
-  const target = canonicalIsA ? a : b;
-  const source = canonicalIsA ? b : a;
+  let source = a;
+  let target = b;
+  if (parsed.data.source_id && parsed.data.target_id) {
+    if (parsed.data.source_id === a.id) source = a;
+    else if (parsed.data.source_id === b.id) source = b;
+    else return res.status(400).json({ error: 'source_id must match entity a or b' });
+
+    if (parsed.data.target_id === a.id) target = a;
+    else if (parsed.data.target_id === b.id) target = b;
+    else return res.status(400).json({ error: 'target_id must match entity a or b' });
+
+    if (source.id === target.id) return res.status(400).json({ error: 'source and target must differ' });
+  } else {
+    const canonicalIsA = verdict.canonical === 'a';
+    target = canonicalIsA ? a : b;
+    source = canonicalIsA ? b : a;
+  }
+
   const kind = resolveEntityKind(target);
 
   const result = await entityAuthorityApplyService.applyDecision(req.user!.id, {
@@ -62,7 +79,7 @@ router.post('/confirm', requireAuth, asyncHandler(async (req: AuthenticatedReque
     targetId: target.id,
     targetName: target.name,
     confidence: verdict.confidence,
-    reason: verdict.reason,
+    reason: parsed.data.reason ?? verdict.reason,
     evidence: verdict.evidence,
   });
   if (!result.ok) return res.status(500).json({ error: result.error ?? 'apply failed', verdict });

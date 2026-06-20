@@ -63,8 +63,9 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const suggestions = await locationSuggestionService.getSuggestions(userId);
-    res.json({ success: true, suggestions, count: suggestions.length });
+    const rescan = req.query.rescan === 'true';
+    const suggestions = await locationSuggestionService.getSuggestions(userId, { rescan });
+    res.json({ success: true, suggestions, count: suggestions.length, scanned: rescan });
   })
 );
 

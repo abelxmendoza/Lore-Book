@@ -2,6 +2,11 @@ import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import {
+  assertOpenAiCircuitClosed,
+  recordOpenAiFailure,
+  recordOpenAiSuccess,
+} from './openaiCircuitBreaker';
 import { createSemaphore } from './semaphore';
 
 /** gpt-5.x and o-series reasoning models only accept the default temperature (1). */
@@ -87,6 +92,18 @@ export function getOpenAIConcurrency() {
   return openaiSemaphore.stats();
 }
 
+async function guardedOpenAiCall<T>(fn: () => Promise<T>): Promise<T> {
+  assertOpenAiCircuitClosed();
+  try {
+    const result = await fn();
+    recordOpenAiSuccess();
+    return result;
+  } catch (err) {
+    recordOpenAiFailure(err);
+    throw err;
+  }
+}
+
 // Wrap chat.completions.create once, globally. Preserves streaming + non-streaming.
 if (openai.chat?.completions?.create) {
   const _rawCreate = openai.chat.completions.create.bind(openai.chat.completions);
@@ -94,7 +111,9 @@ if (openai.chat?.completions?.create) {
   (openai.chat.completions as any).create = (...args: any[]) => {
     const [params, ...rest] = args;
     const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
-    return openaiSemaphore.run(() => _rawCreate(normalized, ...rest));
+    return openaiSemaphore.run(() =>
+      guardedOpenAiCall(() => _rawCreate(normalized, ...rest))
+    );
   };
 }
 
@@ -106,9 +125,18 @@ if (openai.responses?.create) {
   (openai.responses as any).create = (...args: any[]) => {
     const [params, ...rest] = args;
     const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
-    return openaiSemaphore.run(() => _rawResponsesCreate(normalized, ...rest));
+    return openaiSemaphore.run(() =>
+      guardedOpenAiCall(() => _rawResponsesCreate(normalized, ...rest))
+    );
   };
 }
+
+export {
+  assertOpenAiCircuitClosed,
+  getOpenAiCircuitBreakerSnapshot,
+  isOpenAiCircuitOpen,
+  resetOpenAiCircuitBreakerForTests,
+} from './openaiCircuitBreaker';
 
 /**
  * Traced wrapper for chat completions. Logs model, token counts, and duration.

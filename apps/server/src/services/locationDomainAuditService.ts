@@ -3,9 +3,27 @@
  * Classifies every location row and reports duplicates, orphans, rooms, events, possessives.
  */
 
+import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { classifyPlace, placeDuplicateScore, type PlaceClass } from './ontology/placeIntelligence';
 import { supabaseAdmin } from './supabaseClient';
+
+function isMissingTable(error?: { code?: string; message?: string } | null): boolean {
+  return Boolean(
+    error &&
+      (error.code === 'PGRST205' ||
+        error.code === '42P01' ||
+        (typeof error.message === 'string' &&
+          (error.message.includes('schema cache') ||
+            error.message.includes('Could not find the table') ||
+            error.message.includes('does not exist'))))
+  );
+}
+
+const EMPTY_BY_CATEGORY: Record<PlaceClass, number> = {
+  HOUSEHOLD: 0, ROOM: 0, PROPERTY: 0, VENUE: 0, BUSINESS: 0,
+  CITY: 0, REGION: 0, EVENT_LOCATION: 0, LANDMARK: 0, UNKNOWN: 0,
+};
 
 export type LocationAuditEntry = {
   id: string;
@@ -59,6 +77,22 @@ type LocationRow = {
 };
 
 class LocationDomainAuditService {
+  private emptyAudit(userId: string): LocationDomainAudit {
+    return {
+      userId,
+      locationCount: 0,
+      byCategory: { ...EMPTY_BY_CATEGORY },
+      duplicates: [],
+      mergeSuggestions: [],
+      orphans: [],
+      households: [],
+      rooms: [],
+      eventLike: [],
+      possessiveLocations: [],
+      topLevelViolations: [],
+    };
+  }
+
   async audit(userId: string): Promise<LocationDomainAudit> {
     const { data, error } = await supabaseAdmin
       .from('locations')
@@ -66,13 +100,16 @@ class LocationDomainAuditService {
       .eq('user_id', userId)
       .order('name');
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingTable(error)) {
+        logger.debug({ userId, code: error.code }, 'locations table unavailable for domain audit');
+        return this.emptyAudit(userId);
+      }
+      throw error;
+    }
     const rows = (data ?? []) as LocationRow[];
 
-    const byCategory: Record<PlaceClass, number> = {
-      HOUSEHOLD: 0, ROOM: 0, PROPERTY: 0, VENUE: 0, BUSINESS: 0,
-      CITY: 0, REGION: 0, EVENT_LOCATION: 0, LANDMARK: 0, UNKNOWN: 0,
-    };
+    const byCategory: Record<PlaceClass, number> = { ...EMPTY_BY_CATEGORY };
 
     const entries: LocationAuditEntry[] = [];
     const households: string[] = [];

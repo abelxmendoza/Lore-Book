@@ -3,10 +3,13 @@ import { z } from 'zod';
 
 import { config } from '../config';
 import { openai } from '../lib/openai.js';
+import { guardOpenAiRoute } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { checkAiRequestLimit } from '../middleware/subscription';
 import { chapterInsightsService } from '../services/chapterInsightsService';
 import { chapterService } from '../services/chapterService';
 import { lifeStageChapterService } from '../services/lifeStageChapterService';
+import { incrementAiRequestCount } from '../services/usageTracking';
 
 const router = Router();
 
@@ -85,11 +88,11 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // Extract chapter info from conversation
-router.post('/extract-info', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/extract-info', ...guardOpenAiRoute(), requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   const { conversation } = req.body;
   
-  if (!conversation || typeof conversation !== 'string') {
-    return res.status(400).json({ error: 'Conversation text is required' });
+  if (!conversation || typeof conversation !== 'string' || conversation.length > 20_000) {
+    return res.status(400).json({ error: 'Conversation text is required (max 20,000 chars)' });
   }
 
   try {
@@ -144,6 +147,8 @@ If the conversation doesn't have enough information, return null for optional fi
         extracted.endDate = endDate.toISOString().split('T')[0];
       }
     }
+
+    incrementAiRequestCount(req.user!.id).catch(() => undefined);
 
     res.json(extracted);
   } catch (error) {

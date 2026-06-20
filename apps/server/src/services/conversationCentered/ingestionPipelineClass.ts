@@ -151,7 +151,10 @@ export class ConversationIngestionPipeline {
         conversationSessionId,
         sender,
         chatMessage.content,
-        conversationHistory
+        conversationHistory,
+        undefined,
+        undefined,
+        { chatMessageId }
       );
 
       // Link conversation message back to chat message via metadata
@@ -504,7 +507,8 @@ export class ConversationIngestionPipeline {
     entityContext?: {
       type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP';
       id: string;
-    }
+    },
+    ingestOptions?: { chatMessageId?: string }
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -539,7 +543,16 @@ export class ConversationIngestionPipeline {
     }
 
     try {
-      return await this.ingestMessageCore(userId, threadId, sender, rawText, conversationHistory, eventContext, entityContext);
+      return await this.ingestMessageCore(
+        userId,
+        threadId,
+        sender,
+        rawText,
+        conversationHistory,
+        eventContext,
+        entityContext,
+        ingestOptions
+      );
     } catch (err) {
       logger.error({ error: err, userId, threadId, rawText }, 'Failed to ingest message');
       throw err;
@@ -1030,7 +1043,8 @@ export class ConversationIngestionPipeline {
     rawText: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
+    ingestOptions?: { chatMessageId?: string }
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -2246,6 +2260,30 @@ export class ConversationIngestionPipeline {
           })
           .catch(err => {
             logger.warn({ err }, 'Interest detection failed (non-blocking)');
+          });
+      }
+
+      // Step 12.11.5: LoreBook parse engine — deterministic book-aware suggestion
+      // seeds from user messages (no LLM). Complements keyword-gated extractors below.
+      if (sender === 'USER' && rawText.trim().length >= 12) {
+        void import('../lorebook/parser/loreBookIngestionParseService')
+          .then(({ ingestLoreBookParseFromMessage }) =>
+            ingestLoreBookParseFromMessage(userId, rawText, {
+              messageId,
+              threadId,
+              chatMessageId: ingestOptions?.chatMessageId,
+            })
+          )
+          .then((summary) => {
+            if (summary.applied > 0) {
+              logger.debug(
+                { userId, messageId, applied: summary.applied, byDomain: summary.byDomain },
+                'LoreBook ingest parse queued suggestions from chat'
+              );
+            }
+          })
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'LoreBook ingest parse failed (non-blocking)');
           });
       }
 

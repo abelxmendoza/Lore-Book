@@ -5,6 +5,12 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
+import {
+  lexicalAnalyzeLimit,
+  lexicalDebugLimit,
+  lexicalPreviewLimit,
+  requireDevToolingAccess,
+} from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import { lexicalAnalyzerService } from '../services/lexical';
@@ -29,6 +35,7 @@ const previewSchema = z.object({
 /** POST /api/lexical/analyze — run lexical analysis on raw text */
 router.post(
   '/analyze',
+  lexicalAnalyzeLimit,
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = analyzeSchema.parse(req.body);
@@ -56,6 +63,7 @@ router.post(
 /** POST /api/lexical/preview — read-only composer span preview (no persistence) */
 router.post(
   '/preview',
+  lexicalPreviewLimit,
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = previewSchema.parse(req.body);
@@ -81,6 +89,8 @@ const debugSchema = z.object({
 /** POST /api/lexical/debug — intelligence span debug (dev / quality tooling) */
 router.post(
   '/debug',
+  requireDevToolingAccess,
+  lexicalDebugLimit,
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = debugSchema.parse(req.body);

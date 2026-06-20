@@ -6,7 +6,6 @@ import { familyGraphService } from '../kinship/familyGraphService';
 import { householdService } from '../kinship/householdService';
 import { familyTreeService } from '../familyTreeService';
 import { locationService } from '../locationService';
-import { locationSuggestionService } from '../locationSuggestionService';
 import { projectService } from '../projectService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { skillService } from '../skills/skillService';
@@ -80,13 +79,14 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
 }
 
 export async function loadLocationsBook(userId: string) {
-  const [locations, counts, suggestions] = await Promise.all([
+  const [locations, counts] = await Promise.all([
     locationService.listLocations(userId),
     loadCounts(userId),
-    locationSuggestionService.getSuggestions(userId).catch(() => []),
   ]);
 
-  return { locations, suggestions, counts };
+  // Suggestions load lazily via GET /api/locations/suggestions (DetectedLocationSuggestions).
+  // Avoids 30+ OpenAI calls on every Places book page load.
+  return { locations, suggestions: [], counts };
 }
 
 export async function loadProjectsBook(userId: string) {

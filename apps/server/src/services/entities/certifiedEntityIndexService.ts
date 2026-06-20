@@ -31,6 +31,17 @@ function mentionKeysFor(name: string, aliases: string[]): string[] {
   return [...keys];
 }
 
+function primaryDisplayName(name: string, metadata?: Record<string, unknown> | null): string {
+  const stored = metadata?.display_title as { primaryTitle?: string } | undefined;
+  const title = stored?.primaryTitle?.trim();
+  return title || name;
+}
+
+function displayTitleAliases(metadata?: Record<string, unknown> | null): string[] {
+  const stored = metadata?.display_title as { aliases?: Array<{ value?: string }> } | undefined;
+  return (stored?.aliases ?? []).map((a) => a.value?.trim()).filter(Boolean) as string[];
+}
+
 function pushEntity(
   map: Map<string, CertifiedEntity>,
   entity: CertifiedEntity
@@ -66,7 +77,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     Promise.resolve(
       supabaseAdmin
         .from('character_identity_index')
-        .select('character_id, mention, mention_key, character:characters(id, name, alias)')
+        .select('character_id, mention, mention_key, character:characters(id, name, alias, metadata)')
         .eq('user_id', userId)
     )
       .then((r) => r.data ?? [])
@@ -74,7 +85,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     Promise.resolve(
       supabaseAdmin
         .from('characters')
-        .select('id, name, alias')
+        .select('id, name, alias, metadata')
         .eq('user_id', userId)
     )
       .then((r) => r.data ?? [])
@@ -134,19 +145,28 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
   for (const row of identityRows as Array<{
     character_id: string;
     mention: string;
-    character?: { id: string; name: string; alias?: string[] | null };
+    character?: { id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null };
   }>) {
     if (!row.character_id) continue;
-    charNames.set(row.character_id, row.character?.name ?? row.mention);
+    const rawName = row.character?.name ?? row.mention;
+    charNames.set(row.character_id, primaryDisplayName(rawName, row.character?.metadata));
     const set = charAliases.get(row.character_id) ?? new Set<string>();
-    if (row.mention && row.mention !== row.character?.name) set.add(row.mention);
+    const displayName = charNames.get(row.character_id)!;
+    if (row.mention && row.mention !== displayName) set.add(row.mention);
+    if (rawName !== displayName) set.add(rawName);
     for (const a of row.character?.alias ?? []) set.add(a);
+    for (const a of displayTitleAliases(row.character?.metadata)) set.add(a);
     charAliases.set(row.character_id, set);
   }
-  for (const c of charactersFallback as Array<{ id: string; name: string; alias?: string[] | null }>) {
-    if (!charNames.has(c.id)) charNames.set(c.id, c.name);
+  for (const c of charactersFallback as Array<{ id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null }>) {
+    if (!charNames.has(c.id)) {
+      charNames.set(c.id, primaryDisplayName(c.name, c.metadata));
+    }
     const set = charAliases.get(c.id) ?? new Set<string>();
+    const displayName = charNames.get(c.id)!;
+    if (c.name !== displayName) set.add(c.name);
     for (const a of c.alias ?? []) set.add(a);
+    for (const a of displayTitleAliases(c.metadata)) set.add(a);
     charAliases.set(c.id, set);
   }
   for (const [id, name] of charNames) {

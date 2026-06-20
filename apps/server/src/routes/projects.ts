@@ -173,7 +173,18 @@ router.get('/suggestions', requireAuth, asyncHandler(async (req: AuthenticatedRe
     .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
     .slice(0, 12);
 
-  res.json({ suggestions, count: suggestions.length, scanned: shouldScan });
+  const { enrichSuggestionsWithParserAlternatives } = await import(
+    '../services/lorebook/parser/loreBookSuggestionEnricher'
+  );
+  const enriched = await enrichSuggestionsWithParserAlternatives(
+    userId,
+    'projects',
+    suggestions,
+    (row) => row.name,
+    (row) => row.description ?? row.reasoning
+  );
+
+  res.json({ suggestions: enriched, count: enriched.length, scanned: shouldScan });
 }));
 
 router.post('/suggestions/materialize', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {

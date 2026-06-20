@@ -7,6 +7,8 @@ import { questService, questStorage, questLinker, questExtractor, questSuggestio
 import { progressionTracker } from '../services/progression/progressionTracker';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
+import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
+import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
 const router = Router();
 
 /**
@@ -136,12 +138,14 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
     const rescan = req.query.rescan === 'true';
 
     const [existing, pending, everScanned] = await Promise.all([
-      questStorage.getQuests(userId, { status: ['active', 'paused'] }),
+      questStorage.getQuests(userId, {}),
       questSuggestionService.getPendingSuggestions(userId),
       questSuggestionService.hasAnySuggestions(userId),
     ]);
 
-    const haveTitles = new Set(existing.map((q) => q.title.trim().toLowerCase()));
+    const questBookIndex = buildBookIndexFromLabels(
+      existing.map((q) => ({ id: q.id, label: q.title }))
+    );
     const shouldScan = rescan || (!everScanned && pending.length === 0);
 
     if (shouldScan) {
@@ -176,7 +180,10 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
 
       const extracted = await questExtractor.extractQuests(userId, combined);
       for (const q of extracted) {
-        if (!q.title?.trim() || haveTitles.has(q.title.trim().toLowerCase())) continue;
+        if (!q.title?.trim()) continue;
+        if (resolveBookNameMatch(q.title, questBookIndex.exactKeys, questBookIndex.entries).status === 'existing') {
+          continue;
+        }
         await questSuggestionService.upsertFromExtraction(
           userId,
           {
@@ -200,22 +207,39 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       : pending;
 
     const suggestions = freshPending
-      .filter((row) => !haveTitles.has(row.title.trim().toLowerCase()))
-      .map((row) => ({
-        id: row.id,
-        title: row.title,
-        description: optionalQuestString(row.description ?? undefined),
-        quest_type: normalizeQuestType(row.quest_type),
-        priority: clampQuestScore(row.priority),
-        importance: clampQuestScore(row.importance),
-        impact: clampQuestScore(row.impact),
-        confidence: row.confidence,
-        reasoning: row.reasoning ?? 'Detected from your story',
-      }))
+      .map((row) => {
+        const match = enrichNameWithBookMatch(row.title, questBookIndex);
+        return {
+          id: row.id,
+          title: row.title,
+          description: optionalQuestString(row.description ?? undefined),
+          quest_type: normalizeQuestType(row.quest_type),
+          priority: clampQuestScore(row.priority),
+          importance: clampQuestScore(row.importance),
+          impact: clampQuestScore(row.impact),
+          confidence: row.confidence,
+          reasoning: row.reasoning ?? 'Detected from your story',
+          match_status: match.match_status,
+          matched_book_id: match.matched_book_id,
+          matched_book_name: match.matched_book_name,
+        };
+      })
+      .filter((row) => row.match_status !== 'existing')
       .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
       .slice(0, 12);
 
-    res.json({ suggestions, count: suggestions.length, scanned: shouldScan });
+    const { enrichSuggestionsWithParserAlternatives } = await import(
+      '../services/lorebook/parser/loreBookSuggestionEnricher'
+    );
+    const enriched = await enrichSuggestionsWithParserAlternatives(
+      userId,
+      'quests',
+      suggestions,
+      (row) => row.title,
+      (row) => row.description ?? row.reasoning
+    );
+
+    res.json({ suggestions: enriched, count: enriched.length, scanned: shouldScan });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest suggestions');
     res.status(500).json({ error: 'Failed to get quest suggestions' });

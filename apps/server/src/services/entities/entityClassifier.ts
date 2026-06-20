@@ -36,6 +36,9 @@ import {
   SUPPLEMENTAL_GROUP_CLASSIFICATIONS,
   SUPPLEMENTAL_LOCATION_CLASSIFICATIONS,
 } from '../ontology/classificationDefaults';
+import {
+  evaluateTitleOnlyPersonGuard,
+} from '../lexical/intelligence/titleOnlyEntityGuard';
 
 export type { EntityClass, StorageType, LegacyOmegaEntityType, RootType };
 export { toStorageType, toOmegaType, isUnknownEntity, isCharacterEligible, entityClassToRootType };
@@ -90,7 +93,8 @@ const VENUE_SUFFIX = /\b(house|home|apartment|apt|gym|studio|cafe|coffee|restaur
 const HOUSEHOLD_RE = /^(.+?)['’]s\s+(house|home|place|apartment|apt|crib|pad|spot)$/i;
 const GROUP_RE = /^(?:the\s+)?(.+?)\s+(family|familia|crew|team|band|squad|gang|group|collective|household)$/i;
 const EVENT_RE = /\b(party|wedding|graduation|funeral|birthday|reunion|quincea[nñ]era|barbecue|bbq|gathering|ceremony|celebration|memorial|baptism|anniversary)$/i;
-const HONORIFIC_RE = /^(t[íi]o|t[íi]a|uncle|aunt|auntie|mom|mother|mama|mamá|mommy|dad|father|papa|papá|daddy|step\s*mom|step\s*dad|stepmom|stepdad|stepmother|stepfather|grandma|grandpa|abuela|abuelo|brother|sister|mr|mrs|ms|miss|dr|sir|cousin|primo|prima|coach|pastor|tía|tío)\b/i;
+const HONORIFIC_WITH_NAME_RE =
+  /^(?:t[íi]o|t[íi]a|uncle|aunt|auntie|coach|pastor|mr|mrs|ms|miss|dr|prof|professor|principal|officer|captain|mayor|president|senator|judge|dean|dj|abuela|abuelo|grandma|grandpa)\.?\s+[A-ZÀ-Ý]/i;
 
 function personContextEvidence(name: string, context?: string): boolean {
   if (!context) return false;
@@ -158,7 +162,15 @@ export function classifyEntity(name: string, context?: string): Classification {
     }
   }
 
-  if (HONORIFIC_RE.test(raw)) return result('PERSON', 0.9, 'honorific/kinship prefix');
+  const titleGuard = evaluateTitleOnlyPersonGuard(raw);
+  if (titleGuard.isTitleOnly) {
+    return result('UNKNOWN', 0.25, `title-only:${titleGuard.referenceType}`);
+  }
+
+  if (HONORIFIC_WITH_NAME_RE.test(raw) || titleGuard.hasAttachedName) {
+    return result('PERSON', 0.88, 'honorific/kinship with attached name');
+  }
+
   if (personContextEvidence(raw, context)) return result('PERSON', 0.75, 'person-context predicate');
 
   return result('UNKNOWN', 0.2, 'no classifying evidence — requires more signal');

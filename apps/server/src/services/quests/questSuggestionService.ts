@@ -6,6 +6,8 @@ import { questExtractor } from './questExtractor';
 import { questService } from './questService';
 import { questStorage } from './questStorage';
 import type { CreateQuestInput, Quest, QuestType } from './types';
+import { suggestionDismissalService } from '../suggestionDismissalService';
+import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
 
 export type QuestSuggestionRow = {
   id: string;
@@ -58,14 +60,37 @@ class QuestSuggestionService {
       confidence?: number;
       reasoning?: string;
     },
-    opts: { sourceMessageId?: string; source?: 'chat' | 'journal' | 'llm_scan' } = {}
+    opts: {
+      sourceMessageId?: string;
+      sourceThreadId?: string | null;
+      source?: 'chat' | 'journal' | 'llm_scan';
+    } = {}
   ): Promise<void> {
     const title = extracted.title?.trim();
     if (!title || (extracted.confidence ?? 0.72) < 0.45) return;
 
+    const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'quests', title, {
+      sourceMessageId: opts.sourceMessageId,
+      threadId: opts.sourceThreadId,
+    });
+    if (suppressed.suppressed) return;
+
+    const evidenceText = extracted.description ?? extracted.reasoning ?? '';
+    const quality = evaluateEntityQuality({
+      name: title,
+      domain: 'quests',
+      contextText: evidenceText,
+      evidence: evidenceText,
+      confidence: extracted.confidence ?? 0.72,
+      sourceMessageId: opts.sourceMessageId,
+      sourceThreadId: opts.sourceThreadId ?? undefined,
+    });
+    if (!passesEntityQualityGate(quality)) return;
+    const safeTitle = resolveDisplayName({ name: title, domain: 'quests' }, quality);
+
     const payload = {
       user_id: userId,
-      title,
+      title: safeTitle,
       description: extracted.description ?? null,
       quest_type: normalizeQuestType(extracted.quest_type ?? 'side'),
       priority: clampQuestScore(extracted.priority),
@@ -104,21 +129,33 @@ class QuestSuggestionService {
       return [];
     }
 
-    return (data ?? []).map((row) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      quest_type: normalizeQuestType(row.quest_type),
-      priority: row.priority,
-      importance: row.importance,
-      impact: row.impact,
-      category: row.category,
-      confidence: Number(row.confidence),
-      reasoning: row.reasoning,
-      evidence: row.evidence ?? [],
-      source: row.source ?? 'chat',
-      source_message_id: row.source_message_id,
-    }));
+    return this.filterPendingRows(userId, data ?? []);
+  }
+
+  private async filterPendingRows(userId: string, rows: Array<Record<string, unknown>>): Promise<QuestSuggestionRow[]> {
+    const filtered: QuestSuggestionRow[] = [];
+    for (const row of rows) {
+      const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'quests', String(row.title ?? ''), {
+        sourceMessageId: row.source_message_id as string | null | undefined,
+      });
+      if (suppressed.suppressed) continue;
+      filtered.push({
+        id: row.id as string,
+        title: row.title as string,
+        description: row.description as string | null | undefined,
+        quest_type: normalizeQuestType(row.quest_type as string),
+        priority: row.priority as number,
+        importance: row.importance as number,
+        impact: row.impact as number,
+        category: row.category as string | null | undefined,
+        confidence: Number(row.confidence),
+        reasoning: row.reasoning as string | null | undefined,
+        evidence: (row.evidence as QuestSuggestionRow['evidence']) ?? [],
+        source: (row.source as string) ?? 'chat',
+        source_message_id: row.source_message_id as string | null | undefined,
+      });
+    }
+    return filtered;
   }
 
   async hasAnySuggestions(userId: string): Promise<boolean> {
@@ -133,36 +170,81 @@ class QuestSuggestionService {
     return (count ?? 0) > 0;
   }
 
-  async rejectSuggestion(userId: string, suggestionId: string): Promise<void> {
-    await supabaseAdmin
+  async rejectSuggestion(
+    userId: string,
+    suggestionId: string,
+    opts?: { threadId?: string | null }
+  ) {
+    const { data: row } = await supabaseAdmin
       .from('quest_suggestions')
-      .update({ status: 'rejected', updated_at: new Date().toISOString() })
+      .select('id, title, source_message_id')
       .eq('user_id', userId)
-      .eq('id', suggestionId);
+      .eq('id', suggestionId)
+      .maybeSingle();
+
+    if (!row?.title) return null;
+
+    const result = await suggestionDismissalService.recordDismissal(userId, 'quests', {
+      name: row.title,
+      sourceMessageId: row.source_message_id,
+      sourceSuggestionId: suggestionId,
+      threadId: opts?.threadId,
+    });
+
+    if (result.isPermanent) {
+      await supabaseAdmin
+        .from('quest_suggestions')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('id', suggestionId);
+      return result;
+    }
+
+    await supabaseAdmin.from('quest_suggestions').delete().eq('user_id', userId).eq('id', suggestionId);
+    return result;
   }
 
-  async rejectByTitle(userId: string, title: string): Promise<void> {
-    const key = normalizeTitle(title);
-    const pending = await this.getPendingSuggestions(userId);
-    const match = pending.find((p) => normalizeTitle(p.title) === key);
-    if (match) {
-      await this.rejectSuggestion(userId, match.id);
-      return;
+  async rejectByTitle(
+    userId: string,
+    title: string,
+    opts?: { threadId?: string | null; sourceMessageId?: string | null; suggestionId?: string }
+  ) {
+    const { data: existing } = await supabaseAdmin
+      .from('quest_suggestions')
+      .select('id, title, source_message_id')
+      .eq('user_id', userId)
+      .eq('title', title.trim())
+      .maybeSingle();
+
+    const result = await suggestionDismissalService.recordDismissal(userId, 'quests', {
+      name: title,
+      sourceMessageId: opts?.sourceMessageId ?? existing?.source_message_id,
+      sourceSuggestionId: opts?.suggestionId ?? existing?.id,
+      threadId: opts?.threadId,
+    });
+
+    if (result.isPermanent) {
+      const { error } = await supabaseAdmin.from('quest_suggestions').upsert(
+        {
+          user_id: userId,
+          title: title.trim(),
+          quest_type: 'side',
+          status: 'rejected',
+          confidence: 0,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,title' }
+      );
+      if (error && !isTableMissing(error)) {
+        logger.debug({ error, userId, title }, 'rejectByTitle permanent upsert failed');
+      }
+      return result;
     }
-    const { error } = await supabaseAdmin.from('quest_suggestions').upsert(
-      {
-        user_id: userId,
-        title: title.trim(),
-        quest_type: 'side',
-        status: 'rejected',
-        confidence: 0,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,title' }
-    );
-    if (error && !isTableMissing(error)) {
-      logger.debug({ error, userId, title }, 'rejectByTitle upsert failed');
+
+    if (existing?.id) {
+      await supabaseAdmin.from('quest_suggestions').delete().eq('user_id', userId).eq('id', existing.id);
     }
+    return result;
   }
 
   async materializeQuest(userId: string, input: MaterializeQuestInput): Promise<Quest> {
@@ -248,6 +330,7 @@ class QuestSuggestionService {
     content: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<number> {
+    const sourceThreadId = await suggestionDismissalService.resolveThreadIdFromMessageId(messageId);
     const extracted = await questExtractor.extractQuestsFromMessage(userId, content, conversationHistory);
     const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
     const have = new Set(existing.map((q) => normalizeTitle(q.title)));
@@ -268,7 +351,7 @@ class QuestSuggestionService {
           confidence: 0.72,
           reasoning: 'Detected from your conversation',
         },
-        { sourceMessageId: messageId, source: 'chat' }
+        { sourceMessageId: messageId, sourceThreadId, source: 'chat' }
       );
       saved++;
     }

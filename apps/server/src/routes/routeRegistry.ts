@@ -61,6 +61,7 @@ import { integrationsRouter } from './integrations';
 import { legalRouter } from './legal';
 import { locationsRouter } from './locations';
 import { projectsRouter } from './projects';
+import { suggestionsRouter } from './suggestions';
 import { entityAuthorityRouter } from './entityAuthority';
 import { memoirRouter } from './memoir';
 import { moodsRouter } from './moods';
@@ -718,6 +719,13 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: true,
     classification: 'CORE_RUNTIME',
     description: 'Projects Book — canonical project entities (mirrors locations authority)',
+  },
+  {
+    path: '/api/suggestions',
+    router: suggestionsRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Cross-book suggestion dismissals — thread-scoped hides and permanent suppression',
   },
   {
     path: '/api/entity-authority',

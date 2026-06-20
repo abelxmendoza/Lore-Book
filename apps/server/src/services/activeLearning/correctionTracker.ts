@@ -9,6 +9,28 @@ import { supabaseAdmin } from '../supabaseClient';
 
 export type CorrectionType = 'entity' | 'sentiment' | 'relationship' | 'extraction';
 
+function isTableMissing(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  const message = String((error as { message?: string })?.message ?? '');
+  return code === 'PGRST205' || /could not find the table/i.test(message);
+}
+
+function syntheticCorrection(userId: string, correction: CorrectionInput): UserCorrection {
+  return {
+    id: `local-correction:${Date.now()}`,
+    user_id: userId,
+    correction_type: correction.correction_type,
+    original_value: correction.original_value,
+    corrected_value: correction.corrected_value,
+    context: correction.context,
+    source_message_id: correction.source_message_id,
+    source_unit_id: correction.source_unit_id,
+    metadata: correction.metadata,
+    created_at: new Date().toISOString(),
+    used_for_training: false,
+  };
+}
+
 export type UserCorrection = {
   id: string;
   user_id: string;
@@ -58,6 +80,10 @@ export class CorrectionTracker {
         .single();
 
       if (error) {
+        if (isTableMissing(error)) {
+          logger.debug({ userId }, 'user_corrections table missing — correction stored in-memory only');
+          return syntheticCorrection(userId, correction);
+        }
         throw error;
       }
 
@@ -80,6 +106,10 @@ export class CorrectionTracker {
         used_for_training: data.used_for_training || false,
       };
     } catch (error) {
+      if (isTableMissing(error)) {
+        logger.debug({ userId }, 'user_corrections unavailable — skipping persisted correction');
+        return syntheticCorrection(userId, correction);
+      }
       logger.error({ error, userId, correction }, 'Failed to record correction');
       throw error;
     }

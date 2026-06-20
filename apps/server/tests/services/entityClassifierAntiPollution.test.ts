@@ -61,13 +61,24 @@ const UNCLASSIFIED_CASES: Case[] = [
   { name: 'Riley Quinn', expectedType: 'UNKNOWN' },
 ];
 
-// Genuine persons — honorific/kinship prefix or person-context predicate.
+// Genuine persons — honorific/kinship prefix with name or person-context predicate.
 const PERSON_CASES: Case[] = [
   { name: 'Tio Ralph', expectedType: 'PERSON' },
   { name: 'Coach Dave', expectedType: 'PERSON' },
   { name: 'Aunt Carol', expectedType: 'PERSON' },
+  { name: 'Professor Kim', expectedType: 'PERSON' },
+  { name: 'Mr. Morten', expectedType: 'PERSON' },
   { name: 'Marcus', context: 'my cousin Marcus came over for dinner', expectedType: 'PERSON' },
   { name: 'Marcus', context: 'Marcus said he would call me back', expectedType: 'PERSON' },
+];
+
+const TITLE_ONLY_UNKNOWN_CASES: Case[] = [
+  { name: 'Professor', expectedType: 'UNKNOWN' },
+  { name: 'Tio', expectedType: 'UNKNOWN' },
+  { name: 'Friend', expectedType: 'UNKNOWN' },
+  { name: 'Promoter', expectedType: 'UNKNOWN' },
+  { name: 'Dad', expectedType: 'UNKNOWN' },
+  { name: 'Coach', expectedType: 'UNKNOWN' },
 ];
 
 // Context promotes a bare noun to a location via locative prepositions.
@@ -90,6 +101,14 @@ describe('entity classifier — anti-pollution', () => {
       const result = classifyEntity(c.name, c.context);
       expect(result.type, `${c.name} → ${result.type} (${result.reason})`).toBe(c.expectedType);
       expect(result.type).not.toBe('PERSON');
+      expect(isCharacterEligible(result.type)).toBe(false);
+    });
+  });
+
+  describe('title-only labels are UNKNOWN, not PERSON', () => {
+    it.each(TITLE_ONLY_UNKNOWN_CASES.map((c) => [c.name, c] as const))('%s', (_n, c) => {
+      const result = classifyEntity(c.name, c.context);
+      expect(result.type, `${c.name} → ${result.type} (${result.reason})`).toBe('UNKNOWN');
       expect(isCharacterEligible(result.type)).toBe(false);
     });
   });

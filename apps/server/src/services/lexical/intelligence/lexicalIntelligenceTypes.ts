@@ -35,6 +35,10 @@ export type EntityType =
   | 'WORK_ACTIVITY'
   | 'WORK_CONTEXT'
   | 'CONFLICT'
+  | 'TITLE_REFERENCE'
+  | 'ROLE_REFERENCE'
+  | 'FAMILY_REFERENCE'
+  | 'UNRESOLVED_PERSON_REFERENCE'
   | 'UNKNOWN';
 
 export type DetectionSource = 'pattern' | 'history' | 'alias' | 'model' | 'correction';
@@ -75,6 +79,8 @@ export type LexicalIntelligenceSpan = {
   patternRegexSource?: string;
   colorKey?: string;
   needsReview?: boolean;
+  /** Title-only / unresolved person reference — not a concrete PERSON entity */
+  needsResolution?: boolean;
 };
 
 export type OverlapResolutionRecord = {

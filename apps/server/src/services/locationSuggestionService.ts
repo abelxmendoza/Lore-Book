@@ -2,18 +2,28 @@
  * Location suggestion service — places mentioned in chat/journal not yet in Places book.
  */
 
+import { isOpenAiCircuitOpen } from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
+import { processPlaceSuggestionsFromCorpus } from './lexical/places/placeSuggestionService';
 import {
-  extractNamedPlacesFromText,
   filterRedundantPlaceSuggestions,
   placeClusterKey,
   pickBestPlaceName,
 } from '../utils/namedPlaceExtractor';
 import { normalizeNameKey } from '../utils/nameNormalization';
-import { collectNameKeys, isNameAlreadyInBook, type BookNameEntry } from '../utils/suggestionBookFilter';
+import { collectNameKeys, resolveBookNameMatch, type BookNameEntryWithId } from '../utils/suggestionBookFilter';
 import { locationSuggestionId } from '../utils/entitySuggestionId';
 import { locationService } from './locationService';
 import { locationNicknameService } from './locationNicknameService';
+import { collectPlaceNamesFromIntelligence } from './lexical/intelligence/episodeLexicalScanner';
+import { enrichSuggestionsWithParserAlternatives } from './lorebook/parser/loreBookSuggestionEnricher';
+import {
+  buildEntityQualityContext,
+  filterQualityCandidates,
+  gateSuggestionCandidate,
+} from './lorebook/quality/entityQualityGateService';
+import type { AlternativeCategory } from './suggestionCrossBookService';
+import { suggestionDismissalService } from './suggestionDismissalService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type LocationSuggestion = {
@@ -26,44 +36,71 @@ export type LocationSuggestion = {
   mentionCount: number;
   confidence: number;
   source: 'chat_detect' | 'metadata';
+  status?: 'known' | 'new' | 'needs_review' | 'rejected';
+  privacySensitive?: boolean;
+  ownerDisplayName?: string;
+  rejectionReason?: string;
+  match_status?: 'new' | 'similar' | 'existing';
+  matched_book_id?: string | null;
+  matched_book_name?: string | null;
+  alternative_categories?: AlternativeCategory[];
 };
 
 class LocationSuggestionService {
-  private async buildLocationBookIndex(userId: string): Promise<{ exactKeys: Set<string>; entries: BookNameEntry[] }> {
+  private async buildLocationBookIndex(userId: string): Promise<{
+    exactKeys: Set<string>;
+    entries: BookNameEntryWithId[];
+  }> {
     const allNames: string[] = [];
+    const bookRows: Array<{ id?: string; names: string[] }> = [];
 
     const [profiles, { data: canonical }, { data: peoplePlaces }] = await Promise.all([
       locationService.listLocations(userId),
-      supabaseAdmin.from('locations').select('name, normalized_name, metadata').eq('user_id', userId),
+      supabaseAdmin.from('locations').select('id, name, normalized_name, metadata').eq('user_id', userId),
       supabaseAdmin
         .from('people_places')
-        .select('name, type')
+        .select('id, name, type')
         .eq('user_id', userId)
         .in('type', ['place', 'location']),
     ]);
 
     for (const p of profiles) {
       allNames.push(p.name);
+      bookRows.push({ id: p.id, names: [p.name] });
     }
 
     for (const loc of canonical ?? []) {
-      allNames.push(loc.name);
+      const names = [loc.name];
       if (typeof loc.normalized_name === 'string' && loc.normalized_name.trim()) {
-        allNames.push(loc.normalized_name);
+        names.push(loc.normalized_name);
       }
       const aliases = (loc.metadata as Record<string, unknown> | null)?.aliases;
       if (Array.isArray(aliases)) {
         for (const alias of aliases) {
-          if (typeof alias === 'string') allNames.push(alias);
+          if (typeof alias === 'string') names.push(alias);
         }
       }
+      allNames.push(...names);
+      bookRows.push({ id: loc.id, names });
     }
 
     for (const pp of peoplePlaces ?? []) {
-      if (typeof pp.name === 'string') allNames.push(pp.name);
+      if (typeof pp.name === 'string') {
+        allNames.push(pp.name);
+        bookRows.push({ id: pp.id, names: [pp.name] });
+      }
     }
 
-    return collectNameKeys(allNames);
+    const { exactKeys } = collectNameKeys(allNames);
+    const entries: BookNameEntryWithId[] = bookRows.flatMap((row) =>
+      row.names.map((label) => ({
+        norm: normalizeNameKey(label),
+        label: label.trim(),
+        id: row.id,
+      }))
+    ).filter((e) => e.norm.length >= 2);
+
+    return { exactKeys, entries };
   }
 
   private consolidateSuggestions(suggestions: LocationSuggestion[]): LocationSuggestion[] {
@@ -88,54 +125,112 @@ class LocationSuggestionService {
     });
   }
 
-  async getSuggestions(userId: string): Promise<LocationSuggestion[]> {
+  async getSuggestions(
+    userId: string,
+    options?: { skipAi?: boolean; rescan?: boolean }
+  ): Promise<LocationSuggestion[]> {
+    const qualityCtx = await buildEntityQualityContext(userId);
     const suggestions: LocationSuggestion[] = [];
     const seen = new Set<string>();
 
     const { exactKeys: bookExact, entries: bookEntries } = await this.buildLocationBookIndex(userId);
+    const knownPlaces = new Set<string>([...bookExact, ...bookEntries.map((e) => e.label)]);
 
-    const add = (s: Omit<LocationSuggestion, 'id'>) => {
-      const key = normalizeNameKey(s.name);
+    const add = (s: Omit<LocationSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'>) => {
+      if (s.status === 'rejected') return;
+      const evidence = s.context ?? s.description ?? '';
+      const gated = gateSuggestionCandidate(s.name, 'locations', evidence, {
+        ...qualityCtx,
+        knownInBook: knownPlaces,
+      });
+      if (!gated) return;
+
+      const safeName = gated.name;
+      const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || seen.has(key)) return;
-      if (isNameAlreadyInBook(s.name, bookExact, bookEntries)) return;
+      const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
+      if (match.status === 'existing') return;
       seen.add(key);
-      suggestions.push({ ...s, id: locationSuggestionId(s) });
+
+      const needsReview =
+        gated.verdict.requiresReview ||
+        gated.verdict.gate === 'review' ||
+        s.status === 'needs_review' ||
+        s.privacySensitive;
+
+      suggestions.push({
+        ...s,
+        name: safeName,
+        id: locationSuggestionId({ ...s, name: safeName }),
+        match_status: match.status,
+        matched_book_id: match.matchedId ?? null,
+        matched_book_name: match.matchedName ?? null,
+        status: needsReview ? 'needs_review' : s.status,
+        privacySensitive:
+          s.privacySensitive ||
+          gated.verdict.rejectionReason === 'private_residence' ||
+          gated.verdict.rejectionReason === 'exact_street_address',
+      });
     };
 
     try {
       const combined = await this.loadRecentText(userId);
       if (combined.trim()) {
-        // Phase 1: named / anchor places from raw text (Abuela's House, Costco)
-        const named = extractNamedPlacesFromText(combined);
-        for (const place of named) {
+        // Phase 1: boundary-aware place pipeline (replaces raw namedPlaceExtractor)
+        const lines = combined.split(/\n+/).map(l => l.trim()).filter(Boolean);
+        const bounded = processPlaceSuggestionsFromCorpus(lines, { knownPlaces });
+        for (const place of bounded) {
           add({
-            name: place.name,
-            type: place.type,
-            description: place.context,
-            context: place.context,
-            mentionCount: place.mentionCount,
-            confidence: place.isNamed ? 0.88 : 0.72,
+            name: place.text,
+            type: place.placeType,
+            description: place.evidencePhrases[0],
+            context: place.evidencePhrases[0],
+            mentionCount: 1,
+            confidence: place.confidence,
             source: 'chat_detect',
+            status: place.status,
+            privacySensitive: place.privacySensitive,
+            ownerDisplayName: place.ownerDisplayName,
           });
         }
 
-        // Phase 2: only truly unnamed places — one line at a time to avoid cross-message noise
-        const lines = combined.split(/\n+/).map(l => l.trim()).filter(l => l.length > 12);
-        for (const line of lines.slice(0, 30)) {
-          const unnamed = await locationNicknameService.detectAndGenerateNicknames(userId, line, [], {
-            suggestionsMode: true,
-          });
-          for (const loc of unnamed) {
+        // Phase 1b: lexical intelligence place spans
+        for (const line of lines) {
+          if (line.length < 6) continue;
+          for (const placeName of collectPlaceNamesFromIntelligence(line, userId)) {
             add({
-              name: loc.name,
-              type: loc.type,
-              description: loc.description,
-              context: loc.context,
-              associatedWith: loc.associatedWith,
+              name: placeName,
+              type: 'place',
+              context: line.slice(0, 120),
               mentionCount: 1,
-              confidence: 0.62,
+              confidence: 0.68,
               source: 'chat_detect',
+              status: 'new',
             });
+          }
+        }
+
+        // Phase 2: AI for unnamed places — skip when circuit open or explicitly disabled
+        const skipAi = options?.skipAi === true || isOpenAiCircuitOpen();
+        if (!skipAi) {
+          const lines = combined.split(/\n+/).map(l => l.trim()).filter(l => l.length > 12);
+          for (const line of lines.slice(0, 5)) {
+            const unnamed = await locationNicknameService.detectAndGenerateNicknames(userId, line, [], {
+              suggestionsMode: true,
+            });
+            if (isOpenAiCircuitOpen()) break;
+            for (const loc of unnamed) {
+              add({
+                name: loc.name,
+                type: loc.type,
+                description: loc.description,
+                context: loc.context,
+                associatedWith: loc.associatedWith,
+                mentionCount: 1,
+                confidence: 0.62,
+                source: 'chat_detect',
+              });
+            }
           }
         }
       }
@@ -167,9 +262,44 @@ class LocationSuggestionService {
       logger.warn({ err, userId }, 'Location suggestions failed');
     }
 
-    return filterRedundantPlaceSuggestions(this.consolidateSuggestions(suggestions))
-      .sort((a, b) => (b.confidence - a.confidence) || (b.mentionCount - a.mentionCount))
-      .slice(0, 12);
+    const filtered = await suggestionDismissalService.filterNames(
+      userId,
+      'locations',
+      filterRedundantPlaceSuggestions(this.consolidateSuggestions(suggestions))
+        .sort((a, b) => (b.confidence - a.confidence) || (b.mentionCount - a.mentionCount))
+        .slice(0, 12),
+      (s) => s.name
+    );
+
+    const gated = filterQualityCandidates('locations', filtered, {
+      ...qualityCtx,
+      knownInBook: knownPlaces,
+      getEvidence: (s) => s.context ?? s.description,
+      enrich: (item, verdict) => ({
+        ...item,
+        status:
+          verdict.requiresReview || verdict.gate === 'review' || item.status === 'needs_review'
+            ? 'needs_review'
+            : item.status,
+        privacySensitive:
+          item.privacySensitive ||
+          verdict.rejectionReason === 'private_residence' ||
+          verdict.rejectionReason === 'exact_street_address',
+      }),
+    });
+
+    return enrichSuggestionsWithParserAlternatives(
+      userId,
+      'locations',
+      gated,
+      (s) => s.name,
+      (s) => s.context ?? s.description
+    );
+  }
+
+  /** Force a full corpus rescan with lexical intelligence + place pipeline. */
+  async rescanFromCorpus(userId: string): Promise<LocationSuggestion[]> {
+    return this.getSuggestions(userId, { rescan: true, skipAi: isOpenAiCircuitOpen() });
   }
 
   async acceptSuggestion(

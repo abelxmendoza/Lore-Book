@@ -17,6 +17,7 @@ import {
 import { skillService, type SkillCategory } from './skillService';
 import { skillDetailsExtractionService } from './skillDetailsExtractionService';
 import { skillSuggestionService } from './skillSuggestionService';
+import { suggestionDismissalService } from '../suggestionDismissalService';
 
 export type ExtractedSkill = ExtractedSkillProfile;
 
@@ -163,10 +164,12 @@ class SkillExtractionService {
     const have = new Set(existing.map((s) => s.skill_name.toLowerCase()));
 
     let saved = 0;
+    const sourceThreadId = await suggestionDismissalService.resolveThreadIdFromMessageId(messageId);
     for (const skill of extracted) {
       if (have.has(skill.skill_name.toLowerCase())) continue;
       await skillSuggestionService.upsertFromExtraction(userId, skill, {
         sourceMessageId: messageId,
+        sourceThreadId,
         source: 'chat',
       });
       saved++;

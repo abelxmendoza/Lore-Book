@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
+import { loreBookParseLimit } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { generateReturnGreeting } from '../services/chat/returnGreetingService';
 import { DRAFT_THREAD_TITLE } from '../utils/threadTitleUtils';
@@ -327,6 +328,106 @@ router.delete(
       .in('id', emptyIds);
 
     res.json({ success: true, deleted: emptyIds.length });
+  })
+);
+
+/**
+ * POST /api/conversation/suggestion-rescan
+ * Re-run lexical intelligence + entity detection across chat/journal for suggestion domains.
+ */
+router.post(
+  '/suggestion-rescan',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      domains: z
+        .array(
+          z.enum(['characters', 'quests', 'skills', 'projects', 'locations', 'romantic'])
+        )
+        .min(1)
+        .max(6),
+    });
+    const body = schema.parse(req.body);
+    const { conversationSuggestionRescanService } = await import(
+      '../services/conversationSuggestionRescanService'
+    );
+    const summary = await conversationSuggestionRescanService.rescan(userId, body.domains);
+    res.json({ success: true, summary });
+  })
+);
+
+/**
+ * POST /api/conversation/lorebook-parse
+ * Read-only LoreBook parse for live composer — maps lexical spans to book operations.
+ */
+router.post(
+  '/lorebook-parse',
+  loreBookParseLimit,
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      text: z.string().min(1).max(50_000),
+      threadId: z.string().uuid().optional(),
+      messageId: z.string().uuid().optional(),
+    });
+    const body = schema.parse(req.body);
+
+    const { parseLoreBookTextForUser } = await import('../services/lorebook/parser/loreBookParseEngine');
+    const result = await parseLoreBookTextForUser(userId, body.text, {
+      threadId: body.threadId,
+      messageId: body.messageId,
+    });
+
+    res.json({
+      operations: result.operations,
+      redirects: result.redirects,
+      suppressed: result.suppressed,
+      warnings: result.warnings,
+      lexicalSpanCount: result.lexicalSpans.length,
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/suggestion-reclassify
+ * User redirects a suggestion to a different LoreBook category (training signal).
+ */
+router.post(
+  '/suggestion-reclassify',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      name: z.string().trim().min(1).max(200),
+      from_domain: z.enum(['characters', 'locations', 'skills', 'projects', 'quests', 'organizations', 'groups']),
+      to_domain: z.enum(['characters', 'locations', 'skills', 'projects', 'quests', 'organizations', 'groups']),
+      suggestion_id: z.string().uuid().optional(),
+      context: z.string().max(2000).optional(),
+      evidence: z.string().max(2000).optional(),
+      description: z.string().max(2000).optional(),
+      quest_type: z.string().optional(),
+      skill_category: z.string().optional(),
+      project_type: z.string().optional(),
+      location_type: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+    const { suggestionReclassifyService } = await import('../services/suggestionReclassifyService');
+    const result = await suggestionReclassifyService.reclassify(userId, {
+      name: body.name,
+      fromDomain: body.from_domain,
+      toDomain: body.to_domain,
+      suggestionId: body.suggestion_id,
+      context: body.context,
+      evidence: body.evidence,
+      description: body.description,
+      questType: body.quest_type,
+      skillCategory: body.skill_category,
+      projectType: body.project_type,
+      locationType: body.location_type,
+    });
+    res.json(result);
   })
 );
 

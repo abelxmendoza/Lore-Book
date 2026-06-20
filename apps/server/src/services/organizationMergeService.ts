@@ -7,6 +7,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
 
@@ -250,6 +251,20 @@ class OrganizationMergeService {
       })
       .eq('id', primaryId)
       .eq('user_id', userId);
+
+    if (report.merged_ids.length > 0) {
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: primaryId,
+        entityType: 'organization',
+        mutationType: 'ENTITY_MERGED',
+        previousValue: { merged_ids: report.merged_ids },
+        newValue: { id: primaryId, canonical_name: primary.name, aliases: [...aliases].filter(a => a && a !== primary.name) },
+        reason: `Merged ${report.merged_ids.length} organization(s) into "${primary.name}"`,
+        source: 'USER',
+        metadata: { primaryId, mergedIds: report.merged_ids },
+      });
+    }
 
     logger.info({ userId, ...report }, 'Merged organizations');
     return report;

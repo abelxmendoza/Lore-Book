@@ -18,6 +18,8 @@
  */
 
 import { logger } from '../logger';
+
+import { identityLedgerService } from './identity/identityLedgerService';
 import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { omegaMemoryService } from './omegaMemoryService';
@@ -282,6 +284,19 @@ class CharacterMergeService {
       afterState: { merged_into: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       rationale: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
     }).catch((err) => logger.warn({ err, userId, sourceId, targetId }, '[CharacterMerge] cognition_mutations write failed'));
+
+    // Identity Ledger — the merge survivor (target) absorbs the source identity.
+    void identityLedgerService.recordMutation({
+      userId,
+      entityId: targetId,
+      entityType: 'character',
+      mutationType: 'ENTITY_MERGED',
+      previousValue: { id: sourceId, name: source.name, aliases: source.alias ?? [] },
+      newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
+      reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      source: opts.mergedBy ?? 'USER',
+      metadata: { sourceId, targetId },
+    });
 
     logger.info({ userId, ...report }, '[CharacterMerge] merge complete');
     return report;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { normalizeNameKey } from './nameNormalization';
-import { collectNameKeys, isNameAlreadyInBook } from './suggestionBookFilter';
+import { collectNameKeys, isNameAlreadyInBook, resolveBookNameMatch } from './suggestionBookFilter';
 
 describe('suggestionBookFilter', () => {
   it('matches exact and alias names', () => {
@@ -18,5 +18,13 @@ describe('suggestionBookFilter', () => {
   it('does not suggest names not in the book', () => {
     const { exactKeys, entries } = collectNameKeys(['Maya']);
     expect(isNameAlreadyInBook('Jordan Lee', exactKeys, entries)).toBe(false);
+  });
+
+  it('classifies exact matches as existing and containment as similar', () => {
+    const { exactKeys, entries } = collectNameKeys(['Dana', 'Maya Chen']);
+    expect(resolveBookNameMatch('Dana', exactKeys, entries).status).toBe('existing');
+    expect(resolveBookNameMatch('Maya Chen', exactKeys, entries).status).toBe('existing');
+    expect(resolveBookNameMatch('Dana Onboarding', exactKeys, entries).status).toBe('similar');
+    expect(resolveBookNameMatch('Jordan Lee', exactKeys, entries).status).toBe('new');
   });
 });

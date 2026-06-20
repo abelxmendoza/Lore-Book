@@ -14,6 +14,7 @@ import { characterAuthorityService } from './characterAuthorityService';
 import { characterRestoreService } from './characterRestoreService';
 import { selfCharacterService } from './selfCharacterService';
 import { discoverEntities } from './ontology/lexicalIntelligence';
+import { collectPersonNamesFromIntelligence } from './lexical/intelligence/episodeLexicalScanner';
 import { extractLexicalEntities } from './lexical/lexicalEntityExtractor';
 import { expandEntityCandidates } from './kinship/multiEntitySplitter';
 import { extractKinshipMentions } from './kinship/kinshipGlossary';
@@ -35,7 +36,7 @@ type EpisodeRow = { source: 'journal' | 'chat'; id: string; text: string };
 
 const JUNK = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'someone', 'somebody', 'the', 'a', 'an']);
 
-function collectPersonMentions(text: string): string[] {
+function collectPersonMentions(text: string, userId?: string): string[] {
   const names = new Set<string>();
   const add = (raw: string) => {
     const name = raw.trim().replace(/\s+/g, ' ');
@@ -47,6 +48,10 @@ function collectPersonMentions(text: string): string[] {
     if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) return;
     names.add(name);
   };
+
+  for (const name of collectPersonNamesFromIntelligence(text, userId)) {
+    add(name);
+  }
 
   for (const discovered of discoverEntities(text)) {
     if (discovered.domain === 'PERSON') add(discovered.name);
@@ -113,7 +118,7 @@ class CharacterConversationRescanService {
     const mentionCounts = new Map<string, number>();
 
     for (const episode of episodes) {
-      for (const name of collectPersonMentions(episode.text)) {
+      for (const name of collectPersonMentions(episode.text, userId)) {
         const key = normalizeNameKey(name);
         mentionCounts.set(key, (mentionCounts.get(key) ?? 0) + 1);
       }
@@ -124,7 +129,7 @@ class CharacterConversationRescanService {
       .slice(0, 250)
       .map(([key]) => {
         for (const episode of episodes) {
-          for (const name of collectPersonMentions(episode.text)) {
+          for (const name of collectPersonMentions(episode.text, userId)) {
             if (normalizeNameKey(name) === key) return name;
           }
         }

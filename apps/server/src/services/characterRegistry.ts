@@ -24,6 +24,7 @@
  */
 
 import { logger } from '../logger';
+import { identityLedgerService } from './identity/identityLedgerService';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive, splitPersonName } from '../utils/nameNormalization';
 import {
@@ -46,9 +47,14 @@ import {
   isEntityResolutionShadowEnabled,
 } from './entities/entityResolutionConfig';
 import { resolveMention, type ResolutionContext } from './entities/entityResolutionCore';
+import {
+  buildDisplayTitleFromMention,
+  shouldAllowCharacterCreation,
+} from './identity/dynamicCharacterTitleService';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
+import { isUserRejectedEntityCard } from './entityRejectionRegistry';
 import { supabaseAdmin } from './supabaseClient';
 
 // Pronouns/contractions/generics the extractors keep emitting as "people".
@@ -187,8 +193,17 @@ class CharacterRegistry {
     if (!gate.ok) return { action: 'reject', reason: gate.reason };
     const cleanName = gate.parts ? gate.parts[0] : gate.cleanName;
 
+    const titleBuild = buildDisplayTitleFromMention('pending', { text: rawName });
+    if (!shouldAllowCharacterCreation(titleBuild)) {
+      return { action: 'reject', reason: 'bare_title_without_context' };
+    }
+
     if (await this.isKnownNonPerson(userId, cleanName)) {
       return { action: 'reject', reason: 'known_location_or_org' };
+    }
+
+    if (await isUserRejectedEntityCard(userId, cleanName)) {
+      return { action: 'reject', reason: 'user_deleted_entity_card' };
     }
 
     const authorityHit = await characterAuthorityService.resolveByName(userId, cleanName);
@@ -662,6 +677,15 @@ class CharacterRegistry {
         avatar_url: avatarUrl,
         metadata: { generated_by: 'user_clarification', generated_at: now, mention_count: 1 },
       });
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: createdCharacterId,
+        entityType: 'character',
+        mutationType: 'ENTITY_CREATED',
+        newValue: { name: displayName, aliases: displayName !== mention ? [mention] : [] },
+        reason: 'Created from user clarification',
+        source: 'USER',
+      });
     }
     // "Not the same person" memory — but only for materially different names
     // ("Kel" ≠ Dana). For same-first-name people the ambiguity is real on
@@ -725,6 +749,15 @@ class CharacterRegistry {
         .update({ metadata: { ...(data.metadata ?? {}), distinct_from_mentions: [...distinct, mentionLower] } })
         .eq('id', id)
         .eq('user_id', userId);
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: id,
+        entityType: 'character',
+        mutationType: 'MERGE_REJECTED',
+        newValue: { distinct_from_mention: mentionLower },
+        reason: `User confirmed "${mention}" is a different person`,
+        source: 'USER',
+      });
     }
   }
 }

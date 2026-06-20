@@ -12,3 +12,5 @@ export { scoreLexicalConfidence } from './lexicalConfidenceScorer';
 export { buildOntologyCandidates, buildMemoryCandidates } from './lexicalCandidateBuilder';
 export { processLexicalMemoryCandidates } from './lexicalMemoryBridge';
 export { lexicalAnalyzerService } from './lexicalAnalyzerService';
+export * from './places';
+export * from './projects';

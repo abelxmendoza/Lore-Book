@@ -4,6 +4,14 @@ import { supabaseAdmin } from '../supabaseClient';
 import { projectService } from '../projectService';
 
 import { projectExtractor, type ExtractedProject } from './projectExtractor';
+import {
+  buildCrossBookIndexForUser,
+  canonicalProjectKey,
+  isRejectedProjectSuggestionName,
+  type ProjectSuggestionOptions,
+} from '../lexical/projects';
+import { suggestionDismissalService } from '../suggestionDismissalService';
+import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
 
 export type ProjectSuggestionRow = {
   id: string;
@@ -36,7 +44,18 @@ function isTableMissing(error: unknown): boolean {
 }
 
 function normalizeProjectName(name: string): string {
-  return normalizeNameKey(name);
+  return canonicalProjectKey(name);
+}
+
+function buildFilterOptions(
+  index: ProjectIndex,
+  crossBook?: ProjectSuggestionOptions['crossBook']
+): ProjectSuggestionOptions {
+  return {
+    knownProjects: new Set(index.all.map(p => p.name)),
+    knownProjectIds: new Map(index.all.map(p => [canonicalProjectKey(p.name), p.id])),
+    crossBook,
+  };
 }
 
 type MatchResult = {
@@ -82,21 +101,56 @@ class ProjectSuggestionService {
     return { match_status: 'new', matched_project_id: null, matched_project_name: null };
   }
 
-  private toSuggestionPayload(
+  private async toSuggestionPayload(
     userId: string,
     extracted: ExtractedProject,
     index: ProjectIndex,
-    opts: { sourceMessageId?: string; source?: 'chat' | 'journal' | 'llm_scan' }
+    opts: {
+      sourceMessageId?: string;
+      sourceThreadId?: string | null;
+      source?: 'chat' | 'journal' | 'llm_scan';
+    },
+    filterOptions: ProjectSuggestionOptions
   ) {
     const name = extracted.name?.trim();
     if (!name || extracted.confidence < 0.45) return null;
+    const evidenceLine = extracted.evidence?.[0] ?? name;
+    const evidenceText = typeof evidenceLine === 'string' ? evidenceLine : name;
+    if (isRejectedProjectSuggestionName(name, filterOptions, evidenceText)) {
+      return null;
+    }
 
-    const match = this.resolveMatch(name, index);
-    const normalized = normalizeProjectName(name);
+    const quality = evaluateEntityQuality(
+      {
+        name,
+        domain: 'projects',
+        contextText: evidenceText,
+        evidence: evidenceText,
+        confidence: extracted.confidence,
+        sourceMessageId: opts.sourceMessageId,
+        sourceThreadId: opts.sourceThreadId ?? undefined,
+      },
+      {
+        crossBook: filterOptions.crossBook,
+        knownInBook: filterOptions.knownProjects,
+        knownInBookIds: filterOptions.knownProjectIds,
+      }
+    );
+    if (!passesEntityQualityGate(quality)) return null;
+    const safeName = resolveDisplayName({ name, domain: 'projects' }, quality);
+
+    const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'projects', name, {
+      sourceMessageId: opts.sourceMessageId,
+      threadId: opts.sourceThreadId,
+    });
+    if (suppressed.suppressed) return null;
+
+    const match = this.resolveMatch(safeName, index);
+    const normalized = normalizeProjectName(safeName);
 
     return {
       user_id: userId,
-      name,
+      name: safeName,
       normalized_name: normalized,
       description: extracted.description ?? null,
       project_type: extracted.type ?? 'project',
@@ -116,10 +170,18 @@ class ProjectSuggestionService {
   async upsertFromExtraction(
     userId: string,
     extracted: ExtractedProject,
-    opts: { sourceMessageId?: string; source?: 'chat' | 'journal' | 'llm_scan' } = {}
+    opts: {
+      sourceMessageId?: string;
+      sourceThreadId?: string | null;
+      source?: 'chat' | 'journal' | 'llm_scan';
+    } = {}
   ): Promise<void> {
-    const index = await this.getProjectIndex(userId);
-    const payload = this.toSuggestionPayload(userId, extracted, index, opts);
+    const [index, crossBook] = await Promise.all([
+      this.getProjectIndex(userId),
+      buildCrossBookIndexForUser(userId).catch(() => undefined),
+    ]);
+    const filterOptions = buildFilterOptions(index, crossBook);
+    const payload = await this.toSuggestionPayload(userId, extracted, index, opts, filterOptions);
     if (!payload) return;
 
     const { error } = await supabaseAdmin
@@ -134,13 +196,23 @@ class ProjectSuggestionService {
   async upsertManyFromExtraction(
     userId: string,
     extractedList: ExtractedProject[],
-    opts: { sourceMessageId?: string; source?: 'chat' | 'journal' | 'llm_scan' } = {}
+    opts: {
+      sourceMessageId?: string;
+      sourceThreadId?: string | null;
+      source?: 'chat' | 'journal' | 'llm_scan';
+    } = {}
   ): Promise<number> {
     if (extractedList.length === 0) return 0;
-    const index = await this.getProjectIndex(userId);
-    const payloads = extractedList
-      .map((extracted) => this.toSuggestionPayload(userId, extracted, index, opts))
-      .filter((payload): payload is NonNullable<typeof payload> => payload !== null);
+    const [index, crossBook] = await Promise.all([
+      this.getProjectIndex(userId),
+      buildCrossBookIndexForUser(userId).catch(() => undefined),
+    ]);
+    const filterOptions = buildFilterOptions(index, crossBook);
+    const payloads = (
+      await Promise.all(
+        extractedList.map((extracted) => this.toSuggestionPayload(userId, extracted, index, opts, filterOptions))
+      )
+    ).filter((payload): payload is NonNullable<typeof payload> => payload !== null);
     if (payloads.length === 0) return 0;
 
     const { error } = await supabaseAdmin
@@ -169,9 +241,23 @@ class ProjectSuggestionService {
       return [];
     }
 
-    const projectIndex = await this.getProjectIndex(userId);
+    const [projectIndex, crossBook] = await Promise.all([
+      this.getProjectIndex(userId),
+      buildCrossBookIndexForUser(userId).catch(() => undefined),
+    ]);
+    const filterOptions = buildFilterOptions(projectIndex, crossBook);
 
-    return (data ?? []).map((row) => {
+    const filteredRows = [];
+    for (const row of data ?? []) {
+      if (isRejectedProjectSuggestionName(row.name, filterOptions, row.reasoning ?? row.name)) continue;
+      const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'projects', row.name, {
+        sourceMessageId: row.source_message_id,
+      });
+      if (suppressed.suppressed) continue;
+      filteredRows.push(row);
+    }
+
+    return filteredRows.map((row) => {
       let match_status = (row.match_status ?? 'new') as ProjectSuggestionRow['match_status'];
       let matched_project_id = row.matched_project_id as string | null;
       let matched_project_name: string | null = null;
@@ -221,44 +307,84 @@ class ProjectSuggestionService {
     return (count ?? 0) > 0;
   }
 
-  async rejectSuggestion(userId: string, suggestionId: string): Promise<void> {
-    await supabaseAdmin
+  async rejectSuggestion(
+    userId: string,
+    suggestionId: string,
+    opts?: { threadId?: string | null }
+  ) {
+    const { data: row } = await supabaseAdmin
       .from('project_suggestions')
-      .update({ status_row: 'rejected', updated_at: new Date().toISOString() })
+      .select('id, name, source_message_id')
       .eq('user_id', userId)
-      .eq('id', suggestionId);
+      .eq('id', suggestionId)
+      .maybeSingle();
+
+    if (!row?.name) return null;
+
+    const result = await suggestionDismissalService.recordDismissal(userId, 'projects', {
+      name: row.name,
+      sourceMessageId: row.source_message_id,
+      sourceSuggestionId: suggestionId,
+      threadId: opts?.threadId,
+    });
+
+    if (result.isPermanent) {
+      await supabaseAdmin
+        .from('project_suggestions')
+        .update({ status_row: 'rejected', updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('id', suggestionId);
+      return result;
+    }
+
+    await supabaseAdmin.from('project_suggestions').delete().eq('user_id', userId).eq('id', suggestionId);
+    return result;
   }
 
-  async rejectByName(userId: string, name: string): Promise<void> {
+  async rejectByName(
+    userId: string,
+    name: string,
+    opts?: { threadId?: string | null; sourceMessageId?: string | null; suggestionId?: string }
+  ) {
     const key = normalizeProjectName(name);
     const updateTime = new Date().toISOString();
-    const { data: updatedRows, error: updateError } = await supabaseAdmin
+
+    const { data: existing } = await supabaseAdmin
       .from('project_suggestions')
-      .update({ status_row: 'rejected', updated_at: updateTime })
+      .select('id, name, source_message_id')
       .eq('user_id', userId)
       .eq('normalized_name', key)
-      .eq('status_row', 'pending')
-      .select('id')
-      .limit(1);
-    if (updateError && !isTableMissing(updateError)) {
-      logger.debug({ error: updateError, userId, name }, 'rejectByName update failed');
-    }
-    if ((updatedRows ?? []).length > 0) return;
+      .maybeSingle();
 
-    const { error } = await supabaseAdmin.from('project_suggestions').upsert(
-      {
-        user_id: userId,
-        name: name.trim(),
-        normalized_name: key,
-        status_row: 'rejected',
-        confidence: 0,
-        updated_at: updateTime,
-      },
-      { onConflict: 'user_id,normalized_name' }
-    );
-    if (error && !isTableMissing(error)) {
-      logger.debug({ error, userId, name }, 'rejectByName upsert failed');
+    const result = await suggestionDismissalService.recordDismissal(userId, 'projects', {
+      name,
+      sourceMessageId: opts?.sourceMessageId ?? existing?.source_message_id,
+      sourceSuggestionId: opts?.suggestionId ?? existing?.id,
+      threadId: opts?.threadId,
+    });
+
+    if (result.isPermanent) {
+      const { error } = await supabaseAdmin.from('project_suggestions').upsert(
+        {
+          user_id: userId,
+          name: name.trim(),
+          normalized_name: key,
+          status_row: 'rejected',
+          confidence: 0,
+          updated_at: updateTime,
+        },
+        { onConflict: 'user_id,normalized_name' }
+      );
+      if (error && !isTableMissing(error)) {
+        logger.debug({ error, userId, name }, 'rejectByName permanent upsert failed');
+      }
+      return result;
     }
+
+    if (existing?.id) {
+      await supabaseAdmin.from('project_suggestions').delete().eq('user_id', userId).eq('id', existing.id);
+    }
+    return result;
   }
 
   async materializeProject(userId: string, input: MaterializeProjectInput) {
@@ -337,12 +463,13 @@ class ProjectSuggestionService {
     content: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<number> {
+    const sourceThreadId = await suggestionDismissalService.resolveThreadIdFromMessageId(messageId);
     const extracted = await projectExtractor.extractProjectsFromMessage(userId, content, conversationHistory);
     if (extracted.length === 0) return 0;
     return this.upsertManyFromExtraction(
       userId,
       extracted,
-      { sourceMessageId: messageId, source: 'chat' }
+      { sourceMessageId: messageId, sourceThreadId, source: 'chat' }
     );
   }
 

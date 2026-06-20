@@ -851,8 +851,27 @@ export class OrganizationService {
   /**
    * Delete an organization (cascades to members, stories, events, locations via FK)
    */
-  async deleteOrganization(userId: string, organizationId: string): Promise<void> {
+  async deleteOrganization(userId: string, organizationId: string, reason?: string): Promise<void> {
     try {
+      const { data: org } = await supabaseAdmin
+        .from('organizations')
+        .select('id, name, metadata')
+        .eq('id', organizationId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (org) {
+        const { entityDeletionRecoveryService } = await import('./entityDeletionRecoveryService');
+        await entityDeletionRecoveryService.runBeforeDelete(userId, {
+          entityType: 'organization',
+          entityId: org.id as string,
+          name: org.name as string,
+          metadata: (org.metadata as Record<string, unknown> | null) ?? {},
+          reason: reason ?? 'user_deleted_organization_from_ui',
+          mode: 'permanent',
+        });
+      }
+
       const { error } = await supabaseAdmin
         .from('organizations')
         .delete()

@@ -5,8 +5,11 @@ import { config } from '../config';
 import { openai } from '../lib/openai';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../logger';
+import { guardOpenAiRoute } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { checkAiRequestLimit } from '../middleware/subscription';
 import { onboardingService } from '../services/onboardingService';
+import { incrementAiRequestCount } from '../services/usageTracking';
 
 const router = Router();
 
@@ -36,11 +39,11 @@ router.get('/briefing', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 const analyzeUserSchema = z.object({
-  description: z.string().min(1),
+  description: z.string().min(1).max(10_000),
 });
 
 const detectPersonasSchema = z.object({
-  content: z.string().min(1),
+  content: z.string().min(1).max(50_000),
 });
 
 const completeSchema = z.object({
@@ -52,7 +55,7 @@ const completeSchema = z.object({
  * POST /api/onboarding/analyze-user
  * Generate a personalized response and detect personas based on user's description of why they're using the app
  */
-router.post('/analyze-user', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/analyze-user', ...guardOpenAiRoute(), requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   const parsed = analyzeUserSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -114,6 +117,10 @@ Be generous with personas - if the description suggests multiple personas, inclu
     // If no personas detected, default to journaler
     const finalPersonas = detectedPersonas.length > 0 ? detectedPersonas : ['journaler'];
 
+    incrementAiRequestCount(req.user!.id).catch((err) =>
+      logger.warn({ err, userId: req.user!.id }, 'Failed to increment AI usage')
+    );
+
     res.json({
       personalizedResponse: result.personalizedResponse || 'Welcome to Lore Book! We\'re excited to help you on your journey.',
       personas: finalPersonas,
@@ -136,7 +143,7 @@ Be generous with personas - if the description suggests multiple personas, inclu
  * POST /api/onboarding/detect-personas
  * Automatically detect which personas apply to the user based on their first memory
  */
-router.post('/detect-personas', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/detect-personas', ...guardOpenAiRoute(), requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   const parsed = detectPersonasSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -192,6 +199,10 @@ Be generous - if content suggests multiple personas, include all of them. Only e
 
     // If no personas detected, default to journaler
     const finalPersonas = detectedPersonas.length > 0 ? detectedPersonas : ['journaler'];
+
+    incrementAiRequestCount(req.user!.id).catch((err) =>
+      logger.warn({ err, userId: req.user!.id }, 'Failed to increment AI usage')
+    );
 
     res.json({
       personas: finalPersonas,

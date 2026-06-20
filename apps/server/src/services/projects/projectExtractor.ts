@@ -3,6 +3,16 @@ import { logger } from '../../logger';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { openai as openaiClient } from '../openaiClient';
 import { lexicalAnalyzerService } from '../lexical';
+import { projectService } from '../projectService';
+import {
+  buildCrossBookIndexForUser,
+  canonicalProjectKey,
+  isRejectedProjectSuggestionName,
+  type ProjectSuggestionOptions,
+  processProjectSuggestionsForOutput,
+  projectSuggestionsToExtracted,
+  weakProjectCandidate,
+} from '../lexical/projects';
 
 export type ExtractedProject = {
   name: string;
@@ -14,14 +24,39 @@ export type ExtractedProject = {
   evidence?: string[];
 };
 
-const PROJECT_CUE_PATTERNS: Array<{ re: RegExp; confidence: number; type?: string }> = [
-  { re: /\b(?:working on|building|developing|creating|launching|shipping)\s+(?:the\s+|my\s+|our\s+|a\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,3})/gi, confidence: 0.82, type: 'software' },
-  { re: /\b(?:my|our)\s+(?:side\s+)?project\s+(?:called\s+)?["']?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.88, type: 'project' },
-  { re: /\bproject\s+(?:called|named)\s+["']?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.9, type: 'project' },
-  { re: /\b(?:app|startup|business)\s+(?:called\s+)?["']?([A-Z][\w'&.-]{1,40})/gi, confidence: 0.85, type: 'software' },
-  { re: /\b(?:designing|prototyping|writing|recording|producing)\s+(?:the\s+|my\s+|our\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.78, type: 'creative' },
-  { re: /\b(lorebook|lore book)\b/gi, confidence: 0.92, type: 'software' },
-];
+function inferActiveThreadProject(
+  message: string,
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+): string | undefined {
+  const corpus = [message, ...(conversationHistory ?? []).map(m => m.content)].join('\n').toLowerCase();
+  if (/\blorebook\b|\blore book\b/.test(corpus)) return 'LoreBook';
+  if (/\bomega-?1\b/.test(corpus)) return 'Omega-1';
+  if (/\bomega-?2\b/.test(corpus)) return 'Omega-2';
+  if (/\babeliciousness\b/.test(corpus)) return 'Abeliciousness';
+  return undefined;
+}
+
+async function buildProjectSuggestionOptions(
+  userId: string,
+  message: string,
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  knownProjectNames: string[] = []
+): Promise<ProjectSuggestionOptions> {
+  const [crossBook, projects] = await Promise.all([
+    buildCrossBookIndexForUser(userId).catch(() => undefined),
+    projectService.listProjects(userId).catch(() => []),
+  ]);
+  const knownProjects = new Set([...knownProjectNames, ...projects.map(p => p.name)]);
+  const knownProjectIds = new Map(
+    projects.map(p => [canonicalProjectKey(p.name), p.id] as const)
+  );
+  return {
+    knownProjects,
+    knownProjectIds,
+    activeThreadProject: inferActiveThreadProject(message, conversationHistory),
+    crossBook,
+  };
+}
 
 const STOP_NAMES = new Set([
   'i', 'me', 'my', 'the', 'a', 'an', 'this', 'that', 'it', 'we', 'our', 'today', 'yesterday',
@@ -79,88 +114,49 @@ function cleanProjectName(raw: string): string | null {
 }
 
 function pushUnique(out: ExtractedProject[], seen: Set<string>, project: ExtractedProject): void {
-  const key = normalizeNameKey(project.name);
+  const key = canonicalProjectKey(project.name);
   if (!key || seen.has(key)) return;
   seen.add(key);
   out.push(project);
 }
 
 /**
- * Fast lexical + cue-based project extraction (no LLM).
+ * Fast lexical + boundary-aware project extraction (no LLM).
  */
-export function extractProjectsLexical(text: string): ExtractedProject[] {
-  const out: ExtractedProject[] = [];
-  const seen = new Set<string>();
+export function extractProjectsLexical(
+  text: string,
+  options?: ProjectSuggestionOptions
+): ExtractedProject[] {
   const trimmed = text.trim();
-  if (trimmed.length < 8) return out;
-  if (!QUICK_PROJECT_SIGNAL.test(trimmed)) return out;
+  if (trimmed.length < 8 || !QUICK_PROJECT_SIGNAL.test(trimmed)) return [];
 
+  const weakCandidates = [];
   const analysis = lexicalAnalyzerService.analyzeMessage({
     userId: 'project-extractor',
     messageId: `project-extract:${normalizeNameKey(trimmed).slice(0, 24) || 'unknown'}`,
     text: trimmed,
   });
 
+  for (const entity of analysis.entities.filter(e => e.type === 'PROJECT')) {
+    weakCandidates.push(
+      weakProjectCandidate(entity.surface, trimmed, Math.min(0.72, entity.confidence * 0.85))
+    );
+  }
+
   const status = inferProjectStatus(trimmed);
+  const pipeline = processProjectSuggestionsForOutput(trimmed, options, weakCandidates);
+  const out: ExtractedProject[] = [];
+  const seen = new Set<string>();
 
-  for (const { re, confidence, type } of PROJECT_CUE_PATTERNS) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(trimmed)) !== null) {
-      const captured = m[1] ?? m[0];
-      const name = cleanProjectName(captured);
-      if (!name) continue;
-      const displayName = name.toLowerCase() === 'lore book' ? 'LoreBook' : name;
-      pushUnique(out, seen, {
-        name: displayName,
-        type: inferProjectType(displayName, trimmed, type),
-        status,
-        confidence,
-        reasoning: 'Detected from project language in your message',
-        evidence: [m[0].trim().slice(0, 120)],
-      });
-    }
-  }
-
-  for (const event of analysis.events) {
-    if (event.kind !== 'project_milestone') continue;
-    const subject = event.subject?.trim();
-    if (subject) {
-      const name = cleanProjectName(subject);
-      if (name) {
-        pushUnique(out, seen, {
-          name,
-          type: inferProjectType(name, trimmed, 'project'),
-          status,
-          confidence: Math.max(0.75, event.confidence),
-          reasoning: 'Project milestone detected in conversation',
-          evidence: [event.cue],
-        });
-      }
-    }
-  }
-
-  for (const entity of analysis.entities.filter((e) => e.type === 'PROJECT')) {
-    const name = cleanProjectName(entity.surface);
-    if (!name) continue;
+  for (const item of projectSuggestionsToExtracted(pipeline)) {
+    if (isRejectedProjectSuggestionName(item.name, options)) continue;
     pushUnique(out, seen, {
-      name,
-      type: inferProjectType(name, trimmed, 'project'),
+      name: item.name,
+      type: item.type ?? inferProjectType(item.name, trimmed),
       status,
-      confidence: entity.confidence,
-      reasoning: 'Initiative detected via lexical intelligence',
-      evidence: [entity.source ?? trimmed.slice(0, 80)],
-    });
-  }
-
-  for (const candidate of analysis.ontologyCandidates) {
-    if (candidate.objectType !== 'EVENT' || candidate.object !== 'project_milestone') continue;
-    pushUnique(out, seen, {
-      name: 'Project milestone',
-      type: 'project',
-      confidence: candidate.confidence,
-      reasoning: 'Project milestone detected in conversation',
-      evidence: [candidate.source],
+      confidence: item.confidence,
+      reasoning: item.reasoning ?? 'Detected from project language in your message',
+      evidence: item.evidence ?? [trimmed.slice(0, 120)],
     });
   }
 
@@ -168,16 +164,17 @@ export function extractProjectsLexical(text: string): ExtractedProject[] {
 }
 
 export class ProjectExtractor {
-  extractFromText(text: string): ExtractedProject[] {
-    return extractProjectsLexical(text);
+  extractFromText(text: string, options?: ProjectSuggestionOptions): ExtractedProject[] {
+    return extractProjectsLexical(text, options);
   }
 
   async extractProjectsFromMessage(
-    _userId: string,
+    userId: string,
     message: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<ExtractedProject[]> {
-    const lexical = extractProjectsLexical(message);
+    const options = await buildProjectSuggestionOptions(userId, message, conversationHistory);
+    const lexical = extractProjectsLexical(message, options);
     if (lexical.length > 0 || message.trim().length < 40) return lexical;
 
     try {
@@ -211,6 +208,7 @@ Only include projects clearly stated. Max 4. Skip generic tasks and one-off chor
       for (const p of projects) {
         const name = cleanProjectName(p.name);
         if (!name || (p.confidence ?? 0.6) < 0.5) continue;
+        if (isRejectedProjectSuggestionName(name, options)) continue;
         pushUnique(lexical, seen, {
           name,
           description: p.description,
@@ -263,6 +261,7 @@ Projects are sustained initiatives (apps, career ramps, training programs, creat
       for (const p of (parsed.projects ?? []) as ExtractedProject[]) {
         const name = cleanProjectName(p.name);
         if (!name || (p.confidence ?? 0.6) < 0.5) continue;
+        if (isRejectedProjectSuggestionName(name)) continue;
         pushUnique(lexicalAll, seen, {
           name,
           description: p.description,

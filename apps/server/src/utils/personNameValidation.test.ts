@@ -23,6 +23,15 @@ describe('personNameValidation', () => {
     expect(isDisplayablePersonName('Jordan Lee')).toBe(true);
   });
 
+  it('rejects title-only labels', () => {
+    expect(isIndividualPersonName('Professor')).toBe(false);
+    expect(isIndividualPersonName('Tio')).toBe(false);
+    expect(isIndividualPersonName('Friend')).toBe(false);
+    expect(isIndividualPersonName('Promoter')).toBe(false);
+    expect(isIndividualPersonName('Professor Kim')).toBe(true);
+    expect(isIndividualPersonName('Tio Ralph')).toBe(true);
+  });
+
   it('rejects collective and group labels', () => {
     expect(isCollectivePersonName('Amazon Engineers')).toBe(true);
     expect(isCollectivePersonName('KForce Recruiters')).toBe(true);

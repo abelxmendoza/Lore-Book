@@ -1,6 +1,10 @@
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
+import {
+  isOpenAiCircuitOpen,
+  isOpenAiCircuitOpenError,
+} from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 
@@ -41,6 +45,10 @@ class LocationNicknameService {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     options?: { suggestionsMode?: boolean }
   ): Promise<LocationWithNickname[]> {
+    if (isOpenAiCircuitOpen()) {
+      return [];
+    }
+
     try {
       // Use AI to detect unnamed locations
       const completion = await openai.chat.completions.create({
@@ -169,7 +177,11 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
 
       return locationsWithNicknames;
     } catch (error) {
-      logger.error({ error, message }, 'Failed to detect and generate location nicknames');
+      if (isOpenAiCircuitOpenError(error)) {
+        logger.debug('Skipping location nickname detection — OpenAI circuit open');
+      } else {
+        logger.warn({ error }, 'Failed to detect and generate location nicknames');
+      }
       return [];
     }
   }

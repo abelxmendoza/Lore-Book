@@ -13,7 +13,7 @@ import { authMiddleware } from './middleware/auth';
 import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
 import { errorHandler } from './middleware/errorHandler';
 import { intrusionDetection } from './middleware/intrusionDetection';
-import { rateLimitMiddleware } from './middleware/rateLimit';
+import { tieredRateLimit } from './middleware/tieredRateLimit';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
@@ -145,7 +145,7 @@ app.use(cors({
 // Stripe webhook: no auth, raw body (must be before express.json())
 app.post(
   '/api/subscription/webhook',
-  rateLimitMiddleware,
+  tieredRateLimit,
   express.raw({ type: 'application/json' }),
   handleStripeWebhook
 );
@@ -156,6 +156,10 @@ app.use(express.urlencoded({ extended: true, limit: isDevelopment ? '50mb' : '1m
 
 // Request ID middleware (must be early in the chain)
 app.use(requestIdMiddleware);
+
+// Global tiered rate limits for every /api route (public + protected). Free in-memory;
+// optional Supabase Postgres via RATE_LIMIT_BACKEND=postgres (no Redis).
+app.use('/api', tieredRateLimit);
 
 // Liveness: GET /api/health first so nothing else can return 500 for it (no auth, no DB)
 const SERVER_START_TIME = Date.now();
@@ -221,7 +225,6 @@ if (isProduction) {
 } else {
   logger.warn('⚠️  Development mode: Some security features are relaxed');
 }
-apiRouter.use(rateLimitMiddleware); // Rate limiting
 apiRouter.use(inputSanitizer); // Input sanitization
 apiRouter.use(secureHeaders); // Additional security headers
 apiRouter.use(auditLogger); // Security audit logging

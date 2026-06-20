@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../logger';
+import { identityLedgerService } from './identity/identityLedgerService';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
 import { supabaseAdmin } from './supabaseClient';
@@ -190,6 +191,18 @@ class LocationMergeService {
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
     }).then(({ error }) => {
       if (error) logger.debug({ error }, '[LocationMerge] merge record insert failed');
+    });
+
+    void identityLedgerService.recordMutation({
+      userId,
+      entityId: targetId,
+      entityType: 'location',
+      mutationType: 'ENTITY_MERGED',
+      previousValue: { id: sourceId, name: source.name },
+      newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
+      reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      source: 'USER',
+      metadata: { sourceId, targetId },
     });
 
     logger.info({ userId, ...report }, '[LocationMerge] merge complete');

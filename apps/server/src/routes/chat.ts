@@ -3,14 +3,15 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { shouldBlockAnonymousAiChat } from '../config/runtimePolicy';
+import { openAiHttpBurstLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { rateLimitMiddleware, createRateLimiter } from '../middleware/rateLimit';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
+import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
 import { messageCorrectionService } from '../services/messageCorrectionService';
 import {
   insertAssistantPlaceholder,
@@ -27,9 +28,6 @@ import {
   listMentionableEntities,
   sanitizeComposerEntities,
 } from '../services/entities/entityMentionIndexService';
-
-// AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
-const aiRateLimit = createRateLimiter(30);
 
 const personaRL = new ChatPersonaRL();
 
@@ -148,12 +146,16 @@ function resolveThreadContext(
 }
 
 function isOpenAIQuotaError(error: unknown): boolean {
-  const text = error instanceof Error ? error.message : String(error);
-  return /429|insufficient_quota|quota exceeded/i.test(text);
+  const err = error as { code?: string; message?: string } | null;
+  const text = err?.message ?? (error instanceof Error ? error.message : String(error));
+  return (
+    err?.code === 'openai_circuit_open' ||
+    /429|insufficient_quota|quota exceeded|circuit breaker open/i.test(text)
+  );
 }
 
 // Streaming endpoint
-router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
   req.socket?.setNoDelay(true);
 
@@ -397,7 +399,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -445,7 +447,7 @@ router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: Aut
 });
 
 // Test OpenAI connection endpoint
-router.get('/test-openai', rateLimitMiddleware, optionalAuth, async (_req: AuthenticatedRequest, res) => {
+router.get('/test-openai', requireDevToolingAccess, openAiHttpLimit, requireAuth, async (_req: AuthenticatedRequest, res) => {
   try {
     const { openai } = await import('../lib/openai');
     const { config } = await import('../config');
@@ -597,6 +599,24 @@ router.get('/memory-feedback/:messageId', requireAuth, async (req: Authenticated
   }
 
   res.json(feedback);
+});
+
+// Long-poll: LoreBook ingest parse notice after a user message (only when seeds applied).
+router.get('/lorebook-notice/:messageId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { messageId } = req.params;
+  const userId = req.user!.id;
+
+  const notice = await loreBookNoticeBus.waitFor(messageId, 8000);
+
+  if (!notice) {
+    return res.status(204).end();
+  }
+
+  if (notice.userId !== userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  res.json(notice);
 });
 
 /**

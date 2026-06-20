@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
 import { config } from '../config';
+import { stripeGuard } from '../lib/externalCircuitBreaker';
 import { logger } from '../logger';
 
 import { supabaseAdmin } from './supabaseClient';
@@ -17,6 +18,10 @@ if (config.stripeSecretKey) {
   stripe = new Stripe(config.stripeSecretKey, {
     apiVersion: '2024-12-18.acacia' as any,
   });
+}
+
+async function withStripe<T>(fn: () => Promise<T>): Promise<T> {
+  return stripeGuard.run(fn);
 }
 
 export type SubscriptionStatus = 'trial' | 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired';
@@ -105,12 +110,14 @@ export async function createCustomer(userId: string, email: string): Promise<str
 
   await ensureSubscriptionRow(userId);
 
-  const customer = await stripe.customers.create({
-    email,
-    metadata: {
-      userId,
-    },
-  });
+  const customer = await withStripe(() =>
+    stripe!.customers.create({
+      email,
+      metadata: {
+        userId,
+      },
+    })
+  );
 
   const { error } = await supabase
     .from('subscriptions')
@@ -141,17 +148,16 @@ export async function createSubscription(
 
   const trialEnd = Math.floor(Date.now() / 1000) + (trialDays * 24 * 60 * 60);
 
-  const subscription = await stripe.subscriptions.create({
-    customer: customerId,
-    items: [{ price: config.subscriptionPriceId }],
-    trial_end: trialEnd,
-    payment_behavior: 'default_incomplete',
-    payment_settings: { save_default_payment_method: 'on_subscription' },
-    // A trialing subscription has no immediate PaymentIntent — Stripe attaches a
-    // pending_setup_intent to collect the card now and charge after the trial.
-    // Expand both so the route can hand the client whichever exists.
-    expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
-  });
+  const subscription = await withStripe(() =>
+    stripe!.subscriptions.create({
+      customer: customerId,
+      items: [{ price: config.subscriptionPriceId! }],
+      trial_end: trialEnd,
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+    })
+  );
 
   // Update subscription record
   await supabase
@@ -178,9 +184,11 @@ export async function cancelSubscription(subscriptionId: string, userId: string)
     throw new Error('Stripe is not configured');
   }
 
-  await stripe.subscriptions.update(subscriptionId, {
-    cancel_at_period_end: true,
-  });
+  await withStripe(() =>
+    stripe!.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    })
+  );
 
   await supabase
     .from('subscriptions')
@@ -197,9 +205,11 @@ export async function reactivateSubscription(subscriptionId: string, userId: str
     throw new Error('Stripe is not configured');
   }
 
-  await stripe.subscriptions.update(subscriptionId, {
-    cancel_at_period_end: false,
-  });
+  await withStripe(() =>
+    stripe!.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: false,
+    })
+  );
 
   await supabase
     .from('subscriptions')
@@ -217,9 +227,11 @@ export async function getSubscription(subscriptionId: string): Promise<Stripe.Su
   }
 
   try {
-    return await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
-    });
+    return await withStripe(() =>
+      stripe!.subscriptions.retrieve(subscriptionId, {
+        expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+      })
+    );
   } catch (error) {
     console.error('Error retrieving subscription:', error);
     return null;
@@ -265,10 +277,12 @@ export async function createBillingPortalSession(
     throw new Error('Stripe is not configured');
   }
 
-  const session = await stripe.billingPortal.sessions.create({
-    customer: customerId,
-    return_url: returnUrl,
-  });
+  const session = await withStripe(() =>
+    stripe!.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl,
+    })
+  );
 
   return session.url;
 }

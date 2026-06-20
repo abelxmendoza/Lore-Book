@@ -1,4 +1,5 @@
 import { config } from '../../config';
+import { githubGuard } from '../../lib/externalCircuitBreaker';
 
 export type RepoRef = { owner: string; name: string };
 export type GithubEvent = { id?: string; type: string; payload: any; created_at?: string };
@@ -122,7 +123,9 @@ class GithubClient {
       throw new Error(`Invalid URL: hostname "${hostname}" is not in the allowed list`);
     }
     
-    const response = await fetch(url.toString(), { headers: this.headers() });
+    const response = await githubGuard.run(() =>
+      fetch(url.toString(), { headers: this.headers() })
+    );
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`GitHub API request failed (${response.status}): ${text}`);

@@ -16,6 +16,7 @@
 
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
+import { identityLedgerService } from './identity/identityLedgerService';
 import { splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { parseKinshipFromName } from './kinship/kinshipGlossary';
@@ -27,6 +28,11 @@ import { mergeOntologyIntoMetadataAsync } from './ontology/ontologyEnrichmentSer
 import { relationshipPersistenceService } from './ontology/relationshipPersistenceService';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
+import { buildDisplayTitleFromMention } from './identity/dynamicCharacterTitleService';
+import {
+  METADATA_CHARACTER_SUBTITLE_KEY,
+  METADATA_DISPLAY_TITLE_KEY,
+} from './identity/personDisplayTitleTypes';
 
 function parseNameParts(fullName: string): { firstName: string; lastName: string } {
   const parts = splitPersonName(fullName);
@@ -234,10 +240,20 @@ class CharacterFoundationService {
     }, cleanedName, entity.type, { userId, rootType: 'PERSON' })
     );
 
+    const titleBuild = buildDisplayTitleFromMention(characterId, { text: entity.name });
+    if (!titleBuild.rejected) {
+      metadata[METADATA_DISPLAY_TITLE_KEY] = titleBuild.displayTitle;
+      if (titleBuild.characterSubtitle) {
+        metadata[METADATA_CHARACTER_SUBTITLE_KEY] = titleBuild.characterSubtitle;
+      }
+    }
+
+    const displayName = titleBuild.rejected ? cleanedName : titleBuild.displayTitle.primaryTitle;
+
     const character: CharacterRow = {
       id: characterId,
       user_id: userId,
-      name: cleanedName,
+      name: displayName,
       alias: aliases.length > 0 ? aliases : null,
       status: 'active',
       first_appearance: firstAppearance,
@@ -253,6 +269,16 @@ class CharacterFoundationService {
     }
 
     logger.info({ characterId, name: entity.name, aliases }, 'Created new character');
+    void identityLedgerService.recordMutation({
+      userId,
+      entityId: characterId,
+      entityType: 'character',
+      mutationType: 'ENTITY_CREATED',
+      newValue: { name: cleanedName, aliases },
+      reason: 'Character foundation created from conversation entity',
+      source: 'PIPELINE',
+      metadata: { sourceEntityId: entity.id },
+    });
     await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
     await characterAuthorityService.linkSourceRecord(userId, characterId, 'people_places', entity.id, cleanedName, 'source_entity', 1);
     return characterId;

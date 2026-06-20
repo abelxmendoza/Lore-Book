@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { xApiGuard } from '../lib/externalCircuitBreaker';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import type { MemoryEntry } from '../types';
@@ -43,9 +44,11 @@ class XService {
   }
 
   private async fetchUserId(handle: string): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/users/by/username/${handle}`, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await xApiGuard.run(() =>
+      fetch(`${this.baseUrl}/users/by/username/${handle}`, {
+        headers: this.getAuthHeaders(),
+      })
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -74,9 +77,11 @@ class XService {
       params.append('since_id', options.sinceId);
     }
 
-    const response = await fetch(`${this.baseUrl}/users/${xUserId}/tweets?${params.toString()}`, {
-      headers: this.getAuthHeaders()
-    });
+    const response = await xApiGuard.run(() =>
+      fetch(`${this.baseUrl}/users/${xUserId}/tweets?${params.toString()}`, {
+        headers: this.getAuthHeaders(),
+      })
+    );
 
     if (!response.ok) {
       const errorText = await response.text();

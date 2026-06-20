@@ -33,12 +33,17 @@ describe('EntityClassifier — the Graduation Party regressions', () => {
 });
 
 describe('EntityClassifier — PERSON requires evidence (the core rule)', () => {
-  it('honorific/kinship → PERSON', () => {
+  it('honorific/kinship with name → PERSON', () => {
     expect(t('Tio Ralph')).toBe('PERSON');
     expect(t('Grandma Rose')).toBe('PERSON');
     expect(t('Dr Martinez')).toBe('PERSON');
-    expect(t('Mother')).toBe('PERSON');
-    expect(t('Stepdad')).toBe('PERSON');
+    expect(t('Professor Kim')).toBe('PERSON');
+  });
+  it('title-only kinship/honorific alone → UNKNOWN', () => {
+    expect(t('Mother')).toBe('UNKNOWN');
+    expect(t('Stepdad')).toBe('UNKNOWN');
+    expect(t('Professor')).toBe('UNKNOWN');
+    expect(t('Coach')).toBe('UNKNOWN');
   });
   it('person-context predicate → PERSON', () => {
     expect(t('Morgan Gray', 'Morgan Gray said she would bring the cake')).toBe('PERSON');
@@ -80,12 +85,12 @@ describe('EntityClassifier — ship blocker sprint (real-world labels)', () => {
     expect(t('Moreno Valley')).toBe('PLACE');
     expect(t("Mom's House")).toBe('HOUSEHOLD');
   });
-  it('kinship → PERSON', () => {
+  it('kinship with name → PERSON; bare kinship → UNKNOWN', () => {
     expect(t('Uncle James')).toBe('PERSON');
-    expect(t('Step Mom')).toBe('PERSON');
-    expect(t('Step Dad')).toBe('PERSON');
-    expect(t('Brother')).toBe('PERSON');
-    expect(t('Sister')).toBe('PERSON');
+    expect(t('Step Mom')).toBe('UNKNOWN');
+    expect(t('Step Dad')).toBe('UNKNOWN');
+    expect(t('Brother')).toBe('UNKNOWN');
+    expect(t('Sister')).toBe('UNKNOWN');
   });
   it('bare nicknames without context → UNKNOWN (never Person)', () => {
     for (const name of ['Velvet Hour', 'Daisy', 'Baby Bats', 'Juan (Neon Pulse.dad)']) {

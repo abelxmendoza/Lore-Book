@@ -25,6 +25,7 @@ function chain(data: unknown, error: unknown = null) {
     eq: vi.fn().mockReturnThis(),
     ilike: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
+    contains: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data, error }),
@@ -89,6 +90,35 @@ describe('characterRegistry', () => {
     expect(decision.action).toBe('create');
 
     process.env.ENTITY_RESOLUTION_CORE = prev;
+  });
+
+  it('rejects bare title-only mentions without context', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
+      if (table === 'characters') return chain([]);
+      return chain([]);
+    });
+
+    const professor = await characterRegistry.classifyForCreation('user-1', 'Professor');
+    expect(professor).toMatchObject({ action: 'reject', reason: 'bare_title_without_context' });
+
+    const friend = await characterRegistry.classifyForCreation('user-1', 'Friend');
+    expect(friend).toMatchObject({ action: 'reject', reason: 'bare_title_without_context' });
+  });
+
+  it('allows contextual role references with disambiguating context', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
+      if (table === 'characters') return chain([]);
+      return chain([]);
+    });
+
+    const decision = await characterRegistry.classifyForCreation(
+      'user-1',
+      'the professor from my Japanese Class'
+    );
+
+    expect(decision.action).toBe('create');
   });
 
   it('does not deliver global pending questions into unrelated threads', async () => {

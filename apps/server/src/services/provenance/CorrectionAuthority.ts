@@ -19,6 +19,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { identityLedgerService } from '../identity/identityLedgerService';
 import { invalidateProjectionsForSource } from '../projectionInvalidationService';
 import type { TruthState, ArtifactType } from './types';
 import { provenanceEdgeService } from './provenanceEdgeService';
@@ -212,6 +213,21 @@ class CorrectionAuthority {
         'CorrectionAuthority: cognition_mutations write failed (revision applied, audit incomplete)'
       );
     }
+
+    // Identity Ledger — a user correction-authority action on this entity's
+    // truth state is an identity mutation; record it append-only.
+    void identityLedgerService.recordMutation({
+      userId,
+      entityId: artifactId,
+      entityType: artifactType,
+      mutationType: 'TRUTH_STATE_CHANGED',
+      previousValue: { truth_state: fromState },
+      newValue: { truth_state: toState },
+      reason: rationale ?? `Truth state ${fromState} → ${toState}`,
+      confidence: 1.0,
+      source: 'USER',
+      metadata: { mutationId, correctionType: rule.mutationType },
+    });
 
     // Provenance: artifact → artifact (REVISED_BY) for CORRECTION and DISPUTE transitions
     if (rule.mutationType === 'CORRECTION' || rule.mutationType === 'DISPUTE') {

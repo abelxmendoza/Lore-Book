@@ -6,6 +6,10 @@ import { scoreSpanConfidence } from './spanConfidenceScorer';
 import { filterNoiseSpans, resolveSpanOverlaps } from './overlapResolutionService';
 import { colorKeyForType, normalizeEntityType } from './lexicalEntityTaxonomy';
 import {
+  applyTitleOnlyGuardToCandidate,
+  applyTitleOnlyGuardToSpan,
+} from './titleOnlyEntityGuardApply';
+import {
   getCachedIntelligence,
   intelligenceCacheKey,
   setCachedIntelligence,
@@ -197,7 +201,7 @@ export function runLexicalIntelligence(input: {
     warnings.push(...lexical.ambiguityFlags.map((f) => `ambiguity:${f}`));
   }
 
-  candidates = mergeCandidates(candidates);
+  candidates = mergeCandidates(candidates.map(applyTitleOnlyGuardToCandidate));
 
   let spans = candidates.map((c) => toIntelligenceSpan(text, c, includeAlternatives, session));
   for (const s of spans) {
@@ -205,6 +209,7 @@ export function runLexicalIntelligence(input: {
   }
 
   spans = filterNoiseSpans(spans);
+  spans = spans.map((s) => applyTitleOnlyGuardToSpan(s));
   const { spans: resolved, overlapsResolved, warnings: overlapWarnings } = resolveSpanOverlaps(spans);
   warnings.push(...overlapWarnings);
 

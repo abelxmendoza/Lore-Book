@@ -59,13 +59,18 @@ class EntityAuthorityApplyService {
         canonicalEntityId = input.targetId;
         applied = true;
       } else if (decision === 'PARENT_CHILD') {
-        // Child (room/event = source) goes under parent (household/venue = target).
-        // For places we set parent_location_id on the child.
-        if (PLACE_KINDS.has(kind) && input.sourceId && input.targetId) {
-          await supabaseAdmin.from('locations')
-            .update({ parent_location_id: input.targetId })
-            .eq('id', input.sourceId).eq('user_id', userId);
-          applied = true;
+        if (input.sourceId && input.targetId) {
+          if (PLACE_KINDS.has(kind)) {
+            await supabaseAdmin.from('locations')
+              .update({ parent_location_id: input.targetId })
+              .eq('id', input.sourceId).eq('user_id', userId);
+            applied = true;
+          } else if (ORG_KINDS.has(kind)) {
+            await supabaseAdmin.from('organizations')
+              .update({ parent_group_id: input.targetId })
+              .eq('id', input.sourceId).eq('user_id', userId);
+            applied = true;
+          }
         }
         canonicalEntityId = input.targetId ?? null;
       } else if (decision === 'LINK') {
