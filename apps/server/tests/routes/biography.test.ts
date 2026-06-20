@@ -230,6 +230,7 @@ describe('Biography Routes', () => {
           depth: 'detailed',
           audience: 'self',
           version: 'main',
+          force: true, // bypass the readiness/compile gate in this unit test
         })
         .expect(200);
 
@@ -256,6 +257,7 @@ describe('Biography Routes', () => {
           depth: 'detailed',
           audience: 'self',
           version: 'main',
+          force: true, // bypass the readiness/compile gate in this unit test
         })
         .expect(500);
     });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../config', () => ({ config: { defaultModel: 'gpt-4o-mini' } }));
 vi.mock('../config/aiThresholds', () => ({
@@ -80,9 +80,22 @@ describe('OmegaMemoryService', () => {
   let svc: OmegaMemoryService;
 
   beforeEach(() => {
+    // These tests exercise the legacy resolver (they mock jaroWinkler/pool
+    // matching). The EntityResolutionCore is authoritative by default ('on'),
+    // which ignores those mocks — pin legacy mode for deterministic coverage.
+    vi.stubEnv('ENTITY_RESOLUTION_CORE', 'off');
     vi.clearAllMocks();
+    // clearAllMocks does NOT drain the mockReturnValueOnce queue — reset fully so
+    // unconsumed once-values can't leak between tests.
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+    mockJW.mockReturnValue(0);
     svc = new OmegaMemoryService();
     mockRpc.mockResolvedValue({ data: [] });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   // ─── resolveEntities ──────────────────────────────────────────────────────
@@ -160,9 +173,10 @@ describe('OmegaMemoryService', () => {
       const charEntity = { id: 'c1', primary_name: 'Alice', aliases: [], type: 'CHARACTER', user_id: 'u1' };
       const locEntity  = { id: 'l1', primary_name: 'Paris', aliases: [], type: 'LOCATION',  user_id: 'u1' };
 
-      mockFrom
-        .mockReturnValueOnce(makeChain({ data: [charEntity] })) // batch for CHARACTER
-        .mockReturnValueOnce(makeChain({ data: [locEntity] })); // batch for LOCATION
+      // A single chain for every call: both type batches return the (type-
+      // filtered downstream) pool, and the per-match promote .update() calls get
+      // a valid chain too. In-memory matching picks the right entity by name.
+      mockFrom.mockReturnValue(makeChain({ data: [charEntity, locEntity] }));
 
       const result = await svc.resolveEntities('user-1', [
         { name: 'Alice', type: 'CHARACTER' },
