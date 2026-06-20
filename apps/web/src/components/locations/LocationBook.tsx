@@ -28,379 +28,12 @@ import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
 import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
+import { locationBookDemoLocations } from '../../mocks/locationBookDemo';
 
-// Comprehensive mock location data showcasing all app capabilities
-// Export for use in mock data service
-export const dummyLocations: LocationProfile[] = [
-  {
-    id: 'dummy-loc-1',
-    name: 'San Francisco Tech Hub',
-    visitCount: 12,
-    firstVisited: '2022-03-15T10:00:00Z',
-    lastVisited: '2024-03-20T14:30:00Z',
-    coordinates: { lat: 37.7749, lng: -122.4194 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 8 },
-      { id: 'person-2', name: 'Marcus Johnson', total_mentions: 30, entryCount: 5 }
-    ],
-    tagCounts: [
-      { tag: 'work', count: 8 },
-      { tag: 'meeting', count: 5 },
-      { tag: 'networking', count: 3 },
-      { tag: 'career-transition', count: 4 }
-    ],
-    chapters: [
-      { id: 'ch-1', title: 'Tech Adventures', count: 6 },
-      { id: 'ch-2', title: 'Career Growth', count: 4 },
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 2 }
-    ],
-    moods: [
-      { mood: 'excited', count: 5 },
-      { mood: 'focused', count: 4 },
-      { mood: 'nostalgic', count: 3 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-2',
-    name: 'Golden Gate Park',
-    type: 'park',
-    visitCount: 25,
-    firstVisited: '2023-08-01T09:00:00Z',
-    lastVisited: '2024-03-15T16:00:00Z',
-    coordinates: { lat: 37.7694, lng: -122.4862 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Alex', total_mentions: 35, entryCount: 12 },
-      { id: 'person-2', name: 'Jordan Kim', total_mentions: 20, entryCount: 8 },
-      { id: 'person-3', name: 'Sarah Chen', total_mentions: 15, entryCount: 5 },
-      { id: 'person-4', name: 'David Martinez', total_mentions: 8, entryCount: 3 }
-    ],
-    tagCounts: [
-      { tag: 'nature', count: 12 },
-      { tag: 'relaxation', count: 10 },
-      { tag: 'exercise', count: 8 },
-      { tag: 'dates', count: 6 },
-      { tag: 'photography', count: 5 }
-    ],
-    chapters: [
-      { id: 'ch-3', title: 'Weekend Escapes', count: 8 },
-      { id: 'ch-relationship', title: 'Relationship Journey', count: 6 },
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 4 }
-    ],
-    moods: [
-      { mood: 'peaceful', count: 12 },
-      { mood: 'energized', count: 8 },
-      { mood: 'happy', count: 5 }
-    ],
-    entries: [],
-    sources: ['journal', 'photo']
-  },
-  {
-    id: 'dummy-loc-3',
-    name: 'Home Studio',
-    type: 'house',
-    metadata: { place_significance: ['home', 'creative_space'], place_tags: ['Creative', 'Music Production'] },
-    visitCount: 120,
-    firstVisited: '2023-06-01T08:00:00Z',
-    lastVisited: '2024-03-25T18:00:00Z',
-    coordinates: null,
-    relatedPeople: [
-      { id: 'person-1', name: 'Alex Rivera', total_mentions: 85, entryCount: 35 },
-      { id: 'person-2', name: 'Alex', total_mentions: 25, entryCount: 12 },
-      { id: 'person-3', name: 'Marcus Johnson', total_mentions: 15, entryCount: 8 }
-    ],
-    tagCounts: [
-      { tag: 'home', count: 80 },
-      { tag: 'music-production', count: 60 },
-      { tag: 'creative-work', count: 45 },
-      { tag: 'collaboration', count: 35 },
-      { tag: 'writing', count: 20 },
-      { tag: 'focus', count: 40 }
-    ],
-    chapters: [
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 50 },
-      { id: 'ch-music', title: 'Music Production Saga', count: 35 },
-      { id: 'ch-writing', title: 'Writing Journey', count: 20 }
-    ],
-    moods: [
-      { mood: 'focused', count: 45 },
-      { mood: 'creative', count: 40 },
-      { mood: 'accomplished', count: 25 },
-      { mood: 'frustrated', count: 10 }
-    ],
-    entries: [],
-    sources: ['journal', 'task']
-  },
-  {
-    id: 'dummy-loc-4',
-    name: 'Coffee Shop Downtown',
-    type: 'coffee_shop',
-    visitCount: 45,
-    firstVisited: '2023-09-10T08:00:00Z',
-    lastVisited: '2024-03-22T15:00:00Z',
-    coordinates: { lat: 37.7849, lng: -122.4094 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Alex', total_mentions: 60, entryCount: 20 },
-      { id: 'person-2', name: 'Sarah Chen', total_mentions: 35, entryCount: 15 },
-      { id: 'person-3', name: 'Emma Thompson', total_mentions: 20, entryCount: 8 },
-      { id: 'person-4', name: 'Sophia Anderson', total_mentions: 15, entryCount: 6 }
-    ],
-    tagCounts: [
-      { tag: 'coffee', count: 30 },
-      { tag: 'writing', count: 25 },
-      { tag: 'work', count: 20 },
-      { tag: 'social', count: 15 },
-      { tag: 'dates', count: 8 }
-    ],
-    chapters: [
-      { id: 'ch-4', title: 'Daily Routines', count: 18 },
-      { id: 'ch-relationship', title: 'Relationship Journey', count: 12 },
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 15 }
-    ],
-    moods: [
-      { mood: 'calm', count: 20 },
-      { mood: 'creative', count: 18 },
-      { mood: 'happy', count: 7 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-5',
-    name: 'Tokyo, Japan',
-    type: 'city',
-    visitCount: 1,
-    firstVisited: '2024-02-15T00:00:00Z',
-    lastVisited: '2024-02-25T23:59:59Z',
-    coordinates: { lat: 35.6762, lng: 139.6503 },
-    relatedPeople: [],
-    tagCounts: [
-      { tag: 'travel', count: 10 },
-      { tag: 'adventure', count: 8 },
-      { tag: 'culture', count: 6 }
-    ],
-    chapters: [
-      { id: 'ch-5', title: 'International Adventures', count: 10 }
-    ],
-    moods: [
-      { mood: 'excited', count: 8 },
-      { mood: 'curious', count: 5 }
-    ],
-    entries: [],
-    sources: ['journal', 'photo']
-  },
-  {
-    id: 'dummy-loc-6',
-    name: 'Gym & Fitness Center',
-    type: 'gym',
-    visitCount: 35,
-    firstVisited: '2024-01-05T06:00:00Z',
-    lastVisited: '2024-03-24T19:00:00Z',
-    coordinates: { lat: 37.7649, lng: -122.4294 },
-    relatedPeople: [
-      { id: 'person-4', name: 'David Martinez', total_mentions: 10, entryCount: 3 }
-    ],
-    tagCounts: [
-      { tag: 'fitness', count: 25 },
-      { tag: 'health', count: 20 },
-      { tag: 'routine', count: 15 }
-    ],
-    chapters: [
-      { id: 'ch-6', title: 'Health & Wellness', count: 20 }
-    ],
-    moods: [
-      { mood: 'energized', count: 20 },
-      { mood: 'accomplished', count: 12 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-7',
-    name: 'Local Library',
-    type: 'library',
-    visitCount: 18,
-    firstVisited: '2023-11-20T10:00:00Z',
-    lastVisited: '2024-03-18T16:00:00Z',
-    coordinates: { lat: 37.7549, lng: -122.4394 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Sophia Anderson', total_mentions: 12, entryCount: 5 },
-      { id: 'person-2', name: 'Emma Thompson', total_mentions: 8, entryCount: 3 }
-    ],
-    tagCounts: [
-      { tag: 'study', count: 12 },
-      { tag: 'quiet', count: 10 },
-      { tag: 'learning', count: 8 },
-      { tag: 'writing', count: 6 }
-    ],
-    chapters: [
-      { id: 'ch-7', title: 'Learning Journey', count: 12 },
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 6 }
-    ],
-    moods: [
-      { mood: 'focused', count: 12 },
-      { mood: 'calm', count: 8 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-8',
-    name: 'Beach House',
-    visitCount: 5,
-    firstVisited: '2024-02-10T12:00:00Z',
-    lastVisited: '2024-03-10T18:00:00Z',
-    coordinates: { lat: 37.8049, lng: -122.4694 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 3 },
-      { id: 'person-6', name: 'Jordan Kim', total_mentions: 20, entryCount: 2 }
-    ],
-    tagCounts: [
-      { tag: 'vacation', count: 4 },
-      { tag: 'relaxation', count: 4 },
-      { tag: 'family', count: 3 }
-    ],
-    chapters: [
-      { id: 'ch-8', title: 'Weekend Getaways', count: 4 }
-    ],
-    moods: [
-      { mood: 'peaceful', count: 4 },
-      { mood: 'happy', count: 3 }
-    ],
-    entries: [],
-    sources: ['journal', 'photo']
-  },
-  {
-    id: 'dummy-loc-9',
-    name: 'University Campus',
-    type: 'university',
-    visitCount: 28,
-    firstVisited: '2024-01-08T08:00:00Z',
-    lastVisited: '2024-03-20T17:00:00Z',
-    coordinates: { lat: 37.7949, lng: -122.4194 },
-    relatedPeople: [
-      { id: 'person-7', name: 'Dr. Amara Wells', total_mentions: 12, entryCount: 4 }
-    ],
-    tagCounts: [
-      { tag: 'education', count: 18 },
-      { tag: 'networking', count: 10 },
-      { tag: 'learning', count: 8 }
-    ],
-    chapters: [
-      { id: 'ch-9', title: 'Academic Pursuits', count: 15 }
-    ],
-    moods: [
-      { mood: 'curious', count: 15 },
-      { mood: 'inspired', count: 10 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-10',
-    name: 'Art Gallery - Mission District',
-    type: 'theater',
-    visitCount: 8,
-    firstVisited: '2024-02-20T18:00:00Z',
-    lastVisited: '2024-03-18T19:00:00Z',
-    coordinates: { lat: 37.7599, lng: -122.4148 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Jordan', total_mentions: 25, entryCount: 6 },
-      { id: 'person-2', name: 'Sarah Chen', total_mentions: 8, entryCount: 2 }
-    ],
-    tagCounts: [
-      { tag: 'art', count: 8 },
-      { tag: 'networking', count: 6 },
-      { tag: 'social', count: 5 },
-      { tag: 'creative', count: 4 }
-    ],
-    chapters: [
-      { id: 'ch-relationship', title: 'Relationship Journey', count: 4 },
-      { id: 'ch-creative', title: 'Creative Renaissance', count: 4 }
-    ],
-    moods: [
-      { mood: 'inspired', count: 5 },
-      { mood: 'excited', count: 3 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-11',
-    name: 'Mountain Trail',
-    type: 'hiking_trail',
-    visitCount: 12,
-    firstVisited: '2024-01-12T07:00:00Z',
-    lastVisited: '2024-03-16T10:00:00Z',
-    coordinates: { lat: 37.8449, lng: -122.4894 },
-    relatedPeople: [
-      { id: 'person-9', name: 'Ethan Walker', total_mentions: 8, entryCount: 3 }
-    ],
-    tagCounts: [
-      { tag: 'hiking', count: 10 },
-      { tag: 'nature', count: 8 },
-      { tag: 'exercise', count: 6 }
-    ],
-    chapters: [
-      { id: 'ch-11', title: 'Outdoor Adventures', count: 8 }
-    ],
-    moods: [
-      { mood: 'energized', count: 8 },
-      { mood: 'peaceful', count: 6 }
-    ],
-    entries: [],
-    sources: ['journal', 'photo']
-  },
-  {
-    id: 'dummy-loc-12',
-    name: 'Conference Center',
-    type: 'convention_center',
-    visitCount: 3,
-    firstVisited: '2024-02-20T09:00:00Z',
-    lastVisited: '2024-03-05T17:00:00Z',
-    coordinates: { lat: 37.7849, lng: -122.3994 },
-    relatedPeople: [
-      { id: 'person-2', name: 'Marcus', total_mentions: 30, entryCount: 2 },
-      { id: 'person-3', name: 'Alex Rivera', total_mentions: 15, entryCount: 1 }
-    ],
-    tagCounts: [
-      { tag: 'conference', count: 3 },
-      { tag: 'networking', count: 3 },
-      { tag: 'professional', count: 2 }
-    ],
-    chapters: [
-      { id: 'ch-12', title: 'Professional Development', count: 3 }
-    ],
-    moods: [
-      { mood: 'excited', count: 2 },
-      { mood: 'focused', count: 2 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-13',
-    name: 'Catch One',
-    type: 'nightclub',
-    metadata: {
-      place_tags: ['Goth Scene', 'Live Music', 'Dancing', 'Late Night', 'Historic Venue'],
-      place_significance: ['hangout_spot'],
-    },
-    visitCount: 14,
-    firstVisited: '2023-04-01T22:00:00Z',
-    lastVisited: '2024-03-01T02:30:00Z',
-    coordinates: { lat: 34.024, lng: -118.344 },
-    relatedPeople: [],
-    tagCounts: [{ tag: 'nightlife', count: 10 }, { tag: 'music', count: 8 }],
-    chapters: [],
-    moods: [{ mood: 'energized', count: 8 }],
-    entries: [],
-    sources: ['journal'],
-  },
-];
+// Export for use in mock data service + tests
+export const dummyLocations = locationBookDemoLocations;
 
-const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
+const ITEMS_PER_PAGE = 12; // 2 columns × 6 rows on mobile
 
 export const LocationBook = () => {
   const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useLocationsBookData();
@@ -657,10 +290,10 @@ export const LocationBook = () => {
       />
 
       <OntologyCompliancePanel book="locations" />
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-white">Places</h2>
-          <p className="text-xs text-white/40 mt-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
+          <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
             {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
@@ -691,8 +324,9 @@ export const LocationBook = () => {
         emptyHint="No matching locations"
       />
 
-      {/* Clean lifestyle row */}
-      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+      {/* Lifestyle filters — horizontal scroll on mobile */}
+      <div className="-mx-1 px-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-nowrap sm:flex-wrap items-center justify-start gap-2 min-w-min sm:min-w-0 pb-0.5">
         {lifestyleFilters.map(({ id, label, icon, count }) => (
           <button
             key={id}
@@ -739,6 +373,7 @@ export const LocationBook = () => {
             Clear filters
           </button>
         )}
+        </div>
       </div>
 
       {advancedOpen && (
@@ -841,9 +476,9 @@ export const LocationBook = () => {
 
       {/* Places Display */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
           {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
-            <div key={i} className="aspect-square sm:aspect-auto sm:h-28 rounded-xl bg-white/5 border border-white/8 animate-pulse" />
+            <div key={i} className="min-h-[10.5rem] sm:min-h-[12.5rem] rounded-xl bg-white/5 border border-white/8 animate-pulse" />
           ))}
         </div>
       ) : filteredLocations.length === 0 ? (
@@ -855,29 +490,29 @@ export const LocationBook = () => {
       ) : (
         <>
           {/* Book Page Container */}
-          <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-teal-950/20 via-black/40 to-teal-950/20 rounded-lg border-2 border-teal-800/30 shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 sm:p-8 flex flex-col flex-1 min-h-0">
+          <div className="relative w-full sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-teal-950/20 via-black/40 to-teal-950/20 rounded-lg border border-teal-800/30 sm:border-2 shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-3 sm:p-8 flex flex-col flex-1 min-h-0">
               {/* Page Header */}
-              <div className="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-teal-800/20">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-6 w-6 text-teal-500/60" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-teal-200/50 uppercase tracking-wider">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-6 pb-3 sm:pb-4 border-b border-teal-800/20">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-teal-500/60 shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-teal-200/50 uppercase tracking-wider">
                       Places Book
                     </h3>
-                    <p className="text-xs text-teal-300/40 mt-0.5">
+                    <p className="text-[11px] sm:text-xs text-teal-300/40 mt-0.5 truncate">
                       Page {currentPage} of {totalPages} · {filteredLocations.length} places
                     </p>
                     <BookTrustSummary domain="locations" className="mt-1" />
                   </div>
                 </div>
-                <div className="text-xs text-teal-300/35 font-mono">
+                <div className="text-[10px] sm:text-xs text-teal-300/35 font-mono shrink-0 hidden sm:block">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
 
               {/* Places Grid */}
-              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-6 content-start min-h-0">
+              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 mb-3 sm:mb-6 content-start min-h-0">
                 {paginatedLocations.map((location, index) => (
                   <LocationProfileCard
                     key={location.id || `loc-${index}`}

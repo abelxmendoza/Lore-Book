@@ -1499,9 +1499,9 @@ export const OrganizationsBook: React.FC = () => {
           </Card>
         )}
 
-        {/* Category tabs — horizontal scroll on mobile, wrap on desktop */}
+        {/* Category tabs — wrap/stack on all screen sizes (no horizontal scroll) */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-nowrap sm:flex-wrap gap-1 sm:gap-2 justify-start overflow-x-auto overscroll-x-contain snap-x snap-mandatory sm:snap-none scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0 [&_[role=tab]]:snap-start [&_[role=tab]]:text-xs [&_[role=tab]]:sm:text-sm [&_[role=tab]]:px-2.5 [&_[role=tab]]:sm:px-3">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1.5 h-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:flex lg:flex-wrap gap-1.5 sm:gap-2 justify-start [&_[role=tab]]:text-xs [&_[role=tab]]:sm:text-sm [&_[role=tab]]:px-2.5 [&_[role=tab]]:sm:px-3 [&_[role=tab]]:justify-center [&_[role=tab]]:w-full lg:[&_[role=tab]]:w-auto lg:[&_[role=tab]]:shrink-0">
             {availableCategories.includes('all') && (
               <TabsTrigger 
                 value="all" 
@@ -1662,7 +1662,7 @@ export const OrganizationsBook: React.FC = () => {
 
       {/* Organizations Display */}
       {loading ? (
-        <div className="grid gap-2 sm:gap-3 grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-2 sm:gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
@@ -1719,7 +1719,7 @@ export const OrganizationsBook: React.FC = () => {
                   </div>
                 }
               >
-                <div className="flex-1 grid gap-2 sm:gap-3 mb-4 sm:mb-6 grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
+                <div className="flex-1 grid gap-2 sm:gap-3 mb-4 sm:mb-6 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
                   {paginatedOrganizations.map((org) => (
                     <OrganizationProfileCard
                       key={org.id}

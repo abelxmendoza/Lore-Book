@@ -1992,13 +1992,70 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           ? 'border-amber-500/40 shadow-amber-500/15'
           : 'border-primary/30 shadow-primary/20'
       }`}>
-        {/* Enhanced Header */}
-        <div className={`relative border-b-2 p-3 sm:p-6 flex-shrink-0 ${
+        {/* Header — compact on mobile; full hero on sm+ */}
+        <div className={`relative border-b-2 flex-shrink-0 ${
           isMainCharacter
             ? 'bg-gradient-to-r from-amber-500/20 via-amber-950/30 to-purple-900/20 border-amber-500/35'
             : 'bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-primary/30'
         }`}>
-          <div className="flex items-start justify-between gap-2 sm:gap-4">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex-shrink-0 hover:bg-white/10 h-9 w-9 sm:h-10 sm:w-10 p-0 touch-manipulation"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+
+          {/* Mobile: minimal sticky header — keeps tabs + content scrollable */}
+          <div
+            className="sm:hidden px-3 py-2 pr-12 border-b border-white/10"
+            style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative flex-shrink-0">
+                <CharacterAvatar
+                  url={editedCharacter.avatar_url}
+                  characterId={editedCharacter.id}
+                  archetype={editedCharacter.archetype}
+                  role={editedCharacter.role}
+                  name={editedCharacter.name}
+                  size={36}
+                />
+                {editedCharacter.status && (
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    <span
+                      className={`block h-2 w-2 rounded-full ring-2 ring-black/80 ${
+                        editedCharacter.status === 'active'
+                          ? 'bg-green-400'
+                          : editedCharacter.status === 'unmet'
+                            ? 'bg-orange-400'
+                            : 'bg-gray-400'
+                      }`}
+                      aria-hidden
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h2 className="text-base font-bold text-white truncate">{displayName}</h2>
+                  {isMainCharacter && (
+                    <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300" aria-hidden />
+                  )}
+                </div>
+                {editedCharacter.role ? (
+                  <p className="text-[11px] text-white/50 truncate">{editedCharacter.role}</p>
+                ) : editedCharacter.archetype ? (
+                  <p className="text-[11px] text-white/50 truncate">{editedCharacter.archetype}</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop: full header */}
+          <div className="hidden sm:block p-6 pr-14">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-2.5 sm:gap-4 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
                 {/* Phase ring around avatar */}
@@ -2212,21 +2269,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
-            <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
-              <X className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
-            </div>
+          </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* Mobile: compact grid nav — 2 rows, minimal vertical footprint */}
+          {/* Mobile: horizontal tab strip — scroll instead of cramming 14 tabs in a grid */}
           <nav
-            className="md:hidden flex-shrink-0 border-b border-border/60 bg-black/30 px-1.5 py-1"
+            className="md:hidden flex-shrink-0 border-b border-border/60 bg-black/30"
             aria-label="Character sections"
           >
-            <div className="grid grid-cols-7 gap-0.5">
+            <div className="flex gap-1 overflow-x-auto overscroll-x-contain px-2 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.key;
@@ -2235,7 +2288,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className={`flex flex-col items-center justify-center gap-px rounded-md px-0.5 py-1 min-h-[34px] text-[8px] font-medium leading-none transition touch-manipulation ${
+                    className={`flex flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 min-w-[3.25rem] min-h-[40px] text-[9px] font-medium leading-none transition touch-manipulation ${
                       isActive
                         ? 'bg-primary/25 text-primary border border-primary/40'
                         : 'text-white/50 border border-transparent hover:text-white/80 hover:bg-white/[0.06]'
@@ -2243,8 +2296,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
                   >
-                    <Icon className="h-3 w-3 flex-shrink-0" />
-                    <span className="w-full text-center truncate">{tab.shortLabel}</span>
+                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="max-w-[3.5rem] text-center truncate">{tab.shortLabel}</span>
                   </button>
                 );
               })}
@@ -2302,12 +2355,70 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
           <div
             ref={contentRef}
-            className={`flex-1 min-h-0 bg-black/40 ${
+            className={`flex-1 min-h-0 bg-black/40 touch-pan-y [-webkit-overflow-scrolling:touch] ${
               activeTab === 'chat'
                 ? 'flex flex-col overflow-hidden'
                 : 'overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-8 pb-[max(4rem,env(safe-area-inset-bottom,0px))] sm:pb-32'
             }`}
           >
+            {/* Mobile: profile context lives in scroll body, not fixed header */}
+            {!loadingDetails && activeTab !== 'chat' && (
+              <div className="sm:hidden space-y-2 pb-3 border-b border-white/10 shrink-0">
+                {wittyTagline && (
+                  <p className="text-xs text-white/70 italic leading-snug line-clamp-2">{wittyTagline}</p>
+                )}
+                {!isMainCharacter ? (
+                  <CharacterTitleSection
+                    character={editedCharacter}
+                    onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
+                  />
+                ) : null}
+                {profileContextHooks.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {profileContextHooks.slice(0, 4).map((hook) => (
+                      <Badge
+                        key={hook}
+                        variant="outline"
+                        className={`text-[9px] px-1.5 py-0 ${
+                          isMainCharacter
+                            ? 'bg-amber-500/10 text-amber-200/90 border-amber-500/25'
+                            : 'bg-primary/10 text-primary/90 border-primary/25'
+                        }`}
+                      >
+                        {hook}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-1">
+                  {editedCharacter.role && (
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] px-1.5 py-0">
+                      {editedCharacter.role}
+                    </Badge>
+                  )}
+                  {editedCharacter.pronouns && (
+                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[9px] px-1.5 py-0">
+                      {editedCharacter.pronouns}
+                    </Badge>
+                  )}
+                  {editedCharacter.importance_level && (
+                    <Badge variant="outline" className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] px-1.5 py-0`}>
+                      {getImportanceLabel(editedCharacter.importance_level)}
+                    </Badge>
+                  )}
+                </div>
+                {(dynamics || editedCharacter.analytics) && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-white/40">
+                    {dynamics?.health?.health_score != null && (
+                      <span>{dynamics.health.health_score} health</span>
+                    )}
+                    {(editedCharacter.memory_count ?? 0) > 0 && (
+                      <span>{editedCharacter.memory_count} memories</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {loadingDetails && (
               <div className="text-center py-12 text-white/60">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -2939,13 +3050,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             {/* Chat Tab */}
             {!loadingDetails && activeTab === 'chat' && (
               <div className="flex flex-col flex-1 min-h-0 h-full" data-testid="character-chat-panel">
-                <div className="flex-shrink-0 overflow-y-auto overscroll-contain max-h-[36vh] sm:max-h-none px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-2 space-y-3 border-b border-white/10">
-                  <div>
+                <div className="flex-shrink-0 overflow-y-auto overscroll-contain sm:max-h-none px-3 sm:px-6 lg:px-8 pt-2 sm:pt-6 pb-2 space-y-2 sm:space-y-3 border-b border-white/10">
+                  <div className="hidden sm:block">
                     <h3 className="text-base sm:text-xl font-bold text-white mb-1 flex items-center gap-2 min-w-0">
                       <MessageSquare className="h-5 w-5 text-primary shrink-0" />
                       <span className="truncate">Chat about {displayName}</span>
                     </h3>
-                    <p className="text-xs sm:text-sm text-white/60 hidden sm:block">
+                    <p className="text-xs sm:text-sm text-white/60">
                       Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
                     </p>
                   </div>

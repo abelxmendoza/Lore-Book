@@ -69,7 +69,7 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
   });
 
   it('should display character name', () => {
@@ -81,7 +81,7 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
   });
 
   it('should call onClose when close button is clicked', async () => {

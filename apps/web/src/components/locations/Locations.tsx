@@ -7,87 +7,7 @@ import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
-
-// Dummy location data for display
-// Export for use in mock data service
-export const dummyLocations: LocationProfile[] = [
-  {
-    id: 'dummy-loc-1',
-    name: 'San Francisco Tech Hub',
-    visitCount: 12,
-    firstVisited: '2024-01-15T10:00:00Z',
-    lastVisited: '2024-03-20T14:30:00Z',
-    coordinates: { lat: 37.7749, lng: -122.4194 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 8 },
-      { id: 'person-2', name: 'Marcus', total_mentions: 30, entryCount: 5 }
-    ],
-    tagCounts: [
-      { tag: 'work', count: 8 },
-      { tag: 'meeting', count: 5 },
-      { tag: 'networking', count: 3 }
-    ],
-    chapters: [
-      { id: 'ch-1', title: 'Tech Adventures', count: 6 },
-      { id: 'ch-2', title: 'Career Growth', count: 4 }
-    ],
-    moods: [
-      { mood: 'excited', count: 5 },
-      { mood: 'focused', count: 4 }
-    ],
-    entries: [],
-    sources: ['journal', 'calendar']
-  },
-  {
-    id: 'dummy-loc-2',
-    name: 'Golden Gate Park',
-    visitCount: 8,
-    firstVisited: '2024-02-01T09:00:00Z',
-    lastVisited: '2024-03-15T16:00:00Z',
-    coordinates: { lat: 37.7694, lng: -122.4862 },
-    relatedPeople: [
-      { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 6 }
-    ],
-    tagCounts: [
-      { tag: 'nature', count: 6 },
-      { tag: 'relaxation', count: 4 },
-      { tag: 'exercise', count: 3 }
-    ],
-    chapters: [
-      { id: 'ch-3', title: 'Weekend Escapes', count: 5 }
-    ],
-    moods: [
-      { mood: 'peaceful', count: 5 },
-      { mood: 'energized', count: 3 }
-    ],
-    entries: [],
-    sources: ['journal', 'photo']
-  },
-  {
-    id: 'dummy-loc-3',
-    name: 'Home Office',
-    visitCount: 45,
-    firstVisited: '2024-01-01T08:00:00Z',
-    lastVisited: '2024-03-25T18:00:00Z',
-    coordinates: null,
-    relatedPeople: [],
-    tagCounts: [
-      { tag: 'work', count: 30 },
-      { tag: 'focus', count: 25 },
-      { tag: 'productivity', count: 20 }
-    ],
-    chapters: [
-      { id: 'ch-1', title: 'Tech Adventures', count: 20 },
-      { id: 'ch-2', title: 'Career Growth', count: 15 }
-    ],
-    moods: [
-      { mood: 'focused', count: 20 },
-      { mood: 'productive', count: 15 }
-    ],
-    entries: [],
-    sources: ['journal', 'task']
-  }
-];
+import { locationBookDemoLocations as dummyLocations } from '../../mocks/locationBookDemo';
 
 export const Locations = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
@@ -192,13 +112,14 @@ export const Locations = () => {
           <p className="text-sm">Try a different search term</p>
         </div>
       ) : (
-        <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-2.5 sm:gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredLocations.map((location, index) => {
             try {
               return (
                 <LocationProfileCard
                   key={location.id || `loc-${index}`}
                   location={location}
+                  allLocations={locations}
                   onClick={() => setSelectedLocation(location)}
                 />
               );
