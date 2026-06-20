@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { z } from 'zod';
 
 import { logger } from '../logger';
@@ -10,14 +9,13 @@ import { resumeParsingService } from '../services/profileClaims/resumeParsingSer
 import { documentService } from '../services/documentService';
 import { resolveFileProvenance } from '../services/ingestion/fileProvenanceService';
 import { asyncHandler } from '../utils/asyncHandler';
+import { createMemoryUpload } from '../middleware/multerConfig';
 
 const router = Router();
 
-// Configure multer for file uploads (memory storage)
-const upload = multer({
-  storage: multer.memoryStorage(),
+const upload = createMemoryUpload({
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (_req, file, cb) => {
     // Accept text files, markdown, and common document formats

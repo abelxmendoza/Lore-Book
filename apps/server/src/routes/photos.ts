@@ -1,19 +1,17 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { photoService } from '../services/photoService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { createMemoryUpload } from '../middleware/multerConfig';
 
 const router = Router();
 
-// Configure multer for memory storage (we'll upload directly to Supabase)
-const upload = multer({
-  storage: multer.memoryStorage(),
+const upload = createMemoryUpload({
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (_req, file, cb) => {
     // Accept image files

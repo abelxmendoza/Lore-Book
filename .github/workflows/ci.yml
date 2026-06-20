@@ -49,6 +49,14 @@ jobs:
         working-directory: apps/web
         run: npm ci --legacy-peer-deps
 
+      - name: npm audit (server)
+        working-directory: apps/server
+        run: npm audit --audit-level=high
+
+      - name: npm audit (web)
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+
       - name: Founder privacy guard
         run: npm run check:founder-privacy
 

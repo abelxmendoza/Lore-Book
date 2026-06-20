@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { z } from 'zod';
 
 import { logger } from '../logger';
@@ -17,9 +16,10 @@ import { truthVerificationService } from '../services/truthVerificationService';
 import { incrementEntryCount } from '../services/usageTracking';
 import { voiceService } from '../services/voiceService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+import { createMemoryUpload } from '../middleware/multerConfig';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = createMemoryUpload({ limits: { fileSize: 15 * 1024 * 1024 } });
 
 const entrySchema = z.object({
   content: z.string().min(3),

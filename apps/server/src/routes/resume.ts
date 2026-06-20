@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { z } from 'zod';
 
 import { logger } from '../logger';
@@ -8,14 +7,13 @@ import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIn
 import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
 import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
 import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
+import { createMemoryUpload } from '../middleware/multerConfig';
 
 const router = Router();
 
-// Configure multer for memory storage
-const upload = multer({
-  storage: multer.memoryStorage(),
+const upload = createMemoryUpload({
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit for resumes
+    fileSize: 5 * 1024 * 1024, // 5MB limit for resumes
   },
   fileFilter: (_req, file, cb) => {
     // Accept resume file types

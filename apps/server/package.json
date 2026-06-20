@@ -75,5 +75,10 @@
     "tsx": "^4.16.2",
     "typescript-eslint": "^8.53.1",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "minimatch": "^9.0.9",
+    "brace-expansion": "^2.1.1",
+    "swagger-ui-dist": "^5.32.6"
   }
 }
