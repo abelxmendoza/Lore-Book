@@ -5,13 +5,14 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, TrendingUp, Calendar, MessageSquare, Clock, FileText, Star, Sparkles, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Loader2, UserCircle, Target, MapPin as MapPinIcon, Trophy, GitBranch } from 'lucide-react';
+import { X, MessageSquare, Clock, FileText, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Trophy } from 'lucide-react';
+import { ChatComposer } from '../../features/chat/composer/ChatComposer';
+import { readSkillProfile } from '../../lib/skillProfile';
+import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Modal } from '../ui/modal';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Tabs, TabsContent } from '../ui/tabs';
 import { skillsApi } from '../../api/skills';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
@@ -27,11 +28,33 @@ import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { useEntityModal } from '../../contexts/EntityModalContext';
+import { organizationStub, projectStub } from '../../lib/skillEntityNavigation';
+import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
+import { ProjectDetailModal } from '../projects/ProjectDetailModal';
+import type { Organization } from '../organizations/OrganizationProfileCard';
+import type { ProjectCardData } from '../projects/ProjectProfileCard';
 import { fetchJson } from '../../lib/api';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { LazyImage } from '../ui/LazyImage';
-import { useNavigate } from 'react-router-dom';
+import { SkillDetailModalOverview } from './SkillDetailModalOverview';
+import {
+  SKILL_DETAIL_TABS,
+  SkillActivityTab,
+  SkillConnectionsTab,
+  SkillEvidenceTab,
+  SkillGrowthTimelineTab,
+  SkillInsightsTab,
+  SkillMemoriesTab,
+  SkillMetaTab,
+  SkillPortfolioTab,
+  SkillProficiencyTab,
+  SkillRelationshipsTab,
+  SkillStoryTab,
+  type SkillDetailTabKey,
+} from './SkillDetailTabPanels';
+import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
+import { formatSkillCertaintyDetail, levelLabel, skillCertaintyFieldLabel } from '../../lib/skillStory';
 import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
 import type { Achievement } from '../../types/achievement';
 
@@ -39,9 +62,8 @@ type SkillDetailModalProps = {
   skill: Skill;
   onClose: () => void;
   onUpdate?: () => void;
+  onNavigateToSkill?: (skillNameOrId: string) => void;
 };
-
-type TabKey = 'info' | 'chat' | 'connections' | 'milestones' | 'locations' | 'photos' | 'timeline';
 
 type ChatMessage = {
   id: string;
@@ -75,42 +97,19 @@ type RelatedPhoto = {
   people?: string[];
 };
 
-const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'info', label: 'Info', icon: FileText },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
-  { key: 'connections', label: 'Connections', icon: Users },
-  { key: 'milestones', label: 'Milestones', icon: Trophy },
-  { key: 'locations', label: 'Locations', icon: MapPin },
-  { key: 'photos', label: 'Photos', icon: ImageIcon },
-  { key: 'timeline', label: 'Timeline', icon: Clock },
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  professional: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
-  creative: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
-  physical: 'bg-green-500/20 text-green-400 border-green-500/40',
-  social: 'bg-pink-500/20 text-pink-400 border-pink-500/40',
-  intellectual: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40',
-  emotional: 'bg-red-500/20 text-red-400 border-red-500/40',
-  practical: 'bg-orange-500/20 text-orange-400 border-orange-500/40',
-  artistic: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40',
-  technical: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40',
-  other: 'bg-gray-500/20 text-gray-400 border-gray-500/40',
-};
-
-export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: SkillDetailModalProps) => {
+export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNavigateToSkill }: SkillDetailModalProps) => {
   const [skill, setSkill] = useState<Skill>(initialSkill);
-  const [activeTab, setActiveTab] = useState<TabKey>('info');
+  const [activeTab, setActiveTab] = useState<SkillDetailTabKey>('overview');
+  const [showMetaTab, setShowMetaTab] = useState(false);
   const [skillDetails, setSkillDetails] = useState<SkillMetadata | null>(null);
   const [, setLoadingDetails] = useState(false);
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const { streamChat, isStreaming } = useChatStream();
 
   // Progress state
@@ -135,35 +134,49 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<RelatedPhoto | null>(null);
   
-  const { openCharacter, openLocation } = useEntityModal();
-  const navigate = useNavigate();
+  const { openCharacter, openLocation, openMemory } = useEntityModal();
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectCardData | null>(null);
+
+  const entityNav = {
+    onOpenCharacter: (c: { id: string; name: string }) => openCharacter(c),
+    onOpenLocation: (l: { id: string; name: string }) => openLocation(l),
+    onOpenOrganization: (o: { id: string; name: string }) =>
+      setSelectedOrganization(organizationStub(o.id, o.name)),
+    onOpenProject: (p: { id: string; name: string }) =>
+      setSelectedProject(projectStub(p.id, p.name)),
+    onOpenRelatedSkill: (name: string) => {
+      if (onNavigateToSkill) {
+        onNavigateToSkill(name);
+        return;
+      }
+      openSkillByNameFallback(name);
+    },
+    onOpenMemory: (mem: { id: string; summary: string; date: string }) =>
+      openMemory({ id: mem.id, content: mem.summary, date: mem.date, title: mem.summary }),
+  };
+
+  function openSkillByNameFallback(name: string) {
+    if (typeof window === 'undefined') return;
+    sessionStorage.setItem('highlightItem', name);
+    window.dispatchEvent(
+      new CustomEvent('navigate-surface', { detail: { surface: 'skills' as const } }),
+    );
+  }
 
   useEffect(() => {
-    if (activeTab === 'chat' && chatMessages.length === 0) {
-      const welcomeMessage: ChatMessage = {
-        id: 'welcome',
-        role: 'assistant',
-        content: `Hi! I'm here to help you manage **${skill.skill_name}**. I can help you:\n\n- Update skill information\n- Track your progress and XP\n- Answer questions about the skill\n- Suggest ways to improve\n- Review your practice history\n\nWhat would you like to do?`,
-        timestamp: new Date()
-      };
-      setChatMessages([welcomeMessage]);
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
     }
-  }, [activeTab, skill.skill_name]);
+  }, [activeTab]);
 
   useEffect(() => {
-    // Load skill details when modal opens
     void loadSkillDetails();
   }, [skill.id]);
 
   useEffect(() => {
-    if (activeTab === 'connections') {
+    if (activeTab === 'connections' || activeTab === 'relationships') {
       void loadConnections();
-    } else if (activeTab === 'milestones') {
-      void loadMilestones();
-    } else if (activeTab === 'photos') {
-      void loadPhotos();
-    } else if (activeTab === 'timeline') {
-      void loadTimelineEvents();
     }
     void loadProgressHistory();
   }, [activeTab, skill.id]);
@@ -513,18 +526,17 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
     });
   };
 
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || chatLoading) return;
+  const handleSendMessage = async (messageText: string) => {
+    if (!messageText.trim() || chatLoading) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: chatInput,
+      content: messageText.trim(),
       timestamp: new Date()
     };
 
     setChatMessages(prev => [...prev, userMessage]);
-    setChatInput('');
     setChatLoading(true);
 
     const assistantMessageId = (Date.now() + 1).toString();
@@ -556,7 +568,7 @@ Description: ${skill.description || 'No description'}
 First Mentioned: ${format(parseISO(skill.first_mentioned_at), 'MMMM d, yyyy')}
 Last Practiced: ${skill.last_practiced_at ? format(parseISO(skill.last_practiced_at), 'MMMM d, yyyy') : 'Never'}
 Auto-detected: ${skill.auto_detected ? 'Yes' : 'No'}
-Confidence: ${Math.round(skill.confidence_score * 100)}%
+${skillCertaintyFieldLabel()}: ${formatSkillCertaintyDetail(skill.confidence_score)}
 Active: ${skill.is_active ? 'Yes' : 'No'}
 ${detailsContext ? `\n\nAdditional Details:\n${detailsContext}` : ''}
       `.trim();
@@ -633,8 +645,6 @@ When the user provides information about who they learned from, where they pract
     }
   };
 
-  const categoryColor = CATEGORY_COLORS[skill.skill_category] || CATEGORY_COLORS.other;
-
   // Extract and update skill details from chat
   const extractAndUpdateDetails = async (conversation: string) => {
     // Simple pattern matching for common updates
@@ -680,968 +690,232 @@ When the user provides information about who they learned from, where they pract
   const xpNeededForLevel = nextLevelXP - currentLevelXP;
   const levelProgress = Math.min(100, Math.max(0, (xpInCurrentLevel / xpNeededForLevel) * 100));
 
-  return (
-    <Modal isOpen={true} onClose={onClose} title={skill.skill_name} maxWidth="2xl">
-      <div className="flex flex-col h-full max-h-[90vh] sm:max-h-[90vh]">
-        {/* Skill Info Header */}
-        <div className="flex items-center gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/10 px-3 sm:px-6 pt-2 sm:pt-4 flex-wrap">
-          <Badge className={`text-[10px] sm:text-xs ${categoryColor} capitalize`}>
-            {skill.skill_category}
-          </Badge>
-          <Badge variant="outline" className="text-[10px] sm:text-xs border-primary/50 text-primary">
-            Level {skill.current_level}
-          </Badge>
-          {skill.auto_detected && (
-            <Badge variant="outline" className="text-[10px] sm:text-xs bg-purple-500/20 border-purple-500/50 text-purple-300">
-              Auto-detected
-            </Badge>
-          )}
-        </div>
+  const profile = readSkillProfile(skill.metadata);
+  const theme = skillCategoryTheme(skill.skill_category);
+  const visibleTabs = SKILL_DETAIL_TABS.filter((t) => !t.hidden || (t.key === 'meta' && showMetaTab));
+  const lastPracticedLabel = skill.last_practiced_at
+    ? format(parseISO(skill.last_practiced_at), 'MMM d, yyyy')
+    : 'Not yet';
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col min-h-0">
-          <div className="overflow-x-auto overflow-y-hidden -mx-3 sm:mx-6 px-3 sm:px-0 mt-2 sm:mt-4 scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <TabsList className="inline-flex min-w-max sm:flex w-max sm:w-auto flex-nowrap">
-            {tabs.map(tab => (
-                <TabsTrigger key={tab.key} value={tab.key} className="flex-shrink-0 text-[10px] sm:text-sm whitespace-nowrap px-2 sm:px-3 py-1.5 sm:py-1.5">
-                  <tab.icon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" />
-                  <span className="hidden min-[375px]:inline">{tab.label}</span>
-                  <span className="min-[375px]:hidden">{tab.label.substring(0, 3)}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${skill.skill_name} skill details`}
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0a0a0a] border-0 sm:border border-white/10 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header — compact on mobile */}
+        <div className={cn('relative shrink-0 border-b border-white/8 bg-gradient-to-r', theme.headerGrad)}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div
+            className="sm:hidden px-3 py-1.5 pr-11 min-w-0"
+            style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top, 0px))' }}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={cn('rounded-lg border p-1 shrink-0', theme.statBg, theme.statBorder)}>
+                <Trophy className={cn('h-3.5 w-3.5', theme.icon)} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-bold text-white truncate leading-tight">{skill.skill_name}</h2>
+                <p className="text-[10px] text-white/45 truncate mt-0.5">
+                  {levelLabel(skill.current_level)} · {Math.round(levelProgress)}% · {skill.practice_count} conversations
+                </p>
+              </div>
+            </div>
+            <div className={cn('mt-1.5 h-1 rounded-full overflow-hidden', theme.progressTrack)}>
+              <div className={cn('h-full bg-gradient-to-r rounded-full transition-all', theme.progress)} style={{ width: `${levelProgress}%` }} />
+            </div>
           </div>
 
-          {/* Tab Content - with bottom padding for sticky chat */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 pb-20 sm:pb-24 overflow-x-hidden">
-            <TabsContent value="info" className="mt-0 space-y-3 sm:space-y-4">
-              {/* Who, What, When, Where, Why - Creative 5W Layout */}
-              {skillDetails && (
-                <Card className="bg-gradient-to-br from-primary/20 via-primary/10 to-black/60 border-2 border-primary/40 shadow-2xl">
-                  <CardHeader className="pb-3 sm:pb-4">
-                    <CardTitle className="text-lg sm:text-2xl font-bold text-white text-center">The Story of {skill.skill_name}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      {/* WHO */}
-                      <div className="p-3 sm:p-4 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <UserCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
-                          <h3 className="text-xs sm:text-sm font-bold text-blue-400 uppercase tracking-wider">WHO</h3>
-                        </div>
-                        <div className="space-y-2">
-                          {skillDetails.learned_from && skillDetails.learned_from.length > 0 ? (
-                            <div>
-                              <div className="text-[10px] sm:text-xs text-white/60 mb-1">Learned From:</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {skillDetails.learned_from.slice(0, 3).map((teacher, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => openCharacter({ id: teacher.character_id, name: teacher.character_name })}
-                                    className="text-xs sm:text-sm text-blue-300 hover:text-blue-200 underline"
-                                  >
-                                    {teacher.character_name}
-                                  </button>
-                                ))}
-                                {skillDetails.learned_from.length > 3 && (
-                                  <span className="text-xs text-white/50">+{skillDetails.learned_from.length - 3} more</span>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-xs sm:text-sm text-white/50">Self-taught</div>
-                          )}
-                          {skillDetails.practiced_with && skillDetails.practiced_with.length > 0 && (
-                            <div>
-                              <div className="text-[10px] sm:text-xs text-white/60 mb-1">Practiced With:</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {skillDetails.practiced_with.slice(0, 2).map((partner, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => openCharacter({ id: partner.character_id, name: partner.character_name })}
-                                    className="text-xs sm:text-sm text-blue-300 hover:text-blue-200 underline"
-                                  >
-                                    {partner.character_name}
-                                  </button>
-                                ))}
-                                {skillDetails.practiced_with.length > 2 && (
-                                  <span className="text-xs text-white/50">+{skillDetails.practiced_with.length - 2} more</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* WHAT */}
-                      <div className="p-3 sm:p-4 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Target className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
-                          <h3 className="text-xs sm:text-sm font-bold text-purple-400 uppercase tracking-wider">WHAT</h3>
-                        </div>
-                        <div className="space-y-2">
-                          <div>
-                            <div className="text-[10px] sm:text-xs text-white/60 mb-1">Skill:</div>
-                            <div className="text-sm sm:text-base font-semibold text-white">{skill.skill_name}</div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge className={`text-[10px] sm:text-xs ${categoryColor} capitalize`}>
-                              {skill.skill_category}
-                            </Badge>
-                            {skillDetails.years_practiced !== undefined && (
-                              <Badge className="text-[10px] sm:text-xs bg-yellow-500/20 text-yellow-400 border-yellow-500/40">
-                                {skillDetails.years_practiced} years
-                              </Badge>
-                            )}
-                            <Badge className="text-[10px] sm:text-xs bg-primary/20 text-primary border-primary/40">
-                              Level {skill.current_level}
-                            </Badge>
-                          </div>
-                          {skill.description && (
-                            <p className="text-xs sm:text-sm text-white/70 line-clamp-2">{skill.description}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* WHEN */}
-                      <div className="p-3 sm:p-4 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-orange-400" />
-                          <h3 className="text-xs sm:text-sm font-bold text-orange-400 uppercase tracking-wider">WHEN</h3>
-                        </div>
-                        <div className="space-y-2">
-                          {skillDetails.learned_when ? (
-                            <>
-                              <div>
-                                <div className="text-[10px] sm:text-xs text-white/60 mb-1">Started:</div>
-                                <div className="text-sm sm:text-base font-semibold text-white">
-                                  {format(parseISO(skillDetails.learned_when.date), 'MMMM yyyy')}
-                                </div>
-                              </div>
-                              {skillDetails.years_practiced !== undefined && (
-                                <div className="text-xs text-white/60">
-                                  Practicing for {skillDetails.years_practiced} {skillDetails.years_practiced === 1 ? 'year' : 'years'}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="text-xs sm:text-sm text-white/50">
-                              {format(parseISO(skill.first_mentioned_at), 'MMMM yyyy')}
-                            </div>
-                          )}
-                          {skill.last_practiced_at && (
-                            <div>
-                              <div className="text-[10px] sm:text-xs text-white/60">Last Practiced:</div>
-                              <div className="text-xs sm:text-sm text-white/80">
-                                {format(parseISO(skill.last_practiced_at), 'MMM d, yyyy')}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* WHERE */}
-                      <div className="p-3 sm:p-4 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/5 border border-green-500/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5 text-green-400" />
-                          <h3 className="text-xs sm:text-sm font-bold text-green-400 uppercase tracking-wider">WHERE</h3>
-                        </div>
-                        <div className="space-y-2">
-                          {skillDetails.learned_at && skillDetails.learned_at.length > 0 ? (
-                            <div>
-                              <div className="text-[10px] sm:text-xs text-white/60 mb-1">Learned At:</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {skillDetails.learned_at.slice(0, 2).map((loc, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => openLocation({ id: loc.location_id, name: loc.location_name })}
-                                    className="text-xs sm:text-sm text-green-300 hover:text-green-200 underline"
-                                  >
-                                    {loc.location_name}
-                                  </button>
-                                ))}
-                                {skillDetails.learned_at.length > 2 && (
-                                  <span className="text-xs text-white/50">+{skillDetails.learned_at.length - 2}</span>
-                                )}
-                              </div>
-                            </div>
-                          ) : null}
-                          {skillDetails.practiced_at && skillDetails.practiced_at.length > 0 ? (
-                            <div>
-                              <div className="text-[10px] sm:text-xs text-white/60 mb-1">Practiced At:</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {skillDetails.practiced_at
-                                  .sort((a, b) => b.practice_count - a.practice_count)
-                                  .slice(0, 2)
-                                  .map((loc, idx) => (
-                                    <button
-                                      key={idx}
-                                      onClick={() => openLocation({ id: loc.location_id, name: loc.location_name })}
-                                      className="text-xs sm:text-sm text-green-300 hover:text-green-200 underline"
-                                    >
-                                      {loc.location_name}
-                                    </button>
-                                  ))}
-                                {skillDetails.practiced_at.length > 2 && (
-                                  <span className="text-xs text-white/50">+{skillDetails.practiced_at.length - 2}</span>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-xs sm:text-sm text-white/50">No locations recorded</div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* WHY - Full Width */}
-                      {skillDetails.why_started && (
-                        <div className="sm:col-span-2 p-3 sm:p-4 rounded-xl bg-gradient-to-br from-pink-500/20 to-pink-500/5 border border-pink-500/30">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-pink-400" />
-                            <h3 className="text-xs sm:text-sm font-bold text-pink-400 uppercase tracking-wider">WHY</h3>
-                          </div>
-                          <p className="text-sm sm:text-base text-white/90 leading-relaxed">{skillDetails.why_started.reason}</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* When Started - Real Info */}
-              {skillDetails?.learned_when && (
-                <Card className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-orange-400" />
-                      <CardTitle className="text-sm font-bold text-white">When You Started</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-base sm:text-lg font-semibold text-white mb-1">
-                      {format(parseISO(skillDetails.learned_when.date), 'MMMM d, yyyy')}
-                    </div>
-                    {skillDetails.learned_when.context && (
-                      <p className="text-xs sm:text-sm text-white/70">{skillDetails.learned_when.context}</p>
-                    )}
-                    {skillDetails.years_practiced !== undefined && (
-                      <div className="text-xs sm:text-sm text-orange-400/80 mt-2">
-                        Practicing for {skillDetails.years_practiced} {skillDetails.years_practiced === 1 ? 'year' : 'years'}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Why You Do This Skill */}
-              {skillDetails?.why_started && (
-                <Card className="bg-gradient-to-br from-pink-500/20 to-pink-500/5 border border-pink-500/30">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-pink-400" />
-                      <CardTitle className="text-sm font-bold text-white">Why You Started</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm sm:text-base text-white/90 leading-relaxed">{skillDetails.why_started.reason}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Sagas, Arcs, Eras */}
-              {skillDetails && ((skillDetails.arcs && skillDetails.arcs.length > 0) || (skillDetails.sagas && skillDetails.sagas.length > 0) || (skillDetails.eras && skillDetails.eras.length > 0)) && (
-                <Card className="bg-gradient-to-br from-indigo-500/20 to-indigo-500/5 border border-indigo-500/30">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4 text-indigo-400" />
-                      <CardTitle className="text-sm font-bold text-white">Timeline Context</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {skillDetails.eras && skillDetails.eras.length > 0 && (
-                      <div>
-                        <div className="text-[10px] sm:text-xs text-indigo-400/70 mb-2 uppercase tracking-wider">Eras</div>
-                        <div className="flex flex-wrap gap-2">
-                          {skillDetails.eras.map((era, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => navigate(`/timeline?era=${era.era_id}`)}
-                              className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 text-xs hover:bg-indigo-500/30 transition-colors"
-                            >
-                              {era.era_title}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {skillDetails.sagas && skillDetails.sagas.length > 0 && (
-                      <div>
-                        <div className="text-[10px] sm:text-xs text-indigo-400/70 mb-2 uppercase tracking-wider">Sagas</div>
-                        <div className="flex flex-wrap gap-2">
-                          {skillDetails.sagas.map((saga, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => navigate(`/timeline?saga=${saga.saga_id}`)}
-                              className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 text-xs hover:bg-indigo-500/30 transition-colors"
-                            >
-                              {saga.saga_title}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {skillDetails.arcs && skillDetails.arcs.length > 0 && (
-                      <div>
-                        <div className="text-[10px] sm:text-xs text-indigo-400/70 mb-2 uppercase tracking-wider">Arcs</div>
-                        <div className="flex flex-wrap gap-2">
-                          {skillDetails.arcs.map((arc, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => navigate(`/timeline?arc=${arc.arc_id}`)}
-                              className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 text-xs hover:bg-indigo-500/30 transition-colors"
-                            >
-                              {arc.arc_title}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Basic Info - Compact */}
-              <Card className="bg-black/40 border border-white/10">
-                <CardContent className="p-3 sm:p-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge className={`text-xs ${categoryColor} capitalize`}>
-                      {skill.skill_category}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs border-primary/50 text-primary">
-                      Level {skill.current_level}
-                    </Badge>
-                    {skill.is_active ? (
-                      <Badge className="text-xs bg-green-500/20 text-green-400 border-green-500/40">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge className="text-xs bg-gray-500/20 text-gray-400 border-gray-500/40">
-                        Inactive
-                      </Badge>
-                    )}
-                    {skill.auto_detected && (
-                      <Badge variant="outline" className="text-xs bg-purple-500/20 border-purple-500/50 text-purple-300">
-                        Auto-detected
-                      </Badge>
-                    )}
-                  </div>
-                  {skill.description && (
-                    <p className="text-xs sm:text-sm text-white/70 mt-2">{skill.description}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-            </TabsContent>
-
-            <TabsContent value="chat" className="mt-0">
-              <div className="mb-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full gap-2 border-primary/30"
-                  onClick={() => openSkillMainChat()}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  Open main chat with {skill.skill_name} focus
-                </Button>
+          <div className="hidden sm:block px-5 py-4 pr-14">
+            <div className="flex items-start gap-3">
+              <div className={cn('rounded-xl border p-2 shrink-0', theme.statBg, theme.statBorder)}>
+                <Trophy className={cn('h-5 w-5', theme.icon)} />
               </div>
-              {/* Chat messages only - input moved to sticky area */}
-              <div className="space-y-3 sm:space-y-4">
-                {chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[85%] sm:max-w-[80%] rounded-lg p-3 sm:p-4 ${
-                        message.role === 'user'
-                          ? 'bg-primary/20 text-white'
-                          : 'bg-black/40 text-white/90 border border-white/10'
-                      }`}
-                    >
-                      <div className="text-sm sm:text-base break-words">
-                      <MarkdownRenderer content={message.content} />
-                      </div>
-                      <div className="text-[10px] sm:text-xs text-white/40 mt-1 sm:mt-2">
-                        {format(message.timestamp, 'HH:mm')}
-                      </div>
-                    </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-white">{skill.skill_name}</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Badge className={cn('text-xs capitalize border', theme.badge)}>{skill.skill_category}</Badge>
+                  <Badge variant="outline" className={cn('text-xs border', theme.chip)}>Level {skill.current_level}</Badge>
+                  <span className="text-xs text-white/40">{skill.practice_count} sessions · Last {lastPracticedLabel}</span>
+                  {skill.auto_detected && (
+                    <Badge variant="outline" className="text-xs bg-purple-500/20 border-purple-500/50 text-purple-300">Auto-detected</Badge>
+                  )}
+                </div>
+                <div className="mt-3 max-w-md">
+                  <div className="flex justify-between text-xs text-white/50 mb-1">
+                    <span>Progress to level {skill.current_level + 1}</span>
+                    <span className={cn('font-medium', theme.accentText)}>{Math.round(levelProgress)}%</span>
                   </div>
-                ))}
-                {isStreaming && (
-                  <div className="flex justify-start">
-                    <div className="bg-black/40 text-white/90 border border-white/10 rounded-lg p-3 sm:p-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                        <span className="text-white/60 text-sm sm:text-base">Thinking...</span>
-                      </div>
-                    </div>
+                  <div className={cn('h-2 rounded-full overflow-hidden', theme.progressTrack)}>
+                    <div className={cn('h-full bg-gradient-to-r rounded-full', theme.progress)} style={{ width: `${levelProgress}%` }} />
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab nav — 4-col icon grid on mobile (2 rows), wrap on desktop */}
+        <nav className="shrink-0 border-b border-white/8 px-1 sm:px-3 pt-1 pb-1 sm:pt-2" aria-label="Skill sections">
+          <div className="flex gap-1 overflow-x-auto scrollbar-none pb-0.5 snap-x snap-mandatory">
+            {visibleTabs.map(({ key, label, shortLabel, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={cn(
+                  'flex shrink-0 snap-start flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[3.25rem] text-[9px] sm:text-[10px] font-medium rounded-lg border transition-colors touch-manipulation',
+                  activeTab === key
+                    ? cn(theme.statBg, theme.accentText, theme.border)
+                    : 'text-white/40 border-transparent hover:text-white/65 hover:bg-white/[0.04]',
                 )}
-                <div ref={messagesEndRef} />
-              </div>
+                aria-current={activeTab === key ? 'page' : undefined}
+                aria-label={label}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate max-w-[4rem] leading-tight">
+                  <span className="sm:hidden">{shortLabel}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {!showMetaTab && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowMetaTab(true);
+                setActiveTab('meta');
+              }}
+              className="text-[9px] text-white/25 hover:text-white/45 px-2 py-0.5"
+            >
+              Show meta
+            </button>
+          )}
+        </nav>
+
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SkillDetailTabKey)} className="flex-1 flex flex-col min-h-0">
+          <div
+            ref={contentRef}
+            className="flex-1 min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+          >
+            <TabsContent value="overview" className="mt-0 space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 border-primary/30 text-xs h-8"
+                onClick={() => openSkillMainChat()}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Chat about {skill.skill_name}
+              </Button>
+              <SkillDetailModalOverview
+                skill={skill}
+                skillDetails={skillDetails}
+                levelProgress={levelProgress}
+                xpInCurrentLevel={xpInCurrentLevel}
+                xpNeededForLevel={xpNeededForLevel}
+                progressHistory={progressHistory}
+                loadingProgress={loadingProgress}
+                profile={profile}
+                nav={entityNav}
+              />
             </TabsContent>
 
-            <TabsContent value="connections" className="mt-0 space-y-3 sm:space-y-4">
+            <TabsContent value="story" className="mt-0">
+              <SkillStoryTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
+            </TabsContent>
+
+            <TabsContent value="evidence" className="mt-0">
+              <SkillEvidenceTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
+            </TabsContent>
+
+            <TabsContent value="timeline" className="mt-0">
+              <SkillGrowthTimelineTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
+            </TabsContent>
+
+            <TabsContent value="connections" className="mt-0">
               {loadingConnections ? (
-                <div className="text-center py-8 text-white/60">Loading connections...</div>
+                <p className="text-center py-8 text-white/60 text-sm">Loading connections…</p>
               ) : (
-                <>
-                  {/* Characters */}
-                  {relatedCharacters.length > 0 && (
-                    <Card className="bg-black/40 border border-blue-500/30">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-blue-400" />
-                          <CardTitle className="text-sm font-bold text-white">People</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {relatedCharacters.map((character) => (
-                            <button
-                              key={character.id}
-                              onClick={() => openCharacter({ id: character.id, name: character.name })}
-                              className="w-full p-3 rounded-lg bg-black/40 border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-left flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                {character.avatar_url ? (
-                                  <img
-                                    src={character.avatar_url}
-                                    alt={character.name}
-                                    className="h-10 w-10 rounded-full object-cover flex-shrink-0"
-                                  />
-                                ) : (
-                                  <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                                    <Users className="h-5 w-5 text-blue-400" />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-semibold text-white truncate">{character.name}</div>
-                                  {character.role && (
-                                    <div className="text-xs text-white/60 capitalize">{character.role}</div>
-                                  )}
-                                  {character.relationship && (
-                                    <div className="text-[10px] text-white/50">{character.relationship}</div>
-                                  )}
-                                </div>
-                              </div>
-                              <ChevronRight className="h-4 w-4 text-white/40 flex-shrink-0" />
-                            </button>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Organizations */}
-                  {relatedOrganizations.length > 0 && (
-                    <Card className="bg-black/40 border border-purple-500/30">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-purple-400" />
-                          <CardTitle className="text-sm font-bold text-white">Organizations</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {relatedOrganizations.map((org) => (
-                            <div
-                              key={org.id}
-                              className="p-3 rounded-lg bg-black/40 border border-white/10"
-                            >
-                              <div className="text-sm font-semibold text-white">{org.name}</div>
-                              {org.type && (
-                                <div className="text-xs text-white/60 capitalize mt-1">{org.type}</div>
-                              )}
-                              {org.member_count !== undefined && (
-                                <div className="text-[10px] text-white/50 mt-1">{org.member_count} members</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {relatedCharacters.length === 0 && relatedOrganizations.length === 0 && (
-                    <Card className="bg-black/40 border border-white/10">
-                      <CardContent className="p-8 text-center">
-                        <Users className="h-12 w-12 mx-auto mb-4 opacity-30 text-white/50" />
-                        <p className="text-white/60">No connections found for this skill</p>
-                        <p className="text-xs text-white/40 mt-2">Connections will appear here as you interact with people and organizations related to this skill</p>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
+                <SkillConnectionsTab
+                  skill={skill}
+                  profile={profile}
+                  details={skillDetails}
+                  theme={theme}
+                  relatedCharacters={relatedCharacters}
+                  relatedOrganizations={relatedOrganizations}
+                  nav={entityNav}
+                />
               )}
             </TabsContent>
 
-            <TabsContent value="milestones" className="mt-0 space-y-3 sm:space-y-4">
-              {loadingMilestones ? (
-                <div className="text-center py-8 text-white/60">Loading milestones...</div>
-              ) : milestones.length > 0 ? (
-                <div className="space-y-3 sm:space-y-4">
-                  {milestones.map((achievement) => (
-                    <Card
-                      key={achievement.id}
-                      className="bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 border border-yellow-500/30"
-                    >
-                      <CardContent className="p-3 sm:p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="p-2 rounded-lg bg-yellow-500/20 flex-shrink-0">
-                            <Trophy className="h-5 w-5 text-yellow-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <h3 className="text-sm sm:text-base font-bold text-white">{achievement.achievement_name}</h3>
-                              <Badge
-                                className={`text-[10px] sm:text-xs ${
-                                  achievement.rarity === 'legendary' ? 'bg-purple-500/20 text-purple-400 border-purple-500/40' :
-                                  achievement.rarity === 'epic' ? 'bg-pink-500/20 text-pink-400 border-pink-500/40' :
-                                  achievement.rarity === 'rare' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' :
-                                  achievement.rarity === 'uncommon' ? 'bg-green-500/20 text-green-400 border-green-500/40' :
-                                  'bg-gray-500/20 text-gray-400 border-gray-500/40'
-                                }`}
-                              >
-                                {achievement.rarity}
-                              </Badge>
-                            </div>
-                            {achievement.description && (
-                              <p className="text-xs sm:text-sm text-white/70 mb-2">{achievement.description}</p>
-                            )}
-                            <div className="text-[10px] sm:text-xs text-white/50">
-                              {format(parseISO(achievement.unlocked_at), 'MMMM d, yyyy')}
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="bg-black/40 border border-white/10">
-                  <CardContent className="p-8 text-center">
-                    <Trophy className="h-12 w-12 mx-auto mb-4 opacity-30 text-white/50" />
-                    <p className="text-white/60">No milestones yet</p>
-                    <p className="text-xs text-white/40 mt-2">Achievements related to this skill will appear here</p>
-                  </CardContent>
-                </Card>
-              )}
+            <TabsContent value="activity" className="mt-0">
+              <SkillActivityTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
             </TabsContent>
 
-            <TabsContent value="locations" className="mt-0 space-y-3 sm:space-y-4">
-              {skillDetails && ((skillDetails.learned_at && skillDetails.learned_at.length > 0) || (skillDetails.practiced_at && skillDetails.practiced_at.length > 0)) ? (
-                <>
-                  {skillDetails.learned_at && skillDetails.learned_at.length > 0 && (
-                    <Card className="bg-black/40 border border-green-500/30">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-green-400" />
-                          <CardTitle className="text-sm font-bold text-white">Learned At</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {skillDetails.learned_at.map((location, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => openLocation({ id: location.location_id, name: location.location_name })}
-                              className="w-full p-3 rounded-lg bg-black/40 border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 transition-all text-left flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <MapPin className="h-5 w-5 text-green-400 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-semibold text-white truncate">{location.location_name}</div>
-                                  {location.first_mentioned && (
-                                    <div className="text-xs text-white/60 mt-1">
-                                      {format(parseISO(location.first_mentioned), 'MMMM yyyy')}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <ChevronRight className="h-4 w-4 text-white/40 flex-shrink-0" />
-                            </button>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {skillDetails.practiced_at && skillDetails.practiced_at.length > 0 && (
-                    <Card className="bg-black/40 border border-green-500/30">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-green-400" />
-                          <CardTitle className="text-sm font-bold text-white">Practiced At</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {skillDetails.practiced_at
-                            .sort((a, b) => b.practice_count - a.practice_count)
-                            .map((location, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => openLocation({ id: location.location_id, name: location.location_name })}
-                                className="w-full p-3 rounded-lg bg-black/40 border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 transition-all text-left flex items-center justify-between"
-                              >
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <MapPin className="h-5 w-5 text-green-400 flex-shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-semibold text-white truncate">{location.location_name}</div>
-                                    <div className="text-xs text-white/60 mt-1">{location.practice_count} practice sessions</div>
-                                    {location.last_practiced && (
-                                      <div className="text-[10px] text-white/50 mt-1">
-                                        Last: {format(parseISO(location.last_practiced), 'MMM yyyy')}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <ChevronRight className="h-4 w-4 text-white/40 flex-shrink-0" />
-                              </button>
-                            ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
-              ) : (
-                <Card className="bg-black/40 border border-white/10">
-                  <CardContent className="p-8 text-center">
-                    <MapPin className="h-12 w-12 mx-auto mb-4 opacity-30 text-white/50" />
-                    <p className="text-white/60">No locations recorded</p>
-                    <p className="text-xs text-white/40 mt-2">Locations where you learned or practiced this skill will appear here</p>
-                  </CardContent>
-                </Card>
-              )}
+            <TabsContent value="proficiency" className="mt-0">
+              <SkillProficiencyTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
             </TabsContent>
 
-            <TabsContent value="photos" className="mt-0 space-y-3 sm:space-y-4">
-              {loadingPhotos ? (
-                <div className="text-center py-8 text-white/60">Loading photos...</div>
-              ) : skillPhotos.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
-                  {skillPhotos.map((photo) => (
-                    <button
-                      key={photo.id}
-                      onClick={() => setSelectedPhoto(photo)}
-                      className="relative aspect-square rounded-lg overflow-hidden border border-white/10 hover:border-primary/50 transition-all group"
-                    >
-                      <LazyImage
-                        src={photo.thumbnailUrl || photo.photoUrl}
-                        alt={photo.summary || 'Photo'}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <div className="text-center p-2">
-                          {photo.summary && (
-                            <p className="text-xs text-white line-clamp-2">{photo.summary}</p>
-                          )}
-                          {photo.locationName && (
-                            <p className="text-xs text-white/70 mt-1">📍 {photo.locationName}</p>
-                          )}
-                          {photo.people && photo.people.length > 0 && (
-                            <p className="text-xs text-white/70 mt-1">👥 {photo.people.join(', ')}</p>
-                          )}
-                        </div>
-                      </div>
-                      {photo.date && (
-                        <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-black/80 rounded px-1.5 py-0.5 sm:px-2 sm:py-1">
-                          <span className="text-[10px] sm:text-xs text-white">
-                            {format(parseISO(photo.date), 'MMM d')}
-                          </span>
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <Card className="bg-black/40 border border-white/10">
-                  <CardContent className="p-8 text-center">
-                    <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-30 text-white/50" />
-                    <p className="text-white/60">No photos found</p>
-                    <p className="text-xs text-white/40 mt-2">Photos related to this skill will appear here</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Photo Detail Modal */}
-              {selectedPhoto && (
-                <div
-                  className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm"
-                  onClick={() => setSelectedPhoto(null)}
-                >
-                  <div
-                    className="relative max-w-4xl max-h-[90vh] w-full bg-black/90 border border-white/20 rounded-2xl overflow-hidden"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => setSelectedPhoto(null)}
-                      className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 p-2 bg-black/60 rounded-lg hover:bg-black/80 transition-colors"
-                    >
-                      <X className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                    </button>
-                    <div className="flex flex-col md:flex-row">
-                      <div className="flex-1 p-3 sm:p-6">
-                        <img
-                          src={selectedPhoto.photoUrl}
-                          alt={selectedPhoto.summary || ''}
-                          className="w-full h-auto rounded-lg"
-                        />
-                      </div>
-                      <div className="w-full md:w-80 p-3 sm:p-6 border-t md:border-t-0 md:border-l border-white/10 space-y-3 sm:space-y-4">
-                        {selectedPhoto.summary && (
-                          <div>
-                            <h3 className="text-sm sm:text-lg font-semibold text-white mb-2">Description</h3>
-                            <p className="text-xs sm:text-sm text-white/70">{selectedPhoto.summary}</p>
-                          </div>
-                        )}
-                        {selectedPhoto.locationName && (
-                          <div>
-                            <h3 className="text-sm sm:text-lg font-semibold text-white mb-2">Location</h3>
-                            <p className="text-xs sm:text-sm text-white/70">{selectedPhoto.locationName}</p>
-                          </div>
-                        )}
-                        {selectedPhoto.date && (
-                          <div>
-                            <h3 className="text-sm sm:text-lg font-semibold text-white mb-2">Date</h3>
-                            <p className="text-xs sm:text-sm text-white/70">
-                              {format(parseISO(selectedPhoto.date), 'MMMM d, yyyy')}
-                            </p>
-                          </div>
-                        )}
-                        {selectedPhoto.people && selectedPhoto.people.length > 0 && (
-                          <div>
-                            <h3 className="text-sm sm:text-lg font-semibold text-white mb-2">People</h3>
-                            <div className="flex flex-wrap gap-2">
-                              {selectedPhoto.people.map((person, idx) => (
-                                <Badge key={idx} variant="outline" className="text-[10px] sm:text-xs">
-                                  {person}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <TabsContent value="portfolio" className="mt-0">
+              <SkillPortfolioTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
             </TabsContent>
 
-            <TabsContent value="progress" className="mt-0 space-y-4">
-              <Card className="bg-gradient-to-br from-black/60 via-black/50 to-black/60 border-2 border-primary/30 shadow-2xl shadow-primary/10">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20">
-                      <TrendingUp className="h-5 w-5 text-primary" />
-                    </div>
-                    <CardTitle className="text-xl font-bold text-white">Level Progress</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-white/80">Progress to Level {skill.current_level + 1}</span>
-                      <span className="text-lg font-bold text-primary">{Math.round(levelProgress)}%</span>
-                    </div>
-                    <div className="w-full bg-black/60 rounded-full h-6 overflow-hidden border border-primary/20">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary via-primary/80 to-primary/60 transition-all duration-500 flex items-center justify-end pr-2"
-                        style={{ width: `${Math.min(100, levelProgress)}%` }}
-                      >
-                        {levelProgress > 10 && (
-                          <span className="text-xs font-bold text-white">{Math.round(levelProgress)}%</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-white/70">
-                        <span className="font-semibold text-white">{xpInCurrentLevel.toLocaleString()}</span>
-                        <span className="text-white/50"> / {xpNeededForLevel.toLocaleString()} XP</span>
-                      </span>
-                      <span className="text-primary font-semibold">{skill.xp_to_next_level.toLocaleString()} XP to next level</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-black/60 via-black/50 to-black/60 border-2 border-primary/20 shadow-xl">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20">
-                      <Clock className="h-5 w-5 text-primary" />
-                    </div>
-                    <CardTitle className="text-xl font-bold text-white">Progress History</CardTitle>
-                    <Badge variant="outline" className="ml-auto bg-primary/20 text-primary border-primary/40">
-                      {progressHistory.length} entries
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {loadingProgress ? (
-                    <div className="text-center py-8 text-white/60">Loading progress...</div>
-                  ) : progressHistory.length === 0 ? (
-                    <div className="text-center py-8 text-white/60">
-                      <Clock className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                      <p>No progress history yet.</p>
-                      <p className="text-xs text-white/40 mt-2">Start practicing to see your progress here!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {progressHistory.map((progress) => {
-                        const isLevelUp = progress.level_after > progress.level_before;
-                        const sourceColors: Record<string, string> = {
-                          memory: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
-                          achievement: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40',
-                          practice: 'bg-green-500/20 text-green-400 border-green-500/40',
-                          manual: 'bg-purple-500/20 text-purple-400 border-purple-500/40'
-                        };
-                        const sourceColor = sourceColors[progress.source_type] || 'bg-gray-500/20 text-gray-400 border-gray-500/40';
-                        
-                        return (
-                          <div 
-                            key={progress.id} 
-                            className={`flex items-center justify-between p-4 rounded-lg border transition-all hover:border-primary/50 ${
-                              isLevelUp 
-                                ? 'bg-gradient-to-r from-yellow-500/10 to-transparent border-yellow-500/30' 
-                                : 'bg-black/60 border-white/10'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3 flex-1">
-                              {isLevelUp && (
-                                <div className="p-1.5 rounded-lg bg-yellow-500/20">
-                                  <Sparkles className="h-4 w-4 text-yellow-400" />
-                                </div>
-                              )}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-white font-bold text-lg">+{progress.xp_gained} XP</span>
-                                  {isLevelUp && (
-                                    <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/40 text-xs">
-                                      Level Up!
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Badge className={`text-xs ${sourceColor}`}>
-                                    {progress.source_type === 'memory' ? '📝 Memory' : 
-                                     progress.source_type === 'achievement' ? '🏆 Achievement' : 
-                                     progress.source_type === 'practice' ? '💪 Practice' : 
-                                     '✏️ Manual'}
-                                  </Badge>
-                                  {progress.notes && (
-                                    <span className="text-xs text-white/60 truncate max-w-xs">{progress.notes}</span>
-                                  )}
-                                </div>
-                                <div className="text-xs text-white/40">
-                                  {format(parseISO(progress.timestamp), 'MMM d, yyyy • h:mm a')}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right ml-4">
-                              {isLevelUp ? (
-                                <div className="flex flex-col items-end">
-                                  <div className="text-sm font-bold text-yellow-400 mb-1">
-                                    Level {progress.level_before} → {progress.level_after}
-                                  </div>
-                                  <TrendingUp className="h-4 w-4 text-yellow-400" />
-                                </div>
-                              ) : (
-                                <div className="text-sm text-white/60">
-                                  Level {progress.level_before}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Progress Summary - Mock Data */}
-              <Card className="bg-black/40 border-white/10">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Star className="h-5 w-5 text-yellow-400" />
-                    <CardTitle>Progress Summary</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-primary/10 to-transparent border border-primary/20">
-                      <div className="text-xs font-semibold text-primary/70 uppercase tracking-wider mb-1">This Week</div>
-                      <div className="text-2xl font-bold text-white">+{Math.floor(Math.random() * 2000) + 500} XP</div>
-                      <div className="text-xs text-white/50 mt-1">7 activities</div>
-                    </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-transparent border border-green-500/20">
-                      <div className="text-xs font-semibold text-green-400/70 uppercase tracking-wider mb-1">This Month</div>
-                      <div className="text-2xl font-bold text-white">+{Math.floor(Math.random() * 8000) + 2000} XP</div>
-                      <div className="text-xs text-white/50 mt-1">28 activities</div>
-                    </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-transparent border border-blue-500/20">
-                      <div className="text-xs font-semibold text-blue-400/70 uppercase tracking-wider mb-1">Streak</div>
-                      <div className="text-2xl font-bold text-white">{Math.floor(Math.random() * 15) + 5} days</div>
-                      <div className="text-xs text-white/50 mt-1">Keep it up!</div>
-                    </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-transparent border border-purple-500/20">
-                      <div className="text-xs font-semibold text-purple-400/70 uppercase tracking-wider mb-1">Avg. Daily</div>
-                      <div className="text-2xl font-bold text-white">{Math.floor(Math.random() * 300) + 100} XP</div>
-                      <div className="text-xs text-white/50 mt-1">Last 30 days</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            <TabsContent value="relationships" className="mt-0">
+              <SkillRelationshipsTab
+                skill={skill}
+                profile={profile}
+                details={skillDetails}
+                theme={theme}
+                nav={entityNav}
+              />
             </TabsContent>
 
+            <TabsContent value="insights" className="mt-0">
+              <SkillInsightsTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
+            </TabsContent>
+
+            <TabsContent value="memories" className="mt-0">
+              <SkillMemoriesTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
+            </TabsContent>
+
+            <TabsContent value="meta" className="mt-0">
+              <SkillMetaTab skill={skill} />
+            </TabsContent>
           </div>
         </Tabs>
-
-        {/* Sticky Chatbox - Always visible at bottom */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-3 sm:p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
-          <div className="flex gap-2 items-end">
-            <Textarea
-              ref={chatInputRef}
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSendMessage();
-                }
-              }}
-              placeholder={`Ask about ${skill.skill_name}...`}
-              className="flex-1 bg-black/60 border-white/20 text-white resize-none min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] text-sm sm:text-base"
-              rows={2}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!chatInput.trim() || chatLoading || isStreaming}
-              className="h-[50px] sm:h-[60px] px-4 sm:px-6 flex-shrink-0"
-            >
-              {chatLoading || isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
       </div>
-    </Modal>
+
+      {selectedOrganization && (
+        <OrganizationDetailModal
+          organization={selectedOrganization}
+          onClose={() => setSelectedOrganization(null)}
+        />
+      )}
+
+      {selectedProject && (
+        <ProjectDetailModal
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
+          onPatch={async () => {}}
+        />
+      )}
+    </div>
   );
 };
-

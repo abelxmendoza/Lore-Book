@@ -6,6 +6,7 @@ import { runtimeReducer } from './slices/runtimeSlice';
 import { composerReducer } from './slices/composerSlice';
 import { chatReducer } from './slices/chatSlice';
 import { selectionReducer } from './slices/selectionSlice';
+import { skillsBookReducer } from './slices/skillsBookSlice';
 import { uiReducer } from './slices/uiSlice';
 // Register injected endpoints (side-effect imports) so their reducers/hooks
 // and cache tags are available app-wide and to the legacy event bridge.
@@ -20,6 +21,7 @@ const rootReducer = combineReducers({
   composer: composerReducer,
   chat: chatReducer,
   selection: selectionReducer,
+  skillsBook: skillsBookReducer,
   runtime: runtimeReducer,
   [baseApi.reducerPath]: baseApi.reducer,
 });

@@ -40,14 +40,15 @@ type LocationDetailModalProps = {
   onLocationUpdated?: (loc: LocationProfile) => void;
 };
 
-type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge';
+type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge' | 'chat';
 
-const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'overview',  label: 'Overview',  icon: FileText },
-  { key: 'knowledge', label: 'What I Know', icon: Brain },
-  { key: 'memories',  label: 'Memories',  icon: Calendar },
-  { key: 'people',    label: 'People',    icon: Users },
-  { key: 'insights',  label: 'Insights',  icon: Brain },
+const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
+  { key: 'overview',  label: 'Overview',    shortLabel: 'Overview', icon: FileText },
+  { key: 'knowledge', label: 'What I Know', shortLabel: 'Know',     icon: Brain },
+  { key: 'memories',  label: 'Memories',    shortLabel: 'Memories', icon: Calendar },
+  { key: 'people',    label: 'People',      shortLabel: 'People',   icon: Users },
+  { key: 'insights',  label: 'Insights',    shortLabel: 'Insights', icon: Sparkles },
+  { key: 'chat',      label: 'Chat',        shortLabel: 'Chat',     icon: MessageSquare },
 ];
 
 export const LocationDetailModal = ({
@@ -393,11 +394,45 @@ export const LocationDetailModal = ({
   ].filter((field): field is { label: string; value: string } => Boolean(field.value));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${location.name} details`}
+    >
+      <div className="bg-[#0a0a0a] border-0 sm:border border-white/10 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-3xl overflow-hidden flex flex-col shadow-2xl">
 
-        {/* ── Header ── */}
-        <div className="flex items-start gap-4 p-5 border-b border-white/8 shrink-0">
+        {/* ── Header — compact on mobile ── */}
+        <div className="relative border-b border-white/8 shrink-0 bg-gradient-to-r from-teal-950/30 via-black/40 to-teal-950/20">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div
+            className="sm:hidden px-3 py-2 pr-11 min-w-0"
+            style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-1.5 shrink-0">
+                <MapPin className="h-4 w-4 text-teal-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-bold text-white truncate">{location.name}</h2>
+                <p className="text-[11px] text-white/45 truncate mt-0.5">
+                  {[placeType ? formatPlaceType(placeType) : location.type?.replace(/_/g, ' '), `${location.visitCount} visits`]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-start gap-4 p-5 pr-14">
           <div className="rounded-xl bg-teal-500/10 border border-teal-500/20 p-2.5 shrink-0 mt-0.5">
             <MapPin className="h-5 w-5 text-teal-400" />
           </div>
@@ -421,40 +456,50 @@ export const LocationDetailModal = ({
               )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          </div>
         </div>
 
-        {/* ── Tab bar — wraps to multiple rows on narrow screens instead of scrolling ── */}
-        <div className="flex flex-wrap gap-1 px-3 sm:px-5 pt-3 border-b border-white/8 shrink-0">
-          {tabs.map(({ key, label, icon: Icon }) => (
+        {/* ── Tab bar — stacked grid on mobile, wrap on desktop ── */}
+        <nav
+          className="shrink-0 border-b border-white/8 px-2 sm:px-5 pt-2 pb-2 sm:pt-3"
+          aria-label="Place sections"
+        >
+          <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
+          {tabs.map(({ key, label, shortLabel, icon: Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-colors ${
+              className={`flex items-center justify-center sm:justify-start gap-1.5 px-2 sm:px-3 py-2 text-[11px] sm:text-xs font-medium rounded-lg sm:rounded-t-lg border sm:border-0 sm:border-b-2 transition-colors touch-manipulation min-h-[40px] sm:min-h-0 ${
                 activeTab === key
-                  ? 'border-teal-400 text-teal-300'
-                  : 'border-transparent text-white/40 hover:text-white/70'
+                  ? 'border-teal-500/40 bg-teal-500/10 text-teal-300 sm:bg-transparent sm:border-teal-400'
+                  : 'border-white/8 text-white/45 hover:text-white/70 hover:bg-white/[0.04] sm:border-transparent'
               }`}
+              aria-current={activeTab === key ? 'page' : undefined}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">{shortLabel}</span>
+                <span className="hidden sm:inline">{label}</span>
+              </span>
             </button>
           ))}
-        </div>
+          </div>
+        </nav>
 
         {/* ── Content ── */}
-        <div ref={contentRef} className="flex-1 overflow-y-auto p-5 pb-28 space-y-5">
+        <div
+          ref={contentRef}
+          className={`flex-1 min-h-0 touch-pan-y [-webkit-overflow-scrolling:touch] ${
+            activeTab === 'chat'
+              ? 'flex flex-col overflow-hidden'
+              : 'overflow-y-auto overscroll-contain p-3 sm:p-5 space-y-3 sm:space-y-5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]'
+          }`}
+        >
 
           {/* ── OVERVIEW ── */}
           {activeTab === 'overview' && (
-            <div className="space-y-5">
+            <div className="space-y-3 sm:space-y-5">
               <HouseholdDetailPanel
                 location={location}
                 allLocations={allLocations}
@@ -627,18 +672,18 @@ export const LocationDetailModal = ({
               )}
 
               {/* Stat row */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
                 {[
                   { label: 'Visits',      value: location.visitCount,                        icon: Calendar },
                   { label: 'First visit', value: fmt(location.firstVisited),                 icon: Clock },
                   { label: 'Last visit',  value: fmt(location.lastVisited),                  icon: Clock },
                 ].map(({ label, value, icon: Icon }) => (
-                  <div key={label} className="rounded-xl bg-white/4 border border-white/8 p-3">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Icon className="h-3 w-3 text-teal-400" />
-                      <span className="text-[10px] text-white/40 uppercase tracking-wider">{label}</span>
+                  <div key={label} className="rounded-lg sm:rounded-xl bg-white/4 border border-white/8 p-2 sm:p-3 min-w-0">
+                    <div className="flex items-center gap-1 mb-0.5 sm:mb-1">
+                      <Icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-teal-400 shrink-0" />
+                      <span className="text-[9px] sm:text-[10px] text-white/40 uppercase tracking-wider truncate">{label}</span>
                     </div>
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-xs sm:text-sm font-semibold text-white truncate">
                       {value === '—' ? <UnknownField compact label={label} /> : value}
                     </p>
                   </div>
@@ -877,20 +922,20 @@ export const LocationDetailModal = ({
 
           {/* ── INSIGHTS ── */}
           {activeTab === 'insights' && (
-            <div className="space-y-5">
+            <div className="space-y-3 sm:space-y-5">
               {a ? (
                 <>
                   {/* Key metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                     {[
                       { label: 'Importance',  value: a.importance_score,  color: 'text-amber-400' },
                       { label: 'Frequency',   value: a.visit_frequency,   color: 'text-blue-400'  },
                       { label: 'Comfort',     value: a.comfort_score,     color: 'text-emerald-400' },
                       { label: 'Productivity', value: a.productivity_score, color: 'text-purple-400' },
                     ].map(({ label, value, color }) => (
-                      <div key={label} className="rounded-xl bg-white/4 border border-white/8 p-3 text-center">
-                        <p className={`text-2xl font-bold ${color}`}>{value}%</p>
-                        <p className="text-[10px] text-white/40 mt-0.5">{label}</p>
+                      <div key={label} className="rounded-lg sm:rounded-xl bg-white/4 border border-white/8 p-2 sm:p-3 text-center min-w-0">
+                        <p className={`text-lg sm:text-2xl font-bold tabular-nums ${color}`}>{value}%</p>
+                        <p className="text-[9px] sm:text-[10px] text-white/40 mt-0.5 truncate">{label}</p>
                       </div>
                     ))}
                   </div>
@@ -976,25 +1021,59 @@ export const LocationDetailModal = ({
             </div>
           )}
 
-        </div>
+          {/* ── CHAT ── */}
+          {activeTab === 'chat' && (
+            <div className="flex flex-col flex-1 min-h-0 h-full" data-testid="location-chat-panel">
+              <div className="flex-shrink-0 px-3 sm:px-0 pt-1 pb-2 sm:pb-3 border-b border-white/8 space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 border-teal-500/30 text-teal-200 hover:bg-teal-500/10 text-xs sm:text-sm h-9"
+                  onClick={() => openLocationMainChat()}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Open main chat with focus
+                </Button>
+                <p className="text-[11px] sm:text-xs text-white/40 hidden sm:block">
+                  Quick questions about {location.name} — or open main chat for a full thread.
+                </p>
+              </div>
 
-        {/* ── Sticky chat composer ── */}
-        <div className="shrink-0 border-t border-white/8 bg-black/60 backdrop-blur-sm p-3 space-y-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-full gap-2 border-teal-500/30 text-teal-200 hover:bg-teal-500/10"
-            onClick={() => openLocationMainChat()}
-          >
-            <MessageSquare className="h-4 w-4" />
-            Open main chat with {location.name} focus
-          </Button>
-          {chatMessages.map((msg, i) => (
-            <ChatMessage key={i} message={{ id: `msg-${i}`, role: msg.role, content: msg.content, timestamp: msg.timestamp }} />
-          ))}
-          <div ref={chatMessagesEndRef} />
-          <ChatComposer onSubmit={handleChatSubmit} loading={chatLoading} />
+              <div
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-0 py-2 sm:py-3 space-y-2 sm:space-y-3"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                {chatMessages.length === 0 ? (
+                  <div className="text-center py-6 sm:py-10 text-white/50 px-2">
+                    <MessageSquare className="h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-2 opacity-40 text-teal-400" />
+                    <p className="text-sm text-white/60">Ask about visits, people, or memories here</p>
+                  </div>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <ChatMessage
+                      key={i}
+                      message={{ id: `msg-${i}`, role: msg.role, content: msg.content, timestamp: msg.timestamp }}
+                    />
+                  ))
+                )}
+                <div ref={chatMessagesEndRef} />
+              </div>
+
+              <div
+                className="flex-shrink-0 border-t border-white/10 bg-black/80 backdrop-blur-sm"
+                style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+              >
+                <ChatComposer
+                  variant="embedded"
+                  placeholder={`Ask about ${location.name}…`}
+                  onSubmit={handleChatSubmit}
+                  loading={chatLoading}
+                />
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 

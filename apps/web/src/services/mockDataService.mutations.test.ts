@@ -9,6 +9,8 @@ describe('mockDataService.mutate', () => {
     mockDataService.register.quests([]);
     mockDataService.register.questSuggestions([]);
     mockDataService.register.characters([]);
+    mockDataService.register.skills([]);
+    mockDataService.register.skillSuggestions([]);
   });
 
   it('creates quests and rebuilds the board with lk:quests-updated', () => {
@@ -77,6 +79,38 @@ describe('mockDataService.mutate', () => {
     expect(events).toContain('lk:characters-updated');
 
     window.removeEventListener('lk:characters-updated', onEvent);
+  });
+
+  it('creates skills from suggestions and emits lk:skills-updated', () => {
+    const events: string[] = [];
+    const onEvent = (event: Event) => events.push(event.type);
+    window.addEventListener('lk:skills-updated', onEvent);
+
+    const created = mockDataService.mutate.skills.createFromSuggestion({
+      id: 'sug-react',
+      skill_name: 'React',
+      skill_category: 'technical',
+      skill_type: 'technical',
+      monetization: 'paid',
+      proficiency: 72,
+      confidence: 0.86,
+      enjoyment: 78,
+      usage_frequency: 'daily',
+      trajectory: 'improving',
+      description: 'Building the Atlas Notes app',
+      evidence: ['Working on React frontend'],
+      source: 'chat',
+    });
+
+    expect(created.skill_name).toBe('React');
+    expect(created.metadata?.skill_profile?.proficiency).toBe(72);
+    expect(mockDataService.get.skills()).toHaveLength(1);
+    expect(events).toContain('lk:skills-updated');
+
+    mockDataService.mutate.skills.removeSuggestion({ id: 'sug-react', skill_name: 'React' });
+    expect(mockDataService.get.skillSuggestions()).toHaveLength(0);
+
+    window.removeEventListener('lk:skills-updated', onEvent);
   });
 
   it('updates value priority in demo goals data', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Shield, AlertTriangle, HelpCircle, Sparkles, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { fetchDomainTrust, type TrustDomain } from '../../api/trust';
 
 const DOMAIN_LABELS: Record<TrustDomain, string> = {
@@ -24,6 +24,7 @@ type Props = {
 /** Phase 6 — compact trust line for Book headers */
 export function BookTrustSummary({ domain, className = '' }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [line, setLine] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<number | null>(null);
 
@@ -50,7 +51,7 @@ export function BookTrustSummary({ domain, className = '' }: Props) {
   return (
     <button
       type="button"
-      onClick={() => navigate('/gaps')}
+      onClick={() => navigate('/gaps', { state: { from: location.pathname } })}
       className={`group flex flex-wrap items-center gap-2 text-left text-xs text-white/50 hover:text-white/80 transition ${className}`}
       title="View coverage and gaps"
     >

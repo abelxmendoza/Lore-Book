@@ -429,7 +429,7 @@ function genFacts(s: Signals): MockFact[] {
 }
 
 function genKnowledgeClaims(s: Signals): MockKnowledgeClaim[] {
-  if (s.closeness < 0.55) return []; // thin relationships honestly have little crystallized
+  if (s.closeness < 0.4) return [];
   const topics = topicsFor(s);
   const claims: MockKnowledgeClaim[] = [
     {
@@ -460,7 +460,23 @@ function genKnowledgeClaims(s: Signals): MockKnowledgeClaim[] {
 }
 
 function genSceneCandidates(s: Signals): MockSceneCandidate[] {
-  if (s.memoryCount < 10) return [];
+  if (s.memoryCount < 4) {
+    // Demo mode: still show one recurring moment for named contacts
+    if (s.memoryCount === 0 && s.closeness >= 0.45) {
+      const topics = topicsFor(s);
+      return [
+        {
+          id: `scene-${s.name}-demo`,
+          canonical_title: `Time with ${s.firstName}`,
+          recurring_activities: topics.slice(0, 2).length ? topics.slice(0, 2) : ['conversation'],
+          continuity_strength: r2(clamp(0.55 + s.closeness * 0.25, 0.5, 0.85)),
+          occurrence_count: 2,
+          last_seen_at: daysAgoIso(14),
+        },
+      ];
+    }
+    return [];
+  }
   const topics = topicsFor(s);
   return [
     {
@@ -608,6 +624,338 @@ const CURATED_ALL_ATTRIBUTES: Record<string, MockAttribute[]> = {
   ],
 };
 
+/** Demo characters opened with only id+name still get plausible intelligence signals. */
+function enrichSignalsForDemo(c: Character): Character {
+  const md = (c.metadata ?? {}) as Record<string, unknown>;
+  const name = c.name ?? '';
+  const isMentor =
+    /professor|prof\.|dr\.|doctor|mentor|coach|teacher/i.test(name) ||
+    c.archetype === 'mentor' ||
+    c.archetype === 'coach';
+  const memoryCount = Number(c.memory_count ?? 0);
+  const closeness = Number(
+    (md.closeness_score as number) ?? c.analytics?.closeness_score ?? c.importance_score ?? 0,
+  );
+
+  return {
+    ...c,
+    archetype: c.archetype ?? (isMentor ? 'mentor' : 'friend'),
+    role: c.role ?? (isMentor ? inferRoleFromName(name) : c.role),
+    memory_count: memoryCount > 0 ? memoryCount : isMentor ? 24 : 12,
+    importance_score: Number(c.importance_score ?? (isMentor ? 72 : 55)),
+    first_appearance: c.first_appearance ?? daysAgoIso(400),
+    metadata: {
+      ...md,
+      closeness_score: closeness > 0 ? closeness : isMentor ? 68 : 58,
+      relationship_type: (md.relationship_type as string) ?? (isMentor ? 'mentor' : 'friend'),
+      first_met: (md.first_met as string) ?? c.first_appearance ?? daysAgoIso(400),
+    },
+    tags: c.tags?.length ? c.tags : isMentor ? ['mentorship', 'guidance'] : ['friendship'],
+  };
+}
+
+function inferRoleFromName(name: string): string {
+  if (/robotics|ros|engineering/i.test(name)) return 'Robotics professor';
+  if (/professor|prof\./i.test(name)) return 'Professor';
+  if (/dr\.|doctor/i.test(name)) return 'Doctor';
+  return 'Mentor';
+}
+
+type DrCuratedBundle = { facts: MockFact[]; claims: MockKnowledgeClaim[] };
+
+function matchDrCurated(name: string): DrCuratedBundle | null {
+  if (/^dr\.?\s/i.test(name.trim()) && !CURATED_FACTS[name]) {
+    const first = name.replace(/^dr\.?\s*/i, '').split(' ')[0] || 'them';
+    return {
+      facts: [
+        {
+          id: `fact-dr-${first}-role`,
+          category: 'career',
+          fact: `${name} is a professional contact you've discussed in conversations`,
+          confidence: 0.78,
+        },
+        {
+          id: `fact-dr-${first}-mentor`,
+          category: 'relationship',
+          fact: `You turn to ${name} for guidance on important decisions`,
+          confidence: 0.74,
+        },
+        {
+          id: `fact-dr-${first}-topics`,
+          category: 'general',
+          fact: `Career direction and personal growth come up often when you mention ${name}`,
+          confidence: 0.71,
+        },
+      ],
+      claims: [
+        {
+          id: `claim-dr-${first}-1`,
+          human_readable_claim: `${name} appears as a trusted advisor figure in your story`,
+          confidence: 0.76,
+          evidence_count: 4,
+          knowledge_type: 'relationship_pattern',
+          evidence_links: [
+            { evidence_summary: `Multiple chats reference advice or perspective from ${name}` },
+          ],
+          last_reinforced_at: daysAgoIso(10),
+        },
+        {
+          id: `claim-dr-${first}-2`,
+          human_readable_claim: `Mentions of ${name} often coincide with career or life-transition themes`,
+          confidence: 0.68,
+          evidence_count: 3,
+          knowledge_type: 'life_pattern',
+          evidence_links: [
+            { evidence_summary: 'Recurring context around jobs, goals, or next steps' },
+          ],
+          last_reinforced_at: daysAgoIso(21),
+        },
+      ],
+    };
+  }
+  return null;
+}
+
+const CURATED_FACTS: Record<string, MockFact[]> = {
+  'Professor Smith': [
+    {
+      id: 'fact-psmith-1',
+      category: 'career',
+      fact: 'Professor Smith teaches robotics at CSUF and guided your early ROS 2 work',
+      confidence: 0.92,
+      status: 'updated',
+    },
+    {
+      id: 'fact-psmith-2',
+      category: 'relationship',
+      fact: 'You learned ROS 2 fundamentals through office hours and lab sessions with Professor Smith',
+      confidence: 0.89,
+    },
+    {
+      id: 'fact-psmith-3',
+      category: 'general',
+      fact: 'Omega-1 and Gazebo simulation were topics you discussed with Professor Smith',
+      confidence: 0.86,
+    },
+    {
+      id: 'fact-psmith-4',
+      category: 'personality',
+      fact: 'Professor Smith is patient, technically rigorous, and pushes you toward industry-ready robotics skills',
+      confidence: 0.84,
+    },
+  ],
+  'Dr. Smith': [
+    {
+      id: 'fact-drsmith-1',
+      category: 'career',
+      fact: 'Dr. Smith is a faculty mentor connected to your robotics and engineering path',
+      confidence: 0.85,
+    },
+    {
+      id: 'fact-drsmith-2',
+      category: 'relationship',
+      fact: 'You have known Dr. Smith for over a year through CSUF robotics coursework',
+      confidence: 0.8,
+    },
+    {
+      id: 'fact-drsmith-3',
+      category: 'history',
+      fact: 'Dr. Smith encouraged you to pursue robotics careers beyond the classroom',
+      confidence: 0.83,
+      status: 'updated',
+    },
+  ],
+};
+
+const CURATED_FACTS_BY_ID: Record<string, MockFact[]> = {
+  'prof-smith': CURATED_FACTS['Professor Smith'],
+};
+
+const CURATED_KNOWLEDGE_CLAIMS: Record<string, MockKnowledgeClaim[]> = {
+  'Professor Smith': [
+    {
+      id: 'claim-psmith-1',
+      human_readable_claim:
+        'Professor Smith is a central mentor in your transition from restaurant work into robotics',
+      confidence: 0.88,
+      evidence_count: 6,
+      knowledge_type: 'relationship_pattern',
+      evidence_links: [
+        { evidence_summary: 'ROS 2 learning arc repeatedly tied to Professor Smith in chat' },
+        { evidence_summary: 'Omega-1 build milestones mention guidance from CSUF lab' },
+      ],
+      last_reinforced_at: daysAgoIso(8),
+    },
+    {
+      id: 'claim-psmith-2',
+      human_readable_claim:
+        'Robotics career conversations often reference Professor Smith as a credibility anchor',
+      confidence: 0.81,
+      evidence_count: 5,
+      knowledge_type: 'career_pattern',
+      evidence_links: [
+        { evidence_summary: 'Job search and interview prep threads mention CSUF robotics work' },
+      ],
+      last_reinforced_at: daysAgoIso(14),
+    },
+    {
+      id: 'claim-psmith-3',
+      human_readable_claim:
+        'Your technical identity around ROS 2, Linux, and simulation strengthened after working with Professor Smith',
+      confidence: 0.79,
+      evidence_count: 4,
+      knowledge_type: 'skill_development',
+      evidence_links: [
+        { evidence_summary: 'Gazebo and launch-file topics cluster around mentor sessions' },
+      ],
+      last_reinforced_at: daysAgoIso(20),
+    },
+  ],
+  'Dr. Smith': [
+    {
+      id: 'claim-drsmith-1',
+      human_readable_claim: 'Dr. Smith represents a steady academic mentor in your robotics journey',
+      confidence: 0.82,
+      evidence_count: 4,
+      knowledge_type: 'relationship_pattern',
+      evidence_links: [{ evidence_summary: 'Faculty mentorship mentioned across multiple entries' }],
+      last_reinforced_at: daysAgoIso(12),
+    },
+    {
+      id: 'claim-drsmith-2',
+      human_readable_claim: 'Career ambition in robotics increased after ongoing contact with Dr. Smith',
+      confidence: 0.75,
+      evidence_count: 3,
+      knowledge_type: 'life_pattern',
+      evidence_links: [{ evidence_summary: 'Job and project goals align with mentor conversations' }],
+      last_reinforced_at: daysAgoIso(18),
+    },
+  ],
+};
+
+const CURATED_KNOWLEDGE_CLAIMS_BY_ID: Record<string, MockKnowledgeClaim[]> = {
+  'prof-smith': CURATED_KNOWLEDGE_CLAIMS['Professor Smith'],
+};
+
+const CURATED_SCENE_CANDIDATES: Record<string, MockSceneCandidate[]> = {
+  'Professor Smith': [
+    {
+      id: 'scene-psmith-lab',
+      canonical_title: 'CSUF Robotics Lab sessions',
+      recurring_activities: ['ROS 2 debugging', 'Gazebo simulation', 'career advice'],
+      continuity_strength: 0.86,
+      occurrence_count: 8,
+      last_seen_at: daysAgoIso(20),
+    },
+  ],
+};
+
+export type MockKnowledgeBaseBundle = {
+  facts: MockFact[];
+  knowledgeClaims: MockKnowledgeClaim[];
+  sceneCandidates: MockSceneCandidate[];
+  timelineEvents: Array<{ title: string; type: string; date: string | null; summary: string | null }>;
+  conversationLinks: Array<{
+    sessionId: string;
+    linkKind: string;
+    mentionCount: number;
+    firstLinkedAt: string;
+    sessionTitle?: string;
+  }>;
+  relatedEntities: Array<{ id: string; name: string; type: string; relationship?: string }>;
+  relationshipToUser: string;
+  aliases: string[];
+  summary: string | null;
+};
+
+export function getMockKnowledgeBaseBundle(
+  character: Character | { id: string; name: string },
+): MockKnowledgeBaseBundle {
+  const enriched = enrichSignalsForDemo({
+    id: character.id,
+    name: character.name,
+    ...(('archetype' in character ? character : {}) as Partial<Character>),
+  } as Character);
+
+  const facts = getMockFacts(enriched);
+  const knowledgeClaims = getMockKnowledgeClaims(enriched);
+  const sceneCandidates = getMockSceneCandidates(enriched);
+  const timeline = getMockCharacterTimeline(enriched);
+  const s = extractSignals(enriched);
+
+  const timelineEvents = [
+    ...timeline.sharedExperiences.map((e) => ({
+      title: e.eventTitle,
+      type: e.eventType ?? 'social',
+      date: e.eventDate,
+      summary: e.eventSummary ?? null,
+    })),
+    ...timeline.lore.slice(0, 2).map((e) => ({
+      title: e.eventTitle,
+      type: e.eventType ?? 'personal',
+      date: e.eventDate,
+      summary: e.eventSummary ?? null,
+    })),
+  ];
+
+  const isProfessorSmith =
+    character.name === 'Professor Smith' || character.id === 'prof-smith';
+
+  return {
+    facts,
+    knowledgeClaims,
+    sceneCandidates,
+    timelineEvents,
+    conversationLinks: isProfessorSmith
+      ? [
+          {
+            sessionId: 'demo-ros-origin',
+            linkKind: 'origin',
+            mentionCount: 4,
+            firstLinkedAt: daysAgoIso(450),
+            sessionTitle: 'Starting ROS 2 on Omega-1',
+          },
+          {
+            sessionId: 'demo-robotics-career',
+            linkKind: 'related',
+            mentionCount: 7,
+            firstLinkedAt: daysAgoIso(120),
+            sessionTitle: 'Robotics job search prep',
+          },
+        ]
+      : facts.length > 0
+        ? [
+            {
+              sessionId: `demo-char-${character.id}`,
+              linkKind: 'origin',
+              mentionCount: Math.max(2, facts.length),
+              firstLinkedAt: daysAgoIso(90),
+              sessionTitle: `Conversation about ${s.firstName}`,
+            },
+          ]
+        : [],
+    relatedEntities: isProfessorSmith
+      ? [
+          { id: 'csuf-lab', name: 'CSUF Robotics Lab', type: 'location', relationship: 'lab' },
+          { id: 'skill-demo-ros2', name: 'ROS 2', type: 'skill', relationship: 'taught' },
+          { id: 'project-omega-1', name: 'Omega-1', type: 'project', relationship: 'advised' },
+        ]
+      : [],
+    relationshipToUser:
+      s.archetype === 'mentor' || s.archetype === 'coach'
+        ? 'Mentor / teacher'
+        : s.archetype === 'family'
+          ? 'Family'
+          : s.archetype === 'romantic'
+            ? 'Partner'
+            : 'Known contact',
+    aliases: isProfessorSmith ? ['Prof. Smith', 'Dr. Smith'] : [],
+    summary: isProfessorSmith
+      ? 'Faculty mentor who anchored your ROS 2 learning and robotics career pivot.'
+      : null,
+  };
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 export function getMockAttributes(character: Character): MockAttribute[] {
   return CURATED_ATTRIBUTES[character.name] ?? genAttributes(extractSignals(character));
@@ -631,15 +979,26 @@ export function getMockInfluenceInsights(character: Character): MockInsight[] {
 }
 
 export function getMockFacts(character: Character): MockFact[] {
-  return genFacts(extractSignals(character));
+  if (CURATED_FACTS[character.name]) return CURATED_FACTS[character.name];
+  if (character.id && CURATED_FACTS_BY_ID[character.id]) return CURATED_FACTS_BY_ID[character.id];
+  const drMatch = matchDrCurated(character.name);
+  if (drMatch?.facts) return drMatch.facts;
+  return genFacts(extractSignals(enrichSignalsForDemo(character)));
 }
 
 export function getMockKnowledgeClaims(character: Character): MockKnowledgeClaim[] {
-  return genKnowledgeClaims(extractSignals(character));
+  if (CURATED_KNOWLEDGE_CLAIMS[character.name]) return CURATED_KNOWLEDGE_CLAIMS[character.name];
+  if (character.id && CURATED_KNOWLEDGE_CLAIMS_BY_ID[character.id]) {
+    return CURATED_KNOWLEDGE_CLAIMS_BY_ID[character.id];
+  }
+  const drMatch = matchDrCurated(character.name);
+  if (drMatch?.claims) return drMatch.claims;
+  return genKnowledgeClaims(extractSignals(enrichSignalsForDemo(character)));
 }
 
 export function getMockSceneCandidates(character: Character): MockSceneCandidate[] {
-  return genSceneCandidates(extractSignals(character));
+  if (CURATED_SCENE_CANDIDATES[character.name]) return CURATED_SCENE_CANDIDATES[character.name];
+  return genSceneCandidates(extractSignals(enrichSignalsForDemo(character)));
 }
 
 // ── Timeline (shared experiences + lore without you) ─────────────────────────
@@ -758,6 +1117,56 @@ const CURATED_TIMELINES: Record<string, { sharedExperiences: MockTimelineEvent[]
       },
     ],
   },
+  'Professor Smith': {
+    sharedExperiences: [
+      {
+        id: 'tl-ps-shared-1',
+        eventId: 'ev-ps-1',
+        eventTitle: 'First ROS 2 lab session',
+        eventDate: daysAgoIso(450),
+        eventSummary: 'Walked through nodes, topics, and launch files on Omega-1 in the CSUF robotics lab.',
+        eventType: 'milestone',
+        userWasPresent: true,
+        characterRole: 'instructor',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-ps-shared-2',
+        eventId: 'ev-ps-2',
+        eventTitle: 'Gazebo simulation review',
+        eventDate: daysAgoIso(280),
+        eventSummary: 'Debugged URDF and sensor plugins together before the midterm project demo.',
+        eventType: 'workshop',
+        userWasPresent: true,
+        characterRole: 'mentor',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-ps-shared-3',
+        eventId: 'ev-ps-3',
+        eventTitle: 'Robotics career office hours',
+        eventDate: daysAgoIso(45),
+        eventSummary: 'Discussed internship targets and how to talk about ROS 2 experience in interviews.',
+        eventType: 'career',
+        userWasPresent: true,
+        characterRole: 'advisor',
+        emotionalImpact: 'positive',
+      },
+    ],
+    lore: [
+      {
+        id: 'tl-ps-lore-1',
+        eventId: 'ev-ps-4',
+        eventTitle: 'Published lab curriculum update',
+        eventDate: daysAgoIso(120),
+        eventSummary: 'Updated the CSUF robotics syllabus to include more industry simulation work.',
+        eventType: 'career',
+        userWasPresent: false,
+        characterRole: 'subject',
+        emotionalImpact: 'positive',
+      },
+    ],
+  },
 };
 
 function genTimeline(s: Signals): { sharedExperiences: MockTimelineEvent[]; lore: MockTimelineEvent[] } {
@@ -812,5 +1221,6 @@ export function getMockCharacterTimeline(character: Character): {
   lore: MockTimelineEvent[];
 } {
   if (CURATED_TIMELINES[character.name]) return CURATED_TIMELINES[character.name];
-  return genTimeline(extractSignals(character));
+  if (character.id === 'prof-smith') return CURATED_TIMELINES['Professor Smith'];
+  return genTimeline(extractSignals(enrichSignalsForDemo(character)));
 }

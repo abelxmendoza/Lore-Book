@@ -98,6 +98,8 @@ function ThreadItem({
   onRename,
   exploreHit,
   enterIndex = 0,
+  animateEnter = false,
+  animateBump = false,
 }: {
   thread: ChatThread;
   displayTitle: string;
@@ -108,6 +110,8 @@ function ThreadItem({
   onRename?: (newTitle: string) => void;
   exploreHit?: ThreadExploreHit;
   enterIndex?: number;
+  animateEnter?: boolean;
+  animateBump?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -233,8 +237,12 @@ function ThreadItem({
 
   return (
     <li
-      className="relative chat-thread-enter"
-      style={{ animationDelay: `${Math.min(enterIndex, 8) * 35}ms` }}
+      className={cn(
+        'relative',
+        animateEnter && 'chat-thread-enter',
+        animateBump && !animateEnter && 'chat-thread-bump'
+      )}
+      style={animateEnter ? { animationDelay: `${Math.min(enterIndex, 8) * 35}ms` } : undefined}
     >
       {/* Active left-edge indicator bar */}
       {isActive && (
@@ -393,6 +401,9 @@ export const ChatThreadList = ({
   const { backendUnavailable } = useMockData();
   const drawerSwipeStartX = useRef<number | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const prevThreadStateRef = useRef<{ ids: Set<string>; order: string[] }>({ ids: new Set(), order: [] });
+  const [enteringThreadIds, setEnteringThreadIds] = useState<Set<string>>(() => new Set());
+  const [bumpingThreadIds, setBumpingThreadIds] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [lexicalKeywords, setLexicalKeywords] = useState('');
   const [lexicalScanning, setLexicalScanning] = useState(false);
@@ -427,6 +438,39 @@ export const ChatThreadList = ({
   };
 
   const hitByThreadId = new Map(exploreHits.map(h => [h.threadId, h]));
+
+  // Animate newly added threads and threads bumped to the top (skip bulk hydration)
+  useEffect(() => {
+    const order = threads.map((t) => t.id);
+    const ids = new Set(order);
+    const prev = prevThreadStateRef.current;
+
+    if (prev.order.length === 0 && order.length > 0) {
+      prevThreadStateRef.current = { ids, order };
+      return;
+    }
+
+    const newIds = order.filter((id) => !prev.ids.has(id));
+    const bumps = order.filter((id) => {
+      const prevIndex = prev.order.indexOf(id);
+      const newIndex = order.indexOf(id);
+      return prevIndex >= 0 && newIndex >= 0 && newIndex < prevIndex && !newIds.includes(id);
+    });
+
+    prevThreadStateRef.current = { ids, order };
+
+    const timers: number[] = [];
+    if (newIds.length > 0 && newIds.length <= 3) {
+      setEnteringThreadIds(new Set(newIds));
+      timers.push(window.setTimeout(() => setEnteringThreadIds(new Set()), 650));
+    }
+    if (bumps.length > 0 && bumps.length <= 3) {
+      setBumpingThreadIds(new Set(bumps));
+      timers.push(window.setTimeout(() => setBumpingThreadIds(new Set()), 650));
+    }
+
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [threads]);
 
   useEffect(() => {
     if (!onLoadMoreThreads || !hasMoreThreads || exploreActive || searchQuery.trim()) return;
@@ -723,6 +767,8 @@ export const ChatThreadList = ({
                       key={t.id}
                       thread={t}
                       enterIndex={threadIdx}
+                      animateEnter={enteringThreadIds.has(t.id)}
+                      animateBump={bumpingThreadIds.has(t.id)}
                       displayTitle={titleLabels.get(t.id) ?? resolveThreadDisplayTitle(t)}
                       isActive={currentThreadId === t.id}
                       isMobile={isMobile}

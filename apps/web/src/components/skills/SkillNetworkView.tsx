@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { formatSkillCertaintyDetail } from '../../lib/skillStory';
 
 type SkillRelationshipType =
   | 'prerequisite_for'
@@ -214,8 +215,8 @@ export const SkillNetworkView: React.FC = () => {
                     >
                       {getRelationshipIcon(rel.relationshipType)} {rel.relationshipType.replace('_', ' ')}
                     </Badge>
-                    <span className="text-xs text-white/40">
-                      {Math.round(rel.confidence * 100)}% confidence
+                    <span className="text-xs text-white/40" title={formatSkillCertaintyDetail(rel.confidence)}>
+                      {formatSkillCertaintyDetail(rel.confidence)}
                     </span>
                   </div>
                   {renderSkill(targetSkill, level + 1)}

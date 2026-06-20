@@ -40,7 +40,6 @@ const TOAST_KINDS = new Set<DemoEffectKind>([
   'character_archived',
   'value_priority',
   'location_added',
-  'skill_added',
   'group_added',
   'memory_approved',
   'memory_edited',
@@ -215,6 +214,7 @@ export function demoEffectMessage(
     case 'skill_added':
       return {
         title: `${label} added to Skills`,
+        subtitle: 'Demo · new skill unlocked',
         xp: 35,
         rippleScopes: ['skills', 'story'],
       };

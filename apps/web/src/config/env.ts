@@ -76,6 +76,11 @@ export const DEV_FEATURES = {
   
   // Enable debug overlays
   enableDebugOverlays: isDevelopment,
+
+  /** Chat lifecycle simulation panel (thread/message animation QA). Force on with VITE_CHAT_LIFECYCLE_SIM=true */
+  chatLifecycleSimulation:
+    import.meta.env.VITE_CHAT_LIFECYCLE_SIM === 'true' ||
+    (import.meta.env.VITE_CHAT_LIFECYCLE_SIM !== 'false' && isDevelopment),
   
   // Show development notice banner — off in production unless explicitly enabled
   showDevNotice: isDevelopment

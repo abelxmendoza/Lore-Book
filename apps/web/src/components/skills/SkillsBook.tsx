@@ -5,40 +5,87 @@
 // =====================================================
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Zap, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Filter, X, SlidersHorizontal, TrendingUp, Star, Award, Calendar, Sparkles, Clock, Flame } from 'lucide-react';
-import { Card, CardContent } from '../ui/card';
+import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
-import { Badge } from '../ui/badge';
 import { SkillProfileCard } from './SkillProfileCard';
 import { SkillDetailModal } from './SkillDetailModal';
 import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { useSkillsBookData } from '../../store/hooks/useEntityBooks';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
-import { format, subDays } from 'date-fns';
+import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
+import { epistemicFieldLabel } from '../../lib/epistemicLabels';
+import { cn } from '../../lib/cn';
+import { subDays } from 'date-fns';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { mockDataService } from '../../services/mockDataService';
+import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import {
+  setSearchTerm,
+  setActiveCategory,
+  setSortBy,
+  goToNextPage,
+  goToPrevPage,
+  clampCurrentPage,
+  toggleAdvancedFilters,
+  setFilterLevelMin,
+  setFilterLevelMax,
+  setFilterConfidenceMin,
+  setFilterConfidenceMax,
+  setFilterProficiencyMin,
+  type SkillCategoryFilter,
+  type SkillSortOption,
+} from '../../store/slices/skillsBookSlice';
+import {
+  selectSkillsBookSearchTerm,
+  selectSkillsBookActiveCategory,
+  selectSkillsBookSortBy,
+  selectSkillsBookCurrentPage,
+  selectSkillsBookShowAdvancedFilters,
+  selectSkillsBookNumericFilters,
+} from '../../store/selectors';
 
-const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
+/** Match Places book — 2 columns × 6 rows on mobile */
+const ITEMS_PER_PAGE = 12;
 
-type SkillCategoryFilter =
-  | 'all'
-  | SkillCategory
-  | 'recent'
-  | 'high_level'
-  | 'low_level'
-  | 'active'
-  | 'inactive'
-  | 'auto_detected'
-  | 'paid'
-  | 'hobby'
-  | 'improving'
-  | 'high_proficiency'
-  | 'physical_type'
-  | 'technical_type';
-type SortOption = 'name_asc' | 'name_desc' | 'level_desc' | 'level_asc' | 'xp_desc' | 'xp_asc' | 'practice_desc' | 'practice_asc' | 'recent';
+function skillMatchesCategory(skill: Skill, category: SkillCategoryFilter): boolean {
+  const profile = readSkillProfile(skill.metadata);
+  switch (category) {
+    case 'all':
+      return true;
+    case 'recent': {
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      return Boolean(skill.last_practiced_at && new Date(skill.last_practiced_at) >= thirtyDaysAgo);
+    }
+    case 'high_level':
+      return skill.current_level >= 5;
+    case 'low_level':
+      return skill.current_level <= 3;
+    case 'active':
+      return skill.is_active;
+    case 'inactive':
+      return !skill.is_active;
+    case 'auto_detected':
+      return skill.auto_detected;
+    case 'paid':
+      return profile?.monetization === 'paid' || profile?.monetization === 'potentially_paid';
+    case 'hobby':
+      return profile?.monetization === 'hobby_only' || profile?.skill_type === 'hobby';
+    case 'improving':
+      return profile?.trajectory === 'improving';
+    case 'high_proficiency':
+      return (profile?.proficiency ?? 0) >= 70;
+    case 'physical_type':
+      return profile?.skill_type === 'physical' || skill.skill_category === 'physical';
+    case 'technical_type':
+      return profile?.skill_type === 'technical' || skill.skill_category === 'technical';
+    default:
+      return skill.skill_category === category;
+  }
+}
 
 const CATEGORY_LABELS: Partial<Record<SkillCategoryFilter, string>> = {
   all: 'All',
@@ -49,7 +96,7 @@ const CATEGORY_LABELS: Partial<Record<SkillCategoryFilter, string>> = {
   paid: 'Paid',
   hobby: 'Hobby',
   improving: 'Growing',
-  high_proficiency: 'High Prof',
+  high_proficiency: '70%+',
   high_level: 'High Lv',
   low_level: 'Low Lv',
   physical_type: 'Physical',
@@ -58,11 +105,11 @@ const CATEGORY_LABELS: Partial<Record<SkillCategoryFilter, string>> = {
   creative: 'Creative',
   physical: 'Physical',
   social: 'Social',
-  intellectual: 'Intellectual',
-  emotional: 'Emotional',
+  intellectual: 'Intel',
+  emotional: 'Emotion',
   practical: 'Practical',
-  artistic: 'Artistic',
-  technical: 'Technical',
+  artistic: 'Art',
+  technical: 'Tech',
   other: 'Other',
 };
 
@@ -71,118 +118,45 @@ function formatCategoryLabel(category: SkillCategoryFilter): string {
   return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-// Generate mock skills for demonstration
-const generateMockSkills = (): Skill[] => {
-  const categories: SkillCategory[] = ['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical'];
-  const skillNames = [
-    'Python Programming', 'Guitar Playing', 'Public Speaking', 'Cooking', 'Photography',
-    'Running', 'Meditation', 'Writing', 'Drawing', 'Swimming', 'Chess', 'Dancing',
-    'Spanish', 'Data Analysis', 'Web Design', 'Yoga', 'Sewing', 'Gardening',
-    'Woodworking', 'Singing', 'Piano', 'French', 'Machine Learning', 'Graphic Design'
-  ];
-
-  const skills: Skill[] = [];
-  const now = Date.now();
-
-  for (let i = 0; i < 30; i++) {
-    const daysAgo = Math.floor(Math.random() * 365);
-    const firstMentioned = new Date(now - daysAgo * 24 * 60 * 60 * 1000);
-    const lastPracticed = Math.random() > 0.3 
-      ? new Date(now - Math.floor(Math.random() * daysAgo) * 24 * 60 * 60 * 1000)
-      : null;
-    
-    const level = Math.floor(Math.random() * 10) + 1;
-    const baseXP = 100 * Math.pow(1.5, level - 1);
-    const xpInLevel = Math.random() * (100 * Math.pow(1.5, level) - baseXP);
-    const totalXP = baseXP + xpInLevel;
-    const nextLevelXP = 100 * Math.pow(1.5, level);
-    const xpToNext = nextLevelXP - totalXP;
-
-    skills.push({
-      id: `skill-${i}`,
-      user_id: 'user',
-      skill_name: skillNames[i % skillNames.length] + (i > skillNames.length ? ` ${Math.floor(i / skillNames.length)}` : ''),
-      skill_category: categories[Math.floor(Math.random() * categories.length)],
-      current_level: level,
-      total_xp: Math.floor(totalXP),
-      xp_to_next_level: Math.floor(xpToNext),
-      description: i < 3
-        ? ['Building the fictional Atlas Notes app in React', 'Amateur kickboxing training at the demo gym', 'Line cook experience at River Café and Golden Spoon'][i]
-        : Math.random() > 0.5 ? `Skill description for ${skillNames[i % skillNames.length]}` : null,
-      first_mentioned_at: firstMentioned.toISOString(),
-      last_practiced_at: lastPracticed?.toISOString() || null,
-      practice_count: Math.floor(Math.random() * 50) + 1,
-      auto_detected: i < 5,
-      confidence_score: Math.random() * 0.3 + 0.7,
-      is_active: Math.random() > 0.2,
-      metadata: i === 0 ? {
-        skill_profile: {
-          skill_type: 'technical',
-          monetization: 'paid',
-          proficiency: 72,
-          enjoyment: 78,
-          usage_frequency: 'daily',
-          trajectory: 'improving',
-          origin_story: 'Learned through CS projects; now building the Atlas Notes frontend',
-          related_projects: ['Atlas Notes'],
-          evidence: [{ text: 'Building the Atlas Notes frontend in React' }],
-        },
-      } : i === 1 ? {
-        skill_profile: {
-          skill_type: 'physical',
-          monetization: 'potentially_paid',
-          proficiency: 68,
-          enjoyment: 90,
-          usage_frequency: 'weekly',
-          trajectory: 'improving',
-          origin_story: 'Training for discipline and conditioning',
-          evidence: [{ text: 'Training kickboxing twice a week' }],
-        },
-      } : i === 2 ? {
-        skill_profile: {
-          skill_type: 'professional',
-          monetization: 'paid',
-          proficiency: 75,
-          enjoyment: 55,
-          usage_frequency: 'rarely',
-          trajectory: 'stagnant',
-          origin_story: 'Worked line cook at River Café and Golden Spoon',
-          related_jobs: ['River Café', 'Golden Spoon'],
-        },
-      } : {},
-      created_at: firstMentioned.toISOString(),
-      updated_at: lastPracticed?.toISOString() || firstMentioned.toISOString(),
-    });
-  }
-
-  return skills;
+const SORT_LABELS: Record<SkillSortOption, string> = {
+  name_asc: 'A–Z',
+  name_desc: 'Z–A',
+  level_desc: 'Level ↓',
+  level_asc: 'Level ↑',
+  xp_desc: 'XP ↓',
+  xp_asc: 'XP ↑',
+  practice_desc: 'Practice ↓',
+  practice_asc: 'Practice ↑',
+  recent: 'Recent',
 };
 
-const MOCK_SKILLS: Skill[] = generateMockSkills();
 
 export const SkillsBook: React.FC = () => {
   const { data, loading, refetch, isMockEnabled: isMockDataEnabled } = useSkillsBookData();
+  const dispatch = useAppDispatch();
+  const searchTerm = useAppSelector(selectSkillsBookSearchTerm);
+  const activeCategory = useAppSelector(selectSkillsBookActiveCategory);
+  const sortBy = useAppSelector(selectSkillsBookSortBy);
+  const currentPage = useAppSelector(selectSkillsBookCurrentPage);
+  const showAdvancedFilters = useAppSelector(selectSkillsBookShowAdvancedFilters);
+  const {
+    filterLevelMin,
+    filterLevelMax,
+    filterConfidenceMin,
+    filterConfidenceMax,
+    filterProficiencyMin,
+  } = useAppSelector(selectSkillsBookNumericFilters);
+
+  // ── Ephemeral, component-local UI state (not worth persisting in Redux) ──
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategory, setActiveCategory] = useState<SkillCategoryFilter>('all');
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<SortOption>('name_asc');
-  const [filterProficiencyMin, setFilterProficiencyMin] = useState(0);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [filterLevelMin, setFilterLevelMin] = useState(1);
-  const [filterLevelMax, setFilterLevelMax] = useState(20);
-  const [filterConfidenceMin, setFilterConfidenceMin] = useState(0);
-  const [filterConfidenceMax, setFilterConfidenceMax] = useState(1);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [mockRegistryTick, setMockRegistryTick] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const bookPageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (mockDataService.get.skills().length === 0) {
-      mockDataService.register.skills(MOCK_SKILLS);
+    const existing = mockDataService.get.skills();
+    if (existing.length === 0 || existing.length < skillBookDemoSkills.length) {
+      mockDataService.register.skills(skillBookDemoSkills);
     }
   }, []);
 
@@ -194,7 +168,7 @@ export const SkillsBook: React.FC = () => {
   const skills = useMemo(() => {
     if (isMockDataEnabled) {
       const registered = mockDataService.get.skills();
-      return registered.length > 0 ? registered : MOCK_SKILLS;
+      return registered.length > 0 ? registered : skillBookDemoSkills;
     }
     return data?.skills ?? [];
   }, [data, isMockDataEnabled, mockRegistryTick]);
@@ -249,39 +223,7 @@ export const SkillsBook: React.FC = () => {
     let filtered = [...skills];
 
     if (activeCategory !== 'all') {
-      filtered = filtered.filter(skill => {
-        const profile = readSkillProfile(skill.metadata);
-        switch (activeCategory) {
-          case 'recent': {
-            const thirtyDaysAgo = subDays(new Date(), 30);
-            return skill.last_practiced_at && new Date(skill.last_practiced_at) >= thirtyDaysAgo;
-          }
-          case 'high_level':
-            return skill.current_level >= 5;
-          case 'low_level':
-            return skill.current_level <= 3;
-          case 'active':
-            return skill.is_active;
-          case 'inactive':
-            return !skill.is_active;
-          case 'auto_detected':
-            return skill.auto_detected;
-          case 'paid':
-            return profile?.monetization === 'paid' || profile?.monetization === 'potentially_paid';
-          case 'hobby':
-            return profile?.monetization === 'hobby_only' || profile?.skill_type === 'hobby';
-          case 'improving':
-            return profile?.trajectory === 'improving';
-          case 'high_proficiency':
-            return (profile?.proficiency ?? 0) >= 70;
-          case 'physical_type':
-            return profile?.skill_type === 'physical' || skill.skill_category === 'physical';
-          case 'technical_type':
-            return profile?.skill_type === 'technical' || skill.skill_category === 'technical';
-          default:
-            return skill.skill_category === activeCategory;
-        }
-      });
+      filtered = filtered.filter(skill => skillMatchesCategory(skill, activeCategory));
     }
 
     if (searchTerm.trim()) {
@@ -350,470 +292,415 @@ export const SkillsBook: React.FC = () => {
 
   const paginatedSkills = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    return sortedSkills.slice(start, end);
+    return sortedSkills.slice(start, start + ITEMS_PER_PAGE);
   }, [sortedSkills, currentPage]);
 
-  const totalPages = Math.ceil(sortedSkills.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(sortedSkills.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const visibleStart = sortedSkills.length === 0 ? 0 : startIndex + 1;
+  const visibleEnd = Math.min(startIndex + ITEMS_PER_PAGE, sortedSkills.length);
 
-  // Generate autocomplete suggestions based on search term
-  const autocompleteSuggestions = useMemo(() => {
-    if (!searchTerm.trim()) {
-      // Show recommendations when search is empty
-      const recommendations: Array<{ skill: Skill; reason: string; icon: typeof TrendingUp }> = [];
-      
-      // Most practiced skills
-      const mostPracticed = [...skills]
-        .sort((a, b) => b.practice_count - a.practice_count)
-        .slice(0, 3)
-        .map(skill => ({ skill, reason: 'Most practiced', icon: Flame }));
-      
-      // Highest level skills
-      const highestLevel = [...skills]
-        .sort((a, b) => b.current_level - a.current_level)
-        .slice(0, 3)
-        .map(skill => ({ skill, reason: 'Highest level', icon: TrendingUp }));
-      
-      // Recently practiced
-      const recentlyPracticed = [...skills]
-        .filter(s => s.last_practiced_at)
-        .sort((a, b) => {
-          const aDate = new Date(a.last_practiced_at!).getTime();
-          const bDate = new Date(b.last_practiced_at!).getTime();
-          return bDate - aDate;
-        })
-        .slice(0, 3)
-        .map(skill => ({ skill, reason: 'Recently practiced', icon: Clock }));
-      
-      // Combine and deduplicate
-      const allRecs = [...mostPracticed, ...highestLevel, ...recentlyPracticed];
-      const seen = new Set<string>();
-      for (const rec of allRecs) {
-        if (!seen.has(rec.skill.id) && recommendations.length < 6) {
-          recommendations.push(rec);
-          seen.add(rec.skill.id);
-        }
-      }
-      
-      return recommendations;
-    }
-
-    // Show matching skills as you type
-    const term = searchTerm.toLowerCase();
-    const matches = skills
-      .filter(skill =>
-        skill.skill_name.toLowerCase().includes(term) ||
-        skill.description?.toLowerCase().includes(term) ||
-        skill.skill_category.toLowerCase().includes(term)
-      )
-      .slice(0, 8)
-      .map(skill => ({ skill, reason: 'Match', icon: Search as typeof TrendingUp }));
-
-    return matches;
-  }, [searchTerm, skills]);
-
-  // Close suggestions when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        searchInputRef.current &&
-        suggestionsRef.current &&
-        !searchInputRef.current.contains(event.target as Node) &&
-        !suggestionsRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
+    dispatch(clampCurrentPage(totalPages));
+  }, [dispatch, totalPages]);
+
+  useEffect(() => {
+    bookPageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [currentPage]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      if (totalPages <= 1) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        dispatch(goToPrevPage());
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        dispatch(goToNextPage(totalPages));
       }
     };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dispatch, totalPages, currentPage]);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const categoryFilters = useMemo(
+    () =>
+      availableCategories.map((id) => ({
+        id,
+        label: formatCategoryLabel(id),
+        count: skills.filter((skill) => skillMatchesCategory(skill, id)).length,
+      })),
+    [availableCategories, skills],
+  );
 
-  // Keyboard navigation for suggestions
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (autocompleteSuggestions.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setShowSuggestions(true);
-      setSelectedSuggestionIndex(prev =>
-        prev < autocompleteSuggestions.length - 1 ? prev + 1 : prev
-      );
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedSuggestionIndex(prev => (prev > 0 ? prev - 1 : -1));
-    } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
-      e.preventDefault();
-      const selected = autocompleteSuggestions[selectedSuggestionIndex];
-      if (selected) {
-        setSearchTerm(selected.skill.skill_name);
-        setShowSuggestions(false);
-        setSelectedSuggestionIndex(-1);
-        handleSkillClick(selected.skill);
-      }
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
-    }
-  };
+  const bookTheme = useMemo(
+    () => skillCategoryTheme(activeCategory === 'all' ? 'technical' : activeCategory),
+    [activeCategory],
+  );
 
   const handleSkillClick = (skill: Skill) => {
     setSelectedSkill(skill);
-    setShowSuggestions(false);
   };
+
+  const handleNavigateToSkill = (skillNameOrId: string) => {
+    const needle = skillNameOrId.trim().toLowerCase();
+    const match = skills.find(
+      (s) =>
+        s.id === skillNameOrId ||
+        s.skill_name.toLowerCase() === needle ||
+        s.skill_name.toLowerCase().includes(needle),
+    );
+    if (match) setSelectedSkill(match);
+  };
+
+  useEffect(() => {
+    if (loading || skills.length === 0) return;
+    const id = sessionStorage.getItem('highlightItem');
+    if (!id) return;
+    sessionStorage.removeItem('highlightItem');
+    const match = skills.find(
+      (s) => s.id === id || s.skill_name.toLowerCase() === id.toLowerCase(),
+    );
+    if (match) setSelectedSkill(match);
+  }, [loading, skills]);
 
   const handleCloseModal = () => {
     setSelectedSkill(null);
-    void loadSkills(); // Refresh skills after modal closes
-  };
-
-  const handleSuggestionClick = (suggestion: { skill: Skill; reason: string; icon: typeof TrendingUp }) => {
-    if (searchTerm.trim()) {
-      setSearchTerm(suggestion.skill.skill_name);
-    }
-    setShowSuggestions(false);
-    handleSkillClick(suggestion.skill);
+    void loadSkills();
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-white/60">Loading skills...</p>
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+          {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+            <div key={i} className="min-h-[11rem] rounded-xl bg-white/5 border border-white/8 animate-pulse" />
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden pb-4 sm:pb-6 space-y-4 sm:space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-primary/15 border border-primary/30 shrink-0">
-            <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white tracking-tight">Skills Book</h1>
-            <p className="text-xs sm:text-sm text-white/55">
-              {sortedSkills.length} skill{sortedSkills.length !== 1 ? 's' : ''} found
-            </p>
-            <BookTrustSummary domain="skills" className="mt-1" />
-          </div>
+    <div className="space-y-5">
+      <DetectedSkillSuggestions
+        demoMode={isMockDataEnabled}
+        existingBookEntries={skills.map(s => ({ id: s.id, name: s.skill_name }))}
+        existingSkillNames={skills.map(s => s.skill_name)}
+        onSkillAdded={() => void loadSkills()}
+      />
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold text-white truncate">Skills</h2>
+          <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
+            {sortedSkills.length} of {skills.length} skills
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={() => void loadSkills()}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+      </div>
 
-        {/* Detected skill suggestions — pulled from your chats + journal */}
-        <DetectedSkillSuggestions
-          demoMode={isMockDataEnabled}
-          existingBookEntries={skills.map(s => ({ id: s.id, name: s.skill_name }))}
-          existingSkillNames={skills.map(s => s.skill_name)}
-          onSkillAdded={() => void loadSkills()}
-        />
+      <SearchWithAutocomplete<Skill>
+        value={searchTerm}
+        onChange={(value) => dispatch(setSearchTerm(value))}
+        placeholder="Search by name, category, or description…"
+        items={skills}
+        getSearchableText={(skill) => {
+          const profile = readSkillProfile(skill.metadata);
+          return [
+            skill.skill_name,
+            skill.skill_category,
+            skill.description ?? '',
+            profile?.origin_story ?? '',
+            ...(profile?.related_projects ?? []),
+          ].join(' ');
+        }}
+        getDisplayLabel={(skill) => skill.skill_name}
+        maxSuggestions={8}
+        className="w-full"
+        inputClassName="bg-black/40 border-white/10 text-white placeholder:text-white/30 text-sm"
+        emptyHint="No matching skills"
+      />
 
-        {/* Search and Filters */}
-        <Card className="bg-black/40 border-white/10">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex flex-col gap-3 sm:gap-4">
-              <div className="relative min-w-0">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 min-h-[44px]">
-                  <Search className="h-4 w-4 text-white/40 shrink-0" />
-                  <Input
-                    ref={searchInputRef}
-                    placeholder="Search skills…"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                      setShowSuggestions(true);
-                      setSelectedSuggestionIndex(-1);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onKeyDown={handleSearchKeyDown}
-                    className="flex-1 min-w-0 border-0 bg-transparent px-0 py-2.5 text-base sm:text-sm text-white shadow-none focus-visible:ring-0 placeholder:text-white/35"
-                  />
-                  {searchTerm && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSearchTerm('');
-                        setShowSuggestions(false);
-                        setCurrentPage(1);
-                      }}
-                      className="h-8 w-8 p-0 shrink-0"
-                      aria-label="Clear search"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAdvancedFilters(v => !v)}
-                    className={`h-8 w-8 p-0 shrink-0 ${showAdvancedFilters ? 'text-primary' : 'text-white/50'}`}
-                    title="Advanced filters"
-                    aria-label="Advanced filters"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Autocomplete Suggestions Dropdown — mobile responsive: full width, touch-friendly items, scrollable */}
-                {showSuggestions && autocompleteSuggestions.length > 0 && (
-                  <div
-                    ref={suggestionsRef}
-                    className="absolute top-full left-0 right-0 mt-2 w-full min-w-0 bg-black/95 border border-white/20 rounded-lg shadow-xl z-50 max-h-[60vh] sm:max-h-96 overflow-y-auto overflow-x-hidden"
-                  >
-                    {!searchTerm.trim() && (
-                      <div className="px-3 sm:px-4 py-2 border-b border-white/10">
-                        <div className="flex items-center gap-2 text-xs text-white/60">
-                          <Sparkles className="h-3 w-3 flex-shrink-0" />
-                          <span>Recommendations</span>
-                        </div>
-                      </div>
-                    )}
-                    <div className="py-1 sm:py-2">
-                      {autocompleteSuggestions.map((suggestion, index) => {
-                        const Icon = suggestion.icon;
-                        const isSelected = index === selectedSuggestionIndex;
-                        return (
-                          <button
-                            key={suggestion.skill.id}
-                            type="button"
-                            onClick={() => handleSuggestionClick(suggestion)}
-                            className={`w-full px-3 sm:px-4 py-3 text-left hover:bg-white/10 transition-colors min-h-[44px] sm:min-h-0 ${
-                              isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''
-                            }`}
-                            onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Icon className="h-4 w-4 text-primary flex-shrink-0" />
-                                  <span className="font-semibold text-white truncate">
-                                    {suggestion.skill.skill_name}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-white/60">
-                                  <Badge variant="outline" className="text-xs border-white/20 text-white/70 capitalize">
-                                    {suggestion.skill.skill_category}
-                                  </Badge>
-                                  <span>Level {suggestion.skill.current_level}</span>
-                                  <span>•</span>
-                                  <span>{suggestion.skill.total_xp.toLocaleString()} XP</span>
-                                </div>
-                                {suggestion.reason !== 'Match' && (
-                                  <div className="text-xs text-primary/70 mt-1">
-                                    {suggestion.reason}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-shrink-0">
-                                <Zap className="h-4 w-4 text-white/40" />
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {!searchTerm.trim() && (
-                      <div className="px-4 py-2 border-t border-white/10">
-                        <div className="text-xs text-white/40 italic">
-                          Start typing to search, or click a recommendation to view details
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {showAdvancedFilters && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-white/10">
-                  <div>
-                    <label className="text-xs text-white/60 mb-1 block">Level Range</label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={filterLevelMin}
-                        onChange={(e) => setFilterLevelMin(parseInt(e.target.value) || 1)}
-                        className="bg-black/40 border-white/20 text-white"
-                      />
-                      <span className="text-white/40">-</span>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={filterLevelMax}
-                        onChange={(e) => setFilterLevelMax(parseInt(e.target.value) || 20)}
-                        className="bg-black/40 border-white/20 text-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/60 mb-1 block">Confidence Range</label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={filterConfidenceMin}
-                        onChange={(e) => setFilterConfidenceMin(parseFloat(e.target.value) || 0)}
-                        className="bg-black/40 border-white/20 text-white"
-                      />
-                      <span className="text-white/40">-</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={filterConfidenceMax}
-                        onChange={(e) => setFilterConfidenceMax(parseFloat(e.target.value) || 1)}
-                        className="bg-black/40 border-white/20 text-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/60 mb-1 block">Min Proficiency %</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={filterProficiencyMin}
-                      onChange={(e) => setFilterProficiencyMin(parseInt(e.target.value) || 0)}
-                      className="bg-black/40 border-white/20 text-white"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Category filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-          <Tabs
-            value={activeCategory}
-            onValueChange={(v) => {
-              setActiveCategory(v as SkillCategoryFilter);
-              setCurrentPage(1);
-            }}
-            className="min-w-0 flex-1"
+      {/* Filters — compact stacked grid, no horizontal scroll */}
+      <div
+        className={cn(
+          'rounded-xl border p-2 sm:p-2.5 space-y-2 min-w-0 overflow-x-hidden bg-gradient-to-br from-white/[0.04] via-black/20 to-white/[0.02]',
+          activeCategory === 'all' ? 'border-white/12' : bookTheme.border,
+        )}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <label htmlFor="skills-sort" className="sr-only">
+            Sort skills
+          </label>
+          <select
+            id="skills-sort"
+            value={sortBy}
+            onChange={(e) => dispatch(setSortBy(e.target.value as SkillSortOption))}
+            className="flex-1 min-w-0 h-8 sm:h-9 bg-black/40 border border-white/10 text-white rounded-lg px-2 text-[11px] sm:text-xs font-medium"
           >
-            <TabsList className="flex flex-wrap gap-1 justify-center sm:justify-start w-full h-auto min-h-0 bg-violet-950/40 border border-violet-400/25 p-1 rounded-lg shadow-none">
-              {availableCategories.map(category => (
-                <TabsTrigger
-                  key={category}
-                  value={category}
-                  className="rounded-md px-2 py-1 text-[11px] font-semibold leading-none shadow-none transition-colors data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-[0_0_10px_rgba(154,77,255,0.45)] data-[state=inactive]:bg-white/10 data-[state=inactive]:text-white data-[state=inactive]:hover:bg-white/18"
-                >
-                  {formatCategoryLabel(category)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <div className="flex items-center gap-2 shrink-0 sm:pt-0.5">
-            <label htmlFor="skills-sort" className="sr-only">
-              Sort skills
-            </label>
-            <select
-              id="skills-sort"
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value as SortOption);
-                setCurrentPage(1);
-              }}
-              className="w-full sm:w-auto min-w-[9.5rem] bg-violet-950/50 border border-violet-400/30 text-white rounded-lg px-2.5 py-1.5 text-xs font-medium"
-            >
-              <option value="name_asc">Name (A-Z)</option>
-              <option value="name_desc">Name (Z-A)</option>
-              <option value="level_desc">Level (High-Low)</option>
-              <option value="level_asc">Level (Low-High)</option>
-              <option value="xp_desc">XP (High-Low)</option>
-              <option value="xp_asc">XP (Low-High)</option>
-              <option value="practice_desc">Practice (High-Low)</option>
-              <option value="practice_asc">Practice (Low-High)</option>
-              <option value="recent">Recently Practiced</option>
-            </select>
-          </div>
+            {(Object.keys(SORT_LABELS) as SkillSortOption[]).map((key) => (
+              <option key={key} value={key}>
+                {SORT_LABELS[key]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => dispatch(toggleAdvancedFilters())}
+            aria-expanded={showAdvancedFilters}
+            className={`inline-flex items-center justify-center gap-1 h-8 sm:h-9 shrink-0 px-2.5 rounded-lg text-[11px] font-medium border transition-colors touch-manipulation ${
+              showAdvancedFilters
+                ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                : 'bg-white/4 border-white/10 text-white/55 hover:border-white/25 hover:text-white/75'
+            }`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+            More
+          </button>
         </div>
 
-        {/* Skills Grid/List */}
-        {error && (
-          <Card className="bg-red-500/10 border-red-500/30">
-            <CardContent className="p-4">
-              <p className="text-red-400">{error}</p>
-            </CardContent>
-          </Card>
-        )}
+        <div
+          className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 sm:gap-1.5"
+          role="group"
+          aria-label="Filter by category"
+        >
+          {categoryFilters.map(({ id, label, count }) => {
+            const isActive = activeCategory === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => dispatch(setActiveCategory(id))}
+                aria-pressed={isActive}
+                className={`relative flex flex-col items-center justify-center w-full min-h-[2.125rem] sm:min-h-[2.25rem] px-1 py-1 rounded-md border text-center transition-colors touch-manipulation ${
+                  isActive
+                    ? skillFilterChipActive(id)
+                    : 'bg-black/30 border-white/8 text-white/55 hover:border-white/20 hover:text-white/75'
+                }`}
+              >
+                <span className="text-[10px] sm:text-[11px] font-semibold leading-tight line-clamp-2">
+                  {label}
+                </span>
+                <span
+                  className={`text-[9px] tabular-nums leading-none mt-0.5 ${
+                    isActive ? 'opacity-90' : 'text-white/35'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-        {paginatedSkills.length === 0 ? (
-          <Card className="bg-black/40 border-white/10">
-            <CardContent className="p-8 sm:p-12 text-center">
-              <Zap className="h-10 w-10 sm:h-12 sm:w-12 text-white/20 mx-auto mb-3 sm:mb-4" />
-              <p className="text-xs sm:text-sm text-white/60">No skills found matching your filters.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
-            {paginatedSkills.map(skill => (
-              <SkillProfileCard
-                key={skill.id}
-                skill={skill}
-                onClick={() => handleSkillClick(skill)}
-                showProgress={true}
-                className="h-full"
-              />
-            ))}
+        {activeCategory !== 'all' && (
+          <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-white/5">
+            <p className="text-[10px] text-white/45 truncate">
+              Showing{' '}
+              <span className={cn('font-medium', skillCategoryTheme(activeCategory).accentText)}>
+                {formatCategoryLabel(activeCategory)}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => dispatch(setActiveCategory('all'))}
+              className="text-[10px] text-white/40 hover:text-white/70 shrink-0"
+            >
+              Clear
+            </button>
           </div>
         )}
+      </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
-            <p className="text-white/60 text-xs sm:text-sm">
-              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, sortedSkills.length)} of {sortedSkills.length}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="border-white/20 text-xs sm:text-sm"
-              >
-                <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-                Previous
-              </Button>
-              <span className="text-white/60 text-xs sm:text-sm">
-                Page {currentPage}/{totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="border-white/20 text-xs sm:text-sm"
-              >
-                Next
-                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
-              </Button>
+      {showAdvancedFilters && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 sm:p-4 space-y-3">
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-white/45">
+            Advanced filters
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
+            <div>
+              <label className="text-[10px] sm:text-xs text-white/55 mb-1 block">Level</label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={filterLevelMin}
+                  onChange={(e) => dispatch(setFilterLevelMin(parseInt(e.target.value, 10)))}
+                  className="h-8 sm:h-9 bg-black/40 border-white/20 text-white text-xs"
+                />
+                <span className="text-white/35 text-xs">–</span>
+                <Input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={filterLevelMax}
+                  onChange={(e) => dispatch(setFilterLevelMax(parseInt(e.target.value, 10)))}
+                  className="h-8 sm:h-9 bg-black/40 border-white/20 text-white text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] sm:text-xs text-white/55 mb-1 block">
+                {epistemicFieldLabel()} (0–100%)
+              </label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={Math.round(filterConfidenceMin * 100)}
+                  onChange={(e) => dispatch(setFilterConfidenceMin(parseFloat(e.target.value) / 100))}
+                  className="h-8 sm:h-9 bg-black/40 border-white/20 text-white text-xs"
+                  aria-label="Minimum certainty percent"
+                />
+                <span className="text-white/35 text-xs">–</span>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={Math.round(filterConfidenceMax * 100)}
+                  onChange={(e) => dispatch(setFilterConfidenceMax(parseFloat(e.target.value) / 100))}
+                  className="h-8 sm:h-9 bg-black/40 border-white/20 text-white text-xs"
+                  aria-label="Maximum certainty percent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] sm:text-xs text-white/55 mb-1 block">Min proficiency</label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={filterProficiencyMin}
+                onChange={(e) => dispatch(setFilterProficiencyMin(parseInt(e.target.value, 10)))}
+                className="h-8 sm:h-9 bg-black/40 border-white/20 text-white text-xs"
+              />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Skill Detail Modal */}
-        {selectedSkill && (
-          <SkillDetailModal
-            skill={selectedSkill}
-            onClose={handleCloseModal}
-            onUpdate={loadSkills}
-          />
-        )}
+      {error && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      )}
+
+      {sortedSkills.length === 0 ? (
+        <div className="text-center py-16">
+          <BookOpen className="h-10 w-10 mx-auto mb-3 text-white/15" />
+          <p className="text-sm font-medium text-white/50 mb-1">No skills found</p>
+          <p className="text-xs text-white/30">Mention skills in chat and LoreBook will track them</p>
+        </div>
+      ) : (
+        <div
+          ref={bookPageRef}
+          className={cn(
+            'relative w-full min-w-0 rounded-lg border-2 shadow-2xl overflow-hidden flex flex-col bg-gradient-to-br scroll-mt-4',
+            activeCategory === 'all'
+              ? 'from-violet-950/30 via-black/45 to-cyan-950/25 border-violet-700/35'
+              : cn(bookTheme.bodyGrad, bookTheme.border),
+          )}
+        >
+          <div className={cn('absolute inset-x-0 top-0 h-24 bg-gradient-to-b opacity-50 pointer-events-none', bookTheme.headerGrad)} />
+          <div className="relative p-3 flex flex-col flex-1 min-h-0">
+            <div className={cn('flex flex-col gap-2 mb-3 pb-3 border-b', bookTheme.border)}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <BookOpen className={cn('h-5 w-5 shrink-0', bookTheme.icon)} />
+                <div className="min-w-0">
+                  <h3 className={cn('text-xs font-semibold uppercase tracking-wider', bookTheme.accentText)}>
+                    Skills Book
+                  </h3>
+                  <p className={cn('text-[11px] mt-0.5 truncate opacity-80', bookTheme.accentText)}>
+                    Page {currentPage} of {totalPages} · {sortedSkills.length} skills
+                  </p>
+                  <BookTrustSummary domain="skills" className="mt-1" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3 content-start min-h-0 auto-rows-fr">
+              {paginatedSkills.map((skill) => (
+                <SkillProfileCard
+                  key={skill.id}
+                  skill={skill}
+                  onClick={() => handleSkillClick(skill)}
+                  showProgress
+                  className="h-full"
+                />
+              ))}
+            </div>
+
+            <div className={cn('flex flex-col gap-2 pt-3 border-t mt-auto', bookTheme.border)}>
+              <p className={cn('text-[10px] text-center tabular-nums order-2', bookTheme.accentText, 'opacity-70')}>
+                {visibleStart}–{visibleEnd} of {sortedSkills.length} skills
+              </p>
+
+              <div className="flex items-center gap-2 w-full order-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => dispatch(goToPrevPage())}
+                  disabled={currentPage === 1}
+                  className={cn(
+                    'flex-1 min-h-[40px] touch-manipulation',
+                    bookTheme.accentText,
+                    'opacity-70 hover:opacity-100 hover:bg-white/5 disabled:opacity-30',
+                  )}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Prev
+                </Button>
+
+                <div className="flex items-center gap-1 px-2 py-1 bg-black/40 rounded-lg border border-white/10 shrink-0">
+                  <span className={cn('text-[11px] font-medium tabular-nums px-1', bookTheme.accentText)}>
+                    {currentPage}/{totalPages}
+                  </span>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => dispatch(goToNextPage(totalPages))}
+                  disabled={currentPage === totalPages}
+                  className={cn(
+                    'flex-1 min-h-[40px] touch-manipulation',
+                    bookTheme.accentText,
+                    'opacity-70 hover:opacity-100 hover:bg-white/5 disabled:opacity-30',
+                  )}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSkill && (
+        <SkillDetailModal
+          skill={selectedSkill}
+          onClose={handleCloseModal}
+          onUpdate={loadSkills}
+          onNavigateToSkill={handleNavigateToSkill}
+        />
+      )}
     </div>
   );
 };
-

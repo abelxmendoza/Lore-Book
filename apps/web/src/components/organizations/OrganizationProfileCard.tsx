@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
+import { readOrganizationWorld, importanceStars } from '../../lib/organizationLore';
 
 // ── G1 canonical types ────────────────────────────────────────────────
 export type GroupType =
@@ -288,6 +289,16 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
   const isFormer = rel === 'former_member' || rel === 'alumnus';
   const isObserver = rel === 'fan' || rel === 'aware_of' || rel === 'referenced';
 
+  // World/lore layer — archetype nickname, importance, and the "why it matters" line.
+  const world = readOrganizationWorld(organization);
+  const stars = importanceStars(organization.analytics?.importance_score ?? world.influence.impactScore);
+  const keyPeople = (organization.members ?? [])
+    .map((m) => m.character_name)
+    .filter(Boolean)
+    .slice(0, 4);
+  const storyLine =
+    organization.profile?.mission || organization.description || world.lore.roleInStory;
+
   return (
     <Card
       className={`group relative cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-0.5 sm:hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 overflow-hidden flex flex-col min-h-0 ${isFormer ? 'opacity-75' : ''} ${
@@ -360,6 +371,18 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
             >
               {organization.name}
             </h3>
+
+            {/* Archetype nickname + importance — "the world node" identity */}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-violet-300/70 italic truncate" title={world.archetype.essence}>
+                "{world.archetype.nickname}"
+              </span>
+              {!isObserver && (
+                <span className="text-[9px] leading-none text-amber-300 shrink-0" aria-label={`Importance ${stars} of 5`}>
+                  {'★'.repeat(stars)}<span className="text-white/15">{'★'.repeat(5 - stars)}</span>
+                </span>
+              )}
+            </div>
 
             {/* Group type + relationship badges — visible on all breakpoints */}
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -435,10 +458,18 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
           )}
         </div>
 
-        {/* Tagline — mission or description, always visible */}
-        {(organization.profile?.mission || organization.description) && (
+        {/* Key people — "who's involved" */}
+        {!isFamily && !isPublic && keyPeople.length > 0 && (
+          <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-white/55 min-w-0">
+            <Users className="h-3 w-3 text-primary/70 flex-shrink-0" />
+            <span className="truncate">{keyPeople.join(' • ')}</span>
+          </div>
+        )}
+
+        {/* Story line — "why it matters", always visible */}
+        {storyLine && (
           <p className="text-[11px] sm:text-xs text-white/60 line-clamp-2 leading-snug">
-            {organization.profile?.mission || organization.description}
+            {storyLine}
           </p>
         )}
 

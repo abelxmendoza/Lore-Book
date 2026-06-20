@@ -17,6 +17,8 @@ import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
 import { RescanChatsButton } from '../suggestions/RescanChatsButton';
+import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import type { QuestSuggestion } from '../../types/quest';
 import { cn } from '../../lib/cn';
 
@@ -83,8 +85,15 @@ export function DetectedQuestSuggestions({
     [suggestions, dismissed, bookEntries]
   );
 
+  const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
+    'quests',
+    visible.length,
+    { loading: isLoading, scanning: rescanning },
+  );
+
   const handleRescan = async () => {
     if (showDemo) return;
+    reopenPanel();
     await rescanChats();
     await refetch();
     window.dispatchEvent(new CustomEvent('lk:quests-updated', { detail: {} }));
@@ -140,6 +149,7 @@ export function DetectedQuestSuggestions({
   };
 
   if (isLoading && visible.length === 0 && !rescanning) return null;
+  if (hidePanel) return <ToastContainer />;
 
   return (
     <>
@@ -201,9 +211,13 @@ export function DetectedQuestSuggestions({
                 {rescanning ? 'Re-reading your story for new quests…' : 'Loading quest suggestions…'}
               </p>
             ) : visible.length === 0 ? (
-              <p className="text-[10px] text-white/45 py-1 leading-relaxed">
-                No pending quest suggestions. Use rescan to replay your chats through the quest detector.
-              </p>
+              <SuggestionPanelEmptyState
+                message="No pending quest suggestions. Use rescan to replay your chats through the quest detector."
+                onDismiss={dismissEmptyPanel}
+                onRescan={showDemo ? undefined : () => void handleRescan()}
+                rescanning={rescanning}
+                rescanLabel="Rescan for quests"
+              />
             ) : (
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {visible.map((suggestion) => {

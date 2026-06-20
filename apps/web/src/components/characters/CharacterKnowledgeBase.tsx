@@ -17,10 +17,9 @@ import { Badge } from '../ui/badge';
 import { InsufficientData } from '../ui/InsufficientData';
 import { fetchJson } from '../../lib/api';
 import {
-  getMockFacts,
-  getMockKnowledgeClaims,
-  getMockSceneCandidates,
+  getMockKnowledgeBaseBundle,
 } from '../../mocks/characterIntelligence';
+import type { Character } from '../../hooks/useLoreNavigatorData';
 
 export type CharacterKnowledgeBaseData = {
   characterId: string;
@@ -70,6 +69,8 @@ export type CharacterKnowledgeBaseData = {
 type CharacterKnowledgeBaseProps = {
   characterId: string;
   characterName: string;
+  /** Full character record — richer demo signals when mockMode is on */
+  character?: Character | null;
   mockMode?: boolean;
   active?: boolean;
   onAskInChat?: (prompt: string) => void;
@@ -96,73 +97,94 @@ const statusBadge: Record<string, { label: string; cls: string }> = {
   contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
 };
 
-function buildMockData(characterId: string, characterName: string): CharacterKnowledgeBaseData {
-  const facts = getMockFacts({ id: characterId, name: characterName } as any);
-  const claims = getMockKnowledgeClaims({ id: characterId, name: characterName } as any);
-  const scenes = getMockSceneCandidates({ id: characterId, name: characterName } as any);
+function buildMockData(
+  characterId: string,
+  characterName: string,
+  character?: Character | null,
+): CharacterKnowledgeBaseData {
+  const source = character ?? { id: characterId, name: characterName };
+  const bundle = getMockKnowledgeBaseBundle(source);
+  const { facts, knowledgeClaims, sceneCandidates } = bundle;
+  const timelineCount = bundle.timelineEvents.length;
   return {
     characterId,
     name: characterName,
-    aliases: [],
-    summary: null,
-    identityMentions: [{ mention: characterName, source: 'primary_name', evidenceCount: 3 }],
+    aliases: bundle.aliases,
+    summary: bundle.summary,
+    identityMentions: [{ mention: characterName, source: 'primary_name', evidenceCount: Math.max(3, facts.length) }],
     profile: {
-      relationshipToUser: 'Known contact',
-      memoryCount: facts.length + 2,
-      timelineEventCount: 3,
-      timelineEvents: [],
+      relationshipToUser: bundle.relationshipToUser,
+      memoryCount: Math.max(facts.length + 2, 8),
+      timelineEventCount: timelineCount || 3,
+      timelineEvents: bundle.timelineEvents,
     },
     facts,
-    knowledgeClaims: claims,
-    sceneCandidates: scenes as unknown as Array<Record<string, unknown>>,
-    relatedEntities: [],
+    knowledgeClaims,
+    sceneCandidates: sceneCandidates as unknown as Array<Record<string, unknown>>,
+    relatedEntities: bundle.relatedEntities,
+    conversationLinks: bundle.conversationLinks,
     intelligence: {
-      totalEvidenceItems: facts.length + claims.length + scenes.length,
+      totalEvidenceItems: facts.length + knowledgeClaims.length + sceneCandidates.length + timelineCount,
       lastUpdated: new Date().toISOString(),
-      learningScore: Math.min(100, facts.length * 8 + claims.length * 12),
+      learningScore: Math.min(100, facts.length * 8 + knowledgeClaims.length * 12 + timelineCount * 4),
     },
   };
+}
+
+function resolveInitialData(
+  characterId: string,
+  characterName: string,
+  mockMode: boolean,
+  initialData?: Partial<CharacterKnowledgeBaseData>,
+  character?: Character | null,
+): CharacterKnowledgeBaseData | null {
+  if (initialData) {
+    return {
+      characterId,
+      name: characterName,
+      aliases: [],
+      summary: null,
+      identityMentions: [],
+      profile: { relationshipToUser: null, memoryCount: 0, timelineEventCount: 0, timelineEvents: [] },
+      facts: [],
+      knowledgeClaims: [],
+      sceneCandidates: [],
+      relatedEntities: [],
+      intelligence: { totalEvidenceItems: 0, lastUpdated: null, learningScore: 0 },
+      ...initialData,
+    } as CharacterKnowledgeBaseData;
+  }
+  if (mockMode) {
+    return buildMockData(characterId, characterName, character);
+  }
+  return null;
 }
 
 export function CharacterKnowledgeBase({
   characterId,
   characterName,
+  character,
   mockMode = false,
   active = true,
   onAskInChat,
   initialData,
   isSelfProfile = false,
 }: CharacterKnowledgeBaseProps) {
-  const [data, setData] = useState<CharacterKnowledgeBaseData | null>(
-    initialData
-      ? ({
-          characterId,
-          name: characterName,
-          aliases: [],
-          summary: null,
-          identityMentions: [],
-          profile: { relationshipToUser: null, memoryCount: 0, timelineEventCount: 0, timelineEvents: [] },
-          facts: [],
-          knowledgeClaims: [],
-          sceneCandidates: [],
-          relatedEntities: [],
-          intelligence: { totalEvidenceItems: 0, lastUpdated: null, learningScore: 0 },
-          ...initialData,
-        } as CharacterKnowledgeBaseData)
-      : null
+  const [data, setData] = useState<CharacterKnowledgeBaseData | null>(() =>
+    resolveInitialData(characterId, characterName, mockMode, initialData, character),
   );
   const [loading, setLoading] = useState(!initialData && !mockMode);
   const [loaded, setLoaded] = useState(Boolean(initialData || mockMode));
 
   useEffect(() => {
-    if (!active || loaded) return;
-
     if (mockMode) {
-      setData(buildMockData(characterId, characterName));
+      setData(buildMockData(characterId, characterName, character));
       setLoaded(true);
       setLoading(false);
       return;
     }
+
+    if (!active || loaded) return;
 
     if (!characterId || characterId.startsWith('dummy-') || characterId.startsWith('char-')) {
       setLoaded(true);
@@ -182,7 +204,7 @@ export function CharacterKnowledgeBase({
         setLoading(false);
         setLoaded(true);
       });
-  }, [active, loaded, mockMode, characterId, characterName]);
+  }, [active, loaded, mockMode, characterId, characterName, character]);
 
   const firstName = characterName.split(' ')[0];
   const kb = data;

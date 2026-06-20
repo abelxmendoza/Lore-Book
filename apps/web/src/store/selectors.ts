@@ -1,3 +1,5 @@
+import { createSelector } from '@reduxjs/toolkit';
+
 import type { RootState } from './index';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -35,6 +37,45 @@ export const selectRuntimeDataMode = (state: RootState) => state.runtime.runtime
 
 /** True only for authenticated users on a healthy backend — safe for protected reads. */
 export const selectIsRealUser = (state: RootState) => state.runtime.runtimeIdentity === 'REAL_USER';
+
+// ─── Skills Book ────────────────────────────────────────────────────────────────
+export const selectSkillsBookState = (state: RootState) => state.skillsBook;
+export const selectSkillsBookSearchTerm = (state: RootState) => state.skillsBook.searchTerm;
+export const selectSkillsBookActiveCategory = (state: RootState) => state.skillsBook.activeCategory;
+export const selectSkillsBookSortBy = (state: RootState) => state.skillsBook.sortBy;
+export const selectSkillsBookCurrentPage = (state: RootState) => state.skillsBook.currentPage;
+export const selectSkillsBookShowAdvancedFilters = (state: RootState) =>
+  state.skillsBook.showAdvancedFilters;
+export const selectSkillsBookFilterLevelMin = (state: RootState) => state.skillsBook.filterLevelMin;
+export const selectSkillsBookFilterLevelMax = (state: RootState) => state.skillsBook.filterLevelMax;
+export const selectSkillsBookFilterConfidenceMin = (state: RootState) =>
+  state.skillsBook.filterConfidenceMin;
+export const selectSkillsBookFilterConfidenceMax = (state: RootState) =>
+  state.skillsBook.filterConfidenceMax;
+export const selectSkillsBookFilterProficiencyMin = (state: RootState) =>
+  state.skillsBook.filterProficiencyMin;
+
+/**
+ * Memoized bundle of the numeric advanced filters. Kept as a single object so
+ * the Skills Book filtering `useMemo` can depend on one stable reference
+ * instead of five separate selector subscriptions.
+ */
+export const selectSkillsBookNumericFilters = createSelector(
+  [
+    selectSkillsBookFilterLevelMin,
+    selectSkillsBookFilterLevelMax,
+    selectSkillsBookFilterConfidenceMin,
+    selectSkillsBookFilterConfidenceMax,
+    selectSkillsBookFilterProficiencyMin,
+  ],
+  (filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin) => ({
+    filterLevelMin,
+    filterLevelMax,
+    filterConfidenceMin,
+    filterConfidenceMax,
+    filterProficiencyMin,
+  })
+);
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 export const selectActiveThreadId = (state: RootState) => state.chat.activeThreadId;

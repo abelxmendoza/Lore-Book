@@ -25,6 +25,7 @@ interface Props {
   organization: Organization;
   /** Jump to the chat tab to fill in / discuss the profile. */
   onAddInfo?: () => void;
+  variant?: 'default' | 'compact';
 }
 
 const SectionCard = ({
@@ -90,7 +91,7 @@ const BulletList = ({ label, items }: { label: string; items?: string[] }) =>
     </div>
   ) : null;
 
-export const OrganizationProfilePanel = ({ organization, onAddInfo }: Props) => {
+export const OrganizationProfilePanel = ({ organization, onAddInfo, variant = 'default' }: Props) => {
   const profile: OrganizationProfile | undefined =
     organization.profile ?? organization.metadata?.profile;
 
@@ -101,7 +102,22 @@ export const OrganizationProfilePanel = ({ organization, onAddInfo }: Props) => 
     userRelationship: organization.user_relationship,
   });
 
-  const influenceCard = (
+  const compact = variant === 'compact';
+
+  const influenceCard = compact ? (
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-[10px] uppercase tracking-wide text-white/45 flex items-center gap-1">
+          <TrendingUp className="h-3 w-3 text-amber-300" />
+          Influence on you
+        </span>
+        <span className="text-sm font-bold text-amber-200 tabular-nums">{influence}</span>
+      </div>
+      <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full" style={{ width: `${influence}%` }} />
+      </div>
+    </div>
+  ) : (
     <SectionCard icon={TrendingUp} title="Influence On You" accent="text-yellow-400">
       <div className="flex items-center gap-3">
         <div className="flex-1 h-2.5 bg-white/8 rounded-full overflow-hidden">
@@ -120,13 +136,17 @@ export const OrganizationProfilePanel = ({ organization, onAddInfo }: Props) => 
 
   if (isProfileEmpty(profile)) {
     return (
-      <div className="space-y-4">
-        {influenceCard}
+      <div className={compact ? 'space-y-2' : 'space-y-4'}>
+        {!compact && influenceCard}
         <InsufficientData
           icon={Sparkles}
           accent="purple"
           title={`Tell LoreBook about ${organization.name}`}
-          description="Mission, culture, structure, reputation, and resources will appear here as you describe this group. A group is really its people, goals, and power structure — capture those and the AI can reason about it."
+          description={
+            compact
+              ? 'Mission, culture, and roles appear as you chat about this group.'
+              : 'Mission, culture, structure, reputation, and resources will appear here as you describe this group. A group is really its people, goals, and power structure — capture those and the AI can reason about it.'
+          }
           action={
             onAddInfo
               ? { label: 'Add details in chat', icon: MessageSquare, onClick: onAddInfo }
@@ -151,6 +171,52 @@ export const OrganizationProfilePanel = ({ organization, onAddInfo }: Props) => 
   const hasComms =
     p.communication?.website || p.communication?.meeting_schedule ||
     (p.communication?.social_media?.length ?? 0) + (p.communication?.channels?.length ?? 0) > 0;
+
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        {influenceCard}
+        {hasMission && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1.5">
+            <h4 className="text-[10px] uppercase tracking-wide text-emerald-300/80 flex items-center gap-1">
+              <Target className="h-3 w-3" /> Mission
+            </h4>
+            {p.purpose && <p className="text-xs text-white/75 leading-snug line-clamp-3">{p.purpose}</p>}
+            {p.mission && <p className="text-xs text-white/60 leading-snug line-clamp-2">{p.mission}</p>}
+            {p.values && p.values.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {p.values.slice(0, 4).map((v) => (
+                  <span key={v} className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-200 border border-pink-500/25">{v}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {(hasStructure || hasReputation || hasResources || hasComms || (p.activities?.length ?? 0) > 0) && (
+          <details className="rounded-xl border border-white/10 bg-black/30 group">
+            <summary className="px-3 py-2 text-xs font-medium text-white/60 cursor-pointer list-none flex items-center justify-between">
+              More about this group
+              <span className="text-white/30 group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <div className="px-3 pb-3 space-y-2 border-t border-white/8 pt-2">
+              {hasCulture && p.traditions && p.traditions.length > 0 && (
+                <p className="text-[11px] text-white/55"><span className="text-white/35">Traditions: </span>{p.traditions.slice(0, 2).join(' · ')}</p>
+              )}
+              {hasStructure && p.structure?.hierarchy && (
+                <p className="text-[11px] text-white/55"><span className="text-white/35">Structure: </span>{p.structure.hierarchy}</p>
+              )}
+              {hasReputation && p.reputation?.public_image && (
+                <p className="text-[11px] text-white/55 line-clamp-2">{p.reputation.public_image}</p>
+              )}
+              {p.activities && p.activities.length > 0 && (
+                <p className="text-[11px] text-white/55"><span className="text-white/35">Activities: </span>{p.activities.slice(0, 3).join(', ')}</p>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 sm:space-y-4">

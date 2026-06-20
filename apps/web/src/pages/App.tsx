@@ -69,6 +69,7 @@ import { SagaScreen } from '../components/saga/SagaScreen';
 import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { HomeScreen } from '../components/HomeScreen';
 import { PhotoGallery } from '../components/PhotoGallery';
+import { GlobalEntityModalHost } from '../components/entity/GlobalEntityModalHost';
 import { getSurfaceFromRoute, getRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
 import { isLorebookLibraryRoute } from '../lib/lorebookLibrary';
 import { scrollToTop } from '../lib/scrollToTop';
@@ -358,7 +359,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       {/* Shell: viewport-locked surfaces fill the screen; book pages scroll inside main. */}
       <div
         className={`flex-1 flex flex-col min-h-0 ${
-          isViewportLocked || isBookScrollSurface ? 'h-screen overflow-hidden' : 'min-h-screen'
+          isViewportLocked || isBookScrollSurface ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
         }`}
       >
       <DemoModeBanner />
@@ -370,7 +371,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
             ? 'p-0 overflow-hidden'
             : isHome || isGuide
               ? 'p-0 pt-14 lg:pt-0 overflow-y-auto'
-              : 'overflow-y-auto space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'
+              : 'overflow-y-auto flex flex-col p-4 sm:p-6 lg:p-8 xl:p-10 max-lg:bg-black max-lg:pt-[calc(env(safe-area-inset-top,0.75rem)+2.75rem)] sm:pt-6'
         }`}
         role="main"
         style={
@@ -381,6 +382,11 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
               : undefined
         }
       >
+        <div
+          className={
+            isViewportLocked ? 'contents' : 'min-w-0 space-y-3 sm:space-y-6'
+          }
+        >
         {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'guide' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && activeSurface !== 'discovery' && activeSurface !== 'quests' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
@@ -528,6 +534,8 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </div>
         )}
 
+        </div>
+
         {activeSurface !== 'chat' && activeSurface !== 'quests' && (
           <div className="hidden sm:flex fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex flex-col gap-2">
             <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat} className="shadow-lg">
@@ -550,6 +558,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       </main>
       </div>
       <ModeBadge />
+      <GlobalEntityModalHost />
       {import.meta.env.DEV && <ConversationPersistenceInspector />}
     </div>
   );

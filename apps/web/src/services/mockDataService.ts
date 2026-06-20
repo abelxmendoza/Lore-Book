@@ -399,9 +399,19 @@ class MockDataRegistry {
       auto_detected: true,
       confidence_score: suggestion.confidence ?? 0.75,
       is_active: true,
-      metadata: suggestion.skill_type
-        ? { skill_profile: { skill_type: suggestion.skill_type, proficiency: suggestion.proficiency ?? 40 } }
-        : {},
+      metadata: {
+        skill_profile: {
+          skill_type: suggestion.skill_type ?? 'technical',
+          monetization: suggestion.monetization ?? 'hobby_only',
+          proficiency: suggestion.proficiency ?? 40,
+          enjoyment: suggestion.enjoyment ?? 60,
+          usage_frequency: suggestion.usage_frequency ?? 'weekly',
+          trajectory: suggestion.trajectory ?? 'improving',
+          origin_story: suggestion.origin_story,
+          related_projects: suggestion.related_projects,
+          related_jobs: suggestion.related_jobs,
+        },
+      },
       created_at: now,
       updated_at: now,
     };

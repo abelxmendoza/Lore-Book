@@ -44,11 +44,13 @@ function seedBooks() {
 describe('demoChatSimulation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(1);
     seedBooks();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('detects demo chat mockup mode', () => {

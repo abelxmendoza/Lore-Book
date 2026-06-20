@@ -37,12 +37,17 @@ import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
 import { ChatThreadList } from './ChatThreadList';
+import { ChatSimulationPanel } from './ChatSimulationPanel';
+import { useChatLifecycleSimulation } from '../hooks/useChatLifecycleSimulation';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
 import { GuestExperienceCard } from '../../../components/guest/GuestExperienceCard';
 import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
 import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
 import { useMockData } from '../../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../../hooks/useShouldUseMockData';
+import { LoreEntityLegend } from '../../../components/lore/LoreEntityLegend';
+import { loreKindForChip } from '../../../lib/loreEntities';
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
@@ -186,6 +191,24 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     [sendMessage, chatSendOptions]
   );
 
+  const chatSimulation = useChatLifecycleSimulation({
+    sendMessage: useCallback(
+      async (text: string) => {
+        sendMessage(text, chatSendOptions);
+      },
+      [sendMessage, chatSendOptions]
+    ),
+  });
+
+  const autoSimRanRef = useRef(false);
+  useEffect(() => {
+    if (!chatSimulation.enabled || autoSimRanRef.current) return;
+    const scenarioId = searchParams.get('chatSim');
+    if (!scenarioId) return;
+    autoSimRanRef.current = true;
+    void chatSimulation.runScenario(scenarioId);
+  }, [chatSimulation, searchParams]);
+
   // Track greeting_shown when the greeting first appears.
   // greeting_responded is tracked inside handleSubmit above.
   useEffect(() => {
@@ -241,6 +264,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
   const [statusDismissed, setStatusDismissed] = useState(false);
   const isMobile = useIsMobile(640);
+  const isDemoMode = useShouldUseMockData();
+  const threadLoreKinds = useMemo(() => {
+    const kinds = new Set(collectThreadEntities(messages).map((e) => loreKindForChip(e)));
+    return [...kinds];
+  }, [messages]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -834,6 +862,19 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
         )}
 
+        {isDemoMode && messages.length > 0 && (
+          <div className="flex-shrink-0 px-3 sm:px-4 lg:px-10 xl:px-12 pt-1">
+            <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
+              <LoreEntityLegend
+                compact
+                title="Lore entity key (demo)"
+                activeKinds={threadLoreKinds.length > 0 ? threadLoreKinds : undefined}
+                className="border-white/8 bg-black/35"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Confirmed thread entities — focus to build on established knowledge */}
         <ThreadEntityChips
           messages={messages}
@@ -859,6 +900,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             initialPrompt={initialPrompt}
             initialDate={initialDate}
             threadId={activeThreadId ?? undefined}
+            defaultCollapsed={isMobile && messages.length > 0}
             onUploadComplete={async (result: UploadCompletePayload) => {
               const now = new Date();
               if (result.kind === 'resume') {
@@ -892,6 +934,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           open={contextPanelOpen}
           onClose={() => setContextPanelOpen(false)}
           lastMessageAt={messages.length}
+        />
+      )}
+
+      {chatSimulation.enabled && (
+        <ChatSimulationPanel
+          scenarios={chatSimulation.scenarios}
+          runState={chatSimulation.runState}
+          onRun={chatSimulation.runScenario}
+          onStop={chatSimulation.stopScenario}
         />
       )}
     </div>

@@ -8,7 +8,7 @@ import {
 import { deriveTitleFromFirstUserMessage } from '../features/chat/utils/threadTitleUtils';
 import type { Message } from '../features/chat/message/ChatMessage';
 import type { ChatThread } from '../features/chat/hooks/useChatThreads';
-import { emitDemoEffect, demoEffectMessage } from './demoMutationEffects';
+import { emitDemoEffect, demoEffectMessage, type DemoEffectKind } from './demoMutationEffects';
 import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import {
   compileChatLoreContext,
@@ -16,6 +16,7 @@ import {
   toMessageMentionedEntities,
 } from '../lib/chatLoreContext';
 import { DEMO_ENTITY_FALLBACKS } from '../lib/demoEntityFallbacks';
+import { getLoreEntity, loreKindForChip } from '../lib/loreEntities';
 import { CONVERSATION_SCENARIOS } from '../lib/storyForge/conversationScenarios';
 import { scenariosToDemoThreads } from '../lib/storyForge/scenarioToDemoThread';
 import { maybeNotedSignatureResponse } from '../lib/notedSignature';
@@ -98,6 +99,53 @@ function simulationLabel(mode: ChatSimulationMode): string {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function entityConnectionLabel(entity: {
+  name: string;
+  type: import('../types/certifiedEntity').CertifiedEntityType;
+  characterVariant?: import('../types/certifiedEntity').CharacterVariant;
+  loreKind?: import('../lib/loreEntities').LoreEntityKind;
+}): string {
+  const kind = loreKindForChip(entity);
+  const def = getLoreEntity(kind);
+  return `${def.shortLabel} · ${entity.name}`;
+}
+
+function timelineLabelForEntity(entity: {
+  name: string;
+  type: import('../types/certifiedEntity').CertifiedEntityType;
+  characterVariant?: import('../types/certifiedEntity').CharacterVariant;
+  loreKind?: import('../lib/loreEntities').LoreEntityKind;
+}): string {
+  const kind = loreKindForChip(entity);
+  const icon =
+    kind === 'person' || kind === 'relationship'
+      ? '👤'
+      : kind === 'place'
+        ? '📍'
+        : kind === 'skill'
+          ? '⚡'
+          : kind === 'project'
+            ? '📦'
+            : kind === 'event'
+              ? '📅'
+              : kind === 'organization' || kind === 'group'
+                ? '🏢'
+                : '📓';
+  return `${icon} Linked ${entity.name} (${getLoreEntity(kind).shortLabel})`;
+}
+
+function demoEffectForEntity(entity: {
+  type: import('../types/certifiedEntity').CertifiedEntityType;
+  characterVariant?: import('../types/certifiedEntity').CharacterVariant;
+  loreKind?: import('../lib/loreEntities').LoreEntityKind;
+}): DemoEffectKind {
+  const kind = loreKindForChip(entity);
+  if (kind === 'place') return 'location_added';
+  if (kind === 'skill') return 'skill_added';
+  if (kind === 'group' || kind === 'organization') return 'group_added';
+  return 'character_saved';
 }
 
 function snapshotFallbackEntities(guestId?: string): typeof DEMO_ENTITY_FALLBACKS {
@@ -194,7 +242,7 @@ function buildGenericDemoResponse(
   const names = entities.map((e) => e.name);
   const entityLine =
     names.length > 0
-      ? `I picked up **${names.join('**, **')}** via ontology-backed lexical intelligence (no LLM) and would link them to your books.`
+      ? `I picked up **${names.join('**, **')}** via ontology-backed lexical intelligence (no LLM) and would link them to your books — each type has its own color in the legend below.`
       : 'I\'m tracking themes and people as you talk — keep going and your timeline will fill in.';
 
   const ontologyLine =
@@ -243,7 +291,7 @@ function buildGenericDemoResponse(
 
   const timelineUpdates =
     entities.length > 0
-      ? entities.slice(0, 2).map((e) => `📅 Noted ${e.name} on your timeline`)
+      ? entities.slice(0, 3).map(timelineLabelForEntity)
       : ['📅 Conversation logged to your demo timeline'];
 
   const loreUpdates = mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined;
@@ -251,7 +299,10 @@ function buildGenericDemoResponse(
   return {
     content: `*(${simulationLabel(mode)})*\n\n${body}${ontologyLine}${relationshipLine}${priorLine}`,
     mentionedEntities: entities.length > 0 ? toMessageMentionedEntities(entities) : undefined,
-    connections: names.length > 0 ? [`Linked to ${names.join(', ')}`] : ['Added to your running conversation context'],
+    connections:
+      entities.length > 0
+        ? entities.slice(0, 4).map(entityConnectionLabel)
+        : ['Added to your running conversation context'],
     timelineUpdates,
     modeDecision: { mode: 'SUPPORTIVE', confidence: 0.92, reasoning: `${mode} simulation — supportive reflection` },
     subtitle: deriveDemoSubtitle(message),
@@ -330,11 +381,12 @@ export async function simulateDemoChatSend(options: {
   );
   await streamDemoFocusReply(result.content, options.onChunk, { chunkSize: 12, delayMs: 22 });
 
-  const primaryEntity = result.mentionedEntities?.[0]?.name;
+  const primaryEntity = result.mentionedEntities?.[0];
   if (primaryEntity) {
+    const effectKind = demoEffectForEntity(primaryEntity);
     emitDemoEffect({
-      kind: 'character_saved',
-      ...demoEffectMessage('character_saved', primaryEntity),
+      kind: effectKind,
+      ...demoEffectMessage(effectKind, primaryEntity.name),
       showToast: false,
     });
   }
