@@ -90,7 +90,7 @@ export function extractSignalCategories(text: string): SignalCategory[] {
 
 const EMPLOYER_NAME_PATTERNS: RegExp[] = [
   /\b(?:the\s+)?(?:staffing\s+|recruiting\s+|temp\s+)?agency\s+(?:called\s+|named\s+)?([A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,2})/g,
-  /\b([A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,2})\s*,?\s+(?:the\s+)?(?:staffing\s+agency|recruiting\s+agency|recruiting\s+firm|staffing\s+firm|the\s+agency)\b/g,
+  /\b([A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,2})\s{0,40},?\s{1,40}(?:the\s+)?(?:staffing\s+agency|recruiting\s+agency|recruiting\s+firm|staffing\s+firm|the\s+agency)\b/g,
   /\b(?:work(?:s|ed|ing)?\s+(?:for|at)|hired\s+(?:by|through)|recruited\s+by|placed\s+(?:by|through|at)|employed\s+by|through)\s+([A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,2})/g,
   /\b(?:recruiter|onboarding|hr)\s+(?:at|for|with|from)\s+([A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,2})/g,
   // "bootcamp/course called X", "X bootcamp", "graduated from X"
@@ -108,7 +108,7 @@ export function canonicalEmployerName(raw: string): string | null {
   // Cut at the first sentence punctuation so a greedy capture can't swallow the
   // next word (e.g. "Amazon. Also" → "Amazon").
   let name = raw.split(/[.,;:!?]/)[0].replace(/\s+/g, ' ').trim();
-  name = name.replace(/\s+(?:Job|Today|Tomorrow|Yesterday)$/i, '').trim();
+  name = name.replace(/\s{1,40}(?:Job|Today|Tomorrow|Yesterday)$/i, '').trim();
   // Normalize hyphen/space variants of K-force → Kforce.
   if (/^k[\s-]?force$/i.test(name)) return 'Kforce';
   if (name.length < 2) return null;

@@ -4,7 +4,7 @@
  */
 import { inferenceBase } from '../inferenceAssociationTypes';
 
-const ROLE_RE = /\bas\s+(?:a|an)\s+([a-z][\w\s-]+?)(?:\s+with|\s*[,.]|$|\s+at\b|\s+for\b)/i;
+const ROLE_RE = /\bas\s+(?:a|an)\s+([a-z][\w\s-]{1,80}?)(?:\s+with|\s*[,.]|$|\s+at\b|\s+for\b)/i;
 
 export interface ExtractedRole {
   surface: string;

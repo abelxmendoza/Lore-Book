@@ -303,13 +303,13 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
 ];
 
 const TARGET_PATTERNS = [
-  /\b(?:what did i do with|what have i done with)\s+(.+?)[?.!]?$/i,
-  /\b(?:how am i related to)\s+(.+?)[?.!]?$/i,
-  /\b(?:what role did)\s+(.+?)\s+play\b/i,
-  /\b(?:what do you know about|what do you remember about|who is|who was|tell me about|relationship with|what happened with|between me and)\s+(.+?)[?.!]?$/i,
-  /\b(?:what happened at|what went on at|what was it like at|memories at|remember at)\s+(.+?)[?.!]?$/i,
-  /\b(?:how is|how's|progress on|status of)\s+(.+?)(?:\s+progressing|\s+going)?[?.!]?$/i,
-  /\b(?:what happened during|tell me about)\s+(.+?)[?.!]?$/i,
+  /\b(?:what did i do with|what have i done with)\s+(.{1,120}?)[?.!]?$/i,
+  /\b(?:how am i related to)\s+(.{1,120}?)[?.!]?$/i,
+  /\b(?:what role did)\s+(.{1,120}?)\s+play\b/i,
+  /\b(?:what do you know about|what do you remember about|who is|who was|tell me about|relationship with|what happened with|between me and)\s+(.{1,120}?)[?.!]?$/i,
+  /\b(?:what happened at|what went on at|what was it like at|memories at|remember at)\s+(.{1,120}?)[?.!]?$/i,
+  /\b(?:how is|how's|progress on|status of)\s+(.{1,120}?)(?:\s+progressing|\s+going)?[?.!]?$/i,
+  /\b(?:what happened during|tell me about)\s+(.{1,120}?)[?.!]?$/i,
 ];
 
 function classifyIntent(question: string): WorkingMemoryIntent {

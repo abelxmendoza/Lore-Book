@@ -234,7 +234,7 @@ export class NormalizationService {
     if (longMatches && longMatches.length > 0) {
       // Try to split at conjunctions or commas
       for (const match of longMatches) {
-        const splitAt = match.match(/\s+(and|but|or|so|because|when|while|then)\s+/i);
+        const splitAt = match.match(/\s{1,40}(and|but|or|so|because|when|while|then)\s{1,40}/i);
         if (splitAt && splitAt.index) {
           const before = match.substring(0, splitAt.index);
           const after = match.substring(splitAt.index + splitAt[0].length);
@@ -343,7 +343,7 @@ export class NormalizationService {
   splitIntoUtterances(text: string): string[] {
     // Split by sentence boundaries, but preserve context
     const sentences = text
-      .split(/([.!?]+[\s\n]+)/)
+      .split(/([.!?]{1,40}[\s\n]{1,40})/)
       .filter(s => s.trim().length > 0)
       .map(s => s.trim());
 

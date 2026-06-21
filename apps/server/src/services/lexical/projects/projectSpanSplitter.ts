@@ -14,9 +14,9 @@ export function splitMixedProjectSpan(span: string): ProjectSplitPiece[] {
   const trimmed = span.trim();
   if (!trimmed) return [];
 
-  if (/\s+and\s+/i.test(trimmed)) {
+  if (/\s{1,40}and\s{1,40}/i.test(trimmed)) {
     const parts = trimmed
-      .split(/\s+and\s+/i)
+      .split(/\s{1,40}and\s{1,40}/i)
       .map(p => resolveProjectBoundary(p).text.trim())
       .filter(Boolean);
     if (parts.length > 1 && parts.every(p => !GENERIC_PROJECT_WORDS.has(p.toLowerCase()) || p.split(/\s+/).length > 1)) {

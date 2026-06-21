@@ -41,6 +41,11 @@ import type {
   OperationGate,
 } from './loreBookParserTypes';
 
+/** Escape regex metacharacters so user-derived text can't inject pattern syntax. */
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const LEXICAL_TO_DOMAIN: Record<string, LoreBookDomain | undefined> = {
   PERSON: 'characters',
   CHARACTER: 'characters',
@@ -697,7 +702,7 @@ function extractPatternOperations(ctx: SpanMappingContext): LoreBookOperation[] 
       opKey
     );
 
-    const houseMatch = text.match(new RegExp(`${given}'s\\s+house`, 'i'));
+    const houseMatch = text.match(new RegExp(`${escapeRegex(given)}'s\\s+house`, 'i'));
     if (houseMatch) {
       const locName = `${displayName}'s house`;
       pushUniqueOp(

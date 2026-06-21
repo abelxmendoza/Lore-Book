@@ -54,7 +54,7 @@ function extractEmployment(text: string): ResumeEmployment[] {
       if (JOB_DATE_RE.test(line) || /^(Technical|Professional|Education|Additional)/i.test(line)) break;
       if (line.startsWith('•')) break;
       if (!company && (line.includes('—') || line.includes(',') || /Inc\.|Robotics|Industries/i.test(line))) {
-        const dash = line.split(/\s*[—–-]\s*/);
+        const dash = line.split(/\s{0,40}[—–-]\s{0,40}/);
         if (dash.length >= 2) {
           company = dash[0].replace(/,\s*$/, '').trim();
           location = dash.slice(1).join(' — ').trim();
@@ -97,7 +97,7 @@ function extractEducation(text: string): ParsedResume['education'] {
   const lines = eduBlock.split('\n').map((l) => l.trim()).filter(Boolean);
 
   for (let i = 0; i < lines.length; i++) {
-    const combined = lines[i].match(/^(.+?)\s+(May|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})$/i);
+    const combined = lines[i].match(/^(.{1,120}?)\s+(May|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})$/i);
     if (combined) {
       edu.push({
         institution: combined[1].trim(),

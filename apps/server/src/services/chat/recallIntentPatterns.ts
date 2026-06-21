@@ -24,7 +24,7 @@ export function matchesEntityQuery(message: string): boolean {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return false;
   const rest = message.slice(m.index + m[0].length).trim();
-  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]+(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]+)*)/);
+  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,8})/);
   const name = nameMatch?.[1]?.replace(/[?!.,]+$/, '').trim() ?? rest.split(/[\s,?!.]+/)[0] ?? '';
   if (!name || /^(that|the|this|a|an|it|everything|anything)$/i.test(name)) return false;
   return /^[A-ZÁÉÍÓÚÑ]/.test(name);

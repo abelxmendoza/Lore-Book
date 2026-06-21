@@ -152,7 +152,7 @@ export class GroupDetectionService {
       // Patterns to detect groups
       const groupPatterns = [
         /(?:my|our|the)\s+(band|team|group|club|squad|crew|gang|circle|posse|troupe|collective|scene|ensemble)/gi,
-        /(?:called|named|known as|we call (?:it|them|ourselves))\s+["']?([A-Z][a-zA-Z\s]+?)["']?(?:\.|,|$)/gi,
+        /(?:called|named|known as|we call (?:it|them|ourselves))\s+["']?([A-Z][a-zA-Z\s]{1,80}?)["']?(?:\.|,|$)/gi,
         /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+\s+(?:and\s+)?(?:I|we)/gi,
         /(?:with|together with|along with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+/gi,
       ];
@@ -263,7 +263,7 @@ export class GroupDetectionService {
         }
         const existingGroup = await this.findGroupByName(userId, groupName);
         const familyAliases = groupType === 'family' && /\//.test(groupName)
-          ? groupName.replace(/\s+Family$/i, '').split('/').map(part => `${part.trim()} Family`)
+          ? groupName.replace(/\s{1,40}Family$/i, '').split('/').map(part => `${part.trim()} Family`)
           : [];
 
         if (!existingGroup) {

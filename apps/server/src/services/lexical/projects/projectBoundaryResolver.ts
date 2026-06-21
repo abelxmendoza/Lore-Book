@@ -11,7 +11,7 @@ export type ProjectBoundaryResolution = {
 };
 
 const TRAILING_GENERIC =
-  /\s+(?:project|app|build|system|feature|idea|thing|stuff|code|repo|program)\s+(?:and|or|but)\s*$/i;
+  /\s{1,40}(?:project|app|build|system|feature|idea|thing|stuff|code|repo|program)\s{1,40}(?:and|or|but)\s{0,40}$/i;
 
 const LEADING_DETERMINER = /^(?:the|a|an|my|our|your|this|that)\s+/i;
 
@@ -33,7 +33,7 @@ export function resolveProjectBoundary(candidate: string): ProjectBoundaryResolu
   apply(TRAILING_CONJUNCTION, 'trailing_conjunction');
 
   // "the LoreBook project" → LoreBook
-  const projectSuffix = text.match(/^(.+?)\s+project$/i);
+  const projectSuffix = text.match(/^(.{1,120}?)\s+project$/i);
   if (projectSuffix) {
     const head = projectSuffix[1].replace(LEADING_DETERMINER, '').trim();
     if (head && !GENERIC_PROJECT_WORDS.has(head.toLowerCase())) {

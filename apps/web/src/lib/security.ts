@@ -24,54 +24,37 @@ export const sanitizeHtml = (dirty: string): string => {
 };
 
 /**
- * Sanitize user input (removes potentially dangerous characters)
- * Uses iterative replacement to handle nested/incomplete script tags
+ * Sanitize an untrusted string before persisting it (defense-in-depth).
+ *
+ * Previously this hand-rolled iterative regex removal of <script> tags / event
+ * handlers — a pattern that is inherently bypassable (you cannot reliably parse
+ * HTML with regex) and that CodeQL flags as "incomplete multi-character
+ * sanitization". We now delegate to DOMPurify, a real HTML parser: stripping
+ * ALL tags/attributes returns text content only and cannot be bypassed by
+ * nested/overlapping constructs like "<scrip<script>t>". On the server (no DOM)
+ * we fall back to full HTML-entity escaping, which is likewise complete.
  */
 export const sanitizeInput = (input: string): string => {
   if (typeof input !== 'string') return '';
-  
-  // Remove null bytes and control characters
-  let sanitized = input.replace(/[\x00-\x1F\x7F]/g, '');
-  
-  // SECURITY: Remove script tags using character-by-character approach to prevent bypass
-  // This is more secure than multi-character regex replacement
-  // First, remove all <script> tags and fragments character by character
-  let previous;
-  let iterations = 0;
-  const maxIterations = 100; // Prevent infinite loops
-  
-  do {
-    previous = sanitized;
-    iterations++;
-    
-    // Remove script tags iteratively (handles nested/incomplete tags)
-    sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*[^>]*>/gi, '');
-    sanitized = sanitized.replace(/<script\b[^>]*\/>/gi, '');
-    sanitized = sanitized.replace(/<script\b[^>]*>/gi, '');
-    
-    // SECURITY: Remove script fragments character by character to prevent bypass
-    // This handles cases like "<scrip<script>t>" that might bypass regex
-    sanitized = sanitized.replace(/<script/gi, '');
-    sanitized = sanitized.replace(/<\/script/gi, '');
-    
-    // Additional safety: Remove any remaining angle brackets if too many iterations
-    if (iterations >= maxIterations) {
-      sanitized = sanitized.replace(/[<>]/g, '');
-      break;
-    }
-  } while (sanitized !== previous);
-  
-  // SECURITY: Final pass - remove any remaining script-related content
-  // Use single-character replacement to ensure nothing is missed
-  sanitized = sanitized.replace(/<[^>]*script[^>]*>/gi, '');
-  
-  // Remove event handlers iteratively
-  do {
-    previous = sanitized;
-    sanitized = sanitized.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
-  } while (sanitized !== previous);
-  
-  return sanitized.trim();
+
+  // Remove null bytes and control characters first.
+  const noControl = input.replace(/[\x00-\x1F\x7F]/g, '');
+
+  if (typeof window !== 'undefined' && DOMPurify) {
+    // Strip every tag and attribute; keep inner text. Bypass-proof.
+    return DOMPurify.sanitize(noControl, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+      KEEP_CONTENT: true,
+    }).trim();
+  }
+
+  // SSR / DOMPurify unavailable: escape so no markup can be reconstructed.
+  return noControl
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .trim();
 };
 
 /**

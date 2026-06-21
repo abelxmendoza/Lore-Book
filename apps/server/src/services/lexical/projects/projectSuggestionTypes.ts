@@ -134,4 +134,4 @@ export const KNOWN_PROJECT_ALIASES = new Map<string, string>([
   ['abeliciousness', 'Abeliciousness'],
 ]);
 
-export const TRAILING_CONJUNCTION = /\s+(?:and|or|but)\s*$/i;
+export const TRAILING_CONJUNCTION = /\s{1,40}(?:and|or|but)\s{0,40}$/i;

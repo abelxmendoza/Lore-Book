@@ -32,7 +32,7 @@ fi
 # Install dependencies
 echo ""
 echo "📦 Installing dependencies..."
-pnpm install
+npm install --legacy-peer-deps
 
 # Check if Supabase CLI is installed
 if ! command -v supabase &> /dev/null; then
@@ -59,8 +59,8 @@ echo ""
 echo "📋 Next steps:"
 echo "1. Copy the Supabase credentials shown above to your .env file"
 echo "2. Add your OpenAI API key to .env"
-echo "3. Run: pnpm dev:server (in one terminal)"
-echo "4. Run: pnpm dev:web (in another terminal)"
+echo "3. Run: npm run dev:server (in one terminal)"
+echo "4. Run: npm run dev:web (in another terminal)"
 echo "5. Open: http://localhost:5173"
 echo ""
 echo "📚 For more help, see QUICK_START.md"
