@@ -1,20 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SERVER_ROOT = join(__dirname, '../..');
 const SERVER_SRC = join(SERVER_ROOT, 'src');
 
-function rgFiles(pattern: string, searchRoot: string): string[] {
-  try {
-    const out = execSync(`rg -l "${pattern}" "${searchRoot}" --glob "!**/*.test.*" --glob "!**/tests/**"`, {
-      encoding: 'utf8',
-      cwd: SERVER_ROOT,
-    }).trim();
-    return out ? out.split('\n').filter(Boolean) : [];
-  } catch {
-    return [];
+// Node-based file scan — deliberately NOT shelling out to ripgrep. `rg` is not
+// installed in every CI image, and the old `catch { return [] }` fallback made
+// the "zero references" assertions pass silently when the binary was missing
+// (false green). A pure-Node walk is deterministic on every machine.
+const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.sql', '.json']);
+
+function walkFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'tests') continue;
+      out.push(...walkFiles(full));
+    } else if (entry.isFile()) {
+      if (/\.test\./.test(entry.name)) continue; // mirror the old --glob "!**/*.test.*"
+      const dot = entry.name.lastIndexOf('.');
+      if (dot >= 0 && SCANNED_EXTENSIONS.has(entry.name.slice(dot))) out.push(full);
+    }
   }
+  return out;
+}
+
+function rgFiles(pattern: string, searchRoot: string): string[] {
+  const re = new RegExp(pattern);
+  return walkFiles(searchRoot).filter((file) => re.test(readFileSync(file, 'utf8')));
 }
 
 function rel(p: string): string {

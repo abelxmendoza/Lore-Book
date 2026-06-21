@@ -91,9 +91,13 @@ export function assertTravelJapanPreviewSpans(spans: Array<{ text: string; type:
   const find = (re: RegExp, type?: string) =>
     spans.find((s) => re.test(s.text) && (!type || s.type === type));
 
-  expect(find(/^Japan$/i, 'PLACE')?.colorKey).toBe('place');
+  // "Japan" after a travel verb ("went to") is classified as the more specific
+  // TRAVEL_DESTINATION (still colored as a place), matching the canonical fixture
+  // expectations in lexicalFixtureRunner. "Japanese" is not a standalone LANGUAGE
+  // span — it is absorbed into the "Japanese Class" GROUP — so there is no
+  // LANGUAGE span to assert. (Both prior expectations were stale.)
+  expect(find(/^Japan$/i, 'TRAVEL_DESTINATION')?.colorKey).toBe('place');
   expect(find(/last summer/i, 'TIME_PERIOD')?.colorKey).toBe('time');
   expect(find(/favorite summer clothes/i, 'PREFERENCE')?.colorKey).toBe('preference');
   expect(find(/school.*Japanese Class/i, 'GROUP')?.colorKey).toBe('group');
-  expect(find(/Japanese/i, 'LANGUAGE')?.colorKey).toBe('language');
 }
