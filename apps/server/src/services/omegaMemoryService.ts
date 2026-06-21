@@ -58,7 +58,15 @@ function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Ar
 // server-side in the match_omega_entities RPC — so fetching it on every
 // per-message batch (up to 500 rows) was a large, pure-waste egress cost.
 const OMEGA_ENTITY_COLS =
-  'id, user_id, type, primary_name, aliases, created_at, updated_at, metadata, mention_count, mention_status';
+  'id, user_id, type, primary_name, aliases, created_at, updated_at, metadata, mention_count, mention_status, entity_type';
+
+// All omega_claims columns EXCEPT the 1536-dim `embedding`. The vector is only
+// consumed by conflictDetected() (via findSimilarClaims, which deliberately
+// keeps it to avoid re-embedding on the wire); every other claim read returns
+// data to rankers/recall/summaries that never touch the vector. As lore grows,
+// an entity accumulates many claims, so `select('*')` here scales egress badly.
+const OMEGA_CLAIM_COLS =
+  'id, user_id, entity_id, text, source, confidence, sentiment, start_time, end_time, is_active, created_at, updated_at, metadata, temporal_context, temporal_confidence';
 
 export class OmegaMemoryService {
   /**
@@ -732,6 +740,9 @@ Only extract clear relationships. Include temporal context when available.`
    * Find similar claims for conflict detection
    */
   async findSimilarClaims(userId: string, claim: Claim): Promise<Claim[]> {
+    // NOTE: this is the ONE claim read that intentionally keeps `select('*')` —
+    // conflictDetected() reuses the stored embedding to avoid a per-claim OpenAI
+    // re-embed (cost + latency + 429 risk). Egress here is a deliberate trade.
     const { data, error } = await supabaseAdmin
       .from('omega_claims')
       .select('*')
@@ -1188,7 +1199,7 @@ A contradiction means the claims cannot both be true at the same time.`
     const { data, error } = await supabaseAdmin
       .from('omega_claims')
       .insert(claimData)
-      .select()
+      .select(OMEGA_CLAIM_COLS) // don't echo the embedding we just wrote back
       .single();
 
     if (error) {
@@ -1230,14 +1241,14 @@ A contradiction means the claims cannot both be true at the same time.`
       // Get entities
       const { data: sourceEntity } = await supabaseAdmin
         .from('omega_entities')
-        .select('*')
+        .select(OMEGA_ENTITY_COLS)
         .eq('id', sourceEntityId)
         .eq('user_id', userId)
         .single();
 
       const { data: targetEntity } = await supabaseAdmin
         .from('omega_entities')
-        .select('*')
+        .select(OMEGA_ENTITY_COLS)
         .eq('id', targetEntityId)
         .eq('user_id', userId)
         .single();
@@ -1338,7 +1349,7 @@ A contradiction means the claims cannot both be true at the same time.`
 
     const { data: claims, error } = await supabaseAdmin
       .from('omega_claims')
-      .select('*')
+      .select(OMEGA_CLAIM_COLS)
       .eq('user_id', userId)
       .eq('entity_id', entityId)
       .eq('is_active', true)
@@ -1422,7 +1433,7 @@ A contradiction means the claims cannot both be true at the same time.`
 
     const { data: entity, error: entityError } = await supabaseAdmin
       .from('omega_entities')
-      .select('*')
+      .select(OMEGA_ENTITY_COLS)
       .eq('id', entityId)
       .eq('user_id', userId)
       .single();
@@ -1609,7 +1620,7 @@ Propose updates that should be reviewed before applying.`
         if (suggestion.proposed_data && suggestion.entity_id) {
           const { data: entity, error } = await supabaseAdmin
             .from('omega_entities')
-            .select('*')
+            .select(OMEGA_ENTITY_COLS)
             .eq('id', suggestion.entity_id)
             .eq('user_id', userId)
             .maybeSingle();
@@ -1641,7 +1652,7 @@ Propose updates that should be reviewed before applying.`
         if (suggestion.claim_id) {
           const { data: claim } = await supabaseAdmin
             .from('omega_claims')
-            .select('*')
+            .select(OMEGA_CLAIM_COLS)
             .eq('id', suggestion.claim_id)
             .eq('user_id', userId)
             .single();
@@ -1721,7 +1732,7 @@ Propose updates that should be reviewed before applying.`
   async getEntities(userId: string, type?: EntityType, includeUnconfirmed = false): Promise<Entity[]> {
     let query = supabaseAdmin
       .from('omega_entities')
-      .select('*')
+      .select(OMEGA_ENTITY_COLS)
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
 
@@ -1748,7 +1759,7 @@ Propose updates that should be reviewed before applying.`
   async getClaimsForEntity(userId: string, entityId: string, activeOnly: boolean = true): Promise<Claim[]> {
     let query = supabaseAdmin
       .from('omega_claims')
-      .select('*')
+      .select(OMEGA_CLAIM_COLS)
       .eq('user_id', userId)
       .eq('entity_id', entityId)
       .order('start_time', { ascending: false });
