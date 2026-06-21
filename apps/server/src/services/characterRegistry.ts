@@ -125,7 +125,8 @@ class CharacterRegistry {
     // Strip descriptive clauses: "Dana who's handling onboarding" → "Dana"
     name = name.replace(/\s{1,40}(?:who(?:'s|’s|se)?|whom|that|which)\b.*$/i, '').trim();
     // Strip comma appositives: "Adrian Patel, My Coding Mentor" → "Adrian Patel"
-    name = name.replace(/,.*$/, '').trim();
+    const commaIdx = name.indexOf(',');
+    if (commaIdx !== -1) name = name.slice(0, commaIdx).trim();
     // Strip leading articles
     name = name.replace(/^(?:the|a|an)\s+/i, '').trim();
     // Strip trailing role descriptors: "Reese the Recruiter" → "Reese",
