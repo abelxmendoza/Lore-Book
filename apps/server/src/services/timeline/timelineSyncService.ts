@@ -30,6 +30,7 @@ import type { ParacosmEvent } from './normalizers/paracosmNormalizer';
 import type { ProjectEvent } from './normalizers/projectNormalizer';
 import type { RelationshipEvent } from './normalizers/relationshipNormalizer';
 import { TimelineEngine } from './timelineEngine';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export class TimelineSyncService {
   constructor(private timelineEngine: TimelineEngine) {}
@@ -142,7 +143,7 @@ export class TimelineSyncService {
   private async fetchJournalEntries(userId: string): Promise<NormalizedTimelineEvent[]> {
     const { data: entries, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: true });
 

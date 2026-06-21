@@ -140,6 +140,10 @@ jobs:
         working-directory: apps/server
         run: npm test -- tests/services/extractionSignals.test.ts tests/utils/aiUncertainty.test.ts tests/services/ingestionPipeline.test.ts tests/integration/ingestionPipelineE2E.test.ts
 
+      - name: Egress guard regressions (projection + ingestion dedup + single-pass reuse)
+        working-directory: apps/server
+        run: npm run test:egress
+
       - name: Script consolidation regressions (migration runner / backfill / cleanup)
         working-directory: apps/server
         run: npm run test:scripts

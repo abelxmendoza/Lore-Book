@@ -33,11 +33,11 @@ describe('ComposerEntityChips', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders compact detected strip with confirmed and suggestion chips', () => {
+  it('renders compact confirm strip with confirmed and suggestion chips', () => {
     render(<ComposerEntityChips entities={[confirmed, suggested]} onConfirm={vi.fn()} />);
 
     expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
-    expect(screen.getByText('Detected')).toBeInTheDocument();
+    expect(screen.getByText('Confirm')).toBeInTheDocument();
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toHaveTextContent('Abel');
     expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toHaveTextContent('Kelly');
   });

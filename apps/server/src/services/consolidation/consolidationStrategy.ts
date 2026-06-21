@@ -1,6 +1,8 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   ConsolidationCandidate,
   ConsolidationResult,
@@ -68,7 +70,7 @@ export class ConsolidationStrategyService {
       // Get all entries to consolidate
       const { data: entries, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', candidate.entries)
         .order('date', { ascending: true });

@@ -4,6 +4,7 @@ import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
 import { JournalComposerOverlay } from './JournalComposerOverlay';
+import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
 import { useState, useEffect, useCallback } from 'react';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { useVisualViewportSize, getComposerStats } from '../hooks/useVisualViewportSize';
@@ -72,6 +73,8 @@ export const ChatComposer = ({
     insertSuggestion,
     setPreviewCorrections,
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
+
+  const correction = useEntityCorrectionState(input, threadId, visibleMatches);
 
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
@@ -289,11 +292,15 @@ export const ChatComposer = ({
         >
           <ComposerEntityChips
             variant="inline"
+            text={input}
             entities={visibleMatches}
+            previewSpans={correction.visibleSpans}
+            correctedRecords={correction.correctedRecords}
             confirmingSlots={confirmingSlots}
             scanning={entityIndexer.loading}
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
+            onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
           />
 
           <div className="journal-composer-input-wrap">
@@ -303,6 +310,7 @@ export const ChatComposer = ({
               textareaRef={textareaRef}
               matches={visibleMatches}
               threadId={threadId}
+              correction={correction}
               onPreviewCorrectionsChange={setPreviewCorrections}
               placeholder={resolvedPlaceholder}
               disabled={loading || disabled}
@@ -419,11 +427,14 @@ export const ChatComposer = ({
           onChange={setInput}
           textareaRef={textareaRef}
           matches={visibleMatches}
+          threadId={threadId}
+          correction={correction}
           placeholder={resolvedPlaceholder}
           disabled={disabled}
           loading={loading}
           onSubmit={submitAndCloseJournal}
           onKeyDown={handleKeyDown}
+          onPreviewCorrectionsChange={setPreviewCorrections}
           viewportHeight={viewportHeight}
           keyboardInset={keyboardInset}
           confirmingSlots={confirmingSlots}

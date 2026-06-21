@@ -45,9 +45,6 @@ import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBre
 import { useGuest } from '../../../contexts/GuestContext';
 import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
 import { useMockData } from '../../../contexts/MockDataContext';
-import { useShouldUseMockData } from '../../../hooks/useShouldUseMockData';
-import { LoreEntityLegend } from '../../../components/lore/LoreEntityLegend';
-import { loreKindForChip } from '../../../lib/loreEntities';
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
@@ -65,6 +62,7 @@ import { useAuth } from '../../../lib/supabase';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
+import { selectComposerDraft } from '../../../store/selectors/composerSelectors';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
 import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
@@ -80,6 +78,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [searchParams] = useSearchParams();
   const dispatch = useAppDispatch();
   const chatFocus = useAppSelector(selectChatFocus);
+  const composerDraft = useAppSelector(selectComposerDraft);
 
   // ── Message state (owned by useChat / useConversationStore) ──────────────────
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -264,11 +263,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
   const [statusDismissed, setStatusDismissed] = useState(false);
   const isMobile = useIsMobile(640);
-  const isDemoMode = useShouldUseMockData();
-  const threadLoreKinds = useMemo(() => {
-    const kinds = new Set(collectThreadEntities(messages).map((e) => loreKindForChip(e)));
-    return [...kinds];
-  }, [messages]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -862,26 +856,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
         )}
 
-        {isDemoMode && messages.length > 0 && (
-          <div className="flex-shrink-0 px-3 sm:px-4 lg:px-10 xl:px-12 pt-1">
-            <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
-              <LoreEntityLegend
-                compact
-                title="Lore entity key (demo)"
-                activeKinds={threadLoreKinds.length > 0 ? threadLoreKinds : undefined}
-                className="border-white/8 bg-black/35"
-              />
-            </div>
-          </div>
+        {!composerDraft.trim() && (
+          <ThreadEntityChips
+            messages={messages}
+            variant="composer"
+            selectedEntityId={focusedEntityId}
+            onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+          />
         )}
-
-        {/* Confirmed thread entities — focus to build on established knowledge */}
-        <ThreadEntityChips
-          messages={messages}
-          variant="composer"
-          selectedEntityId={focusedEntityId}
-          onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
-        />
 
         {/* Composer */}
         <div

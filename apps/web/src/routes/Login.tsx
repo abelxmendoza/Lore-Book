@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
+import { OpenAiAvailabilityLoginNote } from '../components/common/OpenAiAvailabilityNotice';
 
 // ── Left-side feature statements ─────────────────────────────────────────────
 
@@ -263,6 +264,8 @@ export default function Login() {
                 Continue with Google
               </button>
 
+              <OpenAiAvailabilityLoginNote />
+
               {/* Error */}
               {error && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3 text-xs text-red-400 leading-relaxed">
@@ -277,7 +280,7 @@ export default function Login() {
                     <p className="text-sm font-semibold text-amber-300">Demo Mode</p>
                     <p className="text-xs text-white/45 mt-0.5 leading-relaxed">
                       Explore the full app with sample data — no account needed.
-                      See what LoreBook looks like when it knows you.
+                      Chat uses a built-in sim; Google sign-in unlocks live AI.
                     </p>
                   </div>
                 </div>

@@ -6,7 +6,7 @@
     "buildCommand": "npm run build || true"
   },
   "deploy": {
-    "startCommand": "node dist/index.js",
+    "startCommand": "node dist/bootstrap.js",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",

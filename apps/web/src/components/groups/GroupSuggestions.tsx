@@ -10,6 +10,7 @@ import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { useToast } from '../ui/toast';
 import { fetchJson } from '../../lib/api';
 import type { Organization, OrganizationMember } from '../organizations/OrganizationProfileCard';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
@@ -19,19 +20,9 @@ import {
   type OrganizationCategory,
 } from '../../lib/groupTypes';
 import type { GroupType, UserRelationship } from '../organizations/OrganizationProfileCard';
-import { triggerCelebration } from '../../lib/celebrations';
-import { demoEffectMessage, emitDemoEffect } from '../../services/demoMutationEffects';
 
+const ADD_TOAST_MS = 4500;
 const EXIT_ANIMATION_MS = 360;
-
-function celebrateGroupAdded(org: Organization): void {
-  triggerCelebration({
-    variant: 'organization',
-    label: `${org.name} added to Groups`,
-    subtitle: `${GROUP_TYPE_LABELS[org.group_type] ?? 'Group'} unlocked`,
-    xp: 40,
-  });
-}
 
 interface GroupCandidate {
   id: string;
@@ -235,6 +226,7 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreated, categoryFilter = 'all', searchTerm = '', demoMode = false }) => {
+  const { success, error, ToastContainer } = useToast({ maxVisible: 1 });
   const [candidates, setCandidates] = useState<GroupCandidate[]>(() => demoMode ? DEMO_GROUP_CANDIDATES : []);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -309,14 +301,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
 
   const finishAccept = async (candidateId: string, created?: Organization) => {
     if (created) {
-      if (demoMode) {
-        emitDemoEffect({
-          kind: 'group_added',
-          ...demoEffectMessage('group_added', created.name),
-        });
-      } else {
-        celebrateGroupAdded(created);
-      }
+      success(`"${created.name}" added to your Groups book.`, ADD_TOAST_MS, 'group');
     }
 
     setExiting(prev => new Set(prev).add(candidateId));
@@ -376,6 +361,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
       await finishAccept(candidateId, created);
     } catch (err) {
       console.error('Failed to accept candidate:', err);
+      error('Could not add group. Please try again.');
       setExiting(prev => {
         const next = new Set(prev);
         next.delete(candidateId);
@@ -428,6 +414,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
   if (visible.length === 0) return null;
 
   return (
+    <>
     <div className="mx-auto w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-purple-500/35 bg-gradient-to-br from-purple-950/35 via-black/50 to-black/60">
       {/* Header */}
       <button
@@ -629,5 +616,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
         </div>
       )}
     </div>
+    <ToastContainer />
+    </>
   );
 };

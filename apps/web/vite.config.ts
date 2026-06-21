@@ -3,6 +3,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Prefer monorepo server ontology in local dev; fall back to web-local copy for
+// Vercel (CLI deploy uploads apps/web only — no ../server on the build machine).
+const serverOntology = path.resolve(__dirname, '../server/src/services/ontology');
+const webOntology = path.resolve(__dirname, './src/lib/ontology');
+import fs from 'fs';
+const ontologyRoot = fs.existsSync(serverOntology) ? serverOntology : webOntology;
+
 // Validate environment variables at build time (production only)
 // Note: For frontend-only demo, Supabase vars are optional (mock data will be used)
 if (process.env.NODE_ENV === 'production') {
@@ -115,7 +122,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@lorekeeper/ontology': path.resolve(__dirname, '../server/src/services/ontology'),
+      '@lorekeeper/ontology': ontologyRoot,
     },
   },
   server: {

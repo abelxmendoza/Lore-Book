@@ -17,6 +17,7 @@ import { memoryDetectionCacheService } from './memoryDetectionCacheService';
 import { memoryService } from './memoryService';
 import { ruleBasedMemoryDetectionService } from './ruleBasedMemoryDetection';
 import { supabaseAdmin } from './supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 // Thrown when content is not memory-worthy — signals worker to mark 'skipped',
 // not 'failed'. Skipped sessions are re-evaluated after 24h; failed ones count
@@ -117,7 +118,7 @@ class MemoryExtractionService {
       // Return the existing entry rather than creating a duplicate.
       const { data: entryRow } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('id', existing[0].id)
         .single();
       return {

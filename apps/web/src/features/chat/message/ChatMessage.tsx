@@ -67,8 +67,7 @@ import type { EntityMentionRef } from '../../../lib/entityMentions';
 import { entityMentionsFromMessage, mergeEntityMentionRefs } from '../../../lib/entityMentions';
 import { TextWithEntityPills } from '../../../components/entity/TextWithEntityPills';
 import { HowLoreBookUnderstoodThis } from '../../../components/chat/HowLoreBookUnderstoodThis';
-import { LoreEntityLegend } from '../../../components/lore/LoreEntityLegend';
-import { loreKindForChip, type LoreEntityKind } from '../../../lib/loreEntities';
+import type { LoreEntityKind } from '../../../lib/loreEntities';
 
 export type Message = {
   id: string;
@@ -219,7 +218,6 @@ export const ChatMessage = ({
   const isUser = message.role === 'user';
   const relationshipGroups = extractRelationshipGroups(message.metadata);
   const lexicalSignals = extractLexicalSignals(message.metadata as Record<string, unknown> | undefined);
-  const detectedLoreKinds = message.mentionedEntities?.map((e) => loreKindForChip(e)) ?? [];
   const isSystem = message.isSystemMessage;
   const enterClass = animateEnter
     ? isSystem
@@ -720,16 +718,8 @@ export const ChatMessage = ({
 
         {/* Entity chips — below assistant bubble (inside column so flex siblings don't squeeze width) */}
         {!isUser && message.mentionedEntities && message.mentionedEntities.length > 0 && (
-          <div className="mt-2 w-full min-w-0 space-y-2">
+          <div className="mt-2 w-full min-w-0">
             <EntityChipsRow entities={message.mentionedEntities} />
-            {showCognitiveTrace && detectedLoreKinds.length > 0 && (
-              <LoreEntityLegend
-                compact
-                title="Detected in this reply"
-                activeKinds={[...new Set(detectedLoreKinds)]}
-                className="border-white/8 bg-black/30"
-              />
-            )}
           </div>
         )}
 

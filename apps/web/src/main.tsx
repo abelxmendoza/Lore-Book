@@ -101,6 +101,10 @@ setTimeout(() => {
 import './styles/tailwind.css';
 import './styles/timeline.css';
 
+import { initSupabase } from './lib/supabase';
+
+await initSupabase();
+
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ReduxProvider } from './store/ReduxProvider';

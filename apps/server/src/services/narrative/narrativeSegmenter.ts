@@ -4,6 +4,7 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { NarrativeSegment } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Segments memories into narrative chunks
@@ -23,7 +24,7 @@ export class NarrativeSegmenter {
       // Get entries
       const { data: entries, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', entryIds)
         .order('date', { ascending: true });

@@ -9,6 +9,7 @@ import { DecisionPatternDetector } from './patternDetector';
 import { RiskAnalyzer } from './riskAnalyzer';
 import { SimilarDecisionAnalyzer } from './similarityAnalyzer';
 import type { Decision, DecisionInsight, DecisionContext } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Decision Support Engine
@@ -105,7 +106,7 @@ export class DecisionEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(500);

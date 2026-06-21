@@ -41,11 +41,17 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const normalize = req.query.normalize === 'true';
   try {
     if (normalize) {
+      // Normalization mutates org rows, so drop the cached list before re-reading.
+      organizationService.invalidateOrganizations(userId);
       await organizationNormalizationService.normalizeUserOrganizations(userId).catch((err) => {
         logger.warn({ err, userId }, 'Background organization normalization failed');
       });
+      organizationService.invalidateOrganizations(userId);
     }
     const organizations = await organizationService.listOrganizations(userId);
+    // Let the browser short-circuit a tight client refetch loop locally (this
+    // endpoint was hit ~2.2M times in 45 days). Per-user data → private cache.
+    res.set('Cache-Control', 'private, max-age=15');
     res.json({ success: true, organizations });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to list organizations');

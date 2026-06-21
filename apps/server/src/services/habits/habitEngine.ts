@@ -8,6 +8,7 @@ import { HabitLoopDetector } from './habitLoopDetector';
 import { ReinforcementGenerator } from './reinforcementGenerator';
 import { StreakCalculator } from './streakCalculator';
 import type { Habit, HabitInsight, HabitContext } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Habit Formation Engine
@@ -98,7 +99,7 @@ export class HabitEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(300);

@@ -1066,6 +1066,14 @@ export class ConversationIngestionPipeline {
       const _threadMetaTurn = { people: [] as string[], places: [] as string[] };
       const _resolvedEntityIds: string[] = [];
       const _resolvedLocationIds: string[] = [];
+      // Phase B single-pass: the message-level extract+resolve below is the
+      // authoritative entity set for this message. The unit text fed to per-unit
+      // conversion is always a subset of the message text, so its entities are a
+      // subset of these. We thread this set into semantic conversion so per-unit
+      // stages reuse it instead of re-running extractEntities + resolveEntities.
+      // Stays empty (not undefined) when resolution runs but finds nothing —
+      // that's a meaningful "no entities" signal, distinct from "never ran".
+      let _messageResolvedEntities: Array<{ id: string; type: string; name: string }> | undefined;
 
       // Step 1: Save message (if not already saved)
       // Note: In practice, message might already be saved by chat service
@@ -1167,6 +1175,14 @@ export class ConversationIngestionPipeline {
             productive: resolved.length > 0,
           });
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
+
+          // Phase B: capture the authoritative message-level set (id+type+name)
+          // to thread into per-unit semantic conversion (skips re-extraction).
+          _messageResolvedEntities = resolved.map(e => ({
+            id: e.id,
+            type: e.type,
+            name: ((e as any).primary_name as string | undefined) ?? '',
+          }));
 
           for (const e of resolved) {
             if (e.type === 'LOCATION') {
@@ -1690,6 +1706,9 @@ export class ConversationIngestionPipeline {
                 sessionId: threadId,
                 utteranceId: utteranceIds[i], // Pass current utterance ID as fallback
                 conversationHistory,
+                // Phase B: reuse message-level entities so perception conversion
+                // doesn't re-run extractEntities + resolveEntities per unit.
+                resolvedEntities: _messageResolvedEntities,
               }
             );
 

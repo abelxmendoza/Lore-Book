@@ -1,5 +1,6 @@
 import type { LexicalPreviewSpan } from '../api/lexicalPreview';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
+import { certifiedTypeToPreviewClassification } from './composerEntityStrip';
 
 function normalizeKey(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -20,27 +21,33 @@ export function enrichPreviewSpansWithKnownStatus(
   const suggested = matches.filter((m) => m.status === 'suggestion' || m.status === 'draft');
 
   return spans.map((span) => {
-    if (span.entityStatus === 'known') return span;
-
     const spanKey = normalizeKey(span.text);
 
     for (const match of confirmed) {
       if (labelsForMatch(match).some((l) => l === spanKey || spanKey.includes(l) || l.includes(spanKey))) {
+        const classification = certifiedTypeToPreviewClassification(match);
         return {
           ...span,
+          type: classification.type,
+          colorKey: classification.colorKey,
           entityStatus: 'known',
           matchedEntityId: match.id,
           matchedEntityName: match.name,
+          needsReview: false,
         };
       }
     }
 
     for (const match of suggested) {
       if (labelsForMatch(match).some((l) => l === spanKey || spanKey.includes(l) || l.includes(spanKey))) {
+        const classification = certifiedTypeToPreviewClassification(match);
         return {
           ...span,
+          type: classification.type,
+          colorKey: classification.colorKey,
           entityStatus: 'new',
           needsReview: span.needsReview ?? true,
+          matchedEntityName: match.name,
         };
       }
     }

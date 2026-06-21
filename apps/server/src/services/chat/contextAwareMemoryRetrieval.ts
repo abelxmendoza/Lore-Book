@@ -7,6 +7,7 @@ import { logger } from '../../logger';
 import type { MemoryEntry } from '../../types';
 import type { TimelineContextLayer } from '../../types/currentContext';
 import { supabaseAdmin } from '../supabaseClient';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 const DEFAULT_LIMIT = 30;
 
@@ -67,7 +68,7 @@ export async function retrieveMemoriesByThread(
     const chapterIds = chapters.map((c: { id: string }) => c.id);
     const { data: entries, error: entErr } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .in('chapter_id', chapterIds)
       .order('date', { ascending: false })
@@ -202,7 +203,7 @@ export async function retrieveEntityMentionsAcrossThreads(
       const entryIds = [...entryIdSet].slice(0, limit * 4);
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', entryIds)
         .order('date', { ascending: false })
@@ -275,7 +276,7 @@ export async function retrieveMemoriesUnderNode(
 
     const { data: entries, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .in('chapter_id', chapterIds)
       .order('date', { ascending: false })

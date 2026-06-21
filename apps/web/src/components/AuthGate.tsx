@@ -14,6 +14,7 @@ import { useMockData } from '../contexts/MockDataContext';
 import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
 import { InferenceSyncProvider } from './InferenceSyncProvider';
 import { BookGhostLoader } from './common/BookGhostLoader';
+import { OpenAiAvailabilityLoginNote } from './common/OpenAiAvailabilityNotice';
 import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
 const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
@@ -89,6 +90,8 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: 
       <Button variant="ghost" className="mt-3 w-full" onClick={handleGoogle} disabled={loading}>
         {loading ? 'Connecting...' : 'Continue with Google'}
       </Button>
+
+      <OpenAiAvailabilityLoginNote className="mt-4 w-full" />
       
       <div className="my-6 flex items-center w-full">
         <div className="flex-1 border-t border-white/10"></div>
@@ -111,7 +114,7 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: 
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left">
           <p className="text-xs font-medium text-amber-200/90 mb-1">📊 Explore with sample data</p>
           <p className="text-xs text-white/60 leading-relaxed">
-            See the app with demo content. No sign-in required.
+            See the app with demo content. Chat uses a built-in sim — no sign-in required.
           </p>
         </div>
       </div>
@@ -131,7 +134,7 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: 
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
           <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
           <p className="text-xs text-white/60 leading-relaxed">
-            Explore all features with limited chat access. No account required.
+            Explore with limited chat — responses are simulated. Google sign-in unlocks live AI.
           </p>
         </div>
       </div>

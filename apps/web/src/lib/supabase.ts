@@ -1,29 +1,26 @@
 import { useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { useAppSelector } from '../store/hooks';
 import { selectAuthLoading, selectAuthSession, selectAuthUser } from '../store/selectors';
+import {
+  readSupabaseUrlEnvFromVite,
+  resolveSupabaseUrl,
+} from './supabaseUrlResolution';
 
 type SupabaseConfig = {
   url: string;
   key: string;
 };
 
-const getConfig = (): { config: SupabaseConfig | null; debug: { url: string; keyPresent: boolean; issues: string[] } } => {
-  const url = import.meta.env.VITE_SUPABASE_URL as string;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-  
+let resolvedUrl = '';
+let supabaseClient: SupabaseClient | null = null;
+let initPromise: Promise<SupabaseClient> | null = null;
+
+const getAnonKey = (): string => (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? '';
+
+function validateConfig(url: string, key: string): { config: SupabaseConfig | null; issues: string[] } {
   const issues: string[] = [];
-  
-  // Debug logging (only in development, skip in test to reduce noise)
-  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
-    console.log('[Supabase Config Debug]', {
-      url: url ? `${url.substring(0, 30)}...` : 'MISSING',
-      keyPresent: !!key,
-      keyLength: key?.length || 0,
-      allEnvVars: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_'))
-    });
-  }
 
   if (!url) {
     issues.push('VITE_SUPABASE_URL is missing');
@@ -41,34 +38,92 @@ const getConfig = (): { config: SupabaseConfig | null; debug: { url: string; key
     issues.push('VITE_SUPABASE_ANON_KEY appears to be too short (expected JWT token)');
   }
 
-  if (issues.length > 0 && import.meta.env.DEV && import.meta.env.MODE !== 'test') {
-    console.error('[Supabase Config] Configuration issues:', issues);
+  const config: SupabaseConfig | null = issues.length === 0 && url && key ? { url, key } : null;
+  return { config, issues };
+}
+
+function buildDebug(url: string, key: string, issues: string[]) {
+  return {
+    url: url || 'MISSING',
+    keyPresent: !!key,
+    issues,
+    usedFallback: resolvedUrl !== '' && resolvedUrl !== (import.meta.env.VITE_SUPABASE_URL as string | undefined),
+  };
+}
+
+let debug = buildDebug('', getAnonKey(), ['not-initialized']);
+
+async function createConfiguredClient(): Promise<SupabaseClient> {
+  const key = getAnonKey();
+  const env = readSupabaseUrlEnvFromVite();
+  const resolution = await resolveSupabaseUrl(env);
+  resolvedUrl = resolution.url || env.primary.trim();
+
+  const { config, issues } = validateConfig(resolvedUrl, key);
+  debug = buildDebug(resolvedUrl, key, issues);
+
+  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+    console.log('[Supabase Config Debug]', {
+      url: resolvedUrl ? `${resolvedUrl.substring(0, 40)}...` : 'MISSING',
+      usedFallback: resolution.usedFallback,
+      reason: resolution.reason,
+      keyPresent: !!key,
+    });
+    if (issues.length > 0) {
+      console.error('[Supabase Config] Configuration issues:', issues);
+    }
+    if (resolution.usedFallback) {
+      console.warn(
+        '[Supabase Config] Custom domain unreachable — using *.supabase.co fallback until it recovers.'
+      );
+    }
   }
 
-  const config: SupabaseConfig | null = issues.length === 0 && url && key 
-    ? { url, key }
-    : null;
+  if (!config) {
+    return createClient('https://placeholder.supabase.co', 'placeholder-key');
+  }
 
-  return {
-    config,
-    debug: {
-      url: url || 'MISSING',
-      keyPresent: !!key,
-      issues
-    }
-  };
+  return createClient(config.url, config.key);
+}
+
+export async function initSupabase(): Promise<SupabaseClient> {
+  if (supabaseClient) return supabaseClient;
+  if (!initPromise) {
+    initPromise = createConfiguredClient().then((client) => {
+      supabaseClient = client;
+      return client;
+    });
+  }
+  return initPromise;
+}
+
+function getSupabaseClientSync(): SupabaseClient {
+  if (supabaseClient) return supabaseClient;
+  const key = getAnonKey();
+  const url = resolvedUrl || (import.meta.env.VITE_SUPABASE_URL as string) || '';
+  const { config } = validateConfig(url, key);
+  return config
+    ? createClient(config.url, config.key)
+    : createClient('https://placeholder.supabase.co', 'placeholder-key');
+}
+
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getSupabaseClientSync();
+    const value = Reflect.get(client as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
+
+export const isSupabaseConfigured = () => {
+  const key = getAnonKey();
+  const url = resolvedUrl || (import.meta.env.VITE_SUPABASE_URL as string) || '';
+  return validateConfig(url, key).config !== null;
 };
 
-const { config, debug } = getConfig();
-
-// Create a dummy client if config is missing to prevent crashes
-export const supabase = config 
-  ? createClient(config.url, config.key)
-  : createClient('https://placeholder.supabase.co', 'placeholder-key');
-
-export const isSupabaseConfigured = () => config !== null;
-
 export const getConfigDebug = () => debug;
+
+export const getResolvedSupabaseUrl = () => resolvedUrl;
 
 /** Redux-backed adapter — session sync runs once in ReduxProvider via bindSupabaseAuth. */
 export function useAuth() {

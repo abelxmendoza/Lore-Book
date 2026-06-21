@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle2, AlertCircle, Info, AlertTriangle, Briefcase } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Info, AlertTriangle, Briefcase, Users } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 /** Optional book-domain styling for suggestion-add toasts */
-export type ToastTone = 'default' | 'project' | 'quest';
+export type ToastTone = 'default' | 'project' | 'quest' | 'group';
 
 export interface Toast {
   id: string;
@@ -49,11 +49,14 @@ const ToastComponent = ({ id, message, type, duration = 5000, tone = 'default', 
       'bg-emerald-500/15 border-emerald-400/45 text-emerald-100 shadow-lg shadow-emerald-500/15 animate-in slide-in-from-bottom-6 fade-in zoom-in-95 duration-500 sm:slide-in-from-top-6',
     quest:
       'bg-amber-500/15 border-amber-400/45 text-amber-100 shadow-lg shadow-amber-500/15 animate-in slide-in-from-bottom-6 fade-in zoom-in-95 duration-500 sm:slide-in-from-top-6',
+    group:
+      'bg-purple-500/15 border-purple-400/45 text-purple-100 shadow-lg shadow-purple-500/15 animate-in slide-in-from-bottom-6 fade-in zoom-in-95 duration-500 sm:slide-in-from-top-6',
   };
 
   const toneIcons: Partial<Record<ToastTone, typeof CheckCircle2>> = {
     project: Briefcase,
     quest: CheckCircle2,
+    group: Users,
   };
 
   const Icon = (type === 'success' && toneIcons[tone]) ? toneIcons[tone]! : icons[type];

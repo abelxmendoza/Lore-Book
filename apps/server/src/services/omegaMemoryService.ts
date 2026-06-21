@@ -4,6 +4,8 @@
  * Enhanced with LLM, semantic similarity, evidence scoring, and temporal reasoning
  */
 
+import { createHash } from 'node:crypto';
+
 import { config } from '../config';
 import { AI_THRESHOLDS } from '../config/aiThresholds';
 import { logger } from '../logger';
@@ -67,6 +69,48 @@ const OMEGA_ENTITY_COLS =
 // an entity accumulates many claims, so `select('*')` here scales egress badly.
 const OMEGA_CLAIM_COLS =
   'id, user_id, entity_id, text, source, confidence, sentiment, start_time, end_time, is_active, created_at, updated_at, metadata, temporal_context, temporal_confidence';
+
+// ── Per-content extraction/resolution cache (Phase A: ingestion dedup) ───────
+// One chat message fans out into message-level + per-unit ER + perception +
+// event-assembly ingestion, each independently calling extractEntities (an LLM
+// call) and resolveEntities (up to 500-row omega_entities pool loads per type) —
+// frequently on the SAME text/candidates. A short TTL collapses those duplicates
+// across the message's synchronous and fire-and-forget tails, cutting both LLM
+// spend and Supabase egress. Disabled under test so suites stay deterministic.
+const INGEST_CACHE_TTL_MS = 2 * 60 * 1000;
+const INGEST_CACHE_MAX = 1000;
+const IS_TEST_ENV = process.env.NODE_ENV === 'test' || !!process.env.VITEST;
+
+type CacheBox<T> = { at: number; value: T };
+
+// Exported for unit tests (the service-level caches are bypassed under test).
+export const __ingestCacheInternals = { ttlMs: INGEST_CACHE_TTL_MS, maxEntries: INGEST_CACHE_MAX };
+
+export function readCache<T>(cache: Map<string, CacheBox<T>>, key: string): T | undefined {
+  const hit = cache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > INGEST_CACHE_TTL_MS) {
+    cache.delete(key);
+    return undefined;
+  }
+  return hit.value;
+}
+
+export function writeCache<T>(cache: Map<string, CacheBox<T>>, key: string, value: T): void {
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > INGEST_CACHE_MAX) {
+    const expiredBefore = Date.now() - INGEST_CACHE_TTL_MS;
+    for (const [k, box] of cache) if (box.at < expiredBefore) cache.delete(k);
+    while (cache.size > INGEST_CACHE_MAX) {
+      const oldest = cache.keys().next().value;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+  }
+}
+
+const extractEntitiesCache = new Map<string, CacheBox<Array<{ name: string; type: EntityType }>>>();
+const resolveEntitiesCache = new Map<string, CacheBox<Entity[]>>();
 
 export class OmegaMemoryService {
   /**
@@ -172,6 +216,19 @@ export class OmegaMemoryService {
       );
     }
 
+    // Phase A dedup: collapse repeated extraction of identical text. The same
+    // message is re-extracted at message level, per semantic unit (ER), per
+    // perception unit, and during event assembly — all pure LLM calls on the same
+    // content. Memoize by content hash for a short window.
+    const cacheKey = createHash('sha1').update(text).digest('hex');
+    const cached = readCache(extractEntitiesCache, cacheKey);
+    if (cached) return cached;
+    const extracted = await this.extractEntitiesUncached(text);
+    writeCache(extractEntitiesCache, cacheKey, extracted);
+    return extracted;
+  }
+
+  private async extractEntitiesUncached(text: string): Promise<Array<{ name: string; type: EntityType }>> {
     const deterministicCandidates = this.extractDeterministicEntities(text);
 
     // Pre-LLM gate: skip the extraction call entirely when the text has no
@@ -303,6 +360,34 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
    * entity creation, turning O(n×3 DB) → O(types DB + n×in-memory).
    */
   async resolveEntities(
+    userId: string,
+    candidates: Array<{ name: string; type: EntityType }>,
+    options?: { context?: ResolutionContext }
+  ): Promise<Entity[]> {
+    if (candidates.length === 0) return [];
+
+    // Phase A dedup: collapse the up-to-500-row omega_entities pool loads when the
+    // same candidate set is resolved repeatedly within one message's processing.
+    // Bypassed when a custom ResolutionContext is supplied (it can change the
+    // outcome) and under test. Side benefit: also dedupes per-message mention
+    // bumps so a single mention isn't counted 3–4× across the fan-out paths.
+    const canCache = !IS_TEST_ENV && !options?.context;
+    if (!canCache) {
+      return this.resolveEntitiesUncached(userId, candidates, options);
+    }
+    const sig =
+      userId +
+      '|' +
+      candidates.map((c) => `${normalizeNameKey(c.name)}:${c.type}`).sort().join(',');
+    const cacheKey = createHash('sha1').update(sig).digest('hex');
+    const cached = readCache(resolveEntitiesCache, cacheKey);
+    if (cached) return cached;
+    const resolvedFresh = await this.resolveEntitiesUncached(userId, candidates, options);
+    writeCache(resolveEntitiesCache, cacheKey, resolvedFresh);
+    return resolvedFresh;
+  }
+
+  private async resolveEntitiesUncached(
     userId: string,
     candidates: Array<{ name: string; type: EntityType }>,
     options?: { context?: ResolutionContext }

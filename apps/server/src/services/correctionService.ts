@@ -18,6 +18,7 @@ import type { EntryCorrection, MemoryEntry, ResolvedMemoryEntry } from '../types
 
 import { supabaseAdmin } from './supabaseClient';
 import { correctionTracker } from './activeLearning/correctionTracker';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 export type CorrectionPayload = {
   correctedContent: string;
@@ -50,7 +51,7 @@ class CorrectionService {
   async getEntryWithCorrections(userId: string, entryId: string): Promise<ResolvedMemoryEntry | null> {
     const { data, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .eq('id', entryId)
       .single();

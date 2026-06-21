@@ -6,6 +6,7 @@ import { ProfileCalculator } from './profileCalculator';
 import { ArchetypeSignalExtractor } from './signalExtractor';
 import { TransitionDetector } from './transitionDetector';
 import type { ArchetypeOutput } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Archetype Engine V1
@@ -34,7 +35,7 @@ export class ArchetypeEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000);

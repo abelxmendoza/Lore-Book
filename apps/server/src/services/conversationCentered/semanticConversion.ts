@@ -17,6 +17,13 @@ export type ConversionContext = {
   sessionId: string;
   utteranceId: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  // Phase B single-pass: message-level resolved entities (id+type+name). When
+  // present, per-unit conversion reuses them instead of re-running
+  // extractEntities + resolveEntities — the unit text is always a subset of the
+  // message text, so the message set is a superset of the unit's entities.
+  // `undefined` = message-level resolution did not run (fall back to per-unit);
+  // `[]` = it ran and found nothing (no subject person, no extra LLM call).
+  resolvedEntities?: Array<{ id: string; type: string; name: string }>;
 };
 
 export type ConversionResult = {
@@ -119,12 +126,27 @@ export class SemanticConversionService {
       // Try to resolve subject to character
       let subjectPersonId: string | null = null;
       try {
-        const entities = await omegaMemoryService.extractEntities(unit.content);
-        const resolved = await omegaMemoryService.resolveEntities(context.userId, entities);
-        const personEntity = resolved.find(e => e.type === 'PERSON' && 
-          subject.toLowerCase().includes(e.name.toLowerCase()));
-        if (personEntity) {
-          subjectPersonId = personEntity.id;
+        const subjectLower = subject.toLowerCase();
+        const matchPerson = (
+          people: Array<{ id: string; type: string; name: string }>
+        ): string | null => {
+          const hit = people.find(
+            e => e.type === 'PERSON' && e.name && subjectLower.includes(e.name.toLowerCase())
+          );
+          return hit ? hit.id : null;
+        };
+
+        if (context.resolvedEntities !== undefined) {
+          // Phase B: reuse the message-level set. The unit is a subset of the
+          // message, so re-extracting here would (at best) find the same person.
+          subjectPersonId = matchPerson(context.resolvedEntities);
+        } else {
+          // No message-level set threaded in — resolve from the unit directly.
+          const entities = await omegaMemoryService.extractEntities(unit.content);
+          const resolved = await omegaMemoryService.resolveEntities(context.userId, entities);
+          subjectPersonId = matchPerson(
+            resolved.map(e => ({ id: e.id, type: e.type, name: e.primary_name }))
+          );
         }
       } catch (error) {
         logger.debug({ error }, 'Failed to resolve perception subject to character');

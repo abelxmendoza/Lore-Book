@@ -21,7 +21,7 @@ import { trainingSignalLogger } from '../neural/trainingSignalLogger';
 
 import type { IdentityCoreProfile } from '../identityCore/identityTypes';
 import type { MemoryContext } from './chatTypes';
-
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Memory Retriever
@@ -54,7 +54,7 @@ export class MemoryRetriever {
         // Fallback to recent entries
         const { data: entriesData, error: entriesError } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .order('date', { ascending: false })
           .limit(max);
@@ -299,7 +299,7 @@ export class MemoryRetriever {
         if (topIds.length > 0) {
           const { data: topEntries } = await supabaseAdmin
             .from('journal_entries')
-            .select('*')
+            .select(JOURNAL_COLS)
             .eq('user_id', userId)
             .in('id', topIds);
           const bm25ScoreMap = new Map(bm25Results.map(r => [r.id, r.score]));
@@ -359,7 +359,7 @@ export class MemoryRetriever {
       const topIds = combined.slice(0, limit * 2).map(r => r.id);
       const { data: topEntries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', topIds);
 
@@ -436,12 +436,11 @@ export class MemoryRetriever {
       // MMR: Maximal Marginal Relevance for diverse context (before slice)
       const lambda = 0.7;
       const simQ = (d: MemoryEntry) => (d as any)._finalScore ?? (d as any).similarity ?? 0.5;
-      const simD = (a: MemoryEntry, b: MemoryEntry): number => {
-        const ea = (a as any).embedding;
-        const eb = (b as any).embedding;
-        if (!ea || !eb || !Array.isArray(ea) || !Array.isArray(eb) || ea.length !== eb.length) return 0;
-        return this.cosine(ea, eb);
-      };
+      // Diversity penalty scores on CONTENT, not embeddings: the retrieval path no
+      // longer pulls the 1536-dim vector over the wire (egress). Token overlap is a
+      // sufficient proxy for "these two entries say the same thing" for de-duping.
+      const simD = (a: MemoryEntry, b: MemoryEntry): number =>
+        this.simpleContentSimilarity((a as any).content || '', (b as any).content || '');
       const S: MemoryEntry[] = [];
       let D = [...sorted];
       while (S.length < limit && D.length > 0) {
@@ -465,9 +464,9 @@ export class MemoryRetriever {
           D = D.filter(d => d.id !== best.id);
         }
       }
-      // Append non-embedded from D if we have room
-      const withoutEmb = D.filter(d => !(d as any).embedding?.length);
-      for (const d of withoutEmb) {
+      // Fill any remaining slots from the leftover pool (defensive — the MMR loop
+      // already stops at `limit`, but keep ordering stable if it exited early).
+      for (const d of D) {
         if (S.length >= limit) break;
         S.push(d);
       }
@@ -543,19 +542,6 @@ export class MemoryRetriever {
     }
   }
 
-  /** Cosine similarity between two vectors. */
-  private cosine(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-    let dot = 0, na = 0, nb = 0;
-    for (let i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      na += a[i] * a[i];
-      nb += b[i] * b[i];
-    }
-    const den = Math.sqrt(na) * Math.sqrt(nb);
-    return den === 0 ? 0 : dot / den;
-  }
-
   /**
    * Semantic search for relevant entries with confidence weighting
    * @param yearShardMin - Optional: only entries with year_shard >= this (e.g. currentYear - 1 for recent)
@@ -584,7 +570,7 @@ export class MemoryRetriever {
         // Fallback to text search
         const { data: textData } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .ilike('content', `%${query}%`)
           .limit(limit);

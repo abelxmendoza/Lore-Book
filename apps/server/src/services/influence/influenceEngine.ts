@@ -9,6 +9,7 @@ import { InfluenceTimeline } from './influenceTimeline';
 import { InteractionAnalyzer } from './interactionAnalyzer';
 import { RiskZones } from './riskZones';
 import type { PersonInfluence, InfluenceEvent, InfluenceInsight, InfluenceContext } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Influence Engine
@@ -226,7 +227,7 @@ export class InfluenceEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(500);

@@ -15,6 +15,7 @@ import { ValueConflictDetector } from './valueConflictDetector';
 import { ValueEvolution } from './valueEvolution';
 import { ValueExtractor } from './valueExtractor';
 import { essenceProfileService } from '../essenceProfileService';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Values & Beliefs Engine
@@ -273,7 +274,7 @@ export class ValuesEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000); // More entries for values/beliefs analysis

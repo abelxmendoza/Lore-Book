@@ -9,6 +9,7 @@ import { supabaseAdmin } from '../services/supabaseClient';
 
 import { contractResolver } from './contractResolver';
 import type { SensemakingContract } from './sensemakingContract';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 /**
  * Filtered memory view
@@ -116,7 +117,7 @@ export class MemoryViewBuilder {
     // If specific entry IDs provided, fetch those
     let query = supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('timestamp', { ascending: false });
 
@@ -184,7 +185,7 @@ export class MemoryViewBuilder {
     // This is a simplified version - in production, use your HQI service
     const { data: entries, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('timestamp', { ascending: false })
       .limit(limit * 3); // Fetch more for filtering

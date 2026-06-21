@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { LexicalPreviewEntityChips } from './LexicalPreviewEntityChips';
+import { ComposerEntityChips } from './ComposerEntityChips';
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 
 const span: LexicalPreviewSpan = {
@@ -15,17 +15,24 @@ const span: LexicalPreviewSpan = {
 
 describe('LexicalPreviewEntityChips', () => {
   it('opens correction flow via chip click callback', () => {
-    const onSelectSpan = vi.fn();
-    render(<LexicalPreviewEntityChips spans={[span]} onSelectSpan={onSelectSpan} />);
+    const onSelectPreviewSpan = vi.fn();
+    render(
+      <ComposerEntityChips
+        entities={[]}
+        previewSpans={[span]}
+        onSelectPreviewSpan={onSelectPreviewSpan}
+      />,
+    );
 
     fireEvent.click(screen.getByTestId('lexical-preview-chip-GROUP-30'));
-    expect(onSelectSpan).toHaveBeenCalledWith(span);
+    expect(onSelectPreviewSpan).toHaveBeenCalledWith(span);
   });
 
-  it('shows corrected type in chip label', () => {
+  it('shows corrected entity name in chip', () => {
     render(
-      <LexicalPreviewEntityChips
-        spans={[{ ...span, type: 'ORGANIZATION', entityStatus: 'new' }]}
+      <ComposerEntityChips
+        entities={[]}
+        previewSpans={[{ ...span, type: 'ORGANIZATION', entityStatus: 'new' }]}
         correctedRecords={[
           {
             id: '30:41:ORGANIZATION',
@@ -46,7 +53,7 @@ describe('LexicalPreviewEntityChips', () => {
       />
     );
 
-    expect(screen.getByText(/Coding Club: GROUP/)).toBeTruthy();
+    expect(screen.getByText(/Coding Club/)).toBeTruthy();
     // userConfirmed corrections display as 'confirmed' (see displayStatus).
     expect(screen.getByTestId('lexical-preview-chip-ORGANIZATION-30')).toHaveAttribute(
       'data-entity-status',

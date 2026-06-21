@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 
 import { logger } from './logger';
 import { resolveServerPort } from './config/serverPort';
+import { getActiveSupabaseUrl } from './lib/supabaseUrlResolution';
 
 // Load .env from project root (skip on hosted platforms — env vars are injected directly)
 const currentDir = __dirname;
@@ -50,6 +51,12 @@ type EnvConfig = {
   supabaseUrl: string;
   supabaseAnonKey: string;
   supabaseServiceRoleKey: string;
+  databaseUrl: string;
+  supabasePoolerTransactionUrl?: string;
+  supabasePoolerSessionUrl?: string;
+  supabasePublishableKey?: string;
+  supabaseSecretKey?: string;
+  supabaseJwksUrl?: string;
   defaultModel: string;
   /** User-facing chat responses — flagship tier (quality is felt here) */
   chatModel: string;
@@ -97,9 +104,15 @@ for (const warning of portResolution.warnings) {
 export const config: EnvConfig = {
   port: portResolution.port,
   openAiKey: process.env.OPENAI_API_KEY ?? '',
-  supabaseUrl: process.env.SUPABASE_URL ?? '',
+  supabaseUrl: getActiveSupabaseUrl(),
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  databaseUrl: process.env.DATABASE_URL ?? '',
+  supabasePoolerTransactionUrl: process.env.SUPABASE_POOLER_TRANSACTION_URL,
+  supabasePoolerSessionUrl: process.env.SUPABASE_POOLER_SESSION_URL,
+  supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+  supabaseSecretKey: process.env.SUPABASE_SECRET_KEY,
+  supabaseJwksUrl: process.env.SUPABASE_JWKS_URL,
   defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-5.5',
   chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-5.5',
   useResponsesApiForChat: process.env.OPENAI_CHAT_USE_RESPONSES === 'true',

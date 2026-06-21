@@ -45,6 +45,10 @@ export const entitiesApi = baseApi.injectEndpoints({
     getOrganizations: build.query<{ success: boolean; organizations: Array<Record<string, unknown>> }, void>({
       query: () => ({ url: '/api/organizations' }),
       providesTags: ['Organization'],
+      // Keep cached org list warm across surface switches; invalidation still
+      // refetches after mutations. Cuts repeat full-book downloads when legacy
+      // lk:* events fire while the user navigates away and back.
+      keepUnusedDataFor: 300,
     }),
     getGroupCandidates: build.query<
       { success: boolean; candidates: Array<Record<string, unknown>> },
@@ -52,6 +56,7 @@ export const entitiesApi = baseApi.injectEndpoints({
     >({
       query: () => ({ url: '/api/group-candidates?status=pending' }),
       providesTags: ['Organization'],
+      keepUnusedDataFor: 300,
     }),
     getEvents: build.query<{ success: boolean; events: Array<Record<string, unknown>> }, void>({
       query: () => ({ url: '/api/conversation/events' }),

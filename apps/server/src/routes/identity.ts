@@ -13,6 +13,7 @@ import { correctionAuthority } from '../services/provenance';
 import { artifactRegistry } from '../services/artifactRegistry';
 import { supabaseAdmin } from '../services/supabaseClient';
 import type { ArtifactType, TruthState } from '../services/provenance';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 const router = Router();
 
@@ -174,7 +175,7 @@ router.get('/export', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('created_at', { ascending: true }) as { data: object[] | null };
     write('journal_entry', entries ?? []);

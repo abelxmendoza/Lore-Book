@@ -4,6 +4,7 @@ import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 import type { EngineContext } from './types';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 export interface BuildContextOptions {
   maxEntries?: number; // Default: 1000
@@ -30,7 +31,7 @@ export async function buildEngineContext(
     // Build query for journal entries
     let entriesQuery = supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('timestamp', { ascending: false }); // Most recent first for better relevance
 

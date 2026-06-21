@@ -37,6 +37,17 @@ export type GroupType =
 // strict = defined roster | fuzzy = participatory | none = reference only
 export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 
+// ── listOrganizations egress cache ────────────────────────────────────
+// Production pg_stat_statements showed GET /api/organizations dominating
+// Supabase egress: listOrganizations fans out to 5 tables (organizations +
+// members + stories + events + locations) and was invoked ~2.2M times in 45
+// days (a client refetch loop) on a DB with 6 orgs. A short per-user TTL
+// collapses that storm to one DB read per window; the service's own mutations
+// bust the user's entry so reads stay fresh immediately after a write.
+const ORG_LIST_TTL_MS = 30_000;
+type OrgListCacheEntry = { at: number; data: unknown[] };
+const orgListCache = new Map<string, OrgListCacheEntry>();
+
 // ── User relationship to this group ──────────────────────────────────
 export type UserRelationship =
   | 'founder'
@@ -222,7 +233,21 @@ export class OrganizationService {
   /**
    * List all organizations for a user
    */
+  /**
+   * Drop the cached organization list for a user. Called by every mutation that
+   * changes an org or its members/stories/events/locations so reads stay fresh.
+   */
+  invalidateOrganizations(userId: string): void {
+    if (userId) orgListCache.delete(userId);
+  }
+
   async listOrganizations(userId: string): Promise<Organization[]> {
+    const cached = orgListCache.get(userId);
+    if (cached && Date.now() - cached.at <= ORG_LIST_TTL_MS) {
+      return cached.data as Organization[];
+    }
+    if (cached) orgListCache.delete(userId);
+
     try {
       const { data: orgs, error } = await supabaseAdmin
         .from('organizations')
@@ -233,7 +258,10 @@ export class OrganizationService {
       if (error) throw error;
 
       const organizationRows = orgs || [];
-      if (organizationRows.length === 0) return [];
+      if (organizationRows.length === 0) {
+        orgListCache.set(userId, { at: Date.now(), data: [] });
+        return [];
+      }
 
       const organizationIds = organizationRows.map(org => org.id);
       const [membersResult, storiesResult, eventsResult, locationsResult] = await Promise.all([
@@ -279,7 +307,7 @@ export class OrganizationService {
       const eventsByOrg = groupByOrganizationId<OrganizationEvent>(eventsResult.error ? [] : eventsResult.data);
       const locationsByOrg = groupByOrganizationId<OrganizationLocation>(locationsResult.error ? [] : locationsResult.data);
 
-      return organizationRows.map((org) => {
+      const result = organizationRows.map((org) => {
         const members = membersByOrg.get(org.id) || [];
         const stories = storiesByOrg.get(org.id) || [];
         const events = eventsByOrg.get(org.id) || [];
@@ -297,6 +325,9 @@ export class OrganizationService {
           last_seen: org.updated_at,
         };
       });
+
+      orgListCache.set(userId, { at: Date.now(), data: result });
+      return result;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to list organizations');
       throw error;
@@ -398,6 +429,7 @@ export class OrganizationService {
    * Create a new organization
    */
   async createOrganization(userId: string, data: Partial<Organization>): Promise<Organization> {
+    this.invalidateOrganizations(userId);
     try {
       if (data.name) {
         const existing = await this.findByName(userId, data.name);
@@ -456,6 +488,7 @@ export class OrganizationService {
     organizationId: string,
     updates: Partial<Organization>
   ): Promise<Organization> {
+    this.invalidateOrganizations(userId);
     try {
       const { data: org, error } = await supabaseAdmin
         .from('organizations')
@@ -513,6 +546,7 @@ export class OrganizationService {
    * Add a member to an organization
    */
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
+    this.invalidateOrganizations(userId);
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_members')
@@ -541,6 +575,7 @@ export class OrganizationService {
    * Remove a member from an organization
    */
   async removeMember(userId: string, organizationId: string, memberId: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
       const { error } = await supabaseAdmin
         .from('organization_members')
@@ -852,6 +887,7 @@ export class OrganizationService {
    * Delete an organization (cascades to members, stories, events, locations via FK)
    */
   async deleteOrganization(userId: string, organizationId: string, reason?: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
       const { data: org } = await supabaseAdmin
         .from('organizations')
@@ -893,6 +929,7 @@ export class OrganizationService {
     organizationId: string,
     event: { title: string; date: string; type?: OrganizationEvent['type']; event_id?: string }
   ): Promise<OrganizationEvent> {
+    this.invalidateOrganizations(userId);
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_events')
@@ -919,6 +956,7 @@ export class OrganizationService {
    * Remove an event from an organization
    */
   async removeEvent(userId: string, organizationId: string, eventId: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
       const { error } = await supabaseAdmin
         .from('organization_events')
@@ -942,6 +980,7 @@ export class OrganizationService {
     organizationId: string,
     story: { title: string; summary: string; date: string; memory_id?: string }
   ): Promise<OrganizationStory> {
+    this.invalidateOrganizations(userId);
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_stories')
@@ -968,6 +1007,7 @@ export class OrganizationService {
    * Remove a story from an organization
    */
   async removeStory(userId: string, organizationId: string, storyId: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
       const { error } = await supabaseAdmin
         .from('organization_stories')
@@ -991,6 +1031,7 @@ export class OrganizationService {
     organizationId: string,
     location: { location_name: string; location_id?: string; visit_count?: number; last_visited?: string }
   ): Promise<OrganizationLocation> {
+    this.invalidateOrganizations(userId);
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_locations')
@@ -1017,6 +1058,7 @@ export class OrganizationService {
    * Remove a location from an organization
    */
   async removeLocation(userId: string, organizationId: string, locationId: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
       const { error } = await supabaseAdmin
         .from('organization_locations')

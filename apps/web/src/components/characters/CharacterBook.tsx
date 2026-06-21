@@ -2757,17 +2757,28 @@ export const CharacterBook = () => {
 
   // Realtime: refresh whenever the server-side ingestion pipeline promotes a
   // person entity to a character record (e.g. "uncle Nico" mentioned in chat).
+  // Chat ingestion can write many character rows in a short burst, so we DEBOUNCE
+  // the refetch — otherwise each row event triggered a full /api/books/characters
+  // download, turning one message into a storm of full-book fetches (egress).
   useEffect(() => {
     if (!user?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => { void loadCharacters(); }, 4000);
+    };
     const channel = supabase
       .channel(`characters:${user.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'characters', filter: `user_id=eq.${user.id}` },
-        () => { void loadCharacters(); }
+        () => { scheduleRefresh(); }
       )
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
   // loadCharacters is stable within a render; user.id is the only dep that matters
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);

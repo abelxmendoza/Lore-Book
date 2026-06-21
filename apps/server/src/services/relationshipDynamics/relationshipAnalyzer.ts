@@ -3,6 +3,8 @@ import { parseISO, differenceInDays, differenceInMonths } from 'date-fns';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   RelationshipInteraction,
   RelationshipMetrics,
@@ -31,7 +33,7 @@ export class RelationshipAnalyzer {
 
       const { data: entries, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .contains('people', [personName])
         .gte('date', cutoffDate.toISOString())

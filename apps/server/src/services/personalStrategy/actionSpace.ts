@@ -4,6 +4,7 @@ const activityResolver = new ActivityResolver();
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { Action, ActionType, RLStateVector } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export class ActionSpace {
   async getAvailableActions(
@@ -66,7 +67,7 @@ export class ActionSpace {
     try {
       const { data: entry } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('id', entryId)
         .single();
 

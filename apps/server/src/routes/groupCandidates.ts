@@ -28,6 +28,9 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const candidates = await groupCandidateService.getCandidates(userId, status);
     const pendingCount = await groupCandidateService.getPendingCount(userId);
+    // Paired with /api/organizations in the Groups view; same client refetch
+    // loop hit this ~repeatedly. Per-user data → short private browser cache.
+    res.set('Cache-Control', 'private, max-age=15');
     res.json({ success: true, candidates, pending_count: pendingCount });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get group candidates');

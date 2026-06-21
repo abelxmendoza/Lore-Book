@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { ReflectionExtractor } from './reflectionExtractor';
 import type { Reflection, ReflectionOutput, ReflectionInsight } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Reflection Engine V1
@@ -25,7 +26,7 @@ export class ReflectionEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(500);

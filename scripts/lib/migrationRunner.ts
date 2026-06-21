@@ -127,6 +127,62 @@ export interface MigrationItem {
   skipIf?: (pool: Pool) => Promise<boolean>;
 }
 
+/**
+ * Derive the `(version, name)` identity for a migration file. `name` matches the
+ * slug used by scripts/check-migration-drift.mjs (the part after the numeric
+ * prefix), so recordings here are visible to the drift check. `version` is the
+ * file's numeric prefix when present (stable + idempotent), otherwise an
+ * apply-time timestamp.
+ */
+export function parseMigrationIdentity(file: string): { version: string; name: string } {
+  const base = (file.split('/').pop() ?? file).replace(/\.sql$/i, '');
+  const m = base.match(/^(\d+)_?(.*)$/);
+  if (m && m[1]) {
+    return { version: m[1], name: m[2] || m[1] };
+  }
+  const version = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  return { version, name: base };
+}
+
+/**
+ * Record an applied migration in `supabase_migrations.schema_migrations` (the
+ * same table `public.applied_migrations()` reads) so the drift check can see it.
+ * Best-effort: a recording failure must not fail an already-applied migration.
+ */
+async function recordMigration(pool: Pool, file: string): Promise<void> {
+  const { version, name } = parseMigrationIdentity(file);
+  try {
+    // Dedup by NAME — that's what check-migration-drift.mjs matches on.
+    const already = await pool.query(
+      'select 1 from supabase_migrations.schema_migrations where name = $1 limit 1',
+      [name],
+    );
+    if (already.rows.length) return;
+
+    // `version` is the table's primary key, but different migration files can
+    // share a numeric prefix, so pick a version that isn't taken yet.
+    let candidate = version;
+    for (let i = 1; ; i += 1) {
+      const taken = await pool.query(
+        'select 1 from supabase_migrations.schema_migrations where version = $1 limit 1',
+        [candidate],
+      );
+      if (!taken.rows.length) break;
+      candidate = `${version}_${name}${i > 1 ? `_${i}` : ''}`.slice(0, 255);
+    }
+
+    await pool.query(
+      'insert into supabase_migrations.schema_migrations (version, name, created_by) values ($1, $2, $3)',
+      [candidate, name, 'scripts/migrate.ts'],
+    );
+  } catch (err) {
+    console.warn(
+      `  ⚠ Applied but failed to record in schema_migrations (${name}):`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 export interface ApplyOptions {
   /** Repo root (absolute). */
   root: string;
@@ -173,6 +229,7 @@ export async function applyMigrations(opts: ApplyOptions): Promise<void> {
       }
       console.log('  →', item.file);
       await pool.query(readFileSync(path, 'utf-8'));
+      await recordMigration(pool, item.file);
       console.log('  ✅', item.file);
     }
 

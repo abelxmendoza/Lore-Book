@@ -1,7 +1,7 @@
 import {
   evaluateTitleOnlyPersonGuard,
   isMinimumPersonEntity,
-} from '../../../server/src/services/lexical/intelligence/titleOnlyEntityGuard';
+} from './titleOnlyEntityGuard';
 
 const PLACEHOLDER_NAME_KEYS = new Set([
   'unknown',

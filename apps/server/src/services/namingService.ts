@@ -3,6 +3,7 @@ import { logger } from '../logger';
 import { openai } from '../lib/openai';
 
 import { supabaseAdmin } from './supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 class NamingService {
   async generateChapterName(userId: string, chapterId: string, entries: Array<{ content: string; date: string }>): Promise<string> {
@@ -79,7 +80,7 @@ class NamingService {
       // Build query
       let query = supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId);
 
       // Apply date filters if provided

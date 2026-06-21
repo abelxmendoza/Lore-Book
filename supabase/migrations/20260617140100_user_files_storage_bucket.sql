@@ -22,6 +22,7 @@ ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- Users may only access objects under their own folder: {user_id}/...
+DROP POLICY IF EXISTS user_files_storage_select ON storage.objects;
 CREATE POLICY user_files_storage_select ON storage.objects
   FOR SELECT TO authenticated
   USING (
@@ -29,6 +30,7 @@ CREATE POLICY user_files_storage_select ON storage.objects
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS user_files_storage_insert ON storage.objects;
 CREATE POLICY user_files_storage_insert ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -36,6 +38,7 @@ CREATE POLICY user_files_storage_insert ON storage.objects
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS user_files_storage_update ON storage.objects;
 CREATE POLICY user_files_storage_update ON storage.objects
   FOR UPDATE TO authenticated
   USING (
@@ -47,6 +50,7 @@ CREATE POLICY user_files_storage_update ON storage.objects
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
+DROP POLICY IF EXISTS user_files_storage_delete ON storage.objects;
 CREATE POLICY user_files_storage_delete ON storage.objects
   FOR DELETE TO authenticated
   USING (

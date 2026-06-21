@@ -10,12 +10,13 @@ interface Log {
 export const LiveLogs = () => {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  // Default OFF: a 2s auto-poll left mounted (e.g. a dev tab in the background)
+  // quietly streamed /api/dev/logs ~30×/min of egress. Opt in when actively
+  // watching logs.
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [filter, setFilter] = useState<string>('all');
 
   useEffect(() => {
-    if (!autoRefresh) return;
-
     const loadLogs = async () => {
       try {
         const data = await fetchJson<{ logs: Log[] }>('/api/dev/logs?limit=100');
@@ -27,9 +28,11 @@ export const LiveLogs = () => {
       }
     };
 
+    // Always fetch once so the panel isn't empty on open.
     loadLogs();
-    const interval = setInterval(loadLogs, 2000); // Poll every 2 seconds
+    if (!autoRefresh) return;
 
+    const interval = setInterval(loadLogs, 5000); // Poll every 5s while enabled
     return () => clearInterval(interval);
   }, [autoRefresh]);
 

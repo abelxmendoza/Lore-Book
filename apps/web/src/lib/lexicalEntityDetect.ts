@@ -3,7 +3,7 @@
  * Uses the same ontology glossary + cue patterns as the server lexical layer — no LLM.
  */
 
-import { glossaryAliases, lookupKeyword } from '../../../server/src/services/ontology/glossary';
+import { glossaryAliases, lookupKeyword } from './ontology/glossary';
 import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEntity';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { isIndividualPersonName } from './personNameValidation';

@@ -15,6 +15,7 @@ import { chronologyService } from '../services/chronologyV2';
 import { stitchedTimelineService } from '../services/chronologyV2/stitchedTimelineService';
 import { calendarAggregationService } from '../services/chronologyV2/calendarAggregationService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.post(
     else if (entryIds && entryIds.length > 0) {
       const { data: entries, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .in('id', entryIds)
         .eq('user_id', userId);
 
@@ -86,7 +87,7 @@ router.post(
       // Fetch all user's memory components
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(100);
@@ -163,7 +164,7 @@ router.get(
     // Fetch recent entries
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(limit);
@@ -201,7 +202,7 @@ router.get(
     // Get related entries and components
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(100);
@@ -310,7 +311,7 @@ router.get(
 
     const { data: entries, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .gte('date', startDate)
       .lte('date', endDate)

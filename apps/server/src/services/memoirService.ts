@@ -7,6 +7,7 @@ import { openai } from '../lib/openai';
 
 import { memoirCacheService } from './memoirCacheService';
 import { supabaseAdmin } from './supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 type MemoirSection = {
   id: string;
@@ -105,7 +106,7 @@ class MemoirService {
     
     const { data: recentEntries } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .gte('date', yesterday.toISOString())
       .order('date', { ascending: false })
@@ -360,7 +361,7 @@ Then provide corrected content that integrates the new information truthfully an
     // Get relevant entries
     let query = supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId);
     
     // If chapterId is provided, filter by chapter
@@ -592,7 +593,7 @@ Format your response as natural conversation. If providing updated content, incl
   async generateFullMemoir(userId: string, options?: { focus?: string; period?: { from?: string; to?: string } }): Promise<string> {
     const { data: entriesData } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: true })
       .limit(200);

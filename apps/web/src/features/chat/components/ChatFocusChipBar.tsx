@@ -62,7 +62,7 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
 
   const focusChipClass = isLove
     ? `${chipColorForEntity({ type: 'character', characterVariant: 'romantic', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'animate-romantic-glow ring-1 ring-rose-500/30' : ''}`
-    : `${chipColorForEntity({ type: 'character', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'ring-1 ring-violet-500/25' : ''}`;
+    : `${chipColorForEntity({ type: 'character', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'ring-1 ring-blue-500/25' : ''}`;
 
   return (
     <div

@@ -9,6 +9,8 @@ import { FlowDetector } from './flowDetector';
 import { InspirationSourceExtractor } from './inspirationSources';
 import { MediumClassifier } from './mediumClassifier';
 import { ProjectLifecycleEngine } from './projectLifecycle';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   CreativeOutput,
   CreativeContext,
@@ -328,7 +330,7 @@ export class CreativeEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000); // More entries for creative analysis

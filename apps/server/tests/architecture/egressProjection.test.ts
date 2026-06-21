@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -56,5 +56,78 @@ describe('Egress projection guard (memoryEngine route)', () => {
   it('GET components route does not ship embeddings to the client', () => {
     const src = readSrc('routes/memoryEngine.ts');
     expect(countSelectStar(src, 'memory_components')).toBe(0);
+  });
+});
+
+describe('Egress projection guard (memoryRetriever journal_entries)', () => {
+  const src = readSrc('services/chat/memoryRetriever.ts');
+  const colsSrc = readSrc('db/journalEntryColumns.ts');
+
+  it('reads journal_entries through the embedding-free column projection', () => {
+    expect(colsSrc).toContain('JOURNAL_COLS');
+    expect(colsSrc.split(',').map((c) => c.trim())).not.toContain('embedding');
+    expect(src).toContain('JOURNAL_COLS');
+    expect(src).toContain('.select(JOURNAL_COLS)');
+  });
+
+  it('does select(*) on journal_entries at most once — the documented one-time schema probe', () => {
+    // The single allowed select('*') is the cached `.limit(1)` column probe used to
+    // learn the schema. Any additional one would re-introduce embedding egress on a
+    // per-message path. If this count changes, re-justify it.
+    expect(countSelectStar(src, 'journal_entries')).toBeLessThanOrEqual(1);
+  });
+
+  it('MMR diversity no longer depends on the embedding vector', () => {
+    // simD must score on content; pulling `.embedding` back into MMR would force the
+    // retrieval path to fetch 1536-dim vectors again.
+    const mmrUsesEmbedding = /simD[\s\S]{0,200}\.embedding/.test(src);
+    expect(mmrUsesEmbedding).toBe(false);
+  });
+});
+
+describe('Egress projection guard (match_journal_entries RPC shape)', () => {
+  const MIGRATIONS_DIR = join(__dirname, '../../../../supabase/migrations');
+
+  // The latest migration that (re)defines match_journal_entries is what the live
+  // DB returns. The RPC is called multiple times per chat message and up to ~150×
+  // per consolidation run, so returning the 1536-dim `embedding` vector here is a
+  // top egress source. No caller reads embedding off this RPC's result set.
+  function latestMatchJournalEntriesDefinition(): { file: string; sql: string } {
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
+    let found: { file: string; sql: string } | null = null;
+    for (const file of files) {
+      const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
+      if (/FUNCTION\s+(public\.)?match_journal_entries/i.test(sql) && /RETURNS\s+TABLE/i.test(sql)) {
+        found = { file, sql };
+      }
+    }
+    if (!found) throw new Error('No migration defines match_journal_entries with RETURNS TABLE');
+    return found;
+  }
+
+  function returnsTableColumns(sql: string): string[] {
+    // Grab the column list inside the LAST `RETURNS TABLE ( ... )` block.
+    const matches = [...sql.matchAll(/RETURNS\s+TABLE\s*\(([\s\S]*?)\)/gi)];
+    const block = matches[matches.length - 1]?.[1] ?? '';
+    return block
+      .split(',')
+      .map((line) => line.trim().split(/\s+/)[0]?.toLowerCase())
+      .filter(Boolean) as string[];
+  }
+
+  it('latest definition does not return the embedding vector', () => {
+    const { file, sql } = latestMatchJournalEntriesDefinition();
+    const cols = returnsTableColumns(sql);
+    expect(cols, `embedding leaked back into RETURNS TABLE in ${file}`).not.toContain('embedding');
+  });
+
+  it('still returns the fields callers actually use', () => {
+    const { sql } = latestMatchJournalEntriesDefinition();
+    const cols = returnsTableColumns(sql);
+    for (const required of ['id', 'content', 'similarity']) {
+      expect(cols).toContain(required);
+    }
   });
 });

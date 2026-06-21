@@ -14,6 +14,7 @@ import { moodBiasCorrectionService } from '../services/moodBiasCorrection/moodBi
 import { signalNoiseAnalysisService } from '../services/signalNoiseAnalysis/signalNoiseAnalysisService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { logger } from '../logger';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 const router = Router();
 
@@ -51,7 +52,7 @@ router.post('/bias/detect/:entryId', authenticate, async (req, res) => {
     // Get entry
     const { data: entry, error: entryError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('id', entryId)
       .eq('user_id', userId)
       .single();
@@ -142,7 +143,7 @@ router.post('/ethics/review/:entryId', authenticate, async (req, res) => {
     // Get entry
     const { data: entry, error: entryError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('id', entryId)
       .eq('user_id', userId)
       .single();
@@ -328,7 +329,7 @@ router.post('/reliability/calculate/:entryId', authenticate, async (req, res) =>
     // Get entry
     const { data: entry, error: entryError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('id', entryId)
       .eq('user_id', userId)
       .single();
@@ -384,7 +385,7 @@ router.post('/context/analyze/:entryId', authenticate, async (req, res) => {
     // Get entry
     const { data: entry, error: entryError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('id', entryId)
       .eq('user_id', userId)
       .single();
@@ -481,7 +482,7 @@ router.post('/meaning/track/:entryId', authenticate, async (req, res) => {
     // Get entry
     const { data: entry, error: entryError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('id', entryId)
       .eq('user_id', userId)
       .single();

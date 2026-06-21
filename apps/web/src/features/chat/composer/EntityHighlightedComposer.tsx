@@ -1,14 +1,16 @@
 import { useMemo, useRef, useCallback, useState, useEffect, type CSSProperties, type KeyboardEvent, type RefObject, type ReactNode } from 'react';
 import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { findEntityHighlightRanges, highlightClassForMatch } from '../../../lib/entityHighlightRanges';
-import { visualKindForEntity } from '../../../lib/entityTypeColors';
+import { findEntityHighlightRanges } from '../../../lib/entityHighlightRanges';
+import { inlineMarkClassForEntity } from '../../../lib/entityTypeColors';
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
-import { spanToId } from '../../../lib/correctedPreviewSpanReducer';
+import { filterPreviewSpansForStrip } from '../../../lib/composerEntityStrip';
 import { EntityHighlightSpan } from './EntityHighlightSpan';
 import { EntityClassificationPopover } from './EntityClassificationPopover';
+
+type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
 
 type EntityHighlightedComposerProps = {
   value: string;
@@ -16,6 +18,7 @@ type EntityHighlightedComposerProps = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   matches: CertifiedEntityMatch[];
   threadId?: string;
+  correction?: EntityCorrectionState;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -97,6 +100,7 @@ export const EntityHighlightedComposer = ({
   textareaRef,
   matches,
   threadId,
+  correction: correctionProp,
   placeholder,
   disabled,
   className = '',
@@ -109,6 +113,9 @@ export const EntityHighlightedComposer = ({
   const backdropRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  const internalCorrection = useEntityCorrectionState(value, threadId, matches);
+  const correction = correctionProp ?? internalCorrection;
+
   const {
     visibleSpans: spans,
     activeCorrectedSpan,
@@ -117,15 +124,20 @@ export const EntityHighlightedComposer = ({
     applyAction,
     sendPayload,
     inferredAssociations,
-  } = useEntityCorrectionState(value, threadId, matches);
+  } = correction;
 
   useEffect(() => {
     onPreviewCorrectionsChange?.(sendPayload);
   }, [sendPayload, onPreviewCorrectionsChange]);
 
-  const segments = useMemo(
-    () => buildSegments(value, matches, spans),
+  const filteredSpans = useMemo(
+    () => filterPreviewSpansForStrip(value, matches, spans),
     [value, matches, spans]
+  );
+
+  const segments = useMemo(
+    () => buildSegments(value, matches, filteredSpans),
+    [value, matches, filteredSpans]
   );
 
   const syncScroll = useCallback(() => {
@@ -137,7 +149,7 @@ export const EntityHighlightedComposer = ({
   }, [textareaRef]);
 
   const showHighlights =
-    (matches.length > 0 || spans.length > 0) && value.trim().length > 0;
+    (matches.length > 0 || filteredSpans.length > 0) && value.trim().length > 0;
 
   const highlighted: ReactNode = useMemo(() => {
     if (!showHighlights) return value;
@@ -154,8 +166,8 @@ export const EntityHighlightedComposer = ({
         return (
           <mark
             key={`cert-${seg.start}`}
-            data-testid={`composer-entity-highlight-${visualKindForEntity(seg.match)}-${seg.match.id}`}
-            className={highlightClassForMatch(seg.match)}
+            data-testid={`composer-entity-highlight-${seg.match.type}-${seg.match.id}`}
+            className={inlineMarkClassForEntity(seg.match)}
             title={`${seg.match.name} — known in LoreBook`}
           >
             {slice}

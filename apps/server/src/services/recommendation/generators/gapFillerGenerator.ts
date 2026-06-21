@@ -4,6 +4,7 @@ import { logger } from '../../../logger';
 import { ChronologyEngine, EventMapper } from '../../chronology';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
+import { JOURNAL_COLS } from '../../../db/journalEntryColumns';
 
 /**
  * Generates gap filler recommendations
@@ -27,7 +28,7 @@ export class GapFillerGenerator {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(100);

@@ -1,9 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Send, Loader2, X } from 'lucide-react';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
+import type { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
 import { ComposerEntityChips } from './ComposerEntityChips';
 import { getComposerStats } from '../hooks/useVisualViewportSize';
+
+type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
 
 type JournalComposerOverlayProps = {
   open: boolean;
@@ -12,11 +16,14 @@ type JournalComposerOverlayProps = {
   onChange: (value: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   matches: CertifiedEntityMatch[];
+  threadId?: string;
+  correction: EntityCorrectionState;
   placeholder?: string;
   disabled?: boolean;
   loading?: boolean;
   onSubmit: () => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onPreviewCorrectionsChange?: (corrections: CorrectedPreviewSpan[]) => void;
   viewportHeight: number;
   keyboardInset: number;
   confirmingSlots?: string[];
@@ -31,11 +38,14 @@ export const JournalComposerOverlay = ({
   onChange,
   textareaRef,
   matches,
+  threadId,
+  correction,
   placeholder,
   disabled,
   loading,
   onSubmit,
   onKeyDown,
+  onPreviewCorrectionsChange,
   viewportHeight,
   keyboardInset,
   confirmingSlots = [],
@@ -107,16 +117,23 @@ export const JournalComposerOverlay = ({
         <div className="journal-composer-overlay__body">
           <ComposerEntityChips
             variant="inline"
+            text={value}
             entities={matches}
+            previewSpans={correction.visibleSpans}
+            correctedRecords={correction.correctedRecords}
             confirmingSlots={confirmingSlots}
             onDismiss={onDismiss}
             onConfirm={onConfirm}
+            onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
           />
           <EntityHighlightedComposer
             value={value}
             onChange={onChange}
             textareaRef={textareaRef}
             matches={matches}
+            threadId={threadId}
+            correction={correction}
+            onPreviewCorrectionsChange={onPreviewCorrectionsChange}
             placeholder={placeholder}
             disabled={disabled || loading}
             onKeyDown={onKeyDown}

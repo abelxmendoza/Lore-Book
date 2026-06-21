@@ -10,6 +10,8 @@ import { NetworkScoreService } from './networkScore';
 import { RelationshipEdgeExtractor } from './relationshipEdgeExtractor';
 import { SocialGraphBuilder } from './socialGraphBuilder';
 import { ToxicityAnalyzer } from './toxicityAnalyzer';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   SocialNetworkOutput,
   SocialContext,
@@ -288,7 +290,7 @@ export class SocialNetworkEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000); // More entries for social network analysis

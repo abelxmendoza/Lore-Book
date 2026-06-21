@@ -15,6 +15,7 @@ import { InterventionPrioritizer } from './prioritizer';
 import { PythonInterventionClient } from './pythonClient';
 import { RecommenderBridge } from './recommenderBridge';
 import type { Intervention, InterventionContext } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Intervention Engine
@@ -126,7 +127,7 @@ export class InterventionEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(100);

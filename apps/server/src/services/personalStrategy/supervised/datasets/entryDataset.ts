@@ -1,6 +1,7 @@
 import { logger } from '../../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
 import type { PatternType } from '../types';
+import { JOURNAL_COLS } from '../../../../db/journalEntryColumns';
 
 export interface EntryExample {
   entry_id: string;
@@ -27,7 +28,7 @@ export class EntryDataset {
       // Get entries with pattern labels (from corrections or manual labels)
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .not('pattern_type', 'is', null)
         .order('date', { ascending: false })
@@ -90,7 +91,7 @@ export class EntryDataset {
       
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', entryIds);
 

@@ -26,6 +26,10 @@
     "migrate:engine": "npx tsx scripts/migrate.ts engine",
     "migrate:quests": "npx tsx scripts/migrate.ts quests",
     "migrate:ontology": "npx tsx scripts/migrate.ts ontology",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:check": "drizzle-kit check",
     "normalize:ontology": "npx tsx scripts/run-ontology-normalize.ts",
     "inference:sync": "npx tsx scripts/run-inference-sync.ts",
     "validate:inference": "npx tsx scripts/validate-inference.ts",
@@ -36,7 +40,13 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.3",
+    "drizzle-kit": "^0.31.10",
     "husky": "^9.1.7",
     "pg": "^8.21.0"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.1.0",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   }
 }

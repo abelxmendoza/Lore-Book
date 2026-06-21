@@ -7,6 +7,7 @@
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 import { supabaseAdmin } from '../supabaseClient';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export type TraceNode = {
   id: string;
@@ -209,7 +210,7 @@ export class MemoryTraceService {
       } else if (artifactType === 'journal_entry') {
         const { data } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('id', artifactId)
           .eq('user_id', userId)
           .single();
@@ -492,7 +493,7 @@ export class MemoryTraceService {
     // Find journal entries using JSONB query
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .eq('metadata->>extracted_unit_id', unit.id);
 

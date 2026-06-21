@@ -9,6 +9,8 @@ import { GrowthTimeline } from './growthTimeline';
 import { GrowthVelocity } from './growthVelocity';
 import { PlateauDetector } from './plateauDetector';
 import { essenceProfileService } from '../essenceProfileService';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   GrowthSignal,
   GrowthInsight,
@@ -203,7 +205,7 @@ export class GrowthEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(500);

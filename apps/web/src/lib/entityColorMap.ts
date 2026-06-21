@@ -1,5 +1,11 @@
 /** Entity classification colors for composer lexical preview highlights. */
 
+import { getLoreEntity, type LoreEntityKind } from './loreEntities';
+
+function loreChip(kind: LoreEntityKind): string {
+  return getLoreEntity(kind).chip;
+}
+
 export type EntityColorKey =
   | 'person'
   | 'place'
@@ -50,18 +56,18 @@ export const ENTITY_COLOR_MAP: Record<
 > = {
   person: {
     highlight: 'entity-preview-hl-person',
-    chip: 'border-blue-500/45 bg-blue-500/12 text-blue-200',
-    label: 'Person',
+    chip: loreChip('person'),
+    label: getLoreEntity('person').label,
   },
   place: {
     highlight: 'entity-preview-hl-place',
-    chip: 'border-emerald-500/45 bg-emerald-500/12 text-emerald-200',
-    label: 'Place',
+    chip: loreChip('place'),
+    label: getLoreEntity('place').label,
   },
   group: {
     highlight: 'entity-preview-hl-group',
-    chip: 'border-violet-500/45 bg-violet-500/12 text-violet-200',
-    label: 'Group',
+    chip: loreChip('group'),
+    label: getLoreEntity('group').label,
   },
   time: {
     highlight: 'entity-preview-hl-time',
@@ -70,8 +76,8 @@ export const ENTITY_COLOR_MAP: Record<
   },
   event: {
     highlight: 'entity-preview-hl-event',
-    chip: 'border-orange-500/45 bg-orange-500/12 text-orange-200',
-    label: 'Event',
+    chip: loreChip('event'),
+    label: getLoreEntity('event').label,
   },
   language: {
     highlight: 'entity-preview-hl-language',
@@ -90,8 +96,8 @@ export const ENTITY_COLOR_MAP: Record<
   },
   relationship: {
     highlight: 'entity-preview-hl-relationship',
-    chip: 'border-rose-500/45 bg-rose-500/12 text-rose-200',
-    label: 'Relationship',
+    chip: loreChip('relationship'),
+    label: getLoreEntity('relationship').label,
   },
   interest: {
     highlight: 'entity-preview-hl-interest',
@@ -105,8 +111,8 @@ export const ENTITY_COLOR_MAP: Record<
   },
   organization: {
     highlight: 'entity-preview-hl-organization',
-    chip: 'border-green-500/45 bg-green-500/12 text-green-200',
-    label: 'Organization',
+    chip: loreChip('organization'),
+    label: getLoreEntity('organization').label,
   },
   role: {
     highlight: 'entity-preview-hl-role',
@@ -115,8 +121,8 @@ export const ENTITY_COLOR_MAP: Record<
   },
   skill: {
     highlight: 'entity-preview-hl-skill',
-    chip: 'border-cyan-500/45 bg-cyan-500/12 text-cyan-200',
-    label: 'Skill',
+    chip: loreChip('skill'),
+    label: getLoreEntity('skill').label,
   },
   task: {
     highlight: 'entity-preview-hl-task',
@@ -140,8 +146,8 @@ export const ENTITY_COLOR_MAP: Record<
   },
   project: {
     highlight: 'entity-preview-hl-project',
-    chip: 'border-purple-500/45 bg-purple-500/12 text-purple-200',
-    label: 'Project',
+    chip: loreChip('project'),
+    label: getLoreEntity('project').label,
   },
   uncertain: {
     highlight: 'entity-preview-hl-uncertain',
@@ -159,7 +165,6 @@ export function colorKeyForPreviewType(type: string, colorKey?: string): EntityC
     case 'TIME':
     case 'TIME_PERIOD': return 'time';
     case 'EVENT': return 'event';
-    case 'SKILL':
     case 'LANGUAGE': return 'language';
     case 'PREFERENCE':
     case 'OBJECT': return 'preference';
@@ -185,9 +190,29 @@ export function highlightClassForPreview(
   needsReview?: boolean,
   entityStatus?: 'known' | 'new'
 ): string {
-  const base = ENTITY_COLOR_MAP[colorKey]?.highlight ?? ENTITY_COLOR_MAP.uncertain.highlight;
-  const statusClass =
-    entityStatus === 'known' ? 'entity-preview-hl-known' : 'entity-preview-hl-new';
-  const reviewClass = needsReview ? 'entity-preview-hl-review' : '';
-  return [base, statusClass, reviewClass].filter(Boolean).join(' ');
+  return previewChipClass(colorKey, needsReview, entityStatus);
+}
+
+/** Shared chip + inline highlight classes for lexical preview spans. */
+export function previewChipClass(
+  colorKey: EntityColorKey,
+  needsReview?: boolean,
+  entityStatus?: 'known' | 'new' | string,
+): string {
+  const base = ENTITY_COLOR_MAP[colorKey]?.chip ?? ENTITY_COLOR_MAP.uncertain.chip;
+  const mods: string[] = ['rounded-[0.2rem] px-0.5'];
+  if (entityStatus !== 'known' && entityStatus !== 'confirmed') {
+    mods.push('border-dashed opacity-90');
+  }
+  if (needsReview) mods.push('ring-1 ring-white/15');
+  return [base, ...mods].join(' ');
+}
+
+/** Inline composer mark for lexical preview — matches LexicalPreviewEntityChips. */
+export function inlineMarkClassForPreview(
+  colorKey: EntityColorKey,
+  needsReview?: boolean,
+  entityStatus?: 'known' | 'new' | string,
+): string {
+  return `entity-preview-hl pointer-events-auto cursor-pointer ${previewChipClass(colorKey, needsReview, entityStatus)}`;
 }

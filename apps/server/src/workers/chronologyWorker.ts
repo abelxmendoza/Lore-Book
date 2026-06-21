@@ -1,6 +1,7 @@
 import { logger } from '../logger';
 import { ChronologyEngine, EventMapper, ChronologyStorageService } from '../services/chronology';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 const chronologyEngine = new ChronologyEngine();
 const eventMapper = new EventMapper();
@@ -16,7 +17,7 @@ export async function runChronologyAnalysis(userId: string): Promise<void> {
     // Fetch user's memory components
     const { data: entries, error: entriesError } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(500); // Limit for performance

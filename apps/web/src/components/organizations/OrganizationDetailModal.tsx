@@ -347,14 +347,23 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         setRelatedOrgs(peers);
         return;
       }
-      const [relResult, orgResult] = await Promise.all([
+      const [relResult] = await Promise.all([
         fetchJson<{ success: boolean; relationships: OrganizationRelationship[] }>(
           `/api/organizations/${organization.id}/relationships`
         ),
-        fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations'),
       ]);
       setRelationships(relResult.relationships || []);
-      setRelatedOrgs((orgResult.organizations || []).filter(o => o.id !== organization.id));
+      // Reuse the book's already-loaded org list when available — avoids a
+      // redundant GET /api/organizations (5-table fan-out) on every relationships
+      // tab open. Fall back to a fetch only when the modal was opened without context.
+      if (allOrganizations.length > 0) {
+        setRelatedOrgs(allOrganizations.filter(o => o.id !== organization.id));
+      } else {
+        const orgResult = await fetchJson<{ success: boolean; organizations: Organization[] }>(
+          '/api/organizations'
+        );
+        setRelatedOrgs((orgResult.organizations || []).filter(o => o.id !== organization.id));
+      }
     } catch (error) {
       console.error('Failed to load relationships:', error);
     } finally {

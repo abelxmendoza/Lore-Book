@@ -9,6 +9,7 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ChatMode } from './modeRouterService';
 import type { StreamingChatResponse } from '../omegaChatService';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export interface ModeHandlerResponse {
   content: string;
@@ -526,7 +527,7 @@ class ModeHandlers {
       // Fetch recent entries (up to 200 for sufficient signal)
       const { data: rows } = await db
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(200);

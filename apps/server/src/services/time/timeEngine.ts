@@ -8,6 +8,8 @@ import { ProcrastinationDetector } from './procrastinationDetector';
 import { TimeBlockParser } from './timeBlocks';
 import { TimeExtractor } from './timeExtractor';
 import { TimeScoreService } from './timeScore';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   TimeOutput,
   TimeContext,
@@ -316,7 +318,7 @@ export class TimeEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000); // More entries for time analysis

@@ -10,6 +10,7 @@ import { MilestoneDetector } from './milestoneDetector';
 import { StagnationDetector } from './stagnationDetector';
 import { SuccessPredictor } from './successPredictor';
 import type { Goal, GoalInsight, GoalContext } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 /**
  * Main Goal Tracking Engine
@@ -106,7 +107,7 @@ export class GoalEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(200);

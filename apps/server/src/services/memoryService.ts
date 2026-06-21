@@ -13,6 +13,9 @@ import type {
 } from '../types';
 
 import { deriveEmotionalIntensity } from '../utils/emotionalIntensity';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
+import { db } from '../db/drizzle/client';
+import { matchJournalEntries } from '../db/drizzle/memoryQueries';
 
 import { chapterService } from './chapterService';
 import { characterFoundationService } from './characterFoundationService';
@@ -25,18 +28,6 @@ import { projectSuggestionService } from './projects/projectSuggestionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
-
-// Every `journal_entries` column EXCEPT the 1536-dim `embedding` vector (~6KB/row).
-// These read paths never use the embedding (similarity search runs in the DB via
-// the match RPC / HNSW index — the embedding is write-only here, set on insert at
-// line ~163), so `select('*')` shipped the vector on every recall as pure egress
-// waste. Keep in sync with the journal_entries table if columns are added.
-const JOURNAL_COLS =
-  'id, user_id, date, content, tags, chapter_id, mood, summary, source, metadata, ' +
-  'created_at, updated_at, embedding_model, embedding_version, content_type, ' +
-  'original_content, preserve_original_language, accessibility_score, ' +
-  'emotional_intensity, retrieval_count, last_retrieved_at, narrative_order, ' +
-  'derived_from_entry_id, end_time, time_precision, time_confidence, timestamp';
 
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
@@ -464,6 +455,21 @@ class MemoryService {
     yearShardMin?: number
   ): Promise<MemoryEntry[]> {
     const embedding = await embeddingService.embedText(search);
+
+    // Prefer the typed direct-Postgres path; fall back to the PostgREST RPC if the
+    // Drizzle client is unconfigured or the query fails. Both share identical SQL
+    // semantics (see drizzle/memoryQueries.matchJournalEntries).
+    if (db) {
+      try {
+        const rows = await matchJournalEntries(userId, embedding, threshold, limit, yearShardMin);
+        return rows.map((row) => ({
+          ...row,
+          date: row.date instanceof Date ? row.date.toISOString() : row.date,
+        })) as MemoryEntry[];
+      } catch (drizzleError) {
+        logger.warn({ error: drizzleError }, 'Drizzle semantic search failed; falling back to RPC');
+      }
+    }
 
     const { data, error } = await supabaseAdmin.rpc('match_journal_entries', {
       user_uuid: userId,

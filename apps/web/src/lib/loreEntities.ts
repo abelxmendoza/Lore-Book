@@ -38,7 +38,7 @@ export type LoreEntityDefinition = {
   bookSurface?: string;
 };
 
-/** Single source of truth — aligned with entityColorMap + LoreBook navigation. */
+/** Single source of truth for book entity colors, labels, and navigation. */
 export const MAIN_LORE_ENTITIES: LoreEntityDefinition[] = [
   {
     kind: 'person',
@@ -140,6 +140,20 @@ export function getLoreEntity(kind: LoreEntityKind): LoreEntityDefinition {
 
 export function loreEntityChipClass(kind: LoreEntityKind): string {
   return getLoreEntity(kind).chip;
+}
+
+/** Chip classes with match-status variants — used by composer and inline pills. */
+export function loreEntityChipTriplet(kind: LoreEntityKind): {
+  known: string;
+  suggestion: string;
+  draft: string;
+} {
+  const base = getLoreEntity(kind).chip;
+  return {
+    known: base,
+    suggestion: `${base} border-dashed opacity-90`,
+    draft: `${base} border-dashed opacity-80`,
+  };
 }
 
 /** Map certified chat/book types to the LoreBook entity palette. */

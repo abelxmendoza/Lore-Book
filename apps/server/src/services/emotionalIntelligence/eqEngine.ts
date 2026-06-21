@@ -7,6 +7,8 @@ import { ReactionClassifier } from './reactionClassifier';
 import { RecoveryModel } from './recoveryModel';
 import { RegulationScorer } from './regulationScorer';
 import { TriggerDetector } from './triggerDetector';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   EQOutput,
   EQContext,
@@ -316,7 +318,7 @@ export class EQEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(1000); // More entries for emotional analysis

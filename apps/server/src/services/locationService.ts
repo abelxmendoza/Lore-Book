@@ -13,6 +13,7 @@ import { normalizeNameKey } from '../utils/nameNormalization';
 import { chapterService } from './chapterService';
 import { locationAnalyticsService } from './locationAnalyticsService';
 import { supabaseAdmin } from './supabaseClient';
+import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
 const stringFields = ['location', 'place', 'city', 'venue', 'location_tag'];
 
@@ -213,7 +214,7 @@ class LocationService {
   private async fetchEntries(userId: string): Promise<MemoryEntry[]> {
     const { data, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(500);

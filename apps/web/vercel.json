@@ -19,7 +19,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; script-src-elem 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com https://js.stripe.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://*.sentry.io https://*.ingest.us.sentry.io https://lore-book-production.up.railway.app https://js.stripe.com https://m.stripe.network; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://m.stripe.network https://vercel.live; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; script-src-elem 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com https://js.stripe.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://supabase.lorebookai.com wss://supabase.lorebookai.com https://api.openai.com https://*.sentry.io https://*.ingest.us.sentry.io https://lore-book-production.up.railway.app https://js.stripe.com https://m.stripe.network; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://m.stripe.network https://vercel.live; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
         },
         {
           "key": "Strict-Transport-Security",
@@ -60,7 +60,7 @@
     "VITE_STRIPE_PUBLISHABLE_KEY": "pk_test_51L9CLGDEX66PEmCrcyscRq4ojvpWsWAScd2dFNwJChIFoAdyNAGvDmok0JP0RBWdPjnzYoaP5fXTMO7FBHprD6Yz00BmGfEXxj",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
-    "VITE_SUPABASE_URL": "https://cshtthzpgkmrbcsfghyq.supabase.co",
+    "VITE_SUPABASE_URL": "https://supabase.lorebookai.com",
     "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaHR0aHpwZ2ttcmJjc2ZnaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjE0NjgsImV4cCI6MjA5NTIzNzQ2OH0.IzX4Q04kFMZeLBFiUv3Ga5GiAg9AS2898yfTeGG4md8"
   }
 }

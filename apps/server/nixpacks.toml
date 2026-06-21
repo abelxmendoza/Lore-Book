@@ -5,4 +5,4 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install", "npm run build || true"]
 
 [start]
-cmd = "node dist/index.js"
+cmd = "node dist/bootstrap.js"

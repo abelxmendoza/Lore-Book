@@ -31,6 +31,7 @@ import { useTaskEngine } from '../hooks/useTaskEngine';
 import { Footer } from '../components/Footer';
 import { MockDataToggle } from '../components/settings/MockDataToggle';
 import { useMockData } from '../contexts/MockDataContext';
+import { useGuest } from '../contexts/GuestContext';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
 import { ConversationPersistenceInspector } from '../features/chat/components/ConversationPersistenceInspector';
 import { CharacterBook } from '../components/characters/CharacterBook';
@@ -61,6 +62,7 @@ import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
 import { DemoModeBanner } from '../components/DemoModeBanner';
+import { OpenAiAvailabilitySessionBar } from '../components/common/OpenAiAvailabilityNotice';
 import { DemoModeBootstrap } from '../components/DemoModeBootstrap';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
@@ -82,6 +84,7 @@ interface AppContentProps {
 
 const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
   const { user } = useAuth();
+  const { isGuest } = useGuest();
   const {
     entries,
     createChapter,
@@ -363,6 +366,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
         }`}
       >
       <DemoModeBanner />
+      {!user && isGuest ? <OpenAiAvailabilitySessionBar /> : null}
       <main
         ref={mainContentRef}
         id="main-content"

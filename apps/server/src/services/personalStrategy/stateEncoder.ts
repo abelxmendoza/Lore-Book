@@ -9,6 +9,7 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { PatternPredictor } from './supervised/inference/predictPattern';
 import type { RLStateVector, PatternType } from './types';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export class StateEncoder {
   private patternPredictor: PatternPredictor;
@@ -28,7 +29,7 @@ export class StateEncoder {
 
       const { data: recentEntries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .gte('date', sevenDaysAgo.toISOString())
         .order('date', { ascending: false })

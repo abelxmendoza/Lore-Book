@@ -7,6 +7,8 @@ import { LegacyNarrative } from './legacyNarrative';
 import { LegacyScorer } from './legacyScorer';
 import { LegacySignalService } from './legacySignal';
 import { LegacyTrajectory } from './legacyTrajectory';
+import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+
 import type {
   LegacySignal,
   LegacyInsight,
@@ -207,7 +209,7 @@ export class LegacyEngine {
       // Get recent entries
       const { data: entries } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(500);
