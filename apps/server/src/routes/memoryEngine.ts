@@ -243,9 +243,11 @@ router.get('/entry/:entryId/components', requireAuth, async (req: AuthenticatedR
 
     await assertJournalEntryOwned(userId, entryId);
 
+    // Never ship the 1536-dim `embedding` to the client — it's pure-waste egress
+    // (~6KB/row) and the UI only renders text/type/importance/location/tags.
     const { data, error } = await supabaseAdmin
       .from('memory_components')
-      .select('*')
+      .select('id, journal_entry_id, component_type, text, characters_involved, location, timestamp, tags, importance_score, metadata, created_at, updated_at')
       .eq('journal_entry_id', entryId)
       .order('importance_score', { ascending: false });
 
