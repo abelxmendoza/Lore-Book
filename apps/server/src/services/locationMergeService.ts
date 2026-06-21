@@ -4,6 +4,7 @@
 
 import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
+import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
 import { supabaseAdmin } from './supabaseClient';
@@ -144,10 +145,27 @@ class LocationMergeService {
       supabaseAdmin.from('locations').select(LOC_COLUMNS).eq('id', targetId).eq('user_id', userId).maybeSingle(),
     ]);
 
-    const source = sourceData as LocationRow | null;
-    const target = targetData as LocationRow | null;
+    let source = sourceData as LocationRow | null;
+    let target = targetData as LocationRow | null;
     if (!source) throw new Error('Source location not found');
     if (!target) throw new Error('Target location not found');
+
+    // Strength-weighted direction guard: a weak place identity must never absorb
+    // a meaningfully stronger one. Swap so the stronger survives. Degrades to the
+    // caller's direction when scores are unavailable. See strengthWeightedMerge.
+    let sourceScore = await readStrengthScore('locations', userId, sourceId);
+    let targetScore = await readStrengthScore('locations', userId, targetId);
+    let directionSwapped = false;
+    if (shouldSwapForStrength(sourceScore, targetScore)) {
+      [sourceId, targetId] = [targetId, sourceId];
+      [source, target] = [target, source];
+      [sourceScore, targetScore] = [targetScore, sourceScore];
+      directionSwapped = true;
+      logger.info(
+        { userId, survivorId: targetId, absorbedId: sourceId },
+        '[LocationMerge] swapped merge direction — stronger identity survives'
+      );
+    }
 
     const report: LocationMergeReport = {
       sourceId,
@@ -193,6 +211,9 @@ class LocationMergeService {
       if (error) logger.debug({ error }, '[LocationMerge] merge record insert failed');
     });
 
+    // Survivor inherits the stronger identity-strength score (best-effort).
+    await preserveSurvivorStrength('locations', userId, targetId, sourceScore, targetScore);
+
     void identityLedgerService.recordMutation({
       userId,
       entityId: targetId,
@@ -202,7 +223,7 @@ class LocationMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: 'USER',
-      metadata: { sourceId, targetId },
+      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore },
     });
 
     logger.info({ userId, ...report }, '[LocationMerge] merge complete');

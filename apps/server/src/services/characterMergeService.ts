@@ -20,6 +20,7 @@
 import { logger } from '../logger';
 
 import { identityLedgerService } from './identity/identityLedgerService';
+import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { omegaMemoryService } from './omegaMemoryService';
@@ -211,8 +212,8 @@ class CharacterMergeService {
       supabaseAdmin.from('characters').select(CHAR_COLUMNS).eq('id', sourceId).eq('user_id', userId).maybeSingle(),
       supabaseAdmin.from('characters').select(CHAR_COLUMNS).eq('id', targetId).eq('user_id', userId).maybeSingle(),
     ]);
-    const source = sourceData as CharRow | null;
-    const target = targetData as CharRow | null;
+    let source = sourceData as CharRow | null;
+    let target = targetData as CharRow | null;
     if (!source) throw new Error('Source character not found');
     if (!target) throw new Error('Target character not found');
 
@@ -221,6 +222,28 @@ class CharacterMergeService {
     if (sourceIsSelf && !targetIsSelf) {
       throw new Error(
         'Cannot merge the protagonist into another character. Merge the other person into your protagonist card instead.'
+      );
+    }
+
+    // Strength-weighted direction guard: a weak identity must never absorb a
+    // meaningfully stronger one (the survivor would keep the weak row's id and
+    // lose the stronger entity's accumulated identity strength). When the source
+    // clearly outscores the target and neither side is the protagonist, swap so
+    // the stronger identity survives. Degrades to the caller's direction when
+    // strength scores are unavailable. See [[project_identity_architecture]] step 3.
+    const identityPreserved =
+      targetIsSelf || sourceIsSelf || (opts.reason?.toLowerCase().includes('self') ?? false);
+    let sourceScore = await readStrengthScore('characters', userId, sourceId);
+    let targetScore = await readStrengthScore('characters', userId, targetId);
+    let directionSwapped = false;
+    if (shouldSwapForStrength(sourceScore, targetScore, { identityPreserved })) {
+      [sourceId, targetId] = [targetId, sourceId];
+      [source, target] = [target, source];
+      [sourceScore, targetScore] = [targetScore, sourceScore];
+      directionSwapped = true;
+      logger.info(
+        { userId, survivorId: targetId, absorbedId: sourceId, sourceScore: targetScore, targetScore: sourceScore },
+        '[CharacterMerge] swapped merge direction — stronger identity survives'
       );
     }
 
@@ -285,6 +308,11 @@ class CharacterMergeService {
       rationale: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
     }).catch((err) => logger.warn({ err, userId, sourceId, targetId }, '[CharacterMerge] cognition_mutations write failed'));
 
+    // The survivor inherits the stronger of the two identity-strength scores —
+    // it now holds the union of both entities' evidence. Best-effort; no-op when
+    // the column is unavailable.
+    await preserveSurvivorStrength('characters', userId, targetId, sourceScore, targetScore);
+
     // Identity Ledger — the merge survivor (target) absorbs the source identity.
     void identityLedgerService.recordMutation({
       userId,
@@ -295,7 +323,7 @@ class CharacterMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: opts.mergedBy ?? 'USER',
-      metadata: { sourceId, targetId },
+      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore },
     });
 
     logger.info({ userId, ...report }, '[CharacterMerge] merge complete');
