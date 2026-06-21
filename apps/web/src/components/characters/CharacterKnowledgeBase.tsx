@@ -160,6 +160,13 @@ function resolveInitialData(
   return null;
 }
 
+// Module-level cache: the knowledge base is fetched on every modal mount, and the
+// modal now opens from anywhere (GlobalEntityModalHost). Reopening the same
+// character within the TTL reuses the last response instead of re-hitting
+// /knowledge-base. Short TTL so freshly-ingested facts still surface quickly.
+const KB_CACHE_TTL_MS = 2 * 60 * 1000;
+const knowledgeBaseCache = new Map<string, { at: number; data: CharacterKnowledgeBaseData }>();
+
 export function CharacterKnowledgeBase({
   characterId,
   characterName,
@@ -192,12 +199,23 @@ export function CharacterKnowledgeBase({
       return;
     }
 
+    const cached = knowledgeBaseCache.get(characterId);
+    if (cached && Date.now() - cached.at < KB_CACHE_TTL_MS) {
+      setData(cached.data);
+      setLoaded(true);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     fetchJson<{ success: boolean; knowledgeBase: CharacterKnowledgeBaseData }>(
       `/api/characters/${characterId}/knowledge-base`
     )
       .then((r) => {
-        if (r.success && r.knowledgeBase) setData(r.knowledgeBase);
+        if (r.success && r.knowledgeBase) {
+          setData(r.knowledgeBase);
+          knowledgeBaseCache.set(characterId, { at: Date.now(), data: r.knowledgeBase });
+        }
       })
       .catch(() => {})
       .finally(() => {
