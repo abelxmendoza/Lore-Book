@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useVisiblePolling } from './useVisiblePolling';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../lib/questNormalize';
 import { mockDataService } from '../services/mockDataService';
 import { MOCK_QUESTS, MOCK_QUEST_BOARD, MOCK_QUEST_ANALYTICS, MOCK_QUEST_SUGGESTIONS, buildQuestBoardFromQuests } from '../mocks/quests';
@@ -333,11 +334,11 @@ export function useQuestSuggestions() {
     return () => clearInterval(interval);
   }, [useMock, loadMockSuggestions]);
 
-  useEffect(() => {
-    if (useMock) return;
-    const interval = setInterval(() => { void query.refetch(); }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [useMock, query]);
+  // Real-data background refresh — only while the tab is visible (was always-on).
+  useVisiblePolling(() => { void query.refetch(); }, 5 * 60 * 1000, {
+    immediate: false,
+    enabled: !useMock,
+  });
 
   if (useMock) {
     return { data: mockSuggestions, isLoading: mockLoading, error: mockError, refetch: loadMockSuggestions };
