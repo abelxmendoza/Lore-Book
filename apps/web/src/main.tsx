@@ -63,6 +63,25 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
+// Stale lazy-chunk recovery. After a redeploy, an old hashed chunk can 404 and
+// the SPA serves index.html (text/html) instead of JS — surfacing as Vite's
+// `vite:preloadError` (and "'text/html' is not a valid JavaScript MIME type").
+// Reload once to pick up the new asset manifest instead of white-screening. The
+// timestamped guard reloads at most once per 10s, so a genuinely-missing asset
+// can't cause an infinite reload loop while future deploys still self-heal.
+const PRELOAD_RELOAD_KEY = 'lk-preload-reloaded-at';
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  try {
+    const last = Number(sessionStorage.getItem(PRELOAD_RELOAD_KEY) || 0);
+    if (Date.now() - last < 10_000) return;
+    sessionStorage.setItem(PRELOAD_RELOAD_KEY, String(Date.now()));
+  } catch {
+    /* sessionStorage unavailable — fall through to a single reload attempt */
+  }
+  window.location.reload();
+});
+
 // After 3s, check that React actually rendered; show a diagnostic if it didn't
 setTimeout(() => {
   const root = document.getElementById('root');
