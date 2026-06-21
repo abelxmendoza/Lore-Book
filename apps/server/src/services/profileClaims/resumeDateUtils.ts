@@ -45,7 +45,7 @@ export function normalizeResumeDate(raw?: string | null, fallbackToNow = false):
 
 /** Parse "Apr 2026 – Present" or "Jan 2025 – Dec 2025" into start/end. */
 export function parseDateRange(range: string): { start: string | null; end: string | null; isCurrent: boolean } {
-  const parts = range.split(/\s*[–—-]\s*/);
+  const parts = range.split(/\s{0,40}[–—-]\s{0,40}/);
   if (parts.length < 2) {
     const start = parseMonthYearToken(parts[0] ?? '');
     return { start, end: null, isCurrent: false };

@@ -90,8 +90,8 @@ function result(type: EntityClass, confidence: number, reason: string, dynamicLa
 
 const GEO_SUFFIX = /\b(valley|hills?|heights|springs?|beach|city|lake|mountains?|canyon|mesa|grove|ridge|falls|gardens?|county|harbor|bay|island|park)$/i;
 const VENUE_SUFFIX = /\b(house|home|apartment|apt|gym|studio|cafe|coffee|restaurant|bar|club|school|hospital|mall|store|shop|market|station|office|library|museum|stadium|arena|university|college|campus|building|tower|center|centre|church|temple|airport)$/i;
-const HOUSEHOLD_RE = /^(.+?)['’]s\s+(house|home|place|apartment|apt|crib|pad|spot)$/i;
-const GROUP_RE = /^(?:the\s+)?(.+?)\s+(family|familia|crew|team|band|squad|gang|group|collective|household)$/i;
+const HOUSEHOLD_RE = /^(.{1,80}?)['’]s\s+(house|home|place|apartment|apt|crib|pad|spot)$/i;
+const GROUP_RE = /^(?:the\s+)?(.{1,80}?)\s+(family|familia|crew|team|band|squad|gang|group|collective|household)$/i;
 const EVENT_RE = /\b(party|wedding|graduation|funeral|birthday|reunion|quincea[nñ]era|barbecue|bbq|gathering|ceremony|celebration|memorial|baptism|anniversary)$/i;
 const HONORIFIC_WITH_NAME_RE =
   /^(?:t[íi]o|t[íi]a|uncle|aunt|auntie|coach|pastor|mr|mrs|ms|miss|dr|prof|professor|principal|officer|captain|mayor|president|senator|judge|dean|dj|abuela|abuelo|grandma|grandpa)\.?\s+[A-ZÀ-Ý]/i;

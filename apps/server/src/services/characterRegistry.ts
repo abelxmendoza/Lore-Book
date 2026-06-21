@@ -123,21 +123,21 @@ class CharacterRegistry {
     if (!name) return { ok: false, reason: 'empty' };
 
     // Strip descriptive clauses: "Dana who's handling onboarding" → "Dana"
-    name = name.replace(/\s+(?:who(?:'s|’s|se)?|whom|that|which)\b.*$/i, '').trim();
+    name = name.replace(/\s{1,40}(?:who(?:'s|’s|se)?|whom|that|which)\b.*$/i, '').trim();
     // Strip comma appositives: "Adrian Patel, My Coding Mentor" → "Adrian Patel"
-    name = name.replace(/,\s+.*$/, '').trim();
+    name = name.replace(/,\s{1,40}.*$/, '').trim();
     // Strip leading articles
     name = name.replace(/^(?:the|a|an)\s+/i, '').trim();
     // Strip trailing role descriptors: "Reese the Recruiter" → "Reese",
     // "Aunt Maribel the Hallway Guardian" → "Aunt Maribel" (any case)
-    name = name.replace(/\s+the\s+[\w][\w ]*$/i, '').trim();
+    name = name.replace(/\s{1,40}the\s{1,40}[\w][\w ]{0,80}$/i, '').trim();
     // Strip trailing punctuation
-    name = name.replace(/[.,;:!?]+$/, '').trim();
+    name = name.replace(/[.,;:!?]{1,40}$/, '').trim();
 
     if (!name) return { ok: false, reason: 'empty_after_cleaning' };
 
     // Compound: "Reese and Dana" — two people in one mention
-    const compoundParts = name.split(/\s+(?:and|&)\s+/i).map(p => p.trim()).filter(Boolean);
+    const compoundParts = name.split(/\s{1,40}(?:and|&)\s{1,40}/i).map(p => p.trim()).filter(Boolean);
     if (compoundParts.length > 1 && compoundParts.every(p => /^[A-ZÀ-Ý]/.test(p))) {
       return { ok: true, cleanName: name, parts: compoundParts };
     }

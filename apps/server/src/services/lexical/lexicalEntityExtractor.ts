@@ -81,7 +81,7 @@ export function extractLexicalEntities(text: string): LexicalEntity[] {
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       const raw = m[1].trim().replace(/[,.]$/, '');
-      const name = raw.replace(/\s+and\b[\s\S]*$/i, '').replace(/\s+i['']m\b[\s\S]*$/i, '').trim();
+      const name = raw.replace(/\s{1,40}and\b[\s\S]*$/i, '').replace(/\s{1,40}i['']m\b[\s\S]*$/i, '').trim();
       if (name.length < 2 || !/[A-Z]/.test(name)) continue;
       pushEntity(out, seen, {
         surface: name,

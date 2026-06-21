@@ -46,7 +46,7 @@ function extractEntityNameFromQuery(message: string): string | null {
   if (!m || m.index === undefined) return null;
   const rest = message.slice(m.index + m[0].length).trim();
   // Multi-word proper names: "Ashley De La Cruz", "Tío Juan"
-  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]+(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]+)*)/);
+  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,8})/);
   const name = nameMatch?.[1]?.replace(/[?!.,]+$/, '').trim() ?? rest.split(/[\s,?!.]+/)[0] ?? '';
   if (!name || !/^[A-ZÁÉÍÓÚÑ]/.test(name)) return null;
   return name;

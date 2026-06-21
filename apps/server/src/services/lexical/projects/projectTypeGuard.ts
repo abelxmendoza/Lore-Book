@@ -258,7 +258,7 @@ export function guardProjectCandidate(
 
 function TRAILING_ONLY_GENERIC(text: string): boolean {
   const n = norm(text);
-  if (/\s+(?:and|or|but)\s*$/i.test(text)) return true;
+  if (/\s{1,40}(?:and|or|but)\s{0,40}$/i.test(text)) return true;
   if (/^(?:my|our|the)\s+(?:project|app|build|system|feature|idea|thing|stuff)(?:\s+(?:and|or|but))?$/i.test(text)) {
     return true;
   }

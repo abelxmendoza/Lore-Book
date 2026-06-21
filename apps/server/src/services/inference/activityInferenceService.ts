@@ -115,7 +115,7 @@ export function inferActivityAndInviteAssociations(
       associatedCommunities: [],
       associatedPlaces: streetName ? [streetName] : [],
       hobbyCandidates: /bike|biking/i.test(activity) ? ['biking'] : [],
-      skillCandidates: /fixing.*bike|bike repair|mechanics/i.test(activity) ? ['bike repair', 'mechanics'] : [],
+      skillCandidates: /fixing.{0,200}bike|bike repair|mechanics/i.test(activity) ? ['bike repair', 'mechanics'] : [],
       interestCandidates: /bike/i.test(activity) ? ['bikes'] : [],
       localContext: relativeLocationContext(text, streetName),
     });

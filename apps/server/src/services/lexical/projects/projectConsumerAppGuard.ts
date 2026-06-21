@@ -83,7 +83,7 @@ export function guardConsumerAppReference(
     };
   }
 
-  if (/\bapp\b/i.test(text) && CONSUMER_APPS.has(norm(text.replace(/\s+app$/i, '')))) {
+  if (/\bapp\b/i.test(text) && CONSUMER_APPS.has(norm(text.replace(/\s{1,40}app$/i, '')))) {
     return {
       allowed: false,
       rejectedAs: 'CONSUMER_APP',
