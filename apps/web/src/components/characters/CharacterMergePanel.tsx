@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { invalidateCache } from '../../lib/requestCache';
 import { apiCache } from '../../lib/cache';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
@@ -198,6 +199,7 @@ export const CharacterMergePanel = ({
         });
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
       }
+      invalidateCache(); // a merge rewrites cross-references broadly — clear all cached reads
       await afterConsolidation(
         `Merged ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}. Aliases, memories, facts, relationships, and knowledge links were consolidated.`
       );
@@ -240,6 +242,7 @@ export const CharacterMergePanel = ({
         });
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
       }
+      invalidateCache(); // a merge rewrites cross-references broadly — clear all cached reads
       cancelManualMerge();
       await afterConsolidation(
         `Merged ${sources.length + 1} selected cards into ${mergedName}. The survivor now combines aliases, memories, facts, relationships, and knowledge links.`

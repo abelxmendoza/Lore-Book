@@ -18,6 +18,7 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { invalidateCache } from '../../lib/requestCache';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -254,6 +255,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         method: 'PATCH',
         body: JSON.stringify({ status: 'archived' }),
       });
+      invalidateCache(character.id);
       onUpdate();
       onClose();
     } catch (err) {
@@ -1845,6 +1847,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           metadata: editedCharacter.metadata
         })
       });
+      invalidateCache(character.id);
       onUpdate();
       onClose();
     } catch (error) {

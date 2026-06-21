@@ -70,8 +70,8 @@ export const useEntityModal = (): EntityModalContextType => {
       });
       if (!character.character && character.id && !String(character.id).startsWith('dummy-')) {
         try {
-          const { fetchJson } = await import('../lib/api');
-          const fullCharacter = await fetchJson<any>(`/api/characters/${character.id}`);
+          const { cachedFetchJson } = await import('../lib/requestCache');
+          const fullCharacter = await cachedFetchJson<any>(`/api/characters/${character.id}`);
           updateEntity({
             type: 'character',
             id: character.id,
@@ -102,8 +102,8 @@ export const useEntityModal = (): EntityModalContextType => {
       });
       if (!location.location && location.id) {
         try {
-          const { fetchJson } = await import('../lib/api');
-          const fullLocation = await fetchJson<any>(`/api/locations/${location.id}`);
+          const { cachedFetchJson } = await import('../lib/requestCache');
+          const fullLocation = await cachedFetchJson<any>(`/api/locations/${location.id}`);
           updateEntity({
             type: 'location',
             id: location.id,

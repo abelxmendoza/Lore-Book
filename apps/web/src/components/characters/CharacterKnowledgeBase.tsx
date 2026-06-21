@@ -15,7 +15,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { InsufficientData } from '../ui/InsufficientData';
-import { fetchJson } from '../../lib/api';
+import { cachedFetchJson } from '../../lib/requestCache';
 import {
   getMockKnowledgeBaseBundle,
 } from '../../mocks/characterIntelligence';
@@ -160,12 +160,11 @@ function resolveInitialData(
   return null;
 }
 
-// Module-level cache: the knowledge base is fetched on every modal mount, and the
-// modal now opens from anywhere (GlobalEntityModalHost). Reopening the same
-// character within the TTL reuses the last response instead of re-hitting
-// /knowledge-base. Short TTL so freshly-ingested facts still surface quickly.
+// The knowledge base is fetched on every modal mount, and the modal now opens
+// from anywhere (GlobalEntityModalHost). Cache + dedupe via the shared request
+// cache so reopening the same character reuses the last response. Short TTL so
+// freshly-ingested facts still surface quickly.
 const KB_CACHE_TTL_MS = 2 * 60 * 1000;
-const knowledgeBaseCache = new Map<string, { at: number; data: CharacterKnowledgeBaseData }>();
 
 export function CharacterKnowledgeBase({
   characterId,
@@ -199,23 +198,13 @@ export function CharacterKnowledgeBase({
       return;
     }
 
-    const cached = knowledgeBaseCache.get(characterId);
-    if (cached && Date.now() - cached.at < KB_CACHE_TTL_MS) {
-      setData(cached.data);
-      setLoaded(true);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
-    fetchJson<{ success: boolean; knowledgeBase: CharacterKnowledgeBaseData }>(
-      `/api/characters/${characterId}/knowledge-base`
+    cachedFetchJson<{ success: boolean; knowledgeBase: CharacterKnowledgeBaseData }>(
+      `/api/characters/${characterId}/knowledge-base`,
+      { ttlMs: KB_CACHE_TTL_MS }
     )
       .then((r) => {
-        if (r.success && r.knowledgeBase) {
-          setData(r.knowledgeBase);
-          knowledgeBaseCache.set(characterId, { at: Date.now(), data: r.knowledgeBase });
-        }
+        if (r.success && r.knowledgeBase) setData(r.knowledgeBase);
       })
       .catch(() => {})
       .finally(() => {
