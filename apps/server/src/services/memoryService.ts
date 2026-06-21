@@ -26,6 +26,18 @@ import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
 
+// Every `journal_entries` column EXCEPT the 1536-dim `embedding` vector (~6KB/row).
+// These read paths never use the embedding (similarity search runs in the DB via
+// the match RPC / HNSW index — the embedding is write-only here, set on insert at
+// line ~163), so `select('*')` shipped the vector on every recall as pure egress
+// waste. Keep in sync with the journal_entries table if columns are added.
+const JOURNAL_COLS =
+  'id, user_id, date, content, tags, chapter_id, mood, summary, source, metadata, ' +
+  'created_at, updated_at, embedding_model, embedding_version, content_type, ' +
+  'original_content, preserve_original_language, accessibility_score, ' +
+  'emotional_intensity, retrieval_count, last_retrieved_at, narrative_order, ' +
+  'derived_from_entry_id, end_time, time_precision, time_confidence, timestamp';
+
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
 
@@ -294,7 +306,7 @@ class MemoryService {
         }
       }
 
-      let builder = supabaseAdmin.from('journal_entries').select('*').eq('user_id', userId);
+      let builder = supabaseAdmin.from('journal_entries').select(JOURNAL_COLS).eq('user_id', userId);
 
       if (query.search) {
         builder = builder.ilike('content', `%${query.search}%`);
@@ -352,7 +364,7 @@ class MemoryService {
   async getEntry(userId: string, entryId: string): Promise<MemoryEntry | null> {
     const { data, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .eq('id', entryId)
       .single();
@@ -369,7 +381,7 @@ class MemoryService {
     if (entryIds.length === 0) return [];
     const { data, error } = await supabaseAdmin
       .from('journal_entries')
-      .select('*')
+      .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .in('id', entryIds);
     if (error) {
@@ -703,7 +715,7 @@ class MemoryService {
     try {
       let builder = supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId);
 
       // Apply date filters
@@ -797,7 +809,7 @@ class MemoryService {
     try {
       let builder = supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId);
 
       // Full-text search on content and summary
@@ -883,7 +895,7 @@ class MemoryService {
       // Get the source memories
       const { data: sourceMemories, error: sourceError } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', memoryIds);
 
@@ -907,7 +919,7 @@ class MemoryService {
 
         const { data: nearby } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .gte('date', fiveDaysBefore)
           .lte('date', fiveDaysAfter)
@@ -944,7 +956,7 @@ class MemoryService {
       for (const [tag] of tagGroups) {
         const { data: tagMemories } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .contains('tags', [tag])
           .limit(20);
@@ -974,7 +986,7 @@ class MemoryService {
       for (const [source] of sourceGroups) {
         const { data: sourceMemories } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .eq('source', source)
           .limit(20);
@@ -1016,7 +1028,7 @@ class MemoryService {
       if (entry.chapter_id) {
         const { data: chapterMemories } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .eq('chapter_id', entry.chapter_id)
           .neq('id', entryId)
@@ -1036,7 +1048,7 @@ class MemoryService {
       if (entry.tags.length > 0) {
         const { data: tagMemories } = await supabaseAdmin
           .from('journal_entries')
-          .select('*')
+          .select(JOURNAL_COLS)
           .eq('user_id', userId)
           .overlaps('tags', entry.tags)
           .neq('id', entryId)
@@ -1059,7 +1071,7 @@ class MemoryService {
 
       const { data: temporalMemories } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .gte('date', fiveDaysBefore)
         .lte('date', fiveDaysAfter)
@@ -1078,7 +1090,7 @@ class MemoryService {
       // Same source
       const { data: sourceMemories } = await supabaseAdmin
         .from('journal_entries')
-        .select('*')
+        .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .eq('source', entry.source)
         .neq('id', entryId)
