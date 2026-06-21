@@ -53,6 +53,13 @@ function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Ar
   return out;
 }
 
+// All omega_entities columns EXCEPT the 1536-dim `embedding` (~6KB/row on the
+// wire). Resolution read paths never use the vector — semantic matching runs
+// server-side in the match_omega_entities RPC — so fetching it on every
+// per-message batch (up to 500 rows) was a large, pure-waste egress cost.
+const OMEGA_ENTITY_COLS =
+  'id, user_id, type, primary_name, aliases, created_at, updated_at, metadata, mention_count, mention_status';
+
 export class OmegaMemoryService {
   /**
    * Ingest text and extract entities, claims, and relationships
@@ -305,7 +312,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       distinctTypes.map(async (type) => {
         const { data } = await supabaseAdmin
           .from('omega_entities')
-          .select('*')
+          .select(OMEGA_ENTITY_COLS)
           .eq('user_id', userId)
           .eq('type', type)
           .limit(500);
@@ -385,7 +392,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
     // First try exact/alias match
     const { data: exactMatch, error: exactError } = await supabaseAdmin
       .from('omega_entities')
-      .select('*')
+      .select(OMEGA_ENTITY_COLS)
       .eq('user_id', userId)
       .eq('type', type)
       .or(`primary_name.ilike.%${name}%,aliases.cs.{${name}}`)
@@ -404,7 +411,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
     try {
       const { data: candidatesRaw } = await supabaseAdmin
         .from('omega_entities')
-        .select('*')
+        .select(OMEGA_ENTITY_COLS)
         .eq('user_id', userId)
         .eq('type', type)
         .limit(150);
@@ -484,7 +491,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
     const nameKey = normalizeNameKey(name);
     const { data: existingRows } = await supabaseAdmin
       .from('omega_entities')
-      .select('*')
+      .select(OMEGA_ENTITY_COLS)
       .eq('user_id', userId)
       .eq('type', type);
     const existing = (existingRows ?? []).find(
@@ -508,7 +515,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
         mention_count: 1,
         mention_status: 'mentioned_only',
       })
-      .select()
+      .select(OMEGA_ENTITY_COLS) // don't echo the embedding we just wrote back
       .single();
 
     if (error) {
