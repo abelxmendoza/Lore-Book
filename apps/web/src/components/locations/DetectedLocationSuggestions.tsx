@@ -11,6 +11,7 @@ import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from 
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 
 type Props = {
@@ -83,14 +84,15 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
 
   useEffect(() => {
     void fetchSuggestions();
-    const interval = setInterval(() => { void fetchSuggestions(); }, 5 * 60 * 1000);
     const onRefresh = () => { void fetchSuggestions(); };
     window.addEventListener('lk:locations-updated', onRefresh);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('lk:locations-updated', onRefresh);
     };
   }, [fetchSuggestions]);
+
+  // Background poll only while the tab is visible (was an always-on 5-min poll).
+  useVisiblePolling(() => { void fetchSuggestions(); }, 5 * 60 * 1000, { immediate: false });
 
   const bookEntries = useMemo(() => {
     if (existingBookEntries.length > 0) return existingBookEntries;

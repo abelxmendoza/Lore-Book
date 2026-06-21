@@ -6,6 +6,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -280,14 +281,20 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
       return;
     }
     void loadCandidates();
-    const interval = setInterval(() => void loadCandidates(), 60_000);
     const onUpdated = () => void loadCandidates();
     window.addEventListener('group-candidates-updated', onUpdated);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('group-candidates-updated', onUpdated);
     };
   }, [demoMode]);
+
+  // Fallback poll — real-time updates already arrive via the event above, so a
+  // 5-min visibility-gated poll is plenty (was a 60s always-on poll = 1,440
+  // req/day per open tab, firing even when the tab was hidden).
+  useVisiblePolling(() => void loadCandidates(), 5 * 60_000, {
+    immediate: false,
+    enabled: !demoMode,
+  });
 
   const loadCandidates = async () => {
     try {
