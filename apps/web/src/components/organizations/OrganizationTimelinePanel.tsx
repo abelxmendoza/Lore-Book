@@ -88,7 +88,15 @@ export function OrganizationTimelinePanel({
         `/api/organizations/${organization.id}/derived-context`,
       );
       if (r.success) {
-        setDerivedEvents(r.events || []);
+        // Backend events may omit array fields — normalize so render code can
+        // safely read .involved.length etc. (production crash: 'involved' undefined).
+        setDerivedEvents(
+          (r.events || []).map((e) => ({
+            ...e,
+            involved: e.involved ?? [],
+            subgroup_names: e.subgroup_names ?? [],
+          })),
+        );
       }
     } catch {
       // keep prior data on refresh failure

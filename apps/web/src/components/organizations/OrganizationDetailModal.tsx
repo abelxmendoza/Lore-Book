@@ -260,9 +260,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       setDerivedLocations(
         (organization.locations ?? []).map((loc) => ({
           id: loc.id,
-          location_name: loc.location_name,
-          visit_count: loc.visit_count,
-          last_visited: loc.last_visited,
+          name: loc.location_name,
+          involved: [],
+          source: 'conversation' as const,
         })),
       );
       setDerivedHierarchy({ subgroups: [], related: [] });
@@ -275,8 +275,10 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     )
       .then(r => {
         if (r.success) {
-          setDerivedEvents(r.events || []);
-          setDerivedLocations(r.locations || []);
+          // Normalize array fields the backend may omit — render code reads
+          // .involved.length (production crash: 'involved' undefined).
+          setDerivedEvents((r.events || []).map((e) => ({ ...e, involved: e.involved ?? [] })));
+          setDerivedLocations((r.locations || []).map((l) => ({ ...l, involved: l.involved ?? [] })));
           setDerivedHierarchy(r.hierarchy ?? { subgroups: [], related: [] });
         }
       })
