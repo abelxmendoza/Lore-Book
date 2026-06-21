@@ -28,6 +28,19 @@ import { assembleWorkingMemory, buildWorkingMemoryPacket } from './workingMemory
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
 
+// Every `characters` column EXCEPT the 1536-dim `embedding` vector (~6KB/row).
+// The RAG packet never reads the embedding (semantic match runs in the DB via the
+// HNSW index), so pulling it on this per-message, all-rows scan is pure egress
+// waste. Keep this in sync with the characters table if columns are added.
+const CHARACTER_COLS =
+  'id, user_id, name, alias, pronouns, archetype, role, status, first_appearance, ' +
+  'summary, tags, metadata, created_at, updated_at, embedding_model, embedding_version, ' +
+  'last_embedded_at, perception_count, first_perception_at, last_perception_at, ' +
+  'sensitivity_level, requires_extra_confirmation, first_name, last_name, is_nickname, ' +
+  'avatar_url, importance_level, importance_score, proximity_level, has_met, ' +
+  'relationship_depth, associated_with_character_ids, mentioned_by_character_ids, ' +
+  'context_of_mention, likelihood_to_meet';
+
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 /**
@@ -78,7 +91,7 @@ export async function buildRAGPacket(
     // Characters
     try {
       const { data } = await supabaseAdmin
-        .from('characters').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        .from('characters').select(CHARACTER_COLS).eq('user_id', userId).order('created_at', { ascending: false });
       allCharacters = (data as any[]) || [];
     } catch (e) { logger.debug({ e }, 'RAGBuilder: characters fetch failed'); }
 
