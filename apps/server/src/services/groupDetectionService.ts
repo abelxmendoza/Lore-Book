@@ -151,10 +151,10 @@ export class GroupDetectionService {
 
       // Patterns to detect groups
       const groupPatterns = [
-        /(?:my|our|the)\s+(band|team|group|club|squad|crew|gang|circle|posse|troupe|collective|scene|ensemble)/gi,
-        /(?:called|named|known as|we call (?:it|them|ourselves))\s+["']?([A-Z][a-zA-Z\s]{1,80}?)["']?(?:\.|,|$)/gi,
-        /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+\s+(?:and\s+)?(?:I|we)/gi,
-        /(?:with|together with|along with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+/gi,
+        /(?:my|our|the)\s{1,40}(band|team|group|club|squad|crew|gang|circle|posse|troupe|collective|scene|ensemble)/gi,
+        /(?:called|named|known as|we call (?:it|them|ourselves))\s{1,40}["']?([A-Z][a-zA-Z\s]{1,80}?)["']?(?:\.|,|$)/gi,
+        /([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)(?:\s{0,40},\s{0,40}([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)){1,40}\s{1,40}(?:and\s{1,40})?(?:I|we)/gi,
+        /(?:with|together with|along with)\s{1,40}([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)(?:\s{0,40},\s{0,40}([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)){1,40}/gi,
       ];
 
       const groupNames = new Set<string>();
@@ -470,7 +470,7 @@ export class GroupDetectionService {
       .trim()
       .replace(/\s+/g, ' ')
       .replace(HONORIFIC_PREFIX, '')
-      .replace(/[.,;:!?]+$/, '')
+      .replace(/[.,;:!?]{1,8}$/, '')
       .trim();
   }
 

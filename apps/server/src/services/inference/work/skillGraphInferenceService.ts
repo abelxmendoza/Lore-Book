@@ -44,7 +44,7 @@ const ACTIVITY_PATTERNS: Array<{
   },
 ];
 
-const DOING_LIST_RE = /\b(?:was\s+)?doing\s+(.{1,120}?)(?:\s+at\s+[A-Z]|\.\s*$)/i;
+const DOING_LIST_RE = /\b(?:was\s{1,40})?doing\s{1,40}(.{1,120}?)(?:\s{1,40}at\s{1,40}[A-Z]|\.\s{0,40}$)/i;
 
 function normSkill(s: string): string {
   return s.toLowerCase().trim();
