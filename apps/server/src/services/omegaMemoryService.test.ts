@@ -69,6 +69,7 @@ function makeChain(
     insert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data: single.data, error: single.error ?? null }),
+    maybeSingle: vi.fn().mockResolvedValue({ data: single.data, error: single.error ?? null }),
     // thenable so `await chain` works
     then: (resolve: (v: unknown) => void) =>
       resolve({ data: awaitResult.data, error: awaitResult.error ?? null }),
@@ -251,6 +252,43 @@ describe('OmegaMemoryService', () => {
       );
 
       await expect(svc.createEntity('u1', 'Broken', 'CHARACTER')).rejects.toBeTruthy();
+    });
+  });
+
+  // ─── storeClaim resolve-before-write gate ─────────────────────────────────
+
+  describe('storeClaim (resolve-before-write gate)', () => {
+    it('refuses an orphan claim when no canonical entity exists', async () => {
+      // entity existence check (.maybeSingle) returns no row
+      mockFrom.mockReturnValue(makeChain({ data: null }, { data: null }));
+
+      await expect(
+        svc.storeClaim({ user_id: 'u1', entity_id: 'ghost-ent', text: 'x', source: 'AI' })
+      ).rejects.toThrow(/no canonical entity/);
+    });
+
+    it('rejects a claim missing entity_id without touching the DB', async () => {
+      await expect(
+        svc.storeClaim({ user_id: 'u1', text: 'x', source: 'AI' })
+      ).rejects.toThrow(/required/);
+      expect(mockFrom).not.toHaveBeenCalled();
+    });
+
+    it('inserts the claim when the canonical entity exists', async () => {
+      const stored = { id: 'claim-1', entity_id: 'ent-1', text: 'x', user_id: 'u1' };
+      mockFrom
+        // existence check — canonical entity found
+        .mockReturnValueOnce(makeChain({ data: null }, { data: { id: 'ent-1' } }))
+        // insert returns the stored claim
+        .mockReturnValueOnce(makeChain({ data: stored }, { data: stored, error: null }));
+
+      const result = await svc.storeClaim({
+        user_id: 'u1',
+        entity_id: 'ent-1',
+        text: 'x',
+        source: 'AI',
+      });
+      expect(result.id).toBe('claim-1');
     });
   });
 });

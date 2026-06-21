@@ -1174,6 +1174,39 @@ A contradiction means the claims cannot both be true at the same time.`
    * Persist a claim to omega_claims. Intended for MRQ commit paths only.
    */
   async storeClaim(claim: Partial<Claim> & { embedding?: number[] }): Promise<Claim> {
+    // Resolve-before-write gate (claim side): a claim is meaningless without a
+    // canonical entity to attach to. This is the single DB chokepoint for claim
+    // inserts, so verify the referenced omega_entities row still exists for this
+    // user before writing — fail closed. Without this, a stale entity_id (entity
+    // merged/deleted between proposal creation and commit, or a future caller
+    // passing an unresolved id) silently mints an ORPHAN claim that points at no
+    // real identity. See [[project_identity_architecture]] step 2.
+    if (!claim.user_id || !claim.entity_id) {
+      throw new Error('storeClaim: user_id and entity_id are required (resolve-before-write gate)');
+    }
+    const { data: canonicalEntity, error: entityLookupError } = await supabaseAdmin
+      .from('omega_entities')
+      .select('id')
+      .eq('id', claim.entity_id)
+      .eq('user_id', claim.user_id)
+      .maybeSingle();
+    if (entityLookupError) {
+      logger.error(
+        { err: entityLookupError, userId: claim.user_id, entityId: claim.entity_id },
+        'storeClaim: entity existence check failed'
+      );
+      throw entityLookupError;
+    }
+    if (!canonicalEntity) {
+      logger.warn(
+        { userId: claim.user_id, entityId: claim.entity_id },
+        'storeClaim: refusing orphan claim — no canonical entity for entity_id'
+      );
+      throw new Error(
+        `storeClaim: no canonical entity ${claim.entity_id} for user ${claim.user_id} (resolve-before-write gate)`
+      );
+    }
+
     // Initialise Beta belief from source type and the AI-derived confidence float.
     // This replaces raw float storage with a distributional model that accumulates
     // evidence over time rather than being overwritten on each update.
