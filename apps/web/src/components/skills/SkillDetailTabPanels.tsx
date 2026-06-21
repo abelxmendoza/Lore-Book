@@ -127,7 +127,7 @@ export function SkillStoryTab({ skill, details, theme, nav }: BaseProps) {
           const clickable = nav && beat.kind === 'project';
           return (
           <div key={beat.id} className="relative">
-            <span className={cn('absolute -left-[1.125rem] top-1 h-2 w-2 rounded-full ring-2 ring-black', theme.statBg.replace('bg-', 'bg-'))} />
+            <span className={cn('absolute -left-[1.125rem] top-1 h-2 w-2 rounded-full ring-2 ring-black', theme.statBg)} />
             <p className="text-[10px] text-white/40 uppercase tracking-wide">
               {format(parseISO(beat.date), 'MMM yyyy')}
             </p>

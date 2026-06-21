@@ -138,7 +138,7 @@ export async function buildCharacterMemoryProfile(
 export function formatCharacterMemoryProfileForChat(profile: CharacterMemoryProfile, name: string): string {
   const lines = [`**${name}**`, ''];
 
-  lines.push('**Who they are:**', `• ${profile.whoAreThey.replace(/\n• /g, '\n• ')}`, '');
+  lines.push('**Who they are:**', `• ${profile.whoAreThey}`, '');
 
   if (profile.relationshipToUser) {
     lines.push(`**Relationship to you:** ${profile.relationshipToUser}`, '');
