@@ -14,6 +14,7 @@ import { characterIdentityIndexService } from '../services/characterIdentityInde
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
 import { characterMergeService } from '../services/characterMergeService';
 import { characterRegistry } from '../services/characterRegistry';
+import { identityStrengthService } from '../services/identity/identityStrengthService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -1556,6 +1557,27 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         status: 'inferred'
       }));
     const allRelationships = [...directRelationships, ...inferredStoryRelationships];
+
+    // Live identity-strength refresh (throttled, best-effort, fire-and-forget):
+    // reuse the signals already gathered above so the strength-weighted merge
+    // guard operates on real scores instead of always-null. Self is treated as
+    // highly grounded. See identityStrengthService / strengthWeightedMerge.
+    void identityStrengthService.recompute(
+      req.user!.id,
+      'character',
+      character.id,
+      {
+        confidence: typeof metadata.confidence === 'number' ? (metadata.confidence as number) : undefined,
+        evidenceCount: memoryCount || 0,
+        connectedEntities: relationshipCount || 0,
+        confirmedRelationships: directRelationships.filter((rel) => rel.status && rel.status !== 'inferred').length,
+        interactionCount: memoryCount || 0,
+      },
+      {
+        identity_strength_score: character.identity_strength_score,
+        identity_strength: character.identity_strength,
+      }
+    );
 
     res.json({
       id: character.id,
