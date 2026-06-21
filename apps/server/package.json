@@ -28,7 +28,8 @@
     "capture:ingestion-sample": "bash scripts/capture-ingestion-sample.sh",
     "typecheck": "tsc --noEmit",
     "runtime-health": "tsx scripts/runtime-health.ts",
-    "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts"
+    "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
+    "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",
