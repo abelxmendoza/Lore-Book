@@ -502,12 +502,28 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       .select(OMEGA_ENTITY_COLS)
       .eq('user_id', userId)
       .eq('type', type);
-    const existing = (existingRows ?? []).find(
+    const pool = (existingRows ?? []) as Entity[];
+    const existing = pool.find(
       (e: any) =>
         normalizeNameKey(e.primary_name) === nameKey ||
         (Array.isArray(e.aliases) && e.aliases.some((a: string) => normalizeNameKey(a) === nameKey))
     );
-    if (existing) return existing as Entity;
+    if (existing) return existing;
+
+    // Resolve-before-write gate: even callers that reach createEntity directly
+    // (bypassing resolveEntities) must pass through the authority resolver, so a
+    // fuzzy/alias/authority match ("Bobby" vs "Bob") returns the canonical entity
+    // instead of minting a duplicate. Exact-key miss above already handled.
+    const bridged = resolveWithCore({ mention: name, entityType: type, pool, context: {} });
+    const resolvedExisting = bridged.useCore
+      ? bridged.productionDecision === 'resolve'
+        ? bridged.entityFromCore
+        : null
+      : bridged.legacy.entity;
+    if (resolvedExisting) {
+      this.registerAliasIfNew(userId, resolvedExisting, name).catch(() => {});
+      return resolvedExisting;
+    }
 
     // Generate embedding for entity name
     const embedding = await embeddingService.embedText(name);
