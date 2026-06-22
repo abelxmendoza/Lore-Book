@@ -2588,7 +2588,7 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
       return true;
   }
 };
-type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'archived' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
+type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'archived' | 'pending_deletion' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 type SortOrder = 'role' | 'impact' | 'standing';
 
 const impactOnUser = impactOnUserWithPublicFigureCap;
@@ -2944,8 +2944,12 @@ export const CharacterBook = () => {
 
     if (importanceFilter === 'archived') {
       filtered = filtered.filter(char => char.status === 'archived');
+    } else if (importanceFilter === 'pending_deletion') {
+      filtered = filtered.filter(char => char.status === 'pending_deletion');
     } else {
-      filtered = filtered.filter(char => char.status !== 'archived');
+      filtered = filtered.filter(
+        char => char.status !== 'archived' && char.status !== 'pending_deletion'
+      );
 
       if (importanceFilter !== 'all') {
         if (importanceFilter === 'important') {
@@ -3124,14 +3128,14 @@ export const CharacterBook = () => {
           isMockDataEnabled
             ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
             : characters
-                .filter(c => c.status !== 'archived')
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion')
                 .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
         }
         existingCharacterNames={
           isMockDataEnabled
             ? getMockCharacterSuggestionBookNames('general')
             : characters
-                .filter(c => c.status !== 'archived')
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion')
                 .flatMap(c => [c.name, ...(c.alias ?? [])])
         }
         onRescanComplete={() => {
@@ -3277,6 +3281,7 @@ export const CharacterBook = () => {
             >
               <option value="all">All Characters</option>
               <option value="archived">Archived only</option>
+              <option value="pending_deletion">Pending deletion</option>
               <option value="important">Important Only</option>
               <option value="high_impact">High impact on me (70+)</option>
               <option value="protagonist">Protagonist</option>
@@ -3545,8 +3550,10 @@ export const CharacterBook = () => {
               <p className="text-base sm:text-lg font-medium mb-2">No characters found</p>
               <p className="text-xs sm:text-sm">
                 {importanceFilter === 'archived'
-                  ? 'No archived characters. Use Archive on a card to hide it without losing knowledge.'
-                  : 'Try a different search term or filter'}
+                  ? 'No archived characters. Use Archive on a card to hide it without losing knowledge — or mention them in chat to restore.'
+                  : importanceFilter === 'pending_deletion'
+                    ? 'No cards queued for deletion. Archive first, then use Queue for deletion for a final review.'
+                    : 'Try a different search term or filter'}
               </p>
             </>
           )}

@@ -166,6 +166,7 @@ export function matchCertifiedEntities(
 }
 
 function matchRank(m: CertifiedEntityMatch): number {
+  if (m.lifecycleStatus === 'archived') return 4;
   if (m.status === 'draft') return 3;
   if (m.status === 'suggestion') return 2;
   if (m.matchKind === 'prefix') return 1;

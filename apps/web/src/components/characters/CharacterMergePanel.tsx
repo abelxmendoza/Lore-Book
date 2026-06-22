@@ -594,11 +594,11 @@ export const CharacterMergePanel = ({
                   size="sm"
                   variant="outline"
                   disabled={mergeBusy}
-                  onClick={() => void restoreSelectedCharacters()}
+                  onClick={() => void restorePendingDeletion()}
                   leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
                   className="text-xs border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/10"
                 >
-                  Cancel deletion
+                  Back to archived
                 </Button>
               )}
               {selectedPendingDeletionCharacters.length === 1 && selectedArchivedCharacters.length === 0 && (
