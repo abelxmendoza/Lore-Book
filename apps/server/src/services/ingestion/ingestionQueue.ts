@@ -53,6 +53,21 @@ interface IngestionJob extends IngestionJobPayload {
 
 // ─── Queue ───────────────────────────────────────────────────────────────────
 
+/**
+ * Index of the first job in `q` whose user is not already in flight, preserving
+ * FIFO for that user. Returns -1 when every queued job belongs to a busy user.
+ * Pure + exported for unit testing the per-user serialization invariant.
+ */
+export function pickEligibleIndex(
+  q: Array<{ userId: string }>,
+  activeUsers: ReadonlySet<string>,
+): number {
+  for (let i = 0; i < q.length; i++) {
+    if (!activeUsers.has(q[i].userId)) return i;
+  }
+  return -1;
+}
+
 class IngestionQueue {
   private readonly queues: Record<JobPriority, IngestionJob[]> = {
     HIGH:   [],
@@ -68,6 +83,11 @@ class IngestionQueue {
   private readonly MAX_QUEUE_DEPTH = 1000;
 
   private activeJobs = 0;
+  // Users with a job currently in flight. Guarantees at most one ingestion per
+  // user at a time → per-user FIFO + no concurrent entity-create race (two of a
+  // user's messages can't both resolve "Tony" against a pre-insert snapshot and
+  // each mint a duplicate). Cross-user concurrency is unaffected.
+  private readonly activeUsers = new Set<string>();
   private totalEnqueued = 0;
   private totalCompleted = 0;
   private totalFailed = 0;
@@ -174,6 +194,7 @@ class IngestionQueue {
     return {
       depth:          this.depth(),
       active:         this.activeJobs,
+      activeUsers:    this.activeUsers.size,
       totalEnqueued:  this.totalEnqueued,
       totalCompleted: this.totalCompleted,
       totalFailed:    this.totalFailed,
@@ -192,16 +213,23 @@ class IngestionQueue {
       const job = this.dequeue();
       if (!job) return;
       this.activeJobs++;
+      // Claim the user synchronously here (not in the async process()) so the
+      // loop can't dequeue a second job for the same user before this one starts.
+      this.activeUsers.add(job.userId);
       // Use setImmediate so the event loop can handle I/O between jobs
       setImmediate(() => this.process(job));
     }
   }
 
   private dequeue(): IngestionJob | null {
-    // Strict priority: drain HIGH before NORMAL before LOW
+    // Strict priority: drain HIGH before NORMAL before LOW. Within a tier, pick
+    // the first job whose user has no job in flight (per-user serialization),
+    // preserving FIFO order for that user.
     for (const priority of ['HIGH', 'NORMAL', 'LOW'] as JobPriority[]) {
-      if (this.queues[priority].length > 0) {
-        return this.queues[priority].shift()!;
+      const q = this.queues[priority];
+      const idx = pickEligibleIndex(q, this.activeUsers);
+      if (idx >= 0) {
+        return q.splice(idx, 1)[0];
       }
     }
     return null;
@@ -291,6 +319,7 @@ class IngestionQueue {
       }
     } finally {
       this.activeJobs--;
+      this.activeUsers.delete(job.userId);
       this.drain();
     }
   }
