@@ -24,6 +24,7 @@ import { logger } from '../../logger';
 import { runWithMessageCost } from '../../lib/messageCostTracker';
 import { supabaseAdmin } from '../supabaseClient';
 import { pipelineRunService } from './pipelineRunService';
+import { ingestionJobStore } from './ingestionJobStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ export interface IngestionJobPayload {
 
 interface IngestionJob extends IngestionJobPayload {
   id: string;
+  /** Durable dedup key — one ingestion per message (force adds a timestamp). */
+  idempotencyKey: string;
   priority: JobPriority;
   attempts: number;
   maxAttempts: number;
@@ -86,18 +89,79 @@ class IngestionQueue {
     const job: IngestionJob = {
       ...payload,
       id:           randomUUID(),
+      idempotencyKey: payload.force
+        ? `${payload.chatMessageId}:force:${Date.now()}`
+        : payload.chatMessageId,
       priority,
       attempts:     0,
       maxAttempts:  3,
       createdAt:    Date.now(),
     };
 
-    this.queues[priority].push(job);
     this.totalEnqueued++;
-
-    setImmediate(() => this.drain());
+    // Durably persist BEFORE in-memory processing so a crash/deploy can't drop
+    // the job. Non-blocking — the chat path already calls enqueue fire-and-forget.
+    void this.persistThenQueue(job);
 
     return job.id;
+  }
+
+  /** Write-ahead persist, then schedule in-memory. Dedupes via idempotency key. */
+  private async persistThenQueue(job: IngestionJob): Promise<void> {
+    const isNew = await ingestionJobStore.persist({
+      id:             job.id,
+      idempotencyKey: job.idempotencyKey,
+      userId:         job.userId,
+      chatMessageId:  job.chatMessageId,
+      sessionId:      job.sessionId,
+      priority:       job.priority,
+      payload:        { conversationHistory: job.conversationHistory, force: job.force },
+    });
+    if (!isNew) {
+      logger.debug(
+        { chatMessageId: job.chatMessageId, userId: job.userId },
+        'IngestionQueue: duplicate enqueue skipped (idempotent)'
+      );
+      return;
+    }
+    this.enqueueInMemory(job);
+  }
+
+  /** Push an already-durable job into the in-memory scheduler. */
+  private enqueueInMemory(job: IngestionJob): void {
+    this.queues[job.priority].push(job);
+    setImmediate(() => this.drain());
+  }
+
+  /**
+   * Crash recovery: re-enqueue jobs the DB still shows as unfinished
+   * (pending or interrupted 'processing'). Call once on server startup.
+   */
+  async recover(): Promise<number> {
+    const rows = await ingestionJobStore.loadResumable();
+    for (const r of rows) {
+      const payload = (r.payload ?? {}) as {
+        conversationHistory?: IngestionJobPayload['conversationHistory'];
+        force?: boolean;
+      };
+      this.enqueueInMemory({
+        id:             r.id,
+        idempotencyKey: r.idempotency_key,
+        userId:         r.user_id,
+        chatMessageId:  r.chat_message_id ?? '',
+        sessionId:      r.session_id ?? '',
+        conversationHistory: payload.conversationHistory,
+        force:          payload.force,
+        priority:       (r.priority as JobPriority) ?? 'NORMAL',
+        attempts:       r.attempts ?? 0,
+        maxAttempts:    3,
+        createdAt:      Date.now(),
+      });
+    }
+    if (rows.length > 0) {
+      logger.info({ recovered: rows.length }, 'IngestionQueue: recovered durable jobs on startup');
+    }
+    return rows.length;
   }
 
   /** Current total queue depth across all priorities. */
@@ -147,6 +211,7 @@ class IngestionQueue {
     job.attempts++;
     const attemptStart = Date.now();
     job.lastAttemptAt = attemptStart;
+    void ingestionJobStore.markProcessing(job.id, job.attempts);
 
     // Open a pipeline run record so we can detect partial failures later
     const runId = await pipelineRunService.start({
@@ -177,6 +242,8 @@ class IngestionQueue {
       );
 
       this.totalCompleted++;
+      // Success — drop the durable row so the table holds only unfinished work.
+      void ingestionJobStore.markCompleted(job.id);
 
       // Capture what this pipeline run produced. Non-blocking — errors are swallowed.
       // Queries by user_id + created_at > job start so we see only this run's outputs.
@@ -205,6 +272,8 @@ class IngestionQueue {
         );
         // Mark partial on retryable failures (run will be superseded by the next attempt's run)
         if (runId) await pipelineRunService.markPartial(runId, attemptStart, 'ingestFromChatMessage');
+        // Back to 'pending' durably so a crash during the backoff window still recovers it.
+        void ingestionJobStore.markRetrying(job.id, job.attempts, String(err));
         setTimeout(() => {
           this.queues[job.priority].push(job);
           this.drain();
@@ -217,6 +286,8 @@ class IngestionQueue {
         );
         if (runId) await pipelineRunService.fail(runId, attemptStart, err, 'ingestFromChatMessage');
         await this.deadLetter(job, err);
+        // Exhausted retries — mark dead in the durable log (dead-letter row holds the payload).
+        void ingestionJobStore.markDead(job.id, String(err));
       }
     } finally {
       this.activeJobs--;

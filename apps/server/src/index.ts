@@ -319,6 +319,12 @@ async function runBootTasks(): Promise<void> {
     registerSyncJob();
     memoryExtractionWorker.start();
 
+    // Crash recovery: re-enqueue durable ingestion jobs that were pending or
+    // interrupted before a previous shutdown, so no message's memory is lost.
+    void import('./services/ingestion/ingestionQueue')
+      .then(({ ingestionQueue }) => ingestionQueue.recover())
+      .catch((err) => logger.warn({ err }, 'Ingestion queue recovery failed'));
+
     // GroupDetectionWorker is DISABLED by default: it builds O(n²) co-occurrence
     // graphs + wide org fan-outs over each user's whole history and retains
     // never-evicted singleton caches, driving the process to a ~4 GB heap OOM
