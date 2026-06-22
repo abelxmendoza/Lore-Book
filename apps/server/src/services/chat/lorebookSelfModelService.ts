@@ -8,6 +8,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { mentionsLoreBookProduct } from './metaConversationClassifier';
+import { detectTestingMode } from './testingModeDetector';
 import {
   formatUserProductLoreBlock,
   loadUserProductObservations,
@@ -160,6 +161,7 @@ const USER_RECALL_BLOCKERS: RegExp[] = [
   /\bwhat have you (learned|stored) about (me|my)\b/i,
   /\bwhat do you remember about (me|my)\b/i,
   /\brecall (everything|all).*(about )?me\b/i,
+  /\b(will you|can you) remember this (conversation|chat|thread)\b/i,
 ];
 
 function isUserRecallQuery(message: string): boolean {
@@ -169,6 +171,9 @@ function isUserRecallQuery(message: string): boolean {
 export function detectMetaQuery(message: string): MetaQueryMatch | null {
   const text = message.trim();
   if (!text || isUserRecallQuery(text)) return null;
+
+  const testingMode = detectTestingMode(text);
+  if (testingMode === 'memory_formation' || testingMode === 'recall_check') return null;
 
   for (const rule of META_QUERY_RULES) {
     if (!rule.pattern.test(text)) continue;

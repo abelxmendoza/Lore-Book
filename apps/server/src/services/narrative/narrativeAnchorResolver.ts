@@ -54,11 +54,7 @@ export const narrativeAnchorResolver = {
   resolveFromAnchors,
 
   async resolveForEntity(userId: string, entityId: string, entityName?: string): Promise<AnchorRetrievalChain> {
-    let anchors = await narrativeAnchorService.listAnchors(userId, { limit: 100 });
-
-    if (anchors.length === 0) {
-      anchors = await narrativeAnchorService.rebuildForUser(userId);
-    }
+    const anchors = await narrativeAnchorService.listAnchors(userId, { limit: 100 });
 
     const { data: gravityRow } = await import('../supabaseClient').then(({ supabaseAdmin }) =>
       supabaseAdmin

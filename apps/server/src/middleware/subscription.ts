@@ -116,15 +116,16 @@ export async function checkAiRequestLimit(
 
   const check = await canMakeAiRequest(req.user.id);
   if (!check.allowed) {
-    const budget = check.code === 'openai_budget_exceeded'
+    const code = check.code ?? 'ai_request_limit';
+    const budget = code === 'openai_budget_exceeded'
       ? await import('../services/openaiBudgetService').then((m) => m.getOpenAiBudgetSnapshot())
       : undefined;
-    return res.status(check.code === 'openai_budget_exceeded' ? 403 : 403).json({
-      error: check.code ?? 'AI request limit reached',
-      code: check.code ?? 'ai_request_limit',
+    return res.status(403).json({
+      error: code === 'ai_request_limit' ? 'AI request limit reached' : code,
+      code,
       message: check.reason,
       userMessage: check.reason,
-      upgradeRequired: check.code === 'ai_request_limit',
+      upgradeRequired: code === 'ai_request_limit',
       ...(budget ? { budget } : {}),
     });
   }

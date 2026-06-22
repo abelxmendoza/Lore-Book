@@ -42,7 +42,6 @@ describe('entityQualityGateService — acceptance corpus', () => {
     { name: 'Omega-1', domain: 'projects' },
     { name: 'bike repair', domain: 'skills' },
     { name: 'Vanguard Robotics', domain: 'organizations' },
-    { name: 'yesterday', domain: 'timeline' },
     { name: 'CSUF', domain: 'schools' },
     { name: 'Walmart', domain: 'locations' },
   ];

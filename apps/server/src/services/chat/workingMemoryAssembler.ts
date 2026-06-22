@@ -1791,7 +1791,7 @@ async function loadNarrativeAnchorCandidates(
     return [];
   }
 
-  return scope.traced(
+  const rows = await scope.traced(
     'narrative_anchors',
     'narrative anchor retrieval chain',
     `narrative_anchors:${primaryEntity.id}`,
@@ -1803,29 +1803,32 @@ async function loadNarrativeAnchorCandidates(
           primaryEntity.id!,
           primaryEntity.name,
         );
-        if (!chain.anchors.length) return [];
+        if (!chain.anchors.length) return { data: [] as Candidate[] };
 
         const content = narrativeAnchorResolver.formatRetrievalContext(chain);
-        return chain.anchors.map((anchor, i) => ({
-          id: `anchor-${anchor.anchorId}`,
-          type: 'timeline' as const,
-          title: anchor.title,
-          content: i === 0 ? content : `${anchor.title}: ${anchor.relatedEntities.join(', ')}`,
-          source: 'narrative_anchor',
-          date: null,
-          confidence: 0.85,
-          metadata: {
-            anchorType: anchor.anchorType,
-            gravityScore: anchor.gravityScore,
-            entityId: chain.entityId,
-            relatedEntities: anchor.relatedEntities,
-          },
-        }));
+        return {
+          data: chain.anchors.map((anchor, i) => ({
+            id: `anchor-${anchor.anchorId}`,
+            type: 'timeline' as const,
+            title: anchor.title,
+            content: i === 0 ? content : `${anchor.title}: ${anchor.relatedEntities.join(', ')}`,
+            source: 'narrative_anchor',
+            date: null,
+            confidence: 0.85,
+            metadata: {
+              anchorType: anchor.anchorType,
+              gravityScore: anchor.gravityScore,
+              entityId: chain.entityId,
+              relatedEntities: anchor.relatedEntities,
+            },
+          })),
+        };
       } catch {
-        return [];
+        return { data: [] as Candidate[] };
       }
     },
   );
+  return rows ?? [];
 }
 
 export async function assembleWorkingMemory(

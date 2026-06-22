@@ -8,6 +8,13 @@ import {
 } from './MockDataContext';
 import { ReduxProvider } from '../store/ReduxProvider';
 
+vi.mock('../config/env', () => ({
+  config: {
+    dev: { allowMockData: true },
+    api: { url: '' },
+  },
+}));
+
 const ThrowsOutside = () => {
   useMockData();
   return null;
