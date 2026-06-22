@@ -74,7 +74,7 @@ vite.config.js
 .agents/skills/**/CHANGELOG.md
 .agents/skills/supabase-server/
 .claude/skills/supabase-server
-skills/
+/skills/
 
 # Accidental JS emit alongside tracked TypeScript fixtures
 apps/server/tests/fixtures/**/*.js
