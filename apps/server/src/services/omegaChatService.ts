@@ -5,6 +5,7 @@ import type OpenAI from 'openai';
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
+import { hasTemporalSignal } from './chat/temporalSignal';
 import { StageTimer } from '../lib/stageTimer';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
@@ -403,6 +404,11 @@ class OmegaChatService {
    * Extract dates and times from message using TimeEngine
    */
   async extractDatesAndTimes(message: string): Promise<Array<{ date: string; context: string; precision: string; confidence: number }>> {
+    // Cheap pre-gate: an LLM ran on EVERY message to find temporal references,
+    // but most messages contain none. Skip the call when there's no date/time
+    // signal at all — zero quality loss (nothing to extract) and one fewer LLM
+    // call on the majority of messages.
+    if (!hasTemporalSignal(message)) return [];
     try {
       // First, use OpenAI to identify temporal references
       const completion = await openai.chat.completions.create({
