@@ -60,6 +60,9 @@ jobs:
       - name: Founder privacy guard
         run: npm run check:founder-privacy
 
+      - name: User-isolation guard
+        run: npm run check:user-isolation
+
       - name: Demo privacy guard
         run: npm run check:demo-privacy
 

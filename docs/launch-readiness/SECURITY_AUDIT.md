@@ -76,3 +76,21 @@ hand*, not a *guarantee enforced by the database*. Before serving thousands of
 strangers' real life data, convert it into a guarantee: keep RLS correct, add a
 CI check banning client-supplied ids on non-admin routes, and pen-test the chat +
 entity read endpoints with a second user's token.
+
+---
+
+## Remediation status (2026-06-22)
+
+- ✅ **CI user-isolation guard shipped** — `scripts/check-user-isolation.cjs`
+  (`npm run check:user-isolation`, wired into CI). Fails the build if any
+  non-admin route scopes a query by a client-supplied `userId`, unless waived with
+  `// user-isolation-ok`. Converts the hand-enforced convention into an enforced
+  invariant. Verified: passes today; catches an injected non-admin violation.
+- ✅ **Per-user spend cap confirmed blocking** — chat `/stream` and `/` run
+  `checkAiRequestLimit` *before* the handler, which returns **403** on over-limit
+  (per-user AI request limit) or `openai_budget_exceeded` (global budget, also
+  enforced in `guardedOpenAiCall` via `assertOpenAiBudgetAvailable`). Not just a
+  counter — it blocks.
+- ⏳ Still open (P1/P2): keep RLS correct as a backstop; pen-test entity/chat reads
+  with a second user's token; input sanitization on stored claim text (poisoning);
+  guest-id unguessability; esbuild dev bump (#249).
