@@ -15,10 +15,15 @@ describe('parseOpsRpcPayload', () => {
       postgres_major: 15,
       cron_job_run_details_rows: 150_000,
       deprecated_extensions: ['pgjwt'],
+      enabled_extensions: [
+        { name: 'pgjwt', schema: 'extensions', version: '1.0' },
+        { name: 'vector', schema: 'extensions', version: '0.8.0' },
+      ],
     });
     expect(parsed.postgresMajor).toBe(15);
     expect(parsed.cronJobRunDetailsRows).toBe(150_000);
     expect(parsed.deprecatedExtensions).toEqual(['pgjwt']);
+    expect(parsed.enabledExtensions).toHaveLength(2);
   });
 });
 
@@ -48,10 +53,22 @@ describe('evaluateUpgradeReadiness', () => {
       parseOpsRpcPayload({
         postgres_major: 15,
         deprecated_extensions: ['pgjwt'],
+        enabled_extensions: [{ name: 'pgjwt', schema: 'extensions', version: '1.0' }],
       })
     );
     expect(result.status).toBe('warn');
-    expect(result.warnings.some((w) => w.includes('pgjwt'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('Database → Extensions'))).toBe(true);
+  });
+
+  it('warns when extensions are outside the extensions schema', () => {
+    const result = evaluateUpgradeReadiness(
+      parseOpsRpcPayload({
+        postgres_major: 15,
+        enabled_extensions: [{ name: 'pg_trgm', schema: 'public', version: '1.6' }],
+      })
+    );
+    expect(result.status).toBe('warn');
+    expect(result.warnings.some((w) => w.includes('extensions` schema'))).toBe(true);
   });
 });
 

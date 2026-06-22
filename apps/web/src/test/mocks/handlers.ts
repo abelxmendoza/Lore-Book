@@ -28,6 +28,7 @@ export const handlers = [
         postgresMajor: 15,
         cronJobRunDetailsRows: 0,
         deprecatedExtensions: [],
+        enabledExtensions: [{ name: 'vector', schema: 'extensions', version: '0.8.0' }],
         warnings: [],
       },
       connection: {

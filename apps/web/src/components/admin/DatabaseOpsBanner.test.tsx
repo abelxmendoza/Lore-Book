@@ -88,6 +88,7 @@ describe('DatabaseOpsBanner', () => {
           postgresMajor: 15,
           cronJobRunDetailsRows: 120_000,
           deprecatedExtensions: [],
+          enabledExtensions: [],
           warnings: ['pg_cron.job_run_details has 120,000 rows — consider pruning before a Postgres upgrade.'],
         },
       }),

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   buildOpsBannerContent,
@@ -57,6 +57,26 @@ describe('dbHealth', () => {
     });
     expect(content.headline).toMatch(/80%/);
     expect(content.details).toContain('pg_cron bloat detected');
+  });
+
+  it('links to Supabase Extensions when deprecated extensions are enabled', () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://abc123.supabase.co');
+    const content = buildOpsBannerContent({
+      status: 'warn',
+      missingTables: [],
+      lastSchemaSync: null,
+      storage: { status: 'ok' } as never,
+      upgrade: {
+        ...EMPTY_UPGRADE_SNAPSHOT,
+        status: 'warn',
+        deprecatedExtensions: ['pgjwt'],
+        enabledExtensions: [{ name: 'pgjwt', schema: 'extensions', version: '1.0' }],
+        warnings: ['Extensions deprecated on Postgres 17 are enabled: pgjwt.'],
+      },
+      connection: EMPTY_CONNECTION_HINTS,
+    });
+    expect(content.linkLabel).toBe('Open Supabase Extensions');
+    expect(content.linkUrl).toContain('/database/extensions');
   });
 
   it('builds actionable storage copy', () => {

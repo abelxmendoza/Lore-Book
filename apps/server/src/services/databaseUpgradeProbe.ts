@@ -1,16 +1,25 @@
 /**
  * Derive Supabase upgrade-readiness from the ops RPC payload.
- * Aligns with Supabase upgrade docs (pg_cron bloat, PG17 extension deprecations).
+ * Aligns with Supabase upgrade + extensions docs (pg_cron bloat, PG17 deprecations).
  */
 
 import type { StorageHealthStatus } from './databaseStorageProbe';
+import {
+  findDeprecatedEnabled,
+  findNonStandardSchemaExtensions,
+  parseEnabledExtensions,
+  type EnabledExtension,
+} from './postgresExtensions';
 
 export type DatabaseUpgradeSnapshot = {
   status: StorageHealthStatus;
   postgresVersion: string | null;
   postgresMajor: number | null;
   cronJobRunDetailsRows: number | null;
+  /** Subset of enabled extensions deprecated on the PG17 upgrade path. */
   deprecatedExtensions: string[];
+  /** Full extension inventory from pg_extension (O(n), n ≈ 50 on Supabase). */
+  enabledExtensions: EnabledExtension[];
   warnings: string[];
 };
 
@@ -21,9 +30,8 @@ export type OpsRpcPayload = {
   postgresMajor: number | null;
   cronJobRunDetailsRows: number | null;
   deprecatedExtensions: string[];
+  enabledExtensions: EnabledExtension[];
 };
-
-const PG17_DEPRECATED = new Set(['pgjwt', 'timescaledb', 'plv8', 'plls', 'plcoffee']);
 
 function resolveCronWarnRows(): number {
   const raw = process.env.DB_CRON_WARN_ROWS;
@@ -52,14 +60,21 @@ export function parseOpsRpcPayload(data: unknown): OpsRpcPayload {
       postgresMajor: null,
       cronJobRunDetailsRows: null,
       deprecatedExtensions: [],
+      enabledExtensions: [],
     };
   }
   const rec = data as Record<string, unknown>;
 
+  const enabledExtensions = parseEnabledExtensions(rec.enabled_extensions);
+
   const deprecatedRaw = rec.deprecated_extensions;
-  const deprecatedExtensions = Array.isArray(deprecatedRaw)
+  const deprecatedFromRpc = Array.isArray(deprecatedRaw)
     ? deprecatedRaw.filter((x): x is string => typeof x === 'string')
     : [];
+  const deprecatedExtensions =
+    deprecatedFromRpc.length > 0
+      ? deprecatedFromRpc
+      : findDeprecatedEnabled(enabledExtensions);
 
   return {
     databaseBytes:
@@ -80,10 +95,11 @@ export function parseOpsRpcPayload(data: unknown): OpsRpcPayload {
         ? rec.cron_job_run_details_rows
         : null,
     deprecatedExtensions,
+    enabledExtensions,
   };
 }
 
-/** O(n) on tiny extension list; single pass for warnings. */
+/** O(n) on extension list + warnings; single pass where possible. */
 export function evaluateUpgradeReadiness(payload: OpsRpcPayload): DatabaseUpgradeSnapshot {
   const warnings: string[] = [];
   let status: StorageHealthStatus = 'ok';
@@ -106,13 +122,23 @@ export function evaluateUpgradeReadiness(payload: OpsRpcPayload): DatabaseUpgrad
     }
   }
 
-  const blockingExtensions = payload.deprecatedExtensions.filter((ext) =>
-    PG17_DEPRECATED.has(ext)
-  );
+  const blockingExtensions = payload.deprecatedExtensions;
   if (blockingExtensions.length > 0 && (payload.postgresMajor ?? 0) < 17) {
     if (status !== 'critical') status = 'warn';
     warnings.push(
-      `Extensions deprecated on Postgres 17 are enabled: ${blockingExtensions.join(', ')}. Disable them in Supabase before upgrading to PG17.`
+      `Extensions deprecated on Postgres 17 are enabled: ${blockingExtensions.join(', ')}. Disable them under Database → Extensions before upgrading.`
+    );
+  }
+
+  const nonStandard = findNonStandardSchemaExtensions(payload.enabledExtensions);
+  if (nonStandard.length > 0 && (payload.postgresMajor ?? 0) < 17) {
+    const sample = nonStandard
+      .slice(0, 4)
+      .map((e) => `${e.name}@${e.schema}`)
+      .join(', ');
+    if (status !== 'critical') status = 'warn';
+    warnings.push(
+      `${nonStandard.length} extension(s) live outside the Supabase \`extensions\` schema (${sample}${nonStandard.length > 4 ? ', …' : ''}). Review before upgrade — new extension versions may require \`create extension … with schema extensions\`.`
     );
   }
 
@@ -123,7 +149,7 @@ export function evaluateUpgradeReadiness(payload: OpsRpcPayload): DatabaseUpgrad
   ) {
     status = 'warn';
     warnings.push(
-      `Postgres ${payload.postgresVersion ?? payload.postgresMajor} is behind current Supabase releases — plan an infrastructure upgrade.`
+      `Postgres ${payload.postgresVersion ?? payload.postgresMajor} is behind current Supabase releases — plan an infrastructure upgrade (extension updates require Infrastructure Settings).`
     );
   }
 
@@ -132,7 +158,8 @@ export function evaluateUpgradeReadiness(payload: OpsRpcPayload): DatabaseUpgrad
     postgresVersion: payload.postgresVersion,
     postgresMajor: payload.postgresMajor,
     cronJobRunDetailsRows: payload.cronJobRunDetailsRows,
-    deprecatedExtensions: payload.deprecatedExtensions,
+    deprecatedExtensions: blockingExtensions,
+    enabledExtensions: payload.enabledExtensions,
     warnings,
   };
 }

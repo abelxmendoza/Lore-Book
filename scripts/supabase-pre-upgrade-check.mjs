@@ -68,8 +68,17 @@ async function main() {
     if (upgrade.cronJobRunDetailsRows != null) {
       console.log(`  pg_cron.job_run_details rows: ${upgrade.cronJobRunDetailsRows.toLocaleString()}`);
     }
+    if (Array.isArray(upgrade.enabledExtensions) && upgrade.enabledExtensions.length > 0) {
+      console.log(`  Enabled extensions: ${upgrade.enabledExtensions.length}`);
+      const sample = upgrade.enabledExtensions
+        .slice(0, 8)
+        .map((e) => `${e.name}@${e.schema}`)
+        .join(', ');
+      console.log(`    ${sample}${upgrade.enabledExtensions.length > 8 ? ', …' : ''}`);
+    }
     if (upgrade.deprecatedExtensions?.length) {
       console.log(`  Deprecated extensions (PG17 path): ${upgrade.deprecatedExtensions.join(', ')}`);
+      console.log('  → Disable under Supabase Dashboard → Database → Extensions before upgrading.');
     }
     console.log(`  Upgrade status: ${upgrade.status}`);
     for (const w of upgrade.warnings ?? []) {
@@ -92,7 +101,8 @@ async function main() {
   console.log('  • Take a backup: supabase db dump --db-url $DATABASE_URL (see Supabase backup docs)');
   console.log('  • Prune pg_cron.job_run_details if large');
   console.log('  • Drop read-replicas before upgrade; recreate after');
-  console.log('  • Use Infrastructure → Upgrade project in Supabase dashboard');
+  console.log('  • Review enabled extensions (Dashboard → Database → Extensions)');
+  console.log('  • Disable PG17-deprecated extensions before upgrading to Postgres 17');
   console.log('  • Plan downtime — disk right-sizes to ~1.2× database size after upgrade');
 
   if (exitCode === 0) {

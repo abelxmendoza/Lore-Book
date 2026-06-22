@@ -18,7 +18,14 @@ export type DatabaseUpgradeSnapshot = {
   postgresMajor: number | null;
   cronJobRunDetailsRows: number | null;
   deprecatedExtensions: string[];
+  enabledExtensions: EnabledExtension[];
   warnings: string[];
+};
+
+export type EnabledExtension = {
+  name: string;
+  schema: string;
+  version: string;
 };
 
 export type DatabaseConnectionHints = {
@@ -160,20 +167,28 @@ export function buildOpsBannerContent(
     headline = compact ? 'Database ops attention needed' : details[0]!;
   }
 
-  const linkUrl =
-    upgradeRank > 0
-      ? resolveSupabaseInfrastructureUrl()
-      : resolveSupabaseDatabaseSettingsUrl();
+  const linkUrl = (() => {
+    if (payload.upgrade.deprecatedExtensions.length > 0) {
+      return resolveSupabaseExtensionsUrl();
+    }
+    if (upgradeRank > 0) return resolveSupabaseInfrastructureUrl();
+    return resolveSupabaseDatabaseSettingsUrl();
+  })();
+
+  const linkLabel = (() => {
+    if (!linkUrl) return null;
+    if (payload.upgrade.deprecatedExtensions.length > 0) {
+      return 'Open Supabase Extensions';
+    }
+    if (upgradeRank > 0) return 'Open Supabase infrastructure settings';
+    return 'Open Supabase database settings';
+  })();
 
   return {
     severity,
     headline,
     details: details.filter((d) => d !== headline),
-    linkLabel: linkUrl
-      ? upgradeRank > 0
-        ? 'Open Supabase infrastructure settings'
-        : 'Open Supabase database settings'
-      : null,
+    linkLabel,
     linkUrl,
   };
 }
@@ -194,6 +209,11 @@ export function resolveSupabaseDatabaseSettingsUrl(): string | null {
 export function resolveSupabaseInfrastructureUrl(): string | null {
   const ref = resolveSupabaseProjectRef();
   return ref ? `https://supabase.com/dashboard/project/${ref}/settings/infrastructure` : null;
+}
+
+export function resolveSupabaseExtensionsUrl(): string | null {
+  const ref = resolveSupabaseProjectRef();
+  return ref ? `https://supabase.com/dashboard/project/${ref}/database/extensions` : null;
 }
 
 export function resolveSupabaseBackupsUrl(): string | null {
@@ -229,6 +249,7 @@ export const EMPTY_UPGRADE_SNAPSHOT: DatabaseUpgradeSnapshot = {
   postgresMajor: null,
   cronJobRunDetailsRows: null,
   deprecatedExtensions: [],
+  enabledExtensions: [],
   warnings: [],
 };
 
