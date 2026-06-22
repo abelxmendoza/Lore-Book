@@ -29,8 +29,6 @@ import {
 } from './contextualIntelligence';
 import { eventImpactDetector } from './eventImpactDetector';
 import { eventCausalDetector } from './eventCausalDetector';
-import { entityRelationshipDetector } from './entityRelationshipDetector';
-import { entityScopeService } from './entityScopeService';
 import { entityAttributeDetector } from './entityAttributeDetector';
 import { skillNetworkBuilder } from './skillNetworkBuilder';
 import { groupNetworkBuilder } from './groupNetworkBuilder';
@@ -1336,81 +1334,11 @@ export class ConversationIngestionPipeline {
             .map(e => ({ ...e, name: registryById.get(e.id)?.name ?? '' }))
             .filter(e => e.name);
 
-          // Capture for shadow baseline
+          // Capture for shadow baseline (relationship writes use unified ER at Step 6.8)
           _shadowBaseline.entities = entitiesWithNames.map(e => ({ name: e.name, type: e.type }));
 
           const hasSelfReference =
             /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i.test(rawText);
-
-          if (entitiesWithNames.length >= 2) {
-            const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
-              userId,
-              rawText,
-              entitiesWithNames,
-              messageId,
-              undefined // journal entry ID if available
-            );
-
-            costMeter.record('relationship_detection', {
-              eligible: true,
-              invoked: true,
-              productive: detection.relationships.length > 0 || detection.scopes.length > 0,
-            });
-
-            // Capture for shadow baseline
-            _shadowBaseline.relationships = detection.relationships.map(r => ({
-              from: r.fromEntityId,
-              to: r.toEntityId,
-              type: r.relationshipType,
-            }));
-
-            // Save relationships
-            for (const relationship of detection.relationships) {
-              await entityRelationshipDetector.saveRelationship(userId, relationship);
-
-              // Add entities to scope groups
-              if (relationship.scope) {
-                await entityScopeService.addEntityToScopeGroup(
-                  userId,
-                  relationship.fromEntityId,
-                  relationship.fromEntityType,
-                  relationship.scope
-                );
-                await entityScopeService.addEntityToScopeGroup(
-                  userId,
-                  relationship.toEntityId,
-                  relationship.toEntityType,
-                  relationship.scope
-                );
-              }
-            }
-
-            // Save scopes
-            for (const scope of detection.scopes) {
-              await entityRelationshipDetector.saveScope(userId, scope);
-
-              // Add to scope group
-              await entityScopeService.addEntityToScopeGroup(
-                userId,
-                scope.entityId,
-                scope.entityType,
-                scope.scope,
-                scope.scopeContext
-              );
-            }
-
-            if (detection.relationships.length > 0 || detection.scopes.length > 0) {
-              logger.debug(
-                {
-                  userId,
-                  messageId,
-                  relationships: detection.relationships.length,
-                  scopes: detection.scopes.length,
-                },
-                'Detected entity relationships and scopes'
-              );
-            }
-          }
 
           // Detect attributes when any named entity is present OR the narrator speaks in first person
           if (entitiesWithNames.length > 0 || hasSelfReference) {

@@ -59,4 +59,12 @@ describe('pre-deletion reference guard', () => {
   it('people_places still referenced outside chat (table not droppable)', () => {
     expect(rgFiles('people_places', SERVER_SRC).length).toBeGreaterThan(5);
   });
+
+  it('ingestion pipeline uses unified ER only (no legacy saveRelationship)', () => {
+    const pipelinePath = join(SERVER_SRC, 'services/conversationCentered/ingestionPipelineClass.ts');
+    const src = readFileSync(pipelinePath, 'utf8');
+    expect(src).not.toMatch(/entityRelationshipDetector\.saveRelationship/);
+    expect(src).not.toMatch(/detectRelationshipsAndScopes/);
+    expect(src).toMatch(/ingestConversationER/);
+  });
 });

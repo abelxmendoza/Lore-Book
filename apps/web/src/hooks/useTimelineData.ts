@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
+import { shouldUseMockData } from './useShouldUseMockData';
 
 // Dummy data for UI development
 const getDummyEntries = (): TimelineEntry[] => {
@@ -199,17 +200,22 @@ export const useTimelineData = () => {
         ? (arcsRes.value.arcs || [])
         : [];
 
-      // Use dummy data if all requests failed or returned empty
-      const allEmpty = fetchedEntries.length === 0 && fetchedEras.length === 0 && 
+      // Use dummy data only when demo/mock mode is explicitly on
+      const allEmpty = fetchedEntries.length === 0 && fetchedEras.length === 0 &&
                       fetchedSagas.length === 0 && fetchedArcs.length === 0;
-      
-      if (allEmpty) {
-        // Use dummy data and don't set error - this is expected for UI development
+
+      if (allEmpty && shouldUseMockData()) {
         setEntries(getDummyEntries());
         setEras(getDummyEras());
         setSagas(getDummySagas());
         setArcs(getDummyArcs());
-        setError(null); // Clear error when using dummy data
+        setError(null);
+      } else if (allEmpty) {
+        setEntries([]);
+        setEras([]);
+        setSagas([]);
+        setArcs([]);
+        setError(null);
       } else {
         setEntries(fetchedEntries);
         setEras(fetchedEras);
@@ -219,12 +225,19 @@ export const useTimelineData = () => {
       }
     } catch (err) {
       console.error('Failed to fetch timeline data:', err);
-      // Use dummy data as fallback instead of showing error
-      setEntries(getDummyEntries());
-      setEras(getDummyEras());
-      setSagas(getDummySagas());
-      setArcs(getDummyArcs());
-      setError(null); // Don't show error when using dummy data
+      if (shouldUseMockData()) {
+        setEntries(getDummyEntries());
+        setEras(getDummyEras());
+        setSagas(getDummySagas());
+        setArcs(getDummyArcs());
+        setError(null);
+      } else {
+        setEntries([]);
+        setEras([]);
+        setSagas([]);
+        setArcs([]);
+        setError(err instanceof Error ? err.message : 'Failed to load timeline');
+      }
     } finally {
       setLoading(false);
     }

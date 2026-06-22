@@ -52,9 +52,8 @@ export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Development Features
 export const DEV_FEATURES = {
-  // Allow mock data when backend is unavailable
-  // Enabled by default in production for frontend-only demo (can be disabled with VITE_USE_MOCK_DATA=false)
-  allowMockData: isDevelopment || import.meta.env.VITE_USE_MOCK_DATA !== 'false',
+  // Mock/demo data only when explicitly enabled (toggle or VITE_USE_MOCK_DATA=true)
+  allowMockData: import.meta.env.VITE_USE_MOCK_DATA === 'true',
   
   // Show detailed error messages
   verboseErrors: isDevelopment,

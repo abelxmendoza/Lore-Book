@@ -33,11 +33,8 @@ describe('Environment Configuration Tests - Black Screen Prevention', () => {
     expect(config.api.timeout).toBeGreaterThan(0);
   });
 
-  it('should allow mock data fallback in development', () => {
-    // In development, mock data should be allowed
-    if (config.env.isDevelopment) {
-      expect(config.dev.allowMockData).toBeDefined();
-    }
+  it('requires explicit opt-in for config-level mock data', () => {
+    expect(typeof config.dev.allowMockData).toBe('boolean');
   });
 
   it('should not throw when accessing config properties', () => {

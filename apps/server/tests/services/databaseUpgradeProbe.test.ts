@@ -64,11 +64,24 @@ describe('evaluateUpgradeReadiness', () => {
     const result = evaluateUpgradeReadiness(
       parseOpsRpcPayload({
         postgres_major: 15,
-        enabled_extensions: [{ name: 'pg_trgm', schema: 'public', version: '1.6' }],
+        enabled_extensions: [{ name: 'postgis', schema: 'public', version: '3.4' }],
       })
     );
     expect(result.status).toBe('warn');
     expect(result.warnings.some((w) => w.includes('extensions` schema'))).toBe(true);
+  });
+
+  it('does not warn for expected Lorekeeper extensions in public', () => {
+    const result = evaluateUpgradeReadiness(
+      parseOpsRpcPayload({
+        postgres_major: 15,
+        enabled_extensions: [
+          { name: 'uuid-ossp', schema: 'public', version: '1.1' },
+          { name: 'pg_trgm', schema: 'public', version: '1.6' },
+        ],
+      })
+    );
+    expect(result.warnings.some((w) => w.includes('extensions` schema'))).toBe(false);
   });
 });
 

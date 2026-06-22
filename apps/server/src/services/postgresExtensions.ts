@@ -67,6 +67,7 @@ export function findNonStandardSchemaExtensions(
     (ext) =>
       ext.schema !== SUPABASE_PREFERRED_EXTENSION_SCHEMA &&
       ext.schema !== 'pg_catalog' &&
-      ext.name !== 'plpgsql'
+      ext.name !== 'plpgsql' &&
+      !LOREKEEPER_EXPECTED_EXTENSIONS.has(ext.name)
   );
 }

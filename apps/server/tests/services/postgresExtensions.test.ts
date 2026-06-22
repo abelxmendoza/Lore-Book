@@ -29,7 +29,17 @@ describe('postgresExtensions', () => {
     const found = findNonStandardSchemaExtensions([
       { name: 'pg_trgm', schema: 'public', version: '1.6' },
       { name: 'vector', schema: 'extensions', version: '0.8.0' },
+      { name: 'postgis', schema: 'public', version: '3.4' },
     ]);
-    expect(found.map((e) => e.name)).toEqual(['pg_trgm']);
+    expect(found.map((e) => e.name)).toEqual(['postgis']);
+  });
+
+  it('does not flag Lorekeeper expected extensions in public', () => {
+    expect(
+      findNonStandardSchemaExtensions([
+        { name: 'uuid-ossp', schema: 'public', version: '1.1' },
+        { name: 'pg_trgm', schema: 'public', version: '1.6' },
+      ])
+    ).toEqual([]);
   });
 });
