@@ -14,6 +14,7 @@ legalRouter.use(rateLimitMiddleware);
 
 function resolveLegalDir(): string {
   const candidates = [
+    path.resolve(__dirname, '../legal'), // dist/legal (bundled at build time)
     path.resolve(__dirname, '../../legal'),
     path.resolve(process.cwd(), 'legal'),
     path.resolve(process.cwd(), '../legal'),
@@ -32,7 +33,19 @@ function resolveLegalDir(): string {
 function sendLegalFile(res: Response, filename: string) {
   try {
     const filePath = path.join(resolveLegalDir(), filename);
-    res.sendFile(filePath);
+    if (!fs.existsSync(filePath)) {
+      logger.error({ filePath, filename }, 'Legal document file missing on disk');
+      res.status(503).json({ error: 'Legal document temporarily unavailable' });
+      return;
+    }
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        logger.error({ err, filePath, filename }, 'Failed to send legal document');
+        if (!res.headersSent) {
+          res.status(503).json({ error: 'Legal document temporarily unavailable' });
+        }
+      }
+    });
   } catch (error) {
     logger.error({ error, filename }, 'Legal document unavailable');
     res.status(503).json({ error: 'Legal document temporarily unavailable' });

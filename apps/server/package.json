@@ -4,9 +4,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/bootstrap.ts",
-    "sync:legal": "mkdir -p legal && cp ../../legal/TERMS.md ../../legal/PRIVACY.md legal/",
+    "sync:legal": "mkdir -p legal && (cp -f ../../legal/TERMS.md ../../legal/PRIVACY.md legal/ 2>/dev/null || true) && test -f legal/TERMS.md && test -f legal/PRIVACY.md",
     "prebuild": "npm run sync:legal",
     "build": "tsc --project tsconfig.json || true",
+    "postbuild": "mkdir -p dist/legal && cp -f legal/TERMS.md legal/PRIVACY.md dist/legal/",
     "start": "node dist/bootstrap.js",
     "lint": "eslint src",
     "test": "vitest run",

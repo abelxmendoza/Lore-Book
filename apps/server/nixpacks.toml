@@ -2,7 +2,12 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.build]
-cmds = ["npm install", "npm run build || true"]
+cmds = [
+  "npm install",
+  "test -f legal/TERMS.md && test -f legal/PRIVACY.md",
+  "npm run build",
+  "test -f dist/legal/TERMS.md && test -f dist/legal/PRIVACY.md",
+]
 
 [start]
 cmd = "node dist/bootstrap.js"
