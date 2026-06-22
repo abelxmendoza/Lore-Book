@@ -4,6 +4,9 @@ const { mockConfig, mockChatCreate, mockResponsesCreate } = vi.hoisted(() => ({
   mockConfig: {
     chatModel: 'gpt-5.5',
     useResponsesApiForChat: false,
+    openAiResponseChaining: false,
+    openAiConversationsApi: false,
+    openAiVectorStoreEnabled: false,
   },
   mockChatCreate: vi.fn(),
   mockResponsesCreate: vi.fn(),
@@ -44,6 +47,7 @@ async function* makeResponseEvents() {
   yield {
     type: 'response.completed',
     response: {
+      id: 'resp_chain_1',
       usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
     },
   };
@@ -53,6 +57,9 @@ describe('createOpenAIChatStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.useResponsesApiForChat = false;
+    mockConfig.openAiResponseChaining = false;
+    mockConfig.openAiConversationsApi = false;
+    mockConfig.openAiVectorStoreEnabled = false;
   });
 
   it('uses Chat Completions by default', async () => {
@@ -127,5 +134,37 @@ describe('createOpenAIChatStream', () => {
       safety_identifier: 'user-123',
     });
     expect(mockChatCreate).not.toHaveBeenCalled();
+  });
+
+  it('chains via previous_response_id when OPENAI_RESPONSE_CHAINING is enabled', async () => {
+    mockConfig.useResponsesApiForChat = true;
+    mockConfig.openAiResponseChaining = true;
+    mockResponsesCreate.mockResolvedValueOnce(makeResponseEvents());
+
+    const stream = await createOpenAIChatStream({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'System prompt' },
+        { role: 'assistant', content: 'Earlier answer' },
+        { role: 'user', content: 'Follow up' },
+      ],
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      previousResponseId: 'resp_prev',
+    });
+
+    let responseId: string | undefined;
+    for await (const chunk of stream) {
+      if (chunk.responseId) responseId = chunk.responseId;
+    }
+
+    expect(responseId).toBe('resp_chain_1');
+    expect(mockResponsesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        store: true,
+        previous_response_id: 'resp_prev',
+        input: [{ role: 'user', content: 'Follow up' }],
+      }),
+    );
   });
 });

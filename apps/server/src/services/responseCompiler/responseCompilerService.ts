@@ -7,6 +7,7 @@ import { groundClaims } from './groundingChecker';
 import { filterMemoryWrites } from './memoryWriteFilter';
 import { bindProvenance } from './provenanceBinder';
 import { extractResponseActions } from './responseActionExtractor';
+import { applySemanticMatches, findSemanticEvidence } from './semanticGroundingChecker';
 import { aggregateCertaintyScore } from './uncertaintyDetector';
 import type {
   CompiledAssistantResponse,
@@ -104,6 +105,34 @@ class ResponseCompilerService {
       memoryCandidatesBlocked,
       rulesFired: [...new Set(rulesFired)],
       verifiedResponse: buildVerifiedResponse(input.rawResponse, grounded, contradictions),
+    };
+  }
+
+  /**
+   * Compile, then run the semantic grounding layer (embeddings + cosine) to
+   * rescue paraphrased claims the token-overlap heuristic left unsupported.
+   * Async because it may call the (cached) embedding service. Falls back to the
+   * pure compile result when the semantic layer is disabled or finds nothing.
+   */
+  async compileWithSemantics(input: ResponseCompileInput): Promise<CompiledAssistantResponse> {
+    const base = this.compile(input);
+
+    const union = [
+      ...base.groundedClaims,
+      ...base.inferredClaims,
+      ...base.unsupportedClaims,
+    ];
+    const matches = await findSemanticEvidence(union, input.sourceMessages);
+    if (matches.size === 0) return base;
+
+    const upgraded = applySemanticMatches(union, matches);
+
+    return {
+      ...base,
+      ...partitionClaims(upgraded),
+      provenanceBindings: bindProvenance(upgraded),
+      memoryCandidatesBlocked: filterMemoryWrites(upgraded),
+      verifiedResponse: buildVerifiedResponse(base.rawResponse, upgraded, base.contradictions),
     };
   }
 

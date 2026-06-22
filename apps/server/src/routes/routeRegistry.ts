@@ -25,6 +25,7 @@ import activitiesRouter from './activities';
 import { adminRouter } from './admin';
 import { agentsRouter } from './agents';
 import { loreAgentsRouter } from './loreAgents';
+import { openAiPlatformRouter } from './openaiPlatform';
 import alternateSelfRouter from './alternateSelf';
 import { analyticsRouter } from './analytics';
 import archetypeRouter from './archetype';
@@ -1276,6 +1277,13 @@ export const routeRegistry: RouteEntry[] = [
     router: adminRouter,
     classification: 'CORE_RUNTIME',
     description: 'Admin panel — metrics, users, finance, system tools',
+  },
+  {
+    path: '/api/openai-platform',
+    router: openAiPlatformRouter,
+    requiresAuth: true,
+    classification: 'ADMIN',
+    description: 'Opt-in OpenAI platform features — chaining, background, vector stores',
   },
   {
     path: '/api/dev',

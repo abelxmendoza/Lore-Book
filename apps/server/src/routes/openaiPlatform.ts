@@ -4,11 +4,14 @@ import { z } from 'zod';
 import { config } from '../config';
 import { logger } from '../logger';
 import type { AuthenticatedRequest } from '../middleware/auth';
+import { requireDevToolingAccess } from '../middleware/apiProtection';
 import { createBackgroundResponse, retrieveBackgroundResponse } from '../services/openaiPlatform/openaiBackgroundResponses';
 import { isOpenAiPlatformEnabled, loadOpenAiSessionState } from '../services/openaiPlatform/openaiSessionState';
 import { uploadTextToVectorStore } from '../services/openaiPlatform/openaiVectorStoreService';
 
 const router = Router();
+
+router.use(requireDevToolingAccess);
 
 /**
  * GET /api/openai-platform/status

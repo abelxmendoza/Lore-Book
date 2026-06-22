@@ -14,3 +14,10 @@ export {
   compileAssistantResponseWithCanon,
 } from './responseCompilerIntegration';
 export { loadUserCanonFacts } from './canonFactLoader';
+export {
+  findSemanticEvidence,
+  applySemanticMatches,
+  cosineSimilarity,
+  isSemanticGroundingEnabled,
+  SEMANTIC_RELATED_THRESHOLD,
+} from './semanticGroundingChecker';

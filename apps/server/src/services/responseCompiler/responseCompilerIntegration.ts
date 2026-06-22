@@ -96,8 +96,24 @@ export async function compileAssistantResponseWithCanon(
     }
   }
 
-  return compileAssistantResponse({
-    ...opts,
+  const compiled = await responseCompilerService.compileWithSemantics({
+    userId: opts.userId,
+    rawResponse: opts.rawResponse,
+    sourceMessages: buildWitnesses(opts.userMessage, opts.userMessageId, opts.conversationHistory),
     canonFacts: [...(loadedCanon ?? []), ...(opts.canonFacts ?? [])],
   });
+
+  logger.debug(
+    {
+      userId: opts.userId,
+      grounded: compiled.groundedClaims.length,
+      inferred: compiled.inferredClaims.length,
+      unsupported: compiled.unsupportedClaims.length,
+      contradictions: compiled.contradictions.length,
+      certaintyScore: compiled.certaintyScore,
+    },
+    'Response compiler (canon + semantic) completed',
+  );
+
+  return compiled;
 }

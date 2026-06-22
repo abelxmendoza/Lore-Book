@@ -1,5 +1,6 @@
 import { config } from '../../config';
 import { openai } from '../../lib/openai';
+import { toFile } from 'openai';
 import { logger } from '../../logger';
 import { loadOpenAiSessionState, mergeOpenAiSessionState } from './openaiSessionState';
 
@@ -50,7 +51,7 @@ export async function uploadTextToVectorStore(params: {
   if (!vectorStoreId) return undefined;
 
   const file = await openai.files.create({
-    file: new File([params.content], params.filename, { type: 'text/plain' }),
+    file: await toFile(Buffer.from(params.content, 'utf8'), params.filename, { type: 'text/plain' }),
     purpose: 'assistants',
   });
 
