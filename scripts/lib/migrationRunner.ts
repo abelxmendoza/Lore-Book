@@ -120,6 +120,16 @@ function explainConnectionError(msg: string): string {
   return msg;
 }
 
+/** Postgres errors that mean the migration body is already applied. */
+export function isBenignMigrationError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /already exists/i.test(msg) ||
+    /duplicate key value/i.test(msg) ||
+    /does not exist/i.test(msg)
+  );
+}
+
 export interface MigrationItem {
   /** Path relative to repo root. */
   file: string;
@@ -228,7 +238,15 @@ export async function applyMigrations(opts: ApplyOptions): Promise<void> {
         continue;
       }
       console.log('  →', item.file);
-      await pool.query(readFileSync(path, 'utf-8'));
+      try {
+        await pool.query(readFileSync(path, 'utf-8'));
+      } catch (err) {
+        if (isBenignMigrationError(err)) {
+          console.log('  ⏭  Skipped (objects already exist):', item.file);
+        } else {
+          throw err;
+        }
+      }
       await recordMigration(pool, item.file);
       console.log('  ✅', item.file);
     }

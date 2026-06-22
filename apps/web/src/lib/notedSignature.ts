@@ -23,6 +23,10 @@ const EMOTIONAL_PATTERN =
 const ADVICE_SEEKING =
   /\b(what do you think|advice|help me decide|not sure if|what should i)\b/i;
 
+/** Reflective / creative discussion — not a memory deposit. */
+const CREATIVE_DISCUSSION_PATTERN =
+  /\b(I thought|I think|what if|maybe we|the villain|character arc|backstory|plot|scene|chapter|draft|rewrite|more depth|story idea)\b/i;
+
 const MIN_TURNS_SINCE_LAST_NOTED = 5;
 
 export function isEligibleForNotedSignature(ctx: NotedSignatureContext): boolean {
@@ -31,6 +35,7 @@ export function isEligibleForNotedSignature(ctx: NotedSignatureContext): boolean
   if (QUESTION_PATTERN.test(msg)) return false;
   if (EMOTIONAL_PATTERN.test(msg)) return false;
   if (ADVICE_SEEKING.test(msg)) return false;
+  if (!EXPLICIT_LOG_PATTERN.test(msg) && CREATIVE_DISCUSSION_PATTERN.test(msg)) return false;
 
   const isExplicitLog = EXPLICIT_LOG_PATTERN.test(msg);
   const isShortDeposit =

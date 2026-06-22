@@ -18,4 +18,8 @@ describe('notedSignature (web)', () => {
       }),
     ).toBe(NOTED_SIGNATURE);
   });
+
+  it('does not treat creative discussion as a short memory deposit', () => {
+    expect(isEligibleForNotedSignature({ message: 'I thought the villain needed more depth.' })).toBe(false);
+  });
 });

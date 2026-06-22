@@ -277,4 +277,17 @@ describe('migrationRunner — applyMigrations (integration)', () => {
       applyMigrations({ root, label: 'test', migrations: [{ file: f }] }),
     ).rejects.toThrow(/Password authentication failed/);
   });
+
+  it('treats already-exists errors as idempotent skip', async () => {
+    const body = 'CREATE POLICY "dup" ON t FOR ALL USING (true);';
+    const f = writeSql('dup.sql', body);
+    pgState.setHandler((sql) => {
+      if (sql === body) throw new Error('policy "dup" for table "t" already exists');
+      return { rows: [] };
+    });
+
+    await applyMigrations({ root, label: 'test', migrations: [{ file: f }] });
+
+    expect(pgState.calls).toContain(body);
+  });
 });

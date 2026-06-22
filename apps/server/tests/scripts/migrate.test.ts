@@ -46,6 +46,7 @@ import {
   BASE_MIGRATIONS,
   ENGINE_MIGRATIONS,
   ONTOLOGY_MIGRATIONS,
+  OPS_MIGRATIONS,
 } from '../../../../scripts/migrate';
 
 describe('migrate — resolveCommand (unit)', () => {
@@ -66,7 +67,14 @@ describe('migrate — resolveCommand (unit)', () => {
   it('maps "engine" to engine_results + engine_dependencies migrations', async () => {
     const r = await resolveCommand(['engine']);
     expect(r?.label).toBe('engine');
-    expect(r?.cmd.migrations.map((m) => m.file)).toEqual(ENGINE_MIGRATIONS);
+    expect(r?.cmd.migrations.map((m) => m.file)).toEqual(ENGINE_MIGRATIONS.map((m) => m.file));
+    expect(typeof r?.cmd.verify).toBe('function');
+  });
+
+  it('maps "ops" to database ops probe migrations', async () => {
+    const r = await resolveCommand(['ops']);
+    expect(r?.label).toBe('ops');
+    expect(r?.cmd.migrations.map((m) => m.file)).toEqual(OPS_MIGRATIONS.map((m) => m.file));
     expect(typeof r?.cmd.verify).toBe('function');
   });
 
@@ -98,8 +106,14 @@ describe('migrate — resolveCommand (unit)', () => {
     expect(await resolveCommand([])).toBeNull();
   });
 
-  it('base/ontology/engine lists reference .sql files only', () => {
-    for (const f of [...BASE_MIGRATIONS, ...ENGINE_MIGRATIONS, ...ONTOLOGY_MIGRATIONS]) {
+  it('base/ontology/engine/ops lists reference .sql files only', () => {
+    const files = [
+      ...BASE_MIGRATIONS,
+      ...ENGINE_MIGRATIONS.map((m) => m.file),
+      ...ONTOLOGY_MIGRATIONS,
+      ...OPS_MIGRATIONS.map((m) => m.file),
+    ];
+    for (const f of files) {
       expect(f).toMatch(/\.sql$/);
     }
   });

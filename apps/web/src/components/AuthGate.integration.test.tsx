@@ -108,7 +108,7 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should timeout after 5 seconds to prevent infinite loading', async () => {
-    // Mock session that never resolves
+    vi.useFakeTimers();
     if (mockGetSession) {
       mockGetSession.mockImplementation(() => new Promise(() => {}));
     }
@@ -121,12 +121,11 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
       </BrowserRouter>
     );
 
-    // Should timeout and show content after 5 seconds
-    await waitFor(() => {
-      const content = screen.queryByText(/App Content|Guest|Login/i);
-      expect(content).toBeTruthy();
-    }, { timeout: 7000 });
-  }, 10000);
+    await vi.advanceTimersByTimeAsync(5100);
+
+    expect(screen.getByText(/Continue as Guest|App Content/i)).toBeTruthy();
+    vi.useRealTimers();
+  });
 
   it('should show auth screen when not authenticated', async () => {
     // Note: AuthGate has DEV_DISABLE_AUTH=true, so it bypasses auth in dev/test

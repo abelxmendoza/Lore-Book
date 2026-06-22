@@ -31,8 +31,33 @@ export const QUEST_MIGRATIONS = [
 ];
 
 export const ENGINE_MIGRATIONS = [
-  'supabase/migrations/20250224000102_engine_results.sql',
-  'supabase/migrations/20260618090000_engine_dependencies.sql',
+  {
+    file: 'supabase/migrations/20250224000102_engine_results.sql',
+    skipIf: async (pool) => {
+      const r = await pool.query(`SELECT to_regclass('public.engine_results') AS tbl`);
+      return Boolean(r.rows[0]?.tbl);
+    },
+  },
+  {
+    file: 'supabase/migrations/20260618090000_engine_dependencies.sql',
+    skipIf: async (pool) => {
+      const r = await pool.query(`SELECT to_regclass('public.engine_dependencies') AS tbl`);
+      return Boolean(r.rows[0]?.tbl);
+    },
+  },
+];
+
+export const OPS_MIGRATIONS: MigrationItem[] = [
+  { file: 'supabase/migrations/20260618120000_database_storage_probe.sql' },
+  { file: 'supabase/migrations/20260618130000_database_ops_snapshot.sql' },
+  { file: 'supabase/migrations/20260618140000_database_extensions_inventory.sql' },
+  {
+    file: 'supabase/migrations/20260618150000_drop_entity_canonical_map.sql',
+    skipIf: async (pool) => {
+      const r = await pool.query(`SELECT to_regclass('public.entity_canonical_map') AS tbl`);
+      return !r.rows[0]?.tbl;
+    },
+  },
 ];
 
 export const ONTOLOGY_MIGRATIONS = [
@@ -67,7 +92,7 @@ export async function resolveCommand(argv: string[]): Promise<{ label: string; c
       return {
         label: 'engine',
         cmd: {
-          migrations: ENGINE_MIGRATIONS.map((file) => ({ file })),
+          migrations: ENGINE_MIGRATIONS,
           verify: async (pool) => {
             const r = await pool.query(`
               SELECT
@@ -77,6 +102,25 @@ export async function resolveCommand(argv: string[]): Promise<{ label: string; c
             console.log('  verify →', r.rows[0]);
             if (!r.rows[0]?.engine_results || !r.rows[0]?.engine_dependencies) {
               throw new Error('engine_results or engine_dependencies still missing after migration');
+            }
+          },
+        },
+      };
+
+    case 'ops':
+      return {
+        label: 'ops',
+        cmd: {
+          migrations: OPS_MIGRATIONS,
+          verify: async (pool) => {
+            const r = await pool.query(`
+              SELECT
+                to_regproc('public.get_database_storage_stats') AS rpc,
+                to_regclass('public.entity_canonical_map') AS entity_canonical_map
+            `);
+            console.log('  verify →', r.rows[0]);
+            if (!r.rows[0]?.rpc) {
+              throw new Error('get_database_storage_stats() missing after ops migrations');
             }
           },
         },
@@ -157,7 +201,7 @@ export async function runMigrate(argv: string[]): Promise<void> {
   const resolved = await resolveCommand(argv);
   if (!resolved) {
     throw new Error(
-      'Usage: migrate.ts <base|engine|quests|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
+      'Usage: migrate.ts <base|engine|ops|quests|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
     );
   }
   await applyMigrations({ root: ROOT, label: resolved.label, ...resolved.cmd });

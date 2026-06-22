@@ -11,7 +11,10 @@
  */
 
 function resolveDbHealthUrl(base) {
-  const trimmed = (base || process.env.HEALTH_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  const fromEnv = process.env.HEALTH_URL;
+  const fromArg = base && !base.startsWith('-') ? base : null;
+  const defaultProd = 'https://lore-book-production.up.railway.app';
+  const trimmed = (fromArg || fromEnv || defaultProd).replace(/\/+$/, '');
   const root = trimmed.replace(/\/api\/health(\/db)?$/, '');
   return `${root}/api/health/db`;
 }

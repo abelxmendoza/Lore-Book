@@ -27,6 +27,7 @@
     "migrate": "npx tsx scripts/migrate.ts",
     "migrate:base": "npx tsx scripts/migrate.ts base",
     "migrate:engine": "npx tsx scripts/migrate.ts engine",
+    "migrate:ops": "npx tsx scripts/migrate.ts ops",
     "migrate:quests": "npx tsx scripts/migrate.ts quests",
     "migrate:ontology": "npx tsx scripts/migrate.ts ontology",
     "db:generate": "drizzle-kit generate",
