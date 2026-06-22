@@ -17,6 +17,8 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterById } from '../../lib/hydrateBookEntity';
+import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { supabase, useAuth } from '../../lib/supabase';
 import { useCharactersBookData } from '../../store/hooks/useEntityBooks';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -2891,19 +2893,32 @@ export const CharacterBook = () => {
 
   // Auto-open modal when navigated here from an entity chip (chat → characters).
   useEffect(() => {
-    if (bookLoading || characters.length === 0) return;
-    const id = sessionStorage.getItem('highlightItem');
+    if (bookLoading) return;
+    const id = consumeHighlightItemId();
     if (!id) return;
     const tabRaw = sessionStorage.getItem('characterModalTab');
-    sessionStorage.removeItem('highlightItem');
     sessionStorage.removeItem('characterModalTab');
-    const match = characters.find(c => c.id === id);
-    if (match) {
+
+    const openCharacterModal = (character: Character) => {
       if (tabRaw) {
         setCharacterModalInitialTab(tabRaw as import('../../lib/openCharacterBookModal').CharacterBookModalTab);
       }
-      setSelectedCharacter(match);
-    }
+      setSelectedCharacter(character);
+    };
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveBookHighlightItem({
+        id,
+        items: characters,
+        fetchById: (characterId) => fetchCharacterById<Character>(characterId),
+      });
+      if (!cancelled && resolved) openCharacterModal(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [bookLoading, characters]);
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
@@ -3119,7 +3134,10 @@ export const CharacterBook = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6" data-testid="character-book">
+    <div
+      className={`space-y-4 sm:space-y-6 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}
+      data-testid="character-book"
+    >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
       <ChatFirstViewHint />
       <DetectedCharacterSuggestions
@@ -3141,7 +3159,13 @@ export const CharacterBook = () => {
         onRescanComplete={() => {
           void loadCharacters();
         }}
-        onCharacterAdded={() => {
+        onCharacterAdded={(payload) => {
+          if (payload.matchedCharacterId) {
+            setSearchTerm('');
+            setActiveCategory('all');
+            setImportanceFilter('all');
+            setCurrentPage(1);
+          }
           void loadCharacters();
         }}
       />

@@ -18,6 +18,8 @@ import { readSkillProfile } from '../../lib/skillProfile';
 import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
 import { epistemicFieldLabel } from '../../lib/epistemicLabels';
 import { cn } from '../../lib/cn';
+import { fetchSkillById } from '../../lib/hydrateBookEntity';
+import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { subDays } from 'date-fns';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { mockDataService } from '../../services/mockDataService';
@@ -357,14 +359,27 @@ export const SkillsBook: React.FC = () => {
   };
 
   useEffect(() => {
-    if (loading || skills.length === 0) return;
-    const id = sessionStorage.getItem('highlightItem');
+    if (loading) return;
+    const id = consumeHighlightItemId();
     if (!id) return;
-    sessionStorage.removeItem('highlightItem');
-    const match = skills.find(
-      (s) => s.id === id || s.skill_name.toLowerCase() === id.toLowerCase(),
-    );
-    if (match) setSelectedSkill(match);
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveBookHighlightItem({
+        id,
+        items: skills,
+        match: (skill, needle) =>
+          skill.id === needle ||
+          skill.skill_name.toLowerCase() === needle.toLowerCase() ||
+          skill.skill_name.toLowerCase().includes(needle.toLowerCase()),
+        fetchById: fetchSkillById,
+      });
+      if (!cancelled && resolved) setSelectedSkill(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loading, skills]);
 
   const handleCloseModal = () => {

@@ -6,6 +6,11 @@ import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import {
+  collectNameKeys,
+  flagMergedTextSnippets,
+  withMergeReviewMetadata,
+} from '../utils/mergeReview';
 import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -20,6 +25,7 @@ export interface LocationMergeReport {
   collisionsDropped: number;
   canonicalName: string;
   aliases: string[];
+  reviewFlags: string[];
 }
 
 type LocationRow = {
@@ -178,6 +184,7 @@ class LocationMergeService {
       collisionsDropped: 0,
       canonicalName: target.name,
       aliases: [],
+      reviewFlags: [],
     };
 
     await this.mergeMentions(userId, sourceId, targetId, report);
@@ -188,6 +195,7 @@ class LocationMergeService {
     const card = await this.mergeCardData(userId, source, target);
     report.canonicalName = card.name;
     report.aliases = card.aliases;
+    report.reviewFlags = card.reviewFlags;
 
     const { error: delErr } = await supabaseAdmin
       .from('locations')
@@ -223,7 +231,7 @@ class LocationMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: 'USER',
-      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore },
+      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags },
     });
 
     logger.info({ userId, ...report }, '[LocationMerge] merge complete');
@@ -373,7 +381,11 @@ class LocationMergeService {
     }
   }
 
-  private async mergeCardData(userId: string, source: LocationRow, target: LocationRow): Promise<{ name: string; aliases: string[] }> {
+  private async mergeCardData(
+    userId: string,
+    source: LocationRow,
+    target: LocationRow
+  ): Promise<{ name: string; aliases: string[]; reviewFlags: string[] }> {
     const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>;
     const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
     const prevAliases = Array.isArray(targetMeta.aliases) ? (targetMeta.aliases as string[]) : [];
@@ -403,6 +415,9 @@ class LocationMergeService {
 
     const summary = [target.summary, source.summary].filter(Boolean).join('\n\n') || null;
     const importance = Math.max(target.importance_score ?? 0, source.importance_score ?? 0);
+    const sourceKeys = collectNameKeys(source.name, normalizeNameKey(source.name), aliases);
+    const survivorKeys = collectNameKeys(canonicalName, normalizeNameKey(canonicalName), aliases);
+    const reviewFlags = flagMergedTextSnippets([summary], sourceKeys, survivorKeys);
 
     await supabaseAdmin
       .from('locations')
@@ -414,23 +429,27 @@ class LocationMergeService {
         importance_score: importance,
         associated_character_ids: mergedChars,
         associated_location_ids: mergedLocIds,
-        metadata: {
-          ...targetMeta,
-          ...sourceMeta,
-          aliases,
-          place_tags: mergedTags,
-          place_significance: mergedSig,
-          merge_history: [
-            ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as unknown[]) : []),
-            { merged_from: source.name, merged_at: new Date().toISOString() },
-          ],
-        },
+        metadata: withMergeReviewMetadata(
+          {
+            ...targetMeta,
+            ...sourceMeta,
+            aliases,
+            place_tags: mergedTags,
+            place_significance: mergedSig,
+            merge_history: [
+              ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as unknown[]) : []),
+              { merged_from: source.name, merged_at: new Date().toISOString() },
+            ],
+          },
+          reviewFlags,
+          'Some merged text may refer only to the absorbed place name — review on the place card.'
+        ),
         updated_at: new Date().toISOString(),
       })
       .eq('id', target.id)
       .eq('user_id', userId);
 
-    return { name: canonicalName, aliases };
+    return { name: canonicalName, aliases, reviewFlags };
   }
 }
 

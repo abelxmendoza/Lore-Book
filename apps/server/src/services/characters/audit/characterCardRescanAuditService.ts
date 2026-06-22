@@ -57,14 +57,9 @@ const UNCERTAIN_STATUSES = new Set<CharacterAuditStatus>([
   'needs_identity_resolution',
 ]);
 
-function isUserReviewed(metadata: Record<string, unknown>): boolean {
-  const audit = metadata.card_audit_review as Record<string, unknown> | undefined;
-  if (audit?.action) return true;
-  return metadata.card_audit_locked === true;
-}
-
+import { isCharacterCardUserReviewed } from './characterCardReviewState';
 function isConfidentAutoFix(result: CharacterCardAuditResult, metadata: Record<string, unknown>): boolean {
-  if (isUserReviewed(metadata)) return false;
+  if (isCharacterCardUserReviewed(metadata)) return false;
   if (result.recommendedAction === 'needs_review') return false;
   if (result.status === 'duplicate_or_merge_candidate') return false;
   if (result.status === 'needs_identity_resolution') return false;
@@ -85,7 +80,7 @@ function isConfidentAutoFix(result: CharacterCardAuditResult, metadata: Record<s
 }
 
 function isUncertainForReview(result: CharacterCardAuditResult, metadata: Record<string, unknown>): boolean {
-  if (isUserReviewed(metadata)) return false;
+  if (isCharacterCardUserReviewed(metadata)) return false;
   if (isConfidentAutoFix(result, metadata)) return false;
   return (
     UNCERTAIN_STATUSES.has(result.status) ||

@@ -9,7 +9,12 @@ const IGNORED_CONSOLE_PATTERNS = [
   /127\.0\.0\.1:7242/, // local debug ingest
   /favicon\.ico/i,
   /Content-Security-Policy-Report-Only/i,
+  /script-src-elem 'none'/i, // Vercel/platform report-only probe — not our enforcing CSP
+  /font-src 'none'/i,
+  /frame-src 'none'/i,
   /Failed to load resource.*favicon/i,
+  /ERR_BLOCKED_BY_CLIENT/i, // ad blockers (Sentry, etc.)
+  /runtime\.lastError/i, // browser extensions
 ];
 
 function isIgnoredConsoleMessage(text: string): boolean {

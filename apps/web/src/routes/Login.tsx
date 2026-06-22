@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, useAuth } from '../lib/supabase';
+import { consumeAuthReturnPath } from '../lib/authReturnPath';
 import { Logo } from '../components/Logo';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
@@ -42,6 +43,7 @@ function GoogleIcon() {
 
 export default function Login() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { startGuestSession } = useGuest();
   const { setUseMockData } = useMockData();
 
@@ -49,6 +51,12 @@ export default function Login() {
   const [sent, setSent]     = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      navigate(consumeAuthReturnPath(), { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleMagicLink = async () => {
     if (!email.trim()) return;
@@ -102,7 +110,7 @@ export default function Login() {
   const enterGuest = () => {
     setUseMockData(false);
     startGuestSession();
-    navigate('/home');
+    navigate(consumeAuthReturnPath());
   };
 
   return (

@@ -18,6 +18,7 @@ vi.mock('../../src/services/characterAuthorityService', () => ({
     resolveByName: vi.fn().mockResolvedValue({ characterId: null, confidence: 0, method: 'none' }),
     registerCharacterAuthority: vi.fn().mockResolvedValue(undefined),
     linkSourceRecord: vi.fn().mockResolvedValue(undefined),
+    registerAliasLink: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

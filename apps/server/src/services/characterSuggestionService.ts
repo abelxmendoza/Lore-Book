@@ -104,7 +104,7 @@ class CharacterSuggestionService {
     };
 
     try {
-      const [{ data: characters }, { data: omegaEntities }, { data: questions }, { data: indexRows }] =
+      const [{ data: characters }, { data: omegaEntities }, { data: questions }, { data: indexRows }, { data: authorityRows }] =
         await Promise.all([
           supabaseAdmin
             .from('characters')
@@ -132,7 +132,16 @@ class CharacterSuggestionService {
             .select('mention, character_id')
             .eq('user_id', userId)
             .limit(1000),
+          supabaseAdmin
+            .from('character_authority_map')
+            .select('source_id, source_table')
+            .eq('user_id', userId)
+            .eq('source_table', 'omega_entities'),
         ]);
+
+      const linkedOmegaIds = new Set<string>(
+        (authorityRows ?? []).map((row) => String(row.source_id ?? '')).filter(Boolean)
+      );
 
       const bookCharacterIds = new Set<string>();
       const allNames: string[] = [];
@@ -143,6 +152,8 @@ class CharacterSuggestionService {
         if (meta.is_self || meta.is_user) continue;
         if (c.status === 'archived') continue;
         bookCharacterIds.add(c.id);
+        const omegaEntityId = typeof meta.omega_entity_id === 'string' ? meta.omega_entity_id : '';
+        if (omegaEntityId) linkedOmegaIds.add(omegaEntityId);
         const aliases = Array.isArray(c.alias)
           ? c.alias.filter((a): a is string => typeof a === 'string')
           : [];
@@ -172,6 +183,7 @@ class CharacterSuggestionService {
         const mention = String(row.mention ?? '').trim();
         const linkedId = row.character_id;
         if (!mention || !linkedId || bookCharacterIds.has(linkedId)) continue;
+        if (resolveBookNameMatch(mention, bookExact, bookEntries).status !== 'new') continue;
         add({
           name: mention,
           mentionCount: 2,
@@ -182,6 +194,7 @@ class CharacterSuggestionService {
       }
 
       for (const e of omegaEntities ?? []) {
+        if (linkedOmegaIds.has(e.id)) continue;
         if (resolveBookNameMatch(e.primary_name, bookExact, bookEntries).status === 'existing') continue;
         const meta = (e.metadata as Record<string, unknown> | null) ?? {};
         add({

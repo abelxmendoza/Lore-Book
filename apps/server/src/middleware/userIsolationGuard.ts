@@ -12,6 +12,13 @@ type LeakFinding = {
 const USER_ID_KEYS = new Set(['user_id', 'userId']);
 const DEFAULT_MAX_SCAN_DEPTH = 8;
 
+/** Admin console routes are RBAC-gated and intentionally return cross-user aggregates. */
+export function shouldBypassUserIsolation(req: Pick<Request, 'path' | 'originalUrl'>): boolean {
+  const path = req.path ?? '';
+  const originalPath = (req.originalUrl ?? '').split('?')[0] ?? '';
+  return path.startsWith('/admin') || originalPath.startsWith('/api/admin');
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -62,7 +69,7 @@ export function userIsolationGuard(req: Request, res: Response, next: NextFuncti
   res.json = ((payload: JsonPayload) => {
     const expectedUserId = req.user?.id;
 
-    if (expectedUserId && res.statusCode < 400) {
+    if (expectedUserId && res.statusCode < 400 && !shouldBypassUserIsolation(req)) {
       try {
         assertPayloadOwnedByUser(payload, expectedUserId);
       } catch (error) {

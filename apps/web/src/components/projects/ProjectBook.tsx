@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
+import { fetchProjectById } from '../../lib/hydrateBookEntity';
+import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useProjectsBookData } from '../../store/hooks/useEntityBooks';
 import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
 import { ProjectDetailModal } from './ProjectDetailModal';
 import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { Button } from '../ui/button';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 
@@ -149,6 +152,7 @@ export const ProjectBook = () => {
   const [newName, setNewName] = useState('');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mergeBusy, setMergeBusy] = useState(false);
   const [active, setActive] = useState<ProjectCardData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -211,14 +215,24 @@ export const ProjectBook = () => {
   }, [projects, search, statusFilter, typeFilter]);
 
   useEffect(() => {
-    if (projects.length === 0) return;
-    const id = sessionStorage.getItem('highlightItem');
+    const id = consumeHighlightItemId();
     if (!id) return;
-    sessionStorage.removeItem('highlightItem');
-    const match = projects.find(
-      (p) => p.id === id || p.name.toLowerCase() === id.toLowerCase(),
-    );
-    if (match) setActive(match);
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveBookHighlightItem({
+        id,
+        items: projects,
+        match: (p, needle) =>
+          p.id === needle || p.name.toLowerCase() === needle.toLowerCase(),
+        fetchById: fetchProjectById,
+      });
+      if (!cancelled && resolved) setActive(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [projects]);
 
   // Reset to the first page whenever the result set changes.
@@ -292,9 +306,15 @@ export const ProjectBook = () => {
       return next;
     });
 
+  const selectedProjects = useMemo(
+    () => projects.filter((p) => selected.has(p.id)),
+    [projects, selected]
+  );
+
   const mergeInto = async (targetId: string, sourceIds: string[]) => {
     setNotice(null);
     setError(null);
+    setMergeBusy(true);
     try {
       if (isMockDataEnabled) {
         setDemoProjects((prev) => {
@@ -319,19 +339,32 @@ export const ProjectBook = () => {
         setNotice('Projects merged.');
         return;
       }
+      let mergedName = projects.find((p) => p.id === targetId)?.name ?? 'the selected project';
+      let reviewCount = 0;
       for (const source_id of sourceIds) {
         if (source_id === targetId) continue;
-        await fetchJson('/api/projects/merge', {
+        const result = await fetchJson<{
+          project?: ProjectCardData;
+          report?: { canonicalName?: string; reviewFlags?: string[] };
+        }>('/api/projects/merge', {
           method: 'POST',
           body: JSON.stringify({ source_id, target_id: targetId, reason: 'Merged from Projects Book' }),
         });
+        mergedName = result.project?.name ?? result.report?.canonicalName ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
       setSelectionMode(false);
       setSelected(new Set());
-      setNotice('Projects merged.');
+      setNotice(
+        reviewCount > 0
+          ? mergeNoticeWithReview(mergedName, reviewCount, 'combined tags, links, and knowledge')
+          : mergeNoticeWithReview(mergedName, 0, 'combined tags, links, and knowledge')
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Merge failed');
+    } finally {
+      setMergeBusy(false);
     }
   };
 
@@ -464,15 +497,21 @@ export const ProjectBook = () => {
         <div className="mb-5 sm:mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 sm:p-4">
           <div className="text-sm font-medium text-amber-300 mb-2">Possible duplicates</div>
           {duplicateGroups.map((g, i) => (
-            <div key={i} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 py-2 sm:py-1.5 text-sm border-t border-amber-500/10 first:border-t-0 first:pt-0">
+            <div key={i} className="flex flex-col gap-2 py-2 sm:py-1.5 text-sm border-t border-amber-500/10 first:border-t-0 first:pt-0">
               <span className="text-white/70 leading-snug">{g.projects.map((p) => p.name).join(' · ')}</span>
-              <button
-                type="button"
-                onClick={() => mergeInto(g.projects[0].id, g.projects.slice(1).map((p) => p.id))}
-                className="sm:ml-auto text-xs rounded-lg border border-amber-500/40 px-3 py-2 sm:px-2.5 sm:py-1 text-amber-200 hover:bg-amber-500/10 w-full sm:w-auto min-h-[44px] sm:min-h-0 touch-manipulation"
-              >
-                Merge into {g.projects[0].name}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {g.projects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={mergeBusy}
+                    onClick={() => mergeInto(p.id, g.projects.filter((x) => x.id !== p.id).map((x) => x.id))}
+                    className="text-xs rounded-lg border border-amber-500/40 px-3 py-2 sm:px-2.5 sm:py-1 text-amber-200 hover:bg-amber-500/10 min-h-[44px] sm:min-h-0 touch-manipulation"
+                  >
+                    Keep {p.name}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -614,24 +653,16 @@ export const ProjectBook = () => {
         />
       )}
 
-      {selectionMode && selected.size >= 2 && (
-        <div
-          className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 bottom-0 sm:bottom-6 z-50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 rounded-2xl border border-primary/40 bg-gray-950/95 backdrop-blur px-4 sm:px-5 py-3 shadow-2xl"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
-        >
-          <span className="text-sm text-white/70 text-center sm:text-left">{selected.size} selected</span>
-          <button
-            type="button"
-            onClick={() => {
-              const ids = Array.from(selected);
-              mergeInto(ids[0], ids.slice(1));
-            }}
-            className="rounded-xl bg-primary px-4 py-2.5 sm:py-2 text-sm font-medium text-white hover:bg-primary/90 min-h-[44px] sm:min-h-0 touch-manipulation truncate"
-          >
-            Merge into {projects.find((p) => p.id === Array.from(selected)[0])?.name}
-          </button>
-        </div>
-      )}
+      <MergeKeepSelectionBar
+        visible={selectionMode && selected.size >= 2}
+        selectedCount={selected.size}
+        options={selectedProjects.map((project) => ({ id: project.id, name: project.name }))}
+        busy={mergeBusy}
+        onKeep={(targetId) => {
+          const sourceIds = selectedProjects.filter((p) => p.id !== targetId).map((p) => p.id);
+          void mergeInto(targetId, sourceIds);
+        }}
+      />
     </div>
   );
 };

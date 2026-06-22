@@ -50,6 +50,12 @@ export type CharacterCardAuditReport = {
 
 export const characterCardAuditApi = {
   get: () => fetchJson<CharacterCardAuditReport>('/api/characters/card-audit'),
+
+  resolveKeep: (characterId: string) =>
+    fetchJson<{ success: boolean }>(`/api/characters/card-audit/review/${characterId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'keep' }),
+    }),
   apply: (opts?: { dryRun?: boolean }) =>
     fetchJson<{ success: boolean; report: CharacterCardCleanupReport }>(
       '/api/characters/card-audit/apply',

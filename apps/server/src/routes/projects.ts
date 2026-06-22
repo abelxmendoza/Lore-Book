@@ -36,7 +36,12 @@ router.post('/merge', requireAuth, asyncHandler(async (req: AuthenticatedRequest
     res.status(400).json({ error: 'Invalid merge request', details: parsed.error.flatten() });
     return;
   }
-  const report = await projectMergeService.merge(req.user!.id, parsed.data.source_id, parsed.data.target_id);
+  const report = await projectMergeService.merge(
+    req.user!.id,
+    parsed.data.source_id,
+    parsed.data.target_id,
+    { reason: parsed.data.reason }
+  );
   const project = await projectService.getProject(req.user!.id, parsed.data.target_id);
   res.json({ merged: true, report, project });
 }));
@@ -230,6 +235,20 @@ router.post('/suggestions/:id/confirm', requireAuth, asyncHandler(async (req: Au
 router.post('/suggestions/:id/reject', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
   await projectSuggestionService.rejectSuggestion(req.user!.id, String(req.params.id));
   res.json({ success: true });
+}));
+
+// GET /api/projects/:id — full row for modals and deep links (after static paths)
+router.get('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const canonicalId =
+    (await projectMergeService.resolveCanonicalProjectId(userId, String(req.params.id))) ??
+    String(req.params.id);
+  const project = await projectService.getProject(userId, canonicalId);
+  if (!project) {
+    res.status(404).json({ error: 'Project not found' });
+    return;
+  }
+  res.json({ project });
 }));
 
 export const projectsRouter = router;

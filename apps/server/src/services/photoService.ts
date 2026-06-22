@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
@@ -6,10 +5,7 @@ import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 import { memoryService } from './memoryService';
-
-const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: { persistSession: false }
-});
+import { supabaseAdmin as supabase } from './supabaseClient';
 
 export type PhotoMetadata = {
   latitude?: number;

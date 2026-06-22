@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, GitMerge, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import type { LocationProfile } from './LocationProfileCard';
 
 export type LocationDuplicateGroup = {
@@ -124,6 +125,7 @@ export const LocationMergePanel = ({
     try {
       const sources = group.locations.filter(loc => loc.id !== targetId);
       let mergedName = group.locations.find(loc => loc.id === targetId)?.name ?? 'the selected place';
+      let reviewCount = 0;
       if (demoMode) {
         setMergeNotice(
           `Demo merge preview: consolidated ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}.`
@@ -133,7 +135,7 @@ export const LocationMergePanel = ({
         return;
       }
       for (const source of sources) {
-        const result = await fetchJson<{ location?: { name?: string } | null; report?: { canonicalName?: string } }>(
+        const result = await fetchJson<{ location?: { name?: string } | null; report?: { canonicalName?: string; reviewFlags?: string[] } }>(
           '/api/locations/merge',
           {
             method: 'POST',
@@ -145,10 +147,17 @@ export const LocationMergePanel = ({
           }
         );
         mergedName = result.location?.name ?? result.report?.canonicalName ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
       await loadDuplicateGroups();
       onMerged();
-      setMergeNotice(`Merged ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}.`);
+      setMergeNotice(
+        mergeNoticeWithReview(
+          mergedName,
+          reviewCount,
+          `consolidated ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'}`
+        )
+      );
     } catch (error) {
       setMergeError(error instanceof Error ? error.message : 'Failed to merge duplicate places');
     } finally {
@@ -164,6 +173,7 @@ export const LocationMergePanel = ({
     setMergeNotice(null);
     try {
       let mergedName = locations.find(loc => loc.id === targetId)?.name ?? 'the selected place';
+      let reviewCount = 0;
       if (demoMode) {
         mergeLocationsLocally(locations, targetId, sources);
         cancelManualMerge();
@@ -172,7 +182,7 @@ export const LocationMergePanel = ({
         return;
       }
       for (const sourceId of sources) {
-        const result = await fetchJson<{ location?: { name?: string } | null; report?: { canonicalName?: string } }>(
+        const result = await fetchJson<{ location?: { name?: string } | null; report?: { canonicalName?: string; reviewFlags?: string[] } }>(
           '/api/locations/merge',
           {
             method: 'POST',
@@ -184,11 +194,18 @@ export const LocationMergePanel = ({
           }
         );
         mergedName = result.location?.name ?? result.report?.canonicalName ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
       cancelManualMerge();
       await loadDuplicateGroups();
       onMerged();
-      setMergeNotice(`Merged ${sources.length + 1} selected cards into ${mergedName}.`);
+      setMergeNotice(
+        mergeNoticeWithReview(
+          mergedName,
+          reviewCount,
+          `combined ${sources.length + 1} selected cards`
+        )
+      );
     } catch (error) {
       setMergeError(error instanceof Error ? error.message : 'Failed to merge selected places');
     } finally {
@@ -262,24 +279,16 @@ export const LocationMergePanel = ({
               {mergeError}
             </div>
           )}
-          {selectedLocations.length >= 2 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedLocations.map(location => (
-                <Button
-                  key={location.id}
-                  size="sm"
-                  disabled={mergeBusy}
-                  onClick={() => void mergeSelectedLocations(location.id)}
-                  leftIcon={<GitMerge className="h-3.5 w-3.5" />}
-                  className="text-xs"
-                >
-                  Keep {location.name}
-                </Button>
-              ))}
-            </div>
-          )}
         </div>
       )}
+
+      <MergeKeepSelectionBar
+        visible={selectionMode && selectedLocations.length >= 2}
+        selectedCount={selectedLocations.length}
+        options={selectedLocations.map((location) => ({ id: location.id, name: location.name }))}
+        busy={mergeBusy}
+        onKeep={(targetId) => void mergeSelectedLocations(targetId)}
+      />
 
       {showMergeDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
@@ -349,7 +358,7 @@ export const LocationMergePanel = ({
                             onClick={() => void mergeDuplicateGroup(group, location.id)}
                             leftIcon={<GitMerge className="h-3.5 w-3.5" />}
                           >
-                            Keep this
+                            Keep {location.name}
                           </Button>
                         </div>
                       );

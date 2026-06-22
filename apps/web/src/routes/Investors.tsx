@@ -7,186 +7,278 @@ import { CTASection } from '../components/landing/CTASection';
 import { FounderContact } from '../components/landing/FounderContact';
 import { CONTACT_MAILTO } from '../lib/contact';
 import {
-  TrendingUp,
-  Shield,
-  Zap,
+  ArrowRight,
+  BrainCircuit,
+  CheckCircle2,
+  FileSearch,
+  Gauge,
+  GitBranch,
+  Handshake,
+  LockKeyhole,
+  Network,
+  Server,
   Target,
-  Database,
-  DollarSign,
-  BarChart3,
-  Rocket,
-  Code,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
+
+const proofPoints = [
+  {
+    label: 'Core wedge',
+    value: 'Memory with receipts',
+    detail: 'Every important claim is grounded to source evidence, confidence, and provenance.',
+  },
+  {
+    label: 'Product stage',
+    value: 'Production app',
+    detail: 'Live web app, auth, privacy pages, memory graph, and ChatGPT MCP submission assets.',
+  },
+  {
+    label: 'Go-to-market',
+    value: 'Founder-led beta',
+    detail: 'Focused on users importing real history and testing recall, correction, and continuity.',
+  },
+];
+
+const milestones = [
+  'Instrument cost per message, recall hit rate, ingestion success, and activation.',
+  'Ship durable memory ingestion so the core loop survives deploys and restarts.',
+  'Complete ChatGPT app review for read-only memory retrieval.',
+  'Run a narrow beta around imported histories and weekly continuity summaries.',
+];
 
 export default function Investors() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,#050505,#101114_48%,#050505)]">
       <LandingHeader />
       
       <main className="pt-20">
         {/* Hero */}
-        <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-6 px-2 sm:px-0">
-              Building the Future of <span className="text-cyan-400">Personal Memory Systems</span>
+        <section className="px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div>
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-950/20 px-3 py-1.5 text-xs font-medium text-cyan-200 sm:text-sm">
+                <TrendingUp className="h-4 w-4" />
+                Investor brief
+              </div>
+              <h1 className="max-w-4xl text-3xl font-bold tracking-normal text-white sm:text-4xl md:text-5xl lg:text-6xl">
+                LoreBook is building trustworthy memory infrastructure for personal AI.
             </h1>
-            <p className="text-base sm:text-lg md:text-xl text-white/70 mb-6 sm:mb-8 px-4 sm:px-0">
-              LoreBook is positioned at the intersection of AI, personal data, and digital immortality.
-              We're building the infrastructure for how people will preserve and understand their life stories.
-            </p>
-            <div className="inline-flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-cyan-500/30 bg-cyan-950/20">
-              <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" />
-              <span className="text-xs sm:text-sm md:text-base text-cyan-400 font-medium">Early Stage • Seeking Investment</span>
+              <p className="mt-5 max-w-3xl text-base leading-relaxed text-white/70 sm:text-lg md:text-xl">
+                The problem is not whether AI can remember. The problem is whether users can trust what it remembers.
+                LoreBook turns conversations, imports, and life events into a provenance-aware graph that can be searched,
+                corrected, and cited before an assistant answers.
+              </p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={CONTACT_MAILTO}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-5 py-3 text-sm font-semibold text-black transition hover:bg-cyan-400"
+                >
+                  Request investor materials
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+                <a
+                  href="#thesis"
+                  className="inline-flex items-center justify-center rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold text-white/80 transition hover:border-white/30 hover:bg-white/5"
+                >
+                  Read the thesis
+                </a>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+              {proofPoints.map((point) => (
+                <div key={point.label} className="rounded-lg border border-white/10 bg-black/45 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/70">{point.label}</p>
+                  <p className="mt-2 text-xl font-semibold text-white">{point.value}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-white/60">{point.detail}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* Market Opportunity */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Market Opportunity</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-              <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-4 sm:p-6 text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-cyan-400 mb-2">$2.5B+</div>
-                <div className="text-sm sm:text-base text-white/70">Journaling & Personal Development Market</div>
-              </div>
-              <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-4 sm:p-6 text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-cyan-400 mb-2">$50B+</div>
-                <div className="text-sm sm:text-base text-white/70">AI & Personal Data Market</div>
-              </div>
-              <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-4 sm:p-6 text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-cyan-400 mb-2">Growing</div>
-                <div className="text-sm sm:text-base text-white/70">Digital Immortality & Legacy Market</div>
-              </div>
+        {/* Thesis */}
+        <section id="thesis" className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-bold text-white sm:text-3xl">Why LoreBook can matter</h2>
+              <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                Assistant memory is becoming a platform primitive. Most products treat memory as a hidden preference store.
+                LoreBook treats memory as an inspectable system of record: what happened, who was involved, what changed,
+                what is uncertain, and which source supports the answer.
+              </p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8">
-              <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">The Opportunity</h3>
-              <p className="text-sm sm:text-base text-white/70 leading-relaxed mb-3 sm:mb-4">
-                Traditional journaling apps capture fragments—dates and events—but miss the deeper essence of who people are.
-                As AI becomes more capable and people become more aware of their digital legacy, there's a massive opportunity
-                to build the infrastructure for personal memory systems.
-              </p>
-              <p className="text-sm sm:text-base text-white/70 leading-relaxed">
-                LoreBook is positioned as the first-mover in AI-powered life story management with automatic biography generation,
-                continuity intelligence, and digital preservation capabilities. We're building for a future where people expect
-                their AI systems to understand their complete life narrative.
-              </p>
+            <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+              <FeatureCard
+                icon={FileSearch}
+                title="Provenance as the wedge"
+                description="Answers can point back to journal entries, imported history, source IDs, and confidence labels instead of asking users to trust a black-box memory."
+              />
+              <FeatureCard
+                icon={GitBranch}
+                title="Correction loop"
+                description="A personal memory system must be wrong gracefully. LoreBook is designed around review, contradiction handling, and user-controlled canon."
+              />
+              <FeatureCard
+                icon={Network}
+                title="Life graph, not notes"
+                description="People, places, projects, events, relationships, and claims become connected memory objects that can be searched and reused across assistants."
+              />
             </div>
           </div>
         </section>
 
-        {/* Technology Differentiators */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-black/20">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Technology Differentiators</h2>
+        {/* Product */}
+        <section className="bg-black/25 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-white sm:text-3xl">The product wedge</h2>
+              <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                LoreBook starts with a high-intent user job: import or capture personal history, then ask questions that
+                require continuity. The product wins when a user can ask "what happened, what changed, and why do you think
+                that?" and get an answer with receipts.
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FeatureCard
-                icon={Zap}
-                title="Compiler-Inspired Architecture"
-                description="LoreBook Narrative Compiler (LNC) provides epistemic safety, incremental compilation, and deterministic entity resolution. This is not just an app—it's a compiler for life stories."
+                icon={BrainCircuit}
+                title="Conversation in, lasting memory out"
+                description="Chat and imports feed a structured autobiographical graph instead of disappearing into an uninspectable transcript."
               />
               <FeatureCard
-                icon={Database}
-                title="Cost-Optimized Operations"
-                description="Rule-based extraction, aggressive caching, and efficient algorithms ensure 10-100x faster operations than traditional approaches. Free operations for users, low infrastructure costs."
+                icon={CheckCircle2}
+                title="Grounded assistant responses"
+                description="The response compiler treats assistant claims as non-authoritative until they are grounded, labeled as inference, or rejected."
               />
               <FeatureCard
-                icon={Shield}
-                title="Enterprise Security from Day One"
-                description="CSRF protection, encryption, GDPR compliance, comprehensive security testing. Built with security and privacy as core principles, not afterthoughts."
+                icon={Server}
+                title="ChatGPT app distribution"
+                description="A production MCP server exposes five read-only tools for memory search, entity lookup, timeline retrieval, and relationship inspection."
               />
               <FeatureCard
-                icon={Code}
-                title="Production-Ready Foundation"
-                description="Comprehensive testing (unit, integration, E2E), CI/CD pipeline, code quality enforcement. Not a prototype—a production-ready system with enterprise-grade infrastructure."
+                icon={LockKeyhole}
+                title="Private by design"
+                description="The current external integration is read-only, OAuth-scoped, and centered on user-owned memory rather than public posting or background mutation."
               />
             </div>
           </div>
         </section>
 
-        {/* Business Model */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Business Model</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-              <div className="rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8">
-                <div className="flex items-center space-x-3 mb-3 sm:mb-4">
-                  <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-                  <h3 className="text-lg sm:text-xl font-semibold text-white">Freemium Model</h3>
-                </div>
-                <p className="text-sm sm:text-base text-white/70 leading-relaxed mb-3 sm:mb-4">
-                  Free tier with core features (journaling, basic AI chat, timeline). Premium subscriptions
-                  for advanced features (biography generation, advanced analytics, priority support).
+        {/* Business Model and Market */}
+        <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-1">
+                <h2 className="text-2xl font-bold text-white sm:text-3xl">Business model</h2>
+                <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                  The near-term model is direct subscription revenue from power users who need memory continuity,
+                  followed by team, family, creator, and professional workflows once the core trust metrics are proven.
                 </p>
-                <ul className="space-y-1.5 sm:space-y-2 text-sm sm:text-base text-white/70">
-                  <li>• Free: Core features</li>
-                  <li>• Premium: Advanced features ($9-19/month)</li>
-                  <li>• Enterprise: Custom solutions for organizations</li>
-                </ul>
               </div>
-              <div className="rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8">
-                <div className="flex items-center space-x-3 mb-3 sm:mb-4">
-                  <Target className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-                  <h3 className="text-lg sm:text-xl font-semibold text-white">Future Revenue Streams</h3>
+              <div className="grid gap-5 md:grid-cols-3 lg:col-span-2">
+                <div className="rounded-lg border border-white/10 bg-black/40 p-5">
+                  <Users className="h-6 w-6 text-cyan-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Consumer pro</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Paid memory, import, recall, summaries, and advanced continuity features for individual users.
+                  </p>
                 </div>
-                <ul className="space-y-1.5 sm:space-y-2 text-sm sm:text-base text-white/70">
-                  <li>• API access for developers</li>
-                  <li>• White-label solutions for therapists, coaches, organizations</li>
-                  <li>• Data export and digital immortality services</li>
-                  <li>• Enterprise partnerships (healthcare, education, research)</li>
-                </ul>
+                <div className="rounded-lg border border-white/10 bg-black/40 p-5">
+                  <Handshake className="h-6 w-6 text-emerald-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Professional use</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Therapists, coaches, writers, and founders need structured context that remains user-controlled.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/40 p-5">
+                  <Target className="h-6 w-6 text-amber-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Memory API</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Long-term opportunity: trustworthy personal-memory infrastructure for other AI surfaces.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Traction & Metrics */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-black/20">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Current Status</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 sm:p-6 text-center">
-                <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 text-primary mx-auto mb-2 sm:mb-3" />
-                <div className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">v0.1.0</div>
-                <div className="text-xs sm:text-sm text-white/60">Production Version</div>
+        {/* Readiness */}
+        <section className="bg-black/25 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <h2 className="text-2xl font-bold text-white sm:text-3xl">What is ready now</h2>
+                <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                  LoreBook has enough product and infrastructure to run diligence around the core loop. The next phase is
+                  not more surface area; it is measured retention, reliability, and cost.
+                </p>
               </div>
-              <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 sm:p-6 text-center">
-                <Code className="h-6 w-6 sm:h-8 sm:w-8 text-primary mx-auto mb-2 sm:mb-3" />
-                <div className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">100%</div>
-                <div className="text-xs sm:text-sm text-white/60">Security Test Coverage</div>
-              </div>
-              <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 sm:p-6 text-center">
-                <Shield className="h-6 w-6 sm:h-8 sm:w-8 text-primary mx-auto mb-2 sm:mb-3" />
-                <div className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">Enterprise</div>
-                <div className="text-xs sm:text-sm text-white/60">Security Grade</div>
-              </div>
-              <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 sm:p-6 text-center">
-                <Zap className="h-6 w-6 sm:h-8 sm:w-8 text-primary mx-auto mb-2 sm:mb-3" />
-                <div className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">10-100x</div>
-                <div className="text-xs sm:text-sm text-white/60">Performance Boost</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-black/45 p-5">
+                  <FileSearch className="h-6 w-6 text-cyan-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Memory graph</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Entities, claims, relationships, timelines, and provenance are represented as durable product concepts.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/45 p-5">
+                  <BrainCircuit className="h-6 w-6 text-emerald-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Response compiler</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Assistant output is checked against evidence so LoreBook can separate known facts from inference.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/45 p-5">
+                  <Server className="h-6 w-6 text-amber-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">MCP integration</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Production OAuth and read-only memory tools are prepared for ChatGPT app review.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/45 p-5">
+                  <Gauge className="h-6 w-6 text-rose-300" />
+                  <h3 className="mt-4 text-lg font-semibold text-white">Next metrics</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    The immediate diligence gap is quantified activation, recall accuracy, ingestion reliability, and unit cost.
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="mt-6 sm:mt-8 rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8">
-              <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">What We've Built</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-sm sm:text-base text-white/70">
-                <div>✅ Production-ready application with full feature set</div>
-                <div>✅ Enterprise-grade security and privacy infrastructure</div>
-                <div>✅ Comprehensive testing suite (unit, integration, E2E)</div>
-                <div>✅ CI/CD pipeline and code quality enforcement</div>
-                <div>✅ Compiler-inspired architecture (LNC)</div>
-                <div>✅ Cost-optimized operations</div>
-                <div>✅ Multi-persona AI system</div>
-                <div>✅ Automatic biography and timeline generation</div>
+          </div>
+        </section>
+
+        {/* Roadmap */}
+        <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr]">
+              <div>
+                <h2 className="text-2xl font-bold text-white sm:text-3xl">Fundraising focus</h2>
+                <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                  The right capital helps convert a technically differentiated system into a narrow, measurable product wedge.
+                  The next milestones are intentionally concrete.
+                </p>
+              </div>
+              <div className="grid gap-3">
+                {milestones.map((milestone, index) => (
+                  <div key={milestone} className="flex gap-4 rounded-lg border border-white/10 bg-black/40 p-4">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-500/15 text-sm font-semibold text-cyan-200">
+                      {index + 1}
+                    </div>
+                    <p className="pt-1 text-sm leading-relaxed text-white/75 sm:text-base">{milestone}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </section>
 
         {/* Team */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>
-            <div className="rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8 max-w-3xl mx-auto">
+        <section className="bg-black/25 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <h2 className="mb-6 text-2xl font-bold text-white sm:mb-8 sm:text-3xl">Founder</h2>
+            <div className="max-w-4xl rounded-lg border border-white/10 bg-black/45 p-5 sm:p-6 md:p-8">
               <div className="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-6">
                 <img
                   src="/branding/mePro.JPG"
@@ -196,12 +288,12 @@ export default function Investors() {
                 <div className="flex-1 text-center sm:text-left">
                   <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">Abel Mendoza</h3>
                   <p className="text-sm sm:text-base text-white/70 mb-3 sm:mb-4">
-                    Founder & Lead Developer. Crafting AI-first storytelling infrastructure with care for privacy and agency.
-                    Building LoreBook as a lifelong digital companion that understands complete life stories.
+                    Founder and lead developer. Building LoreBook from the conviction that personal AI needs an explicit,
+                    inspectable memory layer before it can become a durable companion or professional tool.
                   </p>
                   <p className="text-sm sm:text-base text-white/70">
-                    <strong className="text-white">Vision:</strong> To give people self-awareness, continuity, identity clarity,
-                    and a long-term companion that understands the story they're living.
+                    <strong className="text-white">Current priority:</strong> narrow the product around reliable recall,
+                    trusted provenance, and measurable user activation.
                   </p>
                   <FounderContact className="text-center sm:text-left" />
                 </div>
@@ -210,24 +302,36 @@ export default function Investors() {
           </div>
         </section>
 
-        {/* Investment Ask */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-black/20">
-          <div className="max-w-4xl mx-auto">
-            <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-4 sm:p-6 md:p-8 text-center">
-              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3 sm:mb-4 px-2 sm:px-0">Interested in Investing?</h2>
-              <p className="text-base sm:text-lg md:text-xl text-white/70 mb-6 sm:mb-8 px-2 sm:px-0">
-                We're seeking strategic investors who understand the future of personal AI, digital legacy, and memory systems.
-                Join us in building the infrastructure for how people will preserve and understand their life stories.
-              </p>
-              <div className="space-y-3 sm:space-y-4">
-                <p className="text-sm sm:text-base text-white/80">
-                  <strong className="text-cyan-400">What We're Looking For:</strong>
+        {/* Partner Fit */}
+        <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-1">
+                <h2 className="text-2xl font-bold text-white sm:text-3xl">Best-fit investors</h2>
+                <p className="mt-4 text-sm leading-relaxed text-white/70 sm:text-base">
+                  LoreBook is best matched with investors who are comfortable with early technical depth and can help turn
+                  the memory wedge into a focused market entry.
                 </p>
-                <ul className="text-sm sm:text-base text-white/70 space-y-2 max-w-2xl mx-auto text-left px-4 sm:px-0">
-                  <li>• Strategic investors with expertise in AI, personal data, or consumer SaaS</li>
-                  <li>• Investors who understand the digital immortality and legacy market</li>
-                  <li>• Partners who can help with distribution, partnerships, or technical expertise</li>
-                </ul>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3 lg:col-span-2">
+                <div className="rounded-lg border border-cyan-400/20 bg-cyan-950/15 p-5">
+                  <h3 className="text-lg font-semibold text-white">AI infrastructure</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Investors who understand memory, agents, retrieval, data rights, and model reliability.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-950/15 p-5">
+                  <h3 className="text-lg font-semibold text-white">Consumer SaaS</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Operators who can help with activation, retention, pricing, onboarding, and lifecycle loops.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-amber-400/20 bg-amber-950/15 p-5">
+                  <h3 className="text-lg font-semibold text-white">Distribution</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Partners with access to creators, founders, coaches, therapists, or knowledge workers.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -235,15 +339,15 @@ export default function Investors() {
 
         {/* Contact CTA */}
         <CTASection
-          title="Let's Build the Future Together"
-          description="Contact us to learn more about investment opportunities, partnerships, or how LoreBook can transform personal memory systems."
+          title="Request the investor memo"
+          description="Contact LoreBook for the current deck, product demo, technical diligence notes, and fundraising conversation."
           primaryAction={{
-            label: 'Contact Us',
+            label: 'Contact Founder',
             path: CONTACT_MAILTO,
           }}
           secondaryAction={{
-            label: 'View Features',
-            path: '/features',
+            label: 'Explore Product',
+            path: '/',
           }}
           variant="investor"
         />

@@ -6,8 +6,7 @@ import { AuthGate } from './AuthGate';
 import { WelcomeSplash } from './common/WelcomeSplash';
 import { resetWelcomeSplash } from '../lib/welcomeSplash';
 
-// Guest/demo runtime: needs neither auth nor terms — this is the early-return
-// path in AuthGate that must still mount the welcome splash.
+// Guest/demo runtime: needs neither auth nor terms — enters only after explicit guest/demo choice.
 vi.mock('../hooks/useRuntimeIdentity', () => ({
   useRuntimeIdentity: () => ({
     needsAuth: false,

@@ -1,16 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
 import { config } from '../config';
 import { stripeGuard } from '../lib/externalCircuitBreaker';
 import { logger } from '../logger';
 
-import { supabaseAdmin } from './supabaseClient';
-
-
-const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: { persistSession: false }
-});
+import { supabaseAdmin as supabase } from './supabaseClient';
 
 // Initialize Stripe client
 let stripe: Stripe | null = null;

@@ -45,3 +45,8 @@ export function isAdminRoutePath(pathname: string): boolean {
 export function isDevConsoleRoutePath(pathname: string): boolean {
   return pathname === DEV_CONSOLE_ROUTE || pathname.startsWith(`${DEV_CONSOLE_ROUTE}/`);
 }
+
+/** App shell (/home, /chat, …) requires auth, guest entry, or demo — not a cold anonymous visit. */
+export function isAppShellRoutePath(pathname: string): boolean {
+  return !isPublicRoutePath(pathname) && !isDevConsoleRoutePath(pathname);
+}

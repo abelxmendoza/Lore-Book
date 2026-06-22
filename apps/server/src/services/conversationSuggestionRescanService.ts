@@ -25,6 +25,8 @@ import type { EmotionInferenceRunSummary } from './emotion/emotionInferenceInteg
 import type { PreferenceInferenceRunSummary } from './preferences/preferenceInferenceIntegrationService';
 import type { MediaInferenceRunSummary } from './media/mediaInferenceIntegrationService';
 import type { StatusInferenceRunSummary } from './status/statusInferenceIntegrationService';
+import type { ProvenanceInferenceRunSummary } from './provenance/provenanceInferenceIntegrationService';
+import type { TruthStateRunSummary } from './truthState/truthStateIntegrationService';
 
 export type SuggestionDomain =
   | 'characters'
@@ -60,6 +62,8 @@ export type SuggestionRescanSummary = {
   preferenceInference?: PreferenceInferenceRunSummary;
   mediaInference?: MediaInferenceRunSummary;
   statusInference?: StatusInferenceRunSummary;
+  provenanceInference?: ProvenanceInferenceRunSummary;
+  truthState?: TruthStateRunSummary;
 };
 
 async function loadRecentCorpus(userId: string): Promise<Array<{ content: string; date: string }>> {
@@ -324,7 +328,35 @@ class ConversationSuggestionRescanService {
       logger.warn({ err, userId }, 'Status inference rescan failed (non-blocking)');
     }
 
-    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference, preferenceInference, mediaInference, statusInference };
+    let provenanceInference: ProvenanceInferenceRunSummary | undefined;
+    try {
+      const { rescanProvenanceInference } = await import('./provenance/provenanceInferenceIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `prov-rescan-${i}`,
+        text: e.content,
+        authorRole: 'user' as const,
+      }));
+      provenanceInference = await rescanProvenanceInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Provenance inference rescan failed (non-blocking)');
+    }
+
+    let truthState: TruthStateRunSummary | undefined;
+    try {
+      const { rescanTruthState } = await import('./truthState/truthStateIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `truth-rescan-${i}`,
+        text: e.content,
+        authorRole: 'user' as const,
+      }));
+      truthState = await rescanTruthState(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Truth-state rescan failed (non-blocking)');
+    }
+
+    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference, preferenceInference, mediaInference, statusInference, provenanceInference, truthState };
   }
 }
 

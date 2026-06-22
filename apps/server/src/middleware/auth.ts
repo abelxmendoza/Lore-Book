@@ -1,7 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import type { AuthUser } from '../types/runtime/express';
 import { logSecurityEvent, redactSensitive } from '../services/securityLog';
 
@@ -12,12 +13,10 @@ export type { AuthUser };
 let _devBypassLogged = false;
 
 // Only create Supabase client if config is available
-let supabase: ReturnType<typeof createClient> | null = null;
+let supabase: SupabaseClient | null = null;
 try {
   if (config.supabaseUrl && config.supabaseServiceRoleKey) {
-    supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-      auth: { persistSession: false }
-    });
+    supabase = createServerSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey);
   }
 } catch (error) {
   // Supabase client creation failed, will use dev mode

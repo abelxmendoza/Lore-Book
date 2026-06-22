@@ -10,6 +10,11 @@ import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
+import {
+  collectNameKeys,
+  flagMergedTextSnippets,
+  withMergeReviewMetadata,
+} from '../utils/mergeReview';
 
 interface OrgRow {
   id: string;
@@ -36,6 +41,9 @@ export interface OrgMergeReport {
   members_moved: number;
   members_deduped: number;
   records_moved: number;
+  facts_moved: number;
+  attributes_moved: number;
+  reviewFlags: string[];
 }
 
 class OrganizationMergeService {
@@ -160,6 +168,9 @@ class OrganizationMergeService {
       members_moved: 0,
       members_deduped: 0,
       records_moved: 0,
+      facts_moved: 0,
+      attributes_moved: 0,
+      reviewFlags: [],
     };
 
     const { data: primary } = await supabaseAdmin
@@ -174,6 +185,7 @@ class OrganizationMergeService {
     let metadata: Record<string, unknown> = { ...(primary.metadata ?? {}) };
     let usage = primary.usage_count ?? 0;
     let description: string | undefined = primary.description ?? undefined;
+    const absorbedNames: string[] = [];
 
     for (const dupId of duplicateIds) {
       if (dupId === primaryId) continue;
@@ -184,7 +196,10 @@ class OrganizationMergeService {
         .eq('user_id', userId)
         .single();
       if (!dup) continue;
+      absorbedNames.push(dup.name);
 
+      await this.mergeEntityFacts(userId, dupId, primaryId, report);
+      await this.mergeEntityAttributes(userId, dupId, primaryId, report);
       // Members: move those not already present (by name), delete exact dupes.
       const primaryNames = new Set(
         ((await supabaseAdmin.from('organization_members').select('character_name').eq('organization_id', primaryId)).data ?? [])
@@ -226,12 +241,26 @@ class OrganizationMergeService {
       metadata = { ...(dup.metadata ?? {}), ...metadata };
       if (!description || (dup.description && dup.description.length > description.length)) {
         description = dup.description ?? description;
+      } else if (dup.description) {
+        description = [description, dup.description].filter(Boolean).join('\n\n');
       }
       usage += dup.usage_count ?? 0;
 
       await supabaseAdmin.from('organizations').delete().eq('id', dupId).eq('user_id', userId);
       report.merged_ids.push(dupId);
     }
+
+    const sourceKeys = new Set<string>();
+    for (const name of absorbedNames) {
+      collectNameKeys(name, normalizeNameKey(name), [...aliases]).forEach((key) => sourceKeys.add(key));
+    }
+    const survivorKeys = collectNameKeys(primary.name, normalizeNameKey(primary.name), [...aliases]);
+    report.reviewFlags = flagMergedTextSnippets([description], sourceKeys, survivorKeys);
+    metadata = withMergeReviewMetadata(
+      metadata,
+      report.reviewFlags,
+      'Some merged text may refer only to the absorbed group name — review on the group card.'
+    );
 
     // Persist combined identity onto the primary.
     const { count: memberCount } = await supabaseAdmin
@@ -262,12 +291,85 @@ class OrganizationMergeService {
         newValue: { id: primaryId, canonical_name: primary.name, aliases: [...aliases].filter(a => a && a !== primary.name) },
         reason: `Merged ${report.merged_ids.length} organization(s) into "${primary.name}"`,
         source: 'USER',
-        metadata: { primaryId, mergedIds: report.merged_ids },
+        metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags },
       });
     }
 
     logger.info({ userId, ...report }, 'Merged organizations');
     return report;
+  }
+
+  private async mergeEntityFacts(
+    userId: string,
+    sourceId: string,
+    targetId: string,
+    report: OrgMergeReport
+  ): Promise<void> {
+    const [{ data: sourceRows }, { data: targetRows }] = await Promise.all([
+      supabaseAdmin
+        .from('entity_facts')
+        .select('id, fact')
+        .eq('user_id', userId)
+        .eq('entity_type', 'organization')
+        .eq('entity_id', sourceId),
+      supabaseAdmin
+        .from('entity_facts')
+        .select('fact')
+        .eq('user_id', userId)
+        .eq('entity_type', 'organization')
+        .eq('entity_id', targetId),
+    ]);
+    const targetFacts = new Set((targetRows ?? []).map((r: { fact: string }) => normalizeNameKey(r.fact ?? '')));
+    for (const row of (sourceRows ?? []) as Array<{ id: string; fact: string }>) {
+      if (targetFacts.has(normalizeNameKey(row.fact ?? ''))) {
+        await supabaseAdmin.from('entity_facts').delete().eq('id', row.id);
+      } else {
+        const { error } = await supabaseAdmin
+          .from('entity_facts')
+          .update({ entity_id: targetId, updated_at: new Date().toISOString() })
+          .eq('id', row.id);
+        if (!error) report.facts_moved++;
+      }
+    }
+  }
+
+  private async mergeEntityAttributes(
+    userId: string,
+    sourceId: string,
+    targetId: string,
+    report: OrgMergeReport
+  ): Promise<void> {
+    const [{ data: sourceRows }, { data: targetRows }] = await Promise.all([
+      supabaseAdmin
+        .from('entity_attributes')
+        .select('id, attribute_type, attribute_value')
+        .eq('user_id', userId)
+        .eq('entity_type', 'organization')
+        .eq('entity_id', sourceId),
+      supabaseAdmin
+        .from('entity_attributes')
+        .select('attribute_type, attribute_value')
+        .eq('user_id', userId)
+        .eq('entity_type', 'organization')
+        .eq('entity_id', targetId),
+    ]);
+    const targetKeys = new Set(
+      (targetRows ?? []).map(
+        (r: { attribute_type: string; attribute_value: string }) => `${r.attribute_type}:${r.attribute_value}`
+      )
+    );
+    for (const row of (sourceRows ?? []) as Array<{ id: string; attribute_type: string; attribute_value: string }>) {
+      const key = `${row.attribute_type}:${row.attribute_value}`;
+      if (targetKeys.has(key)) {
+        await supabaseAdmin.from('entity_attributes').delete().eq('id', row.id);
+      } else {
+        const { error } = await supabaseAdmin
+          .from('entity_attributes')
+          .update({ entity_id: targetId })
+          .eq('id', row.id);
+        if (!error) report.attributes_moved++;
+      }
+    }
   }
 }
 

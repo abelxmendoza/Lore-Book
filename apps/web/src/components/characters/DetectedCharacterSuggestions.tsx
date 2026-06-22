@@ -20,9 +20,16 @@ import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import { RomanticAddCelebration } from '../love/RomanticAddCelebration';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
+
+export type CharacterSuggestionAddedPayload = CharacterSuggestion & {
+  matchedCharacterId?: string;
+  deduplicated?: boolean;
+  restored?: boolean;
+};
 
 type Props = {
-  onCharacterAdded?: (suggestion: CharacterSuggestion) => void;
+  onCharacterAdded?: (suggestion: CharacterSuggestionAddedPayload) => void;
   onRescanComplete?: (summary?: {
     charactersPromoted: number;
     restoredFromEvidence: number;
@@ -247,22 +254,43 @@ export const DetectedCharacterSuggestions = ({
     }
     setAdding(k);
     setError(null);
+    let addResult: Awaited<ReturnType<typeof characterSuggestionsApi.add>> | undefined;
     try {
       if (showDemo) {
         await new Promise(resolve => window.setTimeout(resolve, 680));
       } else {
         apiCache.deletePattern(/\/api\/(characters|knowledge|books)/);
-        const result = await characterSuggestionsApi.add(s);
-        if (result.deduplicated && !result.restored) {
-          setRescanNotice(`“${s.name}” is already in your Character Book — we linked any new details.`);
+        addResult = await characterSuggestionsApi.add(s);
+        const saved = addResult.character as { id?: string; name?: string } | undefined;
+        const deduplicated = Boolean(addResult.deduplicated);
+        const restored = Boolean(addResult.restored);
+        if (deduplicated) {
+          const canonicalName = saved?.name?.trim() || s.name;
+          if (restored) {
+            setRescanNotice(`“${s.name}” was restored to your Character Book.`);
+          } else if (saved?.id && canonicalName.toLowerCase() !== s.name.trim().toLowerCase()) {
+            setRescanNotice(`“${s.name}” is already saved as ${canonicalName} — opening their card.`);
+          } else {
+            setRescanNotice(`“${s.name}” is already in your Character Book — opening their card.`);
+          }
+          if (saved?.id) {
+            openCharacterBookModal({ characterId: saved.id });
+          }
+        } else if (variant === 'romantic') {
+          setCelebrate(true);
+          setSuccessNotice(`${s.name} added to your love story`);
+        } else {
+          setSuccessNotice(`${s.name} added to your Character Book`);
         }
       }
 
-      if (variant === 'romantic') {
-        setCelebrate(true);
-        setSuccessNotice(`${s.name} added to your love story`);
-      } else {
-        setSuccessNotice(`${s.name} added to your Character Book`);
+      if (showDemo) {
+        if (variant === 'romantic') {
+          setCelebrate(true);
+          setSuccessNotice(`${s.name} added to your love story`);
+        } else {
+          setSuccessNotice(`${s.name} added to your Character Book`);
+        }
       }
 
       setExiting(prev => new Set(prev).add(k));
@@ -270,7 +298,13 @@ export const DetectedCharacterSuggestions = ({
 
       setAdded(prev => new Set(prev).add(k));
       invalidateEntityTags(['Character']);
-      await onCharacterAdded?.(s);
+      const saved = addResult?.character as { id?: string; name?: string } | undefined;
+      await onCharacterAdded?.({
+        ...s,
+        matchedCharacterId: saved?.id,
+        deduplicated: addResult?.deduplicated,
+        restored: addResult?.restored,
+      });
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Could not add character';
       let message = raw;

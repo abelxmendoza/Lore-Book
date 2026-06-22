@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 
-import { createClient } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import type { AuthUser } from '../types/runtime/express';
 
 import type { McpAuthContext } from './types';
@@ -17,12 +17,10 @@ declare global {
   }
 }
 
-let supabase: ReturnType<typeof createClient> | null = null;
+let supabase: ReturnType<typeof createServerSupabaseClient> | null = null;
 try {
   if (config.supabaseUrl && config.supabaseServiceRoleKey) {
-    supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-      auth: { persistSession: false },
-    });
+    supabase = createServerSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey);
   }
 } catch {
   supabase = null;

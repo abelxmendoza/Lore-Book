@@ -1,14 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-
 import { config } from '../config';
 import { isPrivilegedAccount } from '../lib/accountAuthority';
 
 import { getOpenAiBudgetSnapshot } from './openaiBudgetService';
 import { getUserSubscription, type SubscriptionData } from './stripeService';
-
-const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: { persistSession: false }
-});
+import { supabaseAdmin as supabase } from './supabaseClient';
 
 export interface UsageData {
   entryCount: number;

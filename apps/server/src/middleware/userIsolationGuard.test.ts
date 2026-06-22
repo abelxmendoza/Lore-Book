@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertPayloadOwnedByUser } from './userIsolationGuard';
+import { assertPayloadOwnedByUser, shouldBypassUserIsolation } from './userIsolationGuard';
 
 describe('user isolation guard', () => {
   it('allows payloads owned by the authenticated user', () => {
@@ -41,5 +41,10 @@ describe('user isolation guard', () => {
         'user-1',
       ),
     ).not.toThrow();
+  });
+
+  it('bypasses isolation for admin console routes', () => {
+    expect(shouldBypassUserIsolation({ path: '/admin/finance/subscriptions', originalUrl: '/api/admin/finance/subscriptions' })).toBe(true);
+    expect(shouldBypassUserIsolation({ path: '/entries', originalUrl: '/api/entries' })).toBe(false);
   });
 });

@@ -137,7 +137,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
             setEntityScopes(scopes.scopes);
           }
         } else if (entity.type === 'location' && entity.id) {
-          const location = await fetchJson<LocationProfile>(`/api/locations/${entity.id}`);
+          const { location } = await fetchJson<{ location: LocationProfile }>(`/api/locations/${entity.id}`);
           setEntityData(prev => ({ ...prev, location }));
         } else if (entity.type === 'memory' && entity.memory) {
           // Memory connections - find related characters and locations

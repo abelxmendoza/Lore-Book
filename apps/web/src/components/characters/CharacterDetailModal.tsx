@@ -66,6 +66,7 @@ import {
 import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { useChatStream } from '../../hooks/useChatStream';
+import { useCharacterProfileBundle } from '../../hooks/useCharacterProfileBundle';
 
 type SocialMedia = {
   instagram?: string;
@@ -191,6 +192,15 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp, initialTab }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
+  const profileBundleEnabled =
+    !isMockDataEnabled &&
+    !isSyntheticSelfId(character.id) &&
+    !character.id.startsWith('dummy-') &&
+    !isMainCharacter;
+  const { bundle: profileBundle } = useCharacterProfileBundle(
+    character.id,
+    profileBundleEnabled,
+  );
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
   const [profileWittyTagline, setProfileWittyTagline] = useState<string | null>(
     getCharacterWittyTagline(character)
@@ -884,6 +894,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
   const [chatIntelOpen, setChatIntelOpen] = useState(false);
   const askInChat = (prompt: string) => {
+    const correctionHint =
+      'If anything in their profile is wrong, say it plainly (e.g. "actually her name is Maya" or "they are my coworker, not my friend").';
+    const fullPrompt = prompt.includes('actually') ? prompt : `${prompt}\n\n${correctionHint}`;
     const romantic =
       relationship ??
       getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
@@ -897,7 +910,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         sourceSurface: 'love',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
         knowledgeScope: 'romantic relationship from character profile',
-        initialPrompt: prompt,
+        initialPrompt: fullPrompt,
         baseline: {
           affectionScore: Math.round((romantic.affection_score ?? 0.5) * 100),
           healthScore: Math.round((romantic.relationship_health ?? 0.5) * 100),
@@ -911,7 +924,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         sourceSurface: 'characters',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
         knowledgeScope: 'character profile and connections',
-        initialPrompt: prompt,
+        initialPrompt: fullPrompt,
       });
     }
     onClose();
@@ -1164,6 +1177,27 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   useEffect(() => {
+    if (!profileBundle?.detail) return;
+    const detail = profileBundle.detail as CharacterDetail & {
+      witty_tagline?: string | null;
+      real_name?: string | null;
+      context_hooks?: string[];
+    };
+    setEditedCharacter(detail);
+    setProfileWittyTagline(detail.witty_tagline ?? getCharacterWittyTagline(detail));
+    setProfileContextHooks(
+      Array.isArray(detail.context_hooks) ? detail.context_hooks : getCharacterContextHooks(detail),
+    );
+    setProfileRealName(detail.real_name ?? getCharacterRealName(detail));
+    if (detail.shared_memories && detail.shared_memories.length > 0) {
+      void loadSharedMemories(detail.shared_memories);
+    } else {
+      setSharedMemoryCards([]);
+    }
+    setLoadingDetails(false);
+  }, [profileBundle]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const applySelfProfile = (profile: Awaited<ReturnType<typeof selfCharacterApi.getProfile>>) => {
@@ -1215,6 +1249,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     };
 
     const loadFullDetails = async () => {
+      if (profileBundleEnabled) {
+        if (!profileBundle) setLoadingDetails(true);
+        return;
+      }
       setLoadingDetails(true);
       if (isMainCharacter && !isMockDataEnabled) {
         try {
@@ -1305,7 +1343,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     return () => {
       cancelled = true;
     };
-  }, [character.id, character.name, isMockDataEnabled, isMainCharacter]);
+  }, [character.id, character.name, isMockDataEnabled, isMainCharacter, profileBundleEnabled, profileBundle]);
 
   // Load character attributes
   useEffect(() => {
@@ -1496,6 +1534,16 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   // Load knowledge claims + character facts when Knowledge tab opens
   useEffect(() => {
     if (activeTab !== 'knowledge') return;
+
+    if (profileBundle?.knowledgeBase) {
+      setCharacterFacts(profileBundle.knowledgeBase.facts ?? []);
+      setKnowledgeClaims(profileBundle.knowledgeBase.knowledgeClaims ?? []);
+      setSceneCandidates(profileBundle.knowledgeBase.sceneCandidates ?? []);
+      setFactsLoaded(true);
+      setKnowledgeLoaded(true);
+      setScenesLoaded(true);
+      return;
+    }
 
     if (isMockDataEnabled) {
       // Demo mode: hydrate the "What I Know" tab from centralized mock intelligence
@@ -3878,6 +3926,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 character={editedCharacter as Character}
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'knowledge'}
+                initialData={profileBundle?.knowledgeBase}
+                chatMentions={profileBundle?.chatMentions}
                 onAskInChat={askInChat}
               />
             )}

@@ -16,6 +16,7 @@ import { Tabs, TabsContent } from '../ui/tabs';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
+import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -230,6 +231,27 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setEvents(resolvedOrganization.events || []);
     setLocations(resolvedOrganization.locations || []);
   }, [resolvedOrganization]);
+
+  useEffect(() => {
+    if (isMockDataEnabled || isEphemeralEntityId(organization.id)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await fetchOrganizationById(organization.id);
+        if (cancelled) return;
+        setEditedOrg(full);
+        setMembers(full.members || []);
+        setStories(full.stories || []);
+        setEvents(full.events || []);
+        setLocations(full.locations || []);
+      } catch {
+        // Keep seed profile on transient errors.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [organization.id, isMockDataEnabled]);
 
   useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length === 0) {

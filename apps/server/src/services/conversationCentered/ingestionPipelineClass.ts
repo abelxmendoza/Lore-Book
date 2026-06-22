@@ -2678,6 +2678,44 @@ export class ConversationIngestionPipeline {
           });
       }
 
+      // Step 12.21: Provenance / evidence — receipt trail behind every durable memory
+      if (rawText.trim().length >= 8) {
+        void import('../provenance/provenanceInferenceIntegrationService')
+          .then(({ runProvenanceInferenceForMessage }) =>
+            runProvenanceInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+              {
+                sourceThreadId: threadId,
+                authorRole: sender === 'USER' ? 'user' : 'assistant',
+              },
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Provenance inference failed (non-blocking)');
+          });
+      }
+
+      // Step 12.22: Truth-state gate — canonization lifecycle for claims
+      if (rawText.trim().length >= 8) {
+        void import('../truthState/truthStateIntegrationService')
+          .then(({ runTruthStateForMessage }) =>
+            runTruthStateForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+              {
+                sourceThreadId: threadId,
+                authorRole: sender === 'USER' ? 'user' : 'assistant',
+              },
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Truth-state gate failed (non-blocking)');
+          });
+      }
+
       // Shadow mode — A/B comparison only; off by default (ENABLE_SHADOW_EXTRACTION=true)
       if (config.enableShadowExtraction && sender === 'USER') {
         setImmediate(() => {

@@ -10,6 +10,7 @@ import { useAuth, supabase } from '../lib/supabase';
 import { ActivityTab } from '../components/account/ActivityTab';
 import { GuestExperienceCard } from '../components/guest/GuestExperienceCard';
 import { useGuest } from '../contexts/GuestContext';
+import { LANDING_PATH } from '../lib/authReturnPath';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import {
@@ -234,14 +235,14 @@ export default function AccountCenter() {
   const handleDeleteAccount = async () => {
     if (!confirm('Delete your account permanently? This cannot be undone.')) return;
     setSaving(true); setError(null);
-    try { await deleteUserAccount(); navigate('/login'); }
+    try { await deleteUserAccount(); navigate(LANDING_PATH); }
     catch (e: any) { notify(e.message || 'Failed to delete account.', 'error'); setSaving(false); }
   };
 
   const handleLogout = async () => {
     if (user) await supabase.auth.signOut();
     if (isGuest) endGuestSession();
-    navigate('/login');
+    navigate(LANDING_PATH);
   };
 
   // ── Guest view ────────────────────────────────────────────────────────────

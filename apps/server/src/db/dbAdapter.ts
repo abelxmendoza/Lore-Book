@@ -14,9 +14,9 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@supabase/supabase-js';
 
 import { config } from '../config';
+import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import { getActiveSupabaseUrl } from '../lib/supabaseUrlResolution';
 import { createSupabaseMock } from './supabaseMock';
 
@@ -44,7 +44,7 @@ function getSupabaseAdminClient(): SupabaseClient {
 
   if (!cachedClient || cachedUrl !== url) {
     cachedUrl = url;
-    cachedClient = createClient(url, key, { auth: { persistSession: false } });
+    cachedClient = createServerSupabaseClient(url, key);
   }
 
   return cachedClient;

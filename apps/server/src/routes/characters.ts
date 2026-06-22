@@ -491,6 +491,36 @@ async function mergeExtractedCharacterData(
   return updated;
 }
 
+/** Link suggestion sources (omega entity, aliases) and refresh identity index after add/merge. */
+async function finalizeCharacterSuggestionAdd(
+  userId: string,
+  character: { id: string; name: string; alias?: string[] | null },
+  characterData: z.infer<typeof createCharacterSchema>
+): Promise<void> {
+  const { characterAuthorityService } = await import('../services/characterAuthorityService');
+  const aliases = (character.alias as string[] | null) ?? [];
+  await characterAuthorityService.registerCharacterAuthority(userId, character.id, character.name, aliases);
+
+  if (characterData.omegaEntityId) {
+    await characterAuthorityService.linkSourceRecord(
+      userId,
+      character.id,
+      'omega_entities',
+      characterData.omegaEntityId,
+      characterData.name,
+      'suggestion_add',
+      1
+    );
+  }
+
+  const incomingName = (characterData.name ?? '').trim();
+  if (incomingName && normalizeNameKey(incomingName) !== normalizeNameKey(character.name)) {
+    await characterAuthorityService.registerAliasLink(userId, character.id, incomingName, 'suggestion_add');
+  }
+
+  void characterIdentityIndexService.rebuild(userId).catch(() => {});
+}
+
 /**
  * @swagger
  * /api/characters:
@@ -646,13 +676,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       const similar = findSimilarCharacter(decision.cleanName, existingForDedup || []);
       if (similar) {
         logger.info({ userId, existingId: similar.id, incomingName: decision.cleanName }, 'Dedup: returning existing character');
+        const updated = await mergeExtractedCharacterData(userId, similar.id, characterData, {
+          matchedMention: decision.cleanName,
+        });
         const { data: existingChar } = await supabaseAdmin
           .from('characters')
           .select('*')
           .eq('id', similar.id)
           .eq('user_id', userId)
           .single();
-        return { type: 'merge' as const, character: existingChar };
+        return { type: 'merge' as const, character: updated ?? existingChar };
       }
 
       // Merge social_media into metadata
@@ -717,7 +750,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
             .eq('user_id', userId);
           const existing = (existingRows ?? []).find((row: any) => normalizeNameKey(row.name) === incomingKey);
           if (existing) {
-            return { type: 'merge' as const, character: existing };
+            const updated = await mergeExtractedCharacterData(userId, existing.id, characterData, {
+              matchedMention: decision.cleanName,
+            });
+            return { type: 'merge' as const, character: updated ?? existing };
           }
           return { type: 'conflict' as const };
         }
@@ -742,13 +778,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(409).json({ error: 'Character with this canonical name already exists' });
     }
     if (createResult.type === 'merge') {
-      const { characterAuthorityService } = await import('../services/characterAuthorityService');
-      await characterAuthorityService.registerCharacterAuthority(
-        userId,
-        createResult.character.id,
-        createResult.character.name,
-        (createResult.character.alias as string[] | null) ?? []
-      );
+      let mergedCharacter = createResult.character;
+      let restored = false;
       if (createResult.character.status === 'archived') {
         const { data: revived } = await supabaseAdmin
           .from('characters')
@@ -758,10 +789,12 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           .select('*')
           .single();
         if (revived) {
-          return res.status(200).json({ character: revived, deduplicated: true, restored: true });
+          mergedCharacter = revived;
+          restored = true;
         }
       }
-      return res.status(200).json({ character: createResult.character, deduplicated: true });
+      await finalizeCharacterSuggestionAdd(userId, mergedCharacter, characterData);
+      return res.status(200).json({ character: mergedCharacter, deduplicated: true, restored });
     }
 
     // Calculate importance asynchronously
@@ -774,27 +807,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
       });
 
-    const { characterAuthorityService } = await import('../services/characterAuthorityService');
-    await characterAuthorityService.registerCharacterAuthority(
-      userId,
-      createResult.character.id,
-      createResult.character.name,
-      (createResult.character.alias as string[] | null) ?? []
-    );
-    if (characterData.omegaEntityId) {
-      await characterAuthorityService.linkSourceRecord(
-        userId,
-        createResult.character.id,
-        'omega_entities',
-        characterData.omegaEntityId,
-        createResult.character.name,
-        'suggestion_add',
-        1
-      );
-    }
-    void import('../services/characterIdentityIndexService').then(({ characterIdentityIndexService }) =>
-      characterIdentityIndexService.rebuild(userId).catch(() => {})
-    );
+    await finalizeCharacterSuggestionAdd(userId, createResult.character, characterData);
 
     res.status(201).json({ character: createResult.character });
   } catch (error) {
@@ -2497,6 +2510,23 @@ router.get('/:id/evidence', requireAuth, async (req: AuthenticatedRequest, res) 
   } catch (error) {
     logger.error({ error, characterId }, 'Failed to get character evidence locker');
     res.status(500).json({ error: 'Failed to get character evidence' });
+  }
+});
+
+// GET /api/characters/:id/profile-bundle — modal read model (detail + knowledge + lore + chat mentions)
+router.get('/:id/profile-bundle', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { getCharacterProfileBundle } = await import('../services/characters/characterProfileBundleService');
+    const bundle = await getCharacterProfileBundle(userId, characterId);
+    if (!bundle) return res.status(404).json({ error: 'Character not found' });
+    res.json({ success: true, bundle });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character profile bundle');
+    res.status(500).json({ error: 'Failed to get character profile bundle' });
   }
 });
 

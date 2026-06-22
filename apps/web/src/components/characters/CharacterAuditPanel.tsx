@@ -64,8 +64,9 @@ function isActionable(result: CharacterCardAuditResult): boolean {
 
 function suggestedFix(result: CharacterCardAuditResult): string {
   if (result.suggestedTitle) return result.suggestedTitle;
-  if (result.recommendedAction === 'merge' && result.mergeCandidates?.[0]) {
-    return `Merge into ${result.mergeCandidates[0].currentTitle}`;
+  if (result.recommendedAction === 'merge' && result.mergeCandidates?.length) {
+    const names = result.mergeCandidates.map((c) => c.currentTitle);
+    return names.length === 1 ? `Merge into ${names[0]}` : `Merge with: ${names.join(' or ')}`;
   }
   if (result.recommendedAction === 'move_to_group') return 'Move to Groups book';
   if (result.recommendedAction === 'move_to_interest') return 'Move to Interests';
@@ -111,6 +112,11 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
     return report.results.filter((r) => isActionable(r) && !dismissed.has(r.characterId));
   }, [report, dismissed]);
 
+  const visibleResults = useMemo(() => {
+    if (!report) return [];
+    return report.results.filter((r) => !dismissed.has(r.characterId));
+  }, [report, dismissed]);
+
   const issueCount = actionableResults.length;
   const healthy = !loading && issueCount === 0;
 
@@ -152,19 +158,12 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
     setBusyId(result.characterId);
     setError(null);
     try {
-      await fetchJson(`/api/characters/${result.characterId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          metadata: {
-            card_audit_review: {
-              action: 'keep',
-              reviewedAt: new Date().toISOString(),
-            },
-          },
-        }),
-      });
+      const res = await characterCardAuditApi.resolveKeep(result.characterId);
+      if (!res.success) {
+        throw new Error('Could not save your keep decision');
+      }
       setDismissed((prev) => new Set(prev).add(result.characterId));
-      await afterChange(`Kept ${result.currentTitle} as-is.`);
+      await afterChange(`Kept ${result.currentTitle} as-is — rescan will not flag it again.`);
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to mark card as kept'));
     } finally {
@@ -398,7 +397,7 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {(report?.results ?? []).map((result) => {
+                    {visibleResults.map((result) => {
                       const busy = busyId === result.characterId;
                       const editing = renameDraft?.id === result.characterId;
                       return (
@@ -527,7 +526,7 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                         </tr>
                       );
                     })}
-                    {!loading && (report?.results.length ?? 0) === 0 && (
+                    {!loading && visibleResults.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-3 py-6 text-center text-white/45">
                           No characters to audit.

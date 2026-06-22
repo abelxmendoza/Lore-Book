@@ -18,6 +18,8 @@ import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { fetchJson } from '../../lib/api';
+import { fetchLocationById } from '../../lib/hydrateBookEntity';
+import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -183,12 +185,23 @@ export const LocationBook = () => {
 
   // Auto-open modal when navigated here from an entity chip (chat → locations).
   useEffect(() => {
-    if (loading || locations.length === 0) return;
-    const id = sessionStorage.getItem('highlightItem');
+    if (loading) return;
+    const id = consumeHighlightItemId();
     if (!id) return;
-    sessionStorage.removeItem('highlightItem');
-    const match = locations.find(l => l.id === id);
-    if (match) setSelectedLocation(match);
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveBookHighlightItem({
+        id,
+        items: locations,
+        fetchById: fetchLocationById,
+      });
+      if (!cancelled && resolved) setSelectedLocation(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loading, locations]);
 
   // Arrow key navigation
@@ -261,7 +274,7 @@ export const LocationBook = () => {
   }, [topLevelLocations]);
 
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}>
       <ChatFirstViewHint />
 
       <DetectedLocationSuggestions

@@ -30,15 +30,9 @@ export type CharacterCardCleanupReport = {
   actions: CharacterCardCleanupAction[];
 };
 
-function isUserReviewed(metadata: Record<string, unknown> | undefined): boolean {
-  if (!metadata) return false;
-  const audit = metadata.card_audit_review as Record<string, unknown> | undefined;
-  if (audit?.action) return true;
-  return metadata.card_audit_locked === true;
-}
-
+import { isCharacterCardUserReviewed } from './characterCardReviewState';
 function shouldAutoApply(result: CharacterCardAuditResult, metadata: Record<string, unknown>): boolean {
-  if (isUserReviewed(metadata)) return false;
+  if (isCharacterCardUserReviewed(metadata)) return false;
   if (result.recommendedAction === 'needs_review') return false;
   if (result.status === 'duplicate_or_merge_candidate') return false;
   if (result.status === 'needs_identity_resolution') return false;
@@ -94,7 +88,7 @@ class CharacterCardCleanupService {
           characterId: result.characterId,
           currentTitle: result.currentTitle,
           applied: 'skipped',
-          reason: isUserReviewed(metadata) ? 'User already reviewed' : result.reason,
+          reason: isCharacterCardUserReviewed(metadata) ? 'User already reviewed' : result.reason,
         });
         continue;
       }

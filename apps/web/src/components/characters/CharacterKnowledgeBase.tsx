@@ -16,9 +16,8 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { InsufficientData } from '../ui/InsufficientData';
 import { cachedFetchJson } from '../../lib/requestCache';
-import {
-  getMockKnowledgeBaseBundle,
-} from '../../mocks/characterIntelligence';
+import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundle';
+import { getMockKnowledgeBaseBundle } from '../../mocks/characterIntelligence';
 import type { Character } from '../../hooks/useLoreNavigatorData';
 
 export type CharacterKnowledgeBaseData = {
@@ -76,6 +75,7 @@ type CharacterKnowledgeBaseProps = {
   onAskInChat?: (prompt: string) => void;
   /** Pre-loaded bundle (e.g. self profile) — skips fetch when provided */
   initialData?: Partial<CharacterKnowledgeBaseData>;
+  chatMentions?: CharacterChatMention[];
   /** When true, copy addresses the app user in second person (your profile). */
   isSelfProfile?: boolean;
 };
@@ -174,6 +174,7 @@ export function CharacterKnowledgeBase({
   active = true,
   onAskInChat,
   initialData,
+  chatMentions = [],
   isSelfProfile = false,
 }: CharacterKnowledgeBaseProps) {
   const [data, setData] = useState<CharacterKnowledgeBaseData | null>(() =>
@@ -181,6 +182,13 @@ export function CharacterKnowledgeBase({
   );
   const [loading, setLoading] = useState(!initialData && !mockMode);
   const [loaded, setLoaded] = useState(Boolean(initialData || mockMode));
+
+  useEffect(() => {
+    if (!initialData || mockMode) return;
+    setData((prev) => ({ ...(prev ?? ({} as CharacterKnowledgeBaseData)), ...initialData } as CharacterKnowledgeBaseData));
+    setLoaded(true);
+    setLoading(false);
+  }, [initialData, mockMode]);
 
   useEffect(() => {
     if (mockMode) {
@@ -480,6 +488,55 @@ export function CharacterKnowledgeBase({
                     );
                   })}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Chat evidence */}
+      <section className="space-y-3">
+        <SectionHeader
+          icon={MessageSquare}
+          iconClass="text-sky-400"
+          title="From your chats"
+          subtitle="What you've said about them while their chip was attached or they were in focus."
+        />
+        {chatMentions.length === 0 ? (
+          <InsufficientData
+            icon={MessageSquare}
+            accent="sky"
+            title="No chat mentions yet"
+            description={
+              isSelfProfile
+                ? 'Talk to Lore about yourself to build this section.'
+                : `Open chat with ${firstName}'s chip attached and tell Lore about them — corrections update this profile too.`
+            }
+            action={
+              onAskInChat
+                ? {
+                    label: 'Correct in chat',
+                    icon: MessageSquare,
+                    onClick: () =>
+                      onAskInChat(
+                        `Correction about ${characterName}: actually `,
+                      ),
+                  }
+                : undefined
+            }
+          />
+        ) : (
+          <div className="space-y-2">
+            {chatMentions.map((mention) => (
+              <div
+                key={mention.messageId}
+                className="rounded-lg border border-white/8 bg-white/[0.03] p-3"
+              >
+                <p className="text-sm text-white/85 leading-snug whitespace-pre-wrap">{mention.content}</p>
+                <p className="mt-2 text-[11px] text-white/40">
+                  {mention.sessionTitle ? `${mention.sessionTitle} · ` : ''}
+                  {new Date(mention.createdAt).toLocaleString()}
+                </p>
               </div>
             ))}
           </div>

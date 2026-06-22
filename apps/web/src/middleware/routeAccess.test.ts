@@ -3,6 +3,7 @@ import {
   isPublicRoutePath,
   isAdminRoutePath,
   isDevConsoleRoutePath,
+  isAppShellRoutePath,
 } from './routeAccess';
 
 describe('routeAccess', () => {
@@ -30,5 +31,12 @@ describe('routeAccess', () => {
   it('identifies dev console route', () => {
     expect(isDevConsoleRoutePath('/dev-console')).toBe(true);
     expect(isDevConsoleRoutePath('/chat')).toBe(false);
+  });
+
+  it('identifies protected app shell routes', () => {
+    expect(isAppShellRoutePath('/home')).toBe(true);
+    expect(isAppShellRoutePath('/chat')).toBe(true);
+    expect(isAppShellRoutePath('/login')).toBe(false);
+    expect(isAppShellRoutePath('/demo')).toBe(false);
   });
 });

@@ -35,6 +35,7 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
   onRefresh,
 }) => {
   const [mergingConflict, setMergingConflict] = useState<EntityConflict | null>(null);
+  const [mergeSurvivor, setMergeSurvivor] = useState<'a' | 'b' | null>(null);
   const [mergeReason, setMergeReason] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -61,11 +62,16 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
     }
   };
 
-  const handleMerge = async (conflict: EntityConflict) => {
+  const handleMerge = async (conflict: EntityConflict, keep: 'a' | 'b') => {
     if (!mergeReason.trim()) {
       alert('Please provide a reason for merging');
       return;
     }
+
+    const source_id = keep === 'a' ? conflict.entity_b_id : conflict.entity_a_id;
+    const target_id = keep === 'a' ? conflict.entity_a_id : conflict.entity_b_id;
+    const source_type = keep === 'a' ? conflict.entity_b_type : conflict.entity_a_type;
+    const target_type = keep === 'a' ? conflict.entity_a_type : conflict.entity_b_type;
 
     setLoading(true);
     try {
@@ -75,10 +81,10 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            source_id: conflict.entity_a_id,
-            target_id: conflict.entity_b_id,
-            source_type: conflict.entity_a_type,
-            target_type: conflict.entity_b_type,
+            source_id,
+            target_id,
+            source_type,
+            target_type,
             reason: mergeReason,
           }),
         }
@@ -86,6 +92,7 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
 
       if (result.success) {
         setMergingConflict(null);
+        setMergeSurvivor(null);
         setMergeReason('');
         onRefresh();
       } else {
@@ -178,16 +185,32 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
                 Detected: {formatDate(conflict.detected_at)}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setMergingConflict(conflict)}
+                  onClick={() => {
+                    setMergingConflict(conflict);
+                    setMergeSurvivor('a');
+                  }}
                   disabled={loading}
                   className="h-auto px-3 py-1.5 text-xs"
                 >
                   <Merge className="w-3 h-3 mr-1" />
-                  Merge
+                  Keep Entity A
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMergingConflict(conflict);
+                    setMergeSurvivor('b');
+                  }}
+                  disabled={loading}
+                  className="h-auto px-3 py-1.5 text-xs"
+                >
+                  <Merge className="w-3 h-3 mr-1" />
+                  Keep Entity B
                 </Button>
                 <Button
                   variant="outline"
@@ -206,27 +229,29 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
       </div>
 
       {/* Merge Modal */}
-      {mergingConflict && (
+      {mergingConflict && mergeSurvivor && (
         <Modal
           isOpen={true}
           onClose={() => {
             setMergingConflict(null);
+            setMergeSurvivor(null);
             setMergeReason('');
           }}
           title="Merge Entities"
         >
           <div className="space-y-4">
             <p className="text-sm text-white/70">
-              Merging will combine these entities. All references to Entity A will be updated to
-              point to Entity B. This action is reversible.
+              {mergeSurvivor === 'a'
+                ? 'Entity A will survive. All references to Entity B will fold into Entity A.'
+                : 'Entity B will survive. All references to Entity A will fold into Entity B.'}
             </p>
             <div className="flex items-center gap-2 p-3 border border-border/40 rounded bg-black/20">
-              <div className="flex-1 text-sm">
+              <div className={`flex-1 text-sm ${mergeSurvivor === 'b' ? 'opacity-50' : ''}`}>
                 <div className="font-medium">{mergingConflict.entity_a_id.substring(0, 8)}...</div>
                 <div className="text-xs text-white/50">{mergingConflict.entity_a_type}</div>
               </div>
               <ArrowRight className="w-4 h-4" />
-              <div className="flex-1 text-sm">
+              <div className={`flex-1 text-sm ${mergeSurvivor === 'a' ? 'opacity-50' : ''}`}>
                 <div className="font-medium">{mergingConflict.entity_b_id.substring(0, 8)}...</div>
                 <div className="text-xs text-white/50">{mergingConflict.entity_b_type}</div>
               </div>
@@ -245,16 +270,17 @@ export const EntityConflictsPanel: React.FC<EntityConflictsPanelProps> = ({
                 variant="outline"
                 onClick={() => {
                   setMergingConflict(null);
+                  setMergeSurvivor(null);
                   setMergeReason('');
                 }}
               >
                 Cancel
               </Button>
               <Button
-                onClick={() => handleMerge(mergingConflict)}
+                onClick={() => handleMerge(mergingConflict, mergeSurvivor)}
                 disabled={!mergeReason.trim() || loading}
               >
-                Merge Entities
+                {mergeSurvivor === 'a' ? 'Keep Entity A' : 'Keep Entity B'}
               </Button>
             </div>
           </div>

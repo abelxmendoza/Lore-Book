@@ -541,6 +541,26 @@ class CharacterConversationRescanService {
       } catch (err) {
         logger.debug({ err, userId }, 'Status inference after character rescan failed (non-blocking)');
       }
+
+      try {
+        const { rescanProvenanceInference } = await import('./provenance/provenanceInferenceIntegrationService');
+        await rescanProvenanceInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text, authorRole: 'user' as const })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Provenance inference after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanTruthState } = await import('./truthState/truthStateIntegrationService');
+        await rescanTruthState(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text, authorRole: 'user' as const })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Truth-state after character rescan failed (non-blocking)');
+      }
     }
 
     const summary: CharacterRescanSummary = {

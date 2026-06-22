@@ -24,6 +24,7 @@ import type {
   CharacterCardAuditReport,
   CharacterCardAuditResult,
 } from './characterCardAuditTypes';
+import { isCharacterCardUserReviewed } from './characterCardReviewState';
 
 function emptySummary(): Record<CharacterAuditStatus, number> {
   return {
@@ -254,7 +255,10 @@ class CharacterCardAuditService {
       contextOfMention: row.context_of_mention as string | null | undefined,
     }));
 
-    const results = this.auditRoster(roster);
+    const results = this.auditRoster(roster).filter((result) => {
+      const meta = roster.find((row) => row.id === result.characterId)?.metadata ?? {};
+      return !isCharacterCardUserReviewed(meta);
+    });
     const summary = emptySummary();
     for (const r of results) {
       summary[r.status] += 1;

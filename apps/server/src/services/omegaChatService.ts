@@ -19,6 +19,11 @@ import {
   evaluateBelief,
   generateBeliefChallenge,
 } from './conversationCentered/beliefChallenge';
+import {
+  resolveEntityContextFromComposer,
+  resolveFocusedCharacter,
+} from './characters/characterChatTargetResolver';
+import { applyCharacterChatKnowledgeUpdate } from './characters/characterChatCorrectionService';
 import { ingestionQueue } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
@@ -876,6 +881,9 @@ When updating relationship analytics or emotional signals from this thread, weig
         entityContext = { type: 'ENTITY', id: chatFocus.entityId };
       }
     }
+    entityContext = resolveEntityContextFromComposer(entityContext, composerEntities) ?? entityContext;
+
+    const focusedCharacter = resolveFocusedCharacter(entityContext, chatFocus, composerEntities);
 
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
@@ -897,6 +905,22 @@ When updating relationship analytics or emotional signals from this thread, weig
     } catch (persistErr) {
       logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed');
       throw persistErr;
+    }
+
+    if (focusedCharacter && entryId) {
+      void applyCharacterChatKnowledgeUpdate(userId, focusedCharacter.characterId, message, {
+        sessionId,
+        messageId: entryId,
+        characterName: focusedCharacter.characterName,
+      }).catch((err) =>
+        logger.warn({ err, characterId: focusedCharacter.characterId }, 'Character chat knowledge update failed'),
+      );
+    }
+
+    if (entityContext?.type === 'CHARACTER') {
+      void this.ingestMessageWithContext(userId, message, conversationHistory, entityContext).catch((err) =>
+        logger.warn({ err, userId, entityContext }, 'Failed to ingest message with character context'),
+      );
     }
 
     // Phase 4.5: follow-up after recall (expand / correct)

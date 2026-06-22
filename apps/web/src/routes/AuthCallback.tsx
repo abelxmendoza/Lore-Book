@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
+import { consumeAuthReturnPath } from '../lib/authReturnPath';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ export default function AuthCallback() {
           // Clear the hash from the URL
           window.history.replaceState(null, '', window.location.pathname);
           // Redirect to dashboard
-          navigate('/home');
+          navigate(consumeAuthReturnPath());
         } else {
           // If no session, check if there's a hash (might still be processing)
           if (window.location.hash) {
@@ -54,7 +55,7 @@ export default function AuthCallback() {
               const { data: { session: retrySession } } = await supabase.auth.getSession();
               if (retrySession) {
                 window.history.replaceState(null, '', window.location.pathname);
-                navigate('/home');
+                navigate(consumeAuthReturnPath());
               } else {
                 setError('No session created. Please try again.');
                 setLoading(false);

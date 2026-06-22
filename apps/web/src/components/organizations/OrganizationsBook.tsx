@@ -21,6 +21,8 @@ import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
+import { fetchOrganizationById } from '../../lib/hydrateBookEntity';
+import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useOrganizationsBookData } from '../../store/hooks/useEntityBooks';
@@ -1207,12 +1209,22 @@ export const OrganizationsBook: React.FC = () => {
 
   // Auto-open modal when navigated here from an entity chip (chat → organizations).
   useEffect(() => {
-    if (organizations.length === 0) return;
-    const id = sessionStorage.getItem('highlightItem');
+    const id = consumeHighlightItemId();
     if (!id) return;
-    sessionStorage.removeItem('highlightItem');
-    const match = organizations.find(o => o.id === id);
-    if (match) setSelectedOrganization(match);
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await resolveBookHighlightItem({
+        id,
+        items: organizations,
+        fetchById: fetchOrganizationById,
+      });
+      if (!cancelled && resolved) setSelectedOrganization(resolved);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [organizations]);
 
   // Arrow key navigation
@@ -1272,7 +1284,11 @@ export const OrganizationsBook: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl overflow-x-hidden space-y-4 sm:space-y-6 pb-4 sm:pb-6">
+    <div
+      className={`mx-auto w-full min-w-0 max-w-7xl overflow-x-hidden space-y-4 sm:space-y-6 pb-4 sm:pb-6 ${
+        selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-6' : ''
+      }`}
+    >
       {/* Group Suggestions — surfaces detected group candidates for review */}
       <GroupSuggestions
         categoryFilter={activeCategory}

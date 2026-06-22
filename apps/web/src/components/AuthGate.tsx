@@ -1,153 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { User, Presentation } from 'lucide-react';
+import { Navigate, useLocation } from 'react-router-dom';
 
 import { getConfigDebug, isSupabaseConfigured, supabase } from '../lib/supabase';
+import { LANDING_PATH, saveAuthReturnPath } from '../lib/authReturnPath';
 import { clearDemoSession } from '../routes/Demo';
 import { Logo } from './Logo';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { TermsOfServiceAgreement } from './security/TermsOfServiceAgreement';
 import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
 import { useGuest } from '../contexts/GuestContext';
-import { useMockData } from '../contexts/MockDataContext';
 import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
 import { InferenceSyncProvider } from './InferenceSyncProvider';
 import { BookGhostLoader } from './common/BookGhostLoader';
-import { OpenAiAvailabilityLoginNote } from './common/OpenAiAvailabilityNotice';
 import { resetWelcomeSplash } from '../lib/welcomeSplash';
-
-const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    setStatus(null);
-    try {
-      await onEmailLogin(email);
-      setStatus('Check your email for the magic link.');
-    } catch (err: any) {
-      console.error('[Auth] Login error:', err);
-      setError(err?.message || 'Failed to send magic link. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogle = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({ 
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
-        }
-      });
-      if (error) {
-        console.error('[Auth] Google OAuth error:', error);
-        // Check for specific error codes
-        if (error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')) {
-          setError('Google sign-in is not enabled in your Supabase project. Please enable it in Settings > Authentication > Providers.');
-        } else {
-          setError(error.message || 'Failed to sign in with Google.');
-        }
-      }
-    } catch (err: any) {
-      console.error('[Auth] Google OAuth exception:', err);
-      if (err?.message?.includes('provider is not enabled') || err?.message?.includes('Unsupported provider')) {
-        setError('Google sign-in is not enabled in your Supabase project. Please enable it in Settings > Authentication > Providers.');
-      } else {
-        setError(err?.message || 'Failed to sign in with Google.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="mx-auto mt-20 flex max-w-md flex-col items-center rounded-2xl border border-border/60 bg-black/30 p-10 text-center shadow-panel">
-      <Logo size="xl" showText={true} className="mb-8" />
-      <p className="mt-2 text-white/70">Your intelligent memory companion. Capture, organize, and understand your life story.</p>
-      <Input
-        type="email"
-        placeholder="you@orbital.city"
-        className="mt-8"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
-      <Button className="mt-4 w-full" disabled={!email || loading} onClick={handleLogin}>
-        {loading ? 'Sending link…' : 'Send magic link'}
-      </Button>
-      <Button variant="ghost" className="mt-3 w-full" onClick={handleGoogle} disabled={loading}>
-        {loading ? 'Connecting...' : 'Continue with Google'}
-      </Button>
-
-      <OpenAiAvailabilityLoginNote className="mt-4 w-full" />
-      
-      <div className="my-6 flex items-center w-full">
-        <div className="flex-1 border-t border-white/10"></div>
-        <span className="px-3 text-xs text-white/40">or</span>
-        <div className="flex-1 border-t border-white/10"></div>
-      </div>
-
-      {/* Demo Mode - mock data for deployed showcase */}
-      <div className="w-full space-y-2 mb-4">
-        <Button
-          variant="outline"
-          className="w-full border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:border-amber-500/70 transition-all"
-          onClick={onDemoMode}
-          disabled={loading}
-          size="lg"
-        >
-          <Presentation className="mr-2 h-5 w-5" />
-          Demo Mode
-        </Button>
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left">
-          <p className="text-xs font-medium text-amber-200/90 mb-1">📊 Explore with sample data</p>
-          <p className="text-xs text-white/60 leading-relaxed">
-            See the app with demo content. Chat uses a built-in sim — no sign-in required.
-          </p>
-        </div>
-      </div>
-
-      {/* Guest Login - Prominent */}
-      <div className="w-full space-y-2">
-        <Button 
-          variant="outline" 
-          className="w-full border-primary/50 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/70 transition-all" 
-          onClick={onGuestLogin}
-          disabled={loading}
-          size="lg"
-        >
-          <User className="mr-2 h-5 w-5" />
-          Continue as Guest
-        </Button>
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
-          <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
-          <p className="text-xs text-white/60 leading-relaxed">
-            Explore with limited chat — responses are simulated. Google sign-in unlocks live AI.
-          </p>
-        </div>
-      </div>
-      {status && (
-        <div className="mt-4 space-y-1">
-          <p className="text-xs text-green-400">{status}</p>
-          <p className="text-xs text-white/50">If you don&apos;t see it, check spam/junk. Some providers delay or block sign-in emails—try again or use a different address.</p>
-        </div>
-      )}
-      {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
-    </div>
-  );
-};
 
 export const AuthGate = ({ children }: { children: ReactNode }) => {
   // Auth bypass: only active when VITE_DEV_DISABLE_AUTH=true AND running in dev mode.
@@ -156,29 +21,29 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     import.meta.env.DEV === true &&
     import.meta.env.VITE_DEV_DISABLE_AUTH === 'true';
   const DEV_DISABLE_TERMS = DEV_DISABLE_AUTH;
+  const location = useLocation();
 
   if (DEV_DISABLE_AUTH) {
     console.warn('[AuthGate] DEV_AUTH_BYPASS active — using unauthenticated dev session. Never enable in production.');
   }
-  
+
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const { status: termsStatus, loading: termsLoading } = useTermsAcceptance();
-  const { isGuest, startGuestSession, endGuestSession } = useGuest();
-  const { setUseMockData } = useMockData();
+  const { isGuest, endGuestSession } = useGuest();
   const { needsAuth, needsTerms } = useRuntimeIdentity();
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
-  
+
   // Non-REAL_USER runtimes never need to wait for a session check.
   useEffect(() => {
     if (DEV_DISABLE_AUTH || !needsAuth) {
       setLoading(false);
     }
   }, [needsAuth]);
-  
+
   // Safety timeout for loading state (must be before early returns)
   useEffect(() => {
     if (loading) {
@@ -220,7 +85,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
         } else {
           console.log('[AuthGate] Session loaded:', data.session ? 'Authenticated' : 'Not authenticated');
           setSession(data.session);
-          
+
           // Exiting demo/guest runtime when a real session is established
           if (data.session?.user) {
             clearDemoSession();
@@ -300,30 +165,18 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       clearTimeout(timeoutId);
       listener?.subscription.unsubscribe();
     };
-  }, [isConfigured, needsAuth, debug]);
-  
+  }, [isConfigured, needsAuth, debug, endGuestSession]);
+
   // DEV-only escape hatch — never reaches production.
   if (DEV_DISABLE_AUTH) return <>{children}</>;
 
-  // Non-REAL_USER runtimes need neither auth nor terms.
-  // GUEST_USER  → ephemeral sandbox, no account to bind terms to.
-  // DEMO_RUNTIME → synthetic showcase, fully public.
-  // DEGRADED_RUNTIME → user is already authenticated; backend is just temporarily down.
-  if (!needsAuth && !needsTerms) return <>{children}</>;
-
-
-  const handleEmailLogin = async (email: string) => {
-    console.log('[AuthGate] Attempting email login for:', email);
-    const { error } = await supabase.auth.signInWithOtp({ 
-      email, 
-      options: { emailRedirectTo: window.location.origin } 
-    });
-    if (error) {
-      console.error('[AuthGate] Email login error:', error);
-      throw error;
+  // Guest/demo/degraded runtimes skip ToS, but only after explicit entry (session,
+  // Continue as Guest, or Demo Mode) — never for a cold visit to /home, /chat, etc.
+  if (!needsAuth && !needsTerms) {
+    if (session || isGuest) {
+      return <>{children}</>;
     }
-    console.log('[AuthGate] Magic link sent successfully');
-  };
+  }
 
   if (!isConfigured) {
     return (
@@ -364,30 +217,6 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  /**
-   * CRITICAL: Safety timeout to prevent infinite loading screen
-   * 
-   * Pattern: Never allow a gate to hold the UI hostage indefinitely.
-   * 
-   * This timeout ensures that even if Supabase initialization:
-   * - Hangs (network stall)
-   * - Fails silently (bad DNS, misconfigured env)
-   * - Takes too long (cold-start edge cases)
-   * 
-   * The UI will still render after 5 seconds, preventing black screens.
-   * 
-   * This is the production-safe pattern for any blocking initialization:
-   * 1. Set a timeout
-   * 2. Clear it when done
-   * 3. Force release if timeout fires
-   */
-  
-  /**
-   * CRITICAL: Always render something visible - never return null
-   * 
-   * This prevents black screens even if auth logic fails silently.
-   * A visible loading state is always better than silent emptiness.
-   */
   if (loading && !isGuest) {
     return (
       <BookGhostLoader
@@ -399,26 +228,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  const handleGuestLogin = () => {
-    setUseMockData(false);
-    startGuestSession();
-  };
-
-  const handleDemoMode = () => {
-    setUseMockData(true);
-    startGuestSession();
-  };
-
   if (!session && !isGuest) {
-    return <AuthScreen onEmailLogin={handleEmailLogin} onGuestLogin={handleGuestLogin} onDemoMode={handleDemoMode} />;
+    saveAuthReturnPath(location.pathname, location.search);
+    return <Navigate to={LANDING_PATH} replace />;
   }
 
   // Show terms agreement if user hasn't accepted
-  // Show it if:
-  // 1. User is authenticated, AND
-  // 2. We're done loading, AND
-  // 3. We don't have a status OR the status shows not accepted
-  // Skip in dev mode if disabled
   if (session && !termsLoading && !DEV_DISABLE_TERMS) {
     if (!termsStatus || !termsStatus.accepted) {
       return <TermsOfServiceAgreement onAccept={() => window.location.reload()} />;

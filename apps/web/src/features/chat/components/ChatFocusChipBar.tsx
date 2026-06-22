@@ -121,6 +121,11 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
           <X className="h-3 w-3" />
         </button>
       </CompactChipStrip>
+      {focus.entityType === 'character' && (
+        <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
+          Their chip is attached — chat corrections like &ldquo;actually her name is Maya&rdquo; update their profile and knowledge base.
+        </p>
+      )}
     </div>
   );
 }

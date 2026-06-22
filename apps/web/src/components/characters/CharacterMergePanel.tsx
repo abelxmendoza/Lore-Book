@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { invalidateCache } from '../../lib/requestCache';
 import { apiCache } from '../../lib/cache';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
@@ -185,6 +186,7 @@ export const CharacterMergePanel = ({
     try {
       const sources = group.characters.filter(character => character.id !== targetId);
       let mergedName = group.characters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      let reviewCount = 0;
       if (demoMode) {
         const merged = mergeCharactersLocally(characters, targetId, sources.map(source => source.id));
         setDuplicateGroups(prev => prev.filter(existing => existing.canonical_name !== group.canonical_name));
@@ -197,7 +199,7 @@ export const CharacterMergePanel = ({
       for (const source of sources) {
         const result = await fetchJson<{
           character?: Character | null;
-          report?: { canonicalName?: string };
+          report?: { canonicalName?: string; reviewFlags?: string[] };
         }>('/api/characters/merge', {
           method: 'POST',
           body: JSON.stringify({
@@ -207,10 +209,15 @@ export const CharacterMergePanel = ({
           }),
         });
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
       invalidateCache(); // a merge rewrites cross-references broadly — clear all cached reads
       await afterConsolidation(
-        `Merged ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}. Aliases, memories, facts, relationships, and knowledge links were consolidated.`
+        mergeNoticeWithReview(
+          mergedName,
+          reviewCount,
+          `consolidated aliases, memories, facts, relationships, and knowledge links from ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'}`
+        )
       );
       setShowHub(false);
     } catch (error) {
@@ -228,6 +235,7 @@ export const CharacterMergePanel = ({
     setMergeNotice(null);
     try {
       let mergedName = selectedActiveCharacters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      let reviewCount = 0;
       if (demoMode) {
         const merged = mergeCharactersLocally(characters, targetId, sources.map(source => source.id));
         cancelManualMerge();
@@ -240,7 +248,7 @@ export const CharacterMergePanel = ({
       for (const source of sources) {
         const result = await fetchJson<{
           character?: Character | null;
-          report?: { canonicalName?: string };
+          report?: { canonicalName?: string; reviewFlags?: string[] };
         }>('/api/characters/merge', {
           method: 'POST',
           body: JSON.stringify({
@@ -250,11 +258,16 @@ export const CharacterMergePanel = ({
           }),
         });
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
       invalidateCache(); // a merge rewrites cross-references broadly — clear all cached reads
       cancelManualMerge();
       await afterConsolidation(
-        `Merged ${sources.length + 1} selected cards into ${mergedName}. The survivor now combines aliases, memories, facts, relationships, and knowledge links.`
+        mergeNoticeWithReview(
+          mergedName,
+          reviewCount,
+          `the survivor now combines aliases, memories, facts, relationships, and knowledge links from ${sources.length + 1} selected cards`
+        )
       );
     } catch (error) {
       setMergeError(apiErrorMessage(error, 'Failed to merge selected characters'));
@@ -531,26 +544,6 @@ export const CharacterMergePanel = ({
             </div>
           )}
 
-          {selectedActiveCharacters.length >= 2 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-medium text-white/60 uppercase tracking-wide">Merge — same person</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedActiveCharacters.map(character => (
-                  <Button
-                    key={character.id}
-                    size="sm"
-                    disabled={mergeBusy}
-                    onClick={() => void mergeSelectedCharacters(character.id)}
-                    leftIcon={<GitMerge className="h-3.5 w-3.5" />}
-                    className="text-xs"
-                  >
-                    Keep {character.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {selectedCharacters.length >= 1 && (
             <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/10">
               {selectedActiveCharacters.length > 0 && (
@@ -757,7 +750,7 @@ export const CharacterMergePanel = ({
                               onClick={() => void mergeDuplicateGroup(group, character.id)}
                               leftIcon={<GitMerge className="h-3.5 w-3.5" />}
                             >
-                              Keep this
+                              Keep {character.name}
                             </Button>
                           </div>
                         ))}
@@ -786,6 +779,14 @@ export const CharacterMergePanel = ({
           </div>
         </div>
       )}
+
+      <MergeKeepSelectionBar
+        visible={selectionMode && selectedActiveCharacters.length >= 2}
+        selectedCount={selectedActiveCharacters.length}
+        options={selectedActiveCharacters.map((character) => ({ id: character.id, name: character.name }))}
+        busy={mergeBusy}
+        onKeep={(targetId) => void mergeSelectedCharacters(targetId)}
+      />
     </>
   );
 };

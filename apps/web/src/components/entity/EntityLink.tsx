@@ -21,17 +21,26 @@ export const EntityLink: React.FC<EntityLinkProps> = ({
   className = 'text-primary hover:text-primary/80 underline cursor-pointer',
   children
 }) => {
-  const { openEntity } = useEntityModal();
+  const { openEntity, openCharacter, openLocation, openMemory } = useEntityModal();
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    openEntity({
-      type,
-      id,
-      name
-    });
+
+    if (type === 'character') {
+      void openCharacter({ id, name });
+      return;
+    }
+    if (type === 'location') {
+      void openLocation({ id, name });
+      return;
+    }
+    if (type === 'memory') {
+      openMemory({ id, content: name, journal_entry_id: id });
+      return;
+    }
+
+    openEntity({ type, id, name });
   };
 
   return (

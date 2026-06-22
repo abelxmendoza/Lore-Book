@@ -13,6 +13,7 @@ vi.mock('../../lib/requestCache', () => ({
 vi.mock('../../api/characterCardAudit', () => ({
   characterCardAuditApi: {
     get: vi.fn(),
+    resolveKeep: vi.fn(),
   },
 }));
 

@@ -22,6 +22,11 @@ import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import {
+  collectNameKeys,
+  flagMergedTextSnippets,
+  withMergeReviewMetadata,
+} from '../utils/mergeReview';
 
 import { omegaMemoryService } from './omegaMemoryService';
 import { recordEntityConsolidation } from './consolidationProtocol';
@@ -42,6 +47,7 @@ export interface MergeReport {
   omegaMerged: boolean;
   canonicalName: string;
   aliases: string[];
+  reviewFlags: string[];
 }
 
 type CharRow = {
@@ -252,7 +258,7 @@ class CharacterMergeService {
       relationshipsMoved: 0, memoriesMoved: 0, timelineEventsMoved: 0,
       factsMoved: 0, attributesMoved: 0, perceptionsMoved: 0,
       collisionsDropped: 0, omegaMerged: false,
-      canonicalName: target.name, aliases: target.alias ?? [],
+      canonicalName: target.name, aliases: target.alias ?? [], reviewFlags: [],
     };
 
     await this.mergeRelationships(userId, sourceId, targetId, report);
@@ -272,6 +278,7 @@ class CharacterMergeService {
     });
     report.canonicalName = cardUpdate.name;
     report.aliases = cardUpdate.aliases;
+    report.reviewFlags = cardUpdate.reviewFlags;
 
     // Source row last — at this point everything has been moved; remaining
     // cascades only touch rows that collided (already on the target).
@@ -516,7 +523,7 @@ class CharacterMergeService {
     target: CharRow,
     adoptOmegaId?: string,
     opts: { preserveTargetIdentity?: boolean } = {}
-  ): Promise<{ name: string; aliases: string[] }> {
+  ): Promise<{ name: string; aliases: string[]; reviewFlags: string[] }> {
     const targetIsSelf = target.metadata?.is_self === true || target.metadata?.is_user === true;
     const preserveTargetIdentity = opts.preserveTargetIdentity === true || targetIsSelf;
     const targetKey = normalizeNameKey(target.name);
@@ -537,18 +544,30 @@ class CharacterMergeService {
 
     const sm = source.metadata ?? {};
     const tm = target.metadata ?? {};
-    const metadata: Record<string, any> = {
-      ...tm,
-      ...Object.fromEntries(Object.entries(sm).filter(([key]) => !(key in tm))),
-      mention_count: ((tm.mention_count as number) ?? 0) + ((sm.mention_count as number) ?? 0),
-      distinct_from_mentions: [...new Set([...(tm.distinct_from_mentions ?? []), ...(sm.distinct_from_mentions ?? [])])],
-      merged_from: [...(tm.merged_from ?? []), source.id],
-      previous_names: [...new Set([...(tm.previous_names ?? []), target.name, source.name].filter(Boolean))],
-      official_name: nameParts.firstName ? [nameParts.firstName, nameParts.lastName].filter(Boolean).join(' ') : displayName,
-      display_name: displayName,
-      aliases_learned_from_merges: finalAliases,
-      last_merged_at: new Date().toISOString(),
-    };
+    const mergedSummary = mergeText(target.summary, source.summary);
+    const sourceKeys = collectNameKeys(source.name, normalizeNameKey(source.name), [
+      ...(source.alias ?? []),
+      ...(target.alias ?? []),
+    ]);
+    const survivorKeys = collectNameKeys(displayName, displayNameKey, finalAliases);
+    const reviewFlags = flagMergedTextSnippets([mergedSummary], sourceKeys, survivorKeys);
+
+    const metadata: Record<string, any> = withMergeReviewMetadata(
+      {
+        ...tm,
+        ...Object.fromEntries(Object.entries(sm).filter(([key]) => !(key in tm))),
+        mention_count: ((tm.mention_count as number) ?? 0) + ((sm.mention_count as number) ?? 0),
+        distinct_from_mentions: [...new Set([...(tm.distinct_from_mentions ?? []), ...(sm.distinct_from_mentions ?? [])])],
+        merged_from: [...(tm.merged_from ?? []), source.id],
+        previous_names: [...new Set([...(tm.previous_names ?? []), target.name, source.name].filter(Boolean))],
+        official_name: nameParts.firstName ? [nameParts.firstName, nameParts.lastName].filter(Boolean).join(' ') : displayName,
+        display_name: displayName,
+        aliases_learned_from_merges: finalAliases,
+        last_merged_at: new Date().toISOString(),
+      },
+      reviewFlags,
+      'Some merged text may refer only to the absorbed person — review on the character card.'
+    );
     if (preserveTargetIdentity) {
       metadata.is_self = true;
       metadata.is_user = true;
@@ -567,7 +586,7 @@ class CharacterMergeService {
       first_name: nameParts.firstName,
       last_name: nameParts.lastName,
       alias: finalAliases.length > 0 ? finalAliases : null,
-      summary: mergeText(target.summary, source.summary),
+      summary: mergedSummary,
       tags: [...new Set([...(target.tags ?? []), ...(source.tags ?? [])])],
       associated_with_character_ids: [...new Set([...(target.associated_with_character_ids ?? []), ...(source.associated_with_character_ids ?? [])].filter(id => id !== target.id && id !== source.id))],
       mentioned_by_character_ids: [...new Set([...(target.mentioned_by_character_ids ?? []), ...(source.mentioned_by_character_ids ?? [])].filter(id => id !== target.id && id !== source.id))],
@@ -587,7 +606,7 @@ class CharacterMergeService {
     }
 
     await supabaseAdmin.from('characters').update(update).eq('id', target.id).eq('user_id', userId);
-    return { name: displayName, aliases: finalAliases };
+    return { name: displayName, aliases: finalAliases, reviewFlags };
   }
 
   /**

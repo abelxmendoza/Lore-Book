@@ -1,5 +1,6 @@
 import { useCallback, type ReactNode } from 'react';
 import type { EntityData } from '../components/entity/EntityDetailModal';
+import { openEntityModal } from '../lib/openEntityModal';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   openEntity as openEntityAction,
@@ -45,79 +46,46 @@ export const useEntityModal = (): EntityModalContextType => {
 
   const openMemory = useCallback(
     (memory: any) => {
-      openEntity({
+      openEntityModal(dispatch, {
         type: 'memory',
         id: memory.id || memory.journal_entry_id,
-        memory,
-        content: memory.content,
-        date: memory.start_time || memory.date,
-        title: memory.content?.substring(0, 50) || 'Memory',
+        name: memory.content?.substring(0, 50) || 'Memory',
+        seed: memory,
       });
     },
-    [openEntity]
+    [dispatch]
   );
 
   const openCharacter = useCallback(
-    async (character: any) => {
-      const seed = character.character || character;
-      openEntity({
+    (character: any) => {
+      const seed = character.character ?? character;
+      const id = seed?.id ?? character.id;
+      if (!id) return;
+
+      openEntityModal(dispatch, {
         type: 'character',
-        id: character.id,
-        name: character.name || seed?.name,
-        character: seed,
-        description: character.description || seed?.summary,
-        tags: character.tags || seed?.tags,
+        id: String(id),
+        name: seed?.name ?? character.name,
+        seed: { ...seed, description: character.description, tags: character.tags },
       });
-      if (!character.character && character.id && !String(character.id).startsWith('dummy-')) {
-        try {
-          const { cachedFetchJson } = await import('../lib/requestCache');
-          const fullCharacter = await cachedFetchJson<any>(`/api/characters/${character.id}`);
-          updateEntity({
-            type: 'character',
-            id: character.id,
-            name: fullCharacter.name || character.name,
-            character: fullCharacter,
-            description: fullCharacter.summary ?? character.description,
-            tags: fullCharacter.tags ?? character.tags,
-          });
-        } catch (error) {
-          console.error('Error loading character:', error);
-          // Keep modal open with seed data — never clear on transient fetch failure.
-        }
-      }
     },
-    [openEntity, updateEntity]
+    [dispatch]
   );
 
   const openLocation = useCallback(
-    async (location: any) => {
-      const seed = location.location || location;
-      openEntity({
+    (location: any) => {
+      const seed = location.location ?? location;
+      const id = seed?.id ?? location.id;
+      if (!id) return;
+
+      openEntityModal(dispatch, {
         type: 'location',
-        id: location.id,
-        name: location.name || seed?.name,
-        location: seed,
-        description: location.description || seed?.description,
-        tags: location.tags || seed?.tags,
+        id: String(id),
+        name: seed?.name ?? location.name,
+        seed: { ...seed, description: location.description, tags: location.tags },
       });
-      if (!location.location && location.id) {
-        try {
-          const { cachedFetchJson } = await import('../lib/requestCache');
-          const fullLocation = await cachedFetchJson<any>(`/api/locations/${location.id}`);
-          updateEntity({
-            type: 'location',
-            id: location.id,
-            name: fullLocation.name || location.name,
-            location: fullLocation,
-            description: fullLocation.description ?? location.description,
-            tags: fullLocation.tags ?? location.tags,
-          });
-        } catch (error) {
-          console.error('Error loading location:', error);
-        }
-      }
     },
-    [openEntity, updateEntity]
+    [dispatch]
   );
 
   return {

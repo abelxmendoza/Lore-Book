@@ -1,6 +1,13 @@
 {
   "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
   "schema_version": 1,
+  "mcp_server": {
+    "url": "https://lore-book-production.up.railway.app/mcp",
+    "auth_type": "oauth",
+    "oauth_client_id": "chatgpt-mcp",
+    "oauth_metadata_url": "https://lore-book-production.up.railway.app/.well-known/oauth-authorization-server",
+    "scopes": "memory:read"
+  },
   "app_info": {
     "display_name": "LoreBook",
     "subtitle": "Search personal memories",
@@ -88,7 +95,7 @@
     },
     {
       "description": "Load a full entity card after disambiguation.",
-      "user_prompt": "Open the entity card for character id 789bd607-e063-466f-a9ef-f68d24e8bb57 in my LoreBook.",
+      "user_prompt": "Open the LoreBook entity card for my character Alex using their entity id.",
       "file_attachment_urls": null,
       "tools_triggered": "get_entity",
       "expected_output": "Returns the entity summary including name, type, aliases, relationship count, and provenance without modifying the record.",

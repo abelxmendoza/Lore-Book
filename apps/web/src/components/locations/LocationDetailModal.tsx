@@ -5,6 +5,7 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
+import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
 import type { LocationProfile } from './LocationProfileCard';
@@ -58,6 +59,7 @@ export const LocationDetailModal = ({
   onClose,
   onLocationUpdated,
 }: LocationDetailModalProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [location, setLocation] = useState(locationProp);
   const [editingProfile, setEditingProfile] = useState(false);
 
@@ -66,20 +68,32 @@ export const LocationDetailModal = ({
     setEditingProfile(false);
   }, [locationProp.id]);
 
+  useEffect(() => {
+    if (isMockDataEnabled || isEphemeralEntityId(locationProp.id)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await fetchLocationById(locationProp.id);
+        if (!cancelled) setLocation(full);
+      } catch {
+        // Keep seed profile on transient errors.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [locationProp.id, isMockDataEnabled]);
+
   const reloadLocationProfile = async () => {
     if (isMockDataEnabled || !location.id) return;
     try {
-      const r = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
-      const updated = r.locations.find(l => l.id === location.id);
-      if (updated) {
-        setLocation(updated);
-        onLocationUpdated?.(updated);
-      }
+      const updated = await fetchLocationById(location.id);
+      setLocation(updated);
+      onLocationUpdated?.(updated);
     } catch {
       // Keep showing current profile on transient errors.
     }
   };
-  const { useMockData: isMockDataEnabled } = useMockData();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);

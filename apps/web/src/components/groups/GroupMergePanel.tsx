@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, GitMerge, Layers, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { entityAuthorityApi } from '../../api/entityAuthority';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import { GROUP_TYPE_LABELS } from '../../lib/groupTypes';
@@ -167,6 +168,7 @@ export const GroupMergePanel = ({
     try {
       const duplicateIds = cluster.organizations.filter(org => org.id !== targetId).map(org => org.id);
       const mergedName = cluster.organizations.find(org => org.id === targetId)?.name ?? 'the selected group';
+      let reviewCount = 0;
       if (duplicateIds.length === 0) return;
 
       if (demoMode) {
@@ -180,14 +182,19 @@ export const GroupMergePanel = ({
         return;
       }
 
-      await fetchJson('/api/organizations/merge', {
+      const result = await fetchJson<{ report?: { reviewFlags?: string[] } }>('/api/organizations/merge', {
         method: 'POST',
         body: JSON.stringify({ primary_id: targetId, duplicate_ids: duplicateIds }),
       });
+      reviewCount = result.report?.reviewFlags?.length ?? 0;
       await loadDuplicateClusters();
       onMerged();
       setMergeNotice(
-        `Merged ${duplicateIds.length} duplicate ${duplicateIds.length === 1 ? 'card' : 'cards'} into ${mergedName}. Members, stories, and events were consolidated.`
+        mergeNoticeWithReview(
+          mergedName,
+          reviewCount,
+          `members, stories, and events from ${duplicateIds.length} duplicate ${duplicateIds.length === 1 ? 'card' : 'cards'} were consolidated`
+        )
       );
     } catch (error) {
       setMergeError(error instanceof Error ? error.message : 'Failed to merge duplicate groups');
@@ -250,6 +257,7 @@ export const GroupMergePanel = ({
     setMergeNotice(null);
     try {
       const mergedName = organizations.find(org => org.id === targetId)?.name ?? 'the selected group';
+      let reviewCount = 0;
       if (demoMode) {
         cancelManualMerge();
         setMergeNotice(
@@ -259,14 +267,17 @@ export const GroupMergePanel = ({
         return;
       }
 
-      await fetchJson('/api/organizations/merge', {
+      const result = await fetchJson<{ report?: { reviewFlags?: string[] } }>('/api/organizations/merge', {
         method: 'POST',
         body: JSON.stringify({ primary_id: targetId, duplicate_ids: duplicateIds }),
       });
+      reviewCount = result.report?.reviewFlags?.length ?? 0;
       cancelManualMerge();
       await loadDuplicateClusters();
       onMerged();
-      setMergeNotice(`Merged ${duplicateIds.length + 1} selected cards into ${mergedName}.`);
+      setMergeNotice(
+        mergeNoticeWithReview(mergedName, reviewCount, `combined ${duplicateIds.length + 1} selected cards`)
+      );
     } catch (error) {
       setMergeError(error instanceof Error ? error.message : 'Failed to merge selected groups');
     } finally {
@@ -353,24 +364,16 @@ export const GroupMergePanel = ({
               {mergeError}
             </div>
           )}
-          {selectedOrganizations.length >= 2 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedOrganizations.map(org => (
-                <Button
-                  key={org.id}
-                  size="sm"
-                  disabled={mergeBusy}
-                  onClick={() => void mergeSelectedOrganizations(org.id)}
-                  leftIcon={<GitMerge className="h-3.5 w-3.5" />}
-                  className="text-xs"
-                >
-                  Keep {org.name}
-                </Button>
-              ))}
-            </div>
-          )}
         </div>
       )}
+
+      <MergeKeepSelectionBar
+        visible={selectionMode && selectedOrganizations.length >= 2}
+        selectedCount={selectedOrganizations.length}
+        options={selectedOrganizations.map((org) => ({ id: org.id, name: org.name }))}
+        busy={mergeBusy}
+        onKeep={(targetId) => void mergeSelectedOrganizations(targetId)}
+      />
 
       {showMergeDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
@@ -435,7 +438,7 @@ export const GroupMergePanel = ({
                               onClick={() => void mergeCluster(cluster, org.id)}
                               leftIcon={<GitMerge className="h-3.5 w-3.5" />}
                             >
-                              Keep this
+                              Keep {org.name}
                             </Button>
                             <Button
                               size="sm"

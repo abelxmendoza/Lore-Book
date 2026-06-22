@@ -13,6 +13,7 @@ import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { Badge } from '../ui/badge';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { fetchProjectById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import {
   enrichProjectForDemo,
   getProjectDetailProfile,
@@ -68,6 +69,22 @@ export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: P
     setLocal(demo ? enrichProjectForDemo(project) : project);
     setActiveTab('overview');
   }, [project.id, demo, project]);
+
+  useEffect(() => {
+    if (demo || isEphemeralEntityId(project.id)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await fetchProjectById(project.id);
+        if (!cancelled) setLocal(full);
+      } catch {
+        // Keep seed project from the Book on transient errors.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, demo]);
 
   const isFallback = local.metadata?.source === 'organizations_fallback';
   const readOnly = isFallback;

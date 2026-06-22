@@ -201,6 +201,21 @@ router.post(
   })
 );
 
+// GET /api/locations/:id — full profile for modals and deep links
+router.get('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const locationId = String(req.params.id);
+  const canonicalId =
+    (await locationMergeService.resolveCanonicalLocationId(userId, locationId, { promote: false })) ??
+    locationId;
+  const location = await locationService.getLocationProfile(userId, canonicalId);
+  if (!location) {
+    res.status(404).json({ error: 'Location not found' });
+    return;
+  }
+  res.json({ location });
+}));
+
 // GET /api/locations/:id/facts
 router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
