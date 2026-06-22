@@ -15,4 +15,6 @@ export type CertifiedEntity = {
   status?: EntityStatus;
   /** When set on type character, use romantic styling (rose) instead of default (violet). */
   characterVariant?: CharacterVariant;
+  /** Archived cards stay mentionable in chat — tap ✓ to restore to the book */
+  lifecycleStatus?: 'archived' | 'pending_deletion';
 };

@@ -153,7 +153,11 @@ async function rescanRomantic(userId: string): Promise<{ scanned: boolean; summa
 }
 
 class ConversationSuggestionRescanService {
-  async rescan(userId: string, domains: SuggestionDomain[]): Promise<SuggestionRescanSummary> {
+  async rescan(
+    userId: string,
+    domains: SuggestionDomain[],
+    opts: { incremental?: boolean; cardCleanup?: boolean; cardAudit?: boolean; fullRescan?: boolean } = {},
+  ): Promise<SuggestionRescanSummary> {
     const unique = [...new Set(domains)];
     const results: SuggestionRescanSummary['results'] = {};
 
@@ -176,7 +180,12 @@ class ConversationSuggestionRescanService {
         try {
           switch (domain) {
             case 'characters':
-              results.characters = await characterConversationRescanService.rescan(userId);
+              results.characters = await characterConversationRescanService.rescan(userId, {
+                incremental: opts.incremental,
+                cardCleanup: opts.cardCleanup,
+                cardAudit: opts.cardAudit !== false,
+                fullRescan: opts.fullRescan,
+              });
               break;
             case 'quests':
               results.quests = await rescanQuests(userId);

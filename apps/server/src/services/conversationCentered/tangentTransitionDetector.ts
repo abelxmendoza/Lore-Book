@@ -1,3 +1,4 @@
+import { config } from '../../config';
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { hasTangentCue } from '../ontology/discourseStance';
@@ -191,7 +192,7 @@ export class TangentTransitionDetector {
     try {
       // Use LLM to detect topic shift
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',
@@ -297,7 +298,7 @@ Analyze the topic shift.`,
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',
@@ -514,7 +515,7 @@ Analyze the thought process change.`,
   async extractEmotionalState(message: string): Promise<EmotionalState> {
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',

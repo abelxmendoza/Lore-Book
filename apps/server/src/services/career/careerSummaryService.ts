@@ -125,8 +125,8 @@ function buildTimeline(
 class CareerSummaryService {
   async getSummary(userId: string): Promise<CareerSummary> {
     const [resumes, claims, skills, orgsResult, eventsResult] = await Promise.all([
-      resumeParsingService.getResumeDocuments(userId),
-      profileClaimsService.getClaims(userId, { source: 'resume' }),
+      resumeParsingService.getResumeDocuments(userId).catch(() => []),
+      profileClaimsService.getClaims(userId, { source: 'resume' }).catch(() => []),
       skillService.getSkills(userId, { active_only: true }).catch(() => []),
       supabaseAdmin
         .from('organizations')

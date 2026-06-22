@@ -3,6 +3,7 @@
 // Purpose: Detect social interactions at the gym and update relationships
 // =====================================================
 
+import { config } from '../../config';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -63,7 +64,7 @@ Return JSON in this format:
 If no social interactions found, return {"interactions": []}.`;
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',

@@ -62,7 +62,10 @@ export async function listMentionableEntities(userId: string): Promise<Mentionab
   const map = new Map<string, MentionableEntity>();
 
   for (const entity of confirmed) {
-    pushUnique(map, { ...entity, status: 'confirmed' });
+    pushUnique(map, {
+      ...entity,
+      status: 'confirmed',
+    });
   }
 
   for (const s of charSuggestions) {

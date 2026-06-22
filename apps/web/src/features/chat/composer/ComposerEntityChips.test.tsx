@@ -37,7 +37,7 @@ describe('ComposerEntityChips', () => {
     render(<ComposerEntityChips entities={[confirmed, suggested]} onConfirm={vi.fn()} />);
 
     expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
-    expect(screen.getByText('Confirm')).toBeInTheDocument();
+    expect(screen.getByText('Tap ✓ to confirm')).toBeInTheDocument();
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toHaveTextContent('Abel');
     expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toHaveTextContent('Kelly');
   });
@@ -47,7 +47,7 @@ describe('ComposerEntityChips', () => {
     const onConfirm = vi.fn();
 
     render(<ComposerEntityChips entities={[suggested]} onConfirm={onConfirm} />);
-    await user.click(screen.getByTestId('composer-entity-chip-character-sug:character:kelly'));
+    await user.click(screen.getByTestId('composer-entity-chip-character-sug:character:kelly-confirm'));
 
     expect(onConfirm).toHaveBeenCalledWith(suggested);
   });

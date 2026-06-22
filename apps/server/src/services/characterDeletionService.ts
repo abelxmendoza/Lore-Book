@@ -46,11 +46,18 @@ class CharacterDeletionService {
   ): Promise<DeletionReport | null> {
     const { data: character } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata')
+      .select('id, name, alias, metadata, status')
       .eq('id', characterId)
       .eq('user_id', userId)
       .single();
     if (!character) return null;
+
+    const { canPermanentlyDeleteCharacter } = await import('./characters/characterLifecycle');
+    if (!canPermanentlyDeleteCharacter(character.status as string)) {
+      throw new Error(
+        'Character must be queued for deletion (pending_deletion) before permanent removal. Archive first, then review in Pending deletion.'
+      );
+    }
 
     const report: DeletionReport = {
       characterId,

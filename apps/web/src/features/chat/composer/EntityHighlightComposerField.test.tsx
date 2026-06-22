@@ -35,33 +35,12 @@ const abel: CertifiedEntityMatch = {
   matchKind: 'full',
 };
 
-const romantic: CertifiedEntityMatch = {
-  id: 'uuid-kelly',
-  name: 'Kelly',
-  type: 'character',
-  characterVariant: 'romantic',
-  aliases: [],
-  mentionKeys: ['kelly'],
-  status: 'confirmed',
-  matchedLabel: 'Kelly',
-  matchKind: 'full',
-};
-
 describe('EntityHighlightComposerField', () => {
-  it('renders highlight marks for known entities', () => {
+  it('renders a plain textarea without inline highlight overlay', () => {
     render(<Harness value="Tell Abel about work" matches={[abel]} />);
 
     expect(screen.getByTestId('composer-highlight-field')).toBeInTheDocument();
-    expect(
-      screen.getByTestId('composer-entity-highlight-character-uuid-abel', { hidden: true })
-    ).toHaveTextContent('Abel');
-  });
-
-  it('uses rose styling for romantic interests', () => {
-    render(<Harness value="I saw Kelly today" matches={[romantic]} />);
-
-    const mark = screen.getByTestId('composer-entity-highlight-romantic-uuid-kelly', { hidden: true });
-    expect(mark).toHaveTextContent('Kelly');
-    expect(mark.className).toContain('entity-hl-romantic');
+    expect(screen.getByRole('textbox')).toHaveValue('Tell Abel about work');
+    expect(screen.queryByTestId('composer-entity-highlight-character-uuid-abel')).not.toBeInTheDocument();
   });
 });

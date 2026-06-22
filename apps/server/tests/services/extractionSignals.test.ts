@@ -7,6 +7,9 @@ import {
   hasInterestSignal,
   hasLifeChangeSignal,
   hasAnyExtractionSignal,
+  hasSelfAttributeSignal,
+  hasWorkoutSignal,
+  hasBiometricSignal,
 } from '../../src/services/conversationCentered/extractionSignals';
 
 /**
@@ -122,6 +125,39 @@ describe('extractionSignals', () => {
 
     it('ignores everyday text', () => {
       expect(hasLifeChangeSignal('I made pasta for lunch')).toBe(false);
+    });
+  });
+
+  describe('hasSelfAttributeSignal', () => {
+    it.each([
+      'I work as a nurse at Kaiser',
+      'studying computer science at MIT',
+      'I live in Portland now',
+      "I'm 32 years old",
+    ])('detects self attributes in: %s', (text) => {
+      expect(hasSelfAttributeSignal(text)).toBe(true);
+    });
+
+    it('ignores bare first-person narration', () => {
+      expect(hasSelfAttributeSignal('I went to the store')).toBe(false);
+    });
+  });
+
+  describe('hasWorkoutSignal', () => {
+    it('detects gym content', () => {
+      expect(hasWorkoutSignal('hit the gym and did squats')).toBe(true);
+    });
+    it('ignores non-workout text', () => {
+      expect(hasWorkoutSignal('had lunch with Sam')).toBe(false);
+    });
+  });
+
+  describe('hasBiometricSignal', () => {
+    it('detects scale metrics', () => {
+      expect(hasBiometricSignal('my body fat is down to 18%')).toBe(true);
+    });
+    it('ignores non-biometric text', () => {
+      expect(hasBiometricSignal('feeling tired today')).toBe(false);
     });
   });
 

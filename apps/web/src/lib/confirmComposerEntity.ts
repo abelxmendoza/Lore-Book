@@ -80,6 +80,37 @@ async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<
 
 /** Promote a composer suggestion/draft chip into a confirmed book entity. */
 export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promise<void> {
+  if (entity.lifecycleStatus === 'archived' && entity.type === 'character') {
+    if (shouldUseMockData()) {
+      mockDataService.mutate.characters.upsert({
+        id: entity.id,
+        name: entity.name,
+        status: 'active',
+      } as Character);
+      apiCache.delete(INDEX_CACHE_KEY);
+      triggerCelebration({
+        variant: 'character',
+        label: `${entity.name} restored to Characters`,
+        subtitle: 'Mentioned again in chat',
+      });
+      window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
+      return;
+    }
+    await fetchJson(`/api/characters/${entity.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'active' }),
+    });
+    invalidateEntityTags(['Character']);
+    apiCache.delete(INDEX_CACHE_KEY);
+    triggerCelebration({
+      variant: 'character',
+      label: `${entity.name} restored to Characters`,
+      subtitle: 'Mentioned again in chat',
+    });
+    window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
+    return;
+  }
+
   if (entity.status === 'confirmed') return;
 
   if (shouldUseMockData()) {

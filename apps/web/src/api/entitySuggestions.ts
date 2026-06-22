@@ -19,16 +19,38 @@ export type CharacterSuggestion = {
   alternative_categories?: AlternativeCategory[];
 };
 
+export type CharacterCardReviewSuggestion = {
+  id: string;
+  characterId: string;
+  name: string;
+  status: string;
+  reason: string;
+  suggestedTitle?: string;
+  reviewRound: number;
+  maxRounds: number;
+  source: 'card_audit';
+  context: string;
+};
+
 export const characterSuggestionsApi = {
   list: (options?: { context?: 'general' | 'romantic'; rescan?: boolean }) => {
     const params = new URLSearchParams();
     if (options?.context === 'romantic') params.set('context', 'romantic');
     if (options?.rescan) params.set('rescan', 'true');
     const query = params.toString() ? `?${params.toString()}` : '';
-    return fetchJson<{ success: boolean; suggestions: CharacterSuggestion[]; count: number }>(
-      `/api/characters/suggestions${query}`
-    );
+    return fetchJson<{
+      success: boolean;
+      suggestions: CharacterSuggestion[];
+      cardReviewSuggestions?: CharacterCardReviewSuggestion[];
+      count: number;
+    }>(`/api/characters/suggestions${query}`);
   },
+
+  resolveCardReview: (characterId: string, action: 'keep' | 'delete') =>
+    fetchJson<{ success: boolean }>(`/api/characters/card-audit/review/${characterId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
 
   add: (suggestion: CharacterSuggestion) =>
     fetchJson<{ character: unknown }>('/api/characters', {

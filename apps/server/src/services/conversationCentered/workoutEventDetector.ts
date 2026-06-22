@@ -3,6 +3,7 @@
 // Purpose: Detect and extract workout data from conversations
 // =====================================================
 
+import { config } from '../../config';
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 import { supabaseAdmin } from '../supabaseClient';
@@ -113,7 +114,7 @@ Return JSON in this format:
 If no workout data found, return null.`;
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',

@@ -38,6 +38,7 @@ import {
   promotePeripheralToCharacter,
 } from '../services/relationshipPeripheralService';
 import { characterTitleRoutes } from './characterTitleRoutes';
+import { characterCardAuditService } from '../services/characters/audit/characterCardAuditService';
 
 const router = Router();
 
@@ -786,6 +787,36 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.get('/card-audit', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const report = await characterCardAuditService.audit(userId);
+  res.json(report);
+}));
+
+router.post('/card-audit/apply', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const body = z.object({ dryRun: z.boolean().optional() }).parse(req.body ?? {});
+  const { characterCardCleanupService } = await import(
+    '../services/characters/audit/characterCardCleanupService'
+  );
+  const report = await characterCardCleanupService.applySafeFixes(userId, { dryRun: body.dryRun });
+  res.json({ success: true, report });
+}));
+
+router.post('/card-audit/review/:id/resolve', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const body = z.object({ action: z.enum(['keep', 'delete']) }).parse(req.body ?? {});
+  const { characterCardRescanAuditService } = await import(
+    '../services/characters/audit/characterCardRescanAuditService'
+  );
+  const result = await characterCardRescanAuditService.resolveReviewSuggestion(
+    userId,
+    req.params.id,
+    body.action,
+  );
+  res.json({ success: result.success });
+}));
+
 router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
@@ -1396,12 +1427,24 @@ router.get(
 
     let rescanSummary: Awaited<ReturnType<typeof characterConversationRescanService.rescan>> | null = null;
     if (shouldRescan) {
-      rescanSummary = await characterConversationRescanService.rescan(userId);
+      rescanSummary = await characterConversationRescanService.rescan(userId, { cardAudit: true });
     }
 
     const { characterSuggestionService } = await import('../services/characterSuggestionService');
-    const suggestions = await characterSuggestionService.getSuggestions(userId, { context });
-    res.json({ success: true, suggestions, count: suggestions.length, rescanSummary });
+    const { characterCardRescanAuditService } = await import(
+      '../services/characters/audit/characterCardRescanAuditService'
+    );
+    const [suggestions, cardReviewSuggestions] = await Promise.all([
+      characterSuggestionService.getSuggestions(userId, { context }),
+      characterCardRescanAuditService.getPendingReviewSuggestions(userId),
+    ]);
+    res.json({
+      success: true,
+      suggestions,
+      cardReviewSuggestions,
+      count: suggestions.length,
+      rescanSummary,
+    });
   })
 );
 
@@ -1410,7 +1453,7 @@ router.post(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const summary = await characterConversationRescanService.rescan(userId);
+    const summary = await characterConversationRescanService.rescan(userId, { cardAudit: true });
     return res.json({ success: true, summary });
   })
 );
@@ -1643,7 +1686,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Check if character exists and belongs to user
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata')
+      .select('id, name, alias, metadata, status')
       .eq('id', req.params.id)
       .eq('user_id', userId)
       .single();
@@ -1712,6 +1755,16 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       lastNameToUpdate = nameParts.lastName;
     }
 
+    if (updateData.status !== undefined) {
+      const { assertCharacterStatusTransition } = await import(
+        '../services/characters/characterLifecycle'
+      );
+      const transition = assertCharacterStatusTransition(existing.status as string, updateData.status);
+      if (!transition.ok) {
+        return res.status(400).json({ error: transition.message });
+      }
+    }
+
     // Prepare update payload
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString()
@@ -1778,6 +1831,11 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           metadata: (existing.metadata as Record<string, unknown> | null) ?? {},
         }, { mode: 'archive', reason: 'user_archived_character_card' });
       }
+      if (updateData.status === 'active' && existing.status === 'archived') {
+        void import('../services/characterIdentityIndexService').then(({ characterIdentityIndexService }) =>
+          characterIdentityIndexService.rebuild(userId).catch(() => {})
+        );
+      }
       const { refreshCharacterGraphAfterConsolidation } = await import(
         '../services/characterGraphRefreshService'
       );
@@ -1809,8 +1867,6 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (!report) {
       return res.status(404).json({ error: 'Character not found' });
     }
-
-    // Co-participation degrees changed — refresh standing in the background
     const { socialStandingService } = await import('../services/socialStandingService');
     socialStandingService.recompute(userId).catch(err => {
       logger.debug({ err }, 'Failed to recompute standing after character deletion');
@@ -1823,6 +1879,10 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     res.json({ deleted: true, report });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete character';
+    if (message.includes('pending_deletion')) {
+      return res.status(400).json({ error: message });
+    }
     logger.error({ err: error }, 'Failed to delete character');
     res.status(500).json({ error: 'Failed to delete character' });
   }
@@ -1841,7 +1901,7 @@ router.post('/extract-from-chat', ...guardOpenAiRoute(), requireAuth, checkAiReq
 
     // Use OpenAI to extract character information (named and unnamed)
     const completion = await openai.chat.completions.create({
-      model: config.defaultModel,
+      model: config.extractionModel,
       temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [

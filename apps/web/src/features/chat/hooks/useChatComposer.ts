@@ -116,7 +116,7 @@ export const useChatComposer = (
 
   const confirmMatch = useCallback(
     async (match: CertifiedEntityMatch) => {
-      if (match.status === 'confirmed' || !match.status) return;
+      if (match.lifecycleStatus !== 'archived' && (match.status === 'confirmed' || !match.status)) return;
       const slot = composerMatchSlot(match);
       dispatch(addComposerConfirming(slot));
       setConfirmError(null);

@@ -74,7 +74,11 @@ export function mergeCharactersLocally(
 }
 
 function isMergeEligible(character: Character): boolean {
-  return !isSelfCharacter(character) && character.status !== 'archived';
+  return (
+    !isSelfCharacter(character) &&
+    character.status !== 'archived' &&
+    character.status !== 'pending_deletion'
+  );
 }
 
 function isArchiveEligible(character: Character): boolean {
@@ -147,6 +151,11 @@ export const CharacterMergePanel = ({
 
   const selectedArchivedCharacters = useMemo(
     () => selectedCharacters.filter(character => character.status === 'archived'),
+    [selectedCharacters]
+  );
+
+  const selectedPendingDeletionCharacters = useMemo(
+    () => selectedCharacters.filter(character => character.status === 'pending_deletion'),
     [selectedCharacters]
   );
 
@@ -286,7 +295,8 @@ export const CharacterMergePanel = ({
   };
 
   const restoreSelectedCharacters = async () => {
-    if (selectedArchivedCharacters.length === 0) return;
+    const targets = [...selectedArchivedCharacters, ...selectedPendingDeletionCharacters];
+    if (targets.length === 0) return;
     setMergeBusy(true);
     setMergeError(null);
     try {
@@ -297,7 +307,7 @@ export const CharacterMergePanel = ({
         return;
       }
       await Promise.all(
-        selectedArchivedCharacters.map(character =>
+        targets.map(character =>
           fetchJson(`/api/characters/${character.id}`, {
             method: 'PATCH',
             body: JSON.stringify({ status: 'active' }),
@@ -306,7 +316,7 @@ export const CharacterMergePanel = ({
       );
       cancelManualMerge();
       await afterConsolidation(
-        `Restored ${selectedArchivedCharacters.length} archived card${selectedArchivedCharacters.length === 1 ? '' : 's'} to your Character Book.`
+        `Restored ${targets.length} card${targets.length === 1 ? '' : 's'} to your Character Book.`
       );
     } catch (error) {
       setMergeError(apiErrorMessage(error, 'Failed to restore characters'));
@@ -315,9 +325,70 @@ export const CharacterMergePanel = ({
     }
   };
 
+  const queueSelectedForDeletion = async () => {
+    const targets = selectedArchivedCharacters;
+    if (targets.length === 0) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    try {
+      if (demoMode) {
+        cancelManualMerge();
+        setMergeNotice(`Demo: queued ${targets.length} card(s) for deletion review.`);
+        window.setTimeout(() => setMergeNotice(null), 12000);
+        return;
+      }
+      await Promise.all(
+        targets.map(character =>
+          fetchJson(`/api/characters/${character.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'pending_deletion' }),
+          })
+        )
+      );
+      cancelManualMerge();
+      await afterConsolidation(
+        `Queued ${targets.length} archived card${targets.length === 1 ? '' : 's'} for deletion review. Open Pending deletion to double-check before removing permanently.`
+      );
+    } catch (error) {
+      setMergeError(apiErrorMessage(error, 'Failed to queue characters for deletion'));
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  const restorePendingDeletion = async () => {
+    const targets = selectedPendingDeletionCharacters;
+    if (targets.length === 0) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    try {
+      if (demoMode) {
+        cancelManualMerge();
+        setMergeNotice('Demo: restored queued cards to archived.');
+        return;
+      }
+      await Promise.all(
+        targets.map(character =>
+          fetchJson(`/api/characters/${character.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'archived' }),
+          })
+        )
+      );
+      cancelManualMerge();
+      await afterConsolidation(
+        `Moved ${targets.length} card${targets.length === 1 ? '' : 's'} back to archived (deletion cancelled).`
+      );
+    } catch (error) {
+      setMergeError(apiErrorMessage(error, 'Failed to cancel deletion queue'));
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
   const permanentlyDeleteSelected = async () => {
-    if (selectedActiveCharacters.length !== 1) return;
-    const character = selectedActiveCharacters[0];
+    if (selectedPendingDeletionCharacters.length !== 1) return;
+    const character = selectedPendingDeletionCharacters[0];
     if (deleteConfirmName.trim() !== character.name) return;
     setMergeBusy(true);
     setMergeError(null);
@@ -357,14 +428,21 @@ export const CharacterMergePanel = ({
       icon: Archive,
       tone: 'text-amber-200 border-amber-500/30 bg-amber-500/10',
       when: 'A card is wrong, duplicate-ish, or clutter — but you might want the evidence later.',
-      effect: 'Hides the card from your book. Knowledge stays in the database. Rescan conversations can bring them back.',
+      effect: 'Hides the card from your book. Mention them in chat to restore, or queue for deletion later.',
+    },
+    {
+      title: 'Pending deletion',
+      icon: Trash2,
+      tone: 'text-orange-200 border-orange-500/30 bg-orange-500/10',
+      when: 'You archived a card and want one last review before it is gone forever.',
+      effect: 'Moves to a review queue. Permanent delete only works from this stage.',
     },
     {
       title: 'Delete permanently',
       icon: Trash2,
       tone: 'text-red-200 border-red-500/30 bg-red-500/10',
-      when: 'Rare — fabricated junk or test cards you never want again.',
-      effect: 'Removes the card but preserves facts as lore claims, records the correction for learning, and reprocesses source conversations so nothing you said is lost.',
+      when: 'Only after archive → pending deletion review. Rare junk you never want again.',
+      effect: 'Removes the card but preserves facts as lore claims and reprocesses source conversations.',
     },
   ];
 
@@ -488,6 +566,30 @@ export const CharacterMergePanel = ({
                 </Button>
               )}
               {selectedArchivedCharacters.length > 0 && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={mergeBusy}
+                    onClick={() => void restoreSelectedCharacters()}
+                    leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+                    className="text-xs border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/10"
+                  >
+                    Restore to book
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={mergeBusy}
+                    onClick={() => void queueSelectedForDeletion()}
+                    leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                    className="text-xs border-orange-500/30 text-orange-100 hover:bg-orange-500/10"
+                  >
+                    Queue for deletion…
+                  </Button>
+                </>
+              )}
+              {selectedPendingDeletionCharacters.length > 0 && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -496,10 +598,10 @@ export const CharacterMergePanel = ({
                   leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
                   className="text-xs border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/10"
                 >
-                  Restore to book
+                  Cancel deletion
                 </Button>
               )}
-              {selectedActiveCharacters.length === 1 && selectedArchivedCharacters.length === 0 && (
+              {selectedPendingDeletionCharacters.length === 1 && selectedArchivedCharacters.length === 0 && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -514,17 +616,18 @@ export const CharacterMergePanel = ({
             </div>
           )}
 
-          {showDeleteConfirm && selectedActiveCharacters.length === 1 && selectedArchivedCharacters.length === 0 && (
+          {showDeleteConfirm && selectedPendingDeletionCharacters.length === 1 && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-3 space-y-2">
               <p className="text-xs text-red-100/90">
-                Type <span className="font-mono">{selectedActiveCharacters[0].name}</span> to permanently delete this card.
-                Prefer archive unless you are sure.
+                Final check — type{' '}
+                <span className="font-mono">{selectedPendingDeletionCharacters[0].name}</span> to permanently delete
+                this card. Facts stay in your lore; the card cannot be undone after this.
               </p>
               <input
                 className="w-full rounded-md border border-red-500/20 bg-black/40 px-3 py-2 text-sm text-white"
                 value={deleteConfirmName}
                 onChange={event => setDeleteConfirmName(event.target.value)}
-                placeholder={selectedActiveCharacters[0].name}
+                placeholder={selectedPendingDeletionCharacters[0].name}
               />
               <div className="flex gap-2">
                 <Button
@@ -539,7 +642,10 @@ export const CharacterMergePanel = ({
                 </Button>
                 <Button
                   size="sm"
-                  disabled={mergeBusy || deleteConfirmName.trim() !== selectedActiveCharacters[0].name}
+                  disabled={
+                    mergeBusy ||
+                    deleteConfirmName.trim() !== selectedPendingDeletionCharacters[0].name
+                  }
                   onClick={() => void permanentlyDeleteSelected()}
                   className="bg-red-500/20 text-red-100 border border-red-500/30"
                 >

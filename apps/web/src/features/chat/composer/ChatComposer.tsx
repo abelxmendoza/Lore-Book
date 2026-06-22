@@ -301,6 +301,7 @@ export const ChatComposer = ({
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
+            onConfirmPreviewSpan={(span) => correction.confirmPreviewSpan(span)}
           />
 
           <div className="journal-composer-input-wrap">

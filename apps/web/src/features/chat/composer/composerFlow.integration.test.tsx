@@ -99,14 +99,8 @@ describe('Composer entity chip flow (integration)', () => {
       expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
     });
 
-    // Exact match → chip. Prefix match ("Kel" → Kelly) highlights only (not chipped).
+    // Exact match → chip. Prefix match ("Kel" → Kelly) surfaces as a suggestion chip only.
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
-    expect(
-      screen.getByTestId('composer-entity-highlight-character-uuid-abel', { hidden: true })
-    ).toHaveTextContent('Abel');
-    expect(
-      screen.getByTestId('composer-entity-highlight-character-sug:character:kelly', { hidden: true })
-    ).toHaveTextContent('Kel');
 
     fireEvent.click(screen.getByTestId('composer-entity-dismiss-character-uuid-abel'));
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));

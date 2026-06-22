@@ -372,17 +372,42 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         }
       }
       await persistAssistant(clientGone ? 'partial' : 'complete');
+      let responseCompilerMeta: Record<string, unknown> | undefined;
+      if (fullResponse.length > 0 && req.user?.id) {
+        try {
+          const { compileAssistantResponseWithCanon } = await import(
+            '../services/responseCompiler/responseCompilerIntegration'
+          );
+          const compiled = await compileAssistantResponseWithCanon({
+            userId: req.user.id,
+            rawResponse: fullResponse,
+            userMessage: message,
+            userMessageId: result.metadata.messageId,
+            conversationHistory,
+          });
+          responseCompilerMeta = {
+            actionCandidates: compiled.actionCandidates,
+            certaintyScore: compiled.certaintyScore,
+            groundedCount: compiled.groundedClaims.length,
+            inferredCount: compiled.inferredClaims.length,
+            unsupportedCount: compiled.unsupportedClaims.length,
+            contradictionCount: compiled.contradictions.length,
+            memoryCandidatesBlocked: compiled.memoryCandidatesBlocked.length,
+          };
+        } catch (compileErr) {
+          logger.warn({ err: compileErr, userId: req.user.id }, 'Response compiler failed (non-blocking)');
+        }
+      }
       if (!res.writableEnded) {
         if (!clientGone) {
           sseWrite({
             type: 'done',
             ...(streamTokenUsage ? { usage: streamTokenUsage } : {}),
+            ...(responseCompilerMeta ? { responseCompiler: responseCompilerMeta } : {}),
           });
         }
         res.end();
       }
-      // Advisory hallucination guard — never blocks the stream; flags
-      // responses that claim memory about names absent from the entity graph.
       if (fullResponse.length > 0 && req.user?.id) {
         import('../services/chat/memoryClaimGuard')
           .then(({ verifyMemoryClaims }) => verifyMemoryClaims(req.user!.id, fullResponse))

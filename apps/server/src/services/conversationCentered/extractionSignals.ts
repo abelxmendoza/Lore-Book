@@ -40,12 +40,25 @@ const INTEREST_RE =
 const LIFE_CHANGE_RE =
   /\b(quit|quitting|moved|moving|broke up|break ?up|new job|got a job|got married|getting married|married|divorced|divorce|engaged|stopped|no longer|gave up|giving up|switching|switched|left my|dropped out|drop out|retired|laid off|got fired|fired|pregnant|had a baby|new place|relocat)\b/i;
 
+/** Self-attribute facts (job, location, demographics) — not bare first-person narration. */
+const SELF_ATTRIBUTE_RE =
+  /\b(work(?:s|ed|ing)? (?:as|at|for)|job (?:as|at|is)|employed|unemployed|studying|studied|stud(?:y|ies) (?:at|for)|major in|degree in|graduat|college|university|school|born in|birthday|years? old|i am \d{1,3}|i'm \d{1,3}|live in|living in|moved to|from [A-Z][a-z]+|nationality|pronouns?|single|dating|married|divorced|engaged|retired|salary|income|debt|diagnosed|allergic|pronoun)\b/i;
+
+const WORKOUT_RE =
+  /\b(worked out|workout|gym|lifted|lifting|weightlifting|bench press|squat|deadlift|cardio|ran|running|exercised|training|fitness|exercise|reps|sets|personal record|\bpr\b|one rep max|1rm)\b/i;
+
+const BIOMETRIC_RE =
+  /\b(scale|weighed|weight|body fat|bodyfat|muscle mass|bmi|hydration|bone mass|visceral fat|metabolic age|body composition|biometric|health metrics|fitness tracker)\b/i;
+
 export const hasQuestSignal = (text: string): boolean => QUEST_RE.test(norm(text));
 export const hasProgressSignal = (text: string): boolean => PROGRESS_RE.test(norm(text));
 export const hasSkillSignal = (text: string): boolean => SKILL_RE.test(norm(text));
 export const hasProjectSignal = (text: string): boolean => PROJECT_RE.test(norm(text));
 export const hasInterestSignal = (text: string): boolean => INTEREST_RE.test(norm(text));
 export const hasLifeChangeSignal = (text: string): boolean => LIFE_CHANGE_RE.test(norm(text));
+export const hasSelfAttributeSignal = (text: string): boolean => SELF_ATTRIBUTE_RE.test(norm(text));
+export const hasWorkoutSignal = (text: string): boolean => WORKOUT_RE.test(norm(text));
+export const hasBiometricSignal = (text: string): boolean => BIOMETRIC_RE.test(norm(text));
 
 /** Fast top-level check: does the message warrant ANY of the cluster extractors? */
 export const hasAnyExtractionSignal = (text: string): boolean => {

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2 } from 'lucide-react';
-import { characterSuggestionsApi, type CharacterSuggestion } from '../../api/entitySuggestions';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2, AlertTriangle } from 'lucide-react';
+import {
+  characterSuggestionsApi,
+  type CharacterCardReviewSuggestion,
+  type CharacterSuggestion,
+} from '../../api/entitySuggestions';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { suggestionRescanApi } from '../../api/suggestionRescan';
 import { appendLorebookParseToast } from '../../lib/suggestionRescanToast';
@@ -50,6 +54,8 @@ export const DetectedCharacterSuggestions = ({
 }: Props) => {
   const showDemo = demoMode;
   const [suggestions, setSuggestions] = useState<CharacterSuggestion[]>([]);
+  const [cardReviewSuggestions, setCardReviewSuggestions] = useState<CharacterCardReviewSuggestion[]>([]);
+  const [resolvingCardReview, setResolvingCardReview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -77,6 +83,7 @@ export const DetectedCharacterSuggestions = ({
           : { rescan: opts?.rescan }
       );
       setSuggestions(res.suggestions ?? []);
+      setCardReviewSuggestions(res.cardReviewSuggestions ?? []);
     } catch {
       setSuggestions([]);
     } finally {
@@ -122,10 +129,16 @@ export const DetectedCharacterSuggestions = ({
     [suggestions, dismissed, added, bookEntries]
   );
 
+  const visibleCardReviews = useMemo(
+    () => cardReviewSuggestions.slice(0, 12),
+    [cardReviewSuggestions],
+  );
+
   const panelDomain = variant === 'romantic' ? 'characters-romantic' : 'characters';
+  const panelItemCount = visible.length + visibleCardReviews.length;
   const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
     panelDomain,
-    visible.length,
+    panelItemCount,
     { loading, scanning: rescanning },
   );
 
@@ -168,15 +181,37 @@ export const DetectedCharacterSuggestions = ({
         const charSummary = summary.results.characters as {
           charactersPromoted?: number;
           restoredFromEvidence?: number;
+          scannedEpisodes?: number;
+          incremental?: boolean;
+          cardCleanup?: { applied?: number; actions?: Array<{ currentTitle: string; applied: string; targetTitle?: string }> };
+          cardAudit?: {
+            autoRemoved?: number;
+            queuedForReview?: number;
+            deletedAfterThreeStrikes?: number;
+          };
         } | undefined;
         const promoted = charSummary?.charactersPromoted ?? 0;
         const restored = charSummary?.restoredFromEvidence ?? 0;
+        const cleaned = charSummary?.cardCleanup?.applied ?? 0;
+        const autoRemoved = charSummary?.cardAudit?.autoRemoved ?? 0;
+        const queuedReview = charSummary?.cardAudit?.queuedForReview ?? 0;
+        const threeStrike = charSummary?.cardAudit?.deletedAfterThreeStrikes ?? 0;
         const total = promoted + restored;
+        const auditNote =
+          autoRemoved + queuedReview + threeStrike > 0
+            ? ` Card audit: ${autoRemoved} removed, ${queuedReview} queued for your review${threeStrike > 0 ? `, ${threeStrike} cleared after 3 rounds` : ''}.`
+            : cleaned > 0
+              ? ` Card audit cleaned ${cleaned} junk/misclassified card${cleaned === 1 ? '' : 's'}.`
+              : '';
+        const incrementalNote =
+          charSummary?.incremental && (charSummary.scannedEpisodes ?? 0) === 0
+            ? ' Checked new messages only — no full replay needed.'
+            : '';
         setRescanNotice(
           appendLorebookParseToast(
             total > 0
-              ? `Rescan found ${total} character${total === 1 ? '' : 's'} to add or restore.`
-              : 'Rescan complete — your cast is up to date.',
+              ? `Rescan found ${total} character${total === 1 ? '' : 's'} to add or restore.${auditNote}`
+              : `Rescan complete — your cast is up to date.${auditNote}${incrementalNote}`,
             summary
           )
         );
@@ -260,6 +295,26 @@ export const DetectedCharacterSuggestions = ({
     }
   };
 
+  const handleCardReviewResolve = async (item: CharacterCardReviewSuggestion, action: 'keep' | 'delete') => {
+    if (showDemo) return;
+    setResolvingCardReview(item.characterId);
+    setError(null);
+    try {
+      await characterSuggestionsApi.resolveCardReview(item.characterId, action);
+      setCardReviewSuggestions(prev => prev.filter(s => s.characterId !== item.characterId));
+      setRescanNotice(
+        action === 'keep'
+          ? `Kept “${item.name}” in your Character Book — rescan will not auto-remove it again.`
+          : `Removed “${item.name}” and re-evaluated source messages.`,
+      );
+      invalidateEntityTags(['Character']);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resolve card review');
+    } finally {
+      setResolvingCardReview(null);
+    }
+  };
+
   if (hidePanel) {
     return variant === 'romantic' ? (
       <RomanticAddCelebration
@@ -288,7 +343,7 @@ export const DetectedCharacterSuggestions = ({
           </h3>
           {!loading && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200 font-mono">
-              {visible.length}
+              {panelItemCount}
             </span>
           )}
           {showDemo && (
@@ -349,9 +404,9 @@ export const DetectedCharacterSuggestions = ({
               {successNotice}
             </p>
           )}
-          {loading && visible.length === 0 ? (
+          {loading && panelItemCount === 0 ? (
             <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
-          ) : visible.length === 0 ? (
+          ) : panelItemCount === 0 ? (
             <SuggestionPanelEmptyState
               message="No new people to add right now. Rescan your full chat and journal history to surface anyone missing from your book — including characters removed by mistake."
               onDismiss={dismissEmptyPanel}
@@ -360,6 +415,62 @@ export const DetectedCharacterSuggestions = ({
               rescanLabel={variant === 'romantic' ? 'Rescan love story' : 'Rescan conversations'}
             />
           ) : (
+            <div className="space-y-3">
+            {visibleCardReviews.length > 0 && variant !== 'romantic' && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-medium text-orange-200/90 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Character cards needing review ({visibleCardReviews.length})
+                </p>
+                {visibleCardReviews.map(item => {
+                  const resolving = resolvingCardReview === item.characterId;
+                  const roundsLeft = Math.max(0, item.maxRounds - item.reviewRound);
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-start gap-3 rounded-lg border border-orange-500/25 bg-orange-950/20 px-3 py-2.5"
+                    >
+                      <AlertTriangle className="h-4 w-4 text-orange-300/80 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                        {item.suggestedTitle && item.suggestedTitle !== item.name && (
+                          <p className="text-[11px] text-orange-200/70 mt-0.5">
+                            Suggested title: {item.suggestedTitle}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-white/45 line-clamp-2 mt-0.5">{item.reason}</p>
+                        <p className="text-[10px] text-orange-200/60 mt-1">
+                          Round {item.reviewRound}/{item.maxRounds}
+                          {roundsLeft > 0
+                            ? ` — ${roundsLeft} rescan${roundsLeft === 1 ? '' : 's'} left before auto cleanup`
+                            : ' — next rescan removes this card'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => void handleCardReviewResolve(item, 'keep')}
+                          disabled={resolving}
+                          className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30 border border-emerald-500/30 disabled:opacity-50"
+                        >
+                          {resolving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                          Keep
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleCardReviewResolve(item, 'delete')}
+                          disabled={resolving}
+                          className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded bg-red-500/15 text-red-100 hover:bg-red-500/25 border border-red-500/25 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {visible.length > 0 && (
             <div className={variant === 'romantic' ? 'grid grid-cols-2 gap-2 lg:grid-cols-3' : 'space-y-2'}>
             {visible.map(s => {
               const k = keyFor(s);
@@ -499,6 +610,8 @@ export const DetectedCharacterSuggestions = ({
                 </div>
               );
             })}
+            </div>
+            )}
             </div>
           )}
         </div>

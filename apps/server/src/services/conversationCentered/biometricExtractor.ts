@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { config } from '../../config';
 import { supabaseAdmin } from '../supabaseClient';
 
 export interface BiometricMeasurement {
@@ -90,7 +91,7 @@ Return JSON in this format:
 If no biometric data found, return null.`;
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         messages: [
           {
             role: 'system',

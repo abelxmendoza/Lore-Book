@@ -20,16 +20,19 @@
  * Usage:
  *   LOREKEEPER_TEST_USER_ID=<uuid> npx tsx scripts/true-mvp-diagnostic.ts
  *   add --keep to skip cleanup of the test data
+ *   add --skip-llm to verify Supabase wiring only (checks 1–6 need OpenAI)
  *
  * Uses a deliberately unique person name so cleanup can find everything.
  */
 
 import { randomUUID } from 'crypto';
-import { supabaseAdmin } from '../src/services/supabaseClient';
+import { resolveSupabaseUrlAtBoot } from '../src/lib/supabaseUrlResolution';
+import { isSupabaseConfigured, supabaseAdmin } from '../src/services/supabaseClient';
 import { conversationIngestionPipeline } from '../src/services/conversationCentered/ingestionPipeline';
 
 const TEST_PERSON = 'Zephyrine Quillborne';
 const KEEP = process.argv.includes('--keep');
+const SKIP_LLM = process.argv.includes('--skip-llm');
 
 const MESSAGES = [
   `Had coffee with ${TEST_PERSON} today. She's my old college roommate and she just started a new job as a marine biologist in San Diego.`,
@@ -44,10 +47,23 @@ interface CheckResult {
 }
 
 async function main() {
+  await resolveSupabaseUrlAtBoot();
+  if (!isSupabaseConfigured) {
+    console.error(
+      'Supabase is not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env (not placeholders).'
+    );
+    process.exit(1);
+  }
+
   const userId = process.env.LOREKEEPER_TEST_USER_ID;
   if (!userId) {
     console.error('Set LOREKEEPER_TEST_USER_ID to the uuid of a test user.');
     process.exit(1);
+  }
+
+  if (SKIP_LLM) {
+    await runSupabaseOnlyCheck(userId);
+    return;
   }
 
   const results: CheckResult[] = [];
@@ -226,6 +242,70 @@ async function main() {
   }
 
   process.exit(passed === results.length ? 0 : 1);
+}
+
+/** Verifies real Supabase client (not mock) without calling OpenAI. */
+async function runSupabaseOnlyCheck(userId: string) {
+  const threadId = randomUUID();
+  const now = new Date().toISOString();
+
+  console.log('\n— True-MVP Diagnostic (Supabase only, --skip-llm) —');
+  console.log(`user: ${userId}\n`);
+
+  const { error: threadErr } = await supabaseAdmin.from('conversation_sessions').insert({
+    id: threadId,
+    user_id: userId,
+    title: 'MVP diagnostic supabase-only',
+    started_at: now,
+    created_at: now,
+    updated_at: now,
+    metadata: { mvp_diagnostic: true, skip_llm: true },
+  });
+  if (threadErr) {
+    console.error(`❌ conversation_sessions insert failed: ${threadErr.message}`);
+    process.exit(1);
+  }
+
+  const { data: msg, error: msgErr } = await supabaseAdmin
+    .from('chat_messages')
+    .insert({
+      user_id: userId,
+      session_id: threadId,
+      role: 'user',
+      content: MESSAGES[0],
+      metadata: { mvp_diagnostic: true, skip_llm: true },
+    })
+    .select('id')
+    .single();
+
+  if (msgErr || !msg?.id) {
+    console.error(`❌ chat_messages insert failed: ${msgErr?.message ?? 'no row returned'}`);
+    await supabaseAdmin.from('conversation_sessions').delete().eq('id', threadId);
+    process.exit(1);
+  }
+
+  if (msg.id === 'mock-id') {
+    console.error('❌ still using Supabase mock (got mock-id) — check SUPABASE_URL / SERVICE_ROLE_KEY');
+    process.exit(1);
+  }
+
+  const { data: roundTrip } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id, content')
+    .eq('id', msg.id)
+    .single();
+
+  console.log('✅ Supabase client: real (not mock)');
+  console.log(`✅ chat_messages round-trip: ${roundTrip?.id}`);
+  console.log('⏭️  checks 1–6 skipped (require OpenAI — re-run without --skip-llm when billing is ready)\n');
+
+  if (!KEEP) {
+    await supabaseAdmin.from('chat_messages').delete().eq('id', msg.id);
+    await supabaseAdmin.from('conversation_sessions').delete().eq('id', threadId);
+    console.log('cleanup done\n');
+  }
+
+  process.exit(0);
 }
 
 main().catch(err => {

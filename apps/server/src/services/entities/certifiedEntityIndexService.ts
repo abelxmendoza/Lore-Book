@@ -18,6 +18,8 @@ export type CertifiedEntity = {
   /** Normalized lowercase keys for fast mention matching */
   mentionKeys: string[];
   characterVariant?: CharacterVariant;
+  /** Book card hidden from main UI but still mentionable in chat for restore */
+  lifecycleStatus?: 'archived' | 'pending_deletion';
 };
 
 function mentionKeysFor(name: string, aliases: string[]): string[] {
@@ -77,7 +79,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     Promise.resolve(
       supabaseAdmin
         .from('character_identity_index')
-        .select('character_id, mention, mention_key, character:characters(id, name, alias, metadata)')
+        .select('character_id, mention, mention_key, character:characters(id, name, alias, metadata, status)')
         .eq('user_id', userId)
     )
       .then((r) => r.data ?? [])
@@ -85,7 +87,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     Promise.resolve(
       supabaseAdmin
         .from('characters')
-        .select('id, name, alias, metadata')
+        .select('id, name, alias, metadata, status')
         .eq('user_id', userId)
     )
       .then((r) => r.data ?? [])
@@ -142,14 +144,16 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
   // Characters — prefer identity index (canonical mentions)
   const charAliases = new Map<string, Set<string>>();
   const charNames = new Map<string, string>();
+  const charStatus = new Map<string, string>();
   for (const row of identityRows as Array<{
     character_id: string;
     mention: string;
-    character?: { id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null };
+    character?: { id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null; status?: string | null };
   }>) {
     if (!row.character_id) continue;
     const rawName = row.character?.name ?? row.mention;
     charNames.set(row.character_id, primaryDisplayName(rawName, row.character?.metadata));
+    if (row.character?.status) charStatus.set(row.character_id, row.character.status);
     const set = charAliases.get(row.character_id) ?? new Set<string>();
     const displayName = charNames.get(row.character_id)!;
     if (row.mention && row.mention !== displayName) set.add(row.mention);
@@ -158,10 +162,11 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     for (const a of displayTitleAliases(row.character?.metadata)) set.add(a);
     charAliases.set(row.character_id, set);
   }
-  for (const c of charactersFallback as Array<{ id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null }>) {
+  for (const c of charactersFallback as Array<{ id: string; name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null; status?: string | null }>) {
     if (!charNames.has(c.id)) {
       charNames.set(c.id, primaryDisplayName(c.name, c.metadata));
     }
+    if (c.status) charStatus.set(c.id, c.status);
     const set = charAliases.get(c.id) ?? new Set<string>();
     const displayName = charNames.get(c.id)!;
     if (c.name !== displayName) set.add(c.name);
@@ -170,7 +175,11 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     charAliases.set(c.id, set);
   }
   for (const [id, name] of charNames) {
+    const status = (charStatus.get(id) ?? 'active').toLowerCase();
+    if (status === 'pending_deletion') continue;
     const aliases = [...(charAliases.get(id) ?? [])].filter((a) => a !== name);
+    const lifecycleStatus =
+      status === 'archived' ? ('archived' as const) : undefined;
     pushEntity(map, {
       id,
       name,
@@ -178,6 +187,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
       aliases,
       mentionKeys: mentionKeysFor(name, aliases),
       ...(romanticCharacterIds.has(id) ? { characterVariant: 'romantic' as const } : {}),
+      ...(lifecycleStatus ? { lifecycleStatus } : {}),
     });
   }
 

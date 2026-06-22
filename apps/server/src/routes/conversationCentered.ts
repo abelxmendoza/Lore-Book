@@ -347,12 +347,18 @@ router.post(
         )
         .min(1)
         .max(6),
+      incremental: z.boolean().optional(),
+      cardCleanup: z.boolean().optional(),
+      fullRescan: z.boolean().optional(),
     });
     const body = schema.parse(req.body);
     const { conversationSuggestionRescanService } = await import(
       '../services/conversationSuggestionRescanService'
     );
-    const summary = await conversationSuggestionRescanService.rescan(userId, body.domains);
+    const summary = await conversationSuggestionRescanService.rescan(userId, body.domains, {
+      incremental: body.fullRescan ? false : body.incremental,
+      cardCleanup: body.cardCleanup,
+    });
     res.json({ success: true, summary });
   })
 );

@@ -5,13 +5,14 @@
 //          entity attributes, romantic signals, interests, health, skills,
 //          groups, quest signals, emotional metadata, and recurrence hints.
 //
-// This service is SHADOW-ONLY until Phase 1 A/B rollout is approved.
-// It runs in parallel with the existing pipeline and writes only to
-// shadow_extraction_log. No production DB tables are touched here.
+// This service powers production merged extraction (ENABLE_MERGED_EXTRACTION) and
+// optional shadow A/B runs (ENABLE_SHADOW_EXTRACTION). Shadow runs write only to
+// shadow_extraction_log; production applies via mergedExtractionApplier.
 // =====================================================
 
 import { openai } from '../openaiClient';
 import { logger } from '../../logger';
+import { config } from '../../config';
 import type {
   UnifiedExtractionPayload,
   UnifiedSemanticUnit,
@@ -546,7 +547,7 @@ class MergedExtractor {
       const systemPrompt = buildSystemPrompt(today, input.knownEntityNames ?? []);
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini',
+        model: config.extractionModel,
         temperature: 0.1,
         response_format: {
           type: 'json_schema',

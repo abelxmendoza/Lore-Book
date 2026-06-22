@@ -80,6 +80,12 @@ export const DEV_FEATURES = {
   chatLifecycleSimulation:
     import.meta.env.VITE_CHAT_LIFECYCLE_SIM === 'true' ||
     (import.meta.env.VITE_CHAT_LIFECYCLE_SIM !== 'false' && isDevelopment),
+
+  /**
+   * Duplicate character extraction from Character Book UI (calls extract-from-chat).
+   * Ingestion already promotes characters — keep off in production unless debugging.
+   */
+  characterExtractionFromChat: import.meta.env.VITE_ENABLE_CHARACTER_EXTRACTION === 'true',
   
   // Show development notice banner — off in production unless explicitly enabled
   showDevNotice: isDevelopment

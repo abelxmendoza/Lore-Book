@@ -14,18 +14,34 @@ const span: LexicalPreviewSpan = {
 };
 
 describe('LexicalPreviewEntityChips', () => {
-  it('opens correction flow via chip click callback', () => {
+  it('opens correction flow via chip label click', () => {
     const onSelectPreviewSpan = vi.fn();
     render(
       <ComposerEntityChips
         entities={[]}
         previewSpans={[span]}
         onSelectPreviewSpan={onSelectPreviewSpan}
+        onConfirmPreviewSpan={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByTestId('lexical-preview-chip-GROUP-30'));
+    fireEvent.click(screen.getByTestId('lexical-preview-chip-GROUP-30-open'));
     expect(onSelectPreviewSpan).toHaveBeenCalledWith(span);
+  });
+
+  it('confirms preview via check segment without opening menu', () => {
+    const onConfirmPreviewSpan = vi.fn();
+    render(
+      <ComposerEntityChips
+        entities={[]}
+        previewSpans={[span]}
+        onSelectPreviewSpan={vi.fn()}
+        onConfirmPreviewSpan={onConfirmPreviewSpan}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('lexical-preview-chip-GROUP-30-confirm'));
+    expect(onConfirmPreviewSpan).toHaveBeenCalledWith(span);
   });
 
   it('shows corrected entity name in chip', () => {

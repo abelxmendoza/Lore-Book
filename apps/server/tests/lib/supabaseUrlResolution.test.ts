@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 
 import {
   deriveSupabaseFallbackUrl,
+  getActiveSupabaseUrl,
   projectRefFromSupabaseJwt,
+  setActiveSupabaseUrl,
 } from '../../src/lib/supabaseUrlResolution';
 
 const SAMPLE_ANON =
@@ -39,5 +41,17 @@ describe('supabaseUrlResolution', () => {
         anonKey: SAMPLE_ANON,
       })
     ).toBeNull();
+  });
+
+  it('falls back to SUPABASE_URL env when boot has not set active URL yet', () => {
+    const previous = process.env.SUPABASE_URL;
+    setActiveSupabaseUrl('');
+    process.env.SUPABASE_URL = 'https://supabase.lorebookai.com';
+    expect(getActiveSupabaseUrl()).toBe('https://supabase.lorebookai.com');
+    process.env.SUPABASE_URL = previous;
+  });
+
+  afterEach(() => {
+    setActiveSupabaseUrl(process.env.SUPABASE_URL ?? '');
   });
 });

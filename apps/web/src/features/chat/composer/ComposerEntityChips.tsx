@@ -1,4 +1,4 @@
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -12,7 +12,7 @@ import {
 } from '../../../lib/loreEntities';
 import { chipColorForEntity } from '../../../lib/entityTypeColors';
 import { composerMatchSlot } from '../../../store/slices/composerSlice';
-import { CompactEntityChip, CompactChipStrip } from '../components/CompactEntityChip';
+import { CompactEntityChip, CompactChipStrip, SplitEntityChip } from '../components/CompactEntityChip';
 
 type ComposerEntityChipsProps = {
   text?: string;
@@ -23,6 +23,7 @@ type ComposerEntityChipsProps = {
   onDismiss?: (entity: CertifiedEntityMatch) => void;
   onConfirm?: (entity: CertifiedEntityMatch) => void;
   onSelectPreviewSpan?: (span: LexicalPreviewSpan) => void;
+  onConfirmPreviewSpan?: (span: LexicalPreviewSpan) => void;
   variant?: 'bar' | 'inline';
   scanning?: boolean;
   max?: number;
@@ -40,6 +41,7 @@ const PREVIEW_COLOR_TO_KIND: Partial<Record<string, LoreEntityKind>> = {
 };
 
 function isConfirmable(entity: CertifiedEntityMatch): boolean {
+  if (entity.lifecycleStatus === 'archived') return true;
   return entity.status === 'suggestion' || entity.status === 'draft';
 }
 
@@ -50,11 +52,14 @@ function chipDisplayName(entity: CertifiedEntityMatch): string {
 
 function certifiedChipTitle(entity: CertifiedEntityMatch): string {
   const def = getLoreEntity(loreKindForChip(entity));
+  if (entity.lifecycleStatus === 'archived') {
+    return `${chipDisplayName(entity)} · ${def.label} · archived — tap ✓ to restore`;
+  }
   const status =
     entity.status === 'draft'
       ? 'new — tap to add'
       : entity.status === 'suggestion'
-        ? 'detected — tap to confirm'
+        ? 'detected — tap ✓ to confirm'
         : 'in your books';
   return `${chipDisplayName(entity)} · ${def.label} · ${status}`;
 }
@@ -81,6 +86,15 @@ function previewChipTitle(span: LexicalPreviewSpan, corrected?: CorrectedPreview
   return `${span.text} · ${getLoreEntity(kind).label} · ${status}${span.needsReview ? ' · review' : ''}`;
 }
 
+function isPreviewConfirmable(span: LexicalPreviewSpan, corrected?: CorrectedPreviewSpan): boolean {
+  const status = corrected
+    ? displayStatus(corrected)
+    : span.entityStatus === 'known'
+      ? 'known'
+      : span.entityStatus ?? 'new';
+  return status !== 'confirmed' && status !== 'known' && status !== 'ignored' && status !== 'wrong';
+}
+
 /**
  * One compact row above the composer — certified book matches + lexical preview, deduped.
  */
@@ -93,6 +107,7 @@ export const ComposerEntityChips = ({
   onDismiss,
   onConfirm,
   onSelectPreviewSpan,
+  onConfirmPreviewSpan,
   variant = 'bar',
   scanning = false,
   max = 6,
@@ -103,14 +118,23 @@ export const ComposerEntityChips = ({
 
   if (chipEntities.length === 0 && dedupedPreview.length === 0) return null;
 
-  const needsConfirm = chipEntities.some(isConfirmable);
-  const stripLabel = scanning ? 'Scanning…' : needsConfirm ? 'Confirm' : 'In message';
-
   const previewItems = dedupedPreview.map((span) => ({
     key: `preview:${span.start}:${span.end}`,
     span,
     corrected: correctedByKey.get(`${span.start}:${span.end}`),
   }));
+
+  const needsConfirm =
+    chipEntities.some(isConfirmable) ||
+    previewItems.some(({ span, corrected }) => isPreviewConfirmable(span, corrected) && onConfirmPreviewSpan);
+  const hasArchived = chipEntities.some((e) => e.lifecycleStatus === 'archived');
+  const stripLabel = scanning
+    ? 'Scanning…'
+    : hasArchived
+      ? 'Tap ✓ to restore archived'
+      : needsConfirm
+        ? 'Tap ✓ to confirm'
+        : 'In message';
 
   const totalCount = chipEntities.length + previewItems.length;
   const certifiedVisible = chipEntities.slice(0, max);
@@ -125,20 +149,53 @@ export const ComposerEntityChips = ({
         const slot = composerMatchSlot(entity);
         const confirming = confirmingSlots.includes(slot);
         const canConfirm = isConfirmable(entity) && onConfirm;
+        const chipTestId = `composer-entity-chip-${entity.type}-${entity.id}`;
+        const chipClass =
+          entity.lifecycleStatus === 'archived'
+            ? 'border-white/20 bg-white/5 text-white/55'
+            : chipColorForEntity(entity);
+
+        if (canConfirm) {
+          return (
+            <span key={slot} className="inline-flex shrink-0 items-center">
+              <SplitEntityChip
+                data-testid={chipTestId}
+                label={chipDisplayName(entity)}
+                title={certifiedChipTitle(entity)}
+                className={chipClass}
+                icon={<Icon className="h-2 w-2 flex-shrink-0 opacity-75" />}
+                onConfirm={() => onConfirm(entity)}
+                confirming={confirming}
+                confirmAriaLabel={
+                  entity.lifecycleStatus === 'archived'
+                    ? `Restore ${entity.name}`
+                    : `Confirm ${entity.name}`
+                }
+              />
+              {onDismiss && (
+                <button
+                  type="button"
+                  data-testid={`composer-entity-dismiss-${entity.type}-${entity.id}`}
+                  className="-ml-0.5 rounded-full p-px text-white/30 hover:text-white/55 touch-manipulation"
+                  aria-label={`Dismiss ${entity.name}`}
+                  onClick={() => onDismiss(entity)}
+                >
+                  <X className="h-2 w-2" />
+                </button>
+              )}
+            </span>
+          );
+        }
 
         return (
           <span key={slot} className="inline-flex shrink-0 items-center">
             <CompactEntityChip
-              data-testid={`composer-entity-chip-${entity.type}-${entity.id}`}
+              data-testid={chipTestId}
               title={certifiedChipTitle(entity)}
               className={chipColorForEntity(entity)}
-              onClick={canConfirm ? () => onConfirm(entity) : undefined}
-              disabled={confirming}
-              aria-label={canConfirm ? `Confirm ${entity.name}` : undefined}
             >
               <Icon className="h-2 w-2 flex-shrink-0 opacity-75" />
               <span className="truncate">{chipDisplayName(entity)}</span>
-              {confirming && <Loader2 className="h-2 w-2 animate-spin opacity-80" />}
             </CompactEntityChip>
             {onDismiss && (
               <button
@@ -155,18 +212,42 @@ export const ComposerEntityChips = ({
         );
       })}
 
-      {previewVisible.map(({ key, span, corrected }) => (
-        <CompactEntityChip
-          key={key}
-          data-testid={`lexical-preview-chip-${span.type}-${span.start}`}
-          data-entity-status={corrected ? displayStatus(corrected) : span.entityStatus ?? 'new'}
-          title={previewChipTitle(span, corrected)}
-          className={previewChipClass(span, corrected)}
-          onClick={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
-        >
-          <span className="truncate">{span.text}</span>
-        </CompactEntityChip>
-      ))}
+      {previewVisible.map(({ key, span, corrected }) => {
+        const chipClass = previewChipClass(span, corrected);
+        const chipTitle = previewChipTitle(span, corrected);
+        const testId = `lexical-preview-chip-${span.type}-${span.start}`;
+        const canQuickConfirm =
+          isPreviewConfirmable(span, corrected) && Boolean(onConfirmPreviewSpan);
+
+        if (canQuickConfirm) {
+          return (
+            <SplitEntityChip
+              key={key}
+              data-testid={testId}
+              label={span.text}
+              title={chipTitle}
+              className={chipClass}
+              onOpen={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
+              onConfirm={() => onConfirmPreviewSpan!(span)}
+              openAriaLabel={`Edit ${span.text}`}
+              confirmAriaLabel={`Confirm ${span.text}`}
+            />
+          );
+        }
+
+        return (
+          <CompactEntityChip
+            key={key}
+            data-testid={testId}
+            data-entity-status={corrected ? displayStatus(corrected) : span.entityStatus ?? 'new'}
+            title={chipTitle}
+            className={chipClass}
+            onClick={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
+          >
+            <span className="truncate">{span.text}</span>
+          </CompactEntityChip>
+        );
+      })}
 
       {overflow > 0 && (
         <span className="text-[9px] text-white/30 shrink-0 px-0.5">+{overflow}</span>

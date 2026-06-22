@@ -1,3 +1,4 @@
+import { Check, Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 type CompactEntityChipProps = {
@@ -50,6 +51,75 @@ export function CompactEntityChip({
   return (
     <span data-testid={testId} data-entity-status={entityStatus} title={title} className={classes}>
       {children}
+    </span>
+  );
+}
+
+type SplitEntityChipProps = {
+  label: ReactNode;
+  className?: string;
+  title?: string;
+  onOpen?: () => void;
+  onConfirm: () => void;
+  confirming?: boolean;
+  disabled?: boolean;
+  icon?: ReactNode;
+  'data-testid'?: string;
+  openAriaLabel?: string;
+  confirmAriaLabel?: string;
+};
+
+/**
+ * Two-segment pill: tap label for details, tap ✓ to confirm without opening the menu.
+ */
+export function SplitEntityChip({
+  label,
+  className = '',
+  title,
+  onOpen,
+  onConfirm,
+  confirming = false,
+  disabled = false,
+  icon,
+  'data-testid': testId,
+  openAriaLabel,
+  confirmAriaLabel,
+}: SplitEntityChipProps) {
+  const shell = `inline-flex shrink-0 items-stretch overflow-hidden rounded-full border ${className}`;
+
+  return (
+    <span data-testid={testId} className={shell} title={title}>
+      {onOpen ? (
+        <button
+          type="button"
+          data-testid={testId ? `${testId}-open` : undefined}
+          className="inline-flex max-w-[76px] sm:max-w-[92px] items-center gap-0.5 px-1 py-px text-[9px] sm:text-[10px] font-medium leading-tight touch-manipulation transition-colors hover:bg-white/5"
+          onClick={onOpen}
+          aria-label={openAriaLabel}
+        >
+          {icon}
+          <span className="truncate">{label}</span>
+        </button>
+      ) : (
+        <span className="inline-flex max-w-[76px] sm:max-w-[92px] items-center gap-0.5 px-1 py-px text-[9px] sm:text-[10px] font-medium leading-tight">
+          {icon}
+          <span className="truncate">{label}</span>
+        </span>
+      )}
+      <button
+        type="button"
+        data-testid={testId ? `${testId}-confirm` : undefined}
+        className="inline-flex items-center border-l border-white/10 px-1 py-px text-emerald-300/90 hover:bg-emerald-500/15 touch-manipulation transition-colors disabled:opacity-60"
+        onClick={onConfirm}
+        disabled={disabled || confirming}
+        aria-label={confirmAriaLabel}
+      >
+        {confirming ? (
+          <Loader2 className="h-2 w-2 animate-spin opacity-80" />
+        ) : (
+          <Check className="h-2 w-2" />
+        )}
+      </button>
     </span>
   );
 }

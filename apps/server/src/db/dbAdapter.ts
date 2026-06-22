@@ -17,29 +17,51 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
 
 import { config } from '../config';
+import { getActiveSupabaseUrl } from '../lib/supabaseUrlResolution';
 import { createSupabaseMock } from './supabaseMock';
 
 const isTest =
   process.env.NODE_ENV === 'test' ||
   process.env.VITEST === 'true';
 
-const missingSupabaseConfig = !config.supabaseUrl || !config.supabaseServiceRoleKey;
+let cachedClient: SupabaseClient | null = null;
+let cachedUrl = '';
 
-function createRealOrFallback(): SupabaseClient {
-  if (missingSupabaseConfig) {
-    // Fall back to mock when config is absent (e.g. CI without secrets).
-    // Cast is safe: mock implements every method production code calls.
+function resolveSupabaseUrl(): string {
+  return getActiveSupabaseUrl() || config.supabaseUrl;
+}
+
+function getSupabaseAdminClient(): SupabaseClient {
+  if (isTest) {
     return createSupabaseMock() as unknown as SupabaseClient;
   }
-  return createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-    auth: { persistSession: false },
-  });
+
+  const url = resolveSupabaseUrl();
+  const key = config.supabaseServiceRoleKey;
+  if (!url || !key) {
+    return createSupabaseMock() as unknown as SupabaseClient;
+  }
+
+  if (!cachedClient || cachedUrl !== url) {
+    cachedUrl = url;
+    cachedClient = createClient(url, key, { auth: { persistSession: false } });
+  }
+
+  return cachedClient;
 }
 
 /**
  * Single source of truth for all server-side DB access.
  * Typed as `SupabaseClient` — always has .from(), .rpc(), .auth, .storage.
+ * Lazily rebinds when boot-time URL resolution switches to a fallback host.
  */
-export const supabaseAdmin: SupabaseClient = isTest
-  ? (createSupabaseMock() as unknown as SupabaseClient)
-  : createRealOrFallback();
+export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseAdminClient();
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    if (typeof value === 'function') {
+      return (value as (...args: unknown[]) => unknown).bind(client);
+    }
+    return value;
+  },
+});

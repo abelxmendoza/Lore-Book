@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { config } from '../../config';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { detectAIUncertainty } from '../../utils/aiUncertainty';
 import { supabaseAdmin } from '../supabaseClient';
@@ -43,6 +44,9 @@ import {
   hasProjectSignal,
   hasInterestSignal,
   hasLifeChangeSignal,
+  hasSelfAttributeSignal,
+  hasWorkoutSignal,
+  hasBiometricSignal,
 } from './extractionSignals';
 import { hasVicariousRelationshipSignals } from '../ontology/vicariousRelationshipIntelligence';
 import { relationshipDriftDetector } from './relationshipDriftDetector';
@@ -1387,7 +1391,7 @@ export class ConversationIngestionPipeline {
       const soloSelfReference =
         resolvedEntities.length === 0 &&
         /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i.test(rawText);
-      if (soloSelfReference) {
+      if (soloSelfReference && hasSelfAttributeSignal(rawText)) {
         try {
           await entityAttributeDetector.detectAttributes(userId, rawText, [], messageId, undefined);
           const selfChar = await entityAttributeDetector.ensureUserCharacter(userId);
@@ -1400,6 +1404,8 @@ export class ConversationIngestionPipeline {
         } catch (error) {
           logger.warn({ error }, 'Solo self-reference extraction failed (non-blocking)');
         }
+      } else if (soloSelfReference) {
+        costMeter.skipped('solo_self_attribute');
       }
 
       // Step 4.5: Save utterances with enrichment and compile to IR
@@ -2072,7 +2078,8 @@ export class ConversationIngestionPipeline {
                     // Step 12.9: Detect workout events and extract biometrics
                     // Check if this event is workout-related
                     const eventText = `${fullEvent.title} ${fullEvent.summary || ''}`.toLowerCase();
-                    const isWorkoutRelated = await workoutEventDetector.detectWorkout({
+                    const workoutEligible = hasWorkoutSignal(eventText);
+                    const isWorkoutRelated = workoutEligible && await workoutEventDetector.detectWorkout({
                       id: fullEvent.id,
                       user_id: userId,
                       type: 'EXPERIENCE',
@@ -2131,7 +2138,7 @@ export class ConversationIngestionPipeline {
                     }
 
                     // Step 12.10: Extract biometrics from event text
-                    if (biometricExtractor.detectBiometrics(eventText)) {
+                    if (hasBiometricSignal(eventText) && biometricExtractor.detectBiometrics(eventText)) {
                       biometricExtractor
                         .extractBiometrics(userId, eventText, undefined)
                         .then(async (biometric) => {
@@ -2165,10 +2172,49 @@ export class ConversationIngestionPipeline {
           });
       }
 
+      // Step 12.10.5: Merged extraction — one LLM call for interest/quest/skill cluster
+      let mergedClusterHandled = false;
+      if (sender === 'USER' && config.enableMergedExtraction) {
+        const { shouldRunMergedExtraction } = await import('../ingestion/mergedExtractionGate');
+        const mergedEligible = shouldRunMergedExtraction(rawText);
+        if (!mergedEligible) {
+          costMeter.skipped('merged_extraction');
+        } else {
+          try {
+            const { mergedExtractor } = await import('../ingestion/mergedExtractor');
+            const { applyMergedExtractionPayload } = await import('../ingestion/mergedExtractionApplier');
+            const result = await mergedExtractor.extract({
+              userId,
+              rawText,
+              sender,
+              conversationHistory,
+              knownEntityNames: _shadowBaseline.entities.map(e => e.name),
+            });
+            if (result.payload) {
+              const applied = await applyMergedExtractionPayload(userId, messageId, rawText, result.payload);
+              mergedClusterHandled = true;
+              const productive = applied.interests + applied.quests + applied.skills > 0;
+              costMeter.record('merged_extraction', {
+                eligible: true,
+                invoked: true,
+                productive,
+              });
+            } else {
+              costMeter.record('merged_extraction', { eligible: true, invoked: true, productive: false });
+            }
+          } catch (err) {
+            costMeter.record('merged_extraction', { eligible: true, invoked: true, productive: false });
+            logger.warn({ err, userId, messageId }, 'Merged extraction failed (non-blocking)');
+          }
+        }
+      }
+
       // Step 12.11: Detect interests from message text (async, non-blocking)
       // Gated on a cheap keyword signal — see extractionSignals.ts. Skips the LLM
       // call for the many messages with no interest content (the 429 fan-out fix).
-      if (sender === 'USER' && rawText.length > 10 && hasInterestSignal(rawText)) {
+      if (mergedClusterHandled) {
+        costMeter.skipped('interest_detection');
+      } else if (sender === 'USER' && rawText.length > 10 && hasInterestSignal(rawText)) {
         interestDetector
           .detectInterests(userId, rawText, undefined, messageId)
           .then(async (detectedInterests) => {
@@ -2239,18 +2285,37 @@ export class ConversationIngestionPipeline {
       // cheap keyword signal (extractionSignals.ts) to avoid firing the full
       // cluster on messages with no such content — the core 429 fan-out fix.
       if (sender === 'USER' && rawText.length > 10) {
-        if (hasQuestSignal(rawText)) {
-          const { questSuggestionService } = await import('../quests/questSuggestionService');
-          questSuggestionService
-            .processChatMessageForQuestSuggestions(userId, messageId, rawText, conversationHistory)
-            .then((count) => {
-              if (count > 0) {
-                logger.debug({ userId, messageId, count }, 'Queued quest suggestions from chat');
-              }
-            })
-            .catch(err => {
-              logger.warn({ err, userId, messageId }, 'Quest suggestion extraction failed (non-blocking)');
-            });
+        if (mergedClusterHandled) {
+          if (hasQuestSignal(rawText)) costMeter.skipped('quest_suggestion');
+          if (hasSkillSignal(rawText)) costMeter.skipped('skill_suggestion');
+        } else {
+          if (hasQuestSignal(rawText)) {
+            const { questSuggestionService } = await import('../quests/questSuggestionService');
+            questSuggestionService
+              .processChatMessageForQuestSuggestions(userId, messageId, rawText, conversationHistory)
+              .then((count) => {
+                if (count > 0) {
+                  logger.debug({ userId, messageId, count }, 'Queued quest suggestions from chat');
+                }
+              })
+              .catch(err => {
+                logger.warn({ err, userId, messageId }, 'Quest suggestion extraction failed (non-blocking)');
+              });
+          }
+
+          // 12.12.2b: Detect skills from chat → pending suggestions (user confirms in Skills book)
+          if (hasSkillSignal(rawText)) {
+            skillExtractionService
+              .processChatMessageForSkillSuggestions(userId, messageId, rawText)
+              .then((count) => {
+                if (count > 0) {
+                  logger.debug({ userId, messageId, count }, 'Queued skill suggestions from chat');
+                }
+              })
+              .catch((err) => {
+                logger.warn({ err, userId, messageId }, 'Skill suggestion extraction failed (non-blocking)');
+              });
+          }
         }
 
         // 12.12.2: Extract progress updates and update existing quests
@@ -2270,20 +2335,6 @@ export class ConversationIngestionPipeline {
           })
           .catch(err => {
             logger.warn({ err, userId, messageId }, 'Progress update extraction failed (non-blocking)');
-          });
-        }
-
-        // 12.12.2b: Detect skills from chat → pending suggestions (user confirms in Skills book)
-        if (hasSkillSignal(rawText)) {
-        skillExtractionService
-          .processChatMessageForSkillSuggestions(userId, messageId, rawText)
-          .then((count) => {
-            if (count > 0) {
-              logger.debug({ userId, messageId, count }, 'Queued skill suggestions from chat');
-            }
-          })
-          .catch((err) => {
-            logger.warn({ err, userId, messageId }, 'Skill suggestion extraction failed (non-blocking)');
           });
         }
 
@@ -2490,8 +2541,8 @@ export class ConversationIngestionPipeline {
           });
       }
 
-      // Shadow mode — runs in background after response is returned, never blocks chat
-      if (sender === 'USER') {
+      // Shadow mode — A/B comparison only; off by default (ENABLE_SHADOW_EXTRACTION=true)
+      if (config.enableShadowExtraction && sender === 'USER') {
         setImmediate(() => {
           shadowModeOrchestrator.runShadow({
             messageId,

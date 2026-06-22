@@ -125,6 +125,7 @@ export const JournalComposerOverlay = ({
             onDismiss={onDismiss}
             onConfirm={onConfirm}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
+            onConfirmPreviewSpan={(span) => correction.confirmPreviewSpan(span)}
           />
           <EntityHighlightedComposer
             value={value}

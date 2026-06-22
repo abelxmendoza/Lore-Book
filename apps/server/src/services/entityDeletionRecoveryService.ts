@@ -397,6 +397,20 @@ class EntityDeletionRecoveryService {
           .eq('id', event.id)
           .eq('user_id', userId);
       }
+
+      if (input.entityType === 'character' && messageIds.length > 0) {
+        import('./characterConversationRescanService')
+          .then(({ characterConversationRescanService }) =>
+            characterConversationRescanService.rescanDeletedEntitySourceLore(userId, {
+              messageIds,
+              deletedName: input.name,
+              deletedAliases: aliases,
+            }),
+          )
+          .catch((err) =>
+            logger.warn({ err, userId, entityId: input.entityId }, 'Deletion-targeted rescan failed (non-blocking)'),
+          );
+      }
     }
 
     logger.info(

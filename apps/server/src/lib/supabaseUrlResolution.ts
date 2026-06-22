@@ -82,7 +82,9 @@ export async function resolveSupabaseUrl(
 let activeSupabaseUrl = (process.env.SUPABASE_URL ?? '').trim().replace(/\/$/, '');
 
 export function getActiveSupabaseUrl(): string {
-  return activeSupabaseUrl;
+  if (activeSupabaseUrl) return activeSupabaseUrl;
+  // Module init runs before dotenv in config.ts — fall back to env when boot hasn't run yet.
+  return (process.env.SUPABASE_URL ?? '').trim().replace(/\/$/, '');
 }
 
 export function setActiveSupabaseUrl(url: string): void {

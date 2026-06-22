@@ -58,11 +58,11 @@ test.describe('Composer entity chips while typing', () => {
 
     await expect(page.getByTestId('composer-entity-chips')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('composer-entity-chip-character-uuid-abel')).toBeVisible();
-    await expect(page.getByTestId('composer-entity-chip-character-sug:character:kelly')).toBeVisible();
+    await expect(page.getByTestId('composer-entity-chip-character-sug:character:kelly-confirm')).toBeVisible();
 
     await page.getByTestId('composer-entity-dismiss-character-uuid-abel').click();
     await expect(page.getByTestId('composer-entity-chip-character-uuid-abel')).toHaveCount(0);
-    await expect(page.getByTestId('composer-entity-chip-character-sug:character:kelly')).toBeVisible();
+    await expect(page.getByTestId('composer-entity-chip-character-sug:character:kelly-confirm')).toBeVisible();
   });
 
   test('clears chips when the draft is emptied', async ({ page }) => {

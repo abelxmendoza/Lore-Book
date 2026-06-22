@@ -21,12 +21,15 @@ export type SuggestionRescanSummary = {
 };
 
 export const suggestionRescanApi = {
-  rescan: (domains: SuggestionDomain[]) =>
+  rescan: (
+    domains: SuggestionDomain[],
+    opts?: { incremental?: boolean; cardCleanup?: boolean; fullRescan?: boolean }
+  ) =>
     fetchJson<{ success: boolean; summary: SuggestionRescanSummary }>(
       '/api/conversation/suggestion-rescan',
       {
         method: 'POST',
-        body: JSON.stringify({ domains }),
+        body: JSON.stringify({ domains, ...opts }),
       }
     ),
 };

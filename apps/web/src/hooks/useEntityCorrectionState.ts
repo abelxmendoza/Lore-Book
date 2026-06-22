@@ -82,6 +82,20 @@ export function useEntityCorrectionState(
 
   const closeActiveSpan = useCallback(() => setActiveSpanId(null), []);
 
+  const confirmPreviewSpan = useCallback((span: LexicalPreviewSpan) => {
+    const id = spanToId(span);
+    setState((prev) => {
+      const merged = mergeBaseSpans(prev, [span], 'composer');
+      const base = merged.byId.get(id);
+      return applyCorrectionAction(
+        merged,
+        { kind: 'confirm', spanId: id, source: 'composer' },
+        base,
+      );
+    });
+    setActiveSpanId(null);
+  }, []);
+
   return {
     loading,
     preview,
@@ -94,6 +108,7 @@ export function useEntityCorrectionState(
     openSpan,
     closeActiveSpan,
     applyAction,
+    confirmPreviewSpan,
     sendPayload,
     getCorrectedSpan,
   };

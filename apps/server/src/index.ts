@@ -341,8 +341,11 @@ async function runBootTasks(): Promise<void> {
     logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
   }
 
-  // Engine scheduler — always runs (identity/archetype results feed live retrieval scoring)
-  if (process.env.DISABLE_ENGINE_SCHEDULER !== 'true') {
+  // Engine scheduler: opt-in only — nightly runAll() is ~20 LLM calls per active user.
+  const engineSchedulerEnabled =
+    process.env.ENABLE_ENGINE_SCHEDULER === 'true' &&
+    process.env.DISABLE_ENGINE_SCHEDULER !== 'true';
+  if (engineSchedulerEnabled) {
     try {
       const { startEngineScheduler } = await import('./engineRuntime/scheduler');
       startEngineScheduler();
@@ -350,6 +353,10 @@ async function runBootTasks(): Promise<void> {
     } catch (error) {
       logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
     }
+  } else {
+    logger.info(
+      'Engine scheduler disabled (set ENABLE_ENGINE_SCHEDULER=true to run nightly engine batch)'
+    );
   }
 }
 

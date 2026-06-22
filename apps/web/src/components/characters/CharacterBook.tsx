@@ -25,6 +25,7 @@ import { clearCharacterHighlights } from '../../store/slices/chatSlice';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
+import { DEV_FEATURES } from '../../config/env';
 import { useActiveChatMessages } from '../../contexts/ChatThreadContext';
 import { generateNicknames } from '../../utils/nicknameGenerator';
 import { mockDataService } from '../../services/mockDataService';
@@ -35,6 +36,7 @@ import { getMockRomanticRelationships } from '../../mocks/romanticRelationships'
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { CharacterMergePanel } from './CharacterMergePanel';
+import { CharacterAuditPanel } from './CharacterAuditPanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
@@ -2749,7 +2751,7 @@ export const CharacterBook = () => {
 
   // Auto-extract characters from chat
   useCharacterExtraction(chatMessages, {
-    enabled: !isMockDataEnabled && !!user?.id,
+    enabled: DEV_FEATURES.characterExtractionFromChat && !isMockDataEnabled && !!user?.id,
     onCharacterCreated: () => {
       void loadCharacters();
     }
@@ -3152,6 +3154,14 @@ export const CharacterBook = () => {
       )}
 
       <OntologyCompliancePanel book="characters" />
+
+      <CharacterAuditPanel
+        demoMode={isMockDataEnabled}
+        onChanged={() => {
+          void loadCharacters();
+          void loadRelationships();
+        }}
+      />
 
       <CharacterMergePanel
         characters={characters}

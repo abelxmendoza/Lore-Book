@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 
 import { logger } from './logger';
 import { resolveServerPort } from './config/serverPort';
-import { getActiveSupabaseUrl } from './lib/supabaseUrlResolution';
 
 // Load .env from project root (skip on hosted platforms — env vars are injected directly)
 const currentDir = __dirname;
@@ -84,6 +83,10 @@ type EnvConfig = {
   enableExperimental: boolean;
   /** System Cognition / Agent Layer — runs LoreAgents after the interpretation pipeline. */
   enableLoreAgents: boolean;
+  /** Shadow A/B merged extractor — extra LLM call per message; off by default. */
+  enableShadowExtraction: boolean;
+  /** Production merged extractor — one LLM call replaces quest/skill/interest cluster. */
+  enableMergedExtraction: boolean;
   adminUserId?: string;
   adminEmail?: string;
   /** Canonical owner / founder account — never billed, never downgraded. */
@@ -104,7 +107,7 @@ for (const warning of portResolution.warnings) {
 export const config: EnvConfig = {
   port: portResolution.port,
   openAiKey: process.env.OPENAI_API_KEY ?? '',
-  supabaseUrl: getActiveSupabaseUrl(),
+  supabaseUrl: (process.env.SUPABASE_URL ?? '').trim().replace(/\/$/, ''),
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
   databaseUrl: process.env.DATABASE_URL ?? '',
@@ -113,11 +116,24 @@ export const config: EnvConfig = {
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
   supabaseSecretKey: process.env.SUPABASE_SECRET_KEY,
   supabaseJwksUrl: process.env.SUPABASE_JWKS_URL,
-  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-5.5',
-  chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-5.5',
+  // Tiered defaults: cheap extraction/nano for ~20 detector calls per message; upgrade chat via OPENAI_CHAT_MODEL.
+  extractionModel:
+    process.env.OPENAI_EXTRACTION_MODEL ?? 'gpt-4o-mini',
+  nanoModel:
+    process.env.OPENAI_NANO_MODEL ??
+    process.env.OPENAI_EXTRACTION_MODEL ??
+    'gpt-4o-mini',
+  defaultModel:
+    process.env.OPENAI_API_MODEL ??
+    process.env.OPENAI_MODEL ??
+    process.env.OPENAI_EXTRACTION_MODEL ??
+    'gpt-4o-mini',
+  chatModel:
+    process.env.OPENAI_CHAT_MODEL ??
+    process.env.OPENAI_API_MODEL ??
+    process.env.OPENAI_EXTRACTION_MODEL ??
+    'gpt-4o-mini',
   useResponsesApiForChat: process.env.OPENAI_CHAT_USE_RESPONSES === 'true',
-  extractionModel: process.env.OPENAI_EXTRACTION_MODEL ?? 'gpt-5.4-mini',
-  nanoModel: process.env.OPENAI_NANO_MODEL ?? 'gpt-5.4-nano',
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',
@@ -135,6 +151,8 @@ export const config: EnvConfig = {
   apiEnv,
   enableExperimental,
   enableLoreAgents: process.env.ENABLE_LORE_AGENTS === 'true',
+  enableShadowExtraction: process.env.ENABLE_SHADOW_EXTRACTION === 'true',
+  enableMergedExtraction: process.env.ENABLE_MERGED_EXTRACTION !== 'false',
   adminUserId: process.env.ADMIN_USER_ID,
   adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase(),
   ownerUserId: process.env.OWNER_USER_ID || process.env.FOUNDER_USER_ID,
