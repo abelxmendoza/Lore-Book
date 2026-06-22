@@ -155,6 +155,7 @@ import organizationsRouter from './organizations';
 import familyTreesRouter from './familyTrees';
 import familyRouter from './family';
 import groupCandidatesRouter from './groupCandidates';
+import responseActionsRouter from './responseActions';
 import lifeArcRouter from './lifeArc';
 import lifeArcRecentRouter from './lifeArcRecent';
 import { lifeRouter } from './life';
@@ -706,6 +707,13 @@ export const routeRegistry: RouteEntry[] = [
     router: groupCandidatesRouter,
     classification: 'CORE_RUNTIME',
     description: 'Group candidate review queue — detected groups awaiting user confirmation',
+  },
+  {
+    path: '/api/response-actions',
+    router: responseActionsRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Apply Response Compiler action chips (user-confirmed) — e.g. create a group',
   },
   {
     path: '/api/locations',
