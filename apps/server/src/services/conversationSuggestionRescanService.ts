@@ -18,6 +18,10 @@ import { projectService } from './projectService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
 import { locationSuggestionService } from './locationSuggestionService';
 import { runCorpusParseAndApply } from './lorebook/parser/loreBookParseCorpusService';
+import type { TimelineStitchingRunSummary } from './timeline/timelineStitchingIntegrationService';
+import type { OrganizationInferenceRunSummary } from './organizations/inference/organizationInferenceIntegrationService';
+import type { QuestLogInferenceRunSummary } from './questLog/inference/questLogInferenceIntegrationService';
+import type { EmotionInferenceRunSummary } from './emotion/emotionInferenceIntegrationService';
 
 export type SuggestionDomain =
   | 'characters'
@@ -46,6 +50,10 @@ export type SuggestionRescanSummary = {
       }
     >
   >;
+  timelineStitching?: TimelineStitchingRunSummary;
+  organizationInference?: OrganizationInferenceRunSummary;
+  questLogInference?: QuestLogInferenceRunSummary;
+  emotionInference?: EmotionInferenceRunSummary;
 };
 
 async function loadRecentCorpus(userId: string): Promise<Array<{ content: string; date: string }>> {
@@ -213,7 +221,65 @@ class ConversationSuggestionRescanService {
     );
 
     logger.info({ userId, domains: unique, results, lorebookParse }, 'Conversation suggestion rescan completed');
-    return { domains: unique, lorebookParse, results };
+
+    let timelineStitching: TimelineStitchingRunSummary | undefined;
+    try {
+      const { rescanTimelineStitching } = await import('./timeline/timelineStitchingIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `rescan-${i}`,
+        text: e.content,
+        at: e.date,
+      }));
+      timelineStitching = await rescanTimelineStitching(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Timeline stitching rescan failed (non-blocking)');
+    }
+
+    let organizationInference: OrganizationInferenceRunSummary | undefined;
+    try {
+      const { rescanOrganizationInference } = await import(
+        './organizations/inference/organizationInferenceIntegrationService'
+      );
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `org-rescan-${i}`,
+        text: e.content,
+      }));
+      organizationInference = await rescanOrganizationInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Organization inference rescan failed (non-blocking)');
+    }
+
+    let questLogInference: QuestLogInferenceRunSummary | undefined;
+    try {
+      const { rescanQuestLogInference } = await import(
+        './questLog/inference/questLogInferenceIntegrationService'
+      );
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `quest-rescan-${i}`,
+        text: e.content,
+      }));
+      questLogInference = await rescanQuestLogInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Quest Log inference rescan failed (non-blocking)');
+    }
+
+    let emotionInference: EmotionInferenceRunSummary | undefined;
+    try {
+      const { rescanEmotionInference } = await import('./emotion/emotionInferenceIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `emotion-rescan-${i}`,
+        text: e.content,
+      }));
+      emotionInference = await rescanEmotionInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Emotion inference rescan failed (non-blocking)');
+    }
+
+    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference };
   }
 }
 

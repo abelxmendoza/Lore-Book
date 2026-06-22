@@ -177,7 +177,11 @@ describe('characterCardRescanAuditService', () => {
           }),
           update: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ error: null }),
+              eq: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'c4' }, error: null }),
+                }),
+              }),
             }),
           }),
         } as never;

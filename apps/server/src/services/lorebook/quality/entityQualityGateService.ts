@@ -13,6 +13,7 @@ import {
 import { guardDuplicateEntity } from './duplicateEntityGuard';
 import { guardGenericReference } from './genericReferenceGuard';
 import { guardSensitiveEntity } from './sensitiveEntityGuard';
+import { guardStandaloneTimePhrase } from '../../timeline/timelineSuggestionGuard';
 import type {
   EntityQualityCandidate,
   EntityQualityContext,
@@ -62,6 +63,9 @@ export function evaluateEntityQuality(
 
   const generic = guardGenericReference(normalized);
   if (generic) return generic;
+
+  const timeOnly = guardStandaloneTimePhrase(normalized);
+  if (timeOnly) return timeOnly;
 
   const bare = guardBareCategoryWord(normalized);
   if (bare) {

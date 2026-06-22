@@ -2572,6 +2572,67 @@ export class ConversationIngestionPipeline {
           });
       }
 
+      // Step 12.14: Timeline stitching — attach time metadata to events/entities (never time cards)
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../timeline/timelineStitchingIntegrationService')
+          .then(({ runTimelineStitchingForMessage }) =>
+            runTimelineStitchingForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+              new Date().toISOString(),
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Timeline stitching failed (non-blocking)');
+          });
+      }
+
+      // Step 12.15: Organization inference — employer/school/platform org suggestions
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../organizations/inference/organizationInferenceIntegrationService')
+          .then(({ runOrganizationInferenceForMessage }) =>
+            runOrganizationInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Organization inference failed (non-blocking)');
+          });
+      }
+
+      // Step 12.16: Quest Log inference — quests/tasks/features route to Quest Log UI
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../questLog/inference/questLogInferenceIntegrationService')
+          .then(({ runQuestLogInferenceForMessage }) =>
+            runQuestLogInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Quest Log inference failed (non-blocking)');
+          });
+      }
+
+      // Step 12.17: Emotion / sentiment / significance — metadata on story objects, not cards
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../emotion/emotionInferenceIntegrationService')
+          .then(({ runEmotionInferenceForMessage }) =>
+            runEmotionInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Emotion inference failed (non-blocking)');
+          });
+      }
+
       // Shadow mode — A/B comparison only; off by default (ENABLE_SHADOW_EXTRACTION=true)
       if (config.enableShadowExtraction && sender === 'USER') {
         setImmediate(() => {

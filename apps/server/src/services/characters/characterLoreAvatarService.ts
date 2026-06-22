@@ -1,6 +1,10 @@
 /**
  * Generate character portrait avatars from accumulated lore (facts, summary, attributes).
- * Falls back to DiceBear when lore is thin or generation is disabled.
+ *
+ * DEFERRED PRODUCT FEATURE — not enabled in production yet.
+ * Default avatars use DiceBear via assignCharacterAvatar() (free, deterministic).
+ * When ENABLE_LORE_AVATARS=true, this module generates unique lore-context portraits
+ * via OpenAI Images. Monthly cadence in loreAvatarCadence.ts applies when enabled.
  */
 
 import { config } from '../../config';
@@ -266,12 +270,13 @@ export async function generateLoreAvatar(
   }
 }
 
-/** Assign DiceBear when lore portrait is unavailable. */
+/** Assign DiceBear when lore portrait is unavailable or deferred. */
 export async function ensureCharacterAvatarWithLoreFallback(
   userId: string,
   characterId: string,
   opts: { archetype?: string | null; role?: string | null } = {}
 ): Promise<string> {
+  // Lore AI portraits intentionally off until ENABLE_LORE_AVATARS=true (cost control).
   if (config.enableLoreAvatars) {
     const result = await generateLoreAvatar(userId, characterId);
     if (result.ok) return result.avatarUrl;

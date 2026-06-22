@@ -10,6 +10,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
 // Keep Chat Completions in unit tests — mocks target chat.completions.create.
 process.env.OPENAI_USE_RESPONSES = 'false';
+process.env.MONTHLY_OPENAI_BUDGET_USD = '0';
 
 // FIX 2: Mock entity extraction globally to prevent LLM calls in tests
 // This prevents request quota exhaustion and ensures deterministic tests

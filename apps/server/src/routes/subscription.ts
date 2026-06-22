@@ -21,6 +21,7 @@ import {
   ensureSubscriptionRow,
 } from '../services/stripeService';
 import { getCurrentUsage } from '../services/usageTracking';
+import { getOpenAiBudgetSnapshot } from '../services/openaiBudgetService';
 
 const router = Router();
 
@@ -47,6 +48,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
 
     const authority = await resolveAccountAuthority(req.user.id);
     const usage = await getCurrentUsage(req.user.id);
+    const openAiBudget = await getOpenAiBudgetSnapshot();
 
     if (authority.isPrivileged) {
       return res.json({
@@ -64,6 +66,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
           entryLimit: Infinity,
           aiLimit: Infinity,
         },
+        openAiBudget,
         authority: subscriptionAuthorityPayload(authority),
       });
     }
@@ -75,6 +78,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
         status: 'free',
         planType: 'free',
         usage,
+        openAiBudget,
         trialDaysRemaining: 0,
         authority: subscriptionAuthorityPayload(authority),
       });
@@ -94,6 +98,7 @@ router.get('/status', authMiddleware, async (req: AuthenticatedRequest, res: Res
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() || null,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       usage,
+      openAiBudget,
       authority: {
         ...subscriptionAuthorityPayload(authority),
         privilegeSource: authority.privilegeSource ?? 'stripe_subscription',

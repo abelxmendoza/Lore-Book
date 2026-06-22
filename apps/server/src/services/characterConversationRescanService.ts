@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../logger';
+import { characterInferenceService } from './characters/inference/characterInferenceService';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
@@ -220,10 +221,36 @@ class CharacterConversationRescanService {
     const mentionCounts = new Map<string, number>();
     const displayNameByKey = new Map<string, string>();
 
+    const inferenceByKey = new Map<string, { displayName: string; mentionCount: number; promotable: boolean }>();
+
     for (const episode of episodes) {
+      const inference = characterInferenceService.inferFromMessage({
+        text: episode.text,
+        sourceMessageId: episode.id,
+        authorRole: 'user',
+      });
+      for (const candidate of inference.accepted) {
+        const key = normalizeNameKey(candidate.displayName);
+        if (knownPersonKeys.has(key)) continue;
+        if (await isUserRejectedEntityCard(userId, candidate.displayName)) continue;
+
+        const prev = inferenceByKey.get(key);
+        const mentionCount = (prev?.mentionCount ?? 0) + 1;
+        const promotable = characterInferenceService.canPromote(candidate, { mentionCount });
+        inferenceByKey.set(key, {
+          displayName: candidate.displayName,
+          mentionCount,
+          promotable: promotable || (prev?.promotable ?? false),
+        });
+        mentionCounts.set(key, mentionCount);
+        if (!displayNameByKey.has(key)) displayNameByKey.set(key, candidate.displayName);
+      }
+
+      // Legacy lexical mentions still contribute counts but respect inference gate on promote
       for (const name of collectPersonMentions(episode.text, userId)) {
         const key = normalizeNameKey(name);
         if (knownPersonKeys.has(key)) continue;
+        if (inferenceByKey.has(key)) continue;
         if (await isUserRejectedEntityCard(userId, name)) continue;
         mentionCounts.set(key, (mentionCounts.get(key) ?? 0) + 1);
         if (!displayNameByKey.has(key)) displayNameByKey.set(key, name);
@@ -233,6 +260,11 @@ class CharacterConversationRescanService {
     const ranked = [...mentionCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 100)
+      .filter(([key]) => {
+        const inferred = inferenceByKey.get(key);
+        if (!inferred) return true;
+        return inferred.promotable;
+      })
       .map(([key]) => displayNameByKey.get(key) ?? key);
 
     const candidates = ranked.map((name) => ({ name, type: 'PERSON' as EntityType }));
@@ -262,7 +294,6 @@ class CharacterConversationRescanService {
             mention_count: mentionCounts.get(normalizeNameKey(entity.primary_name)) ?? 1,
           },
           null,
-          { forcePromote: true },
         );
         if (characterId) {
           charactersPromoted += 1;
@@ -438,6 +469,47 @@ class CharacterConversationRescanService {
         await socialStandingService.recompute(userId);
       } catch (err) {
         logger.warn({ err, userId }, 'Public figure relationship inference after rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanTimelineStitching } = await import('./timeline/timelineStitchingIntegrationService');
+        await rescanTimelineStitching(userId, episodes);
+      } catch (err) {
+        logger.debug({ err, userId }, 'Timeline stitching after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanOrganizationInference } = await import(
+          './organizations/inference/organizationInferenceIntegrationService'
+        );
+        await rescanOrganizationInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Organization inference after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanQuestLogInference } = await import(
+          './questLog/inference/questLogInferenceIntegrationService'
+        );
+        await rescanQuestLogInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Quest Log inference after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanEmotionInference } = await import('./emotion/emotionInferenceIntegrationService');
+        await rescanEmotionInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Emotion inference after character rescan failed (non-blocking)');
       }
     }
 

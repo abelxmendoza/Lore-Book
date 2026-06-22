@@ -67,6 +67,22 @@ class TokenBudgetService {
   }
 
   /**
+   * Accurate token count via OpenAI `/responses/input_tokens` (images, tools, schema).
+   * Returns null when disabled or on failure — caller should use estimateTokens().
+   */
+  async countTokensAccurate(
+    params: {
+      model: string;
+      instructions?: string;
+      input: string | Array<Record<string, unknown>>;
+      text?: { format?: Record<string, unknown> };
+    },
+  ): Promise<number | null> {
+    const { countResponsesInputTokens } = await import('../../lib/openaiPlatformOptimizations');
+    return countResponsesInputTokens(params);
+  }
+
+  /**
    * Truncate conversation history to fit within the token budget.
    *
    * Strategy: walk history newest-to-oldest, keep turns that fit.

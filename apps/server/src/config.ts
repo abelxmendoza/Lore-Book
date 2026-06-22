@@ -73,6 +73,12 @@ type EnvConfig = {
   openAiVectorStoreId?: string;
   /** Use OpenAI `/responses/compact` for rolling compaction (fallback: chat summarizer). */
   openAiUseCompactApi: boolean;
+  /** Server-side compaction threshold (tokens) on Responses create — OPENAI_COMPACT_THRESHOLD. */
+  openAiServerCompactionThreshold?: number;
+  /** Prompt cache retention for Responses API (`24h` | `in-memory`). */
+  openAiPromptCacheRetention?: 'in-memory' | '24h';
+  /** Use `/responses/input_tokens` for accurate pre-flight token counts. */
+  openAiUseInputTokenCountApi: boolean;
   /** Webhook signing secret from OpenAI dashboard (for background response events). */
   openAiWebhookSecret?: string;
   /** Admin-only OpenAI shell + skills agent (Responses API). */
@@ -104,6 +110,8 @@ type EnvConfig = {
   subscriptionPriceId?: string;
   freeTierEntryLimit?: number;
   freeTierAiLimit?: number;
+  /** Platform-wide monthly OpenAI spend cap in USD (0 = disabled). */
+  monthlyOpenAiBudgetUsd: number;
   apiEnv: 'dev' | 'staging' | 'production';
   enableExperimental: boolean;
   /** System Cognition / Agent Layer — runs LoreAgents after the interpretation pipeline. */
@@ -112,7 +120,7 @@ type EnvConfig = {
   enableShadowExtraction: boolean;
   /** Production merged extractor — one LLM call replaces quest/skill/interest cluster. */
   enableMergedExtraction: boolean;
-  /** Generate character portraits from lore via OpenAI Images (costly — opt in). */
+  /** Generate character portraits from lore via OpenAI Images (costly — opt in, deferred). */
   enableLoreAvatars: boolean;
   /** OpenAI image model for lore avatars (gpt-image-1, dall-e-3, etc.). */
   avatarImageModel: string;
@@ -123,6 +131,21 @@ type EnvConfig = {
   ownerEmail?: string;
   /** Developer test account — premium without billing. */
   developerEmail?: string;
+  /** LoreBook MCP memory platform at POST/GET /mcp */
+  mcpEnabled: boolean;
+  /** Free-tier MCP read RPM */
+  mcpReadRpmFree: number;
+  /** Premium-tier MCP read RPM */
+  mcpReadRpmPremium: number;
+  /** Restrict /mcp to OpenAI ChatGPT connector egress IPs (production) */
+  mcpChatGptIpAllowlist: boolean;
+  /** OAuth 2.1 authorization server for ChatGPT / third-party MCP clients */
+  mcpOAuthEnabled: boolean;
+  mcpOAuthIssuer: string;
+  mcpResourceAudience: string;
+  mcpOAuthJwtSecret: string;
+  mcpOAuthAccessTokenTtlSec: number;
+  mcpWebAppUrl: string;
 };
 
 const apiEnv = (process.env.API_ENV ?? 'dev') as 'dev' | 'staging' | 'production';
@@ -175,6 +198,16 @@ export const config: EnvConfig = {
   openAiVectorStoreEnabled: process.env.OPENAI_VECTOR_STORE_ENABLED === 'true',
   openAiVectorStoreId: process.env.OPENAI_VECTOR_STORE_ID,
   openAiUseCompactApi: process.env.OPENAI_USE_COMPACT_API === 'true',
+  openAiServerCompactionThreshold: process.env.OPENAI_COMPACT_THRESHOLD
+    ? Number(process.env.OPENAI_COMPACT_THRESHOLD)
+    : undefined,
+  openAiPromptCacheRetention:
+    process.env.OPENAI_PROMPT_CACHE_RETENTION === 'in-memory'
+      ? 'in-memory'
+      : process.env.OPENAI_PROMPT_CACHE_RETENTION === '24h'
+        ? '24h'
+        : undefined,
+  openAiUseInputTokenCountApi: process.env.OPENAI_USE_INPUT_TOKEN_COUNT !== 'false',
   openAiWebhookSecret: process.env.OPENAI_WEBHOOK_SECRET,
   openAiSkillsAgentEnabled: process.env.OPENAI_SKILLS_AGENT_ENABLED === 'true',
   openAiAgentModel:
@@ -197,7 +230,14 @@ export const config: EnvConfig = {
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   subscriptionPriceId: process.env.SUBSCRIPTION_PRICE_ID ?? '',
   freeTierEntryLimit: Number(process.env.FREE_TIER_ENTRY_LIMIT ?? 50),
-  freeTierAiLimit: Number(process.env.FREE_TIER_AI_LIMIT ?? 100),
+  // ~30 chat turns/month at gpt-4o-mini + ingestion — fits a ~$5 platform budget.
+  freeTierAiLimit: Number(process.env.FREE_TIER_AI_LIMIT ?? 30),
+  monthlyOpenAiBudgetUsd: (() => {
+    if (process.env.MONTHLY_OPENAI_BUDGET_USD != null && process.env.MONTHLY_OPENAI_BUDGET_USD !== '') {
+      return Math.max(0, Number(process.env.MONTHLY_OPENAI_BUDGET_USD));
+    }
+    return apiEnv === 'production' ? 5 : 0;
+  })(),
   apiEnv,
   enableExperimental,
   enableLoreAgents: process.env.ENABLE_LORE_AGENTS === 'true',
@@ -215,6 +255,16 @@ export const config: EnvConfig = {
     ''
   ).trim().toLowerCase() || undefined,
   developerEmail: process.env.DEVELOPER_EMAIL?.trim().toLowerCase(),
+  mcpEnabled: process.env.ENABLE_MCP === 'true',
+  mcpReadRpmFree: Number(process.env.MCP_READ_RPM_FREE ?? process.env.MCP_READ_RPM ?? 60),
+  mcpReadRpmPremium: Number(process.env.MCP_READ_RPM_PREMIUM ?? 300),
+  mcpChatGptIpAllowlist: process.env.MCP_CHATGPT_IP_ALLOWLIST === 'true',
+  mcpOAuthEnabled: process.env.ENABLE_MCP_OAUTH !== 'false',
+  mcpOAuthIssuer: (process.env.MCP_OAUTH_ISSUER ?? '').trim().replace(/\/$/, ''),
+  mcpResourceAudience: process.env.MCP_RESOURCE_AUDIENCE ?? 'mcp.lorebookai.com',
+  mcpOAuthJwtSecret: process.env.MCP_OAUTH_JWT_SECRET ?? '',
+  mcpOAuthAccessTokenTtlSec: Number(process.env.MCP_OAUTH_ACCESS_TTL_SEC ?? 900),
+  mcpWebAppUrl: (process.env.MCP_WEB_APP_URL ?? process.env.FRONTEND_URL ?? 'https://lorebookai.com').trim().replace(/\/$/, ''),
 };
 
 export const assertConfig = () => {

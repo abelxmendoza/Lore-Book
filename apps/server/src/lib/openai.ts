@@ -4,9 +4,15 @@ import { config } from '../config';
 import { logger } from '../logger';
 import {
   assertOpenAiCircuitClosed,
+  isOpenAiRateLimitError,
   recordOpenAiFailure,
   recordOpenAiSuccess,
 } from './openaiCircuitBreaker';
+import { estimateUsdFromUsage, readTokenUsage } from './openaiCost';
+import {
+  assertOpenAiBudgetAvailable,
+  recordOpenAiTokenUsage,
+} from '../services/openaiBudgetService';
 import {
   chatCompletionParamsToResponses,
   responsesToChatCompletion,
@@ -98,14 +104,67 @@ export function getOpenAIConcurrency() {
   return openaiSemaphore.stats();
 }
 
-async function guardedOpenAiCall<T>(fn: () => Promise<T>): Promise<T> {
+async function guardedOpenAiCall<T>(fn: () => Promise<T>, modelHint = config.chatModel): Promise<T> {
   assertOpenAiCircuitClosed();
+  await assertOpenAiBudgetAvailable();
   try {
     const result = await fn();
     recordOpenAiSuccess();
-    return result;
+    return recordUsageFromOpenAiResult(result, modelHint) as T;
   } catch (err) {
     recordOpenAiFailure(err);
+    throw err;
+  }
+}
+
+function recordUsageFromOpenAiResult(result: unknown, modelHint: string): unknown {
+  if (!result || typeof result !== 'object') return result;
+
+  if (Symbol.asyncIterator in (result as object)) {
+    return wrapStreamForBudgetRecording(result as AsyncIterable<unknown>, modelHint);
+  }
+
+  const usage = (result as { usage?: unknown; model?: string }).usage;
+  if (usage && typeof usage === 'object') {
+    const { inputTokens, outputTokens } = readTokenUsage(usage as Parameters<typeof readTokenUsage>[0]);
+    const model = (result as { model?: string }).model ?? modelHint;
+    void recordOpenAiTokenUsage({ model, inputTokens, outputTokens });
+  }
+  return result;
+}
+
+async function* wrapStreamForBudgetRecording(
+  stream: AsyncIterable<unknown>,
+  modelHint: string,
+): AsyncIterable<unknown> {
+  try {
+    for await (const event of stream) {
+      const typed = event as {
+        type?: string;
+        response?: { usage?: unknown; model?: string };
+        usage?: unknown;
+      };
+      if (typed.type === 'response.completed' && typed.response?.usage) {
+        const { inputTokens, outputTokens } = readTokenUsage(
+          typed.response.usage as Parameters<typeof readTokenUsage>[0],
+        );
+        void recordOpenAiTokenUsage({
+          model: typed.response.model ?? modelHint,
+          inputTokens,
+          outputTokens,
+        });
+      } else if (typed.usage) {
+        const { inputTokens, outputTokens } = readTokenUsage(
+          typed.usage as Parameters<typeof readTokenUsage>[0],
+        );
+        void recordOpenAiTokenUsage({ model: modelHint, inputTokens, outputTokens });
+      }
+      yield event;
+    }
+  } catch (err) {
+    if (!isOpenAiRateLimitError(err)) {
+      logger.debug({ err }, 'OpenAI stream usage recording ended early');
+    }
     throw err;
   }
 }
@@ -135,7 +194,7 @@ if (openai.chat?.completions?.create) {
           ),
         );
         return responsesToChatCompletion(response, normalized.model ?? '');
-      }),
+      }, normalized.model ?? config.chatModel),
     );
   };
 }
@@ -149,7 +208,10 @@ if (openai.responses?.create) {
     const [params, ...rest] = args;
     const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
     return openaiSemaphore.run(() =>
-      guardedOpenAiCall(() => _rawResponsesCreate(normalized, ...rest))
+      guardedOpenAiCall(
+        () => _rawResponsesCreate(normalized, ...rest),
+        (normalized as { model?: string }).model ?? config.chatModel,
+      ),
     );
   };
 }

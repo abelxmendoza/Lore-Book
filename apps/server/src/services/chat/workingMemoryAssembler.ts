@@ -1780,6 +1780,54 @@ export function classifyIntentForAudit(question: string): WorkingMemoryIntent {
   return classifyIntent(question);
 }
 
+async function loadNarrativeAnchorCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  primaryEntity: WorkingMemoryEntity | null,
+  intent: WorkingMemoryIntent,
+): Promise<Candidate[]> {
+  if (!primaryEntity?.id || primaryEntity.source !== 'characters') return [];
+  if (!['PERSON_QUERY', 'RELATIONSHIP_QUERY', 'LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) {
+    return [];
+  }
+
+  return scope.traced(
+    'narrative_anchors',
+    'narrative anchor retrieval chain',
+    `narrative_anchors:${primaryEntity.id}`,
+    async () => {
+      try {
+        const { narrativeAnchorResolver } = await import('../narrative/narrativeAnchorResolver');
+        const chain = await narrativeAnchorResolver.resolveForEntity(
+          userId,
+          primaryEntity.id!,
+          primaryEntity.name,
+        );
+        if (!chain.anchors.length) return [];
+
+        const content = narrativeAnchorResolver.formatRetrievalContext(chain);
+        return chain.anchors.map((anchor, i) => ({
+          id: `anchor-${anchor.anchorId}`,
+          type: 'timeline' as const,
+          title: anchor.title,
+          content: i === 0 ? content : `${anchor.title}: ${anchor.relatedEntities.join(', ')}`,
+          source: 'narrative_anchor',
+          date: null,
+          confidence: 0.85,
+          metadata: {
+            anchorType: anchor.anchorType,
+            gravityScore: anchor.gravityScore,
+            entityId: chain.entityId,
+            relatedEntities: anchor.relatedEntities,
+          },
+        }));
+      } catch {
+        return [];
+      }
+    },
+  );
+}
+
 export async function assembleWorkingMemory(
   input: { question: string; userId: string; threadId?: string | null },
   options: AssembleOptions = {}
@@ -1828,7 +1876,7 @@ export async function assembleWorkingMemory(
     intent === 'COMMUNITY_QUERY' ||
     (intent === 'PERSON_QUERY' && !isPersonish);
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates, anchorCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -1844,6 +1892,9 @@ export async function assembleWorkingMemory(
       !temporalQuery ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
       loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window),
+      !temporalQuery
+        ? loadNarrativeAnchorCandidates(scope, input.userId, primaryEntity, intent)
+        : Promise.resolve([] as Candidate[]),
     ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
 
@@ -1857,6 +1908,7 @@ export async function assembleWorkingMemory(
     ...communityCandidates,
     ...projectCandidates,
     ...textualCandidates,
+    ...anchorCandidates,
   ];
   // Dedupe project rows that appear in both dedicated loader and textual loader
   const seenIds = new Set<string>();

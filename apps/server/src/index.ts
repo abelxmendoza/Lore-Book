@@ -30,6 +30,8 @@ import { schemaGuard } from './middleware/schemaGuard';
 import { resolveBindHost } from './config/serverPort';
 import { evaluateOrigin, getAllowedCorsOrigins } from './utils/corsPolicy';
 import { buildHealthPayload, handleDbHealth } from './routes/health';
+import { mcpRouter } from './routes/mcp';
+import { mcpOAuthApproveRouter, mcpOAuthRouter } from './routes/mcpOAuth';
 
 assertConfig();
 
@@ -183,6 +185,19 @@ app.get('/api/health/db', (req, res, next) => {
 
 // Runtime diagnostics — public, no auth.
 app.use('/api/runtime', runtimeRouter);
+
+// LoreBook MCP memory platform (Bearer auth, no CSRF — external agent clients)
+if (config.mcpEnabled) {
+  app.use('/mcp', mcpRouter);
+  if (config.mcpOAuthEnabled && config.mcpOAuthJwtSecret) {
+    app.use(mcpOAuthRouter);
+    app.use('/api/mcp/oauth', mcpOAuthApproveRouter);
+    logger.info('MCP OAuth 2.1 enabled (/.well-known/oauth-authorization-server)');
+  } else if (config.mcpOAuthEnabled) {
+    logger.warn('ENABLE_MCP_OAUTH is on but MCP_OAUTH_JWT_SECRET is missing — OAuth routes disabled');
+  }
+  logger.info('MCP memory platform enabled at /mcp');
+}
 
 // Schema guard for ALL /api routes (including public): return 503 when DB tables missing (prevents 500/PGRST205 flood)
 app.use('/api', (req, res, next) => {

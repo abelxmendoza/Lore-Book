@@ -337,17 +337,21 @@ class CharacterCardRescanAuditService {
     userId: string,
     characterId: string,
     action: 'keep' | 'delete',
-  ): Promise<{ success: boolean }> {
+  ): Promise<{ success: boolean; error?: string }> {
     if (action === 'keep') {
-      const { data: row } = await supabaseAdmin
+      const { data: row, error: fetchErr } = await supabaseAdmin
         .from('characters')
-        .select('metadata')
+        .select('id, metadata')
         .eq('id', characterId)
         .eq('user_id', userId)
         .maybeSingle();
-      const meta = (row?.metadata ?? {}) as Record<string, unknown>;
+      if (fetchErr || !row) {
+        logger.warn({ fetchErr, userId, characterId }, 'card review keep: character not found');
+        return { success: false, error: 'character_not_found' };
+      }
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
       const { card_audit_review_queue: _removed, ...rest } = meta;
-      await supabaseAdmin
+      const { data: updated, error: updateErr } = await supabaseAdmin
         .from('characters')
         .update({
           status: 'active',
@@ -358,10 +362,17 @@ class CharacterCardRescanAuditService {
               action: 'keep',
               reviewedAt: new Date().toISOString(),
             },
+            card_audit_locked: true,
           },
         })
         .eq('id', characterId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select('id')
+        .maybeSingle();
+      if (updateErr || !updated) {
+        logger.warn({ updateErr, userId, characterId }, 'card review keep: update failed');
+        return { success: false, error: 'update_failed' };
+      }
       return { success: true };
     }
 

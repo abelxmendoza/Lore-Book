@@ -4,10 +4,12 @@
 
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
+import { isBlockedTimeSuggestion } from '../../timeline/timelineSuggestionGuard';
 import { omegaMemoryService } from '../../omegaMemoryService';
 import { questSuggestionService } from '../../quests/questSuggestionService';
 import { skillSuggestionService } from '../../skills/skillSuggestionService';
 import { projectSuggestionService } from '../../projects/projectSuggestionService';
+import { organizationSuggestionService } from '../../organizations/organizationSuggestionService';
 import { buildCanonIndexForUser } from './canonIndexBuilder';
 import { parseLoreBookText } from './loreBookParseEngine';
 import type {
@@ -39,6 +41,7 @@ const APPLY_DOMAINS = new Set<LoreBookDomain>([
   'skills',
   'projects',
   'quests',
+  'organizations',
 ]);
 
 export async function loadRecentCorpusLines(userId: string, limit = 80): Promise<string[]> {
@@ -105,6 +108,7 @@ async function applySuggestAdd(
 
   const name = op.name.trim();
   if (!name) return false;
+  if (isBlockedTimeSuggestion(name)) return false;
 
   const reasoning = APPLY_SOURCE_LABEL[options.source];
 
@@ -163,6 +167,24 @@ async function applySuggestAdd(
         return true;
       case 'locations':
         await omegaMemoryService.createEntity(userId, name, 'LOCATION');
+        return true;
+      case 'organizations':
+        await organizationSuggestionService.upsertFromInference(
+          userId,
+          {
+            displayName: name,
+            organizationType: 'unknown_organization',
+            context: { roleToUser: 'unknown' },
+            aliases: [],
+            evidencePhrases: [op.evidence.quote],
+            sourceMessageIds: options.messageId ? [options.messageId] : [],
+            confidence: op.confidence,
+            inferredNotConfirmed: true,
+            requiresReview: true,
+            promotionStatus: 'candidate',
+          },
+          { source: 'chat', sourceMessageId: options.messageId },
+        );
         return true;
       default:
         return false;

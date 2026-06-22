@@ -65,6 +65,7 @@ import { projectsRouter } from './projects';
 import { suggestionsRouter } from './suggestions';
 import { entityAuthorityRouter } from './entityAuthority';
 import { memoirRouter } from './memoir';
+import messageScreenshotsRouter from './messageScreenshots';
 import { moodsRouter } from './moods';
 import { memoryGraphRouter } from './memoryGraph';
 import { memoryLadderRouter } from './memoryLadder';
@@ -111,6 +112,7 @@ import wisdomRouter from './wisdom';
 import learningRouter from './learning';
 import predictionRouter from './prediction';
 import narrativeRouter from './narrative';
+import narrativeAnchorsRouter from './narrativeAnchors';
 import relationshipDynamicsRouter from './relationshipDynamics';
 import interventionRouter from './intervention';
 import habitsRouter from './habits';
@@ -537,6 +539,12 @@ export const routeRegistry: RouteEntry[] = [
     router: narrativeRouter,
     classification: 'CORE_RUNTIME',
     description: 'Core narrative structuring',
+  },
+  {
+    path: '/api/narrative-anchors',
+    router: narrativeAnchorsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Narrative anchor clusters for entity-centric retrieval',
   },
   {
     path: '/api/summary',
@@ -1239,6 +1247,12 @@ export const routeRegistry: RouteEntry[] = [
     router: charactersRouter,
     classification: 'CORE_RUNTIME',
     description: 'Character / people management',
+  },
+  {
+    path: '/api/messages',
+    router: messageScreenshotsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Text message screenshot upload and vision extraction',
   },
 
   // ---- ENGINE SYSTEM ------------------------------------------------------

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from '../config';
 import { isPrivilegedAccount } from '../lib/accountAuthority';
 
+import { getOpenAiBudgetSnapshot } from './openaiBudgetService';
 import { getUserSubscription, type SubscriptionData } from './stripeService';
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -22,7 +23,7 @@ const defaultUsageData = (): UsageData => ({
   entryCount: 0,
   aiRequestsCount: 0,
   entryLimit: config.freeTierEntryLimit || 50,
-  aiLimit: config.freeTierAiLimit || 100,
+  aiLimit: config.freeTierAiLimit || 30,
   isPremium: false,
   isTrial: false,
 });
@@ -218,8 +219,19 @@ export async function canCreateEntry(userId: string): Promise<{ allowed: boolean
 /**
  * Check if user can make an AI request (within limits)
  */
-export async function canMakeAiRequest(userId: string): Promise<{ allowed: boolean; reason?: string }> {
+export async function canMakeAiRequest(userId: string): Promise<{ allowed: boolean; reason?: string; code?: string }> {
   try {
+    const budget = await getOpenAiBudgetSnapshot();
+    if (budget.enabled && budget.exhausted) {
+      return {
+        allowed: false,
+        code: 'openai_budget_exceeded',
+        reason:
+          `This app's AI budget ($${budget.monthlyLimitUsd.toFixed(2)}/month) is used up. ` +
+          'New AI replies are paused until the budget resets or OpenAI credits are restored.',
+      };
+    }
+
     const usage = await getCurrentUsage(userId);
 
     if (usage.isPremium || usage.isTrial) {
@@ -229,7 +241,10 @@ export async function canMakeAiRequest(userId: string): Promise<{ allowed: boole
     if (usage.aiRequestsCount >= usage.aiLimit) {
       return {
         allowed: false,
-        reason: `You've reached your monthly limit of ${usage.aiLimit} AI requests. Upgrade to Premium for unlimited requests.`,
+        code: 'ai_request_limit',
+        reason:
+          `You've used ${usage.aiRequestsCount} of ${usage.aiLimit} free AI messages this month. ` +
+          'Upgrade to Premium for more, or wait until next month.',
       };
     }
 

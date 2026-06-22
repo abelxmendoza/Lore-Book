@@ -146,12 +146,16 @@ function resolveThreadContext(
   return currentContext;
 }
 
+import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
+
 function isOpenAIQuotaError(error: unknown): boolean {
+  if (isOpenAiBudgetExceededError(error)) return true;
   const err = error as { code?: string; message?: string } | null;
   const text = err?.message ?? (error instanceof Error ? error.message : String(error));
   return (
     err?.code === 'openai_circuit_open' ||
-    /429|insufficient_quota|quota exceeded|circuit breaker open/i.test(text)
+    err?.code === 'openai_budget_exceeded' ||
+    /429|insufficient_quota|quota exceeded|circuit breaker open|monthly openai budget/i.test(text)
   );
 }
 
@@ -230,6 +234,17 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         await streamFallbackResponse(res, msgForFallback, reason);
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
+        if (isOpenAiBudgetExceededError(setupError)) {
+          const budgetErr = setupError as { userMessage?: string; budget?: unknown };
+          res.status(403).json({
+            error: 'openai_budget_exceeded',
+            code: 'openai_budget_exceeded',
+            stage: 'response_generation',
+            userMessage: budgetErr.userMessage,
+            budget: budgetErr.budget,
+          });
+          return;
+        }
         if (isOpenAIQuotaError(setupError)) {
           res.status(429).json({
             error: 'OpenAI quota exhausted',

@@ -82,6 +82,21 @@ function duplicateConfidence(
   return null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Strip malformed optional UUID fields so suggestion adds don't 400 on legacy ids. */
+function sanitizeCharacterCreateBody(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const record = { ...(body as Record<string, unknown>) };
+  for (const key of ['omegaEntityId', 'questionId'] as const) {
+    const value = record[key];
+    if (typeof value === 'string' && !UUID_RE.test(value.trim())) {
+      delete record[key];
+    }
+  }
+  return record;
+}
+
 const createCharacterSchema = z.object({
   name: z.string().min(1),
   firstName: z.string().optional(),
@@ -527,7 +542,8 @@ async function mergeExtractedCharacterData(
  */
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const parsed = createCharacterSchema.safeParse(req.body);
+    const body = sanitizeCharacterCreateBody(req.body);
+    const parsed = createCharacterSchema.safeParse(body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid character data', details: parsed.error.flatten() });
     }
@@ -814,7 +830,10 @@ router.post('/card-audit/review/:id/resolve', requireAuth, asyncHandler(async (r
     req.params.id,
     body.action,
   );
-  res.json({ success: result.success });
+  if (!result.success) {
+    return res.status(404).json({ success: false, error: result.error ?? 'resolve_failed' });
+  }
+  res.json({ success: true });
 }));
 
 router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -2602,8 +2621,7 @@ router.get('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => 
 });
 
 // POST /api/characters/:id/media  { kind, dataUrl?, text?, caption?, source? }
-// Image items (a photo, or a message screenshot) pass a base64 dataUrl (compress
-// client-side to stay under the API body limit). Pure-text messages omit dataUrl.
+// Image items pass base64 dataUrl. Message screenshots are analyzed with vision OCR.
 router.post('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const characterId = String(req.params.id);
@@ -2613,15 +2631,40 @@ router.post('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) =>
     text: z.string().optional(),
     caption: z.string().optional(),
     source: z.string().optional(),
+    analyzeImage: z.boolean().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid media', details: parsed.error.flatten() });
-  const { kind, dataUrl, text, caption, source } = parsed.data;
+  const { kind, dataUrl, text, caption, source, analyzeImage } = parsed.data;
   if (!dataUrl && !text) return res.status(400).json({ error: 'Provide an image or text' });
 
-  let url: string | null = null;
-  let storage_path: string | null = null;
+  const { data: character } = await supabaseAdmin
+    .from('characters')
+    .select('name')
+    .eq('user_id', userId)
+    .eq('id', characterId)
+    .maybeSingle();
+  if (!character) return res.status(404).json({ error: 'Character not found' });
+
   try {
+    if (kind === 'message') {
+      const { characterMessageMediaService } = await import('../services/characters/characterMessageMediaService');
+      const saved = await characterMessageMediaService.saveMessageMedia({
+        userId,
+        characterId,
+        characterName: character.name as string,
+        dataUrl,
+        text,
+        caption,
+        source,
+        analyzeImage,
+      });
+      if (!saved) return res.status(500).json({ error: 'Could not save message' });
+      return res.json({ media: saved });
+    }
+
+    let url: string | null = null;
+    let storage_path: string | null = null;
     if (dataUrl) {
       const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl);
       if (!match) return res.status(400).json({ error: 'Invalid image data URL' });

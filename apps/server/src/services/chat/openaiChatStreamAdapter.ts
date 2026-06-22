@@ -3,6 +3,7 @@ import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 
 import { config } from '../../config';
 import { normalizeOpenAIChatParams, openai } from '../../lib/openai';
+import { withResponsesOptimizations } from '../../lib/openaiPlatformOptimizations';
 import { logger } from '../../logger';
 import { buildFileSearchTool } from '../openaiPlatform/openaiVectorStoreService';
 
@@ -166,22 +167,27 @@ export async function createOpenAIChatStream(params: {
     'openai.responses.stream'
   );
 
-  const stream = await openai.responses.create({
-    model,
-    instructions: typeof systemPrompt?.content === 'string' ? systemPrompt.content : undefined,
-    input: responseInput,
-    ...(temperature != null ? { temperature } : {}),
-    stream: true,
-    store: storeAtOpenAi,
-    ...(useChaining && params.previousResponseId
-      ? { previous_response_id: params.previousResponseId }
-      : {}),
-    ...(params.openAiConversationId
-      ? { conversation: params.openAiConversationId }
-      : {}),
-    ...(tools.length > 0 ? { tools } : {}),
-    ...(params.userId ? { safety_identifier: params.userId } : {}),
-  });
+  const stream = await openai.responses.create(
+    withResponsesOptimizations(
+      {
+        model,
+        instructions: typeof systemPrompt?.content === 'string' ? systemPrompt.content : undefined,
+        input: responseInput,
+        ...(temperature != null ? { temperature } : {}),
+        stream: true,
+        store: storeAtOpenAi,
+        ...(useChaining && params.previousResponseId
+          ? { previous_response_id: params.previousResponseId }
+          : {}),
+        ...(params.openAiConversationId
+          ? { conversation: params.openAiConversationId }
+          : {}),
+        ...(tools.length > 0 ? { tools } : {}),
+        ...(params.userId ? { safety_identifier: params.userId } : {}),
+      },
+      { sessionId: params.sessionId, cacheKey: params.sessionId ? `chat:${params.sessionId}` : undefined },
+    ),
+  );
 
   return normalizeResponsesStream(stream);
 }
