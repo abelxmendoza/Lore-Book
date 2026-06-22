@@ -4,6 +4,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 
 import { config } from '../config';
 import {
@@ -453,6 +454,62 @@ router.post('/finance/subscriptions/:id/reset-billing', async (req: Authenticate
   } catch (error) {
     logger.error({ error }, 'Error resetting billing');
     res.status(500).json({ error: 'Failed to reset billing' });
+  }
+});
+
+/**
+ * GET /admin/agent/skills/workflows
+ * List available OpenAI skills agent workflows and readiness.
+ */
+router.get('/agent/skills/workflows', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { openAiSkillsAgentService } = await import('../services/openaiSkills/openaiSkillsAgentService');
+    logAdminAction(req.user!.id, 'list_skills_workflows');
+    res.json({
+      enabled: config.openAiSkillsAgentEnabled,
+      workflows: openAiSkillsAgentService.listWorkflows(),
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error listing skills workflows');
+    res.status(500).json({ error: 'Failed to list skills workflows' });
+  }
+});
+
+/**
+ * POST /admin/agent/skills/run
+ * Run a bounded OpenAI hosted-shell agent with LoreBook skill bundles (admin only).
+ */
+router.post('/agent/skills/run', async (req: AuthenticatedRequest, res) => {
+  try {
+    const body = z
+      .object({
+        workflow: z.enum(['character_card_audit', 'rescan_ops', 'lorebook_ops']),
+        targetUserId: z.string().uuid(),
+        input: z.string().min(1).max(8000),
+      })
+      .parse(req.body ?? {});
+
+    logAdminAction(req.user!.id, 'run_skills_agent', {
+      workflow: body.workflow,
+      targetUserId: body.targetUserId,
+    });
+
+    const { openAiSkillsAgentService } = await import('../services/openaiSkills/openaiSkillsAgentService');
+    const result = await openAiSkillsAgentService.run({
+      workflow: body.workflow,
+      targetUserId: body.targetUserId,
+      input: body.input,
+      requestedByUserId: req.user!.id,
+    });
+
+    res.json({ success: true, result });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.flatten() });
+    }
+    const message = error instanceof Error ? error.message : 'Skills agent run failed';
+    logger.error({ error }, 'Skills agent run failed');
+    res.status(error instanceof Error && message.includes('disabled') ? 503 : 500).json({ error: message });
   }
 });
 

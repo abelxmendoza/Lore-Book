@@ -61,6 +61,12 @@ type EnvConfig = {
   chatModel: string;
   /** Opt-in bridge for the user-facing chat stream to use OpenAI Responses API. */
   useResponsesApiForChat: boolean;
+  /** Admin-only OpenAI shell + skills agent (Responses API). */
+  openAiSkillsAgentEnabled: boolean;
+  /** Model for hosted shell + skills agent runs. */
+  openAiAgentModel: string;
+  openAiSkillCharacterCardAuditId?: string;
+  openAiSkillRescanOpsId?: string;
   /**
    * Route non-streaming chat.completions.create calls through the Responses API.
    * Default on; set OPENAI_USE_RESPONSES=false to revert all paths.
@@ -145,6 +151,14 @@ export const config: EnvConfig = {
       : process.env.OPENAI_CHAT_USE_RESPONSES === 'true'
         ? true
         : process.env.OPENAI_USE_RESPONSES !== 'false',
+  openAiSkillsAgentEnabled: process.env.OPENAI_SKILLS_AGENT_ENABLED === 'true',
+  openAiAgentModel:
+    process.env.OPENAI_AGENT_MODEL ??
+    process.env.OPENAI_CHAT_MODEL ??
+    process.env.OPENAI_API_MODEL ??
+    'gpt-4o',
+  openAiSkillCharacterCardAuditId: process.env.OPENAI_SKILL_CHARACTER_CARD_AUDIT_ID,
+  openAiSkillRescanOpsId: process.env.OPENAI_SKILL_RESCAN_OPS_ID,
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',

@@ -1,0 +1,17 @@
+{
+  "updatedAt": "2026-06-22T05:51:02.194Z",
+  "skills": {
+    "character-card-audit": {
+      "id": "skill_6a38cd46b2d8819887580aaf5f94f281062ff3cc10c644d3",
+      "envKey": "OPENAI_SKILL_CHARACTER_CARD_AUDIT_ID",
+      "latestVersion": "1",
+      "defaultVersion": "1"
+    },
+    "lorebook-rescan-ops": {
+      "id": "skill_6a38cd47354081989e360eabecc0f1e406ba2c673673f6cf",
+      "envKey": "OPENAI_SKILL_RESCAN_OPS_ID",
+      "latestVersion": "1",
+      "defaultVersion": "1"
+    }
+  }
+}

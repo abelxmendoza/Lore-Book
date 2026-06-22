@@ -1,0 +1,17 @@
+{
+  "updatedAt": null,
+  "skills": {
+    "character-card-audit": {
+      "id": "",
+      "envKey": "OPENAI_SKILL_CHARACTER_CARD_AUDIT_ID",
+      "latestVersion": null,
+      "defaultVersion": null
+    },
+    "lorebook-rescan-ops": {
+      "id": "",
+      "envKey": "OPENAI_SKILL_RESCAN_OPS_ID",
+      "latestVersion": null,
+      "defaultVersion": null
+    }
+  }
+}
