@@ -11,6 +11,7 @@ import type { CurrentContext, SoulProfileContext } from '../types/currentContext
 import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 import { messageReferencesMention } from '../utils/disambiguationUtils';
+import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
 
 import {
   isBeliefChallengeAllowed,
@@ -752,8 +753,16 @@ When updating relationship analytics or emotional signals from this thread, weig
       .single();
 
     if (saveError || !savedMessage?.id) {
+      if (saveError) {
+        const classified = classifyPostgresError(saveError);
+        if (classified.kind === 'read_only' || classified.kind === 'disk_full') {
+          throw new StorageBlockedError(classified);
+        }
+      }
       logger.error({ error: saveError, userId, sessionId }, 'Failed to persist user message before routing');
-      throw new Error('Failed to save your message. Please try again.');
+      throw new Error(
+        saveError ? classifyPostgresError(saveError).userMessage : 'Failed to save your message. Please try again.'
+      );
     }
     timer.mark('save');
     const messageId = savedMessage.id;

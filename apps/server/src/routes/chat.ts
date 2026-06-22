@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
+import { StorageBlockedError } from '../utils/postgresError';
 import { shouldBlockAnonymousAiChat } from '../config/runtimePolicy';
 import { openAiHttpBurstLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
@@ -241,6 +242,21 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
             },
             userMessage:
               'Response generation failed because the OpenAI quota is exhausted. This failed before server-side memory ingestion, so I did not create or update memories from this send.',
+          });
+          return;
+        }
+        if (setupError instanceof StorageBlockedError) {
+          res.status(setupError.statusCode).json({
+            error: setupError.message,
+            code: setupError.apiCode,
+            stage: 'message_persistence',
+            memory: {
+              user_message_saved: false,
+              ingestion_started: false,
+              entity_creation_started: false,
+              assistant_message_saved: false,
+            },
+            userMessage: setupError.message,
           });
           return;
         }

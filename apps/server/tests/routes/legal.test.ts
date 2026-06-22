@@ -17,7 +17,7 @@ let origCwd: string;
 describe('Legal API Routes', () => {
   beforeAll(() => {
     origCwd = process.cwd();
-    process.chdir(path.join(__dirname, '..', '..', '..', '..'));
+    process.chdir(path.join(__dirname, '..', '..'));
   });
 
   afterAll(() => {

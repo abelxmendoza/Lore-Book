@@ -31,7 +31,7 @@ build/
 # IDE
 .vscode/
 .idea/
-.cursor/mcp.json
+.cursor/
 *.swp
 *.swo
 *~

@@ -1,4 +1,18 @@
+import type { Request, Response } from 'express';
 import { Router } from 'express';
+
+import { verifySchema, getLastSchemaCheck } from '../db/schemaVerification';
+import {
+  probeDatabaseOps,
+  type DatabaseStorageSnapshot,
+  type DatabaseUpgradeSnapshot,
+  type StorageHealthStatus,
+} from '../services/databaseStorageProbe';
+import { mergeOpsStatus } from '../services/databaseUpgradeProbe';
+import {
+  resolveDatabaseConnectionHints,
+  type DatabaseConnectionHints,
+} from '../utils/databaseConnectionHints';
 
 /**
  * Liveness/health routes.
@@ -11,6 +25,9 @@ import { Router } from 'express';
  * It is the first thing the platform's edge proxy and our own smoke checks hit,
  * so it has to answer 200 the instant the port is bound. (See the 2026-06-18
  * 502 incident.)
+ *
+ * `/api/health/db` may touch Postgres (schema + cached storage probe). Keep it
+ * off the Railway liveness path — use smoke-health.mjs post-deploy only.
  */
 
 export type HealthPayload = {
@@ -20,6 +37,17 @@ export type HealthPayload = {
   deploymentEnv: string;
   port: number | null;
   envPresent: Record<string, boolean>;
+};
+
+export type DbHealthStatus = 'ok' | 'degraded' | 'warn' | 'critical';
+
+export type DbHealthPayload = {
+  status: DbHealthStatus;
+  missingTables: string[];
+  lastSchemaSync: string | null;
+  storage: DatabaseStorageSnapshot;
+  upgrade: DatabaseUpgradeSnapshot;
+  connection: DatabaseConnectionHints;
 };
 
 export function buildHealthPayload(
@@ -49,6 +77,49 @@ export function buildHealthPayload(
   };
 }
 
+/** Merge schema + storage + upgrade into a single operational status (O(1)). */
+export function resolveDbHealthStatus(
+  schemaOk: boolean,
+  storageStatus: StorageHealthStatus,
+  upgradeStatus: StorageHealthStatus = 'ok'
+): DbHealthStatus {
+  if (!schemaOk) return 'degraded';
+  const combined = mergeOpsStatus(storageStatus, upgradeStatus);
+  if (combined === 'critical') return 'critical';
+  if (combined === 'warn') return 'warn';
+  return 'ok';
+}
+
+export async function buildDbHealthPayload(
+  deps: {
+    verifySchema?: typeof verifySchema;
+    getLastSchemaCheck?: typeof getLastSchemaCheck;
+    probeDatabaseOps?: typeof probeDatabaseOps;
+    resolveDatabaseConnectionHints?: typeof resolveDatabaseConnectionHints;
+  } = {}
+): Promise<DbHealthPayload> {
+  const verify = deps.verifySchema ?? verifySchema;
+  const lastCheck = deps.getLastSchemaCheck ?? getLastSchemaCheck;
+  const probe = deps.probeDatabaseOps ?? probeDatabaseOps;
+  const connectionHints = deps.resolveDatabaseConnectionHints ?? resolveDatabaseConnectionHints;
+
+  const [schemaResult, ops] = await Promise.all([verify(), probe()]);
+
+  return {
+    status: resolveDbHealthStatus(schemaResult.ok, ops.storage.status, ops.upgrade.status),
+    missingTables: schemaResult.missingTables,
+    lastSchemaSync: lastCheck() ? lastCheck()!.toISOString() : null,
+    storage: ops.storage,
+    upgrade: ops.upgrade,
+    connection: connectionHints(),
+  };
+}
+
+export async function handleDbHealth(_req: Request, res: Response): Promise<void> {
+  const payload = await buildDbHealthPayload();
+  res.status(200).json(payload);
+}
+
 /**
  * Build the liveness router. Mounts a single GET handler at the provided path
  * (default '/api/health'). Returns 200 with {@link HealthPayload}.
@@ -61,5 +132,9 @@ export function createHealthRouter(
   router.get(routePath, (_req, res) => {
     res.status(200).json(buildHealthPayload(startTime));
   });
+  router.get('/api/health/db', (req, res, next) => {
+    void handleDbHealth(req, res).catch(next);
+  });
   return router;
 }
+

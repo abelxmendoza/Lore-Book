@@ -64,6 +64,18 @@ async function assertDbSchemaHealthy(base, timeoutMs) {
       `Database schema degraded (missing: ${missing}). Run: npm run migrate:engine`,
     );
   }
+  if (payload.status === 'critical' && payload.storage?.utilizationRatio != null) {
+    const pct = Math.round(Number(payload.storage.utilizationRatio) * 100);
+    console.warn(
+      `⚠️  Database storage at ${pct}% of quota (${payload.storage.databaseBytes ?? '?'} bytes). ` +
+        'Supabase may enter read-only mode soon — see Database Settings in the Supabase dashboard.',
+    );
+  }
+  if (payload.upgrade?.status === 'warn' || payload.upgrade?.status === 'critical') {
+    for (const w of payload.upgrade.warnings ?? []) {
+      console.warn(`⚠️  Upgrade readiness: ${w}`);
+    }
+  }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

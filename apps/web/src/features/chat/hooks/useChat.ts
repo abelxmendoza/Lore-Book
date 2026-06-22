@@ -18,6 +18,7 @@ import { shouldSimulateChat, shouldUseMockData } from '../../../hooks/useShouldU
 import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
+import { friendlyPostgresErrorMessage } from '../../../lib/postgresError';
 import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
@@ -98,6 +99,8 @@ function isOpenAIError(error: string): boolean {
 
 // Map a raw error string to a user-facing message.
 function friendlyErrorMessage(errMsg: string): string {
+  const storageMessage = friendlyPostgresErrorMessage(errMsg);
+  if (storageMessage) return storageMessage;
   if (isBackendUnavailable(errMsg)) {
     return 'Server is temporarily unavailable. Try again in a moment.';
   }

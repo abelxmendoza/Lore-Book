@@ -62,10 +62,14 @@ export const errorHandler = (
 
   // Handle custom AppError
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+    const body: Record<string, unknown> = {
       error: err.message,
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    });
+      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    };
+    if ('apiCode' in err && typeof (err as { apiCode?: string }).apiCode === 'string') {
+      body.code = (err as { apiCode: string }).apiCode;
+    }
+    return res.status(err.statusCode).json(body);
   }
 
   // Handle unknown errors

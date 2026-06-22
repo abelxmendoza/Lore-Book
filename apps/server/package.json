@@ -4,6 +4,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/bootstrap.ts",
+    "sync:legal": "mkdir -p legal && cp ../../legal/TERMS.md ../../legal/PRIVACY.md legal/",
+    "prebuild": "npm run sync:legal",
     "build": "tsc --project tsconfig.json || true",
     "start": "node dist/bootstrap.js",
     "lint": "eslint src",

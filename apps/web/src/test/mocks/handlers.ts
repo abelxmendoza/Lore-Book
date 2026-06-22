@@ -9,6 +9,35 @@ export const handlers = [
     return HttpResponse.json({ status: 'ok' });
   }),
 
+  http.get(`${API_BASE}/api/health/db`, () => {
+    return HttpResponse.json({
+      status: 'ok',
+      missingTables: [],
+      lastSchemaSync: null,
+      storage: {
+        status: 'ok',
+        databaseBytes: 50_000_000,
+        walBytes: 1_000_000,
+        quotaBytes: 524_288_000,
+        utilizationRatio: 0.095,
+        checkedAt: new Date().toISOString(),
+      },
+      upgrade: {
+        status: 'ok',
+        postgresVersion: '15.8',
+        postgresMajor: 15,
+        cronJobRunDetailsRows: 0,
+        deprecatedExtensions: [],
+        warnings: [],
+      },
+      connection: {
+        databaseUrlConfigured: false,
+        sslMode: null,
+        sslEnforcementReady: false,
+      },
+    });
+  }),
+
   // Entries
   http.get(`${API_BASE}/api/entries`, () => {
     return HttpResponse.json({

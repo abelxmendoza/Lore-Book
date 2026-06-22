@@ -1,23 +1,48 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 
 import { rateLimitMiddleware } from '../middleware/rateLimit';
+import { logger } from '../logger';
 
 export const legalRouter = Router();
 
-// Apply rate limiting to prevent DoS attacks on file system access
 legalRouter.use(rateLimitMiddleware);
 
-const getLegalDir = () => path.resolve(process.cwd(), 'legal');
+function resolveLegalDir(): string {
+  const candidates = [
+    path.resolve(__dirname, '../../legal'),
+    path.resolve(process.cwd(), 'legal'),
+    path.resolve(process.cwd(), '../legal'),
+    path.resolve(__dirname, '../../../../legal'),
+  ];
 
-// Explicitly apply rate limiting to each route for CodeQL detection
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'TERMS.md'))) {
+      return dir;
+    }
+  }
+
+  throw new Error(`Legal documents not found. Checked: ${candidates.join(', ')}`);
+}
+
+function sendLegalFile(res: Response, filename: string) {
+  try {
+    const filePath = path.join(resolveLegalDir(), filename);
+    res.sendFile(filePath);
+  } catch (error) {
+    logger.error({ error, filename }, 'Legal document unavailable');
+    res.status(503).json({ error: 'Legal document temporarily unavailable' });
+  }
+}
+
 legalRouter.get('/terms', rateLimitMiddleware, (_req, res) => {
-  res.sendFile(path.join(getLegalDir(), 'TERMS.md'));
+  sendLegalFile(res, 'TERMS.md');
 });
 
 legalRouter.get('/privacy', rateLimitMiddleware, (_req, res) => {
-  res.sendFile(path.join(getLegalDir(), 'PRIVACY.md'));
+  sendLegalFile(res, 'PRIVACY.md');
 });

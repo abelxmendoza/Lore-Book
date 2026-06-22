@@ -28,7 +28,7 @@ import { getSchemaStatus, getMissingTables } from './db/schemaVerification';
 import { schemaGuard } from './middleware/schemaGuard';
 import { resolveBindHost } from './config/serverPort';
 import { evaluateOrigin, getAllowedCorsOrigins } from './utils/corsPolicy';
-import { buildHealthPayload } from './routes/health';
+import { buildHealthPayload, handleDbHealth } from './routes/health';
 
 assertConfig();
 
@@ -167,16 +167,9 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json(buildHealthPayload(SERVER_START_TIME));
 });
 
-// Database schema health: status, missing tables, last check (no auth)
-app.get('/api/health/db', async (_req, res) => {
-  const { verifySchema, getLastSchemaCheck } = await import('./db/schemaVerification');
-  const result = await verifySchema();
-  const lastSchemaSync = getLastSchemaCheck();
-  res.status(200).json({
-    status: result.ok ? 'ok' : 'degraded',
-    missingTables: result.missingTables,
-    lastSchemaSync: lastSchemaSync ? lastSchemaSync.toISOString() : null,
-  });
+// Database schema + storage health: status, missing tables, cached size probe (no auth)
+app.get('/api/health/db', (req, res, next) => {
+  void handleDbHealth(req, res).catch(next);
 });
 
 // Runtime diagnostics — public, no auth.

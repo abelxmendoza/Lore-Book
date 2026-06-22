@@ -114,6 +114,7 @@ import { LoreKeeperProvider } from './contexts/LoreKeeperContext';
 import { Router } from './pages/Router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BackendUnavailableBanner } from './components/BackendUnavailableBanner';
+import { DatabaseOpsBanner } from './components/admin/DatabaseOpsBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
 import { MockDataIndicator } from './components/MockDataIndicator';
 import { DemoMutationEffects } from './components/DemoMutationEffects';
@@ -169,6 +170,7 @@ if (!rootElement) {
                   <SoulProfileChatProvider>
                     <DevelopmentNotice />
                     <BackendUnavailableBanner />
+                    <DatabaseOpsBanner />
                     <DemoMutationEffects />
                     <CelebrationHost />
                     <Router />
