@@ -8,7 +8,6 @@ import path from 'path';
 const serverOntology = path.resolve(__dirname, '../server/src/services/ontology');
 const webOntology = path.resolve(__dirname, './src/lib/ontology');
 import fs from 'fs';
-import { WEB_CONTENT_SECURITY_POLICY } from './src/security/contentSecurityPolicy';
 const ontologyRoot = fs.existsSync(serverOntology) ? serverOntology : webOntology;
 
 // Validate environment variables at build time (production only)
@@ -112,23 +111,10 @@ function backendDownMiddlewarePlugin(flag: { current: boolean }) {
   };
 }
 
-function devSecurityHeadersPlugin() {
-  return {
-    name: 'dev-security-headers',
-    configureServer(server: { middlewares: { use: (fn: (req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => void) => void } }) {
-      server.middlewares.use((_req, res, next) => {
-        res.setHeader('Content-Security-Policy', WEB_CONTENT_SECURITY_POLICY);
-        next();
-      });
-    },
-  };
-}
-
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
   plugins: [
-    devSecurityHeadersPlugin(),
     backendDownMiddlewarePlugin(backendUnreachable),
     react(),
   ],

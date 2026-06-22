@@ -1,5 +1,6 @@
 /**
- * Canonical web CSP — keep in sync with apps/web/vercel.json headers.
+ * Canonical production web CSP — keep in sync with apps/web/vercel.json headers.
+ * Not applied on the Vite dev server (HMR needs relaxed script/connect rules).
  * @see https://docs.stripe.com/security/guide#content-security-policy
  */
 export const WEB_CONTENT_SECURITY_POLICY = [

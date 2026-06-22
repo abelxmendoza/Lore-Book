@@ -16,6 +16,7 @@
  */
 
 import { runtimeDiagnostics } from '../features/chat/services/runtimeDiagnostics';
+import { getApiBaseUrl } from '../config/env';
 import { checkBackendHealth, describeBackendHealthFailure, type BackendHealthResult } from '../lib/backendHealth';
 
 interface EnvCheckResult {
@@ -50,6 +51,7 @@ async function runIntegrityCheck(): Promise<IntegrityReport> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+  const apiBaseForHealth = getApiBaseUrl();
   const useMockData = (import.meta.env.VITE_USE_MOCK_DATA as string | undefined) ?? 'true';
   const isProduction = import.meta.env.PROD === true;
 
@@ -120,12 +122,11 @@ async function runIntegrityCheck(): Promise<IntegrityReport> {
   // ── API health check ─────────────────────────────────────────────────────────
   let apiHealth: 'ok' | 'fail' | 'skip' = 'skip';
   let apiHealthDetail: BackendHealthResult | undefined;
-  const apiBase = apiUrl ?? '';
 
-  // Only ping health if we have an explicit URL, or we're in dev (proxy handles it)
-  const shouldPingHealth = !!apiBase || !isProduction;
+  // Ping health via the same base URL the app uses (dev proxy = same-origin /api).
+  const shouldPingHealth = !!apiBaseForHealth || !isProduction;
   if (shouldPingHealth) {
-    const health = await checkBackendHealth(apiBase, { timeoutMs: 5000 });
+    const health = await checkBackendHealth(apiBaseForHealth, { timeoutMs: 5000 });
     apiHealthDetail = health;
     if (health.ok) {
       apiHealth = 'ok';

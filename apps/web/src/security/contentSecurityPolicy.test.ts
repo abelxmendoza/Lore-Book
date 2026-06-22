@@ -7,6 +7,6 @@ describe('contentSecurityPolicy', () => {
     expect(WEB_CONTENT_SECURITY_POLICY).toContain('https://js.stripe.com');
     expect(WEB_CONTENT_SECURITY_POLICY).toContain('https://api.stripe.com');
     expect(WEB_CONTENT_SECURITY_POLICY).toContain('https://*.js.stripe.com');
-    expect(WEB_CONTENT_SECURITY_POLICY).not.toContain("font-src 'none'");
+    expect(WEB_CONTENT_SECURITY_POLICY).toContain('https://m.stripe.network');
   });
 });
