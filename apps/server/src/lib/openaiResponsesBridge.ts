@@ -118,9 +118,28 @@ export function chatCompletionParamsToResponses(
   }
   if (textFormat) {
     responsesParams.text = { format: textFormat };
+    ensureJsonKeywordForResponses(responsesParams);
   }
 
   return responsesParams;
+}
+
+/** Responses API requires the word "json" in input when using json_object format. */
+function ensureJsonKeywordForResponses(
+  params: OpenAI.Responses.ResponseCreateParamsNonStreaming,
+): void {
+  if (params.text?.format?.type !== 'json_object') return;
+
+  const haystack = [
+    params.instructions ?? '',
+    typeof params.input === 'string' ? params.input : JSON.stringify(params.input ?? ''),
+  ].join('\n');
+
+  if (/json/i.test(haystack)) return;
+
+  params.instructions = params.instructions
+    ? `${params.instructions}\n\nRespond with valid JSON.`
+    : 'Respond with valid JSON.';
 }
 
 /** Read assistant text from a Responses result (SDK helper or output items). */

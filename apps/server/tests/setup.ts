@@ -8,6 +8,8 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
 process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test-anon-key';
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-service-role-key';
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
+// Keep Chat Completions in unit tests — mocks target chat.completions.create.
+process.env.OPENAI_USE_RESPONSES = 'false';
 
 // FIX 2: Mock entity extraction globally to prevent LLM calls in tests
 // This prevents request quota exhaustion and ensures deterministic tests

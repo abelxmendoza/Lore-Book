@@ -65,6 +65,19 @@ describe('openaiResponsesBridge', () => {
     });
   });
 
+  it('adds json hint when json_object format lacks the keyword', () => {
+    const responses = chatCompletionParamsToResponses({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'Return structured data.' },
+        { role: 'user', content: 'Ada is 54' },
+      ],
+    });
+
+    expect(responses.instructions).toContain('JSON');
+  });
+
   it('does not route streaming or tool-call requests', () => {
     expect(shouldRouteChatCompletionToResponses({ model: 'gpt-4o-mini', messages: [], stream: true })).toBe(
       false,

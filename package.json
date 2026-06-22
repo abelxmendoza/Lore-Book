@@ -40,6 +40,9 @@
     "audit:orphan-relationships": "npx tsx scripts/audit-orphan-relationships.ts",
     "audit:orphan-entity-facts": "npx tsx scripts/audit-orphan-entity-facts.ts",
     "remediate:orphan-entity-facts": "npx tsx scripts/remediate-orphan-entity-facts.ts",
+    "openai-skills:package": "node scripts/openai-skills/package.mjs",
+    "openai-skills:upload": "node scripts/openai-skills/upload.mjs",
+    "openai-skills:sync": "node scripts/openai-skills/sync.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
