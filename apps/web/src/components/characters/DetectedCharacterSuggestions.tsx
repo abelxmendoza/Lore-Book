@@ -251,25 +251,39 @@ export const DetectedCharacterSuggestions = ({
       if (showDemo) {
         await new Promise(resolve => window.setTimeout(resolve, 680));
       } else {
-        apiCache.deletePattern(/\/api\/(characters|knowledge)/);
-        await characterSuggestionsApi.add(s);
+        apiCache.deletePattern(/\/api\/(characters|knowledge|books)/);
+        const result = await characterSuggestionsApi.add(s);
+        if (result.deduplicated && !result.restored) {
+          setRescanNotice(`“${s.name}” is already in your Character Book — we linked any new details.`);
+        }
       }
 
       if (variant === 'romantic') {
         setCelebrate(true);
         setSuccessNotice(`${s.name} added to your love story`);
-      } else if (showDemo) {
-        setSuccessNotice(`${s.name} added to your Character Book (demo)`);
+      } else {
+        setSuccessNotice(`${s.name} added to your Character Book`);
       }
 
       setExiting(prev => new Set(prev).add(k));
       await new Promise(resolve => window.setTimeout(resolve, 360));
 
       setAdded(prev => new Set(prev).add(k));
-      onCharacterAdded?.(s);
       invalidateEntityTags(['Character']);
+      await onCharacterAdded?.(s);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add character');
+      const raw = err instanceof Error ? err.message : 'Could not add character';
+      let message = raw;
+      if (/schema incomplete|HTTP 503|temporarily unavailable/i.test(raw)) {
+        message = 'LoreBook servers are updating — wait a minute and try again.';
+      } else if (/ambiguous|question_queued/i.test(raw)) {
+        message = `“${s.name}” could match more than one person — check the merge panel or confirm who you mean.`;
+      } else if (/rejected|non_person/i.test(raw)) {
+        message = `“${s.name}” doesn’t look like a person name — try editing before adding.`;
+      } else if (/Security validation/i.test(raw)) {
+        message = 'Session expired — refresh the page and try again.';
+      }
+      setError(message);
       setExiting(prev => {
         const next = new Set(prev);
         next.delete(k);
@@ -300,7 +314,10 @@ export const DetectedCharacterSuggestions = ({
     setResolvingCardReview(item.characterId);
     setError(null);
     try {
-      await characterSuggestionsApi.resolveCardReview(item.characterId, action);
+      const res = await characterSuggestionsApi.resolveCardReview(item.characterId, action);
+      if (!res.success) {
+        throw new Error('Could not save your choice for this card');
+      }
       setCardReviewSuggestions(prev => prev.filter(s => s.characterId !== item.characterId));
       setRescanNotice(
         action === 'keep'
@@ -308,8 +325,13 @@ export const DetectedCharacterSuggestions = ({
           : `Removed “${item.name}” and re-evaluated source messages.`,
       );
       invalidateEntityTags(['Character']);
+      await onCharacterAdded?.({ id: item.id, name: item.name } as CharacterSuggestion);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not resolve card review');
+      const raw = err instanceof Error ? err.message : 'Could not resolve card review';
+      const message = /HTTP 503|schema incomplete/i.test(raw)
+        ? 'LoreBook servers are updating — wait a minute and try again.'
+        : raw;
+      setError(message);
     } finally {
       setResolvingCardReview(null);
     }

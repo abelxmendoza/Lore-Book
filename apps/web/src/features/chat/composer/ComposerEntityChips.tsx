@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { filterPreviewSpansForStrip } from '../../../lib/composerEntityStrip';
+import { filterPreviewSpansForStrip, dedupeCertifiedForStrip } from '../../../lib/composerEntityStrip';
 import { colorKeyForPreviewType, previewChipClass as previewChipClasses } from '../../../lib/entityColorMap';
 import { displayStatus } from '../../../lib/correctedPreviewSpanReducer';
 import {
@@ -27,6 +27,8 @@ type ComposerEntityChipsProps = {
   variant?: 'bar' | 'inline';
   scanning?: boolean;
   max?: number;
+  includedSlots?: string[];
+  onToggleIncluded?: (slot: string) => void;
 };
 
 const PREVIEW_COLOR_TO_KIND: Partial<Record<string, LoreEntityKind>> = {
@@ -111,8 +113,10 @@ export const ComposerEntityChips = ({
   variant = 'bar',
   scanning = false,
   max = 6,
+  includedSlots = [],
+  onToggleIncluded,
 }: ComposerEntityChipsProps) => {
-  const chipEntities = entities.filter((e) => e.matchKind !== 'prefix');
+  const chipEntities = dedupeCertifiedForStrip(entities);
   const dedupedPreview = filterPreviewSpansForStrip(text, chipEntities, previewSpans);
   const correctedByKey = new Map(correctedRecords.map((c) => [`${c.start}:${c.end}`, c]));
 
@@ -133,7 +137,7 @@ export const ComposerEntityChips = ({
     : hasArchived
       ? 'Tap ✓ to restore archived'
       : needsConfirm
-        ? 'Tap ✓ to confirm'
+        ? 'Tap chip or ✓ to include'
         : 'In message';
 
   const totalCount = chipEntities.length + previewItems.length;
@@ -148,6 +152,7 @@ export const ComposerEntityChips = ({
         const Icon = getLoreEntity(loreKind).icon;
         const slot = composerMatchSlot(entity);
         const confirming = confirmingSlots.includes(slot);
+        const included = includedSlots.includes(slot);
         const canConfirm = isConfirmable(entity) && onConfirm;
         const chipTestId = `composer-entity-chip-${entity.type}-${entity.id}`;
         const chipClass =
@@ -162,15 +167,20 @@ export const ComposerEntityChips = ({
                 data-testid={chipTestId}
                 label={chipDisplayName(entity)}
                 title={certifiedChipTitle(entity)}
-                className={chipClass}
+                className={`${chipClass}${included ? ' ring-1 ring-emerald-400/70' : ''}`}
                 icon={<Icon className="h-2 w-2 flex-shrink-0 opacity-75" />}
-                onConfirm={() => onConfirm(entity)}
+                onOpen={onToggleIncluded ? () => onToggleIncluded(slot) : undefined}
+                onConfirm={() => {
+                  onConfirm!(entity);
+                  onToggleIncluded?.(slot);
+                }}
                 confirming={confirming}
                 confirmAriaLabel={
                   entity.lifecycleStatus === 'archived'
                     ? `Restore ${entity.name}`
                     : `Confirm ${entity.name}`
                 }
+                openAriaLabel={`Toggle ${entity.name} in message`}
               />
               {onDismiss && (
                 <button
@@ -193,6 +203,8 @@ export const ComposerEntityChips = ({
               data-testid={chipTestId}
               title={certifiedChipTitle(entity)}
               className={chipColorForEntity(entity)}
+              selected={included}
+              onClick={onToggleIncluded ? () => onToggleIncluded(slot) : undefined}
             >
               <Icon className="h-2 w-2 flex-shrink-0 opacity-75" />
               <span className="truncate">{chipDisplayName(entity)}</span>

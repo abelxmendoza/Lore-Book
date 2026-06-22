@@ -205,6 +205,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const loreAvatarsEnabled = import.meta.env.VITE_ENABLE_LORE_AVATARS === 'true';
   const [loreAvatarBusy, setLoreAvatarBusy] = useState(false);
   const [loreAvatarError, setLoreAvatarError] = useState<string | null>(null);
 
@@ -2047,7 +2048,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   name={editedCharacter.name}
                   size={36}
                 />
-                {!isMainCharacter && (
+                {!isMainCharacter && loreAvatarsEnabled && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -2126,7 +2127,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     </div>
                   );
                 })()}
-                {!isMainCharacter && (
+                {!isMainCharacter && loreAvatarsEnabled && (
                   <Button
                     type="button"
                     variant="outline"

@@ -73,6 +73,15 @@ function isBackendUnavailable(error: string): boolean {
   );
 }
 
+function isOpenAIBudgetExceeded(error: string): boolean {
+  const lower = error.toLowerCase();
+  return (
+    lower.includes('openai_budget_exceeded') ||
+    lower.includes('ai budget') ||
+    lower.includes('monthly budget')
+  );
+}
+
 // Returns true when the error is an OpenAI quota/rate-limit issue.
 function isOpenAIRateLimited(error: string): boolean {
   const lower = error.toLowerCase();
@@ -103,6 +112,11 @@ function friendlyErrorMessage(errMsg: string): string {
   if (storageMessage) return storageMessage;
   if (isBackendUnavailable(errMsg)) {
     return 'Server is temporarily unavailable. Try again in a moment.';
+  }
+  if (isOpenAIBudgetExceeded(errMsg)) {
+    return errMsg.includes('LoreBook hit') ? errMsg : (
+      'LoreBook hit its monthly AI budget. Chat replies are paused until the budget resets or OpenAI credits are restored. Your messages are still saved.'
+    );
   }
   if (isOpenAIRateLimited(errMsg)) {
     if (
@@ -513,7 +527,7 @@ export const useChat = () => {
           }
           setLoadingStage('generating');
           setLoadingProgress(100);
-          
+
           updateStreamMessage(
             assistantMessageId,
             {

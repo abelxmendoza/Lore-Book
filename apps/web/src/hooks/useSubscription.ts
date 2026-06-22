@@ -16,6 +16,17 @@ export interface UsageData {
   isTrial: boolean;
 }
 
+export interface OpenAiBudgetData {
+  enabled: boolean;
+  monthlyLimitUsd: number;
+  spentUsd: number;
+  remainingUsd: number;
+  percentUsed: number;
+  exhausted: boolean;
+  warning: boolean;
+  resetsAt: string;
+}
+
 export interface SubscriptionData {
   status: SubscriptionStatus;
   planType: PlanType;
@@ -25,6 +36,7 @@ export interface SubscriptionData {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   usage: UsageData;
+  openAiBudget?: OpenAiBudgetData;
   authority?: AccountAuthority;
 }
 
@@ -40,7 +52,7 @@ const DEFAULT_FREE_SUBSCRIPTION: SubscriptionData = {
     entryCount: 0,
     aiRequestsCount: 0,
     entryLimit: 50,
-    aiLimit: 100,
+    aiLimit: 30,
     isPremium: false,
     isTrial: false,
   },

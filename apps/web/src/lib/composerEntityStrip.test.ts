@@ -4,6 +4,7 @@ import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import {
   certifiedTypeToPreviewClassification,
   filterPreviewSpansForStrip,
+  dedupeCertifiedForStrip,
 } from './composerEntityStrip';
 
 const alex: CertifiedEntityMatch = {
@@ -53,5 +54,16 @@ describe('composerEntityStrip', () => {
     };
     const filtered = filterPreviewSpansForStrip('Working at Summit Staffing', [alex], [span]);
     expect(filtered).toHaveLength(1);
+  });
+
+  it('dedupes certified entities with the same name', () => {
+    const dup: CertifiedEntityMatch = {
+      ...alex,
+      id: 'c-alex-2',
+      status: 'suggestion',
+    };
+    const out = dedupeCertifiedForStrip([alex, dup]);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('c-alex');
   });
 });

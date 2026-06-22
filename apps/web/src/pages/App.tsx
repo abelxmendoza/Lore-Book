@@ -51,6 +51,7 @@ import { PricingPage } from '../components/subscription/PricingPage';
 import { ModeBadge } from '../components/ModeBadge';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { EventsBook } from '../components/events/EventsBook';
+import { NarrativeAnchorsBook } from '../components/narrative/NarrativeAnchorsBook';
 import { IntelligenceDashboard } from '../components/diagnostics/IntelligenceDashboard';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
 import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
@@ -318,6 +319,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       saga: 'Life Saga',
       documents: 'Documents',
       intelligence: 'Intelligence Health',
+      anchors: 'Narrative Anchors',
     };
     return names[surface] || 'Lore Book';
   };
@@ -450,6 +452,11 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
                         )}
 
                         {activeSurface === 'events' && <EventsBook />}
+                        {activeSurface === 'anchors' && (
+                          <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-hidden">
+                            <NarrativeAnchorsBook />
+                          </div>
+                        )}
                         {activeSurface === 'intelligence' && <IntelligenceDashboard />}
                         {activeSurface === 'entities' && <EntityResolutionBook />}
                         {activeSurface === 'organizations' && <OrganizationsBook />}

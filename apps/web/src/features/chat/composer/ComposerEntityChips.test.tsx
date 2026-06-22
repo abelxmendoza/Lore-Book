@@ -37,7 +37,7 @@ describe('ComposerEntityChips', () => {
     render(<ComposerEntityChips entities={[confirmed, suggested]} onConfirm={vi.fn()} />);
 
     expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
-    expect(screen.getByText('Tap ✓ to confirm')).toBeInTheDocument();
+    expect(screen.getByText('Tap chip or ✓ to include')).toBeInTheDocument();
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toHaveTextContent('Abel');
     expect(screen.getByTestId('composer-entity-chip-character-sug:character:kelly')).toHaveTextContent('Kelly');
   });

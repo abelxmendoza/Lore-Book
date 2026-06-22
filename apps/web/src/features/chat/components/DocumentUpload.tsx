@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Briefcase } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { PhotoUploadReview } from './PhotoUploadReview';
-import { DemoUploadProgressPanel, type DemoUploadProgress } from '../../../components/demo/DemoUploadProgressPanel';
+import { MessageScreenshotUpload } from './MessageScreenshotUpload';
 import {
   DEMO_RESUME_UPLOAD_STAGES,
   shouldSimulateResumeUpload,
@@ -45,6 +45,9 @@ interface DocumentUploadProps {
   onUploadComplete?: (result: UploadCompletePayload) => void;
   onUploadError?: (error: string) => void;
   compact?: boolean;
+  /** When chat is focused on a character, message screenshots route there. */
+  focusCharacterId?: string;
+  focusCharacterName?: string;
 }
 
 interface PhotoReviewState {
@@ -55,7 +58,9 @@ interface PhotoReviewState {
 export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   onUploadComplete,
   onUploadError,
-  compact = false
+  compact = false,
+  focusCharacterId,
+  focusCharacterName,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
@@ -641,6 +646,16 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                   Supported: .txt, .md, .pdf, .doc, .docx, images (max 10MB)<br />
                   <span className="text-primary/70">✨ Resumes/CVs are automatically detected and extract skills & experience</span>
                 </p>
+              )}
+              {compact && (
+                <div className="mt-3 w-full">
+                  <MessageScreenshotUpload
+                    characterId={focusCharacterId}
+                    characterName={focusCharacterName}
+                    onComplete={() => onUploadComplete?.()}
+                    onError={onUploadError}
+                  />
+                </div>
               )}
             </>
           )}

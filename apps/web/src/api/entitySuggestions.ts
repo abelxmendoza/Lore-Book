@@ -1,6 +1,13 @@
 import { fetchJson } from '../lib/api';
 import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function optionalUuidField(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  return UUID_RE.test(value.trim()) ? value.trim() : undefined;
+}
+
 export type CharacterSuggestion = {
   id: string;
   name: string;
@@ -53,7 +60,7 @@ export const characterSuggestionsApi = {
     }),
 
   add: (suggestion: CharacterSuggestion) =>
-    fetchJson<{ character: unknown }>('/api/characters', {
+    fetchJson<{ character: unknown; deduplicated?: boolean; restored?: boolean }>('/api/characters', {
       method: 'POST',
       body: JSON.stringify({
         name: suggestion.name,
@@ -62,8 +69,8 @@ export const characterSuggestionsApi = {
         relationshipDepth: suggestion.archetype === 'romantic' ? 'moderate' : 'acquaintance',
         hasMet: true,
         proximity: 'direct',
-        omegaEntityId: suggestion.omegaEntityId,
-        questionId: suggestion.questionId,
+        omegaEntityId: optionalUuidField(suggestion.omegaEntityId),
+        questionId: optionalUuidField(suggestion.questionId),
         suggestionId: suggestion.id,
       }),
     }),

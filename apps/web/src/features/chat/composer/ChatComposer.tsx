@@ -34,6 +34,8 @@ type ChatComposerProps = {
   threadId?: string;
   /** Mobile: start collapsed to leave room for messages (e.g. when thread has history). */
   defaultCollapsed?: boolean;
+  focusCharacterId?: string;
+  focusCharacterName?: string;
 };
 
 const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
@@ -50,6 +52,8 @@ export const ChatComposer = ({
   placeholder,
   threadId,
   defaultCollapsed = false,
+  focusCharacterId,
+  focusCharacterName,
 }: ChatComposerProps) => {
   const embedded = variant === 'embedded';
   const isMobile = useIsMobile();
@@ -65,6 +69,8 @@ export const ChatComposer = ({
     entityIndexer,
     visibleMatches,
     confirmingSlots,
+    includedSlots,
+    toggleIncluded,
     confirmError,
     dismissMatch,
     confirmMatch,
@@ -213,6 +219,8 @@ export const ChatComposer = ({
         <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 max-h-[300px] sm:max-h-[350px] overflow-y-auto">
           <DocumentUpload
             compact
+            focusCharacterId={focusCharacterId}
+            focusCharacterName={focusCharacterName}
             onUploadComplete={async (result) => {
               setShowUpload(false);
               onUploadComplete?.(result);
@@ -297,6 +305,8 @@ export const ChatComposer = ({
             previewSpans={correction.visibleSpans}
             correctedRecords={correction.correctedRecords}
             confirmingSlots={confirmingSlots}
+            includedSlots={includedSlots}
+            onToggleIncluded={toggleIncluded}
             scanning={entityIndexer.loading}
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
@@ -439,6 +449,8 @@ export const ChatComposer = ({
           viewportHeight={viewportHeight}
           keyboardInset={keyboardInset}
           confirmingSlots={confirmingSlots}
+          includedSlots={includedSlots}
+          onToggleIncluded={toggleIncluded}
           onDismiss={dismissMatch}
           onConfirm={confirmMatch}
         />

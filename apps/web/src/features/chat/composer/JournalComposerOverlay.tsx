@@ -27,6 +27,8 @@ type JournalComposerOverlayProps = {
   viewportHeight: number;
   keyboardInset: number;
   confirmingSlots?: string[];
+  includedSlots?: string[];
+  onToggleIncluded?: (slot: string) => void;
   onDismiss?: (entity: CertifiedEntityMatch) => void;
   onConfirm?: (entity: CertifiedEntityMatch) => void;
 };
@@ -49,6 +51,8 @@ export const JournalComposerOverlay = ({
   viewportHeight,
   keyboardInset,
   confirmingSlots = [],
+  includedSlots = [],
+  onToggleIncluded,
   onDismiss,
   onConfirm,
 }: JournalComposerOverlayProps) => {
@@ -122,6 +126,8 @@ export const JournalComposerOverlay = ({
             previewSpans={correction.visibleSpans}
             correctedRecords={correction.correctedRecords}
             confirmingSlots={confirmingSlots}
+            includedSlots={includedSlots}
+            onToggleIncluded={onToggleIncluded}
             onDismiss={onDismiss}
             onConfirm={onConfirm}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}

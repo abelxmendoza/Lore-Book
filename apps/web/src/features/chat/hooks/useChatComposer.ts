@@ -12,8 +12,9 @@ import {
   composerMatchSlot,
   addComposerConfirming,
   removeComposerConfirming,
+  toggleComposerIncluded,
 } from '../../../store/slices/composerSlice';
-import { selectVisibleComposerMatches, selectComposerConfirmingSlots } from '../../../store/selectors/composerSelectors';
+import { selectVisibleComposerMatches, selectComposerConfirmingSlots, selectComposerIncludedSlots } from '../../../store/selectors/composerSelectors';
 import { confirmComposerEntity } from '../../../lib/confirmComposerEntity';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -37,6 +38,7 @@ export const useChatComposer = (
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
+  const includedSlots = useAppSelector(selectComposerIncludedSlots);
   const [input, setInputState] = useState(initialValue || '');
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [previewCorrections, setPreviewCorrections] = useState<CorrectedPreviewSpan[]>([]);
@@ -92,6 +94,7 @@ export const useChatComposer = (
     const parsed = parseSlashCommand(input);
     const entitiesToSend = visibleMatches.filter(
       (m) =>
+        includedSlots.includes(composerMatchSlot(m)) &&
         m.status !== 'draft' &&
         m.composerChipKind !== 'needs_clarification' &&
         m.composerChipKind !== 'relationship' &&
@@ -105,7 +108,7 @@ export const useChatComposer = (
     setInput('');
     setPreviewCorrections([]);
     dispatch(clearComposerState());
-  }, [input, onSubmit, visibleMatches, previewCorrections, setInput, dispatch]);
+  }, [input, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {
@@ -147,6 +150,13 @@ export const useChatComposer = (
     textareaRef.current?.focus();
   }, []);
 
+  const toggleIncluded = useCallback(
+    (slot: string) => {
+      dispatch(toggleComposerIncluded(slot as import('../../../store/slices/composerSlice').ComposerMatchSlot));
+    },
+    [dispatch],
+  );
+
   const showHints = input.trim().length > 10;
   const moodColor = moodEngine.mood.color;
 
@@ -163,6 +173,8 @@ export const useChatComposer = (
     entityIndexer,
     visibleMatches,
     confirmingSlots,
+    includedSlots,
+    toggleIncluded,
     confirmError,
     dismissMatch,
     confirmMatch,

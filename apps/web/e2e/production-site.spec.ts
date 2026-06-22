@@ -47,8 +47,12 @@ test.describe('Production Site Smoke', () => {
       })
       .toBe(true);
 
-    const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
-    await expect(devNotice).toHaveCount(0);
+    const base = process.env.PLAYWRIGHT_BASE_URL ?? '';
+    const isProductionHost = /lorebookai\.com/i.test(base);
+    if (isProductionHost) {
+      const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
+      await expect(devNotice).toHaveCount(0);
+    }
 
     const critical = [...consoleErrors, ...pageErrors].filter(
       (message) =>

@@ -25,3 +25,4 @@ export const selectComposerMatchCounts = createSelector(selectVisibleComposerMat
 }));
 
 export const selectComposerConfirmingSlots = (state: RootState) => state.composer.confirmingSlots;
+export const selectComposerIncludedSlots = (state: RootState) => state.composer.includedSlots;

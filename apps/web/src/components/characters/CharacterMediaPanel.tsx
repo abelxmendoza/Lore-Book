@@ -17,6 +17,14 @@ export type CharacterMediaItem = {
   caption: string | null;
   source: string | null;
   created_at: string;
+  metadata?: {
+    analysis?: { summary?: string; platform?: string; counterpartName?: string };
+    pipeline?: {
+      lexicalIntelligence?: { spanCount?: number; entities?: string[] };
+      loreBookParse?: { applied?: number; appliedItems?: Array<{ domain: string; name: string }> };
+      interpretation?: { relationshipCount?: number; entityCount?: number };
+    };
+  };
 };
 
 type Props = {
@@ -88,12 +96,24 @@ export function CharacterMediaPanel({ characterId, characterName, kind }: Props)
     setError(null);
     try {
       const dataUrl = await compressImage(file);
-      await fetchJson(`/api/characters/${characterId}/media`, {
-        method: 'POST',
-        body: JSON.stringify({ kind, dataUrl, caption: caption.trim() || undefined, source: 'characters_book' }),
-      });
+      const res = await fetchJson<{ media: CharacterMediaItem & { metadata?: { analysis?: { summary?: string } } } }>(
+        `/api/characters/${characterId}/media`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            kind,
+            dataUrl,
+            caption: caption.trim() || undefined,
+            source: 'characters_book',
+            analyzeImage: kind === 'message',
+          }),
+        },
+      );
       setCaption('');
       await load();
+      if (kind === 'message' && res.media?.text) {
+        setTextDraft(res.media.text);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
@@ -187,7 +207,7 @@ export function CharacterMediaPanel({ characterId, characterName, kind }: Props)
             className="gap-2"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {kind === 'photo' ? 'Upload photo' : 'Upload screenshot'}
+            {kind === 'photo' ? 'Upload photo' : uploading ? 'Analyzing screenshot…' : 'Upload screenshot'}
           </Button>
           {kind === 'message' && (
             <Button type="button" size="sm" disabled={uploading || !textDraft.trim()} onClick={() => void saveTextMessage()}>
@@ -227,11 +247,19 @@ export function CharacterMediaPanel({ characterId, characterName, kind }: Props)
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
+          {items.map((item) => {
+            const analysis = item.metadata?.analysis;
+            const pipeline = item.metadata?.pipeline;
+            const entities = pipeline?.lexicalIntelligence?.entities ?? [];
+            const loreApplied = pipeline?.loreBookParse?.applied ?? 0;
+            const loreItems = pipeline?.loreBookParse?.appliedItems ?? [];
+
+            return (
             <div key={item.id} className="rounded-xl border border-white/10 bg-black/30 p-4 group">
               <div className="flex justify-between gap-2 mb-2">
                 <span className="text-[10px] uppercase tracking-wide text-white/35">
                   {new Date(item.created_at).toLocaleString()}
+                  {analysis?.platform ? ` · ${analysis.platform}` : ''}
                 </span>
                 <button type="button" onClick={() => void remove(item.id)} className="text-white/30 hover:text-red-400">
                   <Trash2 className="h-3.5 w-3.5" />
@@ -240,10 +268,37 @@ export function CharacterMediaPanel({ characterId, characterName, kind }: Props)
               {item.url && (
                 <LazyImage src={item.url} alt="Message screenshot" className="max-h-48 rounded-lg border border-white/10 mb-2" />
               )}
+              {analysis?.summary && (
+                <p className="text-xs text-white/50 mb-2 italic">{analysis.summary}</p>
+              )}
               {item.text && <p className="text-sm text-white/80 whitespace-pre-wrap">{item.text}</p>}
+              {entities.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {entities.slice(0, 8).map((name) => (
+                    <span
+                      key={name}
+                      className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                  {entities.length > 8 && (
+                    <span className="text-[10px] text-white/35 self-center">+{entities.length - 8} more</span>
+                  )}
+                </div>
+              )}
+              {(loreApplied > 0 || (pipeline?.interpretation?.relationshipCount ?? 0) > 0) && (
+                <p className="mt-2 text-[10px] text-emerald-300/80">
+                  {loreApplied > 0 && `LoreBook: ${loreApplied} seed${loreApplied === 1 ? '' : 's'} added`}
+                  {loreApplied > 0 && loreItems.length > 0 && ` (${loreItems.map((i) => i.name).slice(0, 3).join(', ')})`}
+                  {(pipeline?.interpretation?.relationshipCount ?? 0) > 0 &&
+                    `${loreApplied > 0 ? ' · ' : ''}${pipeline!.interpretation!.relationshipCount} relationship${pipeline!.interpretation!.relationshipCount === 1 ? '' : 's'} detected`}
+                </p>
+              )}
               {item.caption && <p className="text-xs text-white/45 mt-2 italic">{item.caption}</p>}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

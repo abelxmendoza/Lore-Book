@@ -8,12 +8,13 @@ type CompactEntityChipProps = {
   /** When set, renders a button; otherwise a span */
   onClick?: () => void;
   disabled?: boolean;
+  selected?: boolean;
   'data-testid'?: string;
   'data-entity-status'?: string;
 } & Pick<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'aria-label'>;
 
 const BASE =
-  'inline-flex items-center gap-0.5 rounded-full border px-1 py-px text-[9px] sm:text-[10px] font-medium leading-tight max-w-[88px] sm:max-w-[104px] shrink-0';
+  'inline-flex items-center gap-0.5 rounded-full border px-1 py-px text-[9px] sm:text-[10px] font-medium leading-none max-w-[80px] sm:max-w-[96px] shrink-0';
 
 /**
  * Tiny entity pill for composer / focus strips above the chatbox.
@@ -24,12 +25,13 @@ export function CompactEntityChip({
   title,
   onClick,
   disabled,
+  selected = false,
   'data-testid': testId,
   'data-entity-status': entityStatus,
   type = 'button',
   'aria-label': ariaLabel,
 }: CompactEntityChipProps) {
-  const classes = `${BASE} ${className}`;
+  const classes = `${BASE} ${selected ? 'ring-1 ring-emerald-400/70' : ''} ${className}`;
 
   if (onClick) {
     return (
@@ -138,14 +140,14 @@ export function CompactChipStrip({
   return (
     <div
       data-testid={testId}
-      className={`flex items-center gap-1 overflow-x-auto scrollbar-none ${className}`}
+      className={`flex items-center gap-0.5 overflow-x-auto scrollbar-none ${className}`}
     >
       {label && (
-        <span className="text-[8px] uppercase tracking-wider text-white/25 shrink-0 select-none pr-0.5">
+        <span className="text-[8px] uppercase tracking-wider text-white/25 shrink-0 select-none">
           {label}
         </span>
       )}
-      <div className="flex items-center gap-0.5 min-w-0">{children}</div>
+      <div className="flex items-center gap-px min-w-0 flex-wrap">{children}</div>
     </div>
   );
 }

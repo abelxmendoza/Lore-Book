@@ -40,6 +40,8 @@ import { ChatThreadList } from './ChatThreadList';
 import { ChatSimulationPanel } from './ChatSimulationPanel';
 import { useChatLifecycleSimulation } from '../hooks/useChatLifecycleSimulation';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
+import { AiBudgetBanner } from '../../../components/chat/AiBudgetBanner';
+import { useSubscription } from '../../../hooks/useSubscription';
 import { GuestExperienceCard } from '../../../components/guest/GuestExperienceCard';
 import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
@@ -76,6 +78,8 @@ const PERSISTED_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
+  const { subscription } = useSubscription();
   const dispatch = useAppDispatch();
   const chatFocus = useAppSelector(selectChatFocus);
   const composerDraft = useAppSelector(selectComposerDraft);
@@ -217,7 +221,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   const { isGuest, canSendChatMessage } = useGuest();
   const { backendUnavailable } = useMockData();
-  const { user } = useAuth();
   const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
   const avatarInitial: string | null = (() => {
     const name: string = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
@@ -710,6 +713,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           </div>
         </div>
 
+        <AiBudgetBanner budget={subscription?.openAiBudget} usage={subscription?.usage} />
+
         {isGuest && messages.length === 0 && (
           <GuestExperienceCard variant="compact" showEndSession={false} />
         )}
@@ -883,6 +888,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             initialDate={initialDate}
             threadId={activeThreadId ?? undefined}
             defaultCollapsed={isMobile && messages.length > 0}
+            focusCharacterId={chatFocus?.entityType === 'character' ? chatFocus.entityId : undefined}
+            focusCharacterName={chatFocus?.entityType === 'character' ? chatFocus.entityName : undefined}
             onUploadComplete={async (result: UploadCompletePayload) => {
               const now = new Date();
               if (result.kind === 'resume') {

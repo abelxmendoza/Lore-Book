@@ -1,5 +1,6 @@
 import type { LexicalPreviewSpan } from '../api/lexicalPreview';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
+import { composerMatchSlot } from '../store/slices/composerSlice';
 import { findEntityHighlightRanges } from './entityHighlightRanges';
 import type { CertifiedEntityType } from '../types/certifiedEntity';
 import type { EntityColorKey } from './entityColorMap';
@@ -47,19 +48,67 @@ export function filterPreviewSpansForStrip(
   certified: CertifiedEntityMatch[],
   spans: LexicalPreviewSpan[],
 ): LexicalPreviewSpan[] {
-  const chipCertified = certified.filter((e) => e.matchKind !== 'prefix');
-  if (spans.length === 0 || chipCertified.length === 0) return spans;
+  const chipCertified = dedupeCertifiedForStrip(certified);
+  if (spans.length === 0) return spans;
+  if (chipCertified.length === 0) return dedupePreviewSpans(spans);
 
   const ranges = findEntityHighlightRanges(text, chipCertified);
   const certifiedNames = new Set(chipCertified.flatMap(nameKeysForMatch));
 
-  return spans.filter((span) => {
-    const overlaps = ranges.some((r) => span.start < r.end && span.end > r.start);
-    if (overlaps) return false;
-    const spanKey = normalizeKey(span.text);
-    if (certifiedNames.has(spanKey)) return false;
-    return !chipCertified.some((m) =>
-      nameKeysForMatch(m).some((k) => k.includes(spanKey) || spanKey.includes(k)),
-    );
-  });
+  return dedupePreviewSpans(
+    spans.filter((span) => {
+      const overlaps = ranges.some((r) => span.start < r.end && span.end > r.start);
+      if (overlaps) return false;
+      const spanKey = normalizeKey(span.text);
+      if (certifiedNames.has(spanKey)) return false;
+      return !chipCertified.some((m) =>
+        nameKeysForMatch(m).some((k) => k.includes(spanKey) || spanKey.includes(k)),
+      );
+    }),
+  );
+}
+
+/** Remove duplicate certified chips (same normalized name or overlapping id). */
+export function dedupeCertifiedForStrip(certified: CertifiedEntityMatch[]): CertifiedEntityMatch[] {
+  const chipCertified = certified.filter((e) => e.matchKind !== 'prefix');
+  const seenNames = new Set<string>();
+  const seenIds = new Set<string>();
+  const out: CertifiedEntityMatch[] = [];
+
+  const priority = (m: CertifiedEntityMatch) => {
+    if (m.status === 'confirmed' || !m.status) return 3;
+    if (m.status === 'suggestion') return 2;
+    return 1;
+  };
+
+  const sorted = [...chipCertified].sort((a, b) => priority(b) - priority(a));
+
+  for (const match of sorted) {
+    const slot = composerMatchSlot(match);
+    if (seenIds.has(slot)) continue;
+
+    const nameKeys = nameKeysForMatch(match);
+    const dupName = nameKeys.some((k) => seenNames.has(k));
+    if (dupName) continue;
+
+    seenIds.add(slot);
+    for (const k of nameKeys) seenNames.add(k);
+    out.push(match);
+  }
+
+  return out;
+}
+
+function dedupePreviewSpans(spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
+  const seen = new Set<string>();
+  const out: LexicalPreviewSpan[] = [];
+  for (const span of spans) {
+    const key = `${normalizeKey(span.text)}:${span.start}:${span.end}`;
+    const nameKey = normalizeKey(span.text);
+    if (seen.has(nameKey)) continue;
+    seen.add(nameKey);
+    seen.add(key);
+    out.push(span);
+  }
+  return out;
 }

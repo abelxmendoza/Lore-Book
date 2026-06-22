@@ -34,7 +34,8 @@ export type SurfaceKey =
   | 'gaps'
   | 'saga'
   | 'documents'
-  | 'intelligence';
+  | 'intelligence'
+  | 'anchors';
 
 /**
  * Map from in-app route path to surface key.
@@ -72,6 +73,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/saga': 'saga',
   '/documents': 'documents',
   '/intelligence': 'intelligence',
+  '/narrative-anchors': 'anchors',
 };
 
 /**
@@ -107,6 +109,7 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   saga: '/saga',
   documents: '/documents',
   intelligence: '/intelligence',
+  anchors: '/narrative-anchors',
 };
 
 /** Longest-prefix match first so `/discovery/foo` beats `/disc` if ever added. */
