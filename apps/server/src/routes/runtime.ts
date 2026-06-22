@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { buildOpenAiPolicySnapshot } from '../config/openaiPolicy';
 import { getRegisteredRoutes } from './routeRegistry';
 
 const router = Router();
@@ -34,6 +35,16 @@ router.get('/routes', (_req, res) => {
       description,
     })),
   });
+});
+
+/**
+ * GET /api/runtime/openai-policy
+ *
+ * Read-only OpenAI integration policy — conversation state mode, cost guards,
+ * and opt-in platform flags. Use post-deploy to verify production matches intent.
+ */
+router.get('/openai-policy', (_req, res) => {
+  res.json({ ok: true, ...buildOpenAiPolicySnapshot() });
 });
 
 export const runtimeRouter = router;
