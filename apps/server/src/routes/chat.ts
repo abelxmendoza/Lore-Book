@@ -148,6 +148,10 @@ function resolveThreadContext(
 
 import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
 import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
+import {
+  detectFirstSessionCallback,
+  shouldRunFirstSessionCallback,
+} from '../services/chat/firstSessionContinuity';
 
 function isOpenAIQuotaError(error: unknown): boolean {
   if (isOpenAiBudgetExceededError(error)) return true;
@@ -432,6 +436,18 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       // Emit one `message.cost` line for this message (LLM/embedding calls,
       // tokens, est. USD, duration) now that the answer stream is fully consumed.
       const costSummary = flushMessageCost();
+
+      // First-session "aha": deterministically surface when this message recalls
+      // something the user said earlier in the session, with provenance. Cheap,
+      // synchronous, no LLM — fires only in the early-session window.
+      let continuityCallback;
+      if (shouldRunFirstSessionCallback(conversationHistory?.length ?? 0)) {
+        const priorUserMessages = (conversationHistory ?? [])
+          .filter((m) => m.role === 'user')
+          .map((m) => m.content);
+        continuityCallback = detectFirstSessionCallback(message, priorUserMessages) ?? undefined;
+      }
+
       if (!res.writableEnded) {
         if (!clientGone) {
           sseWrite({
@@ -439,6 +455,7 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
             ...(streamTokenUsage ? { usage: streamTokenUsage } : {}),
             ...(responseCompilerMeta ? { responseCompiler: responseCompilerMeta } : {}),
             ...(costSummary ? { cost: costSummary } : {}),
+            ...(continuityCallback ? { continuityCallback } : {}),
           });
         }
         res.end();

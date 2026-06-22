@@ -532,6 +532,7 @@ export const useChat = () => {
             assistantMessageId,
             {
             actionCandidates: result?.actionCandidates,
+            continuityCallback: result?.continuityCallback,
               id: persistedAssistantMessageId ?? assistantMessageId,
               content: accumulatedContent,
               isStreaming: false,

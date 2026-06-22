@@ -164,6 +164,13 @@ export type Message = {
   suggestedActions?: ChatSuggestedAction[];
   /** User-confirmation action chips from the server Response Compiler. */
   actionCandidates?: ResponseActionCandidate[];
+  /** First-session "aha": LoreBook recalled something said earlier this session. */
+  continuityCallback?: {
+    entity: string;
+    quote: string;
+    priorMessageIndex: number;
+    calloutText: string;
+  };
 };
 
 type ChatMessageProps = {
@@ -712,6 +719,18 @@ export const ChatMessage = ({
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {!isUser && message.continuityCallback && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 py-2">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0 text-xs">
+                <div className="text-white/80">{message.continuityCallback.calloutText}</div>
+                <div className="mt-0.5 truncate text-white/45" title={message.continuityCallback.quote}>
+                  “{message.continuityCallback.quote}”
+                </div>
+              </div>
             </div>
           )}
 

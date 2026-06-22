@@ -17,17 +17,27 @@ export type ResponseActionCandidate = {
   payload?: Record<string, unknown>;
 };
 
+/** First-session "aha" callback: LoreBook recalled something said earlier. */
+export type ContinuityCallback = {
+  entity: string;
+  quote: string;
+  priorMessageIndex: number;
+  calloutText: string;
+};
+
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
   content?: string;
   data?: any;
   error?: string;
   responseCompiler?: { actionCandidates?: ResponseActionCandidate[] };
+  continuityCallback?: ContinuityCallback;
 };
 
 /** Payload handed to onComplete when the stream finishes cleanly. */
 export type ChatStreamResult = {
   actionCandidates?: ResponseActionCandidate[];
+  continuityCallback?: ContinuityCallback;
 };
 
 export type MemoryFeedbackEvent = {
@@ -267,7 +277,10 @@ export const useChatStream = () => {
             onChunk(data.content);
           } else if (data.type === 'done') {
             streamCompleted = true;
-            onComplete({ actionCandidates: data.responseCompiler?.actionCandidates ?? [] });
+            onComplete({
+              actionCandidates: data.responseCompiler?.actionCandidates ?? [],
+              continuityCallback: data.continuityCallback,
+            });
             setIsStreaming(false);
             if (onMemoryFeedback && capturedMessageId) {
               pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
