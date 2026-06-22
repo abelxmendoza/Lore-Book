@@ -1772,8 +1772,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     ];
 
     // Create streaming response — flagship tier: this is the reply the user reads.
-    // Defaults to Chat Completions. Set OPENAI_CHAT_USE_RESPONSES=true to opt into
-    // the Responses API adapter while preserving the existing SSE route shape.
+    // Streaming chat uses the Responses API by default (OPENAI_USE_RESPONSES=false to revert).
     const stream = await createOpenAIChatStream({
       model: config.chatModel,
       temperature: 0.7,

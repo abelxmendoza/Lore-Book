@@ -7,6 +7,11 @@ import {
   recordOpenAiFailure,
   recordOpenAiSuccess,
 } from './openaiCircuitBreaker';
+import {
+  chatCompletionParamsToResponses,
+  responsesToChatCompletion,
+  shouldRouteChatCompletionToResponses,
+} from './openaiResponsesBridge';
 import { createSemaphore } from './semaphore';
 
 /** gpt-5.x and o-series reasoning models only accept the default temperature (1). */
@@ -104,15 +109,32 @@ async function guardedOpenAiCall<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-// Wrap chat.completions.create once, globally. Preserves streaming + non-streaming.
+// Wrap chat.completions.create once, globally. Non-streaming calls can route to
+// Responses API when config.useResponsesApi is on (see openaiResponsesBridge).
 if (openai.chat?.completions?.create) {
   const _rawCreate = openai.chat.completions.create.bind(openai.chat.completions);
+  const _rawResponsesCreate = openai.responses?.create?.bind(openai.responses);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (openai.chat.completions as any).create = (...args: any[]) => {
     const [params, ...rest] = args;
     const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
+    const routeToResponses =
+      config.useResponsesApi &&
+      _rawResponsesCreate != null &&
+      shouldRouteChatCompletionToResponses(normalized);
+
     return openaiSemaphore.run(() =>
-      guardedOpenAiCall(() => _rawCreate(normalized, ...rest))
+      guardedOpenAiCall(async () => {
+        if (!routeToResponses) {
+          return _rawCreate(normalized, ...rest);
+        }
+        const response = await _rawResponsesCreate!(
+          chatCompletionParamsToResponses(
+            normalized as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+          ),
+        );
+        return responsesToChatCompletion(response, normalized.model ?? '');
+      }),
     );
   };
 }

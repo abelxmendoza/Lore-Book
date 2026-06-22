@@ -61,6 +61,11 @@ type EnvConfig = {
   chatModel: string;
   /** Opt-in bridge for the user-facing chat stream to use OpenAI Responses API. */
   useResponsesApiForChat: boolean;
+  /**
+   * Route non-streaming chat.completions.create calls through the Responses API.
+   * Default on; set OPENAI_USE_RESPONSES=false to revert all paths.
+   */
+  useResponsesApi: boolean;
   /** Extraction, facts, titles — mini tier (quality is remembered here) */
   extractionModel: string;
   /** High-volume classification/routing — nano tier */
@@ -133,7 +138,13 @@ export const config: EnvConfig = {
     process.env.OPENAI_API_MODEL ??
     process.env.OPENAI_EXTRACTION_MODEL ??
     'gpt-4o-mini',
-  useResponsesApiForChat: process.env.OPENAI_CHAT_USE_RESPONSES === 'true',
+  useResponsesApi: process.env.OPENAI_USE_RESPONSES !== 'false',
+  useResponsesApiForChat:
+    process.env.OPENAI_CHAT_USE_RESPONSES === 'false'
+      ? false
+      : process.env.OPENAI_CHAT_USE_RESPONSES === 'true'
+        ? true
+        : process.env.OPENAI_USE_RESPONSES !== 'false',
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',
