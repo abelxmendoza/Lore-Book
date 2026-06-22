@@ -7,6 +7,11 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { mentionsLoreBookProduct } from './metaConversationClassifier';
+import {
+  formatUserProductLoreBlock,
+  loadUserProductObservations,
+} from './productConversationService';
 import {
   BIOGRAPHY_RE,
   CHARACTER_LIST_RE,
@@ -133,6 +138,17 @@ const META_QUERY_RULES: Array<{
     pattern: /\b(what are your limits|what can'?t you do|do you have access to everything)\b/i,
     strength: 'soft',
   },
+  {
+    concepts: ['surfaces', 'extraction_pipeline'],
+    pattern:
+      /\b(what did i (say|tell you) about (lore ?book|the app)|what have i said about (lore ?book|the app)|my feedback on (lore ?book|the app))\b/i,
+    strength: 'soft',
+  },
+  {
+    concepts: ['surfaces', 'limitations'],
+    pattern: /\b(composer|entity chip|character book|memory review).*(broken|bug|issue|not working|confus)/i,
+    strength: 'soft',
+  },
 ];
 
 const USER_RECALL_BLOCKERS: RegExp[] = [
@@ -158,6 +174,15 @@ export function detectMetaQuery(message: string): MetaQueryMatch | null {
     if (!rule.pattern.test(text)) continue;
     return { concepts: rule.concepts, strength: rule.strength };
   }
+
+  // Product discussion without a strict FAQ shape — still load self-model context.
+  if (mentionsLoreBookProduct(text)) {
+    return {
+      concepts: ['product_identity', 'extraction_pipeline'],
+      strength: 'soft',
+    };
+  }
+
   return null;
 }
 
@@ -225,17 +250,47 @@ function formatMetaProductAnswer(facts: SelfModelFact[], message: string): strin
   ].join('\n');
 }
 
-export async function resolveMetaProductContext(message: string): Promise<MetaProductGateResult> {
+async function buildProductContextBlock(
+  message: string,
+  facts: SelfModelFact[],
+  userId?: string
+): Promise<string | null> {
+  const parts: string[] = [];
+  const systemBlock = formatSelfModelBlock(facts);
+  if (systemBlock) parts.push(systemBlock);
+
+  if (userId) {
+    const observations = await loadUserProductObservations(userId);
+    const userBlock = formatUserProductLoreBlock(observations);
+    if (userBlock) parts.push(userBlock);
+  }
+
+  if (parts.length === 0) return null;
+  return parts.join('\n\n');
+}
+
+export async function resolveMetaProductContext(
+  message: string,
+  userId?: string
+): Promise<MetaProductGateResult> {
   const match = detectMetaQuery(message);
   if (!match) return { shortCircuit: null, promptBlock: null };
 
   const facts = await loadSelfModel(match.concepts);
   if (facts.length === 0) return { shortCircuit: null, promptBlock: null };
 
+  const promptBlock = await buildProductContextBlock(message, facts, userId);
+
   if (match.strength === 'strong') {
+    const userObs = userId ? await loadUserProductObservations(userId) : [];
+    const userBlock = formatUserProductLoreBlock(userObs);
+    const content = userBlock
+      ? [formatMetaProductAnswer(facts, message), '', userBlock].join('\n')
+      : formatMetaProductAnswer(facts, message);
+
     return {
       shortCircuit: {
-        content: formatMetaProductAnswer(facts, message),
+        content,
         concepts: match.concepts,
       },
       promptBlock: null,
@@ -244,11 +299,14 @@ export async function resolveMetaProductContext(message: string): Promise<MetaPr
 
   return {
     shortCircuit: null,
-    promptBlock: formatSelfModelBlock(facts),
+    promptBlock,
   };
 }
 
-export async function buildSelfModelPromptBlock(message: string): Promise<string | null> {
-  const { promptBlock } = await resolveMetaProductContext(message);
+export async function buildSelfModelPromptBlock(
+  message: string,
+  userId?: string
+): Promise<string | null> {
+  const { promptBlock } = await resolveMetaProductContext(message, userId);
   return promptBlock;
 }

@@ -2517,6 +2517,34 @@ router.get('/:id/lore-profile', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
+// POST /api/characters/:id/avatar/lore — generate portrait from character lore
+router.post('/:id/avatar/lore', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { generateLoreAvatar } = await import('../services/characters/characterLoreAvatarService');
+    const force = Boolean((req.body as { force?: boolean } | undefined)?.force);
+    const result = await generateLoreAvatar(userId, characterId, { force });
+    if (!result.ok) {
+      const status =
+        result.reason === 'insufficient_lore'
+          ? 422
+          : result.reason === 'rate_limited'
+            ? 429
+            : result.reason === 'disabled'
+              ? 503
+              : 500;
+      return res.status(status).json({ success: false, ...result });
+    }
+    res.json({ success: true, avatar_url: result.avatarUrl, source: result.source });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to generate lore avatar');
+    res.status(500).json({ error: 'Failed to generate lore avatar' });
+  }
+});
+
 // GET /api/characters/:id/facts
 // Returns all known facts about this character extracted from conversations.
 // Facts are grouped by category and include confidence, status, and update history.

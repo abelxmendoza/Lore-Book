@@ -20,6 +20,8 @@ export type ParsedChatStreamChunk = {
   contentDelta: string | null;
   /** Present on the terminal usage-only chunk when include_usage is enabled. */
   usage: ChatStreamTokenUsage | null;
+  /** OpenAI Responses id on the terminal chunk when platform chaining is enabled. */
+  responseId?: string;
 };
 
 export function parseChatCompletionStreamChunk(
@@ -37,5 +39,5 @@ export function parseChatCompletionStreamChunk(
   const content = chunk.choices?.[0]?.delta?.content;
   const contentDelta = typeof content === 'string' && content.length > 0 ? content : null;
 
-  return { contentDelta, usage };
+  return { contentDelta, usage, responseId: chunk.responseId };
 }

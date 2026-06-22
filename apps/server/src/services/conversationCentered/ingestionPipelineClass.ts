@@ -73,6 +73,7 @@ import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { IngestionCostMeter } from '../ingestion/ingestionCostMeter';
 import { evaluateEntityCandidates } from '../ontology/entityCandidateGate';
+import { classifyIngestionScope, isLoreBookProductName } from '../chat/metaConversationClassifier';
 import { StageTimer } from '../../lib/stageTimer';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
 import {
@@ -1082,12 +1083,40 @@ export class ConversationIngestionPipeline {
       // This is a placeholder - adjust based on your chat service implementation
       const messageId = await this.ensureMessageSaved(userId, threadId, sender, rawText);
 
+      const costMeter = new IngestionCostMeter(userId, messageId);
+      const stageTimer = new StageTimer('ingestion.message', { userId, messageId });
+
+      // Product-only messages: capture what the user said about LoreBook, skip biography extraction.
+      if (sender === 'USER') {
+        const ingestionScope = classifyIngestionScope(rawText);
+        if (ingestionScope === 'product_only') {
+          const { tagProductObservation } = await import('../chat/productConversationService');
+          await tagProductObservation(userId, messageId, threadId, rawText, 'product_only');
+          costMeter.record('ingestion_scope', { eligible: true, invoked: true, productive: true });
+          try {
+            await this.updateThreadTimestamp(threadId);
+          } catch (err) {
+            logger.warn({ err, userId, threadId }, 'Failed to update thread timestamp (product-only)');
+          }
+          costMeter.flush();
+          stageTimer.flush();
+          return {
+            messageId,
+            utteranceIds: [],
+            unitIds: [],
+            resolvedEntityIds: [],
+            resolvedLocationIds: [],
+          };
+        }
+        if (ingestionScope === 'mixed') {
+          const { tagProductObservation } = await import('../chat/productConversationService');
+          void tagProductObservation(userId, messageId, threadId, rawText, 'mixed');
+        }
+      }
+
       // Cost meter: records which per-message LLM steps were eligible / invoked /
       // productive. Flushed once at the end as `ingestion.cost`. See plan: measure
       // skip-rate and waste-rate before further detector consolidation.
-      const costMeter = new IngestionCostMeter(userId, messageId);
-      // Latency-by-stage for the heavy background path (companion to costMeter).
-      const stageTimer = new StageTimer('ingestion.message', { userId, messageId });
 
       // Capture a stated birth year ("born in 1995", "I'm 28") to the self
       // character so later life-stage/age phrases resolve to absolute years.
@@ -1169,7 +1198,9 @@ export class ConversationIngestionPipeline {
           // Mirror the gate inside extractEntities so the meter can attribute the
           // skip to this message (same deterministic function — no divergence).
           const entityGateOpen = evaluateEntityCandidates(fullNormalizedText).hasCandidates;
-          const candidateEntities = await omegaMemoryService.extractEntities(fullNormalizedText);
+          const candidateEntities = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
+            (e) => !isLoreBookProductName(e.name)
+          );
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           costMeter.record('entity_extraction', {
             eligible: entityGateOpen,

@@ -275,7 +275,8 @@ Return JSON:
   ]
 }
 
-Only extract entities clearly mentioned. Be conservative with confidence scores. Never include the first-person narrator.`
+Only extract entities clearly mentioned. Be conservative with confidence scores. Never include the first-person narrator.
+Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those refer to the app itself, not a person or place.`
           },
           {
             role: 'user',

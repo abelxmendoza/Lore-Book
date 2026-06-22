@@ -61,6 +61,20 @@ type EnvConfig = {
   chatModel: string;
   /** Opt-in bridge for the user-facing chat stream to use OpenAI Responses API. */
   useResponsesApiForChat: boolean;
+  /** Chain chat turns via OpenAI `previous_response_id` (requires store: true). */
+  openAiResponseChaining: boolean;
+  /** Use OpenAI Conversations API (`conv_...`) alongside Supabase thread state. */
+  openAiConversationsApi: boolean;
+  /** Allow long-running Responses with `background: true` + webhook completion. */
+  openAiBackgroundResponses: boolean;
+  /** Opt-in OpenAI Vector Stores + file_search tool on chat (separate from pgvector RAG). */
+  openAiVectorStoreEnabled: boolean;
+  /** Existing OpenAI vector store id; created per-user when unset. */
+  openAiVectorStoreId?: string;
+  /** Use OpenAI `/responses/compact` for rolling compaction (fallback: chat summarizer). */
+  openAiUseCompactApi: boolean;
+  /** Webhook signing secret from OpenAI dashboard (for background response events). */
+  openAiWebhookSecret?: string;
   /** Admin-only OpenAI shell + skills agent (Responses API). */
   openAiSkillsAgentEnabled: boolean;
   /** Model for hosted shell + skills agent runs. */
@@ -98,6 +112,10 @@ type EnvConfig = {
   enableShadowExtraction: boolean;
   /** Production merged extractor — one LLM call replaces quest/skill/interest cluster. */
   enableMergedExtraction: boolean;
+  /** Generate character portraits from lore via OpenAI Images (costly — opt in). */
+  enableLoreAvatars: boolean;
+  /** OpenAI image model for lore avatars (gpt-image-1, dall-e-3, etc.). */
+  avatarImageModel: string;
   adminUserId?: string;
   adminEmail?: string;
   /** Canonical owner / founder account — never billed, never downgraded. */
@@ -151,6 +169,13 @@ export const config: EnvConfig = {
       : process.env.OPENAI_CHAT_USE_RESPONSES === 'true'
         ? true
         : process.env.OPENAI_USE_RESPONSES !== 'false',
+  openAiResponseChaining: process.env.OPENAI_RESPONSE_CHAINING === 'true',
+  openAiConversationsApi: process.env.OPENAI_CONVERSATIONS_API === 'true',
+  openAiBackgroundResponses: process.env.OPENAI_BACKGROUND_RESPONSES === 'true',
+  openAiVectorStoreEnabled: process.env.OPENAI_VECTOR_STORE_ENABLED === 'true',
+  openAiVectorStoreId: process.env.OPENAI_VECTOR_STORE_ID,
+  openAiUseCompactApi: process.env.OPENAI_USE_COMPACT_API === 'true',
+  openAiWebhookSecret: process.env.OPENAI_WEBHOOK_SECRET,
   openAiSkillsAgentEnabled: process.env.OPENAI_SKILLS_AGENT_ENABLED === 'true',
   openAiAgentModel:
     process.env.OPENAI_AGENT_MODEL ??
@@ -178,6 +203,8 @@ export const config: EnvConfig = {
   enableLoreAgents: process.env.ENABLE_LORE_AGENTS === 'true',
   enableShadowExtraction: process.env.ENABLE_SHADOW_EXTRACTION === 'true',
   enableMergedExtraction: process.env.ENABLE_MERGED_EXTRACTION !== 'false',
+  enableLoreAvatars: process.env.ENABLE_LORE_AVATARS === 'true',
+  avatarImageModel: process.env.AVATAR_IMAGE_MODEL ?? 'gpt-image-1',
   adminUserId: process.env.ADMIN_USER_ID,
   adminEmail: process.env.ADMIN_EMAIL?.trim().toLowerCase(),
   ownerUserId: process.env.OWNER_USER_ID || process.env.FOUNDER_USER_ID,

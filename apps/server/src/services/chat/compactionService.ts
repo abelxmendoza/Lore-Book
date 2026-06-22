@@ -15,6 +15,7 @@
 import { openai } from '../../lib/openai';
 import { config } from '../../config';
 import { logger } from '../../logger';
+import { extractResponseText } from '../../lib/openaiResponsesBridge';
 import { supabaseAdmin } from '../supabaseClient';
 
 export interface CompactionInput {
@@ -127,6 +128,14 @@ class CompactionService {
   private async summarizeTurns(
     turns: CompactionInput[]
   ): Promise<{ summary: string; keyEntities: string[]; keyTopics: string[] }> {
+    if (config.openAiUseCompactApi) {
+      try {
+        return await this.summarizeTurnsWithCompactApi(turns);
+      } catch (err) {
+        logger.warn({ err }, 'OpenAI compact API failed — falling back to chat summarizer');
+      }
+    }
+
     const conversation = turns
       .map(t => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
       .join('\n');
@@ -158,6 +167,50 @@ class CompactionService {
     });
 
     const raw = response.choices[0]?.message?.content ?? '';
+    return this.parseCompactionResponse(raw);
+  }
+
+  /** OpenAI `/responses/compact` — opt-in via OPENAI_USE_COMPACT_API. */
+  private async summarizeTurnsWithCompactApi(
+    turns: CompactionInput[],
+  ): Promise<{ summary: string; keyEntities: string[]; keyTopics: string[] }> {
+    const input = turns.map((turn) => ({
+      role: turn.role === 'user' ? ('user' as const) : ('assistant' as const),
+      content: turn.content,
+    }));
+
+    const compacted = await openai.responses.compact({
+      model: config.defaultModel,
+      input,
+    });
+
+    const compactedInput = (compacted as { output?: unknown }).output ?? compacted;
+    const summarySeed = typeof compactedInput === 'string'
+      ? compactedInput
+      : extractResponseText(compacted as Parameters<typeof extractResponseText>[0]);
+
+    const enrichment = await openai.chat.completions.create({
+      model: config.nanoModel,
+      temperature: 0,
+      max_tokens: 120,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Extract key_entities and key_topics from the compacted conversation summary. ' +
+            'Respond in this exact format:\nKEY_ENTITIES: a, b\nKEY_TOPICS: x, y',
+        },
+        { role: 'user', content: summarySeed },
+      ],
+    });
+
+    const raw = [
+      'SUMMARY:',
+      summarySeed,
+      '',
+      enrichment.choices[0]?.message?.content ?? '',
+    ].join('\n');
+
     return this.parseCompactionResponse(raw);
   }
 

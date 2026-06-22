@@ -21,6 +21,7 @@ import { userIsolationGuard } from './middleware/userIsolationGuard';
 import { registerRoutes, getDisabledRoutePaths } from './routes/routeRegistry';
 import { runtimeRouter } from './routes/runtime';
 import { handleStripeWebhook } from './routes/subscription';
+import { handleOpenAiWebhook } from './routes/openaiWebhooks';
 import { setupSwagger } from './swagger';
 import { requestIdMiddleware } from './utils/requestId';
 import { performSecurityCheck } from './utils/securityCheck';
@@ -148,6 +149,14 @@ app.post(
   tieredRateLimit,
   express.raw({ type: 'application/json' }),
   handleStripeWebhook
+);
+
+// OpenAI webhook: background response completion (opt-in via OPENAI_WEBHOOK_SECRET)
+app.post(
+  '/api/webhooks/openai',
+  tieredRateLimit,
+  express.raw({ type: 'application/json' }),
+  handleOpenAiWebhook
 );
 
 // Request size limits - larger in development

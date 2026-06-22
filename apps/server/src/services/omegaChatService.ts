@@ -991,7 +991,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       }
 
       const { resolveMetaProductContext } = await import('./chat/lorebookSelfModelService');
-      const metaContext = await resolveMetaProductContext(message);
+      const metaContext = await resolveMetaProductContext(message, userId);
       if (metaContext.shortCircuit) {
         return formatModeResponse(
           {
@@ -1771,6 +1771,28 @@ When updating relationship analytics or emotional signals from this thread, weig
       { role: 'user' as const, content: message }
     ];
 
+    // Optional OpenAI platform state (chaining, conversations, vector stores) — all opt-in.
+    let previousResponseId: string | undefined;
+    let openAiConversationId: string | undefined;
+    let vectorStoreId: string | undefined;
+    if (
+      config.openAiResponseChaining ||
+      config.openAiConversationsApi ||
+      config.openAiVectorStoreEnabled
+    ) {
+      const { loadOpenAiSessionState } = await import('./openaiPlatform/openaiSessionState');
+      const openAiState = await loadOpenAiSessionState(userId, sessionId);
+      previousResponseId = openAiState.last_response_id;
+      if (config.openAiConversationsApi) {
+        const { ensureOpenAiConversation } = await import('./openaiPlatform/openaiConversations');
+        openAiConversationId = await ensureOpenAiConversation(userId, sessionId);
+      }
+      if (config.openAiVectorStoreEnabled) {
+        const { resolveVectorStoreIdForSession } = await import('./openaiPlatform/openaiVectorStoreService');
+        vectorStoreId = await resolveVectorStoreIdForSession(userId, sessionId);
+      }
+    }
+
     // Create streaming response — flagship tier: this is the reply the user reads.
     // Streaming chat uses the Responses API by default (OPENAI_USE_RESPONSES=false to revert).
     const stream = await createOpenAIChatStream({
@@ -1778,6 +1800,10 @@ When updating relationship analytics or emotional signals from this thread, weig
       temperature: 0.7,
       messages,
       userId,
+      sessionId,
+      previousResponseId,
+      openAiConversationId,
+      vectorStoreId,
     });
 
     // User message already persisted at stream start (entryId)
@@ -2042,7 +2068,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     let selfModelBlockChat: string | null = null;
     try {
       const { resolveMetaProductContext } = await import('./chat/lorebookSelfModelService');
-      const metaContext = await resolveMetaProductContext(message);
+      const metaContext = await resolveMetaProductContext(message, userId);
       if (metaContext.shortCircuit) {
         return {
           answer: metaContext.shortCircuit.content,

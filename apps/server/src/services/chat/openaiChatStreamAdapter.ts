@@ -4,6 +4,7 @@ import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 import { config } from '../../config';
 import { normalizeOpenAIChatParams, openai } from '../../lib/openai';
 import { logger } from '../../logger';
+import { buildFileSearchTool } from '../openaiPlatform/openaiVectorStoreService';
 
 type ChatMessage = OpenAI.Chat.ChatCompletionMessageParam;
 
@@ -19,9 +20,19 @@ export type LorekeeperChatStreamChunk = {
     completion_tokens?: number;
     total_tokens?: number;
   } | null;
+  /** OpenAI Responses id — emitted on terminal chunk when chaining/store is on. */
+  responseId?: string;
 };
 
 export type LorekeeperChatStream = AsyncIterable<LorekeeperChatStreamChunk>;
+
+export type OpenAiChatStreamContext = {
+  userId?: string;
+  sessionId?: string;
+  previousResponseId?: string;
+  openAiConversationId?: string;
+  vectorStoreId?: string;
+};
 
 function asChatDeltaChunk(content: string): LorekeeperChatStreamChunk {
   return {
@@ -52,9 +63,11 @@ async function* normalizeResponsesStream(
     }
     if (event.type === 'response.completed') {
       const usage = usageFromResponse(event.response);
-      if (usage) {
-        yield { choices: [], usage };
-      }
+      yield {
+        choices: [],
+        usage,
+        responseId: event.response?.id,
+      };
     }
     if (event.type === 'response.failed') {
       const message = event.response?.error?.message || 'Responses API stream failed';
@@ -77,11 +90,38 @@ function toResponsesInput(messages: ChatMessage[]): Array<{ role: 'user' | 'assi
     }));
 }
 
+function resolveResponsesInput(
+  messages: ChatMessage[],
+  previousResponseId?: string,
+): OpenAI.Responses.ResponseCreateParams['input'] {
+  if (!previousResponseId) {
+    return toResponsesInput(messages.filter((message) => message.role !== 'system'));
+  }
+
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+  if (!lastUser) {
+    return toResponsesInput(messages.filter((message) => message.role !== 'system'));
+  }
+
+  return [
+    {
+      role: 'user' as const,
+      content: typeof lastUser.content === 'string'
+        ? lastUser.content
+        : JSON.stringify(lastUser.content ?? ''),
+    },
+  ];
+}
+
 export async function createOpenAIChatStream(params: {
   model: string;
   temperature?: number;
   messages: ChatMessage[];
   userId?: string;
+  sessionId?: string;
+  previousResponseId?: string;
+  openAiConversationId?: string;
+  vectorStoreId?: string;
 }): Promise<LorekeeperChatStream> {
   const { model, temperature } = normalizeOpenAIChatParams({
     model: params.model,
@@ -100,25 +140,46 @@ export async function createOpenAIChatStream(params: {
   }
 
   const systemPrompt = params.messages.find((message) => message.role === 'system');
-  const responseInput = toResponsesInput(params.messages.filter((message) => message.role !== 'system'));
+  const useChaining = config.openAiResponseChaining && Boolean(params.previousResponseId);
+  const storeAtOpenAi = config.openAiResponseChaining || config.openAiConversationsApi;
+  const responseInput = resolveResponsesInput(
+    params.messages,
+    useChaining ? params.previousResponseId : undefined,
+  );
+
+  const tools: OpenAI.Responses.ResponseCreateParams['tools'] = [];
+  if (config.openAiVectorStoreEnabled && params.vectorStoreId) {
+    tools.push(buildFileSearchTool(params.vectorStoreId));
+  }
 
   logger.debug(
     {
       model,
-      inputMessages: responseInput.length,
+      inputMessages: Array.isArray(responseInput) ? responseInput.length : 1,
       userId: params.userId,
+      sessionId: params.sessionId,
+      chaining: useChaining,
+      store: storeAtOpenAi,
+      conversationId: params.openAiConversationId,
+      vectorStore: params.vectorStoreId,
     },
     'openai.responses.stream'
   );
 
-  // store: false — stateless like Anthropic Messages API; Lorekeeper persists turns.
   const stream = await openai.responses.create({
     model,
     instructions: typeof systemPrompt?.content === 'string' ? systemPrompt.content : undefined,
     input: responseInput,
     ...(temperature != null ? { temperature } : {}),
     stream: true,
-    store: false,
+    store: storeAtOpenAi,
+    ...(useChaining && params.previousResponseId
+      ? { previous_response_id: params.previousResponseId }
+      : {}),
+    ...(params.openAiConversationId
+      ? { conversation: params.openAiConversationId }
+      : {}),
+    ...(tools.length > 0 ? { tools } : {}),
     ...(params.userId ? { safety_identifier: params.userId } : {}),
   });
 

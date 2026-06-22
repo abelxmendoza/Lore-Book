@@ -361,17 +361,25 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       });
     };
 
+    let streamResponseId: string | undefined;
     try {
       for await (const chunk of result.stream) {
         if (clientGone) break;
-        const { contentDelta, usage } = parseChatCompletionStreamChunk(chunk);
+        const { contentDelta, usage, responseId } = parseChatCompletionStreamChunk(chunk);
         if (usage) streamTokenUsage = usage;
+        if (responseId) streamResponseId = responseId;
         if (contentDelta) {
           fullResponse += contentDelta;
           sseWrite({ type: 'chunk', content: contentDelta });
         }
       }
       await persistAssistant(clientGone ? 'partial' : 'complete');
+      if (streamResponseId && req.user?.id && persistSessionId) {
+        const { mergeOpenAiSessionState } = await import('../services/openaiPlatform/openaiSessionState');
+        await mergeOpenAiSessionState(req.user.id, persistSessionId, {
+          last_response_id: streamResponseId,
+        });
+      }
       let responseCompilerMeta: Record<string, unknown> | undefined;
       if (fullResponse.length > 0 && req.user?.id) {
         try {

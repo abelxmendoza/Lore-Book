@@ -66,6 +66,7 @@ const normalizingFetch: typeof fetch = async (url, init) => {
 
 export const openai = new OpenAI({
   apiKey: config.openAiKey,
+  ...(config.openAiWebhookSecret ? { webhookSecret: config.openAiWebhookSecret } : {}),
   // Lowered 3→2: a single chat turn fans out to ~20 detector calls; on a 429
   // burst, 3 retries each multiplied the storm ~4×. With the concurrency gate
   // below the burst is bounded, so fewer retries are both safe and necessary.

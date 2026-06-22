@@ -29,31 +29,7 @@ export class NotMemoryWorthyError extends Error {
   }
 }
 
-// User messages that are purely about the app or the AI's capabilities.
-// These should not become life memories.
-const META_PATTERNS = [
-  /\bdo you remember\b/i,
-  /\bcan you remember\b/i,
-  /\bwill you remember\b/i,
-  /\bdid you save\b/i,
-  /\bcan you recall\b/i,
-  /\bwill this update\b/i,
-  /\bremember this conversation\b/i,
-  /\bremember what (i|we) (just |)talked about\b/i,
-  /\bcharacter card\b/i,
-  /\blocation card\b/i,
-  /\btesting (the |this |)app\b/i,
-  /\btesting (for |)new changes\b/i,
-  /\bhow does this (app|work)\b/i,
-  /\bwhat do you (know about me|remember about me)\b/i,
-  /\bdo you know who i am\b/i,
-  /\byou (don't|dont) already know\b/i,
-  /\blore ?books? (not working|is broken)\b/i,
-];
-
-function isMetaMessage(content: string): boolean {
-  return META_PATTERNS.some(p => p.test(content));
-}
+import { isMetaMessage } from './chat/metaConversationClassifier';
 
 function contentHash(messages: ConversationMessage[]): string {
   const userText = messages

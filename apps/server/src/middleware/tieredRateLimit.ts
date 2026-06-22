@@ -62,7 +62,7 @@ const COMPUTE_PATH =
 const AUTH_SENSITIVE_PATH =
   /\/api\/(subscription\/create|account\/delete|user\/(signup|register|reset-password|change-password))/i;
 
-const WEBHOOK_PATH = /\/api\/subscription\/webhook/i;
+const WEBHOOK_PATH = /\/api\/(subscription\/webhook|webhooks\/openai)/i;
 const GUEST_PATH = /\/api\/guest/i;
 const PUBLIC_PROBE_PATH = /\/api\/(diagnostics|runtime)\/?$/i;
 

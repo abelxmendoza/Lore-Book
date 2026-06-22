@@ -205,6 +205,28 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [loreAvatarBusy, setLoreAvatarBusy] = useState(false);
+  const [loreAvatarError, setLoreAvatarError] = useState<string | null>(null);
+
+  const generateLorePortrait = async () => {
+    if (isMockDataEnabled) return;
+    setLoreAvatarBusy(true);
+    setLoreAvatarError(null);
+    try {
+      const { characterAvatarApi } = await import('../../api/characterAvatar');
+      const result = await characterAvatarApi.generateFromLore(character.id);
+      if (!result.success) {
+        setLoreAvatarError(result.message);
+        return;
+      }
+      setEditedCharacter((prev) => ({ ...prev, avatar_url: result.avatar_url }));
+      invalidateCache('/api/characters');
+    } catch {
+      setLoreAvatarError('Could not generate portrait from lore.');
+    } finally {
+      setLoreAvatarBusy(false);
+    }
+  };
 
   const canDeleteCharacter =
     !isMainCharacter &&
@@ -2016,7 +2038,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative flex-shrink-0">
+              <div className="relative flex-shrink-0 flex flex-col items-center gap-1">
                 <CharacterAvatar
                   url={editedCharacter.avatar_url}
                   characterId={editedCharacter.id}
@@ -2025,6 +2047,26 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   name={editedCharacter.name}
                   size={36}
                 />
+                {!isMainCharacter && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1.5 text-[9px] text-white/50 hover:text-white/80"
+                    disabled={loreAvatarBusy}
+                    onClick={() => void generateLorePortrait()}
+                  >
+                    {loreAvatarBusy ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ImageIcon className="h-3 w-3" />
+                    )}
+                    <span className="ml-1">From lore</span>
+                  </Button>
+                )}
+                {loreAvatarError && (
+                  <p className="text-[9px] text-amber-400/90 max-w-[7rem] text-center leading-tight">{loreAvatarError}</p>
+                )}
                 {editedCharacter.status && (
                   <div className="absolute -bottom-0.5 -right-0.5">
                     <span
@@ -2060,7 +2102,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           <div className="hidden sm:block p-6 pr-14">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-2.5 sm:gap-4 flex-1 min-w-0">
-              <div className="relative flex-shrink-0">
+              <div className="relative flex-shrink-0 flex flex-col items-center gap-1.5">
                 {/* Phase ring around avatar */}
                 {(() => {
                   const c = editedCharacter.analytics?.closeness_score ?? 0;
@@ -2084,6 +2126,27 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     </div>
                   );
                 })()}
+                {!isMainCharacter && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] border-white/15 text-white/70 hover:text-white"
+                    disabled={loreAvatarBusy}
+                    onClick={() => void generateLorePortrait()}
+                    title="Generate a portrait from what LoreBook knows about them"
+                  >
+                    {loreAvatarBusy ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    ) : (
+                      <ImageIcon className="h-3 w-3 mr-1" />
+                    )}
+                    Portrait from lore
+                  </Button>
+                )}
+                {loreAvatarError && (
+                  <p className="text-[10px] text-amber-400/90 max-w-[9rem] text-center leading-tight">{loreAvatarError}</p>
+                )}
                 {editedCharacter.status && (
                   <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1">
                     <Tooltip content={getStatusTooltip(editedCharacter.status)}>

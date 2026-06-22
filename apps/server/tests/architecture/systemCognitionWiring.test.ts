@@ -41,7 +41,15 @@ describe('System Cognition wiring guard', () => {
   it('memory extraction still filters meta product messages', () => {
     const src = readSrc('services/memoryExtractionService.ts');
 
-    expect(src).toContain('how does this (app|work)');
-    expect(src).toContain('META_PATTERNS');
+    expect(src).toContain('metaConversationClassifier');
+    expect(src).toContain('isMetaMessage');
+  });
+
+  it('ingestion pipeline gates product-only messages', () => {
+    const src = readSrc('services/conversationCentered/ingestionPipelineClass.ts');
+
+    expect(src).toContain('classifyIngestionScope');
+    expect(src).toContain('product_only');
+    expect(src).toContain('tagProductObservation');
   });
 });
