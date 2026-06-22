@@ -21,3 +21,5 @@ export {
   isSemanticGroundingEnabled,
   SEMANTIC_RELATED_THRESHOLD,
 } from './semanticGroundingChecker';
+export { findLoreEvidence } from './loreClaimMatcher';
+export type { LoreClaimMatcher, LoreClaimRow } from './loreClaimMatcher';

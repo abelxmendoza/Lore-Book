@@ -6,6 +6,7 @@ import {
 import { groundClaims } from './groundingChecker';
 import { filterMemoryWrites } from './memoryWriteFilter';
 import { bindProvenance } from './provenanceBinder';
+import { findLoreEvidence } from './loreClaimMatcher';
 import { extractResponseActions } from './responseActionExtractor';
 import { applySemanticMatches, findSemanticEvidence } from './semanticGroundingChecker';
 import { aggregateCertaintyScore } from './uncertaintyDetector';
@@ -122,10 +123,27 @@ class ResponseCompilerService {
       ...base.inferredClaims,
       ...base.unsupportedClaims,
     ];
-    const matches = await findSemanticEvidence(union, input.sourceMessages);
-    if (matches.size === 0) return base;
 
-    const upgraded = applySemanticMatches(union, matches);
+    let upgraded = union;
+    let changed = false;
+
+    // Pass 1: paraphrase rescue against the current thread's witnesses.
+    const witnessMatches = await findSemanticEvidence(upgraded, input.sourceMessages);
+    if (witnessMatches.size > 0) {
+      upgraded = applySemanticMatches(upgraded, witnessMatches);
+      changed = true;
+    }
+
+    // Pass 2: ground whatever's still unbound against the user's whole canon.
+    if (input.userId) {
+      const loreMatches = await findLoreEvidence(upgraded, input.userId);
+      if (loreMatches.size > 0) {
+        upgraded = applySemanticMatches(upgraded, loreMatches);
+        changed = true;
+      }
+    }
+
+    if (!changed) return base;
 
     return {
       ...base,
