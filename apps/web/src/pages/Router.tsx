@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthGate } from '../components/AuthGate';
+import { ProtectedRoute } from '../components/RouteGuard';
 import { WelcomeSplash } from '../components/common/WelcomeSplash';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ScrollToTopOnNavigate } from '../components/ScrollToTopOnNavigate';
@@ -119,7 +119,7 @@ export const Router = () => {
         path="/home"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="home" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="home" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -129,7 +129,7 @@ export const Router = () => {
         path="/chat" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="chat" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="chat" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -137,7 +137,7 @@ export const Router = () => {
         path="/chat/:threadId" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="chat" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="chat" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -145,7 +145,7 @@ export const Router = () => {
         path="/timeline" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="timeline" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="timeline" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -154,7 +154,7 @@ export const Router = () => {
         path="/characters" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="characters" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="characters" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -162,7 +162,7 @@ export const Router = () => {
         path="/locations"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="locations" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="locations" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -170,7 +170,7 @@ export const Router = () => {
         path="/projects"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="projects" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="projects" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -178,7 +178,7 @@ export const Router = () => {
         path="/memoir"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="memoir" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="memoir" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -190,7 +190,7 @@ export const Router = () => {
         path="/lorebook"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="lorebook" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="lorebook" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -199,7 +199,7 @@ export const Router = () => {
         path="/lorebook/*"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="lorebook" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="lorebook" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -207,7 +207,7 @@ export const Router = () => {
         path="/photos" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="photos" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="photos" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -215,7 +215,7 @@ export const Router = () => {
         path="/memories"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="events" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="events" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -223,7 +223,7 @@ export const Router = () => {
         path="/perceptions"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="perceptions" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="perceptions" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -241,7 +241,15 @@ export const Router = () => {
         path="/events"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="events" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="events" /></ProtectedRoute>
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/narrative-anchors"
+        element={
+          <LazyRoute>
+            <ProtectedRoute access="authenticated"><App defaultSurface="anchors" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -249,7 +257,7 @@ export const Router = () => {
         path="/intelligence"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="intelligence" /></AuthGate>
+            <ProtectedRoute access="admin"><App defaultSurface="intelligence" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -257,7 +265,7 @@ export const Router = () => {
         path="/entities" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="entities" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="entities" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -265,7 +273,7 @@ export const Router = () => {
         path="/family" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="family" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="family" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -273,7 +281,7 @@ export const Router = () => {
         path="/organizations" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="organizations" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="organizations" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -281,7 +289,7 @@ export const Router = () => {
         path="/skills" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="skills" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="skills" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -289,7 +297,7 @@ export const Router = () => {
         path="/discovery"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="discovery" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="discovery" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -298,7 +306,7 @@ export const Router = () => {
         path="/discovery/*"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="discovery" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="discovery" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -306,7 +314,7 @@ export const Router = () => {
         path="/love" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="love" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="love" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -314,7 +322,7 @@ export const Router = () => {
         path="/quests" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="quests" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="quests" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -322,7 +330,7 @@ export const Router = () => {
         path="/gaps"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="gaps" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="gaps" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -338,7 +346,7 @@ export const Router = () => {
         path="/saga"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="saga" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="saga" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -346,7 +354,7 @@ export const Router = () => {
         path="/documents"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="documents" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="documents" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -354,7 +362,7 @@ export const Router = () => {
         path="/continuity" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="continuity" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="continuity" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -362,7 +370,7 @@ export const Router = () => {
         path="/subscription" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="subscription" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="subscription" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -370,7 +378,7 @@ export const Router = () => {
         path="/pricing"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="pricing" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="pricing" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -386,7 +394,7 @@ export const Router = () => {
         path="/security" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="security" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="security" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -394,7 +402,7 @@ export const Router = () => {
         path="/privacy" 
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="privacy-settings" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="privacy-settings" /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -438,7 +446,9 @@ export const Router = () => {
         path="/onboarding" 
         element={
           <LazyRoute>
-            <Onboarding />
+            <ProtectedRoute access="authenticated">
+              <Onboarding />
+            </ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -446,7 +456,7 @@ export const Router = () => {
         path="/account" 
         element={
           <LazyRoute>
-            <AuthGate><AccountCenter /></AuthGate>
+            <ProtectedRoute access="authenticated"><AccountCenter /></ProtectedRoute>
           </LazyRoute>
         } 
       />
@@ -454,7 +464,7 @@ export const Router = () => {
         path="/guide"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="guide" /></AuthGate>
+            <ProtectedRoute access="authenticated"><App defaultSurface="guide" /></ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -464,19 +474,19 @@ export const Router = () => {
         path="/what-ai-knows"
         element={
           <LazyRoute>
-            <AuthGate><WhatAIKnows /></AuthGate>
+            <ProtectedRoute access="authenticated"><WhatAIKnows /></ProtectedRoute>
           </LazyRoute>
         }
       />
 
-      {/* Admin Routes - Protected in production */}
+      {/* Admin / operator routes — server authority required */}
       <Route
         path="/ontology"
         element={
           <LazyRoute>
-            <AuthGate>
+            <ProtectedRoute access="admin">
               <OntologyExplorerPage />
-            </AuthGate>
+            </ProtectedRoute>
           </LazyRoute>
         }
       />
@@ -484,25 +494,23 @@ export const Router = () => {
         path="/admin" 
         element={
           <LazyRoute>
-            <AuthGate>
+            <ProtectedRoute access="admin">
               <AdminPage />
-            </AuthGate>
+            </ProtectedRoute>
           </LazyRoute>
         } 
       />
-      {/* Dev Console - Only available in development */}
-      {!import.meta.env.PROD && (
-        <Route 
-          path="/dev-console" 
-          element={
-            <LazyRoute>
-              <AuthGate>
-                <DevConsolePage />
-              </AuthGate>
-            </LazyRoute>
-          } 
-        />
-      )}
+      {/* Dev Console — role-gated; always 404 in production builds */}
+      <Route 
+        path="/dev-console" 
+        element={
+          <LazyRoute>
+            <ProtectedRoute access="dev-console">
+              <DevConsolePage />
+            </ProtectedRoute>
+          </LazyRoute>
+        } 
+      />
 
       {/* 404 - Must be last */}
       <Route 

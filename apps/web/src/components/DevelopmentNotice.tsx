@@ -74,17 +74,17 @@ export function DevelopmentNotice() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="mb-2 inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-200">
-              Proof of Concept · Near Alpha
+              Early Access · Alpha
             </div>
             <h2
               id="dev-notice-title"
               className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2"
             >
-              Early Access — Lore Book
+              Welcome to Lore Book
             </h2>
             <p id="dev-notice-description" className="text-white/70 text-sm sm:text-base">
-              Lore Book is open for early testing while the core experience is still being proven.
-              Chat, journaling, and story-building are the focus right now.
+              Lore Book is live for early testing. Chat is the front door — every conversation
+              feeds a growing record of people, places, and moments in your life.
             </p>
           </div>
         </div>
@@ -95,10 +95,11 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Ready to test</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">What's live</p>
                 <p className="text-xs sm:text-sm">
-                  Chat, journaling, memory extraction, and story organization are active.
-                  Characters, events, locations, and groups can start forming from your conversations.
+                  Chat, journaling, and memory extraction are ready. Characters, locations, events,
+                  relationships, and lorebooks can start forming from what you share — and improve as
+                  your story grows.
                 </p>
               </div>
             </div>
@@ -106,10 +107,10 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Still being proven</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Still maturing</p>
                 <p className="text-xs sm:text-sm">
-                  Some analytical views, including mood, goals, and perceptions, may use sample or partial data
-                  until your own story has enough signal.
+                  Discovery views — mood, goals, perceptions, and similar — may show sample or partial
+                  data until your record has enough real signal.
                 </p>
               </div>
             </div>
@@ -117,9 +118,10 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Code className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Expect change</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Moving fast</p>
                 <p className="text-xs sm:text-sm">
-                  Features are shipping quickly. Screens may shift, improve, or occasionally break as the alpha takes shape.
+                  Features ship weekly. Layouts, labels, and flows may shift, improve, or briefly break
+                  — that's expected during early access.
                 </p>
               </div>
             </div>
@@ -129,7 +131,7 @@ export function DevelopmentNotice() {
             <Info className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
             <p className="text-xs sm:text-sm text-primary/90">
               <strong>Start in Chat.</strong> Tell Lore Book about your day, someone in your life,
-              or a moment you want remembered. The app builds the rest from there.
+              or a moment worth remembering — the rest builds from there over time.
             </p>
           </div>
         </div>

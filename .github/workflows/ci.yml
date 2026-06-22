@@ -229,6 +229,14 @@ jobs:
         working-directory: apps/web
         run: npm run test:unit -- src/api/cognition.test.ts
 
+      - name: Route security regressions (auth + role gates)
+        working-directory: apps/web
+        run: npm run test:unit -- src/components/RouteGuard.test.tsx src/middleware/routeAccess.test.ts src/pages/Router.integration.test.tsx
+
+      - name: Admin shell regressions (early access notice)
+        working-directory: apps/web
+        run: npm run test:unit -- src/components/DevelopmentNotice.test.tsx
+
       - name: Demo privacy guard
         working-directory: apps/web
         run: npm run test:demo-privacy

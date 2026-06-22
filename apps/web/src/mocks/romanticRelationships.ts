@@ -3,6 +3,7 @@
 
 import type { CharacterSuggestion } from '../api/entitySuggestions';
 import { enrichMockAnalytics } from './romanticDemoProfiles';
+import { getLoreLexicalSnippetMap } from './romanticLoreTestCases.ts';
 
 export type MockRomanticRelationship = {
   id: string;
@@ -46,8 +47,6 @@ export type MockRomanticRelationship = {
  * like real, enriched relationships do.
  */
 const FIXATION_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust', 'situationship']);
-
-import { getLoreLexicalSnippetMap } from './romanticLoreStory';
 
 function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationship {
   const status = rel.status.toLowerCase();

@@ -17,9 +17,13 @@ function renderRouter(ui: React.ReactElement) {
   );
 }
 
-// Mock AuthGate to bypass auth for testing
+// Mock route guards to bypass auth for testing
 vi.mock('../components/AuthGate', () => ({
   AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
+
+vi.mock('../components/RouteGuard', () => ({
+  ProtectedRoute: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
 // Mock all lazy-loaded components

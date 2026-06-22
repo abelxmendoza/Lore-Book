@@ -18,7 +18,7 @@ import { config } from '../../config/env';
 import { getUserFriendlyMessage } from '../../lib/errorHandler';
 import { evaluateStripeConfig, type StripeConfigStatus } from '../../lib/stripeConfigStatus';
 import { StripeDashboardLinks } from '../../components/admin/StripeDashboardLinks';
-import NotFound from '../../routes/NotFound';
+import { ExternalServicesPanel } from '../../components/admin/ExternalServicesPanel';
 
 type AdminView = AdminSection;
 
@@ -113,6 +113,7 @@ function getSectionTitle(view: AdminView): string {
     case 'logs': return 'System Logs';
     case 'ai-events': return 'AI Events';
     case 'engine-health': return 'Engine Health';
+    case 'integrations': return 'Integrations';
     case 'tools': return 'Admin Tools';
     case 'feature-flags': return 'Feature Flags';
     case 'finance': return 'Finance';
@@ -143,10 +144,7 @@ export const AdminPage = () => {
 
   useEffect(() => {
     if (authLoading || authorityLoading) return;
-    if (!isAdmin) {
-      window.location.href = '/';
-      return;
-    }
+    if (!isAdmin) return;
     loadDashboardData();
   }, [authLoading, authorityLoading, isAdmin]);
 
@@ -269,7 +267,6 @@ export const AdminPage = () => {
   }
 
   if (!isAdmin) {
-    if (config.env.isProduction) return <NotFound />;
     return null;
   }
 
@@ -794,6 +791,11 @@ export const AdminPage = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ── INTEGRATIONS ── */}
+            {currentView === 'integrations' && (
+              <ExternalServicesPanel stripeConfig={stripeConfig} />
             )}
 
             {/* ── ENGINE HEALTH ── */}

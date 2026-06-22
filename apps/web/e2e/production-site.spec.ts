@@ -47,7 +47,7 @@ test.describe('Production Site Smoke', () => {
       })
       .toBe(true);
 
-    const devNotice = page.getByRole('heading', { name: /Early Access — Lore Book/i });
+    const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
     await expect(devNotice).toHaveCount(0);
 
     const critical = [...consoleErrors, ...pageErrors].filter(

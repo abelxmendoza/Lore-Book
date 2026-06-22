@@ -29,7 +29,7 @@ describe('DevelopmentNotice', () => {
 
     // Wait for the notice to appear (it has a 500ms delay)
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Early Access/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Welcome to Lore Book/i })).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 
@@ -55,14 +55,14 @@ describe('DevelopmentNotice', () => {
     render(<DevelopmentNotice />);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Early Access/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Welcome to Lore Book/i })).toBeInTheDocument();
     }, { timeout: 3000 });
 
     const dismissButton = screen.getByLabelText(/dismiss development notice/i);
     dismissButton.click();
 
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: /Early Access/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /Welcome to Lore Book/i })).not.toBeInTheDocument();
     });
 
     expect(localStorage.getItem('dev-notice-dismissed')).toBe('true');
