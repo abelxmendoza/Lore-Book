@@ -1210,24 +1210,22 @@ When updating relationship analytics or emotional signals from this thread, weig
     
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
-    // Load essence profile for context
+    // Essence + identity-core profiles are independent userId-only loads — fetch
+    // them concurrently instead of back to back. Each degrades gracefully.
     let essenceProfile: any = null;
-    try {
-      essenceProfile = await essenceProfileService.getProfile(userId);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to load essence profile, continuing without');
-    }
-
-    // Load identity core profile for context (most recent)
     let identityCoreProfile: any = null;
-    try {
-      const { IdentityStorage } = await import('./identityCore/identityStorage');
-      const storage = new IdentityStorage();
-      const profiles = await storage.getProfiles(userId);
-      identityCoreProfile = profiles[0] || null;
-    } catch (error) {
-      logger.debug({ error }, 'Failed to load identity core profile, continuing without');
-    }
+    const [essenceRes, identityRes] = await Promise.allSettled([
+      essenceProfileService.getProfile(userId),
+      (async () => {
+        const { IdentityStorage } = await import('./identityCore/identityStorage');
+        const profiles = await new IdentityStorage().getProfiles(userId);
+        return profiles[0] || null;
+      })(),
+    ]);
+    if (essenceRes.status === 'fulfilled') essenceProfile = essenceRes.value;
+    else logger.debug({ error: essenceRes.reason }, 'Failed to load essence profile, continuing without');
+    if (identityRes.status === 'fulfilled') identityCoreProfile = identityRes.value;
+    else logger.debug({ error: identityRes.reason }, 'Failed to load identity core profile, continuing without');
 
     // Build refinement context: use client-provided soulProfileContext when present
     const refinementContext = soulProfileContext
@@ -1283,29 +1281,24 @@ When updating relationship analytics or emotional signals from this thread, weig
       logger.debug({ err }, 'Failed to import group candidate service');
     });
 
-    // Check continuity with error handling
+    // Continuity, connections, and strategic guidance are mutually independent
+    // (none consumes another's output, all inputs are already resolved), so run
+    // them concurrently instead of three sequential round-trips. Each still
+    // degrades gracefully on its own failure.
     let continuityWarnings: string[] = [];
-    try {
-      continuityWarnings = await this.checkContinuity(userId, message, extractedDates, orchestratorSummary);
-    } catch (error) {
-      logger.warn({ error }, 'Failed to check continuity, continuing without warnings');
-    }
-
-    // Find connections with error handling
     let connections: string[] = [];
-    try {
-      connections = await this.findConnections(userId, message, orchestratorSummary, hqiResults, sources);
-    } catch (error) {
-      logger.warn({ error }, 'Failed to find connections, continuing without');
-    }
-
-    // Get strategic guidance with error handling
     let strategicGuidance: string | null = null;
-    try {
-      strategicGuidance = await this.getStrategicGuidance(userId, message);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to get strategic guidance, continuing without');
-    }
+    const [continuityRes, connectionsRes, guidanceRes] = await Promise.allSettled([
+      this.checkContinuity(userId, message, extractedDates, orchestratorSummary),
+      this.findConnections(userId, message, orchestratorSummary, hqiResults, sources),
+      this.getStrategicGuidance(userId, message),
+    ]);
+    if (continuityRes.status === 'fulfilled') continuityWarnings = continuityRes.value;
+    else logger.warn({ error: continuityRes.reason }, 'Failed to check continuity, continuing without warnings');
+    if (connectionsRes.status === 'fulfilled') connections = connectionsRes.value;
+    else logger.warn({ error: connectionsRes.reason }, 'Failed to find connections, continuing without');
+    if (guidanceRes.status === 'fulfilled') strategicGuidance = guidanceRes.value;
+    else logger.debug({ error: guidanceRes.reason }, 'Failed to get strategic guidance, continuing without');
 
     // =====================================================
     // TANGENT & TRANSITION DETECTION (Grok-style flow tracking)
@@ -2084,24 +2077,22 @@ When updating relationship analytics or emotional signals from this thread, weig
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
-    // Load essence profile for context
+    // Essence + identity-core profiles are independent userId-only loads — fetch
+    // them concurrently instead of back to back. Each degrades gracefully.
     let essenceProfile: any = null;
-    try {
-      essenceProfile = await essenceProfileService.getProfile(userId);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to load essence profile, continuing without');
-    }
-
-    // Load identity core profile for context (most recent)
     let identityCoreProfile: any = null;
-    try {
-      const { IdentityStorage } = await import('./identityCore/identityStorage');
-      const storage = new IdentityStorage();
-      const profiles = await storage.getProfiles(userId);
-      identityCoreProfile = profiles[0] || null;
-    } catch (error) {
-      logger.debug({ error }, 'Failed to load identity core profile, continuing without');
-    }
+    const [essenceRes, identityRes] = await Promise.allSettled([
+      essenceProfileService.getProfile(userId),
+      (async () => {
+        const { IdentityStorage } = await import('./identityCore/identityStorage');
+        const profiles = await new IdentityStorage().getProfiles(userId);
+        return profiles[0] || null;
+      })(),
+    ]);
+    if (essenceRes.status === 'fulfilled') essenceProfile = essenceRes.value;
+    else logger.debug({ error: essenceRes.reason }, 'Failed to load essence profile, continuing without');
+    if (identityRes.status === 'fulfilled') identityCoreProfile = identityRes.value;
+    else logger.debug({ error: identityRes.reason }, 'Failed to load identity core profile, continuing without');
 
     // Soul Profile refinement: build context, run gate, optionally await and capture clarification
     const refinementContextChat = soulProfileContext
