@@ -17,6 +17,7 @@ const initial: ComposerState = {
   matches: [],
   dismissedSlots: [],
   confirmingSlots: [],
+  includedSlots: [],
   indexReady: false,
   indexError: null,
 };
@@ -73,6 +74,7 @@ describe('composerSelectors', () => {
         matches: [sampleMatch, { ...sampleMatch, id: 'sug:character:kelly', name: 'Kelly', status: 'suggestion' }],
         dismissedSlots: ['character:uuid-abel'],
         confirmingSlots: [],
+        includedSlots: [],
         indexReady: true,
         indexError: null,
       },
