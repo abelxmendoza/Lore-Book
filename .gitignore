@@ -70,6 +70,16 @@ vite.config.js
 .parcel-cache/
 .vercel
 
+# Local Cursor/Supabase skill plugin installs (not part of Lorekeeper)
+.agents/skills/**/CHANGELOG.md
+.agents/skills/supabase-server/
+.claude/skills/supabase-server
+skills/
+
+# Accidental JS emit alongside tracked TypeScript fixtures
+apps/server/tests/fixtures/**/*.js
+apps/web/src/mocks/**/*.js
+
 # Local dev session tokens (never commit)
 .lk_session.json
 .lk_session.clean.json
