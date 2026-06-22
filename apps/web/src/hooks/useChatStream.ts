@@ -8,11 +8,26 @@ import type { ChatFocus } from '../types/chatFocus';
 import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import { pollLoreBookNotice, dispatchLoreBookNotice } from '../lib/loreBookNoticeClient';
 
+/** A user-confirmation action chip emitted by the server's Response Compiler. */
+export type ResponseActionCandidate = {
+  type: string;
+  label: string;
+  confidence?: number;
+  requiresConfirmation?: boolean;
+  payload?: Record<string, unknown>;
+};
+
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
   content?: string;
   data?: any;
   error?: string;
+  responseCompiler?: { actionCandidates?: ResponseActionCandidate[] };
+};
+
+/** Payload handed to onComplete when the stream finishes cleanly. */
+export type ChatStreamResult = {
+  actionCandidates?: ResponseActionCandidate[];
 };
 
 export type MemoryFeedbackEvent = {
@@ -80,7 +95,7 @@ export const useChatStream = () => {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     onChunk: (content: string) => void,
     onMetadata: (metadata: any) => void,
-    onComplete: () => void,
+    onComplete: (result?: ChatStreamResult) => void,
     onError: (error: string) => void,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
@@ -192,6 +207,13 @@ export const useChatStream = () => {
           userMessage = isProdNoApi
             ? 'Method Not Allowed (405). The deployed app has no backend. Set VITE_API_URL in Vercel to your API URL (e.g. https://your-api.vercel.app), or run the app locally: npm run dev in apps/web and apps/server.'
             : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
+        } else if (response.status === 403) {
+          try {
+            const body = JSON.parse(errorText);
+            userMessage = body.userMessage || body.message || body.error || errorText;
+          } catch {
+            userMessage = 'AI usage limit reached for this app.';
+          }
         } else if (response.status === 429) {
           try {
             const body = JSON.parse(errorText);
@@ -245,7 +267,7 @@ export const useChatStream = () => {
             onChunk(data.content);
           } else if (data.type === 'done') {
             streamCompleted = true;
-            onComplete();
+            onComplete({ actionCandidates: data.responseCompiler?.actionCandidates ?? [] });
             setIsStreaming(false);
             if (onMemoryFeedback && capturedMessageId) {
               pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);

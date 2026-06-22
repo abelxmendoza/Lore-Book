@@ -57,6 +57,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
 import type { RecallChatPayload } from './recallTypes';
 import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
 import { EntityChipsRow } from './EntityChipsRow';
+import { ResponseActionChips } from './ResponseActionChips';
+import type { ResponseActionCandidate } from '../../../hooks/useChatStream';
 import { RelationshipGroupsRow } from './RelationshipGroupsRow';
 import { extractRelationshipGroups } from '../utils/relationshipMetadata';
 import { LexicalSignalBadges } from '../../../components/shared/LexicalSignalBadges';
@@ -160,6 +162,8 @@ export type Message = {
   }>;
   staleProjectionSummary?: string | null;
   suggestedActions?: ChatSuggestedAction[];
+  /** User-confirmation action chips from the server Response Compiler. */
+  actionCandidates?: ResponseActionCandidate[];
 };
 
 type ChatMessageProps = {
@@ -709,6 +713,10 @@ export const ChatMessage = ({
                 );
               })}
             </div>
+          )}
+
+          {!isUser && message.actionCandidates && message.actionCandidates.length > 0 && (
+            <ResponseActionChips actions={message.actionCandidates} />
           )}
 
           {/* NarrativeStoryPanel intentionally removed from inline chat.

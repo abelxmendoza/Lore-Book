@@ -506,7 +506,7 @@ export const useChat = () => {
             setLoadingProgress(70);
           }
         },
-        () => {
+        (result) => {
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -517,6 +517,7 @@ export const useChat = () => {
           updateStreamMessage(
             assistantMessageId,
             {
+            actionCandidates: result?.actionCandidates,
               id: persistedAssistantMessageId ?? assistantMessageId,
               content: accumulatedContent,
               isStreaming: false,
