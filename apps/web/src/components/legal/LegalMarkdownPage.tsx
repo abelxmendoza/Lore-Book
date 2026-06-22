@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, FileText } from 'lucide-react';
 
-import { Button } from '../components/ui/button';
-import { Logo } from '../components/Logo';
+import { Button } from '../ui/button';
+import { Logo } from '../Logo';
 
 type LegalMarkdownPageProps = {
   title: string;
