@@ -1,0 +1,140 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "LoreBook",
+    "subtitle": "Search personal memories",
+    "description": "LoreBook connects ChatGPT to your private memory graph — journal entries, characters, places, timeline events, and relationships. Use it to recall autobiographical facts with provenance before answering questions about your life, lore, or people you track in LoreBook. All tools are read-only and scoped to the authenticated user's data.",
+    "category": "PRODUCTIVITY"
+  },
+  "tools": {
+    "search_memories": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Runs semantic retrieval over the authenticated user's journal entries and returns ranked results with provenance excerpts without creating, updating, or deleting any records.",
+        "open_world_justification": "Reads only from the user's private LoreBook database scoped by OAuth user identity and does not post, publish, or modify public internet or third-party systems.",
+        "destructive_justification": "Does not delete, overwrite, merge, or revoke access to any memory or account data."
+      }
+    },
+    "search_entities": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Searches the user's certified entity index (characters, places, organizations, skills, events) and returns match metadata without mutating entity records.",
+        "open_world_justification": "Operates entirely within the user's private LoreBook workspace and does not write to external platforms or publicly visible state.",
+        "destructive_justification": "Does not create, merge, archive, or delete entities."
+      }
+    },
+    "get_entity": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Fetches a single entity card summary (name, type, aliases, relationship counts) for a UUID the user already owns in LoreBook.",
+        "open_world_justification": "Returns private entity data from the authenticated user's LoreBook account only and has no external publishing side effects.",
+        "destructive_justification": "Does not modify entity cards, claims, or lifecycle status."
+      }
+    },
+    "get_timeline": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists timeline events in a date range from the user's LoreBook chronology without inserting or editing events.",
+        "open_world_justification": "Reads private timeline data scoped to the authenticated user and does not interact with public calendars or external scheduling systems.",
+        "destructive_justification": "Does not delete or reschedule timeline events."
+      }
+    },
+    "get_relationships": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns typed relationship edges (direction, scope, confidence, evidence source ids) for an entity without creating or removing relationships.",
+        "open_world_justification": "Exposes only the authenticated user's private relationship graph and does not message contacts or update social networks.",
+        "destructive_justification": "Does not merge entities, sever relationships, or perform irreversible graph mutations."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Recall autobiographical memories about a person and event.",
+      "user_prompt": "What do I remember about Alice from last summer? Search my LoreBook memories.",
+      "file_attachment_urls": null,
+      "tools_triggered": "search_memories",
+      "expected_output": "Returns ranked journal memories mentioning Alice with dates, excerpts, and provenance source ids the model can cite.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Find a character or person entity by name before answering.",
+      "user_prompt": "Who is Metro in my lore? Search my entities for Metro.",
+      "file_attachment_urls": null,
+      "tools_triggered": "search_entities",
+      "expected_output": "Returns matching certified entities with display names, types, match kind, and confidence scores.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Load a full entity card after disambiguation.",
+      "user_prompt": "Open the entity card for character id 789bd607-e063-466f-a9ef-f68d24e8bb57 in my LoreBook.",
+      "file_attachment_urls": null,
+      "tools_triggered": "get_entity",
+      "expected_output": "Returns the entity summary including name, type, aliases, relationship count, and provenance without modifying the record.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Retrieve events across a bounded date window.",
+      "user_prompt": "Show my LoreBook timeline between 2025-06-01 and 2025-08-31.",
+      "file_attachment_urls": null,
+      "tools_triggered": "get_timeline",
+      "expected_output": "Returns ordered timeline events with titles, dates, source types, and provenance links for that range.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Inspect how two lore entities relate.",
+      "user_prompt": "What relationships does my character Alex have in LoreBook?",
+      "file_attachment_urls": null,
+      "tools_triggered": "get_relationships",
+      "expected_output": "Returns inbound and outbound relationship edges with types, scopes, confidence, and evidence source references.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not invoke for generic web search unrelated to personal memory.",
+      "user_prompt": "What's the weather in San Francisco tomorrow?",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because the request is outside personal memory retrieval workflows.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not invoke when user asks to mutate or delete LoreBook data (write tools not exposed).",
+      "user_prompt": "Delete all my journal entries from LoreBook.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not perform destructive actions because only read tools are registered in v1.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not invoke for unrelated productivity tasks.",
+      "user_prompt": "Draft a professional email to my manager about PTO.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because email drafting is outside LoreBook memory search and graph lookup.",
+      "expected_output_url": null
+    }
+  ]
+}
