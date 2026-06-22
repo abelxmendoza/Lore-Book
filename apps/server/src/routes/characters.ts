@@ -1856,12 +1856,16 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         const { entityDeletionRecoveryService } = await import(
           '../services/entityDeletionRecoveryService'
         );
+        const archiveReason =
+          typeof updatedMetadata.deletion_reason === 'string' && updatedMetadata.deletion_reason.trim()
+            ? updatedMetadata.deletion_reason.trim()
+            : 'user_archived_character_card';
         await entityDeletionRecoveryService.runBeforeCharacterDelete(userId, {
           id: existing.id,
           name: existing.name as string,
           alias: (existing.alias as string[] | null) ?? [],
           metadata: (existing.metadata as Record<string, unknown> | null) ?? {},
-        }, { mode: 'archive', reason: 'user_archived_character_card' });
+        }, { mode: 'archive', reason: archiveReason });
       }
       if (updateData.status === 'active' && existing.status === 'archived') {
         void import('../services/characterIdentityIndexService').then(({ characterIdentityIndexService }) =>
@@ -1890,8 +1894,13 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const { characterDeletionService } = await import('../services/characterDeletionService');
     const redistribute = req.query.redistribute !== 'false';
-    const reason =
-      typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const reasonCode =
+      typeof req.body?.reason === 'string' && req.body.reason.trim() ? req.body.reason.trim() : undefined;
+    const reasonNote =
+      typeof req.body?.reason_note === 'string' && req.body.reason_note.trim()
+        ? req.body.reason_note.trim()
+        : undefined;
+    const reason = [reasonCode, reasonNote].filter(Boolean).join(': ') || undefined;
     const report = await characterDeletionService.deleteCharacter(userId, String(req.params.id), {
       redistribute,
       reason,

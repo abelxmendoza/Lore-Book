@@ -15,6 +15,7 @@ import { supabaseAdmin } from './supabaseClient';
 export interface DeletionReport {
   characterId: string;
   name: string;
+  romanticRelationshipsDeleted: number;
   entityFactsDeleted: number;
   eventsDeleted: number;
   eventsDetached: number;
@@ -62,6 +63,7 @@ class CharacterDeletionService {
     const report: DeletionReport = {
       characterId,
       name: character.name,
+      romanticRelationshipsDeleted: 0,
       entityFactsDeleted: 0,
       eventsDeleted: 0,
       eventsDetached: 0,
@@ -110,6 +112,15 @@ class CharacterDeletionService {
       .eq('entity_id', characterId)
       .select('id');
     report.entityFactsDeleted = deletedFacts?.length ?? 0;
+
+    const { data: deletedRomanticRelationships } = await supabaseAdmin
+      .from('romantic_relationships')
+      .delete()
+      .eq('user_id', userId)
+      .eq('person_type', 'character')
+      .eq('person_id', characterId)
+      .select('id');
+    report.romanticRelationshipsDeleted = deletedRomanticRelationships?.length ?? 0;
 
     const meta = (character.metadata as Record<string, unknown> | null) ?? {};
     const omegaId =

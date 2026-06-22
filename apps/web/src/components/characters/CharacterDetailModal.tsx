@@ -213,6 +213,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   );
   const [deleteStep, setDeleteStep] = useState<null | 'warn' | 'type'>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
+  const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const loreAvatarsEnabled = import.meta.env.VITE_ENABLE_LORE_AVATARS === 'true';
@@ -286,7 +288,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
       await fetchJson(`/api/characters/${character.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'archived' }),
+        body: JSON.stringify({
+          status: 'archived',
+          metadata: {
+            deletion_reason: deleteReason,
+            deletion_reason_note: deleteReasonNote.trim() || undefined,
+            deletion_reason_recorded_at: new Date().toISOString(),
+          },
+        }),
       });
       invalidateCache(character.id);
       onUpdate();
@@ -302,6 +311,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const resetDeleteFlow = () => {
     setDeleteStep(null);
     setDeleteConfirmText('');
+    setDeleteReason('wrong_person_or_not_real');
+    setDeleteReasonNote('');
     setDeleteError(null);
   };
 
@@ -4050,6 +4061,30 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     <p className="text-sm text-white/60 mt-1">
                       This hides their card from your Character Book but keeps their knowledge, facts, and conversation links in your database. Use Rescan conversations to restore them if needed.
                     </p>
+                    <div className="mt-4 space-y-3">
+                      <label className="block text-xs font-medium text-white/70">
+                        Why are you removing this card?
+                      </label>
+                      <select
+                        className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                        value={deleteReason}
+                        onChange={(event) => setDeleteReason(event.target.value)}
+                      >
+                        <option value="wrong_person_or_not_real">Wrong character, not real, or hallucinated</option>
+                        <option value="not_relevant_to_my_life">Not relevant to my life</option>
+                        <option value="no_romantic_interest">No romantic interest whatsoever</option>
+                        <option value="duplicate_or_should_merge">Duplicate or should be merged elsewhere</option>
+                        <option value="belongs_to_another_domain">Belongs in another book, not Character Book</option>
+                        <option value="privacy_cleanup">Privacy cleanup</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <Textarea
+                        className="min-h-[72px] bg-black/40 border-white/10 text-white"
+                        value={deleteReasonNote}
+                        onChange={(event) => setDeleteReasonNote(event.target.value)}
+                        placeholder="Optional note for LoreBook to learn from this correction"
+                      />
+                    </div>
                     <p className="text-xs text-white/45 mt-2">
                       Step 1 of 2 — type the character name to confirm.
                     </p>

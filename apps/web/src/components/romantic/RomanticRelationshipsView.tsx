@@ -4,18 +4,33 @@
 // =====================================================
 
 import { useState, useEffect } from 'react';
-import { Heart, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Calendar, Users } from 'lucide-react';
+import { Heart, AlertTriangle, CheckCircle, Link2, UserRound } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { RomanticRelationshipDetailModal } from './RomanticRelationshipDetailModal';
+import { CharacterDetailModal } from '../characters/CharacterDetailModal';
+import type { Character } from '../characters/CharacterProfileCard';
+import { fetchCharacterById } from '../../lib/hydrateBookEntity';
+import { invalidateCache } from '../../lib/requestCache';
 
 type RomanticRelationship = {
   id: string;
   person_id: string;
   person_type: 'character' | 'omega_entity';
+  person_name?: string;
+  character_id?: string | null;
+  character_sex?: string | null;
+  user_romantic_filter?: {
+    user_sex?: string | null;
+    user_orientation?: string | null;
+    partner_sex?: string | null;
+    reviewed?: boolean;
+    eligible?: boolean;
+    note?: string;
+  };
   relationship_type: string;
   status: string;
   is_current: boolean;
@@ -41,6 +56,9 @@ export const RomanticRelationshipsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'ended' | 'situationships'>('all');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
 
   useEffect(() => {
     loadRelationships();
@@ -83,6 +101,41 @@ export const RomanticRelationshipsView: React.FC = () => {
       await loadRelationships();
     } catch (error) {
       console.error('Failed to calculate affection:', error);
+    }
+  };
+
+  const openCharacterCard = async (rel: RomanticRelationship) => {
+    if (rel.person_type !== 'character') return;
+    setRelationshipError(null);
+    try {
+      const character = await fetchCharacterById(rel.character_id ?? rel.person_id);
+      setSelectedCharacter(character);
+    } catch (error) {
+      setRelationshipError(error instanceof Error ? error.message : 'Could not open Character Book card.');
+    }
+  };
+
+  const linkRelationshipToCharacter = async (rel: RomanticRelationship) => {
+    setLinkBusyId(rel.id);
+    setRelationshipError(null);
+    try {
+      const result = await fetchJson<{ success: boolean; character_id: string }>(
+        `/api/conversation/romantic-relationships/${rel.id}/link-character`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ character_name: rel.person_name }),
+        }
+      );
+      invalidateCache();
+      await loadRelationships();
+      if (result.character_id) {
+        const character = await fetchCharacterById(result.character_id);
+        setSelectedCharacter(character);
+      }
+    } catch (error) {
+      setRelationshipError(error instanceof Error ? error.message : 'Could not link relationship to Character Book.');
+    } finally {
+      setLinkBusyId(null);
     }
   };
 
@@ -137,6 +190,11 @@ export const RomanticRelationshipsView: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
+          {relationshipError && (
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+              {relationshipError}
+            </div>
+          )}
           <Tabs value={activeFilter} onValueChange={(v) => setActiveFilter(v as any)}>
             <TabsList className="mb-4">
               <TabsTrigger value="all">All</TabsTrigger>
@@ -162,23 +220,64 @@ export const RomanticRelationshipsView: React.FC = () => {
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="font-semibold text-white">
-                                {rel.relationship_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                              </h3>
-                              <Badge variant="outline" className={`text-xs ${getStatusColor(rel.status)}`}>
-                                {rel.status}
-                              </Badge>
-                              {rel.is_situationship && (
-                                <Badge variant="outline" className="text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
-                                  Situationship
-                                </Badge>
-                              )}
-                              {rel.exclusivity_status && (
-                                <Badge variant="outline" className="text-xs">
-                                  {rel.exclusivity_status}
-                                </Badge>
-                              )}
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <h3 className="font-semibold text-white">
+                                    {rel.person_name ?? rel.relationship_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  </h3>
+                                  <Badge variant="outline" className={`text-xs ${getStatusColor(rel.status)}`}>
+                                    {rel.status}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs border-rose-500/30 text-rose-200 bg-rose-500/10">
+                                    {rel.relationship_type.replace('_', ' ')}
+                                  </Badge>
+                                  {rel.is_situationship && (
+                                    <Badge variant="outline" className="text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
+                                      Situationship
+                                    </Badge>
+                                  )}
+                                  {rel.exclusivity_status && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {rel.exclusivity_status}
+                                    </Badge>
+                                  )}
+                                  {rel.character_sex && (
+                                    <Badge variant="outline" className="text-xs border-white/15 text-white/60">
+                                      {rel.character_sex}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {rel.user_romantic_filter?.note && (
+                                  <p className="text-xs text-white/45 max-w-2xl">
+                                    {rel.user_romantic_filter.note}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
+                                {rel.person_type === 'character' ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs border-white/15"
+                                    leftIcon={<UserRound className="h-3.5 w-3.5" />}
+                                    onClick={() => void openCharacterCard(rel)}
+                                  >
+                                    Character card
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={linkBusyId === rel.id}
+                                    className="text-xs border-cyan-500/30 text-cyan-100 hover:bg-cyan-500/10"
+                                    leftIcon={<Link2 className="h-3.5 w-3.5" />}
+                                    onClick={() => void linkRelationshipToCharacter(rel)}
+                                  >
+                                    {linkBusyId === rel.id ? 'Linking...' : 'Link to Character Book'}
+                                  </Button>
+                                )}
+                              </div>
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -270,6 +369,15 @@ export const RomanticRelationshipsView: React.FC = () => {
         <RomanticRelationshipDetailModal
           relationshipId={selectedRelationship}
           onClose={() => setSelectedRelationship(null)}
+        />
+      )}
+      {selectedCharacter && (
+        <CharacterDetailModal
+          character={selectedCharacter}
+          onClose={() => setSelectedCharacter(null)}
+          onUpdate={() => void loadRelationships()}
+          relationship={relationships.find((rel) => rel.person_id === selectedCharacter.id)}
+          initialTab="info"
         />
       )}
     </>

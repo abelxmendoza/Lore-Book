@@ -102,6 +102,8 @@ export const CharacterMergePanel = ({
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
+  const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, { skip: demoMode });
 
@@ -166,6 +168,8 @@ export const CharacterMergePanel = ({
     setMergeError(null);
     setShowDeleteConfirm(false);
     setDeleteConfirmName('');
+    setDeleteReason('wrong_person_or_not_real');
+    setDeleteReasonNote('');
   };
 
   const afterConsolidation = async (notice: string, result?: { demoCharacters?: Character[] }) => {
@@ -413,7 +417,10 @@ export const CharacterMergePanel = ({
       }
       await fetchJson(`/api/characters/${character.id}?redistribute=true`, {
         method: 'DELETE',
-        body: JSON.stringify({ reason: 'wrong_or_duplicate_entity_card' }),
+        body: JSON.stringify({
+          reason: deleteReason,
+          reason_note: deleteReasonNote.trim() || undefined,
+        }),
       });
       cancelManualMerge();
       await afterConsolidation(
@@ -425,6 +432,8 @@ export const CharacterMergePanel = ({
       setMergeBusy(false);
       setShowDeleteConfirm(false);
       setDeleteConfirmName('');
+      setDeleteReason('wrong_person_or_not_real');
+      setDeleteReasonNote('');
     }
   };
 
@@ -616,6 +625,30 @@ export const CharacterMergePanel = ({
                 <span className="font-mono">{selectedPendingDeletionCharacters[0].name}</span> to permanently delete
                 this card. Facts stay in your lore; the card cannot be undone after this.
               </p>
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-white/70">
+                  Why are you deleting this character?
+                </label>
+                <select
+                  className="w-full rounded-md border border-red-500/20 bg-black/40 px-3 py-2 text-sm text-white"
+                  value={deleteReason}
+                  onChange={event => setDeleteReason(event.target.value)}
+                >
+                  <option value="wrong_person_or_not_real">Wrong character, not real, or hallucinated</option>
+                  <option value="not_relevant_to_my_life">Not relevant to my life</option>
+                  <option value="no_romantic_interest">No romantic interest whatsoever</option>
+                  <option value="duplicate_or_should_merge">Duplicate or should be merged elsewhere</option>
+                  <option value="belongs_to_another_domain">Belongs in another book, not Character Book</option>
+                  <option value="privacy_cleanup">Privacy cleanup</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea
+                  className="min-h-[70px] w-full rounded-md border border-red-500/20 bg-black/40 px-3 py-2 text-sm text-white"
+                  value={deleteReasonNote}
+                  onChange={event => setDeleteReasonNote(event.target.value)}
+                  placeholder="Optional note for future correction analytics"
+                />
+              </div>
               <input
                 className="w-full rounded-md border border-red-500/20 bg-black/40 px-3 py-2 text-sm text-white"
                 value={deleteConfirmName}

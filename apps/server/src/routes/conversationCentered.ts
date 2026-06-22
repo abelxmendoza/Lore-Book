@@ -62,6 +62,11 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
+const linkRomanticRelationshipSchema = z.object({
+  character_id: z.string().uuid().optional(),
+  character_name: z.string().min(1).max(160).optional(),
+});
+
 /**
  * POST /api/conversation/ingest
  * Ingest a message through the full pipeline
@@ -2532,6 +2537,115 @@ router.post(
 );
 
 /**
+ * POST /api/conversation/romantic-relationships/:id/link-character
+ * Connect an omega-backed romantic relationship to the same character entity
+ * used by Character Book, creating a minimal card when needed.
+ */
+router.post(
+  '/romantic-relationships/:id/link-character',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const parsed = linkRomanticRelationshipSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid link request', details: parsed.error.flatten() });
+    }
+
+    const { data: relationship, error: relationshipError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, partner_name, metadata')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (relationshipError || !relationship) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    let characterId = parsed.data.character_id;
+    if (characterId) {
+      const { data: existingCharacter } = await supabaseAdmin
+        .from('characters')
+        .select('id')
+        .eq('id', characterId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!existingCharacter) {
+        return res.status(404).json({ success: false, error: 'Character not found' });
+      }
+    } else {
+      const metadata = (relationship.metadata ?? {}) as Record<string, unknown>;
+      const name =
+        parsed.data.character_name?.trim() ||
+        (typeof relationship.partner_name === 'string' ? relationship.partner_name.trim() : '') ||
+        (typeof metadata.partner_name === 'string' ? metadata.partner_name.trim() : '') ||
+        (typeof metadata.person_name === 'string' ? metadata.person_name.trim() : '');
+      if (!name) {
+        return res.status(400).json({ success: false, error: 'Character name is required' });
+      }
+
+      const { data: existingCharacters } = await supabaseAdmin
+        .from('characters')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', name)
+        .limit(1);
+
+      if (existingCharacters?.[0]?.id) {
+        characterId = existingCharacters[0].id as string;
+      } else {
+        const { data: created, error: createError } = await supabaseAdmin
+          .from('characters')
+          .insert({
+            user_id: userId,
+            name,
+            archetype: 'romantic',
+            role: 'Romantic relationship',
+            status: 'active',
+            metadata: {
+              relationship_type: 'romantic',
+              omega_entity_id: relationship.person_type === 'omega_entity' ? relationship.person_id : undefined,
+              created_from_romantic_relationship_id: relationship.id,
+              identity_review_required: true,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (createError || !created?.id) {
+          throw createError ?? new Error('Failed to create character');
+        }
+        characterId = created.id as string;
+      }
+    }
+
+    const relationshipMeta = (relationship.metadata ?? {}) as Record<string, unknown>;
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .update({
+        person_type: 'character',
+        person_id: characterId,
+        metadata: {
+          ...relationshipMeta,
+          linked_character_id: characterId,
+          linked_from_person_type: relationship.person_type,
+          linked_from_person_id: relationship.person_id,
+          linked_at: new Date().toISOString(),
+        },
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, relationship: updated, character_id: characterId });
+  })
+);
+
+/**
  * GET /api/conversation/romantic-relationships/:id/peripherals
  * Vicarious romantic connections for a relationship subject.
  */
@@ -3691,4 +3805,3 @@ router.get(
 );
 
 export default router;
-

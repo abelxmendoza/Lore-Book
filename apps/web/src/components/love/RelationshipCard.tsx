@@ -1,8 +1,10 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { Heart, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Calendar } from 'lucide-react';
+import type { MouseEvent } from 'react';
+import { Heart, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Calendar, BookOpen, Link2 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { LexicalSignalBadges } from '../shared/LexicalSignalBadges';
 import { cn } from '../../lib/cn';
 import { getRomanticDemoProfile } from '../../mocks/romanticDemoProfiles';
@@ -32,6 +34,16 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  character_id?: string | null;
+  character_sex?: string | null;
+  user_romantic_filter?: {
+    user_sex?: string | null;
+    user_orientation?: string | null;
+    partner_sex?: string | null;
+    reviewed?: boolean;
+    eligible?: boolean | null;
+    note?: string;
+  };
   metadata?: {
     signals?: {
       obsession_score?: number;
@@ -45,10 +57,13 @@ type RomanticRelationship = {
 interface RelationshipCardProps {
   relationship: RomanticRelationship;
   onClick?: () => void;
+  onOpenCharacter?: (relationship: RomanticRelationship) => void;
+  onLinkCharacter?: (relationship: RomanticRelationship) => void;
+  linkBusy?: boolean;
   highlighted?: boolean;
 }
 
-export const RelationshipCard = ({ relationship, onClick, highlighted }: RelationshipCardProps) => {
+export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLinkCharacter, linkBusy, highlighted }: RelationshipCardProps) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -112,6 +127,15 @@ export const RelationshipCard = ({ relationship, onClick, highlighted }: Relatio
   const cardTeaser =
     demoProfile?.headline ??
     (relationship.metadata?.lexical_evidence as string | undefined);
+  const hasCharacterCard = relationship.person_type === 'character' || Boolean(relationship.character_id);
+  const filterNote = relationship.user_romantic_filter?.note;
+  const handleCardAction = (
+    event: MouseEvent<HTMLButtonElement>,
+    action: ((relationship: RomanticRelationship) => void) | undefined,
+  ) => {
+    event.stopPropagation();
+    action?.(relationship);
+  };
 
   return (
     <Card
@@ -174,6 +198,14 @@ export const RelationshipCard = ({ relationship, onClick, highlighted }: Relatio
           {formatRelationshipType(relationship.relationship_type)}
           {relationship.exclusivity_status && ` · ${relationship.exclusivity_status}`}
         </p>
+
+        {(filterNote || relationship.character_sex) && (
+          <p className="mb-2 line-clamp-2 text-[10px] leading-relaxed text-white/45 sm:mb-3 sm:text-[11px]">
+            {relationship.character_sex && relationship.character_sex !== 'unknown' ? `Sex: ${relationship.character_sex}` : null}
+            {relationship.character_sex && relationship.character_sex !== 'unknown' && filterNote ? ' · ' : null}
+            {filterNote}
+          </p>
+        )}
 
         {(cardTeaser) && (
           <p className="mb-2 line-clamp-2 border-l-2 border-purple-500/30 pl-2 text-[10px] leading-relaxed text-white/45 sm:mb-3 sm:text-[11px]">
@@ -281,6 +313,35 @@ export const RelationshipCard = ({ relationship, onClick, highlighted }: Relatio
             </div>
           )}
         </div>
+
+        {(onOpenCharacter || onLinkCharacter) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+            {hasCharacterCard ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={(event) => handleCardAction(event, onOpenCharacter)}
+                className="h-7 border-cyan-500/30 bg-cyan-500/10 px-2 text-[10px] text-cyan-100 hover:bg-cyan-500/20"
+              >
+                <BookOpen className="mr-1 h-3 w-3" />
+                Character card
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={(event) => handleCardAction(event, onLinkCharacter)}
+                disabled={linkBusy}
+                className="h-7 border-pink-500/30 bg-pink-500/10 px-2 text-[10px] text-pink-100 hover:bg-pink-500/20"
+              >
+                <Link2 className="mr-1 h-3 w-3" />
+                {linkBusy ? 'Linking...' : 'Link to Character Book'}
+              </Button>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

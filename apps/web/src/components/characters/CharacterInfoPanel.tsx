@@ -55,6 +55,22 @@ type CharacterAttribute = {
 
 type LifeMapItem = { label: string; value?: string; prompt: string };
 
+const SEX_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+  { value: 'nonbinary', label: 'Nonbinary' },
+];
+
+const ORIENTATION_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'gay', label: 'Gay' },
+  { value: 'lesbian', label: 'Lesbian' },
+  { value: 'bisexual', label: 'Bisexual' },
+  { value: 'heterosexual', label: 'Heterosexual' },
+  { value: 'queer', label: 'Queer' },
+];
+
 export type CharacterInfoPanelProps = {
   editedCharacter: Character;
   setEditedCharacter: React.Dispatch<React.SetStateAction<Character>>;
@@ -121,6 +137,8 @@ export function CharacterInfoPanel({
   const meta = (editedCharacter.metadata ?? {}) as Record<string, unknown>;
   const standingOverride = (meta.standing_override as { tier?: string } | null)?.tier ?? null;
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
+  const sexValue = typeof meta.sex === 'string' ? meta.sex : 'unknown';
+  const orientationValue = typeof meta.sexual_orientation === 'string' ? meta.sexual_orientation : 'unknown';
   const tierLabels: Record<string, string> = {
     inner_circle: 'Inner circle',
     close: 'Close',
@@ -130,14 +148,22 @@ export function CharacterInfoPanel({
   };
 
   const persistOverride = async (key: string, value: unknown) => {
+    const patch =
+      key === 'sex' || key === 'sexual_orientation'
+        ? {
+            [key]: value,
+            [`${key}_source`]: value === 'unknown' ? 'unknown' : 'user_confirmed',
+            [`${key}_confirmed_at`]: value === 'unknown' ? null : new Date().toISOString(),
+          }
+        : { [key]: value };
     setEditedCharacter((prev) => ({
       ...prev,
-      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), [key]: value },
+      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...patch },
     }));
     try {
       await fetchJson(`/api/characters/${characterId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ metadata: { [key]: value } }),
+        body: JSON.stringify({ metadata: patch }),
       });
       onUpdate();
     } catch (err) {
@@ -233,6 +259,52 @@ export function CharacterInfoPanel({
           {(editedCharacter.alias?.length ?? 0) > 0 && (
             <StatCell label="Also known as" value={editedCharacter.alias!.slice(0, 2).join(', ')} />
           )}
+        </div>
+      </section>
+
+      {/* ── 2b. Identity details ─────────────────────────────────────── */}
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/5 border border-white/10">
+            <User className="h-4 w-4 text-white/55" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-white">Identity details</h3>
+            <p className="mt-1 text-xs leading-relaxed text-white/45">
+              Use confirmed information only. Love & Relationships uses these fields to avoid surfacing people outside
+              your stated attraction profile; unknown values stay visible for review.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Sex</span>
+                <select
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                  value={sexValue}
+                  onChange={(event) => void persistOverride('sex', event.target.value)}
+                >
+                  {SEX_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Sexual orientation</span>
+                <select
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                  value={orientationValue}
+                  onChange={(event) => void persistOverride('sexual_orientation', event.target.value)}
+                >
+                  {ORIENTATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -27,6 +27,10 @@ import { RomanticLexicalInsights } from './RomanticLexicalInsights';
 import { RomanticStoryShowcase } from './RomanticStoryShowcase';
 import { romanticRelationshipsApi, type RomanticRescanSummary } from '../../api/romanticRelationships';
 import { apiCache } from '../../lib/cache';
+import { fetchCharacterById } from '../../lib/hydrateBookEntity';
+import { invalidateCache } from '../../lib/requestCache';
+import { CharacterDetailModal } from '../characters/CharacterDetailModal';
+import type { Character } from '../characters/CharacterProfileCard';
 
 type RomanticRelationship = {
   id: string;
@@ -53,6 +57,16 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  character_id?: string | null;
+  character_sex?: string | null;
+  user_romantic_filter?: {
+    user_sex?: string | null;
+    user_orientation?: string | null;
+    partner_sex?: string | null;
+    reviewed?: boolean;
+    eligible?: boolean | null;
+    note?: string;
+  };
   // Sprint AD: deterministic dynamics persisted under metadata.signals.
   metadata?: {
     signals?: {
@@ -129,6 +143,9 @@ export const LoveAndRelationshipsView = () => {
   const [rescanError, setRescanError] = useState<string | null>(null);
   const [rescanSummary, setRescanSummary] = useState<RomanticRescanSummary | null>(null);
   const [highlightedRelationshipId, setHighlightedRelationshipId] = useState<string | null>(null);
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
   const relationshipsGridRef = useRef<HTMLDivElement>(null);
 
   const scrollToRelationship = useCallback((relationshipId: string) => {
@@ -259,6 +276,44 @@ export const LoveAndRelationshipsView = () => {
     }
   };
 
+  const openCharacterCard = async (rel: RomanticRelationship) => {
+    if (shouldUseMockData) return;
+    const characterId = rel.character_id ?? (rel.person_type === 'character' ? rel.person_id : null);
+    if (!characterId) return;
+    setRelationshipError(null);
+    try {
+      const character = await fetchCharacterById<Character>(characterId);
+      setSelectedCharacter(character);
+    } catch (error) {
+      setRelationshipError(error instanceof Error ? error.message : 'Could not open Character Book card.');
+    }
+  };
+
+  const linkRelationshipToCharacter = async (rel: RomanticRelationship) => {
+    if (shouldUseMockData) return;
+    setLinkBusyId(rel.id);
+    setRelationshipError(null);
+    try {
+      const result = await fetchJson<{ success: boolean; character_id: string }>(
+        `/api/conversation/romantic-relationships/${rel.id}/link-character`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ character_name: rel.person_name }),
+        }
+      );
+      invalidateCache();
+      await loadRelationships();
+      if (result.character_id) {
+        const character = await fetchCharacterById<Character>(result.character_id);
+        setSelectedCharacter(character);
+      }
+    } catch (error) {
+      setRelationshipError(error instanceof Error ? error.message : 'Could not link relationship to Character Book.');
+    } finally {
+      setLinkBusyId(null);
+    }
+  };
+
   const filteredRelationships = relationships.filter(rel => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
@@ -308,6 +363,9 @@ export const LoveAndRelationshipsView = () => {
       relationship={rel}
       highlighted={highlightedRelationshipId === rel.id}
       onClick={() => setSelectedRelationship(rel.id)}
+      onOpenCharacter={openCharacterCard}
+      onLinkCharacter={linkRelationshipToCharacter}
+      linkBusy={linkBusyId === rel.id}
     />
   );
 
@@ -374,15 +432,15 @@ export const LoveAndRelationshipsView = () => {
         </CardHeader>
       </Card>
 
-      {(rescanNotice || rescanError) && (
+      {(rescanNotice || rescanError || relationshipError) && (
         <p
           className={`text-xs rounded border px-3 py-2 ${
-            rescanError
+            rescanError || relationshipError
               ? 'text-red-300 border-red-500/30 bg-red-500/10'
               : 'text-emerald-200 border-emerald-500/25 bg-emerald-500/10'
           }`}
         >
-          {rescanError ?? rescanNotice}
+          {relationshipError ?? rescanError ?? rescanNotice}
         </p>
       )}
 
@@ -630,6 +688,18 @@ export const LoveAndRelationshipsView = () => {
             loadRelationships();
             setSelectedRelationship(null);
           }}
+        />
+      )}
+      {selectedCharacter && (
+        <CharacterDetailModal
+          character={selectedCharacter}
+          onClose={() => setSelectedCharacter(null)}
+          onUpdate={() => {
+            void loadRelationships();
+            invalidateCache(selectedCharacter.id);
+          }}
+          relationship={relationships.find((rel) => (rel.character_id ?? rel.person_id) === selectedCharacter.id)}
+          initialTab="info"
         />
       )}
     </div>
