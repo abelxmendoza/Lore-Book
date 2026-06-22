@@ -27,12 +27,8 @@ export function DevelopmentNotice() {
       return;
     }
 
-    // Show after a brief delay for better UX
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-    }, 500);
-
-    return () => clearTimeout(timer);
+    // Show immediately on first visit — this is the first thing users should see
+    setIsVisible(true);
   }, []);
 
   const handleDismiss = () => {
@@ -51,7 +47,7 @@ export function DevelopmentNotice() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dev-notice-title"

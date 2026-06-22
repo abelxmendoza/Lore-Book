@@ -87,10 +87,8 @@ export const DEV_FEATURES = {
    */
   characterExtractionFromChat: import.meta.env.VITE_ENABLE_CHARACTER_EXTRACTION === 'true',
   
-  // Show development notice banner — off in production unless explicitly enabled
-  showDevNotice: isDevelopment
-    ? import.meta.env.VITE_SHOW_DEV_NOTICE !== 'false'
-    : import.meta.env.VITE_SHOW_DEV_NOTICE === 'true',
+  // Show early-access disclaimer on first visit — off only when VITE_SHOW_DEV_NOTICE=false
+  showDevNotice: import.meta.env.VITE_SHOW_DEV_NOTICE !== 'false',
 } as const;
 
 // Production Features

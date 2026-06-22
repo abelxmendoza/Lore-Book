@@ -22,6 +22,9 @@ import type { TimelineStitchingRunSummary } from './timeline/timelineStitchingIn
 import type { OrganizationInferenceRunSummary } from './organizations/inference/organizationInferenceIntegrationService';
 import type { QuestLogInferenceRunSummary } from './questLog/inference/questLogInferenceIntegrationService';
 import type { EmotionInferenceRunSummary } from './emotion/emotionInferenceIntegrationService';
+import type { PreferenceInferenceRunSummary } from './preferences/preferenceInferenceIntegrationService';
+import type { MediaInferenceRunSummary } from './media/mediaInferenceIntegrationService';
+import type { StatusInferenceRunSummary } from './status/statusInferenceIntegrationService';
 
 export type SuggestionDomain =
   | 'characters'
@@ -54,6 +57,9 @@ export type SuggestionRescanSummary = {
   organizationInference?: OrganizationInferenceRunSummary;
   questLogInference?: QuestLogInferenceRunSummary;
   emotionInference?: EmotionInferenceRunSummary;
+  preferenceInference?: PreferenceInferenceRunSummary;
+  mediaInference?: MediaInferenceRunSummary;
+  statusInference?: StatusInferenceRunSummary;
 };
 
 async function loadRecentCorpus(userId: string): Promise<Array<{ content: string; date: string }>> {
@@ -279,7 +285,46 @@ class ConversationSuggestionRescanService {
       logger.warn({ err, userId }, 'Emotion inference rescan failed (non-blocking)');
     }
 
-    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference };
+    let preferenceInference: PreferenceInferenceRunSummary | undefined;
+    try {
+      const { rescanPreferenceInference } = await import('./preferences/preferenceInferenceIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `pref-rescan-${i}`,
+        text: e.content,
+      }));
+      preferenceInference = await rescanPreferenceInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Preference inference rescan failed (non-blocking)');
+    }
+
+    let mediaInference: MediaInferenceRunSummary | undefined;
+    try {
+      const { rescanMediaInference } = await import('./media/mediaInferenceIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `media-rescan-${i}`,
+        text: e.content,
+      }));
+      mediaInference = await rescanMediaInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Media inference rescan failed (non-blocking)');
+    }
+
+    let statusInference: StatusInferenceRunSummary | undefined;
+    try {
+      const { rescanStatusInference } = await import('./status/statusInferenceIntegrationService');
+      const episodes = await loadRecentCorpus(userId);
+      const episodeRows = episodes.map((e, i) => ({
+        id: `status-rescan-${i}`,
+        text: e.content,
+      }));
+      statusInference = await rescanStatusInference(userId, episodeRows);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Status inference rescan failed (non-blocking)');
+    }
+
+    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference, preferenceInference, mediaInference, statusInference };
   }
 }
 

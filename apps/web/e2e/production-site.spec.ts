@@ -38,6 +38,16 @@ test.describe('Production Site Smoke', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
 
     await expect(page.locator('#root')).toBeVisible();
+
+    const base = process.env.PLAYWRIGHT_BASE_URL ?? '';
+    const isProductionHost = /lorebookai\.com/i.test(base);
+    if (isProductionHost) {
+      const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
+      await expect(devNotice).toBeVisible({ timeout: 5000 });
+      await page.getByRole('button', { name: /got it/i }).click();
+      await expect(devNotice).toHaveCount(0);
+    }
+
     const heroHeadline = page.getByTestId('hero-rotating-headline');
     await expect(heroHeadline).toBeVisible();
     await expect
@@ -46,13 +56,6 @@ test.describe('Production Site Smoke', () => {
         return /remembers|noted|learns who you are|autobiographer/i.test(text);
       })
       .toBe(true);
-
-    const base = process.env.PLAYWRIGHT_BASE_URL ?? '';
-    const isProductionHost = /lorebookai\.com/i.test(base);
-    if (isProductionHost) {
-      const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
-      await expect(devNotice).toHaveCount(0);
-    }
 
     const critical = [...consoleErrors, ...pageErrors].filter(
       (message) =>

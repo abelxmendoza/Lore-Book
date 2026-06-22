@@ -511,6 +511,36 @@ class CharacterConversationRescanService {
       } catch (err) {
         logger.debug({ err, userId }, 'Emotion inference after character rescan failed (non-blocking)');
       }
+
+      try {
+        const { rescanPreferenceInference } = await import('./preferences/preferenceInferenceIntegrationService');
+        await rescanPreferenceInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Preference inference after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanMediaInference } = await import('./media/mediaInferenceIntegrationService');
+        await rescanMediaInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Media inference after character rescan failed (non-blocking)');
+      }
+
+      try {
+        const { rescanStatusInference } = await import('./status/statusInferenceIntegrationService');
+        await rescanStatusInference(
+          userId,
+          episodes.map((ep) => ({ id: ep.id, text: ep.text })),
+        );
+      } catch (err) {
+        logger.debug({ err, userId }, 'Status inference after character rescan failed (non-blocking)');
+      }
     }
 
     const summary: CharacterRescanSummary = {

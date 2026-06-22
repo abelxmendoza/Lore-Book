@@ -2633,6 +2633,51 @@ export class ConversationIngestionPipeline {
           });
       }
 
+      // Step 12.18: Preference / taste / favorite — profile signals, not book cards
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../preferences/preferenceInferenceIntegrationService')
+          .then(({ runPreferenceInferenceForMessage }) =>
+            runPreferenceInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Preference inference failed (non-blocking)');
+          });
+      }
+
+      // Step 12.19: Media / content / fandom — taste/context signals, not always cards
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../media/mediaInferenceIntegrationService')
+          .then(({ runMediaInferenceForMessage }) =>
+            runMediaInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Media inference failed (non-blocking)');
+          });
+      }
+
+      // Step 12.20: Status / lifecycle — entity state metadata, append-only transitions
+      if (sender === 'USER' && rawText.trim().length >= 8) {
+        void import('../status/statusInferenceIntegrationService')
+          .then(({ runStatusInferenceForMessage }) =>
+            runStatusInferenceForMessage(
+              userId,
+              rawText,
+              ingestOptions?.chatMessageId ?? messageId,
+            ),
+          )
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Status inference failed (non-blocking)');
+          });
+      }
+
       // Shadow mode — A/B comparison only; off by default (ENABLE_SHADOW_EXTRACTION=true)
       if (config.enableShadowExtraction && sender === 'USER') {
         setImmediate(() => {

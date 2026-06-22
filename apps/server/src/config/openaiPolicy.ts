@@ -30,6 +30,9 @@ export function buildOpenAiPolicySnapshot() {
       backgroundResponses: config.openAiBackgroundResponses,
       vectorStore: config.openAiVectorStoreEnabled,
       compactApi: config.openAiUseCompactApi,
+      serverCompactionThreshold: config.openAiServerCompactionThreshold,
+      promptCacheRetention: config.openAiPromptCacheRetention,
+      inputTokenCountApi: config.openAiUseInputTokenCountApi,
       webhooksConfigured: Boolean(config.openAiWebhookSecret),
     },
     costGuards: {

@@ -27,7 +27,7 @@ describe('DevelopmentNotice', () => {
   it('should show development notice when enabled in config', async () => {
     render(<DevelopmentNotice />);
 
-    // Wait for the notice to appear (it has a 500ms delay)
+    // Wait for the notice to appear
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Welcome to Lore Book/i })).toBeInTheDocument();
     }, { timeout: 3000 });
