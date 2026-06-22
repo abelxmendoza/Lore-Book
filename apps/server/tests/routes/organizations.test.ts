@@ -45,6 +45,7 @@ describe('Organizations Routes', () => {
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('organizations');
       expect(response.body.organizations).toHaveLength(2);
+      expect(response.headers['cache-control']).toBe('private, max-age=15');
     });
   });
 

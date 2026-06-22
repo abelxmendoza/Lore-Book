@@ -15,8 +15,8 @@ describe('Header', () => {
     render(<Header />);
     expect(screen.getByRole('link', { name: /about/i })).toHaveAttribute('href', '/about');
     expect(screen.getByRole('link', { name: /pricing/i })).toHaveAttribute('href', '/upgrade');
-    expect(screen.getByRole('link', { name: /terms/i })).toHaveAttribute('href', '/api/legal/terms');
-    expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute('href', '/api/legal/privacy');
+    expect(screen.getByRole('link', { name: /terms/i })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute('href', '/privacy-policy');
   });
 
   it('does not render Upgrade button when onUpgrade is not provided', () => {

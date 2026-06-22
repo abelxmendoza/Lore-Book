@@ -6,11 +6,11 @@ export const Footer = () => {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
         <span className="text-center sm:text-left">© 2025 Omega Technologies — Built by Abel Mendoza.</span>
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs">
-          <a className="hover:text-white transition-colors" href="/api/legal/privacy" target="_blank" rel="noreferrer">
+          <a className="hover:text-white transition-colors" href="/privacy-policy">
             Privacy
           </a>
           <span className="hidden sm:inline">•</span>
-          <a className="hover:text-white transition-colors" href="/api/legal/terms" target="_blank" rel="noreferrer">
+          <a className="hover:text-white transition-colors" href="/terms">
             Terms
           </a>
           <span className="hidden sm:inline">•</span>

@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ingestion": "vitest run tests/services/extractionSignals.test.ts tests/utils/aiUncertainty.test.ts tests/services/ingestionPipeline.test.ts tests/integration/ingestionPipelineE2E.test.ts",
-    "test:egress": "vitest run tests/architecture/egressProjection.test.ts tests/services/ingestionDedupCache.test.ts tests/services/semanticConversionReuse.test.ts tests/services/organizationServiceCache.test.ts",
+    "test:egress": "vitest run tests/architecture/egressProjection.test.ts tests/architecture/organizationProjection.test.ts tests/services/ingestionDedupCache.test.ts tests/services/semanticConversionReuse.test.ts tests/services/organizationServiceCache.test.ts",
     "test:scripts": "vitest run tests/scripts/migrationRunner.test.ts tests/scripts/migrate.test.ts tests/scripts/backfillScores.test.ts tests/scripts/cleanupLegacyEntities.test.ts",
     "test:audits": "vitest run tests/scripts/auditCommon.test.ts tests/scripts/auditDispatcher.test.ts tests/architecture/preDeletionReferences.test.ts",
     "test:phase1": "vitest run tests/services/timelineV2Service.test.ts tests/integration/timelineV2Redirect.integration.test.ts tests/services/chat/foundationEntityIndex.test.ts tests/integration/peoplePlacesReadRedirect.integration.test.ts tests/services/chat/recallQueryRouter.test.ts tests/services/chat/memoryClaimGuard.test.ts tests/services/chat/contextAwareMemoryRetrieval.test.ts tests/services/chat/characterCreationVerification.test.ts tests/services/chat/memoryFormationStatus.test.ts tests/services/workingMemoryAssembler.test.ts tests/architecture/preDeletionReferences.test.ts",

@@ -1,0 +1,86 @@
+name: Egress Monitor
+
+# Daily Supabase query-stats snapshot — tracks org-family call volume and
+# calls/hour after egress hardening. Requires DATABASE_URL repository secret.
+on:
+  schedule:
+    - cron: '0 14 * * *' # 14:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-monitor
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Supabase query stats snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check DATABASE_URL secret
+        id: db_secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::DATABASE_URL secret missing — skipping egress snapshot."
+          fi
+
+      - name: Run query stats snapshot
+        if: steps.db_secret.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run snapshot:query-stats -- --json > snapshot.json
+
+      - name: Summarize egress watch metrics
+        if: steps.db_secret.outputs.configured == 'true'
+        run: |
+          node -e "
+          const s = require('./snapshot.json');
+          const w = s.window || {};
+          const e = s.egress_watch || {};
+          const lines = [
+            '## Egress snapshot',
+            '',
+            '| Metric | Value |',
+            '|--------|-------|',
+            '| Sampled | ' + s.sampled_at + ' |',
+            '| Hours since stats reset | ' + w.hours_since_reset + ' |',
+            '| Calls / hour | ' + w.calls_per_hour + ' |',
+            '| Org-family calls | ' + e.org_family_calls + ' (' + e.org_family_pct + '%) |',
+            '| Chat message calls | ' + e.chat_message_calls + ' |',
+            '| RPC returns embedding | ' + e.match_journal_entries_returns_embedding + ' |',
+          ];
+          if (s.delta_vs_previous) {
+            const d = s.delta_vs_previous;
+            lines.push('| Δ calls/hr vs prev | ' + d.calls_per_hour_change + ' |');
+            lines.push('| Δ org-family | ' + d.org_family_calls_change + ' |');
+          }
+          require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n'));
+          if (e.org_family_pct > 10) {
+            console.error('::error::Org-family calls exceed 10% of window — investigate client refetch loop.');
+            process.exit(1);
+          }
+          "
+
+      - name: Upload snapshot artifact
+        if: steps.db_secret.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-query-snapshot
+          path: snapshot.json
+          retention-days: 30

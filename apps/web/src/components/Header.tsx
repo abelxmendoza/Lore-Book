@@ -29,10 +29,10 @@ export const Header = ({ onUpgrade }: HeaderProps) => {
         <a className="hover:text-white" href="/upgrade">
           Pricing
         </a>
-        <a className="hover:text-white" href="/api/legal/terms" target="_blank" rel="noreferrer">
+        <a className="hover:text-white" href="/terms">
           Terms
         </a>
-        <a className="hover:text-white" href="/api/legal/privacy" target="_blank" rel="noreferrer">
+        <a className="hover:text-white" href="/privacy-policy">
           Privacy
         </a>
         {onUpgrade && (

@@ -3,8 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 
+import { renderLegalHtml } from '../lib/legalHtml';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { logger } from '../logger';
 
@@ -30,32 +31,39 @@ function resolveLegalDir(): string {
   throw new Error(`Legal documents not found. Checked: ${candidates.join(', ')}`);
 }
 
-function sendLegalFile(res: Response, filename: string) {
+function readLegalFile(filename: string): string {
+  const filePath = path.join(resolveLegalDir(), filename);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Legal file missing: ${filePath}`);
+  }
+  return fs.readFileSync(filePath, 'utf8');
+}
+
+function wantsMarkdown(req: Request): boolean {
+  const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : '';
+  if (format === 'md' || format === 'markdown') return true;
+  const accept = req.headers.accept ?? '';
+  return accept.includes('text/markdown') && !accept.includes('text/html');
+}
+
+function sendLegalDocument(req: Request, res: Response, filename: string, title: string) {
   try {
-    const filePath = path.join(resolveLegalDir(), filename);
-    if (!fs.existsSync(filePath)) {
-      logger.error({ filePath, filename }, 'Legal document file missing on disk');
-      res.status(503).json({ error: 'Legal document temporarily unavailable' });
+    const markdown = readLegalFile(filename);
+    if (wantsMarkdown(req)) {
+      res.type('text/markdown; charset=utf-8').send(markdown);
       return;
     }
-    res.sendFile(filePath, (err) => {
-      if (err) {
-        logger.error({ err, filePath, filename }, 'Failed to send legal document');
-        if (!res.headersSent) {
-          res.status(503).json({ error: 'Legal document temporarily unavailable' });
-        }
-      }
-    });
+    res.type('text/html; charset=utf-8').send(renderLegalHtml(title, markdown));
   } catch (error) {
     logger.error({ error, filename }, 'Legal document unavailable');
     res.status(503).json({ error: 'Legal document temporarily unavailable' });
   }
 }
 
-legalRouter.get('/terms', rateLimitMiddleware, (_req, res) => {
-  sendLegalFile(res, 'TERMS.md');
+legalRouter.get('/terms', rateLimitMiddleware, (req, res) => {
+  sendLegalDocument(req, res, 'TERMS.md', 'Terms of Service');
 });
 
-legalRouter.get('/privacy', rateLimitMiddleware, (_req, res) => {
-  sendLegalFile(res, 'PRIVACY.md');
+legalRouter.get('/privacy', rateLimitMiddleware, (req, res) => {
+  sendLegalDocument(req, res, 'PRIVACY.md', 'Privacy Policy');
 });

@@ -5,6 +5,13 @@
 
 import { logger } from '../logger';
 
+import {
+  ORG_COLS,
+  ORG_MEMBER_COLS,
+  ORG_STORY_COLS,
+  ORG_EVENT_COLS,
+  ORG_LOCATION_COLS,
+} from '../db/organizationColumns';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { supabaseAdmin } from './supabaseClient';
@@ -47,6 +54,8 @@ export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 const ORG_LIST_TTL_MS = 30_000;
 type OrgListCacheEntry = { at: number; data: unknown[] };
 const orgListCache = new Map<string, OrgListCacheEntry>();
+/** Collapse concurrent cache misses for the same user into one DB fan-out. */
+const orgListInflight = new Map<string, Promise<Organization[]>>();
 
 // ── User relationship to this group ──────────────────────────────────
 export type UserRelationship =
@@ -238,7 +247,10 @@ export class OrganizationService {
    * changes an org or its members/stories/events/locations so reads stay fresh.
    */
   invalidateOrganizations(userId: string): void {
-    if (userId) orgListCache.delete(userId);
+    if (userId) {
+      orgListCache.delete(userId);
+      orgListInflight.delete(userId);
+    }
   }
 
   async listOrganizations(userId: string): Promise<Organization[]> {
@@ -248,10 +260,22 @@ export class OrganizationService {
     }
     if (cached) orgListCache.delete(userId);
 
+    const inflight = orgListInflight.get(userId);
+    if (inflight) return inflight;
+
+    const load = this.loadOrganizationsFromDb(userId).finally(() => {
+      orgListInflight.delete(userId);
+    });
+    orgListInflight.set(userId, load);
+    return load;
+  }
+
+  /** One cache-miss fan-out: 1 org read + 4 batched child reads (O(orgs) rows). */
+  private async loadOrganizationsFromDb(userId: string): Promise<Organization[]> {
     try {
       const { data: orgs, error } = await supabaseAdmin
         .from('organizations')
-        .select('*')
+        .select(ORG_COLS)
         .eq('user_id', userId)
         .order('updated_at', { ascending: false });
 
@@ -267,22 +291,22 @@ export class OrganizationService {
       const [membersResult, storiesResult, eventsResult, locationsResult] = await Promise.all([
         supabaseAdmin
           .from('organization_members')
-          .select('*')
+          .select(ORG_MEMBER_COLS)
           .in('organization_id', organizationIds)
           .order('joined_date', { ascending: true }),
         supabaseAdmin
           .from('organization_stories')
-          .select('*')
+          .select(ORG_STORY_COLS)
           .in('organization_id', organizationIds)
           .order('date', { ascending: false }),
         supabaseAdmin
           .from('organization_events')
-          .select('*')
+          .select(ORG_EVENT_COLS)
           .in('organization_id', organizationIds)
           .order('date', { ascending: false }),
         supabaseAdmin
           .from('organization_locations')
-          .select('*')
+          .select(ORG_LOCATION_COLS)
           .in('organization_id', organizationIds)
           .order('last_visited', { ascending: false }),
       ]);
@@ -341,7 +365,7 @@ export class OrganizationService {
     try {
       const { data: org, error } = await supabaseAdmin
         .from('organizations')
-        .select('*')
+        .select(ORG_COLS)
         .eq('id', organizationId)
         .eq('user_id', userId)
         .single();
@@ -530,7 +554,7 @@ export class OrganizationService {
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_members')
-        .select('*')
+        .select(ORG_MEMBER_COLS)
         .eq('organization_id', organizationId)
         .order('joined_date', { ascending: true });
 
@@ -598,7 +622,7 @@ export class OrganizationService {
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_stories')
-        .select('*')
+        .select(ORG_STORY_COLS)
         .eq('organization_id', organizationId)
         .order('date', { ascending: false });
 
@@ -617,7 +641,7 @@ export class OrganizationService {
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_events')
-        .select('*')
+        .select(ORG_EVENT_COLS)
         .eq('organization_id', organizationId)
         .order('date', { ascending: false });
 
@@ -636,7 +660,7 @@ export class OrganizationService {
     try {
       const { data, error } = await supabaseAdmin
         .from('organization_locations')
-        .select('*')
+        .select(ORG_LOCATION_COLS)
         .eq('organization_id', organizationId)
         .order('last_visited', { ascending: false });
 
