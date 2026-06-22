@@ -2,7 +2,9 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { recordEmbeddingCall } from '../lib/messageCostTracker';
+import { estimateUsdFromTokens } from '../lib/openaiCost';
 
+import { costAttributionService } from './costAttributionService';
 import { embeddingCacheService } from './embeddingCacheService';
 
 class EmbeddingService {
@@ -18,14 +20,21 @@ class EmbeddingService {
 
     // If not cached, call API and cache result
     try {
-      recordEmbeddingCall({
-        cacheHit: false,
-        model: config.embeddingModel,
-        tokens: Math.ceil(cleaned.length / 4),
-      });
+      const estTokens = Math.ceil(cleaned.length / 4);
+      recordEmbeddingCall({ cacheHit: false, model: config.embeddingModel, tokens: estTokens });
       const response = await openai.embeddings.create({
         model: config.embeddingModel,
         input: cleaned
+      });
+
+      // Embeddings bypass the completion choke point — attribute their spend here.
+      const tokens = response.usage?.total_tokens ?? estTokens;
+      costAttributionService.record({
+        operation: 'embedding',
+        model: config.embeddingModel,
+        inputTokens: tokens,
+        outputTokens: 0,
+        usd: estimateUsdFromTokens(config.embeddingModel, tokens, 0),
       });
 
       const embedding = response.data[0]?.embedding ?? [];

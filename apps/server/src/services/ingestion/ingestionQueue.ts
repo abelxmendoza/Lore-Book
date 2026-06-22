@@ -21,6 +21,7 @@
 import { randomUUID } from 'crypto';
 
 import { logger } from '../../logger';
+import { runWithMessageCost } from '../../lib/messageCostTracker';
 import { supabaseAdmin } from '../supabaseClient';
 import { pipelineRunService } from './pipelineRunService';
 
@@ -161,12 +162,18 @@ class IngestionQueue {
         '../conversationCentered/ingestionPipeline'
       );
 
-      await conversationIngestionPipeline.ingestFromChatMessage(
-        job.userId,
-        job.chatMessageId,
-        job.sessionId,
-        job.conversationHistory,
-        job.force
+      // Attribute all LLM/embedding spend in this job to the `ingestion`
+      // operation so the cost dashboard separates ingestion from chat.
+      await runWithMessageCost(
+        { label: 'ingestion', userId: job.userId, messageId: job.chatMessageId },
+        () =>
+          conversationIngestionPipeline.ingestFromChatMessage(
+            job.userId,
+            job.chatMessageId,
+            job.sessionId,
+            job.conversationHistory,
+            job.force
+          )
       );
 
       this.totalCompleted++;

@@ -28,6 +28,8 @@ export type MessageCostAccumulator = {
   label: string;
   userId?: string;
   messageId?: string;
+  /** Finer "where" within the message (e.g. chat.answer, chat.continuity). */
+  currentOperation?: string;
   llmCalls: number;
   embeddingCalls: number;
   embeddingCacheHits: number;
@@ -79,6 +81,38 @@ export function runWithMessageCost<T>(
 
 export function getMessageCost(): MessageCostAccumulator | undefined {
   return storage.getStore();
+}
+
+/**
+ * The "where/why" label for cost attribution: the current operation if one is
+ * active, else the context label, else 'unknown' (still counted toward whole-app
+ * spend). Used by the cost-attribution sink at the OpenAI choke points.
+ */
+export function getCurrentCostOperation(): string {
+  const acc = storage.getStore();
+  return acc?.currentOperation ?? acc?.label ?? 'unknown';
+}
+
+/** Scope a block to a finer operation label for attribution. Sync or async. */
+export function withCostOperation<T>(operation: string, fn: () => T): T {
+  const acc = storage.getStore();
+  if (!acc) return fn();
+  const previous = acc.currentOperation;
+  acc.currentOperation = operation;
+  const restore = () => {
+    acc.currentOperation = previous;
+  };
+  try {
+    const out = fn();
+    if (out && typeof (out as { then?: unknown }).then === 'function') {
+      return (out as unknown as Promise<unknown>).finally(restore) as unknown as T;
+    }
+    restore();
+    return out;
+  } catch (err) {
+    restore();
+    throw err;
+  }
 }
 
 /** Record one chat/completion call's token usage. No-op outside a context. */

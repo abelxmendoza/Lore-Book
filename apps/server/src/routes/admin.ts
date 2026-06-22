@@ -20,6 +20,8 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/rbac';
 import { resolveAccountAuthorityFromAuthUser } from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { getCostSummary, costAttributionService } from '../services/costAttributionService';
+import { getOpenAiBudgetSnapshot } from '../services/openaiBudgetService';
 
 import { chronicleAdminRouter } from './chronicleAdmin';
 
@@ -239,6 +241,45 @@ router.get('/ai-events', async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ error }, 'Error fetching AI events');
     res.status(500).json({ error: 'Failed to fetch AI events' });
+  }
+});
+
+/**
+ * GET /admin/cost
+ * Whole-app OpenAI cost: total USD, where (operation), what (model), trend (day),
+ * plus the monthly budget snapshot. Answers "where is the money going and why".
+ */
+router.get('/cost', async (req: AuthenticatedRequest, res) => {
+  try {
+    logAdminAction(req.user!.id, 'view_cost');
+    const rangeDays = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+
+    // Flush buffered in-memory deltas first so the dashboard reflects the latest.
+    await costAttributionService.flush();
+
+    const [summary, budget] = await Promise.all([
+      getCostSummary(rangeDays),
+      getOpenAiBudgetSnapshot().catch(() => null),
+    ]);
+
+    // Derived: average $/message using chat operations as the message proxy.
+    const chatOps = summary.byOperation.filter((o) => o.operation.startsWith('chat'));
+    const chatUsd = chatOps.reduce((s, o) => s + o.usd, 0);
+    const avgUsdPerDay = summary.byDay.length
+      ? summary.totalUsd / summary.byDay.length
+      : 0;
+
+    res.json({
+      ...summary,
+      budget,
+      derived: {
+        chatUsd: Math.round(chatUsd * 1e6) / 1e6,
+        avgUsdPerDay: Math.round(avgUsdPerDay * 1e6) / 1e6,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error fetching cost summary');
+    res.status(500).json({ error: 'Failed to fetch cost summary' });
   }
 });
 

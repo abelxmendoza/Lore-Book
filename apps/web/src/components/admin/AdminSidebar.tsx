@@ -8,7 +8,7 @@ import { cn } from '../../lib/cn';
 export type AdminSection =
   | 'dashboard' | 'users' | 'subscribers' | 'login-activity'
   | 'logs' | 'ai-events' | 'engine-health' | 'integrations' | 'tools' | 'feature-flags' | 'finance'
-  | 'chronicle';
+  | 'cost' | 'chronicle';
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -49,7 +49,10 @@ const MENU_GROUPS = [
   },
   {
     label: 'Finance',
-    items: [{ id: 'finance' as AdminSection, label: 'Finance', icon: DollarSign }],
+    items: [
+      { id: 'finance' as AdminSection, label: 'Finance', icon: DollarSign },
+      { id: 'cost' as AdminSection, label: 'AI Cost', icon: DollarSign },
+    ],
   },
 ];
 

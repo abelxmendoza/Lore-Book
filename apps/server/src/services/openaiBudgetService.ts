@@ -1,6 +1,7 @@
 import { config } from '../config';
 import { estimateUsdFromTokens } from '../lib/openaiCost';
-import { recordLlmUsage } from '../lib/messageCostTracker';
+import { recordLlmUsage, getCurrentCostOperation } from '../lib/messageCostTracker';
+import { costAttributionService } from './costAttributionService';
 import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -142,9 +143,18 @@ export async function recordOpenAiTokenUsage(params: {
   inputTokens: number;
   outputTokens: number;
 }): Promise<void> {
-  // Per-message cost accounting runs regardless of budget-tracking config so the
-  // live cost meter never depends on the budget feature being enabled.
+  // Per-message cost accounting + whole-app attribution run regardless of
+  // budget-tracking config so observability never depends on the budget feature.
   recordLlmUsage(params.model, params.inputTokens, params.outputTokens);
+  if (params.inputTokens > 0 || params.outputTokens > 0) {
+    costAttributionService.record({
+      operation: getCurrentCostOperation(),
+      model: params.model,
+      inputTokens: params.inputTokens,
+      outputTokens: params.outputTokens,
+      usd: estimateUsdFromTokens(params.model, params.inputTokens, params.outputTokens),
+    });
+  }
 
   if (!isBudgetEnabled()) return;
   const month = monthKey();
