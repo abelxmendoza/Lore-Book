@@ -65,11 +65,15 @@ export const CostDashboard = () => {
   }
   if (!data) return null;
 
-  const maxOpUsd = Math.max(...data.byOperation.map((o) => o.usd), 0.000001);
-  const maxDayUsd = Math.max(...data.byDay.map((d) => d.usd), 0.000001);
+  // Defensive defaults: tolerate a partial/legacy API response without crashing.
+  const byOperation = data.byOperation ?? [];
+  const byModel = data.byModel ?? [];
+  const byDay = data.byDay ?? [];
+  const maxOpUsd = Math.max(...byOperation.map((o) => o.usd), 0.000001);
+  const maxDayUsd = Math.max(...byDay.map((d) => d.usd), 0.000001);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="ai-cost-dashboard">
       <div className="flex items-center justify-between">
         <p className="text-sm text-white/50">
           Whole-app OpenAI spend since {data.since}. Estimated from token usage.
@@ -114,11 +118,11 @@ export const CostDashboard = () => {
 
       {/* WHERE: by operation */}
       <Section title="Where the money goes" icon={<Layers className="h-4 w-4" />}>
-        {data.byOperation.length === 0 ? (
+        {byOperation.length === 0 ? (
           <Empty />
         ) : (
           <div className="space-y-2">
-            {data.byOperation.map((o) => (
+            {byOperation.map((o) => (
               <div key={o.operation} className="flex items-center gap-3 text-sm">
                 <div className="w-32 shrink-0 truncate text-white/70" title={o.operation}>
                   {o.operation}
@@ -137,11 +141,11 @@ export const CostDashboard = () => {
 
       {/* WHAT: by model */}
       <Section title="By model" icon={<Cpu className="h-4 w-4" />}>
-        {data.byModel.length === 0 ? (
+        {byModel.length === 0 ? (
           <Empty />
         ) : (
           <div className="space-y-1.5">
-            {data.byModel.map((m) => (
+            {byModel.map((m) => (
               <div key={m.model} className="flex items-center justify-between text-sm">
                 <span className="text-white/70">{m.model}</span>
                 <span className="text-white/80">
@@ -155,11 +159,11 @@ export const CostDashboard = () => {
 
       {/* TREND: by day */}
       <Section title="Daily trend">
-        {data.byDay.length === 0 ? (
+        {byDay.length === 0 ? (
           <Empty />
         ) : (
           <div className="flex items-end gap-1 h-24">
-            {data.byDay.map((d) => (
+            {byDay.map((d) => (
               <div key={d.day} className="flex-1 flex flex-col items-center justify-end" title={`${d.day}: ${usd(d.usd)}`}>
                 <div
                   className="w-full bg-primary/50 rounded-t"

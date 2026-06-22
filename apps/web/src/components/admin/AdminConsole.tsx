@@ -6,7 +6,6 @@ import { AdminCard } from './AdminCard';
 import { AdminTable } from './AdminTable';
 import { AdminHeader } from './AdminHeader';
 import { FinanceDashboard } from './FinanceDashboard';
-import { CostDashboard } from './CostDashboard';
 import { LogsViewer } from './LogsViewer';
 import { EngineHealthDashboard } from './EngineHealthDashboard';
 import { canAccessAdmin } from '../../middleware/roleGuard';
@@ -110,7 +109,6 @@ export const AdminConsole = () => {
       case 'tools': return 'Admin Tools';
       case 'feature-flags': return 'Feature Flags';
       case 'finance': return 'Finance Dashboard';
-      case 'cost': return 'AI Cost';
       default: return 'Admin Console';
     }
   };
@@ -266,10 +264,6 @@ export const AdminConsole = () => {
 
             {activeSection === 'finance' && (
               <FinanceDashboard />
-            )}
-
-            {activeSection === 'cost' && (
-              <CostDashboard />
             )}
           </>
         )}
