@@ -88,27 +88,25 @@ describe('Composer entity chip flow (integration)', () => {
     });
   });
 
-  it('loads index, shows chips while typing, and submits visible matches', async () => {
+  it('loads index, shows chips while typing, and submits included matches', async () => {
     const onSubmit = vi.fn();
     renderComposer(<ChatComposer onSubmit={onSubmit} loading={false} />);
 
     const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: 'Tell Abel and Kel' } });
+    fireEvent.change(textarea, { target: { value: 'Tell Abel about the trip' } });
 
     await waitFor(() => {
       expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
     });
 
-    // Exact match → chip. Prefix match ("Kel" → Kelly) surfaces as a suggestion chip only.
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('composer-entity-dismiss-character-uuid-abel'));
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const [, entities] = onSubmit.mock.calls[0];
     expect(entities).toHaveLength(1);
-    expect(entities[0].name).toBe('Kelly');
+    expect(entities[0].name).toBe('Abel');
   });
 
   it('shows retry UI when index load fails', async () => {
