@@ -4,7 +4,6 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 import { continuityService } from '../../src/services/continuityService';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/continuityService', () => ({
   continuityService: {
     emitEvent: vi.fn(),

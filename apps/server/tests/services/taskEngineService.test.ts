@@ -4,7 +4,6 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 import type { TaskRecord, TaskStatus, TaskCategory } from '../../src/types';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/taskTimelineService');
 vi.mock('../../src/logger', () => ({
   logger: {

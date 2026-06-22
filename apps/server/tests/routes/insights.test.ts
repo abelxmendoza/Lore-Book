@@ -11,7 +11,6 @@ import { requireAuth } from '../../src/middleware/auth';
 // Mock dependencies
 vi.mock('../../src/services/insightReflectionService');
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());

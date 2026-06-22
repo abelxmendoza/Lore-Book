@@ -9,7 +9,6 @@ vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
   conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
 }));
 vi.mock('../../src/services/orchestratorService');
-vi.mock('../../src/services/supabaseClient');
 // OpenAI must be a constructor (new OpenAI())
 const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
 vi.mock('openai', () => ({

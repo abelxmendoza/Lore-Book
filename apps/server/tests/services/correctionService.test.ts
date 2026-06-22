@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { correctionService } from '../../src/services/correctionService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 
 describe('CorrectionService', () => {

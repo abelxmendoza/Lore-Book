@@ -3,7 +3,6 @@ import { peoplePlacesService } from '../../src/services/peoplePlacesService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/memoryService');
 vi.mock('../../src/logger', () => ({
   logger: {

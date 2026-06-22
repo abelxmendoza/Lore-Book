@@ -4,7 +4,6 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 import type { MemoryEntry, LocationProfile } from '../../src/types';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/chapterService', () => ({
   chapterService: {
     listChapters: vi.fn().mockResolvedValue([])

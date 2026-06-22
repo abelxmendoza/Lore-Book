@@ -11,7 +11,6 @@ import { requireAuth } from '../../src/middleware/auth';
 vi.mock('../../src/services/events/eventResolver');
 vi.mock('../../src/services/events/storageService');
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 // Import route after mocks are set up
 import eventsRouter from '../../src/routes/events';

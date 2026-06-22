@@ -4,7 +4,6 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 import { embeddingService } from '../../src/services/embeddingService';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/embeddingService');
 vi.mock('../../src/services/continuityService', () => ({
   continuityService: {

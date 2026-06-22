@@ -8,7 +8,6 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/namingService');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());

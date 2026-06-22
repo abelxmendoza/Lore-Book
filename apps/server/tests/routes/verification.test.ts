@@ -11,7 +11,6 @@ vi.mock('../../src/middleware/rateLimit', () => ({ rateLimitMiddleware: (_r: any
 vi.mock('../../src/middleware/validateRequest', () => ({ validateBody: () => (_r: any, _q: any, n: () => void) => n() }));
 vi.mock('../../src/services/memoryService');
 vi.mock('../../src/services/truthVerificationService');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());

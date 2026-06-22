@@ -40,7 +40,6 @@ vi.mock('../../src/lib/openai.js', () => ({
 }));
 
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());

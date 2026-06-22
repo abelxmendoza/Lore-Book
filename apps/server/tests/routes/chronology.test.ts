@@ -15,7 +15,6 @@ vi.mock('../../src/services/chronology', () => ({
   }),
 }));
 vi.mock('../../src/services/chronologyV2');
-vi.mock('../../src/services/supabaseClient');
 
 import { requireAuth } from '../../src/middleware/auth';
 import chronologyRouter from '../../src/routes/chronology';

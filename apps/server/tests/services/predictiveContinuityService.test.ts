@@ -6,7 +6,6 @@ import { insightReflectionService } from '../../src/services/insightReflectionSe
 import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/decisionMemoryService');
 vi.mock('../../src/services/insightReflectionService');
 vi.mock('../../src/services/omegaMemoryService');

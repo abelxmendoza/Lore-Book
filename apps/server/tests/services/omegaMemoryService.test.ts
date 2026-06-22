@@ -3,7 +3,6 @@ import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 // Mock dependencies
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/embeddingService', () => ({
   embeddingService: {
     embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1))
