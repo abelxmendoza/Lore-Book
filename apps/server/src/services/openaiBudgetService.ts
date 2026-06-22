@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { estimateUsdFromTokens } from '../lib/openaiCost';
+import { recordLlmUsage } from '../lib/messageCostTracker';
 import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -141,6 +142,10 @@ export async function recordOpenAiTokenUsage(params: {
   inputTokens: number;
   outputTokens: number;
 }): Promise<void> {
+  // Per-message cost accounting runs regardless of budget-tracking config so the
+  // live cost meter never depends on the budget feature being enabled.
+  recordLlmUsage(params.model, params.inputTokens, params.outputTokens);
+
   if (!isBudgetEnabled()) return;
   const month = monthKey();
   const deltaUsd = estimateUsdFromTokens(params.model, params.inputTokens, params.outputTokens);

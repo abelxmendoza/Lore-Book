@@ -1,6 +1,7 @@
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
+import { recordEmbeddingCall } from '../lib/messageCostTracker';
 
 import { embeddingCacheService } from './embeddingCacheService';
 
@@ -11,11 +12,17 @@ class EmbeddingService {
     // Try to get cached embedding first (FREE - no API call)
     const cached = await embeddingCacheService.getCachedEmbedding(cleaned);
     if (cached) {
+      recordEmbeddingCall({ cacheHit: true });
       return cached;
     }
 
     // If not cached, call API and cache result
     try {
+      recordEmbeddingCall({
+        cacheHit: false,
+        model: config.embeddingModel,
+        tokens: Math.ceil(cleaned.length / 4),
+      });
       const response = await openai.embeddings.create({
         model: config.embeddingModel,
         input: cleaned

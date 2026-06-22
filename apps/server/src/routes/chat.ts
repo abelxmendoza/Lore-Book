@@ -147,6 +147,7 @@ function resolveThreadContext(
 }
 
 import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
+import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
 
 function isOpenAIQuotaError(error: unknown): boolean {
   if (isOpenAiBudgetExceededError(error)) return true;
@@ -218,12 +219,19 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       }
     }
 
+    // Begin per-message cost accounting (Launch-Readiness Step 1: MEASURE).
+    // Set before chatStream so the AsyncLocalStorage context spans the decorator
+    // fan-out and the streamed answer; flushed once after the stream is consumed.
+    beginMessageCost({ label: 'chat', userId });
+
     // Resolve the chat stream BEFORE committing SSE headers.
     // If chatStream() throws (OpenAI quota, DB error, etc.) we can still return a
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
       result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities, chatFocus ?? undefined, previewCorrections);
+      const mc = getMessageCost();
+      if (mc) mc.messageId = result.metadata.messageId;
     } catch (setupError) {
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))
@@ -421,12 +429,16 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           logger.warn({ err: compileErr, userId: req.user.id }, 'Response compiler failed (non-blocking)');
         }
       }
+      // Emit one `message.cost` line for this message (LLM/embedding calls,
+      // tokens, est. USD, duration) now that the answer stream is fully consumed.
+      const costSummary = flushMessageCost();
       if (!res.writableEnded) {
         if (!clientGone) {
           sseWrite({
             type: 'done',
             ...(streamTokenUsage ? { usage: streamTokenUsage } : {}),
             ...(responseCompilerMeta ? { responseCompiler: responseCompilerMeta } : {}),
+            ...(costSummary ? { cost: costSummary } : {}),
           });
         }
         res.end();
