@@ -100,7 +100,7 @@ export const IdentityOnboarding = ({ onComplete, onClose }: Props) => {
     : 0;
 
   return (
-    <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0d0d12] p-6 text-white">
+    <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0d0d12] p-4 sm:p-6 text-white">
       <div className="mb-4 flex items-center gap-2">
         <Sparkles className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold">Build your LoreBook</h2>
@@ -133,7 +133,7 @@ export const IdentityOnboarding = ({ onComplete, onClose }: Props) => {
               type="button"
               onClick={analyze}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 sm:py-2 text-sm font-medium text-white disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               {busy ? 'Reading your story…' : 'Build my world'}
@@ -188,7 +188,7 @@ export const IdentityOnboarding = ({ onComplete, onClose }: Props) => {
               </div>
             )}
           </div>
-          <div className="mt-5 flex items-center justify-between">
+          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button type="button" onClick={() => setPhase('narrative')} className="text-sm text-white/50 hover:text-white">
               ← Back
             </button>
@@ -196,7 +196,7 @@ export const IdentityOnboarding = ({ onComplete, onClose }: Props) => {
               type="button"
               onClick={confirm}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60 sm:w-auto sm:py-2"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Confirm & build my LoreBook
