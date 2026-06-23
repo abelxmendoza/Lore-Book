@@ -1,0 +1,13 @@
+# Trivy configuration (auto-loaded by `trivy fs .`).
+#
+# Local environment files (.env and friends) are gitignored developer config
+# that legitimately hold real keys on a developer's machine — they are NOT
+# committed to version control, so they are not a leak. We skip scanning only
+# those exact files; secret detection stays fully active everywhere else, so a
+# real key committed in source would still fail the scan.
+scan:
+  skip-files:
+    - ".env"
+    - "apps/web/.env"
+    - "apps/web/.env.local"
+    - "lorekeeper-refine/.env"
