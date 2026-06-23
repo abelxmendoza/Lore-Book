@@ -1,8 +1,8 @@
-import { logger } from '../../logger';
-import { normalizeNameKey } from '../../utils/nameNormalization';
+import { logger } from '../../../logger';
+import { normalizeNameKey } from '../../../utils/nameNormalization';
 import { questLogSuggestionService } from '../questLogSuggestionService';
-import { questLogInferenceService } from './inference/questLogInferenceService';
-import type { QuestLogCandidate } from './inference/questLogInferenceTypes';
+import { questLogInferenceService } from './questLogInferenceService';
+import type { QuestLogCandidate } from './questLogInferenceTypes';
 
 export type QuestLogInferenceRunSummary = {
   candidatesAccepted: number;

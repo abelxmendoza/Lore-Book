@@ -6,7 +6,7 @@ import {
   isCollectivePersonName,
   isPlaceholderPersonName,
   isRoleDescriptorPersonName,
-} from '../utils/personNameValidation';
+} from '../../utils/personNameValidation';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type CharacterLexicalIssue = {

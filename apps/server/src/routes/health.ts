@@ -115,9 +115,45 @@ export async function buildDbHealthPayload(
   };
 }
 
+/** Fallback payload when the DB probes themselves throw (DB unreachable, etc.).
+ *  A health endpoint must report status, not 500. */
+function buildUnavailableDbHealthPayload(error: unknown): DbHealthPayload {
+  const message = error instanceof Error ? error.message : String(error);
+  const checkedAt = new Date().toISOString();
+  return {
+    status: 'critical',
+    missingTables: [],
+    lastSchemaSync: null,
+    storage: {
+      status: 'unknown',
+      databaseBytes: null,
+      walBytes: null,
+      quotaBytes: 0,
+      utilizationRatio: null,
+      checkedAt,
+      error: message,
+    },
+    upgrade: {
+      status: 'unknown',
+      postgresVersion: null,
+      postgresMajor: null,
+      cronJobRunDetailsRows: null,
+      deprecatedExtensions: [],
+      enabledExtensions: [],
+      warnings: [message],
+    },
+    connection: resolveDatabaseConnectionHints(),
+  };
+}
+
 export async function handleDbHealth(_req: Request, res: Response): Promise<void> {
-  const payload = await buildDbHealthPayload();
-  res.status(200).json(payload);
+  try {
+    const payload = await buildDbHealthPayload();
+    res.status(200).json(payload);
+  } catch (error) {
+    // Never 500 the health endpoint on a probe failure — report it as critical.
+    res.status(200).json(buildUnavailableDbHealthPayload(error));
+  }
 }
 
 /**

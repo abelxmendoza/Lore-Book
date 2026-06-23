@@ -531,7 +531,7 @@ class OmegaChatService {
     currentEmotionalState?: EmotionalState | null,
     currentFocusLine?: string,
     timelineInsight?: ChatContextExtension & { layer?: string },
-    continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null,
+    continuityIntent?: import('../utils/continuityIntentDetection').ContinuityIntent | null,
     userId?: string,
     agentEvidenceBlock?: string | null,
     selfModelBlock?: string | null

@@ -5,6 +5,7 @@ import { chapterService } from '../../src/services/chapterService';
 import { orchestratorService } from '../../src/services/orchestratorService';
 import { locationService } from '../../src/services/locationService';
 import { ragPacketCacheService } from '../../src/services/ragPacketCacheService';
+import { supabaseFromMock, makeSupabaseChain } from '../setup';
 
 // Mock all dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
 vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
@@ -30,6 +31,15 @@ describe('OmegaChatService', () => {
     vi.clearAllMocks();
     openaiCreateFn.mockResolvedValue({
       choices: [{ message: { content: 'Test response' } }],
+    });
+    // Array reads resolve empty; single-row reads/inserts (e.g. the message
+    // save's insert().select('id').single()) resolve to a row with an id so the
+    // chat flow can persist and continue instead of throwing "Failed to save".
+    supabaseFromMock.mockImplementation(() => {
+      const chain = makeSupabaseChain({ data: [], error: null });
+      chain.single = () => Promise.resolve({ data: { id: 'test-message-id' }, error: null });
+      chain.maybeSingle = () => Promise.resolve({ data: { id: 'test-message-id' }, error: null });
+      return chain;
     });
   });
 

@@ -8,7 +8,7 @@ import type { DetectedInterest } from '../conversationCentered/interestDetector'
 import { interestTracker } from '../conversationCentered/interestTracker';
 import { questSuggestionService } from '../quests/questSuggestionService';
 import { skillSuggestionService } from '../skills/skillSuggestionService';
-import { suggestionDismissalService } from '../suggestions/suggestionDismissalService';
+import { suggestionDismissalService } from '../suggestionDismissalService';
 import type { UnifiedExtractionPayload, UnifiedSkill, SkillProficiency } from './types/unifiedExtraction';
 import type { ExtractedSkillProfile } from '../skills/skillProfile';
 

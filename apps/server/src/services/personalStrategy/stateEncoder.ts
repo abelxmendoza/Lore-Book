@@ -238,8 +238,8 @@ export class StateEncoder {
 
       let relationshipHealthScore = 0.5;
       try {
-        const { relationshipDynamicsEngine } = await import('../relationshipDynamics/relationshipDynamicsEngine');
-        const relationships = await relationshipDynamicsEngine.getRelationships(userId);
+        const { RelationshipDynamicsEngine } = await import('../relationshipDynamics/relationshipEngine');
+        const relationships = await new RelationshipDynamicsEngine().getAllRelationships(userId);
         relationshipHealthScore = relationships.length > 0
           ? relationships.reduce((sum, r) => sum + (r.health_score || 0.5), 0) / relationships.length
           : 0.5;

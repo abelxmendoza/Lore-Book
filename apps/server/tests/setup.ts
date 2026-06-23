@@ -17,12 +17,26 @@ const { supabaseFromMock, supabaseRpcMock } = vi.hoisted(() => ({
   supabaseRpcMock: vi.fn(),
 }));
 
+// Exported so individual tests can tailor the global supabase mock (e.g. make an
+// insert().select().single() return an id) without re-mocking the whole module.
+export { supabaseFromMock, supabaseRpcMock };
+
 export function makeSupabaseChain(result: { data: unknown; error: unknown; count?: number }) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
     neq: () => chain,
+    is: () => chain,
+    not: () => chain,
+    gt: () => chain,
+    lt: () => chain,
+    like: () => chain,
     ilike: () => chain,
+    contains: () => chain,
+    overlaps: () => chain,
+    filter: () => chain,
+    match: () => chain,
+    range: () => chain,
     or: () => chain,
     in: () => chain,
     gte: () => chain,
@@ -33,7 +47,14 @@ export function makeSupabaseChain(result: { data: unknown; error: unknown; count
     update: () => chain,
     delete: () => chain,
     upsert: () => chain,
-    single: () => Promise.resolve(result),
+    // Real Supabase `.single()`/`.maybeSingle()` resolve to ONE row (object) or
+    // null — never an array. Mirror that so callers like `if (!entity)` and
+    // `savedRow?.id` behave correctly against the mock.
+    single: () =>
+      Promise.resolve({
+        ...result,
+        data: Array.isArray(result.data) ? (result.data[0] ?? null) : result.data,
+      }),
     maybeSingle: () =>
       Promise.resolve({
         ...result,
@@ -57,6 +78,10 @@ vi.mock('../src/services/supabaseClient', () => ({
     from: supabaseFromMock,
     auth: { getUser: vi.fn() },
   },
+  // In the test env the real module computes this as `false` (isTest === true).
+  // Callers like probeDatabaseOps short-circuit on it; omitting it makes vitest's
+  // strict mock throw "No isSupabaseConfigured export is defined on the mock".
+  isSupabaseConfigured: false,
 }));
 
 beforeEach(() => {
