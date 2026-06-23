@@ -220,7 +220,7 @@ export class OmegaMemoryService {
     // message is re-extracted at message level, per semantic unit (ER), per
     // perception unit, and during event assembly — all pure LLM calls on the same
     // content. Memoize by content hash for a short window.
-    const cacheKey = createHash('sha1').update(text).digest('hex');
+    const cacheKey = createHash('sha256').update(text).digest('hex');
     const cached = readCache(extractEntitiesCache, cacheKey);
     if (cached) return cached;
     const extracted = await this.extractEntitiesUncached(text);
@@ -380,7 +380,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       userId +
       '|' +
       candidates.map((c) => `${normalizeNameKey(c.name)}:${c.type}`).sort().join(',');
-    const cacheKey = createHash('sha1').update(sig).digest('hex');
+    const cacheKey = createHash('sha256').update(sig).digest('hex');
     const cached = readCache(resolveEntitiesCache, cacheKey);
     if (cached) return cached;
     const resolvedFresh = await this.resolveEntitiesUncached(userId, candidates, options);

@@ -22,6 +22,20 @@ import {
 
 export const mcpOAuthRouter = Router();
 
+/**
+ * Serialize a value for safe embedding inside an inline <script>. JSON.stringify
+ * alone does not escape `</script>` or U+2028/2029, so reflected input could
+ * break out of the script context (XSS). Escape the dangerous characters.
+ */
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value ?? '')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function requestBaseUrl(req: import('express').Request): string {
   if (config.mcpOAuthIssuer) return config.mcpOAuthIssuer.replace(/\/$/, '');
   const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
@@ -128,8 +142,8 @@ mcpOAuthRouter.get('/oauth/consent', (req, res) => {
   <button id="approve">Approve connection</button>
   <p id="status"></p>
   <script>
-    const pending = ${JSON.stringify(pending)};
-    const approveUrl = ${JSON.stringify(webApproveUrl)};
+    const pending = ${jsonForScript(pending)};
+    const approveUrl = ${jsonForScript(webApproveUrl)};
     document.getElementById('approve').onclick = async () => {
       const status = document.getElementById('status');
       status.textContent = 'Waiting for LoreBook session…';

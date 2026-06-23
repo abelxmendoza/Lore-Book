@@ -15,6 +15,24 @@ export const logger = pino({
     error: errSerializer,
     e: errSerializer,
   },
+  // Defense-in-depth: never emit secrets/credentials/PII tokens to logs even if
+  // a caller accidentally passes a whole request/config/session object. Pino
+  // redacts these key paths (any depth via `*`) before serialization.
+  redact: {
+    paths: [
+      'password', '*.password', '*.passwordHash',
+      'token', '*.token', 'accessToken', '*.accessToken', 'access_token', '*.access_token',
+      'refreshToken', '*.refreshToken', 'refresh_token', '*.refresh_token',
+      'apiKey', '*.apiKey', 'api_key', '*.api_key',
+      'secret', '*.secret', 'clientSecret', '*.clientSecret', 'client_secret', '*.client_secret',
+      'authorization', '*.authorization', 'Authorization', '*.Authorization',
+      'cookie', '*.cookie', 'Cookie', '*.Cookie',
+      'headers.authorization', 'headers.cookie',
+      'req.headers.authorization', 'req.headers.cookie',
+      'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'STRIPE_SECRET_KEY',
+    ],
+    censor: '[REDACTED]',
+  },
   // Pretty in dev by default. Set LOG_PRETTY=false to emit raw JSON in dev too —
   // needed to capture structured telemetry (ingestion.cost / stage.timing with
   // their steps[]/stages[] arrays) that pino-pretty would otherwise flatten away.
