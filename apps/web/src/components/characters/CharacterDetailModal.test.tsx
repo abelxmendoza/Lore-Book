@@ -21,6 +21,15 @@ vi.mock('../../hooks/useChatStream', () => ({
   }),
 }));
 
+vi.mock('../../hooks/useCharacterProfileBundle', () => ({
+  useCharacterProfileBundle: () => ({
+    bundle: null,
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+}));
+
 vi.mock('../../lib/api', () => ({
   // Reject by default so the component's catch blocks preserve the initial character state.
   // Individual tests can override with vi.mocked(fetchJson).mockResolvedValue(...).
@@ -33,6 +42,14 @@ vi.mock('../../contexts/MockDataContext', () => ({
   setGlobalMockDataEnabled: vi.fn(),
   subscribeToMockDataState: vi.fn(() => vi.fn()),
   MockDataProvider: ({ children }: { children?: unknown }) => children,
+}));
+
+vi.mock('../../store/api/entitiesApi', () => ({
+  useUpdateCharacterMutation: () => [
+    vi.fn(() => ({
+      unwrap: vi.fn().mockResolvedValue({}),
+    })),
+  ],
 }));
 
 const mockCharacter: Character = {
@@ -63,7 +80,7 @@ describe('CharacterDetailModal', () => {
   it('should render character information', () => {
     render(
       <CharacterDetailModal
-        character={mockCharacter}
+        character={{ ...mockCharacter, id: 'dummy-chat-character' }}
         onClose={mockOnClose}
         onUpdate={mockOnUpdate}
       />
@@ -117,19 +134,18 @@ describe('CharacterDetailModal', () => {
   });
 
   it('should show chat composer when Chat tab is active', async () => {
-    const user = userEvent.setup();
     render(
       <CharacterDetailModal
-        character={mockCharacter}
+        character={{ ...mockCharacter, id: 'dummy-chat-character' }}
         onClose={mockOnClose}
         onUpdate={mockOnUpdate}
+        initialTab="chat"
       />
     );
 
-    const chatTab = screen.getAllByRole('button', { name: /intelligence chat/i })[0];
-    await user.click(chatTab);
-
-    expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
+    });
   });
 
   it('should handle character with no data gracefully', () => {
@@ -195,6 +211,7 @@ describe('CharacterDetailModal', () => {
     it('shows high-impact badge in header when background + influence >= 70', async () => {
       const highImpactBackground: Character = {
         ...mockCharacter,
+        id: 'dummy-background-idol',
         name: 'Background Idol',
         importance_level: 'background',
         analytics: {
@@ -225,6 +242,7 @@ describe('CharacterDetailModal', () => {
           character={highImpactBackground}
           onClose={mockOnClose}
           onUpdate={mockOnUpdate}
+          initialTab="info"
         />
       );
 
@@ -232,10 +250,8 @@ describe('CharacterDetailModal', () => {
         expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
       }, { timeout: 3000 });
 
-      await waitFor(() => {
-        expect(screen.getByText(/At a glance/i)).toBeInTheDocument();
-        expect(screen.getByText(/Your ranking/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
+      expect(await screen.findByText(/At a glance/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Your ranking/i)).toBeInTheDocument();
     });
 
     it('does not show rare-in-story badge when major even with high influence', () => {

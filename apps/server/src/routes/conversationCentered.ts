@@ -67,6 +67,39 @@ const linkRomanticRelationshipSchema = z.object({
   character_name: z.string().min(1).max(160).optional(),
 });
 
+const romanticRelationshipPatchSchema = z.object({
+  relationship_type: z.enum([
+    'boyfriend', 'girlfriend', 'wife', 'husband', 'fiancé', 'fiancée',
+    'lover', 'fuck_buddy', 'crush', 'obsession', 'infatuation', 'lust',
+    'ex_boyfriend', 'ex_girlfriend', 'ex_wife', 'ex_husband',
+    'situationship', 'dating', 'talking', 'hooking_up', 'one_night_stand',
+    'complicated', 'on_break', 'friends_with_benefits', 'ex_lover', 'in_love',
+  ]).optional(),
+  love_status: z.enum(['in_love', 'falling_in_love', 'loved', 'love_faded', 'never_loved', 'uncertain']).nullable().optional(),
+  love_declared_at: z.string().datetime().nullable().optional(),
+  love_reciprocated: z.boolean().nullable().optional(),
+  status: z.enum(['active', 'on_break', 'ended', 'complicated', 'paused']).optional(),
+  start_date: z.string().datetime().nullable().optional(),
+  end_date: z.string().datetime().nullable().optional(),
+  is_current: z.boolean().optional(),
+  is_situationship: z.boolean().optional(),
+  exclusivity_status: z.enum(['exclusive', 'non_exclusive', 'unknown', 'complicated']).nullable().optional(),
+  strengths: z.array(z.string().max(240)).optional(),
+  weaknesses: z.array(z.string().max(240)).optional(),
+  pros: z.array(z.string().max(240)).optional(),
+  cons: z.array(z.string().max(240)).optional(),
+  red_flags: z.array(z.string().max(240)).optional(),
+  green_flags: z.array(z.string().max(240)).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  reason: z.string().max(500).optional(),
+  reason_note: z.string().max(1000).optional(),
+}).strict();
+
+const romanticRelationshipDeleteSchema = z.object({
+  reason: z.string().max(500).optional(),
+  reason_note: z.string().max(1000).optional(),
+}).strict();
+
 /**
  * POST /api/conversation/ingest
  * Ingest a message through the full pipeline
@@ -2533,6 +2566,146 @@ router.post(
     const userId = req.user!.id;
     const summary = await romanticConversationRescanService.rescan(userId);
     res.json({ success: true, summary });
+  })
+);
+
+/**
+ * PATCH /api/conversation/romantic-relationships/:id
+ * User/admin corrections for a romantic relationship row.
+ */
+router.patch(
+  '/romantic-relationships/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const parsed = romanticRelationshipPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid relationship update', details: parsed.error.flatten() });
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (existingError || !existing) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const { metadata, reason, reason_note, ...values } = parsed.data;
+    const existingMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+    const correctionMeta =
+      reason || reason_note
+        ? {
+            last_user_correction: {
+              reason,
+              reason_note,
+              corrected_at: new Date().toISOString(),
+            },
+          }
+        : {};
+    const updatePayload: Record<string, unknown> = {
+      ...values,
+      updated_at: new Date().toISOString(),
+    };
+    if (metadata || reason || reason_note) {
+      updatePayload.metadata = {
+        ...existingMeta,
+        ...(metadata ?? {}),
+        ...correctionMeta,
+      };
+    }
+
+    if (Object.keys(values).length === 0 && !metadata && !reason && !reason_note) {
+      return res.status(400).json({ success: false, error: 'No relationship updates provided' });
+    }
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, relationship: updated });
+  })
+);
+
+/**
+ * DELETE /api/conversation/romantic-relationships/:id
+ * Remove a wrong/irrelevant romantic relationship and keep a correction note
+ * on the linked character when possible.
+ */
+router.delete(
+  '/romantic-relationships/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const parsed = romanticRelationshipDeleteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid relationship delete request', details: parsed.error.flatten() });
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, metadata')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (existingError || !existing) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const correction = {
+      relationship_id: id,
+      reason: parsed.data.reason ?? 'user_deleted_relationship',
+      reason_note: parsed.data.reason_note,
+      deleted_at: new Date().toISOString(),
+    };
+
+    if (existing.person_type === 'character' && existing.person_id) {
+      const { data: character } = await supabaseAdmin
+        .from('characters')
+        .select('id, metadata')
+        .eq('id', existing.person_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (character?.id) {
+        const characterMeta = (character.metadata ?? {}) as Record<string, unknown>;
+        const previousDeletes = Array.isArray(characterMeta.romantic_relationship_deletions)
+          ? characterMeta.romantic_relationship_deletions
+          : [];
+        await supabaseAdmin
+          .from('characters')
+          .update({
+            metadata: {
+              ...characterMeta,
+              romantic_relationship_deletions: [...previousDeletes.slice(-9), correction],
+            },
+          })
+          .eq('id', character.id)
+          .eq('user_id', userId);
+      }
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (deleteError) throw deleteError;
+
+    res.json({ success: true, deleted_id: id, correction });
   })
 );
 

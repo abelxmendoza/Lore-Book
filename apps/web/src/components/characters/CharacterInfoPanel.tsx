@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
-import { fetchJson } from '../../lib/api';
+import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
 import type { Character } from './CharacterProfileCard';
 import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel';
@@ -134,6 +134,7 @@ export function CharacterInfoPanel({
   loreProfileLoading = false,
   onOpenCharacterById,
 }: CharacterInfoPanelProps) {
+  const [updateCharacter] = useUpdateCharacterMutation();
   const meta = (editedCharacter.metadata ?? {}) as Record<string, unknown>;
   const standingOverride = (meta.standing_override as { tier?: string } | null)?.tier ?? null;
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
@@ -161,10 +162,7 @@ export function CharacterInfoPanel({
       metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...patch },
     }));
     try {
-      await fetchJson(`/api/characters/${characterId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ metadata: patch }),
-      });
+      await updateCharacter({ id: characterId, values: { metadata: patch } }).unwrap();
       onUpdate();
     } catch (err) {
       console.error('Failed to save ranking override:', err);

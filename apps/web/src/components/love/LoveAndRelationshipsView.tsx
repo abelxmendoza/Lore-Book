@@ -8,7 +8,6 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchCharacterList } from '../../api/characterList';
-import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { 
@@ -25,12 +24,17 @@ import { RankingView } from './RankingView';
 import { DetectedCharacterSuggestions } from '../characters/DetectedCharacterSuggestions';
 import { RomanticLexicalInsights } from './RomanticLexicalInsights';
 import { RomanticStoryShowcase } from './RomanticStoryShowcase';
-import { romanticRelationshipsApi, type RomanticRescanSummary } from '../../api/romanticRelationships';
+import type { RomanticRescanSummary } from '../../api/romanticRelationships';
 import { apiCache } from '../../lib/cache';
 import { fetchCharacterById } from '../../lib/hydrateBookEntity';
 import { invalidateCache } from '../../lib/requestCache';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import type { Character } from '../characters/CharacterProfileCard';
+import {
+  useGetRomanticRelationshipsQuery,
+  useLinkRomanticRelationshipToCharacterMutation,
+  useRescanRomanticRelationshipsMutation,
+} from '../../store/api/entitiesApi';
 
 type RomanticRelationship = {
   id: string;
@@ -146,6 +150,9 @@ export const LoveAndRelationshipsView = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
+  const romanticRelationshipsQuery = useGetRomanticRelationshipsQuery(undefined, { skip: shouldUseMockData });
+  const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
+  const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
   const relationshipsGridRef = useRef<HTMLDivElement>(null);
 
   const scrollToRelationship = useCallback((relationshipId: string) => {
@@ -219,9 +226,10 @@ export const LoveAndRelationshipsView = () => {
         return;
       }
 
-      const data = await fetchJson<{ success: boolean; relationships: RomanticRelationship[] }>(
-        '/api/conversation/romantic-relationships'
-      );
+      const data = await romanticRelationshipsQuery.refetch().unwrap() as {
+        success: boolean;
+        relationships: RomanticRelationship[];
+      };
 
       if (data.success) {
         const withNames = data.relationships.filter(
@@ -256,7 +264,10 @@ export const LoveAndRelationshipsView = () => {
     setRescanError(null);
     try {
       apiCache.deletePattern(/\/api\/conversation\/romantic/);
-      const result = await romanticRelationshipsApi.rescan();
+      const result = await rescanRomanticRelationships().unwrap() as {
+        success: boolean;
+        summary: RomanticRescanSummary;
+      };
       setRescanSummary(result.summary);
       const s = result.summary;
       const total = s.relationshipsUpserted;
@@ -294,13 +305,10 @@ export const LoveAndRelationshipsView = () => {
     setLinkBusyId(rel.id);
     setRelationshipError(null);
     try {
-      const result = await fetchJson<{ success: boolean; character_id: string }>(
-        `/api/conversation/romantic-relationships/${rel.id}/link-character`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ character_name: rel.person_name }),
-        }
-      );
+      const result = await linkRomanticRelationshipToCharacter({
+        id: rel.id,
+        character_name: rel.person_name,
+      }).unwrap();
       invalidateCache();
       await loadRelationships();
       if (result.character_id) {

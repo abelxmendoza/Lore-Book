@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -30,6 +30,10 @@ import {
   pickMetricValue,
 } from '../../mocks/romanticDemoProfiles';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import {
+  useDeleteRomanticRelationshipMutation,
+  useUpdateRomanticRelationshipMutation,
+} from '../../store/api/entitiesApi';
 
 interface RelationshipDetailModalProps {
   relationshipId: string;
@@ -113,6 +117,8 @@ const RELATIONSHIP_TABS = [
 
 export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: RelationshipDetailModalProps) => {
   const { useMockData: shouldUseMockData } = useMockData();
+  const [updateRomanticRelationship] = useUpdateRomanticRelationshipMutation();
+  const [deleteRomanticRelationship] = useDeleteRomanticRelationshipMutation();
   const [relationship, setRelationship] = useState<RelationshipData | null>(null);
   const [analytics, setAnalytics] = useState<RelationshipAnalyticsData | null>(null);
   const [dates, setDates] = useState<DateEvent[]>([]);
@@ -128,6 +134,10 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [influence, setInfluence] = useState<MockRelationshipInfluence | null>(null);
   const [influenceLoading, setInfluenceLoading] = useState(false);
   const [influenceLoaded, setInfluenceLoaded] = useState(false);
+  const [crudBusy, setCrudBusy] = useState(false);
+  const [crudError, setCrudError] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
+  const [deleteReasonNote, setDeleteReasonNote] = useState('');
 
   useEffect(() => {
     loadData();
@@ -297,6 +307,54 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
       setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  const updateRelationshipStatus = async (
+    status: 'active' | 'on_break' | 'ended' | 'complicated' | 'paused',
+    reason: string,
+  ) => {
+    if (!relationship || shouldUseMockData) return;
+    setCrudBusy(true);
+    setCrudError(null);
+    try {
+      const now = new Date().toISOString();
+      const result = await updateRomanticRelationship({
+        id: relationship.id,
+        values: {
+          status,
+          is_current: status === 'active' || status === 'complicated',
+          ...(status === 'ended' ? { end_date: now } : {}),
+          ...(status === 'active' ? { end_date: null } : {}),
+          reason,
+        },
+      }).unwrap() as { relationship?: RelationshipData };
+      if (result.relationship) setRelationship(result.relationship);
+      await loadData();
+      onUpdate?.();
+    } catch (error) {
+      setCrudError(error instanceof Error ? error.message : 'Could not update relationship');
+    } finally {
+      setCrudBusy(false);
+    }
+  };
+
+  const deleteRelationship = async () => {
+    if (!relationship || shouldUseMockData) return;
+    setCrudBusy(true);
+    setCrudError(null);
+    try {
+      await deleteRomanticRelationship({
+        id: relationship.id,
+        reason: deleteReason,
+        reason_note: deleteReasonNote.trim() || undefined,
+      }).unwrap();
+      onUpdate?.();
+      onClose();
+    } catch (error) {
+      setCrudError(error instanceof Error ? error.message : 'Could not delete relationship');
+    } finally {
+      setCrudBusy(false);
     }
   };
 
@@ -580,6 +638,89 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 </div>
               </div>
             </div>
+
+            {!shouldUseMockData && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-950/10 p-4 space-y-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Correct this relationship</h3>
+                    <p className="text-xs text-white/45">Use this when the relationship status is wrong or the row should not be in Love & Relationships.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={crudBusy}
+                      onClick={() => void updateRelationshipStatus('active', 'user_restored_relationship_active')}
+                      className="border-green-500/30 bg-green-500/10 text-green-100 hover:bg-green-500/20"
+                    >
+                      Active
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={crudBusy}
+                      onClick={() => void updateRelationshipStatus('paused', 'user_paused_relationship')}
+                      className="border-yellow-500/30 bg-yellow-500/10 text-yellow-100 hover:bg-yellow-500/20"
+                    >
+                      Pause
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={crudBusy}
+                      onClick={() => void updateRelationshipStatus('ended', 'user_marked_relationship_ended')}
+                      className="border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"
+                    >
+                      Mark ended
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
+                  <select
+                    className="min-h-[36px] rounded-md border border-white/10 bg-black/40 px-3 text-xs text-white"
+                    value={deleteReason}
+                    onChange={(event) => setDeleteReason(event.target.value)}
+                    disabled={crudBusy}
+                  >
+                    <option value="wrong_person_or_not_real">Wrong person or not real</option>
+                    <option value="no_romantic_interest">No romantic interest</option>
+                    <option value="duplicate_or_should_merge">Duplicate or should merge</option>
+                    <option value="not_relevant_to_my_life">Not relevant</option>
+                    <option value="privacy_cleanup">Privacy cleanup</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <input
+                    className="min-h-[36px] rounded-md border border-white/10 bg-black/40 px-3 text-xs text-white placeholder:text-white/30"
+                    value={deleteReasonNote}
+                    onChange={(event) => setDeleteReasonNote(event.target.value)}
+                    placeholder="Optional note"
+                    disabled={crudBusy}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={crudBusy}
+                    onClick={() => void deleteRelationship()}
+                    className="border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Delete wrong row
+                  </Button>
+                </div>
+
+                {crudError && (
+                  <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                    {crudError}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Red & Green Flags — default order when not flags-first */}
             {!flagsFirst && (

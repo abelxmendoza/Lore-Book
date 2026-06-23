@@ -67,6 +67,7 @@ import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { useChatStream } from '../../hooks/useChatStream';
 import { useCharacterProfileBundle } from '../../hooks/useCharacterProfileBundle';
+import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
 
 type SocialMedia = {
   instagram?: string;
@@ -191,6 +192,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
 
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp, initialTab }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const [updateCharacter] = useUpdateCharacterMutation();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const profileBundleEnabled =
     !isMockDataEnabled &&
@@ -286,17 +288,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         onClose();
         return;
       }
-      await fetchJson(`/api/characters/${character.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
+      await updateCharacter({
+        id: character.id,
+        values: {
           status: 'archived',
           metadata: {
             deletion_reason: deleteReason,
             deletion_reason_note: deleteReasonNote.trim() || undefined,
             deletion_reason_recorded_at: new Date().toISOString(),
           },
-        }),
-      });
+        },
+      }).unwrap();
       invalidateCache(character.id);
       onUpdate();
       onClose();
@@ -1803,10 +1805,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   alias: updates.alias || prev.alias,
                   social_media: updates.social_media || prev.social_media,
                 }));
-                await fetchJson(`/api/characters/${character.id}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify(updates),
-                });
+                await updateCharacter({ id: character.id, values: updates }).unwrap();
                 setChatMessages((prev) => [
                   ...prev,
                   {
@@ -1907,9 +1906,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         onClose();
         return;
       }
-      await fetchJson(`/api/characters/${character.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
+      await updateCharacter({
+        id: character.id,
+        values: {
           name: editedCharacter.name,
           firstName: editedCharacter.first_name,
           lastName: editedCharacter.last_name,
@@ -1927,8 +1926,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           likelihoodToMeet: editedCharacter.likelihood_to_meet,
           social_media: editedCharacter.social_media,
           metadata: editedCharacter.metadata
-        })
-      });
+        }
+      }).unwrap();
       invalidateCache(character.id);
       onUpdate();
       onClose();

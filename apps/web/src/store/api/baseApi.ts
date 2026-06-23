@@ -99,6 +99,7 @@ export const baseApi = createApi({
     'Project',
     'Skill',
     'Event',
+    'RomanticRelationship',
     'Entry',
     'Timeline',
     'Chapter',

@@ -14,7 +14,12 @@ import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKee
 import { invalidateCache } from '../../lib/requestCache';
 import { apiCache } from '../../lib/cache';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
-import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
+import {
+  useDeleteCharacterMutation,
+  useGetCharactersBookQuery,
+  useMergeCharactersMutation,
+  useUpdateCharacterMutation,
+} from '../../store/api/entitiesApi';
 import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import type { Character } from './CharacterProfileCard';
 
@@ -106,6 +111,9 @@ export const CharacterMergePanel = ({
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, { skip: demoMode });
+  const [updateCharacter] = useUpdateCharacterMutation();
+  const [deleteCharacter] = useDeleteCharacterMutation();
+  const [mergeCharacters] = useMergeCharactersMutation();
 
   const loadDuplicateGroups = useCallback(async () => {
     if (demoMode) {
@@ -201,17 +209,14 @@ export const CharacterMergePanel = ({
         return;
       }
       for (const source of sources) {
-        const result = await fetchJson<{
+        const result = await mergeCharacters({
+          source_id: source.id,
+          target_id: targetId,
+          reason: `Merged from duplicate review (${group.match_type})`,
+        }).unwrap() as {
           character?: Character | null;
           report?: { canonicalName?: string; reviewFlags?: string[] };
-        }>('/api/characters/merge', {
-          method: 'POST',
-          body: JSON.stringify({
-            source_id: source.id,
-            target_id: targetId,
-            reason: `Merged from duplicate review (${group.match_type})`,
-          }),
-        });
+        };
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
         reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
@@ -250,17 +255,14 @@ export const CharacterMergePanel = ({
         return;
       }
       for (const source of sources) {
-        const result = await fetchJson<{
+        const result = await mergeCharacters({
+          source_id: source.id,
+          target_id: targetId,
+          reason: 'Merged from manual character selection',
+        }).unwrap() as {
           character?: Character | null;
           report?: { canonicalName?: string; reviewFlags?: string[] };
-        }>('/api/characters/merge', {
-          method: 'POST',
-          body: JSON.stringify({
-            source_id: source.id,
-            target_id: targetId,
-            reason: 'Merged from manual character selection',
-          }),
-        });
+        };
         mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
         reviewCount += result.report?.reviewFlags?.length ?? 0;
       }
@@ -294,10 +296,10 @@ export const CharacterMergePanel = ({
       }
       await Promise.all(
         targets.map(character =>
-          fetchJson(`/api/characters/${character.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'archived' }),
-          })
+          updateCharacter({
+            id: character.id,
+            values: { status: 'archived' },
+          }).unwrap()
         )
       );
       cancelManualMerge();
@@ -325,10 +327,10 @@ export const CharacterMergePanel = ({
       }
       await Promise.all(
         targets.map(character =>
-          fetchJson(`/api/characters/${character.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'active' }),
-          })
+          updateCharacter({
+            id: character.id,
+            values: { status: 'active' },
+          }).unwrap()
         )
       );
       cancelManualMerge();
@@ -356,10 +358,10 @@ export const CharacterMergePanel = ({
       }
       await Promise.all(
         targets.map(character =>
-          fetchJson(`/api/characters/${character.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'pending_deletion' }),
-          })
+          updateCharacter({
+            id: character.id,
+            values: { status: 'pending_deletion' },
+          }).unwrap()
         )
       );
       cancelManualMerge();
@@ -386,10 +388,10 @@ export const CharacterMergePanel = ({
       }
       await Promise.all(
         targets.map(character =>
-          fetchJson(`/api/characters/${character.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'archived' }),
-          })
+          updateCharacter({
+            id: character.id,
+            values: { status: 'archived' },
+          }).unwrap()
         )
       );
       cancelManualMerge();
@@ -415,13 +417,12 @@ export const CharacterMergePanel = ({
         setMergeNotice('Demo: permanent delete preview only.');
         return;
       }
-      await fetchJson(`/api/characters/${character.id}?redistribute=true`, {
-        method: 'DELETE',
-        body: JSON.stringify({
-          reason: deleteReason,
-          reason_note: deleteReasonNote.trim() || undefined,
-        }),
-      });
+      await deleteCharacter({
+        id: character.id,
+        redistribute: true,
+        reason: deleteReason,
+        reason_note: deleteReasonNote.trim() || undefined,
+      }).unwrap();
       cancelManualMerge();
       await afterConsolidation(
         `Removed ${character.name}. Their conversation evidence is being reprocessed — facts were preserved and the system recorded this as a correction.`

@@ -20,6 +20,20 @@ import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBoo
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
+import {
+  useAddOrganizationEventMutation,
+  useAddOrganizationLocationMutation,
+  useAddOrganizationMemberMutation,
+  useAddOrganizationRelationshipMutation,
+  useAddOrganizationStoryMutation,
+  useDeleteOrganizationMutation,
+  useRemoveOrganizationEventMutation,
+  useRemoveOrganizationLocationMutation,
+  useRemoveOrganizationMemberMutation,
+  useRemoveOrganizationRelationshipMutation,
+  useRemoveOrganizationStoryMutation,
+  useUpdateOrganizationMutation,
+} from '../../store/api/entitiesApi';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { OrganizationModalHeader } from './OrganizationModalHeader';
 import { OrganizationModalNav, ORG_MODAL_BASE_TABS, type OrgModalTabKey } from './OrganizationModalNav';
@@ -158,6 +172,18 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const { streamChat, isStreaming, cancel } = useChatStream();
+  const [updateOrganization] = useUpdateOrganizationMutation();
+  const [deleteOrganization] = useDeleteOrganizationMutation();
+  const [addOrganizationMember] = useAddOrganizationMemberMutation();
+  const [removeOrganizationMember] = useRemoveOrganizationMemberMutation();
+  const [addOrganizationEvent] = useAddOrganizationEventMutation();
+  const [removeOrganizationEvent] = useRemoveOrganizationEventMutation();
+  const [addOrganizationStory] = useAddOrganizationStoryMutation();
+  const [removeOrganizationStory] = useRemoveOrganizationStoryMutation();
+  const [addOrganizationLocation] = useAddOrganizationLocationMutation();
+  const [removeOrganizationLocation] = useRemoveOrganizationLocationMutation();
+  const [addOrganizationRelationship] = useAddOrganizationRelationshipMutation();
+  const [removeOrganizationRelationship] = useRemoveOrganizationRelationshipMutation();
 
   // Members state
   const [members, setMembers] = useState<OrganizationMember[]>(resolvedOrganization.members || []);
@@ -434,17 +460,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     if (!newRelationship.to_org_id) return;
     setRelationshipSaving(true);
     try {
-      const result = await fetchJson<{ success: boolean; relationship: OrganizationRelationship }>(
-        `/api/organizations/${organization.id}/relationships`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            to_org_id: newRelationship.to_org_id,
-            relationship_type: newRelationship.relationship_type,
-            notes: newRelationship.notes || undefined,
-          }),
-        }
-      );
+      const result = await addOrganizationRelationship({
+        organizationId: organization.id,
+        relationship: {
+          to_org_id: newRelationship.to_org_id,
+          relationship_type: newRelationship.relationship_type,
+          notes: newRelationship.notes || undefined,
+        },
+      }).unwrap() as { success: boolean; relationship: OrganizationRelationship };
       if (result.success) {
         setRelationships(prev => [result.relationship, ...prev]);
         setNewRelationship({ to_org_id: '', relationship_type: 'affiliated_with', notes: '' });
@@ -460,7 +483,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const handleRemoveRelationship = async (relationshipId: string) => {
     setRelationships(prev => prev.filter(r => r.id !== relationshipId));
     try {
-      await fetchJson(`/api/organizations/${organization.id}/relationships/${relationshipId}`, { method: 'DELETE' });
+      await removeOrganizationRelationship({ organizationId: organization.id, relationshipId }).unwrap();
     } catch (error) {
       console.error('Failed to remove relationship:', error);
     }
@@ -504,10 +527,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         status: editedOrg.status,
       };
 
-      await fetchJson(`/api/organizations/${organization.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates),
-      });
+      await updateOrganization({ id: organization.id, values: updates }).unwrap();
 
       onUpdate?.();
     } catch (error) {
@@ -677,10 +697,7 @@ User's message: ${currentInput}`;
                   for (const k of allowed) if (k in scalars) patch[k] = scalars[k];
                   if (persistable && Object.keys(patch).length > 0) {
                     try {
-                      await fetchJson(`/api/organizations/${organization.id}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify(patch),
-                      });
+                      await updateOrganization({ id: organization.id, values: patch }).unwrap();
                     } catch (err) {
                       console.error('Failed to persist org updates from chat:', err);
                     }
@@ -702,10 +719,7 @@ User's message: ${currentInput}`;
                     setMembers(prev => [...prev, member]);
                     if (persistable) {
                       try {
-                        await fetchJson(`/api/organizations/${organization.id}/members`, {
-                          method: 'POST',
-                          body: JSON.stringify(member),
-                        });
+                        await addOrganizationMember({ organizationId: organization.id, member }).unwrap();
                       } catch (err) {
                         console.error('Failed to persist member from chat:', err);
                       }
@@ -757,10 +771,7 @@ User's message: ${currentInput}`;
 
     // TODO: Save to backend
     try {
-      await fetchJson(`/api/organizations/${organization.id}/members`, {
-        method: 'POST',
-        body: JSON.stringify(member),
-      });
+      await addOrganizationMember({ organizationId: organization.id, member }).unwrap();
     } catch (error) {
       console.error('Failed to add member:', error);
     }
@@ -769,7 +780,7 @@ User's message: ${currentInput}`;
   const handleRemoveMember = async (memberId: string) => {
     setMembers(prev => prev.filter(m => m.id !== memberId));
     try {
-      await fetchJson(`/api/organizations/${organization.id}/members/${memberId}`, { method: 'DELETE' });
+      await removeOrganizationMember({ organizationId: organization.id, itemId: memberId }).unwrap();
     } catch (error) {
       console.error('Failed to remove member:', error);
     }
@@ -779,10 +790,10 @@ User's message: ${currentInput}`;
     if (!newEvent.title.trim() || !newEvent.date) return;
     setEventLoading(true);
     try {
-      const result = await fetchJson<{ success: boolean; event: OrganizationEvent }>(
-        `/api/organizations/${organization.id}/events`,
-        { method: 'POST', body: JSON.stringify(newEvent) }
-      );
+      const result = await addOrganizationEvent({
+        organizationId: organization.id,
+        event: newEvent,
+      }).unwrap() as { success: boolean; event: OrganizationEvent };
       if (result.success) {
         setEvents(prev => [result.event, ...prev]);
         setNewEvent({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' });
@@ -798,7 +809,7 @@ User's message: ${currentInput}`;
   const handleRemoveEvent = async (eventId: string) => {
     setEvents(prev => prev.filter(e => e.id !== eventId));
     try {
-      await fetchJson(`/api/organizations/${organization.id}/events/${eventId}`, { method: 'DELETE' });
+      await removeOrganizationEvent({ organizationId: organization.id, itemId: eventId }).unwrap();
     } catch (error) {
       console.error('Failed to remove event:', error);
     }
@@ -808,10 +819,10 @@ User's message: ${currentInput}`;
     if (!newStory.title.trim() || !newStory.summary.trim() || !newStory.date) return;
     setStoryLoading(true);
     try {
-      const result = await fetchJson<{ success: boolean; story: OrganizationStory }>(
-        `/api/organizations/${organization.id}/stories`,
-        { method: 'POST', body: JSON.stringify(newStory) }
-      );
+      const result = await addOrganizationStory({
+        organizationId: organization.id,
+        story: newStory,
+      }).unwrap() as { success: boolean; story: OrganizationStory };
       if (result.success) {
         setStories(prev => [result.story, ...prev]);
         setNewStory({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
@@ -827,7 +838,7 @@ User's message: ${currentInput}`;
   const handleRemoveStory = async (storyId: string) => {
     setStories(prev => prev.filter(s => s.id !== storyId));
     try {
-      await fetchJson(`/api/organizations/${organization.id}/stories/${storyId}`, { method: 'DELETE' });
+      await removeOrganizationStory({ organizationId: organization.id, itemId: storyId }).unwrap();
     } catch (error) {
       console.error('Failed to remove story:', error);
     }
@@ -837,10 +848,10 @@ User's message: ${currentInput}`;
     if (!newLocation.location_name.trim()) return;
     setLocationLoading(true);
     try {
-      const result = await fetchJson<{ success: boolean; location: OrganizationLocation }>(
-        `/api/organizations/${organization.id}/locations`,
-        { method: 'POST', body: JSON.stringify(newLocation) }
-      );
+      const result = await addOrganizationLocation({
+        organizationId: organization.id,
+        location: newLocation,
+      }).unwrap() as { success: boolean; location: OrganizationLocation };
       if (result.success) {
         setLocations(prev => [result.location, ...prev]);
         setNewLocation({ location_name: '' });
@@ -856,7 +867,7 @@ User's message: ${currentInput}`;
   const handleRemoveLocation = async (locationId: string) => {
     setLocations(prev => prev.filter(l => l.id !== locationId));
     try {
-      await fetchJson(`/api/organizations/${organization.id}/locations/${locationId}`, { method: 'DELETE' });
+      await removeOrganizationLocation({ organizationId: organization.id, itemId: locationId }).unwrap();
     } catch (error) {
       console.error('Failed to remove location:', error);
     }
@@ -873,7 +884,7 @@ User's message: ${currentInput}`;
     setDeleting(true);
     setDeleteError(null);
     try {
-      await fetchJson(`/api/organizations/${organization.id}`, { method: 'DELETE' });
+      await deleteOrganization(organization.id).unwrap();
       onUpdate?.();
       onClose();
     } catch (error) {
