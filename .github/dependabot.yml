@@ -1,4 +1,11 @@
 version: 2
+
+# Grouping strategy
+# -----------------
+# minor + patch updates are grouped into a single PR per ecosystem (low risk,
+# keeps noise down). MAJOR updates are deliberately NOT grouped: each major gets
+# its own isolated PR so a breaking major (e.g. tailwindcss v4, eslint v10) can
+# be reviewed/merged/reverted on its own instead of taking down the whole batch.
 updates:
   # Frontend dependencies
   - package-ecosystem: "npm"
@@ -15,11 +22,11 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    # Group all dependency updates together to reduce PR noise
     groups:
-      all-dependencies:
-        patterns:
-          - "*"
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   # Backend dependencies
   - package-ecosystem: "npm"
@@ -37,6 +44,7 @@ updates:
       prefix: "chore"
       include: "scope"
     groups:
-      all-dependencies:
-        patterns:
-          - "*"
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
