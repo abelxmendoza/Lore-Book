@@ -9,6 +9,7 @@ import { MainCharacterDetailModal } from './MainCharacterDetailModal';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { UserProfile } from './UserProfile';
+import { OnboardingReprompt } from '../onboarding/OnboardingReprompt';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
@@ -3208,6 +3209,9 @@ export const CharacterBook = () => {
         onToggleSelected={toggleSelectedForMerge}
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
+
+      {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
+      <OnboardingReprompt />
 
       {/* User Profile */}
       <div className="space-y-3 sm:space-y-4">
