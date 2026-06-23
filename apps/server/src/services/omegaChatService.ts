@@ -24,7 +24,7 @@ import {
   resolveFocusedCharacter,
 } from './characters/characterChatTargetResolver';
 import { applyCharacterChatKnowledgeUpdate } from './characters/characterChatCorrectionService';
-import { ingestionQueue } from './ingestion/ingestionQueue';
+import { ingestionQueue, type JobPriority } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
@@ -2776,6 +2776,47 @@ When updating relationship analytics or emotional signals from this thread, weig
    */
   private async getOrCreateChatSession(userId: string): Promise<string> {
     return _getOrCreateChatSession(userId);
+  }
+
+  /**
+   * Persist a standalone block of user text (e.g. the onboarding narrative) as a
+   * message and enqueue it through the durable ingestion pipeline, so it populates
+   * every book (people→characters, organizations, places, skills, projects, …)
+   * exactly the way chat does. Returns the message id, or null on failure.
+   */
+  async ingestStandaloneText(
+    userId: string,
+    text: string,
+    opts?: { source?: string; priority?: JobPriority },
+  ): Promise<string | null> {
+    const content = text?.trim();
+    if (!content) return null;
+    try {
+      const sessionId = await this.getOrCreateChatSession(userId);
+      const { data, error } = await supabaseAdmin
+        .from('chat_messages')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'user',
+          content,
+          metadata: { source: opts?.source ?? 'standalone' },
+        })
+        .select('id')
+        .single();
+      if (error || !data?.id) {
+        logger.warn({ err: error, userId }, 'ingestStandaloneText: message persist failed');
+        return null;
+      }
+      ingestionQueue.enqueue(
+        { userId, chatMessageId: data.id, sessionId, conversationHistory: [], force: false },
+        opts?.priority ?? 'NORMAL',
+      );
+      return data.id;
+    } catch (err) {
+      logger.warn({ err, userId }, 'ingestStandaloneText failed');
+      return null;
+    }
   }
 
   /**

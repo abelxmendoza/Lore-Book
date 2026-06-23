@@ -187,6 +187,20 @@ class OnboardingIntelligenceService {
       entityFactsService
         .extractAndPersistSelfFacts(userId, selfId, narrative.trim())
         .catch((err) => logger.debug({ err, userId }, 'self-fact link failed'));
+
+      // Populate the individual books (people→characters, organizations, places,
+      // skills, projects, …) by running the narrative through the durable
+      // ingestion pipeline — the same path chat uses. Fire-and-forget; the
+      // durable queue guarantees it survives a restart. Dynamic import avoids a
+      // module cycle with the (large) chat service.
+      import('./omegaChatService')
+        .then(({ omegaChatService }) =>
+          omegaChatService.ingestStandaloneText(userId, narrative.trim(), {
+            source: 'onboarding_narrative',
+            priority: 'HIGH',
+          }),
+        )
+        .catch((err) => logger.debug({ err, userId }, 'onboarding narrative ingestion enqueue failed'));
     }
 
     return { selfCharacterId: selfId, completed: true };

@@ -15,6 +15,11 @@ vi.mock('../../src/services/entityFactsService', () => ({
   entityFactsService: { extractAndPersistSelfFacts: (...a: unknown[]) => extractSelfFactsMock(...a) },
 }));
 
+const ingestStandaloneMock = vi.fn().mockResolvedValue('msg-1');
+vi.mock('../../src/services/omegaChatService', () => ({
+  omegaChatService: { ingestStandaloneText: (...a: unknown[]) => ingestStandaloneMock(...a) },
+}));
+
 const updateEqEq = vi.fn().mockResolvedValue({ error: null });
 const updateMock = vi.fn(() => ({ eq: () => ({ eq: updateEqEq }) }));
 vi.mock('../../src/services/supabaseClient', () => ({
@@ -103,6 +108,14 @@ describe('onboardingIntelligenceService', () => {
       expect(writtenMeta.interests).toEqual(['Robotics']);
       // self-facts linked from the narrative
       expect(extractSelfFactsMock).toHaveBeenCalledWith('u1', 'self-1', 'I build robots.');
+      // narrative ingested through the durable pipeline to populate the books
+      await vi.waitFor(() =>
+        expect(ingestStandaloneMock).toHaveBeenCalledWith(
+          'u1',
+          'I build robots.',
+          expect.objectContaining({ source: 'onboarding_narrative' }),
+        ),
+      );
     });
 
     it('returns not-completed when there is no self character', async () => {
