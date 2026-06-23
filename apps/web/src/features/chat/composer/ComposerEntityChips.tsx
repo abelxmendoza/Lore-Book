@@ -24,6 +24,7 @@ type ComposerEntityChipsProps = {
   onConfirm?: (entity: CertifiedEntityMatch) => void;
   onSelectPreviewSpan?: (span: LexicalPreviewSpan) => void;
   onConfirmPreviewSpan?: (span: LexicalPreviewSpan) => void;
+  onDismissPreviewSpan?: (span: LexicalPreviewSpan) => void;
   variant?: 'bar' | 'inline';
   scanning?: boolean;
   max?: number;
@@ -41,6 +42,23 @@ const PREVIEW_COLOR_TO_KIND: Partial<Record<string, LoreEntityKind>> = {
   project: 'project',
   event: 'event',
 };
+
+// Only these chip kinds are surfaced above the composer right now:
+// people/characters, places/locations, groups & organizations, things.
+// Everything else (skills, projects, events, memories) is hidden from the strip.
+const ALLOWED_CHIP_KINDS = new Set<LoreEntityKind>([
+  'person',
+  'relationship',
+  'place',
+  'organization',
+  'group',
+]);
+
+function previewSpanKind(span: LexicalPreviewSpan, corrected?: CorrectedPreviewSpan): LoreEntityKind {
+  const type = corrected?.correctedType ?? span.type;
+  const colorKey = colorKeyForPreviewType(type, corrected?.colorKey ?? span.colorKey);
+  return PREVIEW_COLOR_TO_KIND[colorKey] ?? 'person';
+}
 
 function isConfirmable(entity: CertifiedEntityMatch): boolean {
   if (entity.lifecycleStatus === 'archived') return true;
@@ -110,15 +128,22 @@ export const ComposerEntityChips = ({
   onConfirm,
   onSelectPreviewSpan,
   onConfirmPreviewSpan,
+  onDismissPreviewSpan,
   variant = 'bar',
   scanning = false,
   max = 6,
   includedSlots = [],
   onToggleIncluded,
 }: ComposerEntityChipsProps) => {
-  const chipEntities = dedupeCertifiedForStrip(entities);
-  const dedupedPreview = filterPreviewSpansForStrip(text, chipEntities, previewSpans);
   const correctedByKey = new Map(correctedRecords.map((c) => [`${c.start}:${c.end}`, c]));
+
+  // Only surface people/characters, places/locations, organizations, and groups.
+  const chipEntities = dedupeCertifiedForStrip(entities).filter((e) =>
+    ALLOWED_CHIP_KINDS.has(loreKindForChip(e)),
+  );
+  const dedupedPreview = filterPreviewSpansForStrip(text, chipEntities, previewSpans).filter((span) =>
+    ALLOWED_CHIP_KINDS.has(previewSpanKind(span, correctedByKey.get(`${span.start}:${span.end}`))),
+  );
 
   if (chipEntities.length === 0 && dedupedPreview.length === 0) return null;
 
@@ -186,11 +211,11 @@ export const ComposerEntityChips = ({
                 <button
                   type="button"
                   data-testid={`composer-entity-dismiss-${entity.type}-${entity.id}`}
-                  className="-ml-0.5 rounded-full p-px text-white/30 hover:text-white/55 touch-manipulation"
+                  className="-ml-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white/40 hover:bg-white/10 hover:text-white/90 active:bg-white/15 touch-manipulation"
                   aria-label={`Dismiss ${entity.name}`}
                   onClick={() => onDismiss(entity)}
                 >
-                  <X className="h-2 w-2" />
+                  <X className="h-3 w-3" />
                 </button>
               )}
             </span>
@@ -213,11 +238,11 @@ export const ComposerEntityChips = ({
               <button
                 type="button"
                 data-testid={`composer-entity-dismiss-${entity.type}-${entity.id}`}
-                className="-ml-0.5 rounded-full p-px text-white/30 hover:text-white/55 touch-manipulation"
+                className="-ml-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white/40 hover:bg-white/10 hover:text-white/90 active:bg-white/15 touch-manipulation"
                 aria-label={`Dismiss ${entity.name}`}
                 onClick={() => onDismiss(entity)}
               >
-                <X className="h-2 w-2" />
+                <X className="h-3 w-3" />
               </button>
             )}
           </span>
@@ -231,33 +256,49 @@ export const ComposerEntityChips = ({
         const canQuickConfirm =
           isPreviewConfirmable(span, corrected) && Boolean(onConfirmPreviewSpan);
 
+        const dismissPreviewButton = onDismissPreviewSpan && (
+          <button
+            type="button"
+            data-testid={`lexical-preview-dismiss-${span.type}-${span.start}`}
+            className="-ml-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white/40 hover:bg-white/10 hover:text-white/90 active:bg-white/15 touch-manipulation"
+            aria-label={`Dismiss ${span.text}`}
+            onClick={() => onDismissPreviewSpan(span)}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        );
+
         if (canQuickConfirm) {
           return (
-            <SplitEntityChip
-              key={key}
-              data-testid={testId}
-              label={span.text}
-              title={chipTitle}
-              className={chipClass}
-              onOpen={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
-              onConfirm={() => onConfirmPreviewSpan!(span)}
-              openAriaLabel={`Edit ${span.text}`}
-              confirmAriaLabel={`Confirm ${span.text}`}
-            />
+            <span key={key} className="inline-flex shrink-0 items-center">
+              <SplitEntityChip
+                data-testid={testId}
+                label={span.text}
+                title={chipTitle}
+                className={chipClass}
+                onOpen={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
+                onConfirm={() => onConfirmPreviewSpan!(span)}
+                openAriaLabel={`Edit ${span.text}`}
+                confirmAriaLabel={`Confirm ${span.text}`}
+              />
+              {dismissPreviewButton}
+            </span>
           );
         }
 
         return (
-          <CompactEntityChip
-            key={key}
-            data-testid={testId}
-            data-entity-status={corrected ? displayStatus(corrected) : span.entityStatus ?? 'new'}
-            title={chipTitle}
-            className={chipClass}
-            onClick={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
-          >
-            <span className="truncate">{span.text}</span>
-          </CompactEntityChip>
+          <span key={key} className="inline-flex shrink-0 items-center">
+            <CompactEntityChip
+              data-testid={testId}
+              data-entity-status={corrected ? displayStatus(corrected) : span.entityStatus ?? 'new'}
+              title={chipTitle}
+              className={chipClass}
+              onClick={onSelectPreviewSpan ? () => onSelectPreviewSpan(span) : undefined}
+            >
+              <span className="truncate">{span.text}</span>
+            </CompactEntityChip>
+            {dismissPreviewButton}
+          </span>
         );
       })}
 

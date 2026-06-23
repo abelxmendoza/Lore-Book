@@ -96,6 +96,18 @@ export function useEntityCorrectionState(
     setActiveSpanId(null);
   }, []);
 
+  // One-tap dismiss for a preview chip: mark it wrong so it drops out of the
+  // strip immediately (no menu). Used by the chip's ✕.
+  const dismissPreviewSpan = useCallback((span: LexicalPreviewSpan) => {
+    const id = spanToId(span);
+    setState((prev) => {
+      const merged = mergeBaseSpans(prev, [span], 'composer');
+      const base = merged.byId.get(id);
+      return applyCorrectionAction(merged, { kind: 'mark_wrong', spanId: id, source: 'composer' }, base);
+    });
+    setActiveSpanId(null);
+  }, []);
+
   return {
     loading,
     preview,
@@ -109,6 +121,7 @@ export function useEntityCorrectionState(
     closeActiveSpan,
     applyAction,
     confirmPreviewSpan,
+    dismissPreviewSpan,
     sendPayload,
     getCorrectedSpan,
   };

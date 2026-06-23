@@ -61,4 +61,46 @@ describe('ComposerEntityChips', () => {
 
     expect(onDismiss).toHaveBeenCalledWith(confirmed);
   });
+
+  it('only surfaces allowed kinds — hides skills/events from the strip', () => {
+    const skill: CertifiedEntityMatch = {
+      id: 'uuid-piano',
+      name: 'Piano',
+      type: 'skill',
+      aliases: [],
+      mentionKeys: ['piano'],
+      status: 'confirmed',
+      matchedLabel: 'Piano',
+      matchKind: 'full',
+    };
+    render(<ComposerEntityChips entities={[confirmed, skill]} onDismiss={vi.fn()} />);
+    // person/character shows, skill is filtered out
+    expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
+    expect(screen.queryByTestId('composer-entity-chip-skill-uuid-piano')).not.toBeInTheDocument();
+  });
+
+  it('dismisses a lexical preview chip with one tap', async () => {
+    const user = userEvent.setup();
+    const onDismissPreviewSpan = vi.fn();
+    const span = {
+      text: 'Coding Club',
+      start: 9,
+      end: 20,
+      type: 'GROUP',
+      colorKey: 'group',
+      confidence: 0.8,
+      temporary: true,
+    } as const;
+
+    render(
+      <ComposerEntityChips
+        entities={[]}
+        text="I joined Coding Club"
+        previewSpans={[span]}
+        onDismissPreviewSpan={onDismissPreviewSpan}
+      />,
+    );
+    await user.click(screen.getByTestId('lexical-preview-dismiss-GROUP-9'));
+    expect(onDismissPreviewSpan).toHaveBeenCalledWith(span);
+  });
 });
