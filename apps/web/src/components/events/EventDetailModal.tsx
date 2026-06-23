@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   X, Clock, MapPin, Users, MessageSquare, Send, Sparkles,
   Calendar, ArrowRight, ArrowLeft, Eye, Heart, Link2, FileText,
-  Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2,
+  Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2, Trash2,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -111,6 +111,8 @@ interface EventDetailModalProps {
   onClose: () => void;
   /** Shown as breadcrumb when this modal was opened from another event. */
   breadcrumb?: string;
+  /** Called after the event is deleted so the parent list can refresh. */
+  onDeleted?: (id: string) => void;
 }
 
 type LinkedEventStub = { id: string; title: string; summary: string | null; start_time: string };
@@ -616,8 +618,23 @@ function renderWithChips(text: string, entities: ChatEntity[]): React.ReactNode 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb }) => {
+export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb, onDeleted }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteEvent = async () => {
+    if (deleting) return;
+    if (!window.confirm('Delete this event? This can’t be undone.')) return;
+    setDeleting(true);
+    try {
+      await fetchJson(`/api/conversation/events/${event.id}`, { method: 'DELETE' });
+      onDeleted?.(event.id);
+      onClose();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete event.');
+      setDeleting(false);
+    }
+  };
   const [eventData, setEventData] = useState<Event>(() => enrichForDemo(event));
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [linkedEvent, setLinkedEvent] = useState<LinkedEventStub | null>(null);
@@ -832,6 +849,20 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              {onDeleted && (
+                <Button
+                  type="button"
+                  onClick={handleDeleteEvent}
+                  disabled={deleting}
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Delete event"
+                  title="Delete event"
+                  className="text-white/45 hover:text-red-300 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
               <EventActionsMenu eventId={eventData.id} onOverrideApplied={loadEvent} />
               <Button type="button" onClick={onClose} variant="ghost" size="sm" aria-label="Close"
                 className="text-white/50 hover:text-white hover:bg-white/10">

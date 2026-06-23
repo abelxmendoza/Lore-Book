@@ -3804,4 +3804,44 @@ router.get(
   })
 );
 
+/**
+ * DELETE /api/conversation/events/:id
+ * Remove a resolved event (user-scoped) and its unit links.
+ */
+router.delete(
+  '/events/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string;
+    const userId = req.user!.id;
+
+    const { data: existing } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Event not found' });
+    }
+
+    await supabaseAdmin
+      .from('event_unit_links')
+      .delete()
+      .eq('event_id', id)
+      .then(undefined, (err) => logger.debug({ err, id }, 'event unit link cleanup failed'));
+
+    const { error } = await supabaseAdmin
+      .from('resolved_events')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, id }, 'Failed to delete resolved event');
+      return res.status(500).json({ success: false, error: 'Failed to delete event' });
+    }
+    res.json({ success: true });
+  })
+);
+
 export default router;

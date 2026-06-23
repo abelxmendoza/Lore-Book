@@ -1662,7 +1662,11 @@ export const EventsBook: React.FC = () => {
 
       {/* Modals */}
       {selectedEvent && (
-        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onDeleted={() => { setSelectedEvent(null); void refetchEvents(); }}
+        />
       )}
       {selectedMemory && (
         <MemoryDetailModal memory={selectedMemory} onClose={() => setSelectedMemory(null)} />

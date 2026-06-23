@@ -17,6 +17,7 @@ import { GoalRow } from './goals/GoalRow';
 import { ValuesPrioritySection } from './goals/ValuesPrioritySection';
 import { DriftSection } from './goals/DriftSection';
 import { useMockData } from '../../contexts/MockDataContext';
+import { fetchJson } from '../../lib/api';
 import { useQuests } from '../../hooks/useQuests';
 import { Button } from '../ui/button';
 import { mockDataService } from '../../services/mockDataService';
@@ -50,6 +51,19 @@ export const GoalsAndValuesPanel = () => {
       setSelectedGoalIds(activeGoals.map(g => g.id));
     }
   }, [activeGoals, selectedGoalIds.length]);
+
+  const handleDeleteGoal = async (goalId: string, title: string) => {
+    if (!window.confirm(`Delete goal "${title}"? This can't be undone.`)) return;
+    try {
+      if (!isMockDataEnabled) {
+        await fetchJson(`/api/goals/goals/${goalId}`, { method: 'DELETE' });
+      }
+      setSelectedGoalIds((prev) => prev.filter((id) => id !== goalId));
+      await refetch();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete goal.');
+    }
+  };
 
   // Mock data is registered via useGoalsAndValues.ensureSeed() in demo mode.
   // Fallback registration if the panel mounts before the hook runs.
@@ -237,6 +251,7 @@ export const GoalsAndValuesPanel = () => {
                     isSelected={selectedGoalIds.includes(goal.id)}
                     onToggle={() => toggleGoalSelection(goal.id)}
                     latestAlignment={getLatestAlignment(goal.id)}
+                    onDelete={() => handleDeleteGoal(goal.id, goal.title)}
               />
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { Target, Heart, CheckCircle, PauseCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Target, Heart, CheckCircle, PauseCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import type { Goal, AlignmentSnapshot } from '../../../hooks/useGoalsAndValues';
 
@@ -7,6 +7,7 @@ interface GoalRowProps {
   isSelected: boolean;
   onToggle: () => void;
   latestAlignment: AlignmentSnapshot | null;
+  onDelete?: () => void;
 }
 
 const GOAL_TYPE_ICONS = {
@@ -41,7 +42,7 @@ const STATUS_COLORS: Record<string, string> = {
   ABANDONED: 'bg-red-500/10 text-red-400 border-red-500/30',
 };
 
-export const GoalRow = ({ goal, isSelected, onToggle, latestAlignment }: GoalRowProps) => {
+export const GoalRow = ({ goal, isSelected, onToggle, latestAlignment, onDelete }: GoalRowProps) => {
   const GoalIcon = GOAL_TYPE_ICONS[goal.goal_type] || Target;
   const StatusIcon = STATUS_ICONS[goal.status] || AlertCircle;
 
@@ -59,13 +60,27 @@ export const GoalRow = ({ goal, isSelected, onToggle, latestAlignment }: GoalRow
 
   return (
     <div
-      className={`border rounded-lg p-4 cursor-pointer transition-all ${
+      className={`relative border rounded-lg p-4 cursor-pointer transition-all ${
         isSelected
           ? 'border-primary bg-primary/10'
           : 'border-border/60 bg-black/40 hover:border-primary/50 hover:bg-primary/5'
       }`}
       onClick={onToggle}
     >
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute top-2 right-2 z-10 rounded-md p-1 text-white/30 hover:text-red-300 hover:bg-red-500/10 touch-manipulation"
+          aria-label={`Delete goal ${goal.title}`}
+          title="Delete goal"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -87,7 +102,7 @@ export const GoalRow = ({ goal, isSelected, onToggle, latestAlignment }: GoalRow
             <span className="text-xs text-white/40">•</span>
             <span className="text-xs text-white/60">{goal.target_timeframe}</span>
           </div>
-          <h3 className="text-base font-semibold text-white mb-1">{goal.title}</h3>
+          <h3 className="text-base font-semibold text-white mb-1 pr-6">{goal.title}</h3>
           <p className="text-sm text-white/70 mb-2">{goal.description}</p>
           {latestAlignment && (
             <div className="flex items-center gap-2 mt-2">
