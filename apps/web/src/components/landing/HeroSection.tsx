@@ -81,7 +81,7 @@ const ChatPreview = () => (
       <div className="flex gap-2 sm:gap-2.5 items-start">
         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shrink-0 mt-0.5" />
         <div className="rounded-lg rounded-tl-sm bg-white/[0.06] border border-white/5 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/75 text-[11px] sm:text-sm leading-relaxed min-w-0">
-          <span className="text-primary/80 font-medium">Noted.</span> But none of those moments were
+          But none of those moments were
           ever actually stopped by the doubt — you move first and build the confidence after. The
           pattern isn't <span className="text-white/85 font-medium">self-doubt</span>. It's
           <span className="text-white/85 font-medium"> growth</span> showing up disguised as fear.
