@@ -32,6 +32,14 @@ export const computeHeavyLimit = createRateLimiter(40, FIFTEEN_MIN);
 export const externalApiLimit = createRateLimiter(25, FIFTEEN_MIN);
 
 /**
+ * Public, unauthenticated MCP OAuth endpoints (authorize / token / register /
+ * consent) mount at the app root — outside the global `/api` tiered limiter —
+ * so they need their own cap. Token + dynamic client registration are prime
+ * abuse targets, so keep this tight: 60 requests / 15 min per IP.
+ */
+export const mcpOAuthLimit = createRateLimiter(60, FIFTEEN_MIN);
+
+/**
  * Rate-limit chain for routes that call OpenAI directly.
  * Add `requireAuth` and `checkAiRequestLimit` after this when auth is required.
  */

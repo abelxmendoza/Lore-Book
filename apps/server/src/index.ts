@@ -14,6 +14,7 @@ import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
 import { errorHandler } from './middleware/errorHandler';
 import { intrusionDetection } from './middleware/intrusionDetection';
 import { tieredRateLimit } from './middleware/tieredRateLimit';
+import { mcpOAuthLimit } from './middleware/apiProtection';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
@@ -190,7 +191,7 @@ app.use('/api/runtime', runtimeRouter);
 if (config.mcpEnabled) {
   app.use('/mcp', mcpRouter);
   if (config.mcpOAuthEnabled && config.mcpOAuthJwtSecret) {
-    app.use(mcpOAuthRouter);
+    app.use(mcpOAuthLimit, mcpOAuthRouter);
     app.use('/api/mcp/oauth', mcpOAuthApproveRouter);
     logger.info('MCP OAuth 2.1 enabled (/.well-known/oauth-authorization-server)');
   } else if (config.mcpOAuthEnabled) {
