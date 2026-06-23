@@ -9,9 +9,39 @@ import { guardOpenAiRoute } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { onboardingService } from '../services/onboardingService';
+import {
+  onboardingIntelligenceService,
+  type IdentityProfileDraft,
+} from '../services/onboardingIntelligenceService';
 import { incrementAiRequestCount } from '../services/usageTracking';
 
 const router = Router();
+
+const chipSchema = z.object({
+  label: z.string(),
+  confidence: z.number().optional(),
+  evidence: z.string().optional(),
+});
+const draftSchema = z.object({
+  identity: z
+    .object({
+      preferredName: z.string().optional(),
+      occupation: z.string().optional(),
+      lifePhase: z.string().optional(),
+      summary: z.string().optional(),
+    })
+    .partial()
+    .default({}),
+  people: z.array(chipSchema).default([]),
+  places: z.array(chipSchema).default([]),
+  organizations: z.array(chipSchema).default([]),
+  skills: z.array(chipSchema).default([]),
+  interests: z.array(chipSchema).default([]),
+  goals: z.array(chipSchema).default([]),
+  projects: z.array(chipSchema).default([]),
+  events: z.array(chipSchema).default([]),
+  values: z.array(chipSchema).default([]),
+});
 
 const importSchema = z.object({
   files: z.array(z.object({ name: z.string(), content: z.string().optional() })).optional(),
@@ -36,6 +66,75 @@ router.post('/import', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.get('/briefing', requireAuth, async (req: AuthenticatedRequest, res) => {
   const result = await onboardingService.generateBriefing(req.user!.id);
   res.json(result);
+});
+
+/**
+ * GET /api/onboarding/status
+ * Whether the user has completed the narrative onboarding (drives the re-prompt
+ * for existing users).
+ */
+router.get('/status', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const status = await onboardingIntelligenceService.getOnboardingStatus(req.user!.id);
+    res.json(status);
+  } catch (err) {
+    logger.warn({ err }, 'onboarding status failed');
+    res.json({ completed: false, version: 0, hasSelfProfile: false, completedAt: null });
+  }
+});
+
+const narrativeSchema = z.object({ narrative: z.string().min(1).max(20_000) });
+
+/**
+ * POST /api/onboarding/narrative
+ * "Tell me about yourself" → structured identity draft (confirmation chips).
+ */
+router.post(
+  '/narrative',
+  ...guardOpenAiRoute(),
+  requireAuth,
+  checkAiRequestLimit,
+  async (req: AuthenticatedRequest, res) => {
+    const parsed = narrativeSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+    try {
+      const draft = await onboardingIntelligenceService.extractIdentityProfile(
+        req.user!.id,
+        parsed.data.narrative,
+      );
+      incrementAiRequestCount(req.user!.id).catch(() => {});
+      res.json({ draft });
+    } catch (err) {
+      logger.error({ err }, 'onboarding narrative extraction failed');
+      res.status(500).json({ error: 'Failed to analyze your story. Please try again.' });
+    }
+  },
+);
+
+const confirmSchema = z.object({
+  draft: draftSchema,
+  narrative: z.string().max(20_000).optional(),
+});
+
+/**
+ * POST /api/onboarding/confirm
+ * Persist a confirmed draft into the user's Main Character knowledge base + link
+ * their self-facts, and mark onboarding complete.
+ */
+router.post('/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = confirmSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+  try {
+    const result = await onboardingIntelligenceService.confirmIdentityProfile(
+      req.user!.id,
+      parsed.data.draft as IdentityProfileDraft,
+      parsed.data.narrative,
+    );
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, 'onboarding confirm failed');
+    res.status(500).json({ error: 'Failed to save your profile. Please try again.' });
+  }
 });
 
 const analyzeUserSchema = z.object({
