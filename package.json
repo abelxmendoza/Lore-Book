@@ -18,6 +18,7 @@
     "check:demo-privacy": "cd apps/web && npm run test:demo-privacy",
     "check:founder-privacy": "node scripts/check-founder-privacy.cjs",
     "check:user-isolation": "node scripts/check-user-isolation.cjs",
+    "check:secret-logging": "node scripts/check-secret-logging.cjs",
     "check:types": "node scripts/check-tsc-baseline.mjs all",
     "test:security": "cd apps/server && npm test middleware/ integration/privacy.test.ts",
     "test:e2e:security": "cd apps/web && npm run test:e2e:security",

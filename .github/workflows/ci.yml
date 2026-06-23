@@ -63,6 +63,9 @@ jobs:
       - name: User-isolation guard
         run: npm run check:user-isolation
 
+      - name: Secret-logging guard
+        run: npm run check:secret-logging
+
       - name: Demo privacy guard
         run: npm run check:demo-privacy
 

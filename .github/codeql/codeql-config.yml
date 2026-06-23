@@ -1,0 +1,17 @@
+name: "LoreBook CodeQL config"
+
+# Why js/clear-text-logging is excluded
+# -------------------------------------
+# This query produces ~520 findings in this codebase, and an audit confirmed they
+# are a single uniform false-positive class: it taints `userId` / `entityId` /
+# `messageId` UUID *identifiers* (logged for observability) as "sensitive data".
+# These are identifiers, not credentials. A repo-wide grep found NO raw secret
+# VALUES (tokens/passwords/keys) being logged, and the pino logger applies
+# `redact` to sensitive key paths at runtime as defense-in-depth.
+#
+# To preserve real protection, the "no raw secret logging" invariant is enforced
+# in CI by `npm run check:secret-logging` (scripts/check-secret-logging.cjs)
+# instead of by this noisy query.
+query-filters:
+  - exclude:
+      id: js/clear-text-logging
