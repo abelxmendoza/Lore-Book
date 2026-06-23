@@ -15,8 +15,11 @@ const ENTITY_CHIPS = [
   { label: 'Portland', type: 'location' },
   { label: 'New job', type: 'event' },
   { label: 'Alex', type: 'character' },
-  { label: 'The move', type: 'event' },
 ] satisfies Array<{ label: string; type: CertifiedEntityType }>;
+
+// Semantic/theme chips — concepts extracted by lexical intelligence, not entities.
+// Styled as a quieter, secondary category using existing neutral tokens.
+const SEMANTIC_CHIPS = ['Self-doubt', 'Growth', 'New chapter'] as const;
 
 const ChatPreview = () => (
   <div className="hero-chat-enter hero-chat-panel w-full rounded-xl border border-white/10 bg-black/55 backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
@@ -39,34 +42,49 @@ const ChatPreview = () => (
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
+        <span className="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider text-white/25">Themes</span>
+        {SEMANTIC_CHIPS.map((chip) => (
+          <span
+            key={chip}
+            className="rounded-full border border-dashed border-white/15 bg-white/[0.02] px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs italic text-white/50"
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+
       <div className="flex justify-end">
         <div className="rounded-lg rounded-tr-sm bg-purple-500/20 border border-purple-500/20 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/90 text-[11px] sm:text-sm leading-relaxed max-w-[94%]">
-          I got the job — the Portland role I've been talking about with Mom. The one I almost
-          didn't apply for because I convinced myself I wasn't ready.
+          I finally got the job offer from Portland. I'm excited — but now that it's actually
+          happening, I'm starting to second-guess everything again.
         </div>
       </div>
 
       <div className="flex gap-2 sm:gap-2.5 items-start">
         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shrink-0 mt-0.5" />
         <div className="rounded-lg rounded-tl-sm bg-white/[0.06] border border-white/5 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/80 text-[11px] sm:text-sm leading-relaxed min-w-0">
-          That's the role from your call with Mom in March — when Portland felt like starting over
-          without losing yourself. You talked yourself out of applying twice; Alex flagged the same
-          hesitation when you passed on Austin last year.
+          <span className="text-primary/80 font-medium">Noted.</span> This feels like your call with
+          Mom in March — when Portland stopped being an idea and started feeling real. Hesitation tends
+          to show up right before your big transitions: Austin, changing majors, now Portland. Same
+          quiet question every time — <span className="italic text-white/70">"What if I'm not ready?"</span>
         </div>
       </div>
 
       <div className="flex justify-end">
         <div className="rounded-lg rounded-tr-sm bg-purple-500/20 border border-purple-500/20 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/90 text-[11px] sm:text-sm leading-relaxed max-w-[92%] sm:max-w-[88%]">
-          Exactly — I didn't have to re-explain Mom, Alex, or why Portland mattered. You already had it.
+          Damn. I didn't even realize I was doing it again. Alex said almost the same thing when I was
+          talking myself out of accepting.
         </div>
       </div>
 
       <div className="flex gap-2 sm:gap-2.5 items-start">
         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shrink-0 mt-0.5" />
         <div className="rounded-lg rounded-tl-sm bg-white/[0.06] border border-white/5 px-3 sm:px-3.5 py-2 sm:py-2.5 text-white/75 text-[11px] sm:text-sm leading-relaxed min-w-0">
-          I've added <span className="text-primary/90 font-medium">New job · Portland</span> to your timeline
-          and linked Mom, Alex, and the move you've been sitting with since February. Want to capture how
-          you're feeling before day one?
+          <span className="text-primary/80 font-medium">Noted.</span> But none of those moments were
+          ever actually stopped by the doubt — you move first and build the confidence after. The
+          pattern isn't <span className="text-white/85 font-medium">self-doubt</span>. It's
+          <span className="text-white/85 font-medium"> growth</span> showing up disguised as fear.
         </div>
       </div>
 

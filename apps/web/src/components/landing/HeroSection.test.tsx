@@ -27,6 +27,21 @@ describe('HeroSection', () => {
     expect(screen.getByText(/Private by default/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /It Remembers/i })).toBeInTheDocument();
     expect(screen.getByText(/LoreBook · Career thread/i)).toBeInTheDocument();
-    expect(screen.getByText(/I got the job/i)).toBeInTheDocument();
+    expect(screen.getByText(/I finally got the job offer from Portland/i)).toBeInTheDocument();
+  });
+
+  it('shows narrative-intelligence cues: the "Noted." scribe signal and theme chips', () => {
+    render(
+      <MemoryRouter>
+        <HeroSection />
+      </MemoryRouter>,
+    );
+    // "Noted." appears as a subtle scribe signal (more than once, used sparingly).
+    expect(screen.getAllByText(/^Noted\.$/).length).toBeGreaterThan(0);
+    // Semantic/theme chips communicate pattern + concept understanding.
+    expect(screen.getByText('Themes')).toBeInTheDocument();
+    expect(screen.getByText('Self-doubt')).toBeInTheDocument();
+    expect(screen.getByText('Growth')).toBeInTheDocument();
+    expect(screen.getByText('New chapter')).toBeInTheDocument();
   });
 });
