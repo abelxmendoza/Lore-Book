@@ -544,6 +544,39 @@ class LocationService {
 
     return this.getLocationProfile(userId, locationId);
   }
+
+  /**
+   * Delete a location (user-scoped) and clean up its character links so no
+   * dangling references remain. Returns false if the row didn't exist.
+   */
+  async deleteLocation(userId: string, locationId: string): Promise<boolean> {
+    const { data: existing } = await supabaseAdmin
+      .from('locations')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('id', locationId)
+      .maybeSingle();
+    if (!existing) return false;
+
+    // Remove links first (best-effort) to avoid orphaned join rows.
+    await supabaseAdmin
+      .from('location_character_links')
+      .delete()
+      .eq('user_id', userId)
+      .eq('location_id', locationId)
+      .then(undefined, (err) => logger.debug({ err, locationId }, 'location link cleanup failed'));
+
+    const { error } = await supabaseAdmin
+      .from('locations')
+      .delete()
+      .eq('user_id', userId)
+      .eq('id', locationId);
+    if (error) {
+      logger.error({ error, locationId }, 'Failed to delete location');
+      throw error;
+    }
+    return true;
+  }
 }
 
 export const locationService = new LocationService();

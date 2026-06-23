@@ -193,6 +193,19 @@ router.patch('/goals/:id/status', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
+router.delete('/goals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const deleted = await goalValueAlignmentService.deleteGoal(req.user!.id, String(req.params.id));
+    if (!deleted) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to delete goal');
+    res.status(500).json({ error: 'Failed to delete goal' });
+  }
+});
+
 /**
  * POST /api/goals/:id/evaluate
  * Evaluate goal signals

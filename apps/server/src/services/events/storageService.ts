@@ -93,6 +93,60 @@ export class EventStorage {
     }
   }
 
+  /** Update an event (user-scoped). Returns null if it didn't exist. */
+  async updateEvent(
+    userId: string,
+    eventId: string,
+    patch: { canonical_title?: string; summary?: string | null; start_time?: string | null; end_time?: string | null },
+  ): Promise<ResolvedEvent | null> {
+    const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.canonical_title !== undefined) fields.canonical_title = patch.canonical_title;
+    if (patch.summary !== undefined) fields.summary = patch.summary;
+    if (patch.start_time !== undefined) fields.start_time = patch.start_time;
+    if (patch.end_time !== undefined) fields.end_time = patch.end_time;
+
+    const { data, error } = await supabaseAdmin
+      .from('events')
+      .update(fields)
+      .eq('id', eventId)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+    if (error) {
+      logger.error({ error, eventId }, 'Failed to update event');
+      throw error;
+    }
+    return (data as ResolvedEvent) ?? null;
+  }
+
+  /** Delete an event + its mention links (user-scoped). Returns false if absent. */
+  async deleteEvent(userId: string, eventId: string): Promise<boolean> {
+    const { data: existing } = await supabaseAdmin
+      .from('events')
+      .select('id')
+      .eq('id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!existing) return false;
+
+    await supabaseAdmin
+      .from('event_mentions')
+      .delete()
+      .eq('event_id', eventId)
+      .then(undefined, (err) => logger.debug({ err, eventId }, 'event mention cleanup failed'));
+
+    const { error } = await supabaseAdmin
+      .from('events')
+      .delete()
+      .eq('id', eventId)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, eventId }, 'Failed to delete event');
+      throw error;
+    }
+    return true;
+  }
+
   /**
    * Link event to a journal entry
    */

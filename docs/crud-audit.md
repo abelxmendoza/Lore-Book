@@ -67,7 +67,24 @@ shared web mutation layer (`apps/web/src/store/api/entitiesApi.ts`). Legend:
 | **Goals / Values** | ✅ `POST` | ✅ `GET /goals`, `/goals/:id`, `/values` | ✅ `PATCH /goals/:id/status`, `/values/:id/priority` | ❌ **no hard delete** (status patch only) | ❌ none | ⚠️ **NO DELETE** |
 | **Events** | ✅ `POST` | ✅ `GET` (2) | ❌ **none** | ❌ **none** | ❌ none | ⚠️ **CREATE/READ ONLY** |
 
-## Confirmed gaps (prioritized)
+## Gaps fixed (2026-06-22)
+
+- ✅ **Locations DELETE** — `DELETE /api/locations/:id` + `locationService.deleteLocation`
+  (cleans up `location_character_links`); delete button in `LocationDetailModal`,
+  wired in `LocationBook`. (Also fixed a pre-existing `setLocations` bug there.)
+- ✅ **Projects DELETE** — `DELETE /api/projects/:id` + `projectService.deleteProject`;
+  delete button in `ProjectDetailModal` (`onDelete`), wired in `ProjectBook`.
+- ✅ **Goals DELETE** — `DELETE /api/goals/goals/:id` + `goalValueAlignmentService.deleteGoal`.
+  (UI delete control still to be added to the goal/quest surface.)
+- ✅ **Events UPDATE + DELETE** — `PATCH`/`DELETE /api/events/:id` +
+  `EventStorage.updateEvent`/`deleteEvent` (cleans up `event_mentions`).
+  (UI controls still to be added to the timeline/event surface.)
+
+All backend routes are `requireAuth` + user-scoped and return 404 when the row is
+absent. Frontend delete is wired for Locations + Projects; goals/events have the
+backend ready for their UI pass.
+
+## Confirmed gaps (prioritized) — original audit
 
 1. **Locations — DELETE missing** (P1). No `DELETE /api/locations/:id` route and no
    `locationService.deleteLocation`. The Location Book can create/edit but not delete.

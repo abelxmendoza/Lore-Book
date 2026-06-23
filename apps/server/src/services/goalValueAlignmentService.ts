@@ -370,6 +370,28 @@ Only include values with confidence > 0.6. Priority should reflect how often/str
     }
   }
 
+  /** Hard-delete a goal (user-scoped). Returns false if it didn't exist. */
+  async deleteGoal(userId: string, goalId: string): Promise<boolean> {
+    const { data: existing } = await supabaseAdmin
+      .from('goals')
+      .select('id')
+      .eq('id', goalId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!existing) return false;
+
+    const { error } = await supabaseAdmin
+      .from('goals')
+      .delete()
+      .eq('id', goalId)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ err: error, goalId, userId }, 'deleteGoal failed');
+      throw error;
+    }
+    return true;
+  }
+
   /**
    * Evaluate goal signals (read-only analysis)
    */

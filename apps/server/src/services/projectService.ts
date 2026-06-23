@@ -109,6 +109,28 @@ class ProjectService {
     return (data as ProjectRow) ?? null;
   }
 
+  /** Delete a project (user-scoped). Returns false if it didn't exist. */
+  async deleteProject(userId: string, id: string): Promise<boolean> {
+    const { data: existing } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!existing) return false;
+
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, userId, id }, 'deleteProject failed');
+      throw error;
+    }
+    return true;
+  }
+
   /** Exact-name + containment duplicate groups (mirrors locations /duplicates). */
   async listDuplicates(userId: string): Promise<Array<{ match_type: 'exact' | 'containment'; canonical_name: string; projects: ProjectRow[] }>> {
     const rows = await this.listProjects(userId);

@@ -102,6 +102,17 @@ router.patch('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest,
   res.json({ success: true, project });
 }));
 
+router.delete('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const canonicalId = (await projectMergeService.resolveCanonicalProjectId(userId, String(req.params.id))) ?? String(req.params.id);
+  const deleted = await projectService.deleteProject(userId, canonicalId);
+  if (!deleted) {
+    res.status(404).json({ success: false, error: 'Project not found' });
+    return;
+  }
+  res.json({ success: true });
+}));
+
 /**
  * GET /api/projects/suggestions
  * Pending project suggestions. Lexical + story scan on first visit or ?rescan=true.

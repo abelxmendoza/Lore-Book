@@ -267,4 +267,21 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const locationId = String(req.params.id);
+  try {
+    const canonicalId = (await locationMergeService.resolveCanonicalLocationId(userId, locationId)) ?? locationId;
+    const deleted = await locationService.deleteLocation(userId, canonicalId);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: 'Location not found' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, locationId }, 'Failed to delete location');
+    res.status(500).json({ success: false, error: 'Failed to delete location' });
+  }
+});
+
 export const locationsRouter = router;

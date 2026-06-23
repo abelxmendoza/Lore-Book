@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare } from 'lucide-react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2 } from 'lucide-react';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
@@ -39,6 +39,7 @@ type LocationDetailModalProps = {
   onSelectLocation?: (loc: LocationProfile) => void;
   onClose: () => void;
   onLocationUpdated?: (loc: LocationProfile) => void;
+  onLocationDeleted?: (id: string) => void;
 };
 
 type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge' | 'chat';
@@ -58,10 +59,26 @@ export const LocationDetailModal = ({
   onSelectLocation,
   onClose,
   onLocationUpdated,
+  onLocationDeleted,
 }: LocationDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [location, setLocation] = useState(locationProp);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteLocation = async () => {
+    if (deleting || !location.id) return;
+    if (!window.confirm(`Delete "${location.name}"? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await fetchJson(`/api/locations/${location.id}`, { method: 'DELETE' });
+      onLocationDeleted?.(location.id);
+      onClose();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete location.');
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     setLocation(locationProp);
@@ -418,14 +435,28 @@ export const LocationDetailModal = ({
 
         {/* ── Header — compact on mobile ── */}
         <div className="relative border-b border-white/8 shrink-0 bg-gradient-to-r from-teal-950/30 via-black/40 to-teal-950/20">
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex items-center gap-1">
+            {onLocationDeleted && !isMockDataEnabled && (
+              <button
+                type="button"
+                onClick={handleDeleteLocation}
+                disabled={deleting}
+                className="p-1.5 rounded-lg text-white/40 hover:text-red-300 hover:bg-red-500/10 transition-colors touch-manipulation disabled:opacity-50"
+                aria-label="Delete location"
+                title="Delete location"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
           <div
             className="sm:hidden px-3 py-2 pr-11 min-w-0"

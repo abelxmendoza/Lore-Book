@@ -612,7 +612,11 @@ export const LocationBook = () => {
           onSelectLocation={(loc) => setSelectedLocation(loc)}
           onLocationUpdated={(loc) => {
             setSelectedLocation(loc);
-            setLocations(prev => prev.map(l => (l.id === loc.id ? loc : l)));
+            void refetch();
+          }}
+          onLocationDeleted={() => {
+            setSelectedLocation(null);
+            void refetch();
           }}
           onClose={() => { setSelectedLocation(null); void refetch(); }}
         />

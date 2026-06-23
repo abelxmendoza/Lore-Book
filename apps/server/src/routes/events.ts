@@ -107,5 +107,42 @@ router.get(
   })
 );
 
+/**
+ * PATCH /api/events/:id — correct a mis-extracted event.
+ */
+router.patch(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { canonical_title, summary, start_time, end_time } = req.body ?? {};
+    const event = await getStorage().updateEvent(userId, String(req.params.id), {
+      canonical_title,
+      summary,
+      start_time,
+      end_time,
+    });
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    res.json({ event });
+  })
+);
+
+/**
+ * DELETE /api/events/:id — remove an event and its mention links.
+ */
+router.delete(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const deleted = await getStorage().deleteEvent(req.user!.id, String(req.params.id));
+    if (!deleted) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    res.json({ success: true });
+  })
+);
+
 export default router;
 

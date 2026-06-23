@@ -299,6 +299,17 @@ export const ProjectBook = () => {
     await load();
   };
 
+  const deleteProject = async (id: string) => {
+    if (isMockDataEnabled) {
+      setDemoProjects((prev) => prev.filter((p) => p.id !== id));
+      setActive(null);
+      return;
+    }
+    await fetchJson(`/api/projects/${id}`, { method: 'DELETE' });
+    setActive(null);
+    await load();
+  };
+
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -649,6 +660,7 @@ export const ProjectBook = () => {
           project={active}
           onClose={() => setActive(null)}
           onPatch={patchProject}
+          onDelete={deleteProject}
           onAskInChat={askInChat}
         />
       )}

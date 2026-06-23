@@ -8,6 +8,7 @@ import {
   Wrench,
   BookOpen,
   MessageSquare,
+  Trash2,
 } from 'lucide-react';
 import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
@@ -48,10 +49,12 @@ type Props = {
   project: ProjectCardData;
   onClose: () => void;
   onPatch: (id: string, patch: Partial<ProjectCardData>) => Promise<void>;
+  onDelete?: (id: string) => void | Promise<void>;
   onAskInChat?: (prompt: string, project: ProjectCardData) => void;
 };
 
-export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: Props) {
+export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskInChat }: Props) {
+  const [deleting, setDeleting] = useState(false);
   const demo = useShouldUseMockData();
   const enriched = useMemo(
     () => (demo ? enrichProjectForDemo(project) : project),
@@ -103,6 +106,19 @@ export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: P
     onClose();
   };
 
+  const handleDelete = async () => {
+    if (deleting || readOnly || !onDelete) return;
+    if (!window.confirm(`Delete "${local.name}"? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await onDelete(local.id);
+      onClose();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete project.');
+      setDeleting(false);
+    }
+  };
+
   return (
     <Modal isOpen onClose={onClose} maxWidth="3xl">
       <div
@@ -111,6 +127,18 @@ export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: P
       >
         {/* Hero — compact on mobile */}
         <div className={`relative shrink-0 border-b border-white/10 bg-gradient-to-br ${gradient}`}>
+          {onDelete && !readOnly && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="absolute top-2 right-11 sm:top-3 sm:right-12 text-white/45 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-500/10 z-10 touch-manipulation disabled:opacity-50"
+              aria-label="Delete project"
+              title="Delete project"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
