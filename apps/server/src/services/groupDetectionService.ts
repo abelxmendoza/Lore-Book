@@ -126,6 +126,73 @@ const FABRICATED_TEST_TERMS = /\b(zephyrine|zephyrne|quillborne?|quillborn|quint
 const NON_PERSON_MEMBER_TERMS = /\b(?:pool|billiards?|street|venue|club|bar|show|event|party|anniversary|night|first street)\b/i;
 const HONORIFIC_PREFIX = /^(?:mr|mrs|ms|miss|dr|prof)\.?\s+/i;
 
+type LexicalGroupType =
+  | 'family'
+  | 'household'
+  | 'friend_group'
+  | 'school_community'
+  | 'school_subgroup'
+  | 'organization'
+  | 'work_team'
+  | 'club'
+  | 'sports_team'
+  | 'music_scene'
+  | 'fandom'
+  | 'event_community'
+  | 'neighborhood'
+  | 'social_circle'
+  | 'military_unit'
+  | 'religious_group'
+  | 'online_community'
+  | 'unknown';
+
+type StructuralGroupCandidate = {
+  name: string;
+  groupType: GroupType;
+  lexicalGroupType: LexicalGroupType;
+  membershipModel: MembershipModel;
+  userRelationship: UserRelationship;
+  confidence: number;
+  rulesFired: string[];
+  anchorName?: string;
+  parentName?: string;
+  requiresReview?: boolean;
+  includeMembers?: boolean;
+};
+
+const OWNER_RESIDENCE_PATTERN =
+  /\b(?:at|in|inside|outside|near|from|to|went to|drove to|visited)\s+(?:my\s+|our\s+|the\s+)?((?:Tio|Tía|Tia|Uncle|Aunt|Auntie|Mom|Dad|Mother|Father|Abuela|Abuelo|Grandma|Grandpa)\s+[A-ZÀ-Ý][a-zÀ-ÿ'-]+|(?:Mom|Dad|Mother|Father|Abuela|Abuelo|Grandma|Grandpa))'?s?\s+(?:house|home|household|family home|casa)\b/gi;
+
+const COHABITATION_PATTERN =
+  /\b(?:lives?\s+with|live\s+together|same\s+house(?:hold)?|household)\b/i;
+
+const SCHOOL_NAME_PATTERN =
+  /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,5}\s+(?:Middle School|High School|School|College|University|Academy))\b/g;
+
+const SCHOOL_SUBGROUP_PATTERN =
+  /\b(?:(?:the|my|our)\s+)?([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,5}\s+(?:Middle School|High School|School|College|University|Academy))\s+((?:[A-Za-z]+\s+){0,2}(?:band|football team|basketball team|soccer team|baseball team|japanese class|coding club|robotics club|robotics team|club|team|class))\b/g;
+
+const STANDALONE_SUBGROUP_PATTERN =
+  /\b(?:my|our|the)?\s*((?:coding|robotics|japanese|music|band|football|basketball|soccer|baseball)\s+(?:club|class|team|band))\b/gi;
+
+const ORGANIZATION_NAME_PATTERN =
+  /\b(?:worked at|work at|works at|employee at|coworker at|team at|department at|for)\s+([A-Z][A-Za-zÀ-ÿ'’-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’-]+){0,4})(?:\s+(?:organization|company|team|department))?\b/gi;
+
+const EXPLICIT_ORGANIZATION_PATTERN =
+  /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,4})\s+(Organization|Company|Team|Department)\b/g;
+
+const MUSIC_SCENE_PATTERN =
+  /\b((?:LA|L\.A\.|OC|Orange County|Goth|Punk|Metal|Rave|Ska)(?:\s+(?:ska|goth|punk|metal|rave))?\s+scene)\b/gi;
+
+const EVENT_COMMUNITY_PATTERN =
+  /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,4}\s+(?:Compound|Club|Venue|Prom|Festival|Show))\s+(?:community|crowd|regulars|scene)\b/gi;
+
+const PERSON_PAIR_GROUP_NAME =
+  /\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)?\s*(?:&|\+|and)\s*(?:Tio|Tia|Tía|Mom|Dad|Abuela|Abuelo|[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)(?:\s+(?:Family|Group|Crew|Squad|Circle))?\b/i;
+
+const BARE_TITLE_GROUP_NAME =
+  /^(?:Tio|Tia|Tía|Mom|Dad|Abuela|Abuelo|Brother|Sister|Mr|Mrs|Ms|Dr|Professor)\s+(?:Family|Group|Crew|Squad|Circle)$/i;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GroupDetectionService
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +257,58 @@ export class GroupDetectionService {
       const memberNames = detectedMembers.map(member => member.name);
       const memberIds = detectedMembers.map(member => member.id);
 
+      for (const structural of this.inferStructuralGroups(message, conversationContext)) {
+        const existingGroup = await this.findGroupByName(userId, structural.name);
+        const members = structural.includeMembers === false ? [] : memberNames;
+        const ids = structural.includeMembers === false ? [] : memberIds;
+
+        if (!existingGroup) {
+          detectedGroups.push({
+            name: structural.name,
+            members,
+            member_ids: ids,
+            context: message.substring(0, 200),
+            confidence: structural.confidence,
+            group_type: structural.groupType,
+            membership_model: structural.membershipModel,
+            user_relationship: structural.userRelationship,
+            is_public_entity: false,
+            metadata: {
+              lexical_group_type: structural.lexicalGroupType,
+              anchor_name: structural.anchorName,
+              parent_group_name: structural.parentName,
+              inferred_not_confirmed: true,
+              requires_review: structural.requiresReview ?? structural.confidence < 0.9,
+              rules_fired: structural.rulesFired,
+            },
+          });
+        } else {
+          const newMembers = members.filter(m =>
+            !existingGroup.members?.some(gm =>
+              gm.character_name.toLowerCase() === m.toLowerCase()
+            )
+          );
+          if (newMembers.length > 0) {
+            detectedGroups.push({
+              name: existingGroup.name,
+              members: newMembers,
+              member_ids: this.memberIdsForNames(newMembers, detectedMembers),
+              context: message.substring(0, 200),
+              confidence: 0.82,
+              group_type: existingGroup.group_type,
+              membership_model: existingGroup.membership_model,
+              user_relationship: existingGroup.user_relationship,
+              is_public_entity: existingGroup.is_public_entity,
+              metadata: {
+                ...(existingGroup.metadata ?? {}),
+                evidence_attached_to_existing_group: true,
+                rules_fired: structural.rulesFired,
+              },
+            });
+          }
+        }
+      }
+
       for (const known of KNOWN_GROUPS) {
         if (!known.pattern.test(message)) continue;
         const existingGroup = await this.findGroupByName(userId, known.name);
@@ -209,23 +328,13 @@ export class GroupDetectionService {
         }
       }
 
-      // Unnamed group from co-mention clustering
+      // Co-mentions reinforce the people graph elsewhere, but do not create
+      // groups. Groups require shared structure: household, school, workplace,
+      // club/team/class, scene, community, or repeated membership evidence.
       if (memberNames.length >= 2) {
         const existingGroups = await this.findExistingGroupsByMembers(userId, memberNames);
 
-        if (existingGroups.length === 0) {
-          const groupType = this.suggestGroupType(message, memberNames);
-          detectedGroups.push({
-            members: memberNames,
-            member_ids: memberIds,
-            context: message.substring(0, 200),
-            confidence: 0.65,
-            group_type: groupType,
-            membership_model: this.suggestMembershipModel(groupType),
-            user_relationship: this.suggestUserRelationship(message, true),
-            is_public_entity: false,
-          });
-        } else {
+        if (existingGroups.length > 0) {
           for (const group of existingGroups) {
             const newMembers = memberNames.filter(m =>
               !group.members?.some(gm =>
@@ -252,6 +361,7 @@ export class GroupDetectionService {
 
       // Named group detection
       for (let groupName of groupNames) {
+        if (!this.isValidProposedGroupName(groupName, memberNames)) continue;
         const isEmployer = employerNames.has(groupName);
         // An employer/agency the user works through is a company, never a
         // public-fan entity — even if a famous client (e.g. Amazon) is named in
@@ -376,6 +486,227 @@ export class GroupDetectionService {
       return 'institution';
     }
     return 'friend_group';
+  }
+
+  private inferStructuralGroups(message: string, conversationContext?: string[]): StructuralGroupCandidate[] {
+    const text = [message, ...(conversationContext ?? [])].join('\n');
+    const groups: StructuralGroupCandidate[] = [];
+    const seen = new Set<string>();
+    const add = (group: StructuralGroupCandidate) => {
+      const key = normalizeNameKey(group.name);
+      if (!key || seen.has(key) || !this.isValidProposedGroupName(group.name, [])) return;
+      seen.add(key);
+      groups.push(group);
+    };
+
+    for (const match of text.matchAll(OWNER_RESIDENCE_PATTERN)) {
+      const owner = this.normalizeGroupAnchorName(match[1]);
+      if (!owner) continue;
+      add({
+        name: `${owner} Household`,
+        groupType: 'household',
+        lexicalGroupType: 'household',
+        membershipModel: 'strict',
+        userRelationship: 'referenced',
+        confidence: 0.9,
+        anchorName: owner,
+        rulesFired: ['household_owner_residence'],
+      });
+    }
+
+    if (COHABITATION_PATTERN.test(text)) {
+      const kinshipOwner = this.extractKinshipOwner(text);
+      if (kinshipOwner) {
+        add({
+          name: `${kinshipOwner} Household`,
+          groupType: 'household',
+          lexicalGroupType: 'household',
+          membershipModel: 'strict',
+          userRelationship: 'referenced',
+          confidence: 0.86,
+          anchorName: kinshipOwner,
+          rulesFired: ['household_cohabitation'],
+        });
+      }
+    }
+
+    const schoolNames = new Set<string>();
+    for (const match of text.matchAll(SCHOOL_NAME_PATTERN)) {
+      const school = this.titleCaseGroupName(match[1]);
+      schoolNames.add(school);
+      add({
+        name: `${school} Community`,
+        groupType: 'community',
+        lexicalGroupType: 'school_community',
+        membershipModel: 'fuzzy',
+        userRelationship: /\b(went to|graduated|alumni|classmate|student)\b/i.test(text) ? 'alumnus' : 'referenced',
+        confidence: 0.88,
+        anchorName: school,
+        rulesFired: ['school_community'],
+      });
+    }
+
+    for (const match of text.matchAll(SCHOOL_SUBGROUP_PATTERN)) {
+      const school = this.titleCaseGroupName(match[1]);
+      const subgroup = this.titleCaseGroupName(match[2]);
+      schoolNames.add(school);
+      add({
+        name: `${school} ${subgroup}`,
+        groupType: this.groupTypeForSubgroup(subgroup),
+        lexicalGroupType: 'school_subgroup',
+        membershipModel: 'strict',
+        userRelationship: 'member',
+        confidence: 0.9,
+        anchorName: subgroup,
+        parentName: `${school} Community`,
+        rulesFired: ['school_subgroup'],
+      });
+    }
+
+    for (const match of text.matchAll(STANDALONE_SUBGROUP_PATTERN)) {
+      const subgroup = this.titleCaseGroupName(match[1]);
+      const school = Array.from(schoolNames)[0];
+      add({
+        name: school ? `${school} ${subgroup}` : subgroup,
+        groupType: this.groupTypeForSubgroup(subgroup),
+        lexicalGroupType: school ? 'school_subgroup' : this.lexicalTypeForSubgroup(subgroup),
+        membershipModel: 'strict',
+        userRelationship: 'member',
+        confidence: school ? 0.86 : 0.82,
+        parentName: school ? `${school} Community` : undefined,
+        requiresReview: !school,
+        rulesFired: school ? ['standalone_school_subgroup_with_context'] : ['standalone_activity_group'],
+      });
+    }
+
+    for (const match of text.matchAll(ORGANIZATION_NAME_PATTERN)) {
+      const org = this.titleCaseGroupName(match[1]).replace(/\s+(Organization|Company|Team|Department)$/i, '');
+      if (!this.isLikelyOrganizationName(org)) continue;
+      add({
+        name: `${org} Organization`,
+        groupType: 'company',
+        lexicalGroupType: 'organization',
+        membershipModel: 'strict',
+        userRelationship: this.suggestUserRelationship(text, true),
+        confidence: 0.88,
+        anchorName: org,
+        rulesFired: ['work_organization'],
+      });
+    }
+
+    for (const match of text.matchAll(EXPLICIT_ORGANIZATION_PATTERN)) {
+      const base = this.titleCaseGroupName(match[1]);
+      const suffix = this.titleCaseGroupName(match[2]);
+      const name = suffix === 'Organization' ? `${base} Organization` : `${base} ${suffix}`;
+      add({
+        name,
+        groupType: suffix === 'Team' ? 'team' : 'company',
+        lexicalGroupType: suffix === 'Team' ? 'work_team' : 'organization',
+        membershipModel: 'strict',
+        userRelationship: 'referenced',
+        confidence: 0.88,
+        anchorName: base,
+        rulesFired: ['explicit_organization_name'],
+      });
+    }
+
+    for (const match of text.matchAll(MUSIC_SCENE_PATTERN)) {
+      add({
+        name: this.titleCaseSceneName(match[1]),
+        groupType: 'scene',
+        lexicalGroupType: 'music_scene',
+        membershipModel: 'fuzzy',
+        userRelationship: 'adjacent',
+        confidence: 0.9,
+        rulesFired: ['music_scene'],
+        includeMembers: false,
+      });
+    }
+
+    for (const match of text.matchAll(EVENT_COMMUNITY_PATTERN)) {
+      const anchor = this.titleCaseGroupName(match[1]);
+      add({
+        name: `${anchor} Community`,
+        groupType: 'community',
+        lexicalGroupType: 'event_community',
+        membershipModel: 'fuzzy',
+        userRelationship: 'adjacent',
+        confidence: /\b(regulars|community)\b/i.test(match[0]) ? 0.84 : 0.58,
+        anchorName: anchor,
+        requiresReview: true,
+        rulesFired: ['event_community_requires_repeated_evidence'],
+        includeMembers: false,
+      });
+    }
+
+    return groups;
+  }
+
+  private normalizeGroupAnchorName(raw: string): string | null {
+    const cleaned = raw
+      .replace(/^(?:my|our|the)\s+/i, '')
+      .replace(/['’]s$/i, '')
+      .trim();
+    if (!cleaned || /^(?:tio|tia|tía|mom|dad|abuela|abuelo|brother|sister)$/i.test(cleaned)) {
+      return cleaned ? this.titleCaseGroupName(cleaned) : null;
+    }
+    return this.titleCaseGroupName(cleaned);
+  }
+
+  private extractKinshipOwner(text: string): string | null {
+    const match = text.match(/\b((?:Tio|Tía|Tia|Uncle|Aunt|Auntie|Mom|Dad|Mother|Father|Abuela|Abuelo|Grandma|Grandpa)\s+[A-ZÀ-Ý][a-zÀ-ÿ'-]+|Mom|Dad|Abuela|Abuelo|Grandma|Grandpa)\b/);
+    return match ? this.normalizeGroupAnchorName(match[1]) : null;
+  }
+
+  private titleCaseGroupName(value: string): string {
+    return value
+      .replace(/[’]/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .map((word) => {
+        if (/^la$/i.test(word)) return 'LA';
+        if (/^oc$/i.test(word)) return 'OC';
+        if (/^csuf$/i.test(word)) return 'CSUF';
+        if (/^t[ií]a$/i.test(word)) return 'Tía';
+        if (/^tio$/i.test(word)) return 'Tio';
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
+  }
+
+  private titleCaseSceneName(value: string): string {
+    return this.titleCaseGroupName(value).replace(/\bSka\b/g, 'Ska').replace(/\bGoth\b/g, 'Goth');
+  }
+
+  private groupTypeForSubgroup(subgroup: string): GroupType {
+    if (/\bteam\b/i.test(subgroup)) return 'sports_team';
+    if (/\bband\b/i.test(subgroup)) return 'band';
+    return 'club';
+  }
+
+  private lexicalTypeForSubgroup(subgroup: string): LexicalGroupType {
+    if (/\bteam\b/i.test(subgroup)) return 'sports_team';
+    return 'club';
+  }
+
+  private isLikelyOrganizationName(name: string): boolean {
+    if (!name || MEMBER_STOPWORDS.has(name)) return false;
+    if (/\b(?:my|our|the|at|in|for|team|department|employee|coworker)\b/i.test(name)) return false;
+    return /^[A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+(?:\s+[A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+){0,4}$/.test(name);
+  }
+
+  private isValidProposedGroupName(groupName: string, members: string[]): boolean {
+    const name = groupName.trim();
+    if (!name) return false;
+    if (PERSON_PAIR_GROUP_NAME.test(name)) return false;
+    if (BARE_TITLE_GROUP_NAME.test(name)) return false;
+    if (/^(?:Mom|Dad|Tio|Tia|Tía|Abuela|Abuelo|Brother|Sister)\s+Family$/i.test(name)) return false;
+    if (members.some(member => normalizeNameKey(member) === normalizeNameKey(name))) return false;
+    if (/^(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:Group|Crew|Squad|Circle))$/i.test(name) && members.length < 3) {
+      return false;
+    }
+    return true;
   }
 
   // ── Membership model inference ───────────────────────────────────────────

@@ -23,6 +23,7 @@ import { supabaseAdmin } from './supabaseClient';
 import type { SuggestionBookDomain } from './suggestionCrossBookService';
 import { SUGGESTION_DOMAIN_LABELS } from './suggestionCrossBookService';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import { filterSelfCandidatesForIncoming } from './identity/selfIdentityGuard';
 
 export type RedirectMatchDisposition = 'auto_merged' | 'suggested' | 'uncertain';
 
@@ -37,7 +38,7 @@ export type RedirectTargetMatchResult = {
   identityReasons?: string[];
 };
 
-type NameCandidate = { id: string; name: string; aliases?: string[] };
+type NameCandidate = { id: string; name: string; aliases?: string[]; metadata?: Record<string, unknown> | null };
 
 function toRedirectResult(
   verdict: IdentityVerdict,
@@ -58,7 +59,7 @@ function toRedirectResult(
 async function loadCharacterCandidates(userId: string): Promise<NameCandidate[]> {
   const { data } = await supabaseAdmin
     .from('characters')
-    .select('id, name, alias, aliases')
+    .select('id, name, alias, aliases, metadata')
     .eq('user_id', userId);
   return (data ?? []).map((row) => ({
     id: String(row.id),
@@ -67,6 +68,7 @@ async function loadCharacterCandidates(userId: string): Promise<NameCandidate[]>
       ...(Array.isArray(row.alias) ? row.alias : []),
       ...(Array.isArray(row.aliases) ? row.aliases : []),
     ].map(String),
+    metadata: (row.metadata ?? null) as Record<string, unknown> | null,
   }));
 }
 
@@ -113,7 +115,7 @@ export async function evaluateRedirectTargetMatch(
   try {
     switch (toDomain) {
       case 'characters': {
-        const candidates = await loadCharacterCandidates(userId);
+        const candidates = filterSelfCandidatesForIncoming([trimmed], await loadCharacterCandidates(userId));
         const { verdict, matched } = evaluateCharacterIdentity(trimmed, candidates);
         return toRedirectResult(verdict, matched);
       }

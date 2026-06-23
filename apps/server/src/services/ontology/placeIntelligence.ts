@@ -38,6 +38,33 @@ export interface PlaceClassification {
   reason: string;
 }
 
+export type PlaceDuplicateRelationship =
+  | 'alias_of'
+  | 'possible_alias'
+  | 'contains'
+  | 'located_in'
+  | 'hosted_event_at'
+  | 'room_of'
+  | 'incompatible_type';
+
+export type PlaceDuplicateReviewReason =
+  | 'possible_alias'
+  | 'contained_location'
+  | 'hosted_event'
+  | 'room_or_area'
+  | 'incompatible_type';
+
+export interface PlaceDuplicateReview {
+  canMerge: boolean;
+  requiresReview: boolean;
+  confidence: number;
+  relationship: PlaceDuplicateRelationship;
+  reason: PlaceDuplicateReviewReason;
+  evidence: string[];
+  left: PlaceClassification;
+  right: PlaceClassification;
+}
+
 const norm = (s: string) => (s ?? '').trim().toLowerCase().replace(/['’]/g, "'").replace(/\s+/g, ' ');
 
 const ROOMS = /\b(kitchen|bathroom|bedroom|garage|living\s?room|dining\s?room|backyard|basement|attic|patio|porch|closet)\b/;
@@ -48,6 +75,11 @@ const EVENT_KW = /\b(show|concert|festival|gig|party|anniversary|graduation|birt
 const GEO_SUFFIX = /\b(valley|hills?|heights|springs?|beach|city|lake|mountains?|canyon|mesa|grove|ridge|falls|gardens?|county|harbor|bay|island)\b/;
 // Known cities/regions (extend over time / from geocoding).
 const KNOWN_CITIES = new Set(['anaheim', 'san diego', 'los angeles', 'moreno valley', 'riverside', 'long beach', 'santa ana', 'orange', 'irvine']);
+
+function canonicalCityName(raw: string): string | null {
+  const n = norm(raw).replace(/^city of\s+/, '').trim();
+  return KNOWN_CITIES.has(n) ? n.replace(/\b\w/g, (c) => c.toUpperCase()) : null;
+}
 
 /** Strip event/alias noise to a canonical venue name: "The Club Metro anniversary where Goth Tio danced" → "Club Metro". */
 export function canonicalVenueName(raw: string): string {
@@ -64,6 +96,7 @@ export function canonicalVenueName(raw: string): string {
 export function classifyPlace(rawName: string, context = ''): PlaceClassification {
   const input = (rawName ?? '').trim();
   const n = norm(input);
+  const canonicalCity = canonicalCityName(input);
   const base: PlaceClassification = {
     input, rootType: 'PLACE', category: 'UNKNOWN', isRoom: false, isEvent: false,
     canonicalName: input, confidence: 0.4, reason: 'unclassified',
@@ -112,7 +145,7 @@ export function classifyPlace(rawName: string, context = ''): PlaceClassificatio
   }
 
   // ── City / Region ───────────────────────────────────────────────────────────
-  if (KNOWN_CITIES.has(n)) return { ...base, category: 'CITY', subcategory: 'CITY', confidence: 0.9, reason: 'known city' };
+  if (canonicalCity) return { ...base, category: 'CITY', subcategory: 'CITY', canonicalName: canonicalCity, confidence: 0.9, reason: 'known city' };
   if (GEO_SUFFIX.test(n)) return { ...base, category: /\b(county|region|valley)\b/.test(n) ? 'REGION' : 'CITY', subcategory: 'GEOGRAPHIC', confidence: 0.78, reason: 'geographic suffix' };
 
   // ── Business ────────────────────────────────────────────────────────────────
@@ -128,11 +161,8 @@ export function classifyPlace(rawName: string, context = ''): PlaceClassificatio
   return { ...base, locatedIn };
 }
 
-/** Duplicate confidence between two place names (0..1): normalized + token overlap + venue-canonical equality. */
-export function placeDuplicateScore(a: string, b: string): number {
+function tokenOverlapScore(a: string, b: string): number {
   const na = norm(a), nb = norm(b);
-  if (na === nb) return 1;
-  if (norm(canonicalVenueName(a)) === norm(canonicalVenueName(b))) return 0.9;
   const ta = new Set(na.split(' ').filter((w) => w.length > 2));
   const tb = new Set(nb.split(' ').filter((w) => w.length > 2));
   if (ta.size === 0 || tb.size === 0) return 0;
@@ -144,4 +174,128 @@ export function placeDuplicateScore(a: string, b: string): number {
   return Math.max(jaccard, containment * 0.85);
 }
 
-export const placeIntelligence = { classifyPlace, canonicalVenueName, placeDuplicateScore };
+function provenanceOverlaps(left: string[] = [], right: string[] = []): boolean {
+  const l = new Set(left.map(norm).filter(Boolean));
+  return right.map(norm).some((item) => l.has(item));
+}
+
+function categoryFamily(c: PlaceClassification): string {
+  if (c.category === 'HOUSEHOLD' || c.category === 'PROPERTY') return 'PROPERTY';
+  if (c.category === 'ROOM') return 'ROOM';
+  if (c.category === 'CITY' || c.category === 'REGION') return 'GEOGRAPHY';
+  if (c.category === 'VENUE' || c.category === 'BUSINESS' || c.category === 'LANDMARK') return 'PLACE';
+  if (c.category === 'EVENT_LOCATION' || c.rootType === 'EVENT') return 'EVENT';
+  return c.category;
+}
+
+function residentialAliasKey(name: string): string {
+  return norm(name)
+    .replace(/\bmoms\b/g, "mom's")
+    .replace(/\bdads\b/g, "dad's")
+    .replace(/\babuelas\b/g, "abuela's")
+    .replace(/\babuelos\b/g, "abuelo's")
+    .replace(/\btios\b/g, "tio's")
+    .replace(/\btias\b/g, "tia's")
+    .replace(/\bhome\b/g, 'house')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function reviewResult(
+  left: PlaceClassification,
+  right: PlaceClassification,
+  relationship: PlaceDuplicateRelationship,
+  reason: PlaceDuplicateReviewReason,
+  confidence: number,
+  canMerge: boolean,
+  requiresReview: boolean,
+  evidence: string[],
+): PlaceDuplicateReview {
+  return { left, right, relationship, reason, confidence, canMerge, requiresReview, evidence };
+}
+
+export function reviewPlaceDuplicateCompatibility(
+  a: string,
+  b: string,
+  options: { leftProvenance?: string[]; rightProvenance?: string[] } = {},
+): PlaceDuplicateReview {
+  const left = classifyPlace(a);
+  const right = classifyPlace(b);
+  const exact = norm(a) === norm(b);
+  const canonicalMatch = norm(left.canonicalName) === norm(right.canonicalName);
+  const overlap = tokenOverlapScore(a, b);
+  const evidence = [
+    `types: ${left.category} vs ${right.category}`,
+    `canonical: "${left.canonicalName}" vs "${right.canonicalName}"`,
+    `token_overlap: ${overlap.toFixed(2)}`,
+  ];
+
+  if (exact) {
+    return reviewResult(left, right, 'alias_of', 'possible_alias', 1, true, false, ['normalized name match', ...evidence]);
+  }
+
+  const leftFamily = categoryFamily(left);
+  const rightFamily = categoryFamily(right);
+
+  if (leftFamily === 'EVENT' && rightFamily === 'PLACE' && canonicalMatch) {
+    return reviewResult(left, right, 'hosted_event_at', 'hosted_event', 0.9, false, false, evidence);
+  }
+  if (rightFamily === 'EVENT' && leftFamily === 'PLACE' && canonicalMatch) {
+    return reviewResult(left, right, 'hosted_event_at', 'hosted_event', 0.9, false, false, evidence);
+  }
+
+  if (leftFamily === 'GEOGRAPHY' && (rightFamily === 'PROPERTY' || rightFamily === 'ROOM')) {
+    return reviewResult(left, right, 'located_in', 'contained_location', Math.max(overlap, 0.7), false, false, evidence);
+  }
+  if (rightFamily === 'GEOGRAPHY' && (leftFamily === 'PROPERTY' || leftFamily === 'ROOM')) {
+    return reviewResult(left, right, 'located_in', 'contained_location', Math.max(overlap, 0.7), false, false, evidence);
+  }
+
+  if (leftFamily === 'ROOM' && rightFamily === 'PROPERTY') {
+    return reviewResult(left, right, 'room_of', 'room_or_area', Math.max(overlap, 0.7), false, true, evidence);
+  }
+  if (rightFamily === 'ROOM' && leftFamily === 'PROPERTY') {
+    return reviewResult(left, right, 'room_of', 'room_or_area', Math.max(overlap, 0.7), false, true, evidence);
+  }
+
+  if (leftFamily === 'ROOM' && rightFamily === 'ROOM') {
+    const sameProvenance = provenanceOverlaps(options.leftProvenance, options.rightProvenance);
+    const possible = canonicalMatch || overlap >= 0.65;
+    return reviewResult(
+      left,
+      right,
+      possible && sameProvenance ? 'possible_alias' : 'room_of',
+      possible && sameProvenance ? 'possible_alias' : 'room_or_area',
+      possible ? overlap : 0.3,
+      possible && sameProvenance,
+      true,
+      sameProvenance ? ['same household/location provenance', ...evidence] : ['room aliases require same household provenance', ...evidence],
+    );
+  }
+
+  if (leftFamily !== rightFamily) {
+    return reviewResult(left, right, 'incompatible_type', 'incompatible_type', overlap, false, false, evidence);
+  }
+
+  if (leftFamily === 'PROPERTY' && residentialAliasKey(a) === residentialAliasKey(b)) {
+    return reviewResult(left, right, 'alias_of', 'possible_alias', 0.92, true, false, ['residential alias key match', ...evidence]);
+  }
+
+  if (canonicalMatch) {
+    return reviewResult(left, right, 'alias_of', 'possible_alias', 0.92, true, false, ['canonical name match', ...evidence]);
+  }
+
+  if (left.category === right.category && overlap >= 0.65) {
+    return reviewResult(left, right, 'possible_alias', 'possible_alias', overlap, true, true, ['same compatible type with strong token overlap', ...evidence]);
+  }
+
+  return reviewResult(left, right, 'incompatible_type', 'incompatible_type', overlap, false, false, evidence);
+}
+
+/** Duplicate confidence between two place names (0..1), after type/hierarchy compatibility. */
+export function placeDuplicateScore(a: string, b: string): number {
+  const review = reviewPlaceDuplicateCompatibility(a, b);
+  return review.canMerge ? review.confidence : 0;
+}
+
+export const placeIntelligence = { classifyPlace, canonicalVenueName, placeDuplicateScore, reviewPlaceDuplicateCompatibility };

@@ -12,6 +12,10 @@ import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { characterDeduplicationService } from './characterDeduplicationService';
 import { isValidAliasForCharacter } from './characters/aliasConstraintService';
+import {
+  filterSelfCandidatesForIncoming,
+  isSelfCharacterRow,
+} from './identity/selfIdentityGuard';
 import { supabaseAdmin } from './supabaseClient';
 
 export type CharacterAuthorityRow = {
@@ -98,7 +102,7 @@ class CharacterAuthorityService {
   }
 
   async resolveByName(userId: string, name: string): Promise<ResolveResult> {
-    const rows = await this.loadCharacters(userId);
+    const rows = filterSelfCandidatesForIncoming([name], await this.loadCharacters(userId));
     const norm = normalizeNameKey(name);
 
     // Exact name
@@ -116,7 +120,13 @@ class CharacterAuthorityService {
 
     // Authority map alias
     const mapped = await this.lookupAuthorityMapByAlias(userId, name);
-    if (mapped) return mapped;
+    if (mapped?.characterId && rows.some((row) => row.id === mapped.characterId)) return mapped;
+    if (mapped?.characterId) {
+      logger.warn(
+        { userId, characterId: mapped.characterId, incomingName: name },
+        'Ignoring authority-map match from non-self character mention to protagonist card'
+      );
+    }
 
     // Title-aware + fuzzy via dedup service
     const candidates = characterDeduplicationService.findCandidates(name, rows);
@@ -266,11 +276,12 @@ class CharacterAuthorityService {
     const norm = normalizeNameKey(alias);
     const { data: row } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias')
+      .select('id, name, alias, metadata')
       .eq('id', characterId)
       .eq('user_id', userId)
       .maybeSingle();
     if (!row) return;
+    if (isSelfCharacterRow(row) && filterSelfCandidatesForIncoming([alias], [row]).length === 0) return;
     if (normalizeNameKey(row.name) === norm) return;
     if (!isValidAliasForCharacter(row.name, alias)) return;
     const aliases = new Set(row.alias ?? []);
@@ -305,7 +316,10 @@ class CharacterAuthorityService {
   /** Register all match keys for a character into authority map (self-link). */
   async registerCharacterAuthority(userId: string, characterId: string, name: string, aliases: string[] = []): Promise<void> {
     await this.linkSourceRecord(userId, characterId, 'characters', characterId, name, 'exact', 1);
+    const target = (await this.loadCharacters(userId)).find((row) => row.id === characterId) ?? { name, metadata: null };
+    const targetIsSelf = isSelfCharacterRow(target);
     for (const alias of aliases) {
+      if (targetIsSelf && filterSelfCandidatesForIncoming([alias], [target]).length === 0) continue;
       await supabaseAdmin.from('character_authority_map').upsert(
         {
           user_id: userId,

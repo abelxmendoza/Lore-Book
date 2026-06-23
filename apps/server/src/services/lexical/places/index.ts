@@ -4,4 +4,7 @@ export * from './placeSpanSplitter';
 export * from './placeTypeGuard';
 export * from './placeTaxonomyClassifier';
 export * from './privateResidenceGuard';
+export * from './placeDuplicateGuard';
+export * from './placeMergeCompatibilityService';
+export * from './existingPlaceResolver';
 export * from './placeSuggestionService';

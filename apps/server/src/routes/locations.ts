@@ -7,7 +7,7 @@ import { locationService } from '../services/locationService';
 import { locationSuggestionService } from '../services/locationSuggestionService';
 import { locationDomainAuditService } from '../services/locationDomainAuditService';
 import { locationNormalizationService } from '../services/locationNormalizationService';
-import { placeDuplicateScore } from '../services/ontology/placeIntelligence';
+import { reviewPlaceDuplicateCompatibility } from '../services/ontology/placeIntelligence';
 import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
@@ -144,23 +144,26 @@ router.get(
         const rightKey = normalizeNameKey(right.name);
         if (leftKey === rightKey) continue;
 
-        const aliasScore = placeDuplicateScore(left.name, right.name);
+        const review = reviewPlaceDuplicateCompatibility(left.name, right.name);
         const containment = namesOverlapByContainment(leftKey, rightKey);
-        if (!containment && aliasScore < 0.65) continue;
+        if (!review.canMerge && !containment) continue;
+        if (!review.canMerge) continue;
 
         const pairKey = [left.id, right.id].sort().join(':');
         if (seenPairs.has(pairKey)) continue;
         seenPairs.add(pairKey);
 
-        const match_type = aliasScore >= 0.65 ? 'alias' as const : 'containment' as const;
+        const match_type = review.relationship === 'alias_of' ? 'alias' as const : 'containment' as const;
         groups.push({
           match_type,
           canonical_name: leftKey.length <= rightKey.length ? left.name : right.name,
-          confidence: aliasScore >= 0.65 ? aliasScore : 0.75,
-          reason: match_type === 'alias' ? 'venue alias / token overlap' : 'name containment',
+          confidence: review.confidence,
+          reason: review.reason,
           evidence: [
-            `score: ${aliasScore.toFixed(2)}`,
+            `relationship: ${review.relationship}`,
+            `score: ${review.confidence.toFixed(2)}`,
             `names: "${left.name}" ↔ "${right.name}"`,
+            ...review.evidence,
           ],
           locations: [left, right],
         });

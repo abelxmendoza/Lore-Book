@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { classifyGroup, groupDuplicateScore } from '../../src/services/ontology/groupIntelligence';
-import { classifyPlace, placeDuplicateScore, canonicalVenueName } from '../../src/services/ontology/placeIntelligence';
+import {
+  classifyPlace,
+  placeDuplicateScore,
+  canonicalVenueName,
+  reviewPlaceDuplicateCompatibility,
+} from '../../src/services/ontology/placeIntelligence';
 
 describe('groupIntelligence', () => {
   it('classifies founder companies', () => {
@@ -57,8 +62,52 @@ describe('placeIntelligence', () => {
     expect(c.category).toBe('HOUSEHOLD');
   });
 
-  it('scores venue duplicates', () => {
-    expect(placeDuplicateScore('Neon Lounge', 'Neon Lounge Anniversary')).toBeGreaterThan(0.65);
+  it('does not merge event-at-venue as a venue duplicate', () => {
+    const review = reviewPlaceDuplicateCompatibility('Neon Lounge', 'Neon Lounge Anniversary');
+    expect(review.canMerge).toBe(false);
+    expect(review.relationship).toBe('hosted_event_at');
+    expect(review.reason).toBe('hosted_event');
+    expect(placeDuplicateScore('Neon Lounge', 'Neon Lounge Anniversary')).toBe(0);
     expect(placeDuplicateScore('Moms House', "Mom's House")).toBeGreaterThan(0.4);
+  });
+
+  it('does not merge city with child residential or room locations', () => {
+    const home = reviewPlaceDuplicateCompatibility('Anaheim', 'Anaheim Family Home');
+    expect(home.canMerge).toBe(false);
+    expect(home.relationship).toBe('located_in');
+    expect(home.reason).toBe('contained_location');
+
+    const kitchen = reviewPlaceDuplicateCompatibility('Anaheim', 'Family Kitchen in Anaheim');
+    expect(kitchen.canMerge).toBe(false);
+    expect(kitchen.relationship).toBe('located_in');
+    expect(kitchen.reason).toBe('contained_location');
+  });
+
+  it('does not merge venue with hosted event', () => {
+    const review = reviewPlaceDuplicateCompatibility('Skyline Lounge', 'The Skyline Lounge anniversary where the band played');
+    expect(review.canMerge).toBe(false);
+    expect(review.relationship).toBe('hosted_event_at');
+    expect(review.reason).toBe('hosted_event');
+  });
+
+  it('only treats room variants as possible aliases with overlapping provenance', () => {
+    const withoutProvenance = reviewPlaceDuplicateCompatibility('Family Kitchen', 'Family Kitchen in Anaheim');
+    expect(withoutProvenance.canMerge).toBe(false);
+    expect(withoutProvenance.reason).toBe('room_or_area');
+
+    const withProvenance = reviewPlaceDuplicateCompatibility('Family Kitchen', 'Family Kitchen in Anaheim', {
+      leftProvenance: ['Anaheim Family Home'],
+      rightProvenance: ['Anaheim Family Home'],
+    });
+    expect(withProvenance.canMerge).toBe(true);
+    expect(withProvenance.requiresReview).toBe(true);
+    expect(withProvenance.relationship).toBe('possible_alias');
+  });
+
+  it('does not let token overlap alone create merges', () => {
+    const review = reviewPlaceDuplicateCompatibility('Anaheim', 'Anaheim Family Home');
+    expect(review.evidence.some((item) => /token_overlap/.test(item))).toBe(true);
+    expect(review.canMerge).toBe(false);
+    expect(placeDuplicateScore('Anaheim', 'Anaheim Family Home')).toBe(0);
   });
 });

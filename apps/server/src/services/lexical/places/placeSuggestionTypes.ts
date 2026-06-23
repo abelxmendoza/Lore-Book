@@ -1,12 +1,19 @@
 /** Place suggestion pipeline — types and shared constants. */
 
-export type PlaceSuggestionStatus = 'known' | 'new' | 'rejected' | 'needs_review';
+export type PlaceSuggestionStatus =
+  | 'known'
+  | 'new'
+  | 'possible_duplicate'
+  | 'attached_context'
+  | 'rejected'
+  | 'needs_review';
 
 export type NonPlaceEntityType =
   | 'PERSON'
   | 'ROLE'
   | 'RELATIONSHIP'
   | 'TIME_PERIOD'
+  | 'PROJECT_ASSET'
   | 'EVENT'
   | 'MUSIC_EVENT'
   | 'ORGANIZATION'
@@ -20,6 +27,8 @@ export type PlaceTaxonomyType =
   | 'country'
   | 'state'
   | 'city'
+  | 'city_or_region'
+  | 'district'
   | 'neighborhood'
   | 'street'
   | 'private_residence'
@@ -27,9 +36,12 @@ export type PlaceTaxonomyType =
   | 'school'
   | 'university'
   | 'campus'
+  | 'middle_school'
+  | 'high_school'
   | 'classroom'
   | 'workplace'
   | 'office'
+  | 'clinic'
   | 'store'
   | 'pharmacy'
   | 'restaurant'
@@ -46,7 +58,9 @@ export type PlaceTaxonomyType =
   | 'worksite'
   | 'deployment_site'
   | 'online_location'
-  | 'virtual_community'
+  | 'virtual_location'
+  | 'relative_location_context'
+  | 'venue_subarea_context'
   | 'unknown_place';
 
 export type PlaceSuggestion = {
@@ -55,8 +69,10 @@ export type PlaceSuggestion = {
   start: number;
   end: number;
   placeType: PlaceTaxonomyType | string;
+  placeSubtype?: PlaceTaxonomyType | string;
   confidence: number;
   status: PlaceSuggestionStatus;
+  displayName?: string;
   ownerEntityId?: string;
   ownerDisplayName?: string;
   privacySensitive?: boolean;
@@ -69,6 +85,26 @@ export type PlaceSuggestion = {
   splitChildren?: string[];
   rejectedAs?: NonPlaceEntityType | string;
   rulesFired?: string[];
+  requiresReview?: boolean;
+  existingPlaceId?: string;
+  mergeCandidates?: PlaceMergeCandidate[];
+  sourceMessageIds?: string[];
+};
+
+export type PlaceMergeCandidate = {
+  id?: string;
+  displayName: string;
+  placeType?: PlaceTaxonomyType | string;
+  normalizedText: string;
+  compatibility: 'allowed' | 'rejected';
+  reason: string;
+};
+
+export type KnownPlaceRecord = {
+  id?: string;
+  displayName: string;
+  aliases?: string[];
+  placeType?: PlaceTaxonomyType | string;
 };
 
 export type RawPlaceCandidate = {
@@ -82,6 +118,8 @@ export type RawPlaceCandidate = {
 export type PlaceSuggestionOptions = {
   knownPlaces?: Set<string>;
   knownPlaceTypes?: Map<string, PlaceTaxonomyType | string>;
+  existingPlaces?: KnownPlaceRecord[];
+  sourceMessageIds?: string[];
 };
 
 export const PLACE_PREPOSITIONS =
@@ -110,6 +148,8 @@ export const BRAND_STORES = new Set([
 export const KNOWN_CITIES = new Set([
   'la',
   'los angeles',
+  'dtla',
+  'downey',
   'moreno valley',
   'riverside',
   'anaheim',
@@ -122,6 +162,6 @@ export const KNOWN_CITIES = new Set([
 export const SCHOOL_ABBREVS = new Set(['csuf', 'uci', 'ucla', 'usc', 'cal poly']);
 
 export const EVENT_LIKE_NAMES =
-  /\b(prom|gothicumbia|graduation\s+party|code\s+red|festival|concert|gig|meetup|kickback)\b/i;
+  /\b(afters?|prom|gothicumbia|graduation\s+party|code\s+red|festival|concert|gig|meetup|kickback)\b/i;
 
 export const VENUE_COMPOUND_SUFFIX = /\b(compound|warehouse|grounds|arena|stadium|center|centre)\b/i;

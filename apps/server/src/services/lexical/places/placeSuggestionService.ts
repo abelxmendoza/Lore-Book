@@ -6,12 +6,13 @@
  */
 
 import { normalizeNameKey } from '../../../utils/nameNormalization';
-import { formatPossessivePlace } from '../../../utils/namedPlaceExtractor';
 import { resolvePlaceBoundary } from './placeBoundaryResolver';
 import { guardPlaceCandidate } from './placeTypeGuard';
 import { splitMixedSpan } from './placeSpanSplitter';
 import { classifyPlaceTaxonomy } from './placeTaxonomyClassifier';
 import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateResidenceGuard';
+import { resolveExistingPlace } from './existingPlaceResolver';
+import { canonicalPlaceKey } from './placeDuplicateGuard';
 import {
   BRAND_STORES,
   KNOWN_CITIES,
@@ -27,20 +28,23 @@ const BRAND_PATTERN =
   /\b(walmart|costco|target|cvs|walgreens|whole foods|trader joe'?s?|starbucks|mcdonald'?s?|home depot|lowe'?s?|safeway|kroger|aldi|denny'?s?(?:\s+hollywood)?)\b/gi;
 
 const POSSESSIVE_PATTERN =
-  /\b((?:my\s+|our\s+|the\s+)?[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2}?'s)\s+(house|home|apartment|condo|casa|place)\b/gi;
+  /\b((?:my\s+|our\s+|the\s+)?(?:Tio|Tía|Tia|Mr|Mrs|Ms|Dr|Professor|Prof)\.?\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?'?s|(?:my\s+|our\s+|the\s+)?[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2}?'s|(?:my\s+|our\s+|the\s+)?(?:mom|mother|dad|father|abuela|abuelo|grandma|grandpa|moms|dads|abuelas|abuelos|tios|tias))\s+(house|home|apartment|condo|casa|place|office|clinic)\b/gi;
 
 const PREP_PHRASE_PATTERN =
   /\b(?:at|in|from|near|around|outside|inside|next to|drove to|went to|take (?:her|him|them|me) to)\s+(?:the\s+)?([A-Z][A-Za-zÀ-ÿ0-9.'\s-]{1,60}?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple)|in\s+(?:a\s+)?(?:few|couple)|weren|wasn't|that|who|and|is|are|was|were|\.|,|$))/gi;
 
 const SCHOOL_PATTERN = /\b(CSUF|UCI|UCLA|USC|Cal Poly)\b/g;
 
-const CITY_PATTERN = /\b(LA|Los Angeles|Moreno Valley|Riverside|Anaheim|San Diego|Long Beach|Irvine|Orange)\b/g;
+const FULL_SCHOOL_PATTERN =
+  /\b(Whittier Christian Middle School|California State University,?\s+Fullerton)\b/g;
+
+const CITY_PATTERN = /\b(LA|DTLA|Downey|Los Angeles|Moreno Valley|Riverside|Anaheim|San Diego|Long Beach|Irvine|Orange)\b/g;
 
 const COMPOUND_VENUE_PATTERN =
   /\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+(?:Compound|Warehouse|Grounds|Arena|Stadium|Center|Centre))\b/g;
 
 const DESTINATION_PATTERN =
-  /\b(?:go to|went to)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple)|\.|,|$))/gi;
+  /\b(?:go to|going to|went to)\s+([A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+)?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple))|[.,!?]|$)/gi;
 
 function findLineForIndex(text: string, index: number): string {
   const before = text.slice(0, index);
@@ -72,13 +76,10 @@ export function detectPlaceCandidates(text: string): RawPlaceCandidate[] {
 
   for (const match of text.matchAll(POSSESSIVE_PATTERN)) {
     if (match.index === undefined) continue;
-    const owner = match[1];
-    const placeType = match[2];
-    const display = formatPossessivePlace(owner, placeType);
     addCandidate(
       candidates,
       seen,
-      display,
+      match[0],
       match.index,
       match.index + match[0].length,
       findLineForIndex(text, match.index)
@@ -112,6 +113,18 @@ export function detectPlaceCandidates(text: string): RawPlaceCandidate[] {
   }
 
   for (const match of text.matchAll(SCHOOL_PATTERN)) {
+    if (match.index === undefined) continue;
+    addCandidate(
+      candidates,
+      seen,
+      match[1],
+      match.index,
+      match.index + match[0].length,
+      findLineForIndex(text, match.index)
+    );
+  }
+
+  for (const match of text.matchAll(FULL_SCHOOL_PATTERN)) {
     if (match.index === undefined) continue;
     addCandidate(
       candidates,
@@ -166,10 +179,10 @@ export function detectPlaceCandidates(text: string): RawPlaceCandidate[] {
 }
 
 function linkStatus(span: string, options?: PlaceSuggestionOptions): PlaceSuggestionStatus {
-  const key = normalizeNameKey(span);
+  const key = canonicalPlaceKey(span);
   if (!options?.knownPlaces?.size) return 'new';
   for (const known of options.knownPlaces) {
-    if (normalizeNameKey(known) === key) return 'known';
+    if (canonicalPlaceKey(known) === key) return 'known';
   }
   return 'new';
 }
@@ -190,6 +203,8 @@ function processCandidate(
 
     const guard = guardPlaceCandidate(spanText, raw.evidenceLine, options);
     const taxonomy = classifyPlaceTaxonomy(spanText, raw.evidenceLine);
+    const placeType = residence?.placeType ?? taxonomy.placeType;
+    const existing = resolveExistingPlace(spanText, placeType, options);
     const rulesFired = [
       ...(boundary.fixes.length ? [`boundary:${boundary.fixes.join(',')}`] : []),
       `split:${piece.splitReason}`,
@@ -201,10 +216,12 @@ function processCandidate(
     if (!guard.allowed) {
       outputs.push({
         text: spanText,
-        normalizedText: normalizeNameKey(spanText),
+        normalizedText: canonicalPlaceKey(spanText),
+        displayName: spanText,
         start: raw.start,
         end: raw.end,
-        placeType: taxonomy.placeType,
+        placeType,
+        placeSubtype: placeType,
         confidence: Math.min(taxonomy.confidence, 0.4),
         status: 'rejected',
         rejectionReason: guard.rejectedAs,
@@ -216,25 +233,43 @@ function processCandidate(
         boundaryFixes: boundary.fixes,
         splitChildren: splitPieces.map(p => p.text),
         rulesFired,
+        sourceMessageIds: options?.sourceMessageIds,
       });
       continue;
     }
 
     let confidence = Math.min(0.98, taxonomy.confidence + guard.confidenceBoost);
     let status: PlaceSuggestionStatus = linkStatus(spanText, options);
-    if (residence?.requiresReview || guard.needsReview) status = 'needs_review';
+    if (status === 'new' && existing.compatibleDuplicates.length > 0) status = 'possible_duplicate';
     if (PLACE_PREPOSITIONS.test(raw.evidenceLine)) confidence = Math.min(0.98, confidence + 0.05);
+
+    const requiresReview =
+      residence?.requiresReview ||
+      guard.needsReview ||
+      (taxonomy.placeType === 'unknown_place' && Boolean(raw.prepositionCue)) ||
+      undefined;
+
+    // A brand-new place flagged for human review (privacy-sensitive residence,
+    // low-confidence guard, or ambiguous preposition cue) surfaces as
+    // needs_review rather than a plain 'new' suggestion. Known/duplicate places
+    // keep their resolved status.
+    if (status === 'new' && requiresReview) status = 'needs_review';
 
     outputs.push({
       text: spanText,
-      normalizedText: normalizeNameKey(spanText),
+      normalizedText: canonicalPlaceKey(spanText),
+      displayName: spanText,
       start: raw.start,
       end: raw.end,
-      placeType: residence?.placeType ?? taxonomy.placeType,
+      placeType,
+      placeSubtype: placeType,
       confidence,
       status,
       ownerDisplayName: residence?.ownerDisplayName,
       privacySensitive: residence?.privacySensitive,
+      requiresReview,
+      existingPlaceId: existing.exact?.id,
+      mergeCandidates: status === 'possible_duplicate' ? existing.compatibleDuplicates : [],
       splitFrom: originalCandidate !== spanText ? originalCandidate : undefined,
       evidencePhrases: [raw.evidenceLine],
       originalCandidate,
@@ -242,6 +277,7 @@ function processCandidate(
       boundaryFixes: boundary.fixes,
       splitChildren: splitPieces.map(p => p.text),
       rulesFired,
+      sourceMessageIds: options?.sourceMessageIds,
     });
   }
 
@@ -269,7 +305,7 @@ export function processPlaceSuggestionsForOutput(
   options?: PlaceSuggestionOptions
 ): PlaceSuggestion[] {
   return processPlaceSuggestions(text, options).filter(
-    s => s.status === 'known' || s.status === 'new' || s.status === 'needs_review'
+    s => s.status === 'known' || s.status === 'new' || s.status === 'possible_duplicate' || s.status === 'needs_review'
   );
 }
 

@@ -52,19 +52,13 @@ describe('groupDetectionService', () => {
     expect(groups).toEqual([]);
   });
 
-  it('canonicalizes partial member mentions to existing character names', async () => {
+  it('does not create a group from a simple two-person co-mention', async () => {
     const groups = await groupDetectionService.detectGroupsInMessage(
       'user-1',
       'I was at First Street Pool and Billiards with Mr. Chino and Daisy after Velvet Hour played.'
     );
 
-    expect(groups).toHaveLength(1);
-    expect(groups[0].members).toEqual(['Mr. Chino', 'Daisy']);
-    expect(groups[0].members).not.toContain('Mr');
-    expect(groups[0].members).not.toContain('Chino');
-    expect(groups[0].members).not.toContain('First');
-    expect(groups[0].members).not.toContain('Pool');
-    expect(groups[0].members).not.toContain('Billiards');
+    expect(groups).toEqual([]);
   });
 
   it('classifies recruiter + onboarding language as a company, not a friend group', () => {
@@ -138,5 +132,95 @@ describe('groupDetectionService', () => {
       [],
       'Nike',
     )).toBe('brand');
+  });
+
+  it('rejects person-pair group names', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return chain([
+          { id: 'leslie', name: 'Leslie', alias: [] },
+          { id: 'tio-ralph', name: 'Tio Ralph', alias: [] },
+          { id: 'mom', name: 'Mom', alias: [] },
+          { id: 'ben', name: 'Ben', alias: [] },
+          { id: 'daisy', name: 'Daisy', alias: [] },
+          { id: 'juan', name: 'Juan', alias: [] },
+        ]);
+      }
+      return chain([]);
+    });
+
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Leslie and Tio Ralph were both there.')).resolves.toEqual([]);
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Mom and Ben talked today.')).resolves.toEqual([]);
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Daisy and Juan went too.')).resolves.toEqual([]);
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Leslie & Tio Family')).resolves.toEqual([]);
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Mom & Ben Group')).resolves.toEqual([]);
+    await expect(groupDetectionService.detectGroupsInMessage('user-1', 'Daisy and Juan Group')).resolves.toEqual([]);
+  });
+
+  it('infers households from owner-anchored residence evidence', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return chain([
+          { id: 'leslie', name: 'Leslie', alias: [] },
+          { id: 'tio-ralph', name: 'Tio Ralph', alias: [] },
+        ]);
+      }
+      return chain([]);
+    });
+
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      "my cousin Leslie's graduation party was at my Tio Ralph's house."
+    );
+
+    const household = groups.find(group => group.name === 'Tio Ralph Household');
+    expect(household).toBeDefined();
+    expect(household?.group_type).toBe('household');
+    expect(household?.metadata).toMatchObject({
+      lexical_group_type: 'household',
+      anchor_name: 'Tio Ralph',
+    });
+    expect(household?.name).not.toMatch(/Leslie.*Tio/i);
+  });
+
+  it('infers school communities and school subgroups', async () => {
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      'I went to Whittier Christian Middle School and played in the Whittier Christian Middle School band.'
+    );
+
+    expect(groups.find(group => group.name === 'Whittier Christian Middle School Community')).toMatchObject({
+      group_type: 'community',
+      metadata: expect.objectContaining({ lexical_group_type: 'school_community' }),
+    });
+    expect(groups.find(group => group.name === 'Whittier Christian Middle School Band')).toMatchObject({
+      group_type: 'band',
+      metadata: expect.objectContaining({
+        lexical_group_type: 'school_subgroup',
+        parent_group_name: 'Whittier Christian Middle School Community',
+      }),
+    });
+  });
+
+  it('infers organization, music scene, club, and class groups from structure', async () => {
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      'I worked at Vanguard Robotics. The LA ska scene mattered to me. Coding club and Japanese class were big too.'
+    );
+
+    expect(groups.find(group => group.name === 'Vanguard Robotics Organization')).toMatchObject({
+      group_type: 'company',
+      metadata: expect.objectContaining({ lexical_group_type: 'organization' }),
+    });
+    expect(groups.find(group => group.name === 'LA Ska Scene')).toMatchObject({
+      group_type: 'scene',
+      metadata: expect.objectContaining({ lexical_group_type: 'music_scene' }),
+    });
+    expect(groups.find(group => group.name === 'Coding Club')).toMatchObject({
+      group_type: 'club',
+    });
+    expect(groups.find(group => group.name === 'Japanese Class')).toMatchObject({
+      group_type: 'club',
+    });
   });
 });

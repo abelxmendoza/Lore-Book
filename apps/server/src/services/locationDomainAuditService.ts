@@ -5,7 +5,7 @@
 
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
-import { classifyPlace, placeDuplicateScore, type PlaceClass } from './ontology/placeIntelligence';
+import { classifyPlace, reviewPlaceDuplicateCompatibility, type PlaceClass } from './ontology/placeIntelligence';
 import { supabaseAdmin } from './supabaseClient';
 
 function isMissingTable(error?: { code?: string; message?: string } | null): boolean {
@@ -166,24 +166,26 @@ class LocationDomainAuditService {
 
         const leftKey = normalizeNameKey(left.name);
         const rightKey = normalizeNameKey(right.name);
-        const score = placeDuplicateScore(left.name, right.name);
+        const review = reviewPlaceDuplicateCompatibility(left.name, right.name);
         const exact = leftKey === rightKey;
 
-        if (exact || score >= 0.65) {
+        if (exact || review.canMerge) {
           seenPairs.add(pairKey);
           const evidence = [
-            exact ? 'normalized name match' : `token overlap score ${score.toFixed(2)}`,
+            exact ? 'normalized name match' : `relationship ${review.relationship}`,
+            exact ? 'exact duplicate' : `compatibility ${review.reason}`,
             `canonical: "${classifyPlace(left.name).canonicalName}" vs "${classifyPlace(right.name).canonicalName}"`,
+            ...review.evidence,
           ];
-          const reason = exact ? 'exact duplicate' : 'venue alias / containment candidate';
+          const reason = exact ? 'exact duplicate' : review.reason;
 
-          duplicates.push({ names: [left.name, right.name], ids: [left.id, right.id], confidence: exact ? 1 : score, reason });
+          duplicates.push({ names: [left.name, right.name], ids: [left.id, right.id], confidence: exact ? 1 : review.confidence, reason });
           mergeSuggestions.push({
             sourceName: left.name,
             targetName: right.name,
             sourceId: left.id,
             targetId: right.id,
-            confidence: exact ? 1 : score,
+            confidence: exact ? 1 : review.confidence,
             reason,
             evidence,
           });

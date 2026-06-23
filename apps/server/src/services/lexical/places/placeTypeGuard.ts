@@ -18,9 +18,22 @@ const norm = (s: string) =>
   (s ?? '').toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
 
 const TIME_ONLY =
-  /^(?:last\s+night|yesterday|today|tonight|ago|(?:a\s+)?(?:few|couple)\s+weeks?(?:\s+ago)?|(?:a\s+)?(?:few|couple)\s+days?(?:\s+ago)?)$/i;
+  /^(?:march|january|february|april|may|june|july|august|september|october|november|december|last\s+night|yesterday|today|tonight|ago|before\s+covid|every\s+\w+|around\s+noon|lunch\s+break|(?:a\s+)?(?:few|couple)\s+weeks?(?:\s+(?:ago|now))?|(?:a\s+)?(?:few|couple)\s+days?(?:\s+ago)?)$/i;
 
-const ROLE_ONLY = /^(?:youtuber|streamer|influencer|creator|dj|producer|teacher|professor)$/i;
+const ROLE_ONLY = /^(?:tio|tia|tía|mr|mrs|ms|dr|prof|professor|youtuber|streamer|influencer|creator|dj|producer|teacher|professor)$/i;
+
+const PRONOUN_ONLY = /^(?:i|me|my|mine|you|your|he|him|his|she|her|hers|they|them|their|we|us|our|it|its)$/i;
+
+const PROJECT_ASSET =
+  /^(?:lorebook|my\s+github\s+repo|github\s+repo|repo|app|project|system|application)$/i;
+
+const OBJECT_OR_VEHICLE =
+  /^(?:phone|vape|car|bike|ring\s+doorbell|(?:my\s+|our\s+)?mom'?s\s+car)$/i;
+
+const GROUP_ONLY = /^(?:family|crowd|people|computer\s+science\s+majors)$/i;
+
+const RELATIVE_ONLY =
+  /^(?:here|there|home|around\s+the\s+corner|pit|inside|outside|near\s+the\s+stage)$/i;
 
 const PERSON_ALIAS = /^[A-Za-z][\w.-]*\.(?:dad|mom|bro|sis|uncle|aunt)$/i;
 
@@ -28,7 +41,7 @@ const EDUCATION_ORG =
   /\b(bootcamp|boot camp|academy|program|school\s+of|university\s+of)\b/i;
 
 const EVENT_NAME =
-  /\b(prom|gothicumbia|graduation\s+party|code\s+red|festival|concert|gig|anniversary|birthday\s+party|quincea[ñn]era)\b/i;
+  /\b(afters?|prom|gothicumbia|graduation\s+party|code\s+red|festival|concert|gig|anniversary|birthday\s+party|quincea[ñn]era)\b/i;
 
 const MUSIC_EVENT = /\b(gothicumbia|rave|show|set)\b/i;
 
@@ -40,7 +53,7 @@ function isAmbiguousVenueName(text: string): boolean {
   const n = norm(text);
   if (VENUE_COMPOUND_SUFFIX.test(n)) return false;
   if (BRAND_STORES.has(n) || SCHOOL_ABBREVS.has(n) || KNOWN_CITIES.has(n)) return false;
-  if (/\b(house|home|store|office|university|campus|warehouse|compound|stadium|park|gym|walmart|costco)\b/i.test(n)) {
+  if (/\b(house|home|store|office|university|campus|school|academy|warehouse|compound|stadium|park|gym|walmart|costco)\b/i.test(n)) {
     return false;
   }
   return /^[A-Z][a-z]+(?:\s+[A-Z][a-z.]+)+$/.test(text.trim());
@@ -82,6 +95,26 @@ export function guardPlaceCandidate(
 
   if (TIME_ONLY.test(text)) {
     return { allowed: false, rejectedAs: 'TIME_PERIOD', confidenceBoost: 0, rulesFired: ['time_only'] };
+  }
+
+  if (PRONOUN_ONLY.test(text) || /^[.!?]?\s*(?:her|she|him|he|they|it)(?:\s*[.!?]\s*(?:her|she|him|he|they|it))*\s*$/i.test(text)) {
+    return { allowed: false, rejectedAs: 'PERSON', confidenceBoost: 0, rulesFired: ['pronoun_fragment'] };
+  }
+
+  if (PROJECT_ASSET.test(text)) {
+    return { allowed: false, rejectedAs: 'PROJECT_ASSET', confidenceBoost: 0, rulesFired: ['project_asset'] };
+  }
+
+  if (OBJECT_OR_VEHICLE.test(text)) {
+    return { allowed: false, rejectedAs: 'OBJECT', confidenceBoost: 0, rulesFired: ['object_or_vehicle'] };
+  }
+
+  if (GROUP_ONLY.test(text)) {
+    return { allowed: false, rejectedAs: 'GROUP', confidenceBoost: 0, rulesFired: ['group_not_place'] };
+  }
+
+  if (RELATIVE_ONLY.test(text)) {
+    return { allowed: false, rejectedAs: 'RELATIVE_LOCATION_CONTEXT', confidenceBoost: 0, rulesFired: ['relative_location_context'] };
   }
 
   if (ROLE_ONLY.test(text)) {

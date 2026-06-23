@@ -3,7 +3,7 @@
  */
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
-import { classifyPlace, canonicalVenueName, placeDuplicateScore } from './ontology/placeIntelligence';
+import { classifyPlace, canonicalVenueName, reviewPlaceDuplicateCompatibility } from './ontology/placeIntelligence';
 import { getOntologySchemaState } from './ontology/ontologySchemaService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -213,9 +213,9 @@ class LocationNormalizationService {
 
         const canonicalMatch =
           normalizeNameKey(canonicalVenueName(a.name)) === normalizeNameKey(canonicalVenueName(b.name));
-        const dupScore = placeDuplicateScore(a.name, b.name);
-        const confidence = canonicalMatch ? Math.max(dupScore, 0.9) : dupScore;
-        if (confidence < 0.65) continue;
+        const review = reviewPlaceDuplicateCompatibility(a.name, b.name);
+        const confidence = canonicalMatch && review.canMerge ? Math.max(review.confidence, 0.9) : review.confidence;
+        if (!review.canMerge || confidence < 0.65) continue;
         seen.add(pairKey);
 
         const target = (a.importance_score ?? 0) >= (b.importance_score ?? 0) ? a : b;
@@ -227,9 +227,11 @@ class LocationNormalizationService {
           sourceName: source.name,
           targetName: target.name,
           confidence,
-          reason: confidence >= 0.9 ? 'canonical venue alias' : 'name overlap / containment',
+          reason: review.reason,
           evidence: [
+            `relationship: ${review.relationship}`,
             `canonical: "${classifyPlace(source.name).canonicalName}" → "${classifyPlace(target.name).canonicalName}"`,
+            ...review.evidence,
           ],
           affectedMemories: 0,
         });

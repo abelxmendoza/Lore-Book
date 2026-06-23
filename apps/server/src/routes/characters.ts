@@ -32,6 +32,10 @@ import {
   shouldMergeCharacterRecords,
 } from '../services/characters/aliasConstraintService';
 import {
+  filterSelfCandidatesForIncoming,
+  isSelfCharacterRow,
+} from '../services/identity/selfIdentityGuard';
+import {
   confirmPeripheral,
   dismissPeripheral,
   listPeripheralsForCharacter,
@@ -376,7 +380,7 @@ async function findExistingByAnyName(userId: string, names: string[]) {
     .from('characters')
     .select('*')
     .eq('user_id', userId);
-  return (data ?? []).find((row: any) => {
+  return filterSelfCandidatesForIncoming(names, (data ?? []) as any[]).find((row: any) => {
     const rowNames = [row.name, ...((row.alias ?? []) as string[])].map(normalizeNameKey);
     return rowNames.some(name => normalized.has(name));
   }) ?? null;
@@ -389,7 +393,7 @@ async function findExistingByAlias(userId: string, aliases: string[]) {
     .from('characters')
     .select('*')
     .eq('user_id', userId);
-  return (data ?? []).find((row: any) => {
+  return filterSelfCandidatesForIncoming(aliases, (data ?? []) as any[]).find((row: any) => {
     const rowAliases = ((row.alias ?? []) as string[]).map(normalizeNameKey);
     return normalizeNameKey(row.name) !== normalizeNameKey(aliases[0] ?? '')
       && rowAliases.some(alias => normalized.has(alias));
@@ -401,9 +405,10 @@ async function hasSameBarePrimaryName(userId: string, name: string) {
   const nameKey = normalizeNameKey(name);
   const { data } = await supabaseAdmin
     .from('characters')
-    .select('id, name')
+    .select('id, name, metadata')
     .eq('user_id', userId);
-  return (data ?? []).some((row: any) => normalizeNameKey(row.name).split(' ').includes(nameKey));
+  return filterSelfCandidatesForIncoming([name], (data ?? []) as any[])
+    .some((row: any) => normalizeNameKey(row.name).split(' ').includes(nameKey));
 }
 
 async function mergeExtractedCharacterData(
@@ -419,6 +424,13 @@ async function mergeExtractedCharacterData(
     .eq('user_id', userId)
     .maybeSingle();
   if (!existing) return null;
+  if (isSelfCharacterRow(existing) && !filterSelfCandidatesForIncoming([characterData.name], [existing]).length) {
+    logger.warn(
+      { userId, characterId, incomingName: characterData.name },
+      'Blocked non-self character merge into protagonist card'
+    );
+    return null;
+  }
 
   const incomingName = cleanEntityName(characterData.name);
   const existingAliases = Array.isArray(existing.alias) ? existing.alias : [];
@@ -625,7 +637,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           .eq('id', decision.characterId)
           .eq('user_id', userId)
           .single();
-        return { type: 'merge' as const, character: updated ?? existingChar };
+        if (existingChar && isSelfCharacterRow(existingChar) && !filterSelfCandidatesForIncoming([decision.cleanName], [existingChar]).length) {
+          logger.warn(
+            { userId, characterId: decision.characterId, incomingName: decision.cleanName },
+            'Blocked registry merge of non-self character into protagonist card'
+          );
+        } else {
+          return { type: 'merge' as const, character: updated ?? existingChar };
+        }
       }
       if (decision.action === 'defer') {
         await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
@@ -671,9 +690,12 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       // odd shapes after the registry has already rejected high-risk cases.
       const { data: existingForDedup } = await supabaseAdmin
         .from('characters')
-        .select('id, name, alias')
+        .select('id, name, alias, metadata')
         .eq('user_id', userId);
-      const similar = findSimilarCharacter(decision.cleanName, existingForDedup || []);
+      const similar = findSimilarCharacter(
+        decision.cleanName,
+        filterSelfCandidatesForIncoming([decision.cleanName], (existingForDedup || []) as any[])
+      );
       if (similar) {
         logger.info({ userId, existingId: similar.id, incomingName: decision.cleanName }, 'Dedup: returning existing character');
         const updated = await mergeExtractedCharacterData(userId, similar.id, characterData, {
@@ -748,7 +770,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
             .from('characters')
             .select('*')
             .eq('user_id', userId);
-          const existing = (existingRows ?? []).find((row: any) => normalizeNameKey(row.name) === incomingKey);
+          const existing = filterSelfCandidatesForIncoming([decision.cleanName], (existingRows ?? []) as any[])
+            .find((row: any) => normalizeNameKey(row.name) === incomingKey);
           if (existing) {
             const updated = await mergeExtractedCharacterData(userId, existing.id, characterData, {
               matchedMention: decision.cleanName,

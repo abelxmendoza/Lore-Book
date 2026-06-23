@@ -51,6 +51,7 @@ import {
   buildDisplayTitleFromMention,
   shouldAllowCharacterCreation,
 } from './identity/dynamicCharacterTitleService';
+import { filterSelfCandidatesForIncoming } from './identity/selfIdentityGuard';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
@@ -221,7 +222,7 @@ class CharacterRegistry {
       .from('characters')
       .select('id, name, alias, metadata')
       .eq('user_id', userId);
-    const existing = (data ?? []) as CharacterRow[];
+    const existing = filterSelfCandidatesForIncoming([cleanName, rawName], (data ?? []) as CharacterRow[]);
 
     const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
     const mentionNorm = normalizeNameKey(cleanName);

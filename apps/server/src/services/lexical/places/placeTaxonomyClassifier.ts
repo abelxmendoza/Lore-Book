@@ -26,15 +26,45 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
   const rulesFired: string[] = [];
 
   if (BRAND_STORES.has(n)) {
+    if (n === "denny's hollywood" || n === 'dennys hollywood') {
+      const type: PlaceTaxonomyType = /\b(work|shift|deployed|deployment|site)\b/i.test(context)
+        ? 'deployment_site'
+        : 'worksite';
+      return { placeType: type, confidence: 0.88, rulesFired: ['dennys_hollywood_worksite'] };
+    }
     return { placeType: 'store', confidence: 0.92, rulesFired: ['brand_store'] };
   }
 
   if (SCHOOL_ABBREVS.has(n)) {
-    return { placeType: 'university', confidence: 0.9, rulesFired: ['school_abbrev'] };
+    return { placeType: n === 'csuf' ? 'campus' : 'university', confidence: 0.9, rulesFired: ['school_abbrev'] };
+  }
+
+  if (n === 'la') {
+    return { placeType: 'city_or_region', confidence: 0.9, rulesFired: ['la_alias_city_or_region'] };
+  }
+
+  if (n === 'dtla' || n === 'downtown la' || n === 'downtown los angeles') {
+    return { placeType: 'district', confidence: 0.9, rulesFired: ['district_alias'] };
   }
 
   if (KNOWN_CITIES.has(n)) {
     return { placeType: 'city', confidence: 0.88, rulesFired: ['known_city'] };
+  }
+
+  if (n === 'california state university, fullerton' || n === 'california state university fullerton') {
+    return { placeType: 'university', confidence: 0.92, rulesFired: ['known_university'] };
+  }
+
+  if (n === 'whittier christian middle school') {
+    return { placeType: 'middle_school', confidence: 0.92, rulesFired: ['known_middle_school'] };
+  }
+
+  if (n === 'bad dogg compound') {
+    return { placeType: 'event_space', confidence: 0.9, rulesFired: ['known_event_space'] };
+  }
+
+  if (n === 'club metro') {
+    return { placeType: 'nightclub', confidence: 0.88, rulesFired: ['known_nightclub'] };
   }
 
   if (/\b(university|college|campus)\b/i.test(haystack)) {
@@ -43,8 +73,13 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
   }
 
   if (/\b(bootcamp|academy|school)\b/i.test(haystack) && !/\b(at|in|near)\s/.test(context)) {
+    const type: PlaceTaxonomyType = /\bmiddle\s+school\b/i.test(haystack)
+      ? 'middle_school'
+      : /\bhigh\s+school\b/i.test(haystack)
+        ? 'high_school'
+        : 'school';
     rulesFired.push('education_keyword');
-    return { placeType: 'school', confidence: 0.7, rulesFired };
+    return { placeType: type, confidence: 0.78, rulesFired };
   }
 
   if (/\b(gym|dojo|fitness)\b/i.test(haystack)) {
@@ -103,7 +138,7 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
   }
 
   if (/\b(discord|server|subreddit|online)\b/i.test(haystack)) {
-    return { placeType: 'virtual_community', confidence: 0.7, rulesFired: ['virtual_keyword'] };
+    return { placeType: 'virtual_location', confidence: 0.7, rulesFired: ['virtual_keyword'] };
   }
 
   return { placeType: 'unknown_place', confidence: 0.45, rulesFired: ['fallback_unknown'] };
