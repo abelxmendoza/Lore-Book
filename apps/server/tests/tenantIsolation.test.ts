@@ -1,6 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+
+// Force a non-dev API env BEFORE any module (config) is imported. requireAdmin
+// dev-bypasses when config.apiEnv === 'dev', which made these admin-gate
+// assertions flaky under CI's worker scheduling (the per-file config/rbac mocks
+// did not always apply, so the real requireAdmin saw apiEnv='dev' and allowed
+// the request → 200 instead of 403). With apiEnv='production' the real
+// middleware path denies a non-admin user deterministically, independent of
+// whether the module mocks below take effect.
+const { origApiEnv } = vi.hoisted(() => {
+  const origApiEnv = process.env.API_ENV;
+  process.env.API_ENV = 'production';
+  return { origApiEnv };
+});
+// Restore so the process-global env change does not leak to other test files
+// sharing this worker process.
+afterAll(() => {
+  if (origApiEnv === undefined) delete process.env.API_ENV;
+  else process.env.API_ENV = origApiEnv;
+});
 
 const USER_A = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'a@test.com' };
 const USER_B = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', email: 'b@test.com' };
