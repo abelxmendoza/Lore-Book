@@ -29,6 +29,7 @@ import { CharacterDetailModal } from './CharacterDetailModal';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import type { Character } from './CharacterProfileCard';
+import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
 import { useMainCharacterProfile } from '../../hooks/useMainCharacterProfile';
 import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelfSummary } from '../../lib/characterDisplay';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
@@ -417,6 +418,13 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     {heroSummary}
                   </p>
                 </blockquote>
+
+                <OnboardingProfileSection
+                  profile={
+                    (profile.character?.metadata as Record<string, unknown> | undefined)
+                      ?.onboarding_profile as OnboardingProfile | undefined
+                  }
+                />
 
                 {profile.contextHooks.length > 0 && (
                   <section>
