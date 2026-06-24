@@ -37,12 +37,16 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
 
-  // Non-REAL_USER runtimes never need to wait for a session check.
+  // The dev auth bypass is the only case that can skip the session check. We
+  // must NOT skip it for "non-auth" runtimes here: on a hard refresh the runtime
+  // identity defaults to GUEST_USER until the global auth bootstrap resolves, so
+  // skipping the check would flip loading off with no session and bounce an
+  // authenticated user to the landing page. Always resolve the session below.
   useEffect(() => {
-    if (DEV_DISABLE_AUTH || !needsAuth) {
+    if (DEV_DISABLE_AUTH) {
       setLoading(false);
     }
-  }, [needsAuth]);
+  }, [DEV_DISABLE_AUTH]);
 
   // Safety timeout for loading state (must be before early returns)
   useEffect(() => {
@@ -57,8 +61,10 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
 
   // Initialize Supabase session (must be before early returns)
   useEffect(() => {
-    // Only REAL_USER runtime needs a session check.
-    if (DEV_DISABLE_AUTH || !needsAuth) {
+    // Always resolve the session except under the dev bypass. Gating this on
+    // runtime identity races the cold-boot GUEST_USER default and redirects
+    // refreshed, authenticated users to the landing page.
+    if (DEV_DISABLE_AUTH) {
       return;
     }
 
@@ -165,7 +171,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       clearTimeout(timeoutId);
       listener?.subscription.unsubscribe();
     };
-  }, [isConfigured, needsAuth, debug, endGuestSession]);
+  }, [isConfigured, debug, endGuestSession]);
 
   // DEV-only escape hatch — never reaches production.
   if (DEV_DISABLE_AUTH) return <>{children}</>;

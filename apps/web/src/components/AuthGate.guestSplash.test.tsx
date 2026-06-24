@@ -17,7 +17,10 @@ vi.mock('../hooks/useRuntimeIdentity', () => ({
 }));
 
 vi.mock('../lib/supabase', () => ({
-  supabase: { auth: { getSession: vi.fn(), onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })) } },
+  // AuthGate now always resolves the session (even for guest runtimes) so a
+  // refreshed real user — who looks like GUEST_USER until auth bootstraps —
+  // isn't bounced to the landing page. The mock must therefore resolve.
+  supabase: { auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }), onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })) } },
   isSupabaseConfigured: () => true,
   getConfigDebug: () => ({ url: 'test', keyPresent: true }),
 }));
