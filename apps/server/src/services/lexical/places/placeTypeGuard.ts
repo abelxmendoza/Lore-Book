@@ -149,6 +149,11 @@ export function guardPlaceCandidate(
     return { allowed: true, confidenceBoost: 0.1, rulesFired: ['private_residence'], needsReview: true };
   }
 
+  if (/^(?:club nova|bad dogg compound)$/i.test(n)) {
+    rulesFired.push('known_named_place');
+    return { allowed: true, confidenceBoost: 0.14, rulesFired };
+  }
+
   if (BRAND_STORES.has(n) || SCHOOL_ABBREVS.has(n) || KNOWN_CITIES.has(n)) {
     const boost = PLACE_PREPOSITIONS.test(contextLine) ? 0.12 : 0.05;
     rulesFired.push('high_confidence_place_token');

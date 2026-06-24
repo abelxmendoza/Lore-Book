@@ -63,7 +63,7 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
     return { placeType: 'event_space', confidence: 0.9, rulesFired: ['known_event_space'] };
   }
 
-  if (n === 'club metro') {
+  if (n === 'club nova') {
     return { placeType: 'nightclub', confidence: 0.88, rulesFired: ['known_nightclub'] };
   }
 
@@ -95,7 +95,7 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
     return { placeType: type, confidence: 0.8, rulesFired: ['nightlife_keyword'] };
   }
 
-  if (/\bclub\b/i.test(haystack) && /\b(metro|night|dance|music|jazz|comedy)\b/i.test(haystack)) {
+  if (/\bclub\b/i.test(haystack) && /\b(goth|night|dance|music|jazz|comedy)\b/i.test(haystack)) {
     return { placeType: 'music_venue', confidence: 0.78, rulesFired: ['named_club_venue'] };
   }
 

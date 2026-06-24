@@ -8,6 +8,7 @@
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import { resolvePlaceBoundary } from './placeBoundaryResolver';
 import { guardPlaceCandidate } from './placeTypeGuard';
+import { guardPlaceWrongDomain } from './placeWrongDomainGuard';
 import { splitMixedSpan } from './placeSpanSplitter';
 import { classifyPlaceTaxonomy } from './placeTaxonomyClassifier';
 import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateResidenceGuard';
@@ -40,11 +41,28 @@ const FULL_SCHOOL_PATTERN =
 
 const CITY_PATTERN = /\b(LA|DTLA|Downey|Los Angeles|Moreno Valley|Riverside|Anaheim|San Diego|Long Beach|Irvine|Orange)\b/g;
 
+const NAMED_VENUE_PATTERN = /\b(Club Nova|Bad Dogg Compound)\b/g;
+
 const COMPOUND_VENUE_PATTERN =
   /\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+(?:Compound|Warehouse|Grounds|Arena|Stadium|Center|Centre))\b/g;
 
 const DESTINATION_PATTERN =
   /\b(?:go to|going to|went to)\s+([A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+)?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple))|[.,!?]|$)/gi;
+
+const DIAGNOSTIC_NON_PLACE_PATTERNS: Array<{ pattern: RegExp; group?: number }> = [
+  { pattern: /\b(Amazon)\b(?=[^.!?]*\b(?:work(?:ing)? at|onboarding|Ring doorbell product)\b)/gi, group: 1 },
+  { pattern: /\b(Ring doorbell product)\b/gi, group: 1 },
+  { pattern: /\b(shows?)\b/gi, group: 1 },
+  { pattern: /\b(another show in the pit)\b/gi, group: 1 },
+  { pattern: /\b(pit|stage|bar area|parking lot|dance floor)\b/gi, group: 1 },
+  { pattern: /\bat\s+(home)\b/gi, group: 1 },
+  { pattern: /\b(Lore[Bb]ook)\b/g, group: 1 },
+  { pattern: /\b(code later)(?:\s+so\b[^.!?]*)?/gi, group: 1 },
+  { pattern: /\b(expand responses)\b/gi, group: 1 },
+  { pattern: /\b((?:in and out\s+)?wristband)\b/gi, group: 1 },
+  { pattern: /\b(media)(?:\s+so\s+this\s+girl\b)?/gi, group: 1 },
+  { pattern: /\b(mom'?s car|my mom'?s car|phone|car|vape|device|hardware)\b/gi, group: 1 },
+];
 
 function findLineForIndex(text: string, index: number): string {
   const before = text.slice(0, index);
@@ -148,6 +166,18 @@ export function detectPlaceCandidates(text: string): RawPlaceCandidate[] {
     );
   }
 
+  for (const match of text.matchAll(NAMED_VENUE_PATTERN)) {
+    if (match.index === undefined) continue;
+    addCandidate(
+      candidates,
+      seen,
+      match[1],
+      match.index,
+      match.index + match[0].length,
+      findLineForIndex(text, match.index)
+    );
+  }
+
   for (const match of text.matchAll(COMPOUND_VENUE_PATTERN)) {
     if (match.index === undefined) continue;
     addCandidate(
@@ -175,6 +205,24 @@ export function detectPlaceCandidates(text: string): RawPlaceCandidate[] {
     );
   }
 
+  for (const { pattern, group = 0 } of DIAGNOSTIC_NON_PLACE_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match.index === undefined) continue;
+      const value = match[group] ?? match[0];
+      const offset = match[0].indexOf(value);
+      const start = match.index + Math.max(0, offset);
+      addCandidate(
+        candidates,
+        seen,
+        value,
+        start,
+        start + value.length,
+        findLineForIndex(text, match.index)
+      );
+    }
+  }
+
   return candidates;
 }
 
@@ -200,6 +248,39 @@ function processCandidate(
     const residence = analyzePrivateResidence(piece.text);
     const spanText = residence?.displayName ?? piece.text.trim();
     if (!spanText || isOrphanPossessiveResidence(spanText)) continue;
+
+    const wrongDomain = guardPlaceWrongDomain(spanText, raw.evidenceLine);
+    if (!wrongDomain.allowed) {
+      const rulesFired = [
+        ...(boundary.fixes.length ? [`boundary:${boundary.fixes.join(',')}`] : []),
+        `split:${piece.splitReason}`,
+        ...wrongDomain.rulesFired,
+        ...(residence?.rulesFired ?? []),
+      ];
+
+      outputs.push({
+        text: spanText,
+        normalizedText: canonicalPlaceKey(spanText),
+        displayName: spanText,
+        start: raw.start,
+        end: raw.end,
+        placeType: wrongDomain.placeType ?? 'unknown_place',
+        placeSubtype: wrongDomain.placeType ?? 'unknown_place',
+        confidence: wrongDomain.confidence,
+        status: wrongDomain.status ?? 'rejected',
+        rejectionReason: wrongDomain.rejectedAs,
+        rejectedAs: wrongDomain.rejectedAs,
+        splitFrom: originalCandidate !== spanText ? originalCandidate : undefined,
+        evidencePhrases: [raw.evidenceLine],
+        originalCandidate,
+        finalSpan: spanText,
+        boundaryFixes: boundary.fixes,
+        splitChildren: splitPieces.map(p => p.text),
+        rulesFired,
+        sourceMessageIds: options?.sourceMessageIds,
+      });
+      continue;
+    }
 
     const guard = guardPlaceCandidate(spanText, raw.evidenceLine, options);
     const taxonomy = classifyPlaceTaxonomy(spanText, raw.evidenceLine);

@@ -10,6 +10,12 @@ export type LocationDuplicateGroup = {
   canonical_name: string;
   confidence?: number;
   reason?: string;
+  /** Subtype-aware label from the backend ("Private residence alias", "City alias", …). */
+  label?: string;
+  place_subtype?: string;
+  owner_display_name?: string;
+  privacy_sensitive?: boolean;
+  variant_reason?: string;
   evidence?: string[];
   locations: Array<{
     id: string;
@@ -318,12 +324,17 @@ export const LocationMergePanel = ({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">
-                        {group.match_type === 'exact'
-                          ? 'Exact duplicate'
-                          : group.match_type === 'alias'
-                            ? 'Venue alias'
-                            : 'Possible duplicate'}
+                        {group.label
+                          ? group.label
+                          : group.match_type === 'exact'
+                            ? 'Exact duplicate'
+                            : group.match_type === 'alias'
+                              ? 'Place alias'
+                              : 'Possible duplicate'}
                       </p>
+                      {group.variant_reason && (
+                        <p className="text-[10px] text-white/40">{group.variant_reason}</p>
+                      )}
                       <p className="text-xs text-white/45">{group.canonical_name}</p>
                       {group.confidence != null && (
                         <p className="text-[10px] text-amber-200/80 mt-0.5">

@@ -47,6 +47,11 @@ export function resolvePlaceBoundary(candidate: string): BoundaryResolution {
     fixes.push('trim_leading_relative_context');
   }
 
+  if (/[,:;.!?]+$/.test(text)) {
+    text = text.replace(/[,:;.!?]+$/g, '').trim();
+    fixes.push('trim_terminal_punctuation');
+  }
+
   apply(TRAILING_SENTENCE_PRONOUN, 'sentence_pronoun_bleed');
   apply(TRAILING_TIME, 'time_period');
   apply(TRAILING_WITH_PERSON, 'with_person_tail');

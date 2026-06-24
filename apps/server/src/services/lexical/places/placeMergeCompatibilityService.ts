@@ -40,6 +40,11 @@ export type MergeCompatibilityResult = {
   reason: string;
 };
 
+/** The coarse merge family for a place subtype ('residence' | 'civic' | … | undefined). */
+export function placeFamilyOf(subtype?: PlaceTaxonomyType | string): string | undefined {
+  return subtype ? FAMILY[subtype] : undefined;
+}
+
 export function evaluatePlaceMergeCompatibility(
   left?: PlaceTaxonomyType | string,
   right?: PlaceTaxonomyType | string,

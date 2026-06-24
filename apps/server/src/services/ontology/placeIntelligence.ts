@@ -81,7 +81,7 @@ function canonicalCityName(raw: string): string | null {
   return KNOWN_CITIES.has(n) ? n.replace(/\b\w/g, (c) => c.toUpperCase()) : null;
 }
 
-/** Strip event/alias noise to a canonical venue name: "The Club Metro anniversary where Goth Tio danced" → "Club Metro". */
+/** Strip event/alias noise to a canonical venue name: "The Club Nova anniversary where Goth Tio danced" → "Club Nova". */
 export function canonicalVenueName(raw: string): string {
   let s = (raw ?? '').trim().replace(/^the\s+/i, '');
   // "<X> show/concert/party/gig/set by|at <VENUE>" → extract the venue.
@@ -279,6 +279,19 @@ export function reviewPlaceDuplicateCompatibility(
 
   if (leftFamily === 'PROPERTY' && residentialAliasKey(a) === residentialAliasKey(b)) {
     return reviewResult(left, right, 'alias_of', 'possible_alias', 0.92, true, false, ['residential alias key match', ...evidence]);
+  }
+
+  if (leftFamily === 'PROPERTY' && rightFamily === 'PROPERTY') {
+    return reviewResult(
+      left,
+      right,
+      'possible_alias',
+      'possible_alias',
+      Math.max(overlap, 0.72),
+      true,
+      true,
+      ['both are residential/family-home places', ...evidence],
+    );
   }
 
   if (canonicalMatch) {

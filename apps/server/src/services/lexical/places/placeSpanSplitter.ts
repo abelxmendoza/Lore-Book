@@ -18,6 +18,16 @@ export function splitMixedSpan(span: string): SplitPiece[] {
   const trimmed = span.trim();
   if (!trimmed) return [];
 
+  if (/[.!?]\s+/.test(trimmed)) {
+    const parts = trimmed
+      .split(/[.!?]\s+/)
+      .map(p => p.replace(/[.!?]+$/g, '').trim())
+      .filter(Boolean);
+    if (parts.length > 1) {
+      return parts.map(text => ({ text, splitReason: 'sentence_boundary' }));
+    }
+  }
+
   // "LA and Oscuri.dad" → split on coordination
   if (/\s+and\s+/i.test(trimmed)) {
     const parts = trimmed.split(/\s+and\s+/i).map(p => p.trim()).filter(Boolean);
