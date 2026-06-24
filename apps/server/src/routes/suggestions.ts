@@ -5,6 +5,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 import {
   MAX_SUGGESTION_DISMISSALS,
+  normalizeSuggestionDismissalName,
   suggestionDismissalService,
   type RecordDismissalResult,
   type SuggestionDismissalDomain,
@@ -12,6 +13,7 @@ import {
 import { projectSuggestionService } from '../services/projects/projectSuggestionService';
 import { skillSuggestionService } from '../services/skills/skillSuggestionService';
 import { questSuggestionService } from '../services/quests/questSuggestionService';
+import { entityLearningService } from '../services/entityLearningService';
 
 const router = Router();
 
@@ -31,7 +33,7 @@ function dismissResponse(result: RecordDismissalResult | null, domain: Suggestio
     is_permanent: result?.isPermanent ?? false,
     remaining_until_permanent: Math.max(0, MAX_SUGGESTION_DISMISSALS - dismissCount),
     thread_id: result?.threadId ?? null,
-    normalized_name: result?.normalizedName || suggestionDismissalService.normalizeSuggestionDismissalName(domain, name),
+    normalized_name: result?.normalizedName || normalizeSuggestionDismissalName(domain, name),
   };
 }
 
@@ -79,6 +81,15 @@ router.post('/dismiss', requireAuth, asyncHandler(async (req: AuthenticatedReque
       sourceSuggestionId: suggestion_id,
     });
   }
+
+  void entityLearningService.recordSuggestionDismissalLearning({
+    userId,
+    domain,
+    name,
+    result,
+    sourceSuggestionId: suggestion_id,
+    sourceMessageId: source_message_id,
+  });
 
   res.json(dismissResponse(result, domain, name));
 }));

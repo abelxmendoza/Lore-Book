@@ -24,6 +24,11 @@ import {
   resolvePlaceType,
   type PlaceSignificance,
 } from '../../lib/placeTypes';
+import {
+  locationAliasesForDisplay,
+  locationEvidenceSourcesForDisplay,
+  locationMergeHistoryForDisplay,
+} from '../../lib/locationMergeMetadata';
 import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
 import { Button } from '../ui/button';
@@ -375,6 +380,9 @@ export const LocationDetailModal = ({
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
   const placeSignificance = getPlaceSignificance(location);
+  const aliases = locationAliasesForDisplay(location.metadata);
+  const mergeHistory = locationMergeHistoryForDisplay(location.metadata);
+  const evidenceSources = locationEvidenceSourcesForDisplay(location.metadata);
 
   const profileDraft: PlaceProfileDraft = {
     type: resolvePlaceType(location.type, location.name) ?? location.type ?? '',
@@ -653,19 +661,66 @@ export const LocationDetailModal = ({
                     onSave={savePlaceProfile}
                     onCancel={() => setEditingProfile(false)}
                   />
-                ) : identityFields.length > 0 ? (
+                ) : identityFields.length > 0 || aliases.length > 0 || mergeHistory.length > 0 || evidenceSources.length > 0 ? (
                   <div className="rounded-xl bg-white/4 border border-white/8 p-3">
                     <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <MapPin className="h-3 w-3" /> Identity
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {identityFields.map(field => (
-                        <div key={field.label} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wider text-white/30">{field.label}</p>
-                          <p className="text-xs font-medium text-white/75">{field.value}</p>
-                        </div>
-                      ))}
-                    </div>
+                    {identityFields.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {identityFields.map(field => (
+                          <div key={field.label} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-wider text-white/30">{field.label}</p>
+                            <p className="text-xs font-medium text-white/75">{field.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(aliases.length > 0 || mergeHistory.length > 0 || evidenceSources.length > 0) && (
+                      <div className="mt-3 space-y-3 border-t border-white/8 pt-3">
+                        {aliases.length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Also known as</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {aliases.map(alias => (
+                                <span key={alias} className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-200">
+                                  {alias}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {mergeHistory.length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Merge history</p>
+                            <div className="space-y-1.5">
+                              {mergeHistory.slice(0, 5).map((item, index) => (
+                                <div key={`${item.sourceId ?? item.sourceName}-${index}`} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
+                                  <p className="text-xs text-white/70">
+                                    {item.sourceName} merged into {item.canonicalNameAfter ?? location.name}
+                                  </p>
+                                  {item.mergedAt && (
+                                    <p className="text-[10px] text-white/35 mt-0.5">{fmt(item.mergedAt)}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {evidenceSources.length > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Evidence sources</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {evidenceSources.map(source => (
+                                <span key={source} className="text-xs px-2 py-0.5 rounded bg-white/5 border border-white/8 text-white/55">
+                                  {source}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>

@@ -11,6 +11,7 @@ import {
   withMergeReviewMetadata,
 } from '../utils/mergeReview';
 import { recordEntityConsolidation } from './consolidationProtocol';
+import { entityLearningService } from './entityLearningService';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -257,6 +258,20 @@ class ProjectMergeService {
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: 'USER',
       metadata: { sourceId, targetId, reviewFlags: report.reviewFlags },
+    });
+
+    void entityLearningService.recordMergeLearning({
+      userId,
+      domain: 'projects',
+      sourceId,
+      sourceName: source.name,
+      sourceAliases: Array.isArray(source.metadata?.aliases) ? (source.metadata!.aliases as string[]) : [],
+      targetId,
+      targetName: target.name,
+      canonicalName: report.canonicalName,
+      aliases: report.aliases,
+      reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      metadata: { reviewFlags: report.reviewFlags },
     });
 
     logger.info({ userId, ...report }, '[ProjectMerge] merge complete');

@@ -6,6 +6,7 @@ const TEST_USER = { id: 'user-1', email: 'u@test.com' };
 
 const m = vi.hoisted(() => ({
   deleteLocation: vi.fn(),
+  getLocationProfile: vi.fn(),
   resolveLoc: vi.fn(),
   deleteProject: vi.fn(),
   resolveProj: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock('../../src/middleware/auth', () => ({
 }));
 
 vi.mock('../../src/services/locationService', () => ({
-  locationService: { deleteLocation: (...a: unknown[]) => m.deleteLocation(...a) },
+  locationService: {
+    deleteLocation: (...a: unknown[]) => m.deleteLocation(...a),
+    getLocationProfile: (...a: unknown[]) => m.getLocationProfile(...a),
+  },
 }));
 vi.mock('../../src/services/locationMergeService', () => ({
   locationMergeService: { resolveCanonicalLocationId: (...a: unknown[]) => m.resolveLoc(...a) },

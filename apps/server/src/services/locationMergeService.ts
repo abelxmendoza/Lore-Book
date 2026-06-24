@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../logger';
+import { entityLearningService } from './entityLearningService';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
@@ -57,6 +58,109 @@ function mergeUniqueStrings(...lists: Array<string[] | null | undefined>): strin
     }
   }
   return out;
+}
+
+function metadataStringArray(meta: Record<string, unknown>, key: string): string[] {
+  const value = meta[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+}
+
+function mergeMetadataArrays(key: string, targetMeta: Record<string, unknown>, sourceMeta: Record<string, unknown>): string[] {
+  return mergeUniqueStrings(metadataStringArray(targetMeta, key), metadataStringArray(sourceMeta, key));
+}
+
+function isResidenceName(name: string): boolean {
+  return /\b(?:house|home|family home|apartment|condo|casa|residence)\b/i.test(name);
+}
+
+function ownerResidenceScore(name: string): number {
+  if (!isResidenceName(name)) return 0;
+  if (/\b(?:mom|dad|abuela|abuelo|grandma|grandpa|tio|tia|tía|aunt|uncle|dr\.?|professor)\b(?:'s|s)?\s+(?:house|home|apartment|condo|casa|place|office|clinic)\b/i.test(name)) {
+    return 80;
+  }
+  if (/[A-Za-zÀ-ÿ]+(?:'s|s)\s+(?:house|home|apartment|condo|casa|place|office|clinic)\b/i.test(name)) {
+    return 70;
+  }
+  if (/\bfamily\s+home\b/i.test(name)) return 20;
+  return 10;
+}
+
+function canonicalPlaceMergeName(targetName: string, sourceName: string, aliases: string[]): string {
+  const candidates = mergeUniqueStrings([targetName, sourceName], aliases);
+  const ownerBased = candidates
+    .filter((name) => ownerResidenceScore(name) > 0)
+    .sort((a, b) => ownerResidenceScore(b) - ownerResidenceScore(a) || a.length - b.length)[0];
+
+  if (ownerBased && ownerResidenceScore(ownerBased) >= 70) return titleCaseResidence(ownerBased);
+  return pickBestPlaceName(candidates);
+}
+
+function titleCaseResidence(name: string): string {
+  return name
+    .replace(/[’‘]/g, "'")
+    .replace(/\b(abuelas|abuela's)\s+house\b/i, "Abuela's House")
+    .replace(/\b(moms|mom's)\s+house\b/i, "Mom's House")
+    .replace(/\b(dads|dad's)\s+house\b/i, "Dad's House")
+    .replace(/\b(tio\s+[A-Za-zÀ-ÿ]+)'?s?\s+house\b/i, (_m, owner: string) => `${titleCaseWords(owner)}'s House`)
+    .replace(/\b(tia|tía)\s+([A-Za-zÀ-ÿ]+)'?s?\s+house\b/i, (_m, title: string, namePart: string) => `${titleCaseWords(`${title} ${namePart}`)}'s House`)
+    .replace(/\b([A-Za-zÀ-ÿ]+)'s\s+house\b/i, (_m, owner: string) => `${titleCaseWords(owner)}'s House`);
+}
+
+function titleCaseWords(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (/^t[ií]a$/i.test(word)) return 'Tía';
+      if (/^tio$/i.test(word)) return 'Tio';
+      if (/^dr\.?$/i.test(word)) return 'Dr.';
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+function residenceAliasVariants(name: string): string[] {
+  const variants = new Set<string>();
+  const cleaned = name.trim().replace(/[’‘]/g, "'");
+  if (!cleaned) return [];
+  variants.add(cleaned);
+  variants.add(titleCaseResidence(cleaned));
+  if (/'s\s+/i.test(cleaned)) variants.add(cleaned.replace(/'s\s+/i, 's '));
+  if (/\babuelas\s+house\b/i.test(cleaned)) variants.add("Abuela's House");
+  if (/\bmoms\s+house\b/i.test(cleaned)) variants.add("Mom's House");
+  return [...variants].filter(Boolean);
+}
+
+export function buildMergedPlaceIdentity(
+  source: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
+  target: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
+): { canonicalName: string; aliases: string[]; mergeHistory: Array<Record<string, unknown>> } {
+  const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>;
+  const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
+  const targetAliases = metadataStringArray(targetMeta, 'aliases');
+  const sourceAliases = metadataStringArray(sourceMeta, 'aliases');
+  const rawAliasCandidates = mergeUniqueStrings(
+    targetAliases,
+    sourceAliases,
+    [source.name, target.name],
+    [...sourceAliases, source.name, target.name].flatMap(residenceAliasVariants),
+  );
+  const canonicalName = canonicalPlaceMergeName(target.name, source.name, rawAliasCandidates);
+  const aliases = rawAliasCandidates.filter((alias) => alias.trim() && alias.trim() !== canonicalName);
+  const mergeHistory = [
+    ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as Array<Record<string, unknown>>) : []),
+    {
+      source_id: source.id,
+      source_name: source.name,
+      source_aliases: sourceAliases,
+      target_id: target.id,
+      target_name_before: target.name,
+      canonical_name_after: canonicalName,
+      merged_at: new Date().toISOString(),
+    },
+  ];
+
+  return { canonicalName, aliases: mergeUniqueStrings(aliases), mergeHistory };
 }
 
 class LocationMergeService {
@@ -234,6 +338,20 @@ class LocationMergeService {
       metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags },
     });
 
+    void entityLearningService.recordMergeLearning({
+      userId,
+      domain: 'locations',
+      sourceId,
+      sourceName: source.name,
+      sourceAliases: Array.isArray(source.metadata?.aliases) ? (source.metadata!.aliases as string[]) : [],
+      targetId,
+      targetName: target.name,
+      canonicalName: report.canonicalName,
+      aliases: report.aliases,
+      reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      metadata: { directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags },
+    });
+
     logger.info({ userId, ...report }, '[LocationMerge] merge complete');
     return report;
   }
@@ -388,11 +506,9 @@ class LocationMergeService {
   ): Promise<{ name: string; aliases: string[]; reviewFlags: string[] }> {
     const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>;
     const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
-    const prevAliases = Array.isArray(targetMeta.aliases) ? (targetMeta.aliases as string[]) : [];
-
-    const aliasCandidates = mergeUniqueStrings(prevAliases, [source.name], prevAliases);
-    const canonicalName = pickBestPlaceName([target.name, source.name, ...aliasCandidates]);
-    const aliases = aliasCandidates.filter(a => normalizeNameKey(a) !== normalizeNameKey(canonicalName));
+    const identity = buildMergedPlaceIdentity(source, target);
+    const canonicalName = identity.canonicalName;
+    const aliases = identity.aliases;
 
     const mergedTags = mergeUniqueStrings(
       Array.isArray(targetMeta.place_tags) ? (targetMeta.place_tags as string[]) : [],
@@ -418,28 +534,39 @@ class LocationMergeService {
     const sourceKeys = collectNameKeys(source.name, normalizeNameKey(source.name), aliases);
     const survivorKeys = collectNameKeys(canonicalName, normalizeNameKey(canonicalName), aliases);
     const reviewFlags = flagMergedTextSnippets([summary], sourceKeys, survivorKeys);
+    const sourceType = source.type ?? undefined;
+    const targetType = target.type ?? undefined;
+    const type =
+      /^(?:private_residence|family_home|home|house)$/i.test(sourceType ?? '') &&
+      /^(?:private_residence|family_home|home|house|place)$/i.test(targetType ?? '')
+        ? source.type
+        : target.type || source.type || null;
 
     await supabaseAdmin
       .from('locations')
       .update({
         name: canonicalName,
         normalized_name: normalizeNameKey(canonicalName),
-        type: target.type || source.type || null,
+        type,
         summary,
         importance_score: importance,
         associated_character_ids: mergedChars,
         associated_location_ids: mergedLocIds,
         metadata: withMergeReviewMetadata(
           {
-            ...targetMeta,
             ...sourceMeta,
+            ...targetMeta,
             aliases,
             place_tags: mergedTags,
             place_significance: mergedSig,
-            merge_history: [
-              ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as unknown[]) : []),
-              { merged_from: source.name, merged_at: new Date().toISOString() },
-            ],
+            rooms: mergeMetadataArrays('rooms', targetMeta, sourceMeta),
+            evidence: mergeMetadataArrays('evidence', targetMeta, sourceMeta),
+            source_messages: mergeMetadataArrays('source_messages', targetMeta, sourceMeta),
+            source_message_ids: mergeMetadataArrays('source_message_ids', targetMeta, sourceMeta),
+            privacy_flags: mergeMetadataArrays('privacy_flags', targetMeta, sourceMeta),
+            privacy_sensitive: Boolean(targetMeta.privacy_sensitive || sourceMeta.privacy_sensitive),
+            privacySensitive: Boolean(targetMeta.privacySensitive || sourceMeta.privacySensitive),
+            merge_history: identity.mergeHistory,
           },
           reviewFlags,
           'Some merged text may refer only to the absorbed place name — review on the place card.'

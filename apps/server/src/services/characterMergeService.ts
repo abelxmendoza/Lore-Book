@@ -20,6 +20,7 @@
 import { logger } from '../logger';
 
 import { identityLedgerService } from './identity/identityLedgerService';
+import { entityLearningService } from './entityLearningService';
 import { readStrengthScore, preserveSurvivorStrength, shouldSwapForStrength } from './identity/strengthWeightedMerge';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import {
@@ -331,6 +332,20 @@ class CharacterMergeService {
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: opts.mergedBy ?? 'USER',
       metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore },
+    });
+
+    void entityLearningService.recordMergeLearning({
+      userId,
+      domain: 'characters',
+      sourceId,
+      sourceName: source.name,
+      sourceAliases: source.alias ?? [],
+      targetId,
+      targetName: target.name,
+      canonicalName: report.canonicalName,
+      aliases: report.aliases,
+      reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      metadata: { directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags },
     });
 
     logger.info({ userId, ...report }, '[CharacterMerge] merge complete');

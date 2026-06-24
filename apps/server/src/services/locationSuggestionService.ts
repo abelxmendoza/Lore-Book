@@ -24,6 +24,7 @@ import {
 } from './lorebook/quality/entityQualityGateService';
 import type { AlternativeCategory } from './suggestionCrossBookService';
 import { suggestionDismissalService } from './suggestionDismissalService';
+import { entityLearningService } from './entityLearningService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type LocationSuggestion = {
@@ -89,6 +90,16 @@ class LocationSuggestionService {
         allNames.push(pp.name);
         bookRows.push({ id: pp.id, names: [pp.name] });
       }
+    }
+
+    const learning = await entityLearningService.getUserLearningContext(userId);
+    for (const learned of learning.aliasesByDomain.values()) {
+      if (learned.domain !== 'locations') continue;
+      if (!learned.canonicalEntityId || !learned.aliases.length) continue;
+      const names = [learned.canonicalName, ...learned.aliases].filter((name): name is string => Boolean(name?.trim()));
+      if (names.length === 0) continue;
+      allNames.push(...names);
+      bookRows.push({ id: learned.canonicalEntityId, names });
     }
 
     const { exactKeys } = collectNameKeys(allNames);

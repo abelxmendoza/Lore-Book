@@ -2,18 +2,41 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { entityLearningService } from '../services/entityLearningService';
 import { locationMergeService } from '../services/locationMergeService';
 import { locationService } from '../services/locationService';
 import { locationSuggestionService } from '../services/locationSuggestionService';
 import { locationDomainAuditService } from '../services/locationDomainAuditService';
 import { locationNormalizationService } from '../services/locationNormalizationService';
 import { reviewPlaceDuplicateCompatibility } from '../services/ontology/placeIntelligence';
+import { labelPlaceDuplicate } from '../services/lexical/places/placeDuplicateLabeler';
 import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
+
+function locationAliasNames(row: { name: string; metadata?: Record<string, unknown> | null }): string[] {
+  const aliases = Array.isArray(row.metadata?.aliases)
+    ? (row.metadata!.aliases as unknown[]).filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+    : [];
+  return [row.name, ...aliases];
+}
+
+function aliasMatch(
+  left: { name: string; metadata?: Record<string, unknown> | null },
+  right: { name: string; metadata?: Record<string, unknown> | null },
+): string | null {
+  const leftNames = locationAliasNames(left);
+  const rightNames = locationAliasNames(right);
+  const rightKeys = new Map(rightNames.map((name) => [normalizeNameKey(name), name]));
+  for (const leftName of leftNames) {
+    const rightName = rightKeys.get(normalizeNameKey(leftName));
+    if (rightName) return `"${leftName}" matches "${rightName}"`;
+  }
+  return null;
+}
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
@@ -111,6 +134,12 @@ router.get(
       canonical_name: string;
       confidence: number;
       reason: string;
+      /** Subtype-aware human label ("Private residence alias", "City alias", …). */
+      label?: string;
+      place_subtype?: string;
+      owner_display_name?: string;
+      privacy_sensitive?: boolean;
+      variant_reason?: string;
       evidence: string[];
       locations: typeof rows;
     }> = [];
@@ -124,11 +153,17 @@ router.get(
 
     for (const [canonical_name, locations] of byKey.entries()) {
       if (locations.length > 1) {
+        const exactLabel = labelPlaceDuplicate(locations[0].name, locations[1].name);
         groups.push({
           match_type: 'exact',
           canonical_name,
           confidence: 1,
-          reason: 'normalized name match',
+          reason: exactLabel.variantReason ?? 'normalized name match',
+          label: exactLabel.label,
+          place_subtype: exactLabel.placeSubtype,
+          owner_display_name: exactLabel.ownerDisplayName,
+          privacy_sensitive: exactLabel.privacySensitive,
+          variant_reason: exactLabel.variantReason,
           evidence: ['exact duplicate normalized_name'],
           locations,
         });
@@ -146,20 +181,28 @@ router.get(
 
         const review = reviewPlaceDuplicateCompatibility(left.name, right.name);
         const containment = namesOverlapByContainment(leftKey, rightKey);
-        if (!review.canMerge && !containment) continue;
-        if (!review.canMerge) continue;
+        const aliasesOverlap = aliasMatch(left, right);
+        if (!review.canMerge && !containment && !aliasesOverlap) continue;
+        if (!review.canMerge && !aliasesOverlap) continue;
 
         const pairKey = [left.id, right.id].sort().join(':');
         if (seenPairs.has(pairKey)) continue;
         seenPairs.add(pairKey);
 
-        const match_type = review.relationship === 'alias_of' ? 'alias' as const : 'containment' as const;
+        const match_type = aliasesOverlap || review.relationship === 'alias_of' ? 'alias' as const : 'containment' as const;
+        const dupLabel = labelPlaceDuplicate(left.name, right.name);
         groups.push({
           match_type,
-          canonical_name: leftKey.length <= rightKey.length ? left.name : right.name,
-          confidence: review.confidence,
-          reason: review.reason,
+          canonical_name: dupLabel.canonicalSuggestion || (leftKey.length <= rightKey.length ? left.name : right.name),
+          confidence: aliasesOverlap ? Math.max(review.confidence, 0.95) : review.confidence,
+          reason: dupLabel.variantReason ?? (aliasesOverlap ? 'possible_alias' : review.reason),
+          label: dupLabel.label,
+          place_subtype: dupLabel.placeSubtype,
+          owner_display_name: dupLabel.ownerDisplayName,
+          privacy_sensitive: dupLabel.privacySensitive,
+          variant_reason: dupLabel.variantReason,
           evidence: [
+            ...(aliasesOverlap ? [`alias: ${aliasesOverlap}`] : []),
             `relationship: ${review.relationship}`,
             `score: ${review.confidence.toFixed(2)}`,
             `names: "${left.name}" ↔ "${right.name}"`,
@@ -196,7 +239,7 @@ router.post(
     const { data: mergedLocation } = await supabaseAdmin
       .from('locations')
       .select('*')
-      .eq('id', parsed.data.target_id)
+      .eq('id', report.targetId)
       .eq('user_id', req.user!.id)
       .maybeSingle();
 
@@ -275,10 +318,21 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const locationId = String(req.params.id);
   try {
     const canonicalId = (await locationMergeService.resolveCanonicalLocationId(userId, locationId)) ?? locationId;
+    const existing = await locationService.getLocationProfile(userId, canonicalId);
     const deleted = await locationService.deleteLocation(userId, canonicalId);
     if (!deleted) {
       res.status(404).json({ success: false, error: 'Location not found' });
       return;
+    }
+    if (existing) {
+      void entityLearningService.recordDeletionLearning({
+        userId,
+        domain: 'locations',
+        entityId: canonicalId,
+        name: existing.name,
+        aliases: Array.isArray(existing.metadata?.aliases) ? (existing.metadata!.aliases as string[]) : [],
+        reason: 'User deleted place card',
+      });
     }
     res.json({ success: true });
   } catch (error) {

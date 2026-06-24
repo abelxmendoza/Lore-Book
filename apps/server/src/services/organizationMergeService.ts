@@ -7,6 +7,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+import { entityLearningService } from './entityLearningService';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
@@ -282,16 +283,33 @@ class OrganizationMergeService {
       .eq('user_id', userId);
 
     if (report.merged_ids.length > 0) {
+      const aliasList = [...aliases].filter(a => a && a !== primary.name);
       void identityLedgerService.recordMutation({
         userId,
         entityId: primaryId,
         entityType: 'organization',
         mutationType: 'ENTITY_MERGED',
         previousValue: { merged_ids: report.merged_ids },
-        newValue: { id: primaryId, canonical_name: primary.name, aliases: [...aliases].filter(a => a && a !== primary.name) },
+        newValue: { id: primaryId, canonical_name: primary.name, aliases: aliasList },
         reason: `Merged ${report.merged_ids.length} organization(s) into "${primary.name}"`,
         source: 'USER',
         metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags },
+      });
+
+      report.merged_ids.forEach((sourceId, index) => {
+        const sourceName = absorbedNames[index] ?? sourceId;
+        void entityLearningService.recordMergeLearning({
+          userId,
+          domain: 'organizations',
+          sourceId,
+          sourceName,
+          targetId: primaryId,
+          targetName: primary.name,
+          canonicalName: primary.name,
+          aliases: aliasList,
+          reason: `Merged organization "${sourceName}" into "${primary.name}"`,
+          metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags },
+        });
       });
     }
 
