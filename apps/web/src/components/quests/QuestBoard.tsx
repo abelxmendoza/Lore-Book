@@ -876,7 +876,7 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
                       </div>
                     </div>
 
-                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1 leading-snug line-clamp-2 pl-2">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1 leading-snug break-words pl-2">
                       {quest.title}
                     </h3>
 

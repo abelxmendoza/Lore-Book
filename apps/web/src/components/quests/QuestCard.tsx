@@ -112,7 +112,7 @@ export const QuestCard = ({ quest, onStart, onPause, onComplete, onAbandon, onCl
             </div>
 
             {/* Title and Description */}
-            <h3 className="text-lg font-bold text-white mb-2 leading-tight">{quest.title}</h3>
+            <h3 className="text-lg font-bold text-white mb-2 leading-tight break-words">{quest.title}</h3>
             {quest.description && (
               <p className="text-sm text-white/70 mb-4 line-clamp-2 leading-relaxed">{quest.description}</p>
             )}

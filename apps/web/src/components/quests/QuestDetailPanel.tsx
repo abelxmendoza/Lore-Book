@@ -116,7 +116,7 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
               )}
             </div>
             <h2
-              className={`font-semibold text-white leading-snug ${
+              className={`font-semibold text-white leading-snug break-words ${
                 mobile ? 'text-lg' : 'text-lg sm:text-xl'
               }`}
             >
