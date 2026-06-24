@@ -210,6 +210,20 @@ export class ConversationIngestionPipeline {
       const { inferenceOrchestrator } = await import('../inference/inferenceOrchestrator');
       inferenceOrchestrator.schedule(userId, 'chat_message');
       episodeSegmentationTrigger.schedule(userId, conversationSessionId);
+
+      // Association graph: accumulate evidence-gated ties (association before
+      // membership). Fire-and-forget + env-gated; never blocks ingestion.
+      setImmediate(() => {
+        void import('../associations/associationIngestionService')
+          .then(({ associationIngestionService }) =>
+            associationIngestionService.ingestMessage({
+              userId,
+              text: chatMessage.content,
+              messageId: chatMessageId,
+            }),
+          )
+          .catch((err) => logger.debug({ err, chatMessageId }, 'association ingestion skipped'));
+      });
     } catch (error) {
       // Log but don't throw - ingestion failures should not block chat
       logger.error(
