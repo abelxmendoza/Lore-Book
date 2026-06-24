@@ -77,8 +77,8 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@types/uuid": "^11.0.0",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.61.1",
-    "@typescript-eslint/parser": "^8.61.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^10.1.8",
@@ -86,7 +86,7 @@
     "eslint-plugin-node": "^11.1.0",
     "supertest": "^7.1.4",
     "tsx": "^4.16.2",
-    "typescript-eslint": "^8.61.1",
+    "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.9"
   },
   "overrides": {
