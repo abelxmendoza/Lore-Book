@@ -271,10 +271,11 @@ export const useChat = () => {
       persistStatus: 'pending',
     };
 
-    addMessage(userMessage, { touchActivity: true });
-
-    // Pin all stream updates to the thread that initiated this send.
+    // Pin all writes for this send to the thread that initiated it — never the
+    // (possibly lagging) active-thread adapter, which could append to whatever
+    // thread is active by the time React commits and merge conversations.
     const streamThreadId = threadId;
+    mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, userMessage], { touchActivity: true });
     const updateStreamMessage = (messageId: string, updates: Partial<Message>, opts?: { touchActivity?: boolean }) => {
       mutateThreadMessagesForThread(
         streamThreadId,
@@ -331,7 +332,7 @@ export const useChat = () => {
       persistStatus: 'pending',
     };
 
-    addMessage(assistantMessage);
+    mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, assistantMessage]);
     setStreamingMessageId(assistantMessageId);
     
     // Enhanced loading stages with progress
@@ -658,7 +659,7 @@ export const useChat = () => {
         currentContext,
         soulProfileContext ?? undefined,
         (feedback) => {
-          updateMessage(assistantMessageId, { cognitionFeedback: feedback });
+          updateStreamMessage(assistantMessageId, { cognitionFeedback: feedback });
         },
         threadId,
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,

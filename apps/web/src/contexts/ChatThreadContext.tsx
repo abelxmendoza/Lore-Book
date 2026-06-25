@@ -61,6 +61,13 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
 
   const setActiveThreadId = useCallback(
     (id: string | null) => {
+      // Keep the synchronous write-path ref in lockstep with the dispatch.
+      // `activeThreadIdRef` otherwise only updates in a useEffect after the next
+      // render, so any updateActiveMessages() called later in the SAME tick
+      // (e.g. createThread() -> setActiveThreadId() -> addMessage() in the send
+      // handler) would target the previously-active thread and merge messages
+      // into the wrong conversation.
+      activeThreadIdRef.current = id;
       dispatch(setActiveThreadIdAction(id));
     },
     [dispatch]

@@ -133,7 +133,8 @@ describe('useChat — assistant bubble durability', () => {
       await result.current.sendMessage('Hello durability');
     });
 
-    expect(mockUpdateActiveMessages).toHaveBeenCalled();
+    // User + assistant bubbles are written pinned to the send-time thread
+    // (mutateThreadMessagesForThread), not via the active-thread adapter.
     expect(onMetadata).toBeDefined();
     expect(onComplete).toBeDefined();
     expect(mockMutateThreadMessagesForThread).toHaveBeenCalled();

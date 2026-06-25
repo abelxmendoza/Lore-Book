@@ -132,7 +132,12 @@ describe('useChat — entity chips from stream metadata', () => {
     });
     mockMutateThreadMessagesForThread.mockImplementation(
       (_threadId: string, updater: (prev: unknown[]) => unknown[]) => {
-        updater(messageState as never);
+        messageState = updater(messageState as never) as Array<Record<string, unknown>>;
+        // Capture the assistant bubble id once on first append (the client id the
+        // stream-metadata updater targets) — don't overwrite it when metadata
+        // later reconciles the row to its DB id.
+        const assistant = messageState.find((m) => m.role === 'assistant' && m.isStreaming);
+        if (!assistantMessageId && assistant?.id) assistantMessageId = String(assistant.id);
       }
     );
   });
