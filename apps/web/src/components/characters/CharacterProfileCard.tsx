@@ -525,13 +525,11 @@ export const CharacterProfileCard = ({
               >
                 <Heart
                   className="w-2.5 h-2.5 mr-1"
-                  style={{
-                    fill: relationship.is_current && relationship.status === 'active' 
-                      ? `rgba(244, 114, 182, ${relationship.affection_score})` 
-                      : 'transparent',
-                    stroke: 'currentColor',
-                    strokeWidth: 2
-                  }}
+                  fill={relationship.is_current && relationship.status === 'active'
+                    ? `rgba(244, 114, 182, ${relationship.affection_score})`
+                    : 'transparent'}
+                  stroke="currentColor"
+                  strokeWidth={2}
                 />
                 {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Badge>

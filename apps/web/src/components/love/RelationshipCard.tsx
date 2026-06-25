@@ -174,16 +174,14 @@ export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLin
           
           {/* Heart Fill Visualization */}
           <div className="relative flex-shrink-0">
-            <Heart 
+            <Heart
               className={cn(
                 "h-6 w-6 transition-all group-hover:scale-110 sm:h-8 sm:w-8",
                 isActive ? "text-pink-400" : "text-pink-400/50"
               )}
-              style={{
-                fill: `rgba(244, 114, 182, ${heartFill})`,
-                stroke: 'currentColor',
-                strokeWidth: 2
-              }}
+              fill={`rgba(244, 114, 182, ${heartFill})`}
+              stroke="currentColor"
+              strokeWidth={2}
             />
             {isActive && (
               <div className="absolute inset-0 animate-ping">
