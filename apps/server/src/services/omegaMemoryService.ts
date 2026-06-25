@@ -62,6 +62,31 @@ function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Ar
 const OMEGA_ENTITY_COLS =
   'id, user_id, type, primary_name, aliases, created_at, updated_at, metadata, mention_count, mention_status, entity_type';
 
+// Minimum Jaro-Winkler similarity between a resolved mention and one of an
+// entity's known names before that mention is auto-registered as an alias.
+// Blocks distinct people from snowballing into one entity's alias list (the
+// "Hell Fairy" over-merge) while still allowing typos/nicknames that share most
+// characters ("Sara"→"Sarah", "Jeremy"→"Jerry"). Conservative on purpose.
+export const OMEGA_ALIAS_MIN_SIMILARITY = 0.72;
+
+/**
+ * Whether `candidate` is similar enough to one of an entity's known names to be
+ * auto-registered as an alias on the resolve path. A wholly dissimilar name is
+ * almost always a mis-resolution of a DISTINCT person and must not pollute the
+ * alias list (root cause of the catastrophic "Hell Fairy" 18-alias collapse).
+ */
+export function isPlausibleAutoAlias(
+  knownNames: string[],
+  candidate: string,
+  minSimilarity = OMEGA_ALIAS_MIN_SIMILARITY,
+): boolean {
+  const c = candidate.toLowerCase().trim();
+  if (!c) return false;
+  return knownNames
+    .filter(Boolean)
+    .some((known) => jaroWinkler(c, known.toLowerCase().trim()) >= minSimilarity);
+}
+
 // All omega_claims columns EXCEPT the 1536-dim `embedding`. The vector is only
 // consumed by conflictDetected() (via findSimilarClaims, which deliberately
 // keeps it to avoid re-embedding on the wire); every other claim read returns
@@ -924,6 +949,25 @@ Only extract clear relationships. Include temporal context when available.`
     const nameLower = name.toLowerCase();
     if (entity.primary_name.toLowerCase() === nameLower) return;
     if (existing.some((a) => a.toLowerCase() === nameLower)) return;
+
+    // Over-merge guard. This path runs whenever a mention RESOLVES to an existing
+    // entity, appending the mention's name as an alias. A loose/substring resolve
+    // of a DISTINCT person (e.g. "Abuela" mis-resolving onto "Hell Fairy") would
+    // otherwise permanently pollute the alias list, and the alias-contains match
+    // then snowballs more names in — this is exactly how ~14 unrelated people
+    // collapsed into one "Hell Fairy" entity. Refuse to auto-register a name that
+    // is wholly dissimilar to every known name for the entity; a genuinely
+    // dissimilar alias (a stage name) must come from an explicit "X aka Y"
+    // statement (createEntity's direct alias insert), not silent accumulation.
+    const knownNames = [entity.primary_name, ...existing].filter(Boolean) as string[];
+    if (!isPlausibleAutoAlias(knownNames, name)) {
+      logger.warn(
+        { entityId: entity.id, primaryName: entity.primary_name, rejectedAlias: name },
+        'Rejected dissimilar alias to prevent entity over-merge',
+      );
+      return;
+    }
+
     try {
       await supabaseAdmin
         .from('omega_entities')

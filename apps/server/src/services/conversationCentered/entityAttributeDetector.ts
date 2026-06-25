@@ -159,6 +159,13 @@ export class EntityAttributeDetector {
   }
 
   private async getOrCreateUserCharacter(userId: string): Promise<{ id: string; name: string } | null> {
+    // Serialize the self get-or-create per user. Without this lock two concurrent
+    // callers (two messages ingested at once, or onboarding racing ingestion)
+    // both miss the existing self row and each INSERT a new "Me", producing
+    // duplicate protagonist cards. Mirrors the per-user creation lock the main
+    // character-creation path uses (characterRegistry.runExclusive).
+    const { characterRegistry } = await import('../characterRegistry');
+    return characterRegistry.runExclusive(userId, async () => {
     try {
       const { data: existingRows, error: existingError } = await supabaseAdmin
         .from('characters')
@@ -252,6 +259,7 @@ export class EntityAttributeDetector {
       logger.debug({ error, userId }, 'Failed to get or create user character');
       return null;
     }
+    });
   }
 
   /**
