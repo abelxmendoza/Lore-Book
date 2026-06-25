@@ -45,29 +45,6 @@ router.post(
 );
 
 /**
- * GET /api/relationship-dynamics/:personName
- * Get relationship dynamics for a person
- */
-router.get(
-  '/:personName',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const personName = decodeURIComponent(req.params.personName);
-
-    const dynamics = await relationshipEngine.getRelationshipDynamics(userId, personName);
-
-    if (!dynamics) {
-      return res.status(404).json({
-        error: 'Relationship dynamics not found',
-      });
-    }
-
-    res.json(dynamics);
-  })
-);
-
-/**
  * GET /api/relationship-dynamics
  * Get all relationships
  */
@@ -122,6 +99,26 @@ router.get(
     const stats = await relationshipEngine.getStats(userId);
 
     res.json(stats);
+  })
+);
+
+/**
+ * GET /api/relationship-dynamics/:personName
+ * Relationship dynamics for one person. Registered LAST so it doesn't shadow the
+ * static routes above (/insights, /stats). Dynamics are optional — when none
+ * have been computed for this person (or the feature's table isn't present), we
+ * return 200 with `null` rather than a 404, so the UI's optional probe doesn't
+ * surface a console error for the normal "no data yet" case.
+ */
+router.get(
+  '/:personName',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const personName = decodeURIComponent(req.params.personName);
+
+    const dynamics = await relationshipEngine.getRelationshipDynamics(userId, personName);
+    res.json(dynamics ?? null);
   })
 );
 
