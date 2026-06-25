@@ -1,5 +1,5 @@
-import type { LucideIcon } from 'lucide-react';
 import {
+  type LucideIcon,
   User,
   MapPin,
   Users,
@@ -9,15 +9,20 @@ import {
   Calendar,
   Heart,
   BookOpen,
+  PawPrint,
+  Package,
 } from 'lucide-react';
+
 import type { CertifiedEntityType, CharacterVariant } from '../types/certifiedEntity';
 
 /** Core entity kinds LoreBook tracks across books, chat, and project links. */
 export type LoreEntityKind =
   | 'person'
+  | 'pet'
   | 'place'
   | 'group'
   | 'organization'
+  | 'thing'
   | 'skill'
   | 'project'
   | 'event'
@@ -42,12 +47,22 @@ export type LoreEntityDefinition = {
 export const MAIN_LORE_ENTITIES: LoreEntityDefinition[] = [
   {
     kind: 'person',
-    label: 'People',
+    label: 'People & Pets',
     shortLabel: 'People',
     description: 'Characters, family, friends, mentors',
     chip: 'border-blue-500/45 bg-blue-500/12 text-blue-200',
     swatch: 'bg-blue-500',
     icon: User,
+    bookSurface: 'characters',
+  },
+  {
+    kind: 'pet',
+    label: 'Pets',
+    shortLabel: 'Pets',
+    description: 'Animal companions and pets that matter in your story',
+    chip: 'border-sky-400/45 bg-sky-500/12 text-sky-100',
+    swatch: 'bg-sky-400',
+    icon: PawPrint,
     bookSurface: 'characters',
   },
   {
@@ -79,6 +94,15 @@ export const MAIN_LORE_ENTITIES: LoreEntityDefinition[] = [
     swatch: 'bg-green-500',
     icon: Building2,
     bookSurface: 'organizations',
+  },
+  {
+    kind: 'thing',
+    label: 'Things',
+    shortLabel: 'Things',
+    description: 'Objects, tools, possessions, and recurring symbols',
+    chip: 'border-lime-500/45 bg-lime-500/12 text-lime-100',
+    swatch: 'bg-lime-500',
+    icon: Package,
   },
   {
     kind: 'skill',
@@ -166,6 +190,8 @@ export function certifiedTypeToLoreKind(
   if (type === 'location') return 'place';
   if (type === 'organization') return 'organization';
   if (type === 'skill') return 'skill';
+  if (type === 'project') return 'project';
+  if (type === 'thing') return 'thing';
   if (type === 'event') return 'event';
   return 'person';
 }

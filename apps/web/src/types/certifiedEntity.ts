@@ -1,4 +1,11 @@
-export type CertifiedEntityType = 'character' | 'location' | 'organization' | 'skill' | 'event';
+export type CertifiedEntityType =
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'event'
+  | 'project'
+  | 'thing';
 
 export type EntityStatus = 'confirmed' | 'suggestion' | 'draft';
 
@@ -17,4 +24,13 @@ export type CertifiedEntity = {
   characterVariant?: CharacterVariant;
   /** Archived cards stay mentionable in chat — tap ✓ to restore to the book */
   lifecycleStatus?: 'archived' | 'pending_deletion';
+  /**
+   * Presentation/domain override for concepts that share a storage type today.
+   * Example: pets are still character cards; significant objects may be tracked
+   * as thing chips before a dedicated Things book exists.
+   */
+  loreKind?: 'person' | 'pet' | 'place' | 'group' | 'organization' | 'skill' | 'project' | 'event' | 'memory' | 'relationship' | 'thing';
+  promotionStage?: 'track' | 'growing' | 'suggest' | 'confirmed';
+  significanceScore?: number;
+  mentionCount?: number;
 };

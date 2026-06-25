@@ -1,4 +1,5 @@
 import type { CertifiedEntity, CertifiedEntityType, CharacterVariant } from '../types/certifiedEntity';
+
 import {
   getLoreEntity,
   loreKindForChip,
@@ -13,6 +14,7 @@ export type EntityVisualKind =
   | 'location'
   | 'group'
   | 'organization'
+  | 'thing'
   | 'skill'
   | 'event'
   | 'project';
@@ -26,6 +28,7 @@ const VISUAL_TO_LORE: Record<EntityVisualKind, LoreEntityKind> = {
   location: 'place',
   group: 'group',
   organization: 'organization',
+  thing: 'thing',
   skill: 'skill',
   event: 'event',
   project: 'project',
@@ -38,6 +41,7 @@ export const ENTITY_CHIP_COLORS: Record<EntityVisualKind, ColorTriplet> = {
   location: loreEntityChipTriplet('place'),
   group: loreEntityChipTriplet('group'),
   organization: loreEntityChipTriplet('organization'),
+  thing: loreEntityChipTriplet('thing'),
   skill: loreEntityChipTriplet('skill'),
   event: loreEntityChipTriplet('event'),
   project: loreEntityChipTriplet('project'),
@@ -49,6 +53,7 @@ export const ENTITY_VISUAL_LABELS: Record<EntityVisualKind, string> = {
   location: getLoreEntity('place').label.toLowerCase(),
   group: getLoreEntity('group').label.toLowerCase(),
   organization: getLoreEntity('organization').shortLabel.toLowerCase(),
+  thing: getLoreEntity('thing').label.toLowerCase(),
   skill: getLoreEntity('skill').label.toLowerCase(),
   event: getLoreEntity('event').label.toLowerCase(),
   project: getLoreEntity('project').label.toLowerCase(),
@@ -59,6 +64,8 @@ export function visualKindForEntity(
 ): EntityVisualKind {
   if (entity.type === 'character' && entity.characterVariant === 'romantic') return 'romantic';
   if (entity.type === 'organization') return 'organization';
+  if (entity.type === 'thing') return 'thing';
+  if (entity.type === 'project') return 'project';
   if (entity.type === 'event') return 'event';
   return entity.type as EntityVisualKind;
 }

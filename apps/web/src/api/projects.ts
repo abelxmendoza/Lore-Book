@@ -1,5 +1,8 @@
+import type { ProjectCardData } from '../components/projects/ProjectProfileCard';
 import { fetchJson } from '../lib/api';
 import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ProjectSuggestion {
   id: string;
@@ -25,15 +28,15 @@ export const projectsApi = {
     return response.suggestions || [];
   },
 
-  async materializeSuggestion(input: ProjectSuggestion): Promise<unknown> {
-    const response = await fetchJson<{ project: unknown }>('/api/projects/suggestions/materialize', {
+  async materializeSuggestion(input: ProjectSuggestion): Promise<ProjectCardData> {
+    const response = await fetchJson<{ project: ProjectCardData }>('/api/projects/suggestions/materialize', {
       method: 'POST',
       body: JSON.stringify({
         name: input.name,
         description: input.description,
         type: input.project_type,
         status: input.status,
-        suggestion_id: input.id,
+        ...(UUID_RE.test(input.id) ? { suggestion_id: input.id } : {}),
       }),
     });
     return response.project;

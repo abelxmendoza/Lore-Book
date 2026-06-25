@@ -39,6 +39,12 @@ export type CharacterCardReviewSuggestion = {
   context: string;
 };
 
+export type CharacterSuggestionAddResponse = {
+  character: { id?: string; name?: string };
+  deduplicated?: boolean;
+  restored?: boolean;
+};
+
 export const characterSuggestionsApi = {
   list: (options?: { context?: 'general' | 'romantic'; rescan?: boolean }) => {
     const params = new URLSearchParams();
@@ -60,7 +66,7 @@ export const characterSuggestionsApi = {
     }),
 
   add: (suggestion: CharacterSuggestion) =>
-    fetchJson<{ character: unknown; deduplicated?: boolean; restored?: boolean }>('/api/characters', {
+    fetchJson<CharacterSuggestionAddResponse>('/api/characters', {
       method: 'POST',
       body: JSON.stringify({
         name: suggestion.name,

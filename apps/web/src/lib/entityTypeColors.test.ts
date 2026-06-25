@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+
+import { ENTITY_COLOR_MAP, previewChipClass } from './entityColorMap';
 import {
   chipColorForEntity,
   ENTITY_CHIP_COLORS,
@@ -7,7 +9,6 @@ import {
   loreKindForVisual,
   visualKindForEntity,
 } from './entityTypeColors';
-import { ENTITY_COLOR_MAP, previewChipClass } from './entityColorMap';
 import { getLoreEntity, MAIN_LORE_ENTITIES } from './loreEntities';
 
 describe('entityTypeColors', () => {
@@ -22,6 +23,8 @@ describe('entityTypeColors', () => {
     expect(visualKindForEntity({ type: 'organization' })).toBe('organization');
     expect(visualKindForEntity({ type: 'location' })).toBe('location');
     expect(visualKindForEntity({ type: 'skill' })).toBe('skill');
+    expect(visualKindForEntity({ type: 'thing' })).toBe('thing');
+    expect(visualKindForEntity({ type: 'project' })).toBe('project');
   });
 
   it('uses loreEntities palette: blue people, rose love, cyan skills, green orgs', () => {
@@ -46,6 +49,7 @@ describe('entityTypeColors', () => {
       location: 'place',
       group: 'group',
       organization: 'organization',
+      thing: 'thing',
       skill: 'skill',
       event: 'event',
       project: 'project',
@@ -70,6 +74,7 @@ describe('entityColorMap lore sync', () => {
     ['place', 'place'],
     ['group', 'group'],
     ['organization', 'organization'],
+    ['thing', 'thing'],
     ['skill', 'skill'],
     ['project', 'project'],
     ['event', 'event'],

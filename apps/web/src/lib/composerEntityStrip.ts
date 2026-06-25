@@ -1,9 +1,10 @@
 import type { LexicalPreviewSpan } from '../api/lexicalPreview';
-import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { composerMatchSlot } from '../store/slices/composerSlice';
-import { findEntityHighlightRanges } from './entityHighlightRanges';
 import type { CertifiedEntityType } from '../types/certifiedEntity';
+
+import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import type { EntityColorKey } from './entityColorMap';
+import { findEntityHighlightRanges } from './entityHighlightRanges';
 
 function normalizeKey(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -31,6 +32,10 @@ export function certifiedTypeToPreviewClassification(
       return { type: 'ORGANIZATION', colorKey: 'organization' };
     case 'skill':
       return { type: 'SKILL', colorKey: 'skill' };
+    case 'project':
+      return { type: 'PROJECT', colorKey: 'project' };
+    case 'thing':
+      return { type: 'THING', colorKey: 'thing' };
     case 'event':
       return { type: 'EVENT', colorKey: 'event' };
     default:

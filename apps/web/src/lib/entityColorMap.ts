@@ -19,6 +19,7 @@ export type EntityColorKey =
   | 'interest'
   | 'emotional_significance'
   | 'organization'
+  | 'thing'
   | 'role'
   | 'skill'
   | 'task'
@@ -41,6 +42,8 @@ export type EntityClassificationType =
   | 'INTEREST'
   | 'EMOTIONAL_SIGNIFICANCE'
   | 'ORGANIZATION'
+  | 'THING'
+  | 'OBJECT'
   | 'ROLE'
   | 'SKILL'
   | 'TASK'
@@ -114,6 +117,11 @@ export const ENTITY_COLOR_MAP: Record<
     chip: loreChip('organization'),
     label: getLoreEntity('organization').label,
   },
+  thing: {
+    highlight: 'entity-preview-hl-thing',
+    chip: loreChip('thing'),
+    label: getLoreEntity('thing').label,
+  },
   role: {
     highlight: 'entity-preview-hl-role',
     chip: 'border-teal-500/45 bg-teal-500/12 text-teal-200',
@@ -166,8 +174,9 @@ export function colorKeyForPreviewType(type: string, colorKey?: string): EntityC
     case 'TIME_PERIOD': return 'time';
     case 'EVENT': return 'event';
     case 'LANGUAGE': return 'language';
-    case 'PREFERENCE':
-    case 'OBJECT': return 'preference';
+    case 'PREFERENCE': return 'preference';
+    case 'THING':
+    case 'OBJECT': return 'thing';
     case 'WEATHER_CONTEXT':
     case 'CONTEXT': return 'weather';
     case 'RELATIONSHIP': return 'relationship';

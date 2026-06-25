@@ -1,15 +1,27 @@
 import { characterSuggestionsApi, locationSuggestionsApi } from '../api/entitySuggestions';
+import { projectsApi } from '../api/projects';
 import { skillsApi } from '../api/skills';
-import { fetchJson } from './api';
-import { apiCache } from './cache';
-import type { CertifiedEntityMatch } from './certifiedEntityMatch';
-import { invalidateEntityTags } from '../store/invalidateEntityCache';
-import { triggerCelebration } from './celebrations';
+import type { Character } from '../components/characters/CharacterProfileCard';
 import { shouldUseMockData } from '../hooks/useShouldUseMockData';
 import { mockDataService } from '../services/mockDataService';
-import type { Character } from '../components/characters/CharacterProfileCard';
+import { invalidateEntityTags } from '../store/invalidateEntityCache';
+
+import { fetchJson } from './api';
+import { apiCache } from './cache';
+import { triggerCelebration } from './celebrations';
+import type { CertifiedEntityMatch } from './certifiedEntityMatch';
+
 
 const INDEX_CACHE_KEY = '/api/entities/certified-index';
+
+export type ConfirmedComposerEntity = {
+  id: string;
+  name: string;
+  type: CertifiedEntityMatch['type'];
+  created?: boolean;
+  deduplicated?: boolean;
+  restored?: boolean;
+};
 
 function demoEntityId(entity: CertifiedEntityMatch): string {
   if (!entity.id.startsWith('draft:')) return entity.id;
@@ -17,7 +29,7 @@ function demoEntityId(entity: CertifiedEntityMatch): string {
   return `demo-${entity.type}-${slug}`;
 }
 
-async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<void> {
+async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<ConfirmedComposerEntity> {
   switch (entity.type) {
     case 'character': {
       const id = demoEntityId(entity);
@@ -35,10 +47,10 @@ async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<
         label: `${entity.name} added to Characters`,
         subtitle: 'Confirmed while chatting (demo)',
       });
-      break;
+      return { id, name: entity.name, type: entity.type, created: true };
     }
     case 'location': {
-      mockDataService.mutate.locations.create({
+      const location = mockDataService.mutate.locations.create({
         name: entity.name,
         context: 'Detected via ontology-backed lexical intelligence (demo).',
       });
@@ -47,11 +59,14 @@ async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<
         label: `${entity.name} added to Places`,
         subtitle: 'Confirmed while chatting (demo)',
       });
-      break;
+      return { id: location.id, name: entity.name, type: entity.type, created: true };
     }
     case 'skill': {
-      mockDataService.mutate.skills.createFromSuggestion({
-        id: entity.id.startsWith('draft:') ? demoEntityId(entity) : entity.id,
+      const suggestionId = entity.id.startsWith('draft:') ? demoEntityId(entity) : entity.id;
+      const skill = mockDataService.mutate.skills.createFromSuggestion({
+        // Demo registry mints canonical book ids; this id is still useful for
+        // removing pending suggestions when present.
+        id: suggestionId,
         skill_name: entity.name,
         skill_category: 'other',
         confidence: 0.75,
@@ -62,7 +77,7 @@ async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<
         subtitle: 'Confirmed while chatting (demo)',
         xp: 35,
       });
-      break;
+      return { id: skill.id, name: skill.skill_name, type: entity.type, created: true };
     }
     case 'organization':
       triggerCelebration({
@@ -72,14 +87,26 @@ async function confirmComposerEntityDemo(entity: CertifiedEntityMatch): Promise<
         xp: 40,
       });
       window.dispatchEvent(new Event('group-candidates-updated'));
-      break;
+      return { id: demoEntityId(entity), name: entity.name, type: entity.type, created: true };
+    case 'project': {
+      const id = demoEntityId(entity);
+      triggerCelebration({
+        variant: 'project',
+        label: `${entity.name} added to Projects`,
+        subtitle: 'Confirmed while chatting (demo)',
+        xp: 40,
+      });
+      return { id, name: entity.name, type: entity.type, created: true };
+    }
+    case 'thing':
+      return { id: entity.id, name: entity.name, type: entity.type };
     default:
       throw new Error(`Cannot confirm ${entity.type} from the composer yet.`);
   }
 }
 
 /** Promote a composer suggestion/draft chip into a confirmed book entity. */
-export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promise<void> {
+export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promise<ConfirmedComposerEntity | null> {
   if (entity.lifecycleStatus === 'archived' && entity.type === 'character') {
     if (shouldUseMockData()) {
       mockDataService.mutate.characters.upsert({
@@ -94,7 +121,7 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
         subtitle: 'Mentioned again in chat',
       });
       window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
-      return;
+      return { id: entity.id, name: entity.name, type: entity.type, restored: true };
     }
     await fetchJson(`/api/characters/${entity.id}`, {
       method: 'PATCH',
@@ -108,21 +135,26 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       subtitle: 'Mentioned again in chat',
     });
     window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
-    return;
+    return { id: entity.id, name: entity.name, type: entity.type, restored: true };
   }
 
-  if (entity.status === 'confirmed') return;
+  if (entity.status === 'confirmed') {
+    return { id: entity.id, name: entity.name, type: entity.type };
+  }
 
   if (shouldUseMockData()) {
-    await confirmComposerEntityDemo(entity);
+    const confirmed = await confirmComposerEntityDemo(entity);
     window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
-    return;
+    return confirmed;
   }
+
+  let confirmed: ConfirmedComposerEntity | null = null;
 
   switch (entity.type) {
     case 'character': {
+      let response: { character?: { id?: string; name?: string }; deduplicated?: boolean; restored?: boolean };
       if (entity.status === 'draft') {
-        await fetchJson('/api/characters', {
+        response = await fetchJson('/api/characters', {
           method: 'POST',
           body: JSON.stringify({
             name: entity.name,
@@ -132,7 +164,7 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
           }),
         });
       } else {
-        await characterSuggestionsApi.add({
+        response = await characterSuggestionsApi.add({
           id: entity.id,
           name: entity.name,
           mentionCount: 1,
@@ -141,6 +173,14 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
           context: 'Confirmed while chatting',
         });
       }
+      confirmed = {
+        id: String(response.character?.id ?? entity.id),
+        name: String(response.character?.name ?? entity.name),
+        type: entity.type,
+        created: !response.deduplicated,
+        deduplicated: response.deduplicated,
+        restored: response.restored,
+      };
       invalidateEntityTags(['Character']);
       triggerCelebration({
         variant: 'character',
@@ -150,7 +190,7 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       break;
     }
     case 'location': {
-      await locationSuggestionsApi.accept({
+      const response = await locationSuggestionsApi.accept({
         id: entity.id,
         name: entity.name,
         mentionCount: 1,
@@ -158,6 +198,12 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
         source: 'chat_detect',
         context: entity.status === 'draft' ? 'Detected while typing' : undefined,
       });
+      confirmed = {
+        id: response.location.id,
+        name: response.location.name ?? entity.name,
+        type: entity.type,
+        created: true,
+      };
       invalidateEntityTags(['Location']);
       triggerCelebration({
         variant: 'location',
@@ -167,16 +213,23 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       break;
     }
     case 'skill': {
+      let skill: { id: string; skill_name?: string };
       if (entity.status === 'suggestion') {
-        await skillsApi.confirmSuggestion(entity.id);
+        skill = await skillsApi.confirmSuggestion(entity.id);
       } else {
-        await skillsApi.materializeSuggestion({
+        skill = await skillsApi.materializeSuggestion({
           id: entity.id,
           skill_name: entity.name,
           skill_category: 'other',
           confidence: 0.7,
         });
       }
+      confirmed = {
+        id: skill.id,
+        name: skill.skill_name ?? entity.name,
+        type: entity.type,
+        created: true,
+      };
       invalidateEntityTags(['Skill']);
       triggerCelebration({
         variant: 'skill',
@@ -190,10 +243,16 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       if (entity.id.startsWith('sug:')) {
         throw new Error('Organization suggestion is missing a candidate id — open Groups to confirm.');
       }
-      await fetchJson(`/api/group-candidates/${entity.id}/accept`, {
+      const response = await fetchJson<{ organization_id?: string }>(`/api/group-candidates/${entity.id}/accept`, {
         method: 'POST',
         body: JSON.stringify({}),
       });
+      confirmed = {
+        id: String(response.organization_id ?? entity.id),
+        name: entity.name,
+        type: entity.type,
+        created: true,
+      };
       invalidateEntityTags(['Organization']);
       triggerCelebration({
         variant: 'organization',
@@ -204,10 +263,36 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       window.dispatchEvent(new Event('group-candidates-updated'));
       break;
     }
+    case 'project': {
+      const project = await projectsApi.materializeSuggestion({
+        id: entity.id.startsWith('draft:') || entity.id.startsWith('suggest:') ? '' : entity.id,
+        name: entity.name,
+        confidence: entity.significanceScore ?? 0.7,
+        reasoning: 'Confirmed from composer chip',
+      });
+      confirmed = {
+        id: project.id,
+        name: project.name ?? entity.name,
+        type: entity.type,
+        created: true,
+      };
+      invalidateEntityTags(['Project']);
+      triggerCelebration({
+        variant: 'project',
+        label: `${entity.name} added to Projects`,
+        subtitle: 'Confirmed while chatting',
+        xp: 40,
+      });
+      break;
+    }
+    case 'thing':
+      confirmed = { id: entity.id, name: entity.name, type: entity.type };
+      break;
     default:
       throw new Error(`Cannot confirm ${entity.type} from the composer yet.`);
   }
 
   apiCache.delete(INDEX_CACHE_KEY);
   window.dispatchEvent(new CustomEvent('lk:story-data-updated'));
+  return confirmed;
 }

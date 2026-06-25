@@ -1,16 +1,17 @@
 import { X } from 'lucide-react';
+
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
-import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { filterPreviewSpansForStrip, dedupeCertifiedForStrip } from '../../../lib/composerEntityStrip';
-import { colorKeyForPreviewType, previewChipClass as previewChipClasses } from '../../../lib/entityColorMap';
 import { displayStatus } from '../../../lib/correctedPreviewSpanReducer';
+import { colorKeyForPreviewType, previewChipClass as previewChipClasses } from '../../../lib/entityColorMap';
+import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
+import { chipColorForEntity } from '../../../lib/entityTypeColors';
 import {
   getLoreEntity,
   loreKindForChip,
   type LoreEntityKind,
 } from '../../../lib/loreEntities';
-import { chipColorForEntity } from '../../../lib/entityTypeColors';
 import { composerMatchSlot } from '../../../store/slices/composerSlice';
 import { CompactEntityChip, CompactChipStrip, SplitEntityChip } from '../components/CompactEntityChip';
 
@@ -38,20 +39,24 @@ const PREVIEW_COLOR_TO_KIND: Partial<Record<string, LoreEntityKind>> = {
   place: 'place',
   organization: 'organization',
   group: 'group',
+  thing: 'thing',
   skill: 'skill',
   project: 'project',
   event: 'event',
 };
 
 // Only these chip kinds are surfaced above the composer right now:
-// people/characters, places/locations, groups & organizations, things.
-// Everything else (skills, projects, events, memories) is hidden from the strip.
+// people/pets, places/locations, groups/orgs, projects, and significant things.
+// Everything else (skills, events, memories) is hidden from the strip.
 const ALLOWED_CHIP_KINDS = new Set<LoreEntityKind>([
   'person',
+  'pet',
   'relationship',
   'place',
   'organization',
   'group',
+  'thing',
+  'project',
 ]);
 
 function previewSpanKind(span: LexicalPreviewSpan, corrected?: CorrectedPreviewSpan): LoreEntityKind {
@@ -61,6 +66,7 @@ function previewSpanKind(span: LexicalPreviewSpan, corrected?: CorrectedPreviewS
 }
 
 function isConfirmable(entity: CertifiedEntityMatch): boolean {
+  if (entity.composerChipKind === 'growing_entity') return false;
   if (entity.lifecycleStatus === 'archived') return true;
   return entity.status === 'suggestion' || entity.status === 'draft';
 }
@@ -76,11 +82,17 @@ function certifiedChipTitle(entity: CertifiedEntityMatch): string {
     return `${chipDisplayName(entity)} · ${def.label} · archived — tap ✓ to restore`;
   }
   const status =
-    entity.status === 'draft'
-      ? 'new — tap to add'
-      : entity.status === 'suggestion'
-        ? 'detected — tap ✓ to confirm'
-        : 'in your books';
+    entity.composerChipKind === 'growing_entity'
+      ? `growing context${entity.mentionCount ? ` · ${entity.mentionCount} mention${entity.mentionCount === 1 ? '' : 's'}` : ''}`
+      : entity.promotionStage === 'growing'
+        ? 'growing context'
+        : entity.promotionStage === 'suggest'
+          ? 'ready to add'
+          : entity.status === 'draft'
+            ? 'new — tap to add'
+            : entity.status === 'suggestion'
+              ? 'detected — tap ✓ to confirm'
+              : 'in your books';
   return `${chipDisplayName(entity)} · ${def.label} · ${status}`;
 }
 
@@ -157,13 +169,16 @@ export const ComposerEntityChips = ({
     chipEntities.some(isConfirmable) ||
     previewItems.some(({ span, corrected }) => isPreviewConfirmable(span, corrected) && onConfirmPreviewSpan);
   const hasArchived = chipEntities.some((e) => e.lifecycleStatus === 'archived');
+  const hasGrowing = chipEntities.some((e) => e.composerChipKind === 'growing_entity' || e.promotionStage === 'growing');
   const stripLabel = scanning
     ? 'Scanning…'
     : hasArchived
       ? 'Tap ✓ to restore archived'
       : needsConfirm
         ? 'Tap chip or ✓ to include'
-        : 'In message';
+        : hasGrowing
+          ? 'Growing context'
+          : 'In message';
 
   const totalCount = chipEntities.length + previewItems.length;
   const certifiedVisible = chipEntities.slice(0, max);

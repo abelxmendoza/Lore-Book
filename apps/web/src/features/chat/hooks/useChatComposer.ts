@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
-import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
+
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useEntityIndexer } from '../../../hooks/useEntityIndexer';
-import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
+import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
+import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import { confirmComposerEntity } from '../../../lib/confirmComposerEntity';
+import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
+import {
+  openCharacterBookModal,
+  openLocationBookModal,
+  openOrganizationBookModal,
+  openProjectBookModal,
+  openSkillBookModal,
+} from '../../../lib/skillEntityNavigation';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { selectVisibleComposerMatches, selectComposerConfirmingSlots, selectComposerIncludedSlots } from '../../../store/selectors/composerSelectors';
 import {
   clearComposerState,
   dismissComposerMatch,
@@ -14,16 +24,36 @@ import {
   removeComposerConfirming,
   toggleComposerIncluded,
 } from '../../../store/slices/composerSlice';
-import { selectVisibleComposerMatches, selectComposerConfirmingSlots, selectComposerIncludedSlots } from '../../../store/selectors/composerSelectors';
-import { confirmComposerEntity } from '../../../lib/confirmComposerEntity';
-
-import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
 
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
   submitOnEnter?: boolean;
   threadId?: string;
 };
+
+function openConfirmedComposerEntity(result: Awaited<ReturnType<typeof confirmComposerEntity>>): void {
+  if (!result?.id) return;
+  switch (result.type) {
+    case 'character':
+      openCharacterBookModal({ characterId: result.id, tab: 'info' });
+      break;
+    case 'location':
+      openLocationBookModal(result.id);
+      break;
+    case 'organization':
+      openOrganizationBookModal(result.id);
+      break;
+    case 'skill':
+      openSkillBookModal(result.id);
+      break;
+    case 'project':
+      openProjectBookModal(result.id);
+      break;
+    default:
+      break;
+  }
+}
 
 export const useChatComposer = (
   onSubmit: (
@@ -124,9 +154,10 @@ export const useChatComposer = (
       dispatch(addComposerConfirming(slot));
       setConfirmError(null);
       try {
-        await confirmComposerEntity(match);
+        const confirmed = await confirmComposerEntity(match);
         entityIndexer.retryLoad();
         entityIndexer.analyze(input);
+        openConfirmedComposerEntity(confirmed);
       } catch (error) {
         setConfirmError(error instanceof Error ? error.message : 'Could not confirm entity');
       } finally {
@@ -148,7 +179,7 @@ export const useChatComposer = (
     setInput(`${command} `);
     setShowCommandSuggestions(false);
     textareaRef.current?.focus();
-  }, []);
+  }, [setInput]);
 
   const toggleIncluded = useCallback(
     (slot: string) => {
@@ -185,4 +216,3 @@ export const useChatComposer = (
     setPreviewCorrections,
   };
 };
-

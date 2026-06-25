@@ -4,6 +4,7 @@
 
 import type { LoreBookParseOperation, LoreBookParseResponse } from '../api/loreBookParse';
 import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEntity';
+
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import { isIndividualPersonName } from './personNameValidation';
 
@@ -45,7 +46,8 @@ function domainToEntityType(domain: string): CertifiedEntityType | null {
   if (domain === 'locations' || domain === 'schools') return 'location';
   if (domain === 'organizations' || domain === 'groups') return 'organization';
   if (domain === 'skills' || domain === 'work') return 'skill';
-  if (domain === 'quests' || domain === 'projects' || domain === 'events' || domain === 'timeline') {
+  if (domain === 'projects') return 'project';
+  if (domain === 'quests' || domain === 'events' || domain === 'timeline') {
     return 'event';
   }
   return null;

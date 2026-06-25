@@ -6,6 +6,7 @@ export type CelebrationVariant =
   | 'character'
   | 'location'
   | 'quest'
+  | 'project'
   | 'memory'
   | 'value'
   | 'organization';

@@ -9,7 +9,12 @@ export type { CertifiedEntity, CertifiedEntityType };
 
 export type EntityMatchKind = 'full' | 'prefix';
 
-export type ComposerChipKind = 'entity' | 'relationship' | 'shared_history' | 'needs_clarification';
+export type ComposerChipKind =
+  | 'entity'
+  | 'relationship'
+  | 'shared_history'
+  | 'needs_clarification'
+  | 'growing_entity';
 
 export type CertifiedEntityMatch = CertifiedEntity & {
   matchedLabel: string;
@@ -184,7 +189,7 @@ export function sortCertifiedMatches(a: CertifiedEntityMatch, b: CertifiedEntity
 export function toComposerThreadEntity(
   entity: CertifiedEntity
 ): { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } | null {
-  if (entity.type === 'event') return null;
+  if (entity.type === 'event' || entity.type === 'project' || entity.type === 'thing') return null;
   return { id: entity.id, name: entity.name, type: entity.type };
 }
 

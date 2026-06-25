@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { CertifiedEntity } from '../types/certifiedEntity';
+
+import type { LexicalPreviewSpan } from '../api/lexicalPreview';
+import type { LoreBookParseResponse } from '../api/loreBookParse';
+import { shouldUseMockData } from '../hooks/useShouldUseMockData';
+import { fetchJson } from '../lib/api';
+import { apiCache } from '../lib/cache';
 import {
   buildEntityMatchIndex,
   matchCertifiedEntitiesWithIndex,
@@ -7,26 +12,23 @@ import {
   type CertifiedEntityMatch,
   type EntityMatchIndex,
 } from '../lib/certifiedEntityMatch';
-import type { LexicalPreviewSpan } from '../api/lexicalPreview';
-import type { LoreBookParseResponse } from '../api/loreBookParse';
+import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
 import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
-import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
 import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
+import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
 import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
-import { fetchJson } from '../lib/api';
-import { apiCache } from '../lib/cache';
-import { supabase } from '../lib/supabase';
-import { shouldUseMockData } from '../hooks/useShouldUseMockData';
-import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { collapseOverlappingPersonComposerMatches } from '../lib/personComposerMatchCollapse';
+import { significantComposerCandidatesToMatches } from '../lib/significantComposerCandidates';
+import { supabase } from '../lib/supabase';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { selectComposerMatches } from '../store/selectors/composerSelectors';
 import {
   setComposerIndexError,
   setComposerIndexReady,
   setComposerMatches,
 } from '../store/slices/composerSlice';
-import { selectComposerMatches } from '../store/selectors/composerSelectors';
+import type { CertifiedEntity } from '../types/certifiedEntity';
 
 export type EntityType = CertifiedEntity['type'];
 export type EntityMatch = CertifiedEntityMatch;
@@ -190,9 +192,14 @@ export const useEntityIndexer = () => {
       const lorebookDrafts = loreBookParse
         ? loreBookParseToComposerMatches(loreBookParse, entities, base)
         : [];
+      const promotedCandidates = significantComposerCandidatesToMatches(
+        text,
+        entities,
+        [...base, ...lorebookDrafts]
+      );
       const next = collapseOverlappingPersonComposerMatches(
         text,
-        [...base, ...lorebookDrafts].sort(sortCertifiedMatches)
+        [...base, ...lorebookDrafts, ...promotedCandidates].sort(sortCertifiedMatches)
       );
       dispatch(setComposerMatches(next));
     },
