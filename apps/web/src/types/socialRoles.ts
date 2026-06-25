@@ -45,6 +45,13 @@ export interface FamilyMember {
   inference_status?: 'asserted' | 'inferred' | 'placeholder';
   notes?: string;
   side?: 'maternal' | 'paternal' | 'both' | 'other';
+  /** True when this node maps to a real, saved character row. */
+  has_card?: boolean;
+  /** Explicit parent this node connects to (user-asserted). Empty = inferred. */
+  parent_id?: string;
+  /** Set when the node may not belong (stage name, public figure, unclear kin). */
+  needs_review?: boolean;
+  review_reason?: string;
 }
 
 export interface FamilyBranch {

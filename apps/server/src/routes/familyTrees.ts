@@ -62,6 +62,83 @@ router.get('/organization/:id', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
+// POST /api/family-trees/member/:characterId/exclude — remove from tree, keep the character
+router.post('/member/:characterId/exclude', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+  try {
+    const ok = await familyTreeService.excludeMember(userId, characterId, reason);
+    if (!ok) return res.status(404).json({ success: false, error: 'Family member not found or not removable' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to exclude family member');
+    res.status(500).json({ success: false, error: 'Failed to remove from family tree' });
+  }
+});
+
+// POST /api/family-trees/member/:characterId/keep — confirm a flagged node is family
+router.post('/member/:characterId/keep', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  try {
+    const ok = await familyTreeService.keepMember(userId, characterId);
+    if (!ok) return res.status(404).json({ success: false, error: 'Family member not found' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to keep family member');
+    res.status(500).json({ success: false, error: 'Failed to keep family member' });
+  }
+});
+
+// DELETE /api/family-trees/member/:characterId — the node shouldn't be a character at all
+router.delete('/member/:characterId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+  try {
+    const ok = await familyTreeService.deleteMember(userId, characterId, reason);
+    if (!ok) return res.status(404).json({ success: false, error: 'Family member not found or not deletable' });
+    res.json({ success: true, deleted: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to delete family member');
+    res.status(500).json({ success: false, error: 'Failed to delete character' });
+  }
+});
+
+// PATCH /api/family-trees/member/:characterId/relationship — correct how they relate
+router.patch('/member/:characterId/relationship', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  const relation = typeof req.body?.relation === 'string' ? req.body.relation.trim() : '';
+  const connectsToId = typeof req.body?.connectsToId === 'string' ? req.body.connectsToId.trim() || undefined : undefined;
+  const side = ['maternal', 'paternal', 'both', 'other'].includes(req.body?.side) ? req.body.side : undefined;
+  if (!relation) return res.status(400).json({ success: false, error: 'relation is required' });
+  try {
+    const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation, connectsToId, side });
+    if (!ok) return res.status(404).json({ success: false, error: 'Could not set relationship' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to set family relationship');
+    res.status(500).json({ success: false, error: 'Failed to update relationship' });
+  }
+});
+
+// POST /api/family-trees/member/:characterId/ensure-card — create + link a card if missing
+router.post('/member/:characterId/ensure-card', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  try {
+    const result = await familyTreeService.ensureMemberCard(userId, characterId, name);
+    if (!result) return res.status(422).json({ success: false, error: 'No character card could be created for this node' });
+    res.json({ success: true, character: result.character, created: result.created });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to ensure family member card');
+    res.status(500).json({ success: false, error: 'Failed to create character card' });
+  }
+});
+
 // GET /api/family-trees/character/:id/affiliations — all groups this person belongs to
 router.get('/character/:id/affiliations', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

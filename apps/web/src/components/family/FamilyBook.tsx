@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { TreePine, Home, Users, BarChart3, Loader2, GitBranch } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi } from '../../api/books';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
 import { FamilyTreePanel } from './FamilyTreePanel';
@@ -12,7 +12,9 @@ import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
 import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
-import type { FamilyTree } from '../../types/socialRoles';
+import { useToast } from '../ui/toast';
+import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
+import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
 
 type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
@@ -32,6 +34,8 @@ export function FamilyBook() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
+  const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
+  const { success, error: toastError, ToastContainer } = useToast();
 
   const load = useCallback(async () => {
     if (shouldUseMock) {
@@ -70,12 +74,108 @@ export function FamilyBook() {
 
     try {
       const r = await fetchJson<{ character?: Character }>(`/api/characters/${characterId}`);
-      if (r.character) setSelectedCharacter(r.character);
-      else setSelectedCharacter({ id: characterId, name, user_id: '', status: 'active' } as Character);
+      if (r.character) {
+        setSelectedCharacter(r.character);
+        return;
+      }
+      // No saved card for this node — create + link one on demand so every node
+      // resolves to a real character, then open it (not an ephemeral stub).
+      const ensured = await fetchJson<{ success: boolean; character?: Character; created?: boolean }>(
+        `/api/family-trees/member/${characterId}/ensure-card`,
+        { method: 'POST', body: JSON.stringify({ name }) },
+      );
+      if (ensured.character) {
+        setSelectedCharacter(ensured.character);
+        if (ensured.created) {
+          dispatchStoryDataUpdated({ scopes: ['family'] });
+          void load();
+        }
+      } else {
+        setSelectedCharacter({ id: characterId, name, user_id: '', status: 'active' } as Character);
+      }
     } catch {
       setSelectedCharacter({ id: characterId, name, user_id: '', status: 'active' } as Character);
     }
   };
+
+  // ── Manual tree edits (real accounts only) ─────────────────────────────────
+  const refreshFamily = useCallback(() => {
+    dispatchStoryDataUpdated({ scopes: ['family'] });
+    void load();
+  }, [load]);
+
+  // Run a mutation, surface success/failure to the user, and only refresh on
+  // success. Errors used to be swallowed (.catch(() => {})), which made a
+  // failed delete look like nothing happened.
+  const runEdit = useCallback(async (
+    action: () => Promise<unknown>,
+    okMessage: string,
+    failMessage: string,
+  ): Promise<boolean> => {
+    try {
+      await action();
+      refreshFamily();
+      success(okMessage);
+      return true;
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? `: ${e.message}` : '';
+      toastError(`${failMessage}${detail}`);
+      return false;
+    }
+  }, [refreshFamily, success, toastError]);
+
+  const excludeMember = useCallback((member: FamilyMember) =>
+    runEdit(
+      () => fetchJson(`/api/family-trees/member/${member.id}/exclude`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Removed from family tree by user' }),
+      }),
+      `Removed ${member.name} from your family tree`,
+      `Couldn't remove ${member.name}`,
+    ), [runEdit]);
+
+  const deleteMember = useCallback((member: FamilyMember) => {
+    const ok = typeof window === 'undefined'
+      ? true
+      : window.confirm(`Delete "${member.name}" entirely? This removes the character and teaches LoreBook not to recreate it.`);
+    if (!ok) return;
+    void runEdit(
+      () => fetchJson(`/api/family-trees/member/${member.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: 'Not a real person (family tree)' }),
+      }),
+      `Deleted ${member.name}`,
+      `Couldn't delete ${member.name}`,
+    );
+  }, [runEdit]);
+
+  const keepMember = useCallback((member: FamilyMember) =>
+    runEdit(
+      () => fetchJson(`/api/family-trees/member/${member.id}/keep`, { method: 'POST', body: JSON.stringify({}) }),
+      `Kept ${member.name} in your family`,
+      `Couldn't update ${member.name}`,
+    ), [runEdit]);
+
+  const saveRelationship = useCallback(async (member: FamilyMember, edit: RelationshipEdit): Promise<void> => {
+    await runEdit(
+      () => fetchJson(`/api/family-trees/member/${member.id}/relationship`, {
+        method: 'PATCH',
+        body: JSON.stringify(edit),
+      }),
+      `Updated ${member.name}'s relationship`,
+      `Couldn't update ${member.name}'s relationship`,
+    );
+  }, [runEdit]);
+
+  // Only real accounts can edit; demo graph stays read-only.
+  const editHandlers = shouldUseMock
+    ? {}
+    : {
+        onEditRelationship: (m: FamilyMember) => setEditorMember(m),
+        onExclude: (m: FamilyMember) => void excludeMember(m),
+        onDelete: (m: FamilyMember) => void deleteMember(m),
+        onKeep: (m: FamilyMember) => void keepMember(m),
+      };
 
   const tabs: Array<{ key: Tab; label: string; icon: typeof TreePine }> = [
     { key: 'tree', label: 'Family Tree', icon: TreePine },
@@ -163,6 +263,7 @@ export function FamilyBook() {
                   title="Your family tree"
                   hint="Mention relatives in chat — LoreBook builds your tree automatically."
                   onMemberClick={(id, name) => void openCharacter(id, name)}
+                  {...editHandlers}
                 />
               )}
             </div>
@@ -232,6 +333,17 @@ export function FamilyBook() {
           onUpdate={(c) => setSelectedCharacter(c)}
         />
       )}
+
+      {editorMember && (
+        <RelationshipEditor
+          member={editorMember}
+          members={summary?.tree?.members ?? []}
+          onSave={(edit) => saveRelationship(editorMember, edit)}
+          onClose={() => setEditorMember(null)}
+        />
+      )}
+
+      <ToastContainer />
     </div>
   );
 }

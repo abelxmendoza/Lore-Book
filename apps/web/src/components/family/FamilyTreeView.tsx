@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Heart, User } from 'lucide-react';
+import { Heart, User, MoreVertical, AlertTriangle, Pencil, UserMinus, Trash2, Check } from 'lucide-react';
 import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 
@@ -7,6 +7,14 @@ interface FamilyTreeViewProps {
   tree: FamilyTree;
   onMemberClick?: (member: FamilyMember) => void;
   compact?: boolean;
+  /** Correct how a member relates (opens the relationship editor). */
+  onEditRelationship?: (member: FamilyMember) => void;
+  /** Remove from the tree but keep the character. */
+  onExclude?: (member: FamilyMember) => void;
+  /** Delete the character entirely — it shouldn't be a character. */
+  onDelete?: (member: FamilyMember) => void;
+  /** Confirm a flagged member is really family (clears the review flag). */
+  onKeep?: (member: FamilyMember) => void;
 }
 
 type RelationStyle = {
@@ -156,8 +164,16 @@ const closenessRing = (closeness?: number) => {
 // ── Edge inference ─────────────────────────────────────────────────────────────
 // Derives logical parent→child pairs from generation + side + relation fields.
 
-function inferEdges(members: FamilyMember[]): Array<{ from: string; to: string }> {
+export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: string }> {
   const edges: Array<{ from: string; to: string }> = [];
+
+  // User-asserted parent links win over inference: collect them up front and,
+  // at the end, replace any inferred connector for those children.
+  const memberIds = new Set(members.map(m => m.id));
+  const explicitEdges = members
+    .filter(m => m.parent_id && m.parent_id !== m.id && memberIds.has(m.parent_id))
+    .map(m => ({ from: m.parent_id as string, to: m.id }));
+  const pinnedChildren = new Set(explicitEdges.map(e => e.to));
 
   const byGen = new Map<number, FamilyMember[]>();
   for (const m of members) {
@@ -237,7 +253,11 @@ function inferEdges(members: FamilyMember[]): Array<{ from: string; to: string }
     }
   }
 
-  return edges;
+  // Drop inferred connectors for any child the user explicitly re-parented,
+  // then add the explicit links.
+  const reconciled = edges.filter(e => !pinnedChildren.has(e.to));
+  reconciled.push(...explicitEdges);
+  return reconciled;
 }
 
 // ── PersonNode ─────────────────────────────────────────────────────────────────
@@ -306,6 +326,117 @@ const PersonNode = ({
   );
 };
 
+// ── Node + edit affordances ─────────────────────────────────────────────────────
+
+const NodeWithActions = ({
+  member,
+  onClick,
+  compact,
+  onNodeRef,
+  onEditRelationship,
+  onExclude,
+  onDelete,
+  onKeep,
+}: {
+  member: FamilyMember;
+  onClick?: (m: FamilyMember) => void;
+  compact?: boolean;
+  onNodeRef?: (id: string, el: HTMLButtonElement | null) => void;
+  onEditRelationship?: (m: FamilyMember) => void;
+  onExclude?: (m: FamilyMember) => void;
+  onDelete?: (m: FamilyMember) => void;
+  onKeep?: (m: FamilyMember) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const editable = !member.is_self && !member.is_placeholder && Boolean(onEditRelationship || onExclude || onDelete);
+  const flagged = Boolean(member.needs_review) && !member.is_self && !member.is_placeholder;
+
+  return (
+    <div className="group/node relative flex flex-col items-center">
+      <PersonNode member={member} onClick={onClick} compact={compact} onNodeRef={onNodeRef} />
+
+      {flagged && (
+        <span
+          title={member.review_reason ?? 'This node may not belong in your family tree.'}
+          aria-label="Needs review"
+          data-testid={`review-flag-${member.id}`}
+          className="absolute -top-1 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500/90 text-black shadow"
+        >
+          <AlertTriangle className="h-2.5 w-2.5" />
+        </span>
+      )}
+
+      {editable && (
+        <button
+          type="button"
+          aria-label={`Edit ${member.name}`}
+          data-testid={`node-menu-${member.id}`}
+          onClick={() => setOpen((o) => !o)}
+          className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white/70 opacity-0 transition group-hover/node:opacity-100 hover:text-white focus:opacity-100"
+        >
+          <MoreVertical className="h-3 w-3" />
+        </button>
+      )}
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            role="menu"
+            className="absolute left-0 top-7 z-50 w-52 overflow-hidden rounded-lg border border-white/15 bg-[#15131f] py-1 text-left shadow-xl"
+          >
+            {flagged && member.review_reason && (
+              <p className="px-3 py-1.5 text-[10px] leading-snug text-amber-300/90 border-b border-white/10">
+                {member.review_reason}
+              </p>
+            )}
+            {onEditRelationship && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onEditRelationship(member); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit relationship
+              </button>
+            )}
+            {onExclude && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onExclude(member); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+              >
+                <UserMinus className="h-3.5 w-3.5" /> Remove from family
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onDelete(member); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-300 hover:bg-red-500/15"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Not a person — delete
+              </button>
+            )}
+            {flagged && onKeep && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onKeep(member); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-emerald-300 hover:bg-emerald-500/15"
+              >
+                <Check className="h-3.5 w-3.5" /> Keep in family
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // ── Generation header ──────────────────────────────────────────────────────────
 
 const GenHeader = ({ label }: { label: string }) => (
@@ -329,7 +460,15 @@ const GEN_LABELS: Record<number, string> = {
 
 interface SvgLine { x1: number; y1: number; x2: number; y2: number }
 
-export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyTreeViewProps) => {
+export const FamilyTreeView = ({
+  tree,
+  onMemberClick,
+  compact = false,
+  onEditRelationship,
+  onExclude,
+  onDelete,
+  onKeep,
+}: FamilyTreeViewProps) => {
   const { members } = tree;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -413,10 +552,9 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
       {/* SVG connector overlay */}
       {lines.length > 0 && (
         <svg
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none overflow-visible z-0"
           width={svgW}
           height={svgH}
-          style={{ overflow: 'visible', zIndex: 0 }}
         >
           {lines.map((l, i) => {
             // Cubic bezier: control points pull vertically from each end
@@ -439,7 +577,7 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
 
       {/* Branch legend — family side ring colors */}
       {!compact && tree.branches.length > 0 && (
-        <div className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2.5 relative" style={{ zIndex: 1 }}>
+        <div className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2.5 relative z-[1]">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-2">Family side rings</p>
           <div className="flex flex-wrap gap-2">
             {tree.branches.map((b) => (
@@ -470,7 +608,7 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
         const others = gMembers.filter(m => !m.is_self);
 
         return (
-          <div key={gen} className="relative" style={{ zIndex: 1 }}>
+          <div key={gen} className="relative z-[1]">
             <GenHeader label={label} />
             <div className={`flex flex-wrap justify-center gap-3 sm:gap-4 ${gen === 0 ? 'items-start' : ''}`}>
               {self && (
@@ -482,7 +620,17 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
                 </div>
               )}
               {others.map(m => (
-                <PersonNode key={m.id} member={m} onClick={onMemberClick} compact={compact} onNodeRef={handleNodeRef} />
+                <NodeWithActions
+                  key={m.id}
+                  member={m}
+                  onClick={onMemberClick}
+                  compact={compact}
+                  onNodeRef={handleNodeRef}
+                  onEditRelationship={onEditRelationship}
+                  onExclude={onExclude}
+                  onDelete={onDelete}
+                  onKeep={onKeep}
+                />
               ))}
             </div>
           </div>
@@ -491,7 +639,7 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
 
       {/* Relation color legend */}
       {!compact && (
-        <div className="pt-3 mt-1 border-t border-white/15 relative rounded-xl bg-white/[0.03] px-3 py-3" style={{ zIndex: 1 }}>
+        <div className="pt-3 mt-1 border-t border-white/15 relative rounded-xl bg-white/[0.03] px-3 py-3 z-[1]">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-2.5">
             Relationship colors
           </p>

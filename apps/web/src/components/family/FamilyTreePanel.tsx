@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
-import type { FamilyTree } from '../../types/socialRoles';
+import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 
 type Scope = 'mine' | 'character' | 'organization';
@@ -17,6 +17,10 @@ interface FamilyTreePanelProps {
   compact?: boolean;
   refreshKey?: number;
   onMemberClick?: (memberId: string, memberName: string) => void;
+  onEditRelationship?: (member: FamilyMember) => void;
+  onExclude?: (member: FamilyMember) => void;
+  onDelete?: (member: FamilyMember) => void;
+  onKeep?: (member: FamilyMember) => void;
 }
 
 export const FamilyTreePanel = ({
@@ -27,6 +31,10 @@ export const FamilyTreePanel = ({
   compact,
   refreshKey = 0,
   onMemberClick,
+  onEditRelationship,
+  onExclude,
+  onDelete,
+  onKeep,
 }: FamilyTreePanelProps) => {
   const [tree, setTree] = useState<FamilyTree | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +127,10 @@ export const FamilyTreePanel = ({
           if (member.is_self || member.is_placeholder) return;
           onMemberClick?.(member.id, member.name);
         }}
+        onEditRelationship={onEditRelationship}
+        onExclude={onExclude}
+        onDelete={onDelete}
+        onKeep={onKeep}
       />
     </div>
   );
