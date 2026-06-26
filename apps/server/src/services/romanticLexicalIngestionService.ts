@@ -16,6 +16,7 @@ import {
   type DetectedRomanticRelationship,
 } from './conversationCentered/romanticRelationshipDetector';
 import { extractAndLogInteraction } from './conversationCentered/romanticInteractionExtractor';
+import { assessRomanticPartnerEligibility } from './conversationCentered/romanticEligibility';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
 import type { EntityType } from '../types/omegaMemory';
@@ -117,6 +118,10 @@ export async function applyRomanticLexicalHit(
   const partner = partnerOverride ?? (await resolveRomanticPartner(userId, hit.partnerName));
   if (!partner) return null;
 
+  // Skip role labels / third-party partners before touching the DB.
+  const eligibility = assessRomanticPartnerEligibility({ name: partner.name, evidence: hit.evidence });
+  if (!eligibility.eligible) return null;
+
   const detected: DetectedRomanticRelationship = {
     personId: partner.personId,
     personType: partner.personType,
@@ -126,6 +131,7 @@ export async function applyRomanticLexicalHit(
     evidence: hit.evidence,
     isSituationship: hit.isSituationship,
     exclusivityStatus: hit.isSituationship ? 'not_exclusive' : 'unknown',
+    partnerName: partner.name,
   };
 
   await romanticRelationshipDetector.saveRelationship(userId, detected, messageId);

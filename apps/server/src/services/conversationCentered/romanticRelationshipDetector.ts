@@ -7,6 +7,7 @@ import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
+import { assessRomanticPartnerEligibility } from './romanticEligibility';
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -48,6 +49,8 @@ export interface DetectedRomanticRelationship {
   startDate?: string;
   isSituationship?: boolean;
   exclusivityStatus?: 'exclusive' | 'non_exclusive' | 'unknown' | 'complicated';
+  /** Resolved partner name, used for eligibility guards when available. */
+  partnerName?: string;
 }
 
 export class RomanticRelationshipDetector {
@@ -197,23 +200,41 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
     relationship: DetectedRomanticRelationship,
     sourceMessageId?: string
   ): Promise<void> {
+    // Guard: never store role labels ("Ex Lover") or someone else's partner
+    // (evidence like "her boyfriend Juan") as the user's romantic relationship.
+    const eligibility = assessRomanticPartnerEligibility({
+      name: relationship.partnerName,
+      evidence: relationship.evidence,
+    });
+    if (!eligibility.eligible) {
+      logger.info(
+        { userId, personId: relationship.personId, reason: eligibility.reason },
+        'Skipped ineligible romantic relationship'
+      );
+      return;
+    }
     try {
-      // Check if relationship already exists
+      // One romantic relationship per person — match on identity only, not on
+      // (relationship_type, status). Matching those too spawned a fresh row each
+      // time a person's status evolved (one_night_stand -> ex_lover), which is
+      // what produced the Love & Relationships duplicates.
       const { data: existing } = await supabaseAdmin
         .from('romantic_relationships')
         .select('*')
         .eq('user_id', userId)
         .eq('person_id', relationship.personId)
         .eq('person_type', relationship.personType)
-        .eq('relationship_type', relationship.relationshipType)
-        .eq('status', relationship.status)
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (existing) {
-        // Update existing
+        // Update existing — evolve type/status on the single canonical row.
         await supabaseAdmin
           .from('romantic_relationships')
           .update({
+            relationship_type: relationship.relationshipType,
+            status: relationship.status,
             is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
             is_situationship: relationship.isSituationship || false,
             exclusivity_status: relationship.exclusivityStatus,

@@ -2523,6 +2523,18 @@ router.get(
     const status = req.query.status as string | undefined;
     const isCurrent = req.query.isCurrent === 'true';
 
+    // Self-heal: collapse duplicates and link partners to Character Book cards
+    // before reading. Deterministic, idempotent, best-effort — never block the
+    // view if cleanup fails.
+    try {
+      const { romanticRelationshipDedupeService } = await import(
+        '../services/conversationCentered/romanticRelationshipDedupeService'
+      );
+      await romanticRelationshipDedupeService.dedupeAndLink(userId);
+    } catch (dedupeError) {
+      logger.warn({ error: dedupeError, userId }, 'romantic relationship dedupe skipped');
+    }
+
     const query = supabaseAdmin
       .from('romantic_relationships')
       .select('*')
@@ -2565,7 +2577,29 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const summary = await romanticConversationRescanService.rescan(userId);
+    // Clean up + link right after a rescan so new detections never leave dupes.
+    const { romanticRelationshipDedupeService } = await import(
+      '../services/conversationCentered/romanticRelationshipDedupeService'
+    );
+    await romanticRelationshipDedupeService.dedupeAndLink(userId).catch(() => {});
     res.json({ success: true, summary });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/dedupe
+ * Explicitly collapse duplicates and link partners to Character Book cards.
+ */
+router.post(
+  '/romantic-relationships/dedupe',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { romanticRelationshipDedupeService } = await import(
+      '../services/conversationCentered/romanticRelationshipDedupeService'
+    );
+    const report = await romanticRelationshipDedupeService.dedupeAndLink(userId);
+    res.json({ success: true, report });
   })
 );
 
