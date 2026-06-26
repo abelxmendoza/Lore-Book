@@ -39,6 +39,7 @@ import {
 import {
   evaluateTitleOnlyPersonGuard,
 } from '../lexical/intelligence/titleOnlyEntityGuard';
+import { looksLikeMusicAct } from './musicActDetection';
 
 export type { EntityClass, StorageType, LegacyOmegaEntityType, RootType };
 export { toStorageType, toOmegaType, isUnknownEntity, isCharacterEligible, entityClassToRootType };
@@ -160,6 +161,14 @@ export function classifyEntity(name: string, context?: string): Classification {
     if (new RegExp(`\\b(in|at|from|near|to)\\s+${n}(?!['’]s)\\b`, 'i').test(context.toLowerCase())) {
       return result('LOCATION', 0.6, 'locative preposition context');
     }
+  }
+
+  // Band / musical act named in conversation ("Ex Lover the band", "DJ for
+  // Prayers") — classify as an organization before any person heuristic so an
+  // act with a person-like name isn't promoted to a Character.
+  const musicAct = looksLikeMusicAct(raw, context);
+  if (musicAct.isMusicAct) {
+    return result('ORGANIZATION', 0.85, `music act / band (context: ${musicAct.signal})`, 'band');
   }
 
   const titleGuard = evaluateTitleOnlyPersonGuard(raw);

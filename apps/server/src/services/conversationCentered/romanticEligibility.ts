@@ -14,6 +14,7 @@
  */
 
 import { isIndividualPersonName } from '../../utils/personNameValidation';
+import { looksLikeMusicAct } from '../entities/musicActDetection';
 
 /** Relationship role labels that are not a person's name. */
 const RELATIONSHIP_ROLE_LABELS = new Set([
@@ -90,6 +91,9 @@ export function assessRomanticPartnerEligibility(input: {
   }
   if (name && !isIndividualPersonName(name)) {
     return { eligible: false, reason: 'not_an_individual_person' };
+  }
+  if (looksLikeMusicAct(name, input.evidence).isMusicAct) {
+    return { eligible: false, reason: 'music_act' };
   }
   if (hasThirdPartyPartnerCue(input.evidence)) {
     return { eligible: false, reason: 'third_party_partner' };
