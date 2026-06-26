@@ -281,6 +281,17 @@ class CharacterFoundationService {
     });
     await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
     await characterAuthorityService.linkSourceRecord(userId, characterId, 'people_places', entity.id, cleanedName, 'source_entity', 1);
+
+    // Capture chat provenance for the brand-new card so it is born with story
+    // context instead of showing "No provenance captured yet" until the audit
+    // runs. Deterministic + cheap (no LLM); fire-and-forget so it never blocks
+    // or fails ingestion.
+    void import('./characters/audit/characterProvenanceBackfillService')
+      .then(({ characterProvenanceBackfillService }) =>
+        characterProvenanceBackfillService.backfillUser(userId, { characterIds: [characterId] }),
+      )
+      .catch((err) => logger.warn({ err, characterId }, 'provenance capture on create skipped'));
+
     return characterId;
     });
   }

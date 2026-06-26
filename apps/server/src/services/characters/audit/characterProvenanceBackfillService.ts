@@ -73,6 +73,12 @@ type EnrichQueueItem = {
 
 const CANDIDATES_PER_TABLE = 60;
 const MAX_SOURCE_MESSAGE_IDS = 25;
+/**
+ * After an empty scan (card has no chat mentions yet), don't re-scan it for this
+ * long. Keeps the automatic auto-heal cheap: cards that genuinely have nothing
+ * to find aren't re-queried on every audit load.
+ */
+const EMPTY_RESCAN_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const SNIPPET_WINDOW_BEFORE = 70;
 const SNIPPET_WINDOW_AFTER = 190;
 const SUMMARY_MAX = 220;
@@ -105,6 +111,14 @@ function hasProvenance(row: CharacterRow): boolean {
   if (typeof meta.provenanceSummary === 'string' && meta.provenanceSummary.trim()) return true;
   if (Array.isArray(meta.sourceMessageIds) && meta.sourceMessageIds.length > 0) return true;
   return false;
+}
+
+/** True if an empty scan ran recently — skip to keep automatic runs cheap. */
+function recentlyAttemptedEmpty(row: CharacterRow): boolean {
+  const at = row.metadata?.provenanceBackfillAttemptedAt;
+  if (typeof at !== 'string') return false;
+  const ts = Date.parse(at);
+  return Number.isFinite(ts) && Date.now() - ts < EMPTY_RESCAN_COOLDOWN_MS;
 }
 
 /** Extract a snippet windowed around the first matched term in the content. */
@@ -200,7 +214,7 @@ class CharacterProvenanceBackfillService {
     let updated = 0;
 
     for (const row of rows) {
-      if (!opts?.force && hasProvenance(row)) continue;
+      if (!opts?.force && (hasProvenance(row) || recentlyAttemptedEmpty(row))) continue;
       const terms = searchTerms(row);
       if (terms.length === 0) continue;
 
@@ -211,6 +225,17 @@ class CharacterProvenanceBackfillService {
       const { matches, userMatches } = this.buildProvenance(row, terms, [...chatRows, ...convRows]);
 
       if (matches.length === 0) {
+        // Record the empty attempt so the cooldown skips this card next time.
+        await supabaseAdmin
+          .from('characters')
+          .update({
+            metadata: {
+              ...(row.metadata ?? {}),
+              provenanceBackfillAttemptedAt: new Date().toISOString(),
+            },
+          })
+          .eq('id', row.id)
+          .eq('user_id', userId);
         results.push({
           characterId: row.id,
           name: row.name,
@@ -368,4 +393,10 @@ class CharacterProvenanceBackfillService {
 }
 
 export const characterProvenanceBackfillService = new CharacterProvenanceBackfillService();
-export { CharacterProvenanceBackfillService, extractSnippet, boundaryRegex, hasProvenance };
+export {
+  CharacterProvenanceBackfillService,
+  extractSnippet,
+  boundaryRegex,
+  hasProvenance,
+  recentlyAttemptedEmpty,
+};

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { boundaryRegex, extractSnippet, hasProvenance } from './characterProvenanceBackfillService';
+import {
+  boundaryRegex,
+  extractSnippet,
+  hasProvenance,
+  recentlyAttemptedEmpty,
+} from './characterProvenanceBackfillService';
 
 describe('boundaryRegex', () => {
   it('matches a short name as a whole word but not inside other words', () => {
@@ -56,5 +61,23 @@ describe('hasProvenance', () => {
   it('is true when metadata carries a summary or source ids', () => {
     expect(hasProvenance({ ...base, metadata: { provenanceSummary: 'x' } })).toBe(true);
     expect(hasProvenance({ ...base, metadata: { sourceMessageIds: ['m1'] } })).toBe(true);
+  });
+});
+
+describe('recentlyAttemptedEmpty', () => {
+  const base = { id: 'c1', name: 'Sol', alias: [], metadata: {}, context_of_mention: null };
+
+  it('is false with no attempt marker', () => {
+    expect(recentlyAttemptedEmpty(base)).toBe(false);
+  });
+
+  it('is true for a recent empty attempt (within cooldown)', () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    expect(recentlyAttemptedEmpty({ ...base, metadata: { provenanceBackfillAttemptedAt: at } })).toBe(true);
+  });
+
+  it('is false once the cooldown has elapsed', () => {
+    const at = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    expect(recentlyAttemptedEmpty({ ...base, metadata: { provenanceBackfillAttemptedAt: at } })).toBe(false);
   });
 });
