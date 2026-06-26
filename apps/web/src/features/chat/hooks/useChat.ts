@@ -374,12 +374,18 @@ export const useChat = () => {
       assistant?: { saved: boolean; id?: string; error?: string };
     };
 
+    // Persisted DB ids are recorded here but only applied to the live messages
+    // at completion (see the final updateStreamMessage call). Swapping a
+    // message's id mid-stream would orphan the `userMessage.id` /
+    // `assistantMessageId` handles these handlers keep using, so later content
+    // chunks and the completion update would silently no-op and leave a stuck
+    // partial bubble.
     const applyPersistence = (persistence?: PersistPayload) => {
       if (!persistence) return;
       if (persistence.user) {
         if (persistence.user.saved && persistence.user.id) {
           persistedUserMessageId = persistence.user.id;
-          updateStreamMessage(userMessage.id, { id: persistence.user.id, persistStatus: 'saved' });
+          updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
         } else if (persistence.user.error) {
           updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
           threadPersistenceTracker.markSyncFailed(streamThreadId, persistence.user.error);
@@ -389,7 +395,7 @@ export const useChat = () => {
         if (persistence.assistant.saved) {
           const id = persistence.assistant.id ?? persistedAssistantMessageId ?? assistantMessageId;
           persistedAssistantMessageId = id;
-          updateStreamMessage(assistantMessageId, { id, persistStatus: 'saved' });
+          updateStreamMessage(assistantMessageId, { persistStatus: 'saved' });
           threadPersistenceTracker.markPersisted(streamThreadId);
         } else if (
           persistence.assistant.error &&
@@ -488,13 +494,13 @@ export const useChat = () => {
         (meta) => {
           metadata = { ...(metadata ?? {}), ...meta };
           if (meta.persistence) applyPersistence(meta.persistence);
+          // Record persisted ids only — they are applied to the live messages at
+          // completion. Swapping ids mid-stream orphans the update handles below.
           if (meta.messageId) {
             persistedUserMessageId = meta.messageId;
-            updateStreamMessage(userMessage.id, { id: meta.messageId });
           }
           if (meta.assistantMessageId) {
             persistedAssistantMessageId = meta.assistantMessageId;
-            updateStreamMessage(assistantMessageId, { id: meta.assistantMessageId });
           }
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);

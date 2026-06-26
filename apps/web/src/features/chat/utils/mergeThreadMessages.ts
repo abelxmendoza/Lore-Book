@@ -58,14 +58,50 @@ function toRow(m: Message) {
 }
 
 /**
+ * Reconcile by shared real id before the fingerprint pass.
+ *
+ * When a turn persists, the optimistic streaming bubble adopts the real DB id
+ * (see the useChat send handler). On hydration the server returns a row with
+ * that SAME id — but often with post-processed / reformatted content. Identity
+ * is the id, not the text, so collapse those pairs here: server content + id
+ * win, optimistic protocol fields the durable row may not carry yet are kept,
+ * and the streaming flag is cleared so the placeholder pass can't resurrect the
+ * old copy. Without this, the slightly-different text slips past the fingerprint
+ * pass and renders as a second bubble — the classic "two bubbles, the last one
+ * has the response".
+ */
+function reconcileById(local: Message[], server: Message[]): Message[] {
+  const serverById = new Map<string, Message>();
+  for (const m of server) {
+    if (sourceRank(m.id) === 1) serverById.set(m.id, m);
+  }
+  if (serverById.size === 0) return local;
+
+  return local.map((m) => {
+    const twin = sourceRank(m.id) === 1 ? serverById.get(m.id) : undefined;
+    if (!twin) return m;
+    return {
+      ...mergeProtocolFields(twin, m),
+      persistStatus: mergePersistStatus(twin.persistStatus, m.persistStatus),
+      isStreaming: false,
+    };
+  });
+}
+
+/**
  * Merge local (optimistic/streaming) and server messages without dropping assistant turns.
- * Real DB ids win over synthetic client ids for the same role+content fingerprint.
+ * Messages sharing a real DB id collapse to one (id is authoritative identity);
+ * otherwise real DB ids win over synthetic client ids for the same role+content fingerprint.
  */
 export function mergeThreadMessages(local: Message[], server: Message[]): Message[] {
+  const reconciledLocal = reconcileById(local, server);
   const byFingerprint = new Map<string, ReturnType<typeof toRow>>();
 
-  for (const m of [...local, ...server]) {
+  for (const m of [...reconciledLocal, ...server]) {
     if (!m.content?.trim() && !m.isStreaming) continue;
+    // Streaming assistant rows are owned exclusively by the placeholder pass
+    // below so they can never be added twice (fingerprint + streaming key).
+    if (m.isStreaming && m.role === 'assistant') continue;
     const row = toRow(m);
     const fp = fingerprint(row.role, row.content || ' ');
     const existing = byFingerprint.get(fp);
@@ -95,11 +131,12 @@ export function mergeThreadMessages(local: Message[], server: Message[]): Messag
     }
   }
 
-  // Keep in-flight streaming assistant rows even when content is still empty.
-  for (const m of local) {
+  // Keep in-flight streaming assistant rows (added exactly once, keyed by id) —
+  // even when content is still empty. A streaming row that was reconciled to a
+  // persisted server twin above is no longer streaming and is skipped here.
+  for (const m of reconciledLocal) {
     if (m.isStreaming && m.role === 'assistant') {
-      const fp = `streaming:${m.id}`;
-      byFingerprint.set(fp, toRow(m));
+      byFingerprint.set(`streaming:${m.id}`, toRow(m));
     }
   }
 

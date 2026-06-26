@@ -131,6 +131,47 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].staleProjectionHints).toEqual(staleProjectionHints);
   });
 
+  it('collapses an optimistic row whose id matches the durable row even when content was reformatted', () => {
+    // The optimistic bubble adopted the real DB id on persist, but the server
+    // stored a post-processed version of the text. Identity is the id, so this
+    // must NOT render as two bubbles.
+    const local = [
+      msg('user-1', 'user', 'hi'),
+      msg('db-a1', 'assistant', 'hi there', { isStreaming: false }),
+    ];
+    const server = [
+      msg('db-u1', 'user', 'hi'),
+      msg('db-a1', 'assistant', 'Hi there!'), // reformatted by the server
+    ];
+    const merged = mergeThreadMessages(local, server);
+    const assistants = merged.filter((m) => m.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0].id).toBe('db-a1');
+    expect(assistants[0].content).toBe('Hi there!');
+  });
+
+  it('keeps local protocol fields when collapsing an id-matched reformatted row', () => {
+    const entities = [{ id: 'c1', name: 'Maria', type: 'character' as const }];
+    const local = [msg('db-a1', 'assistant', 'streamed text', { mentionedEntities: entities })];
+    const server = [msg('db-a1', 'assistant', 'durable text')];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].content).toBe('durable text');
+    expect(merged[0].mentionedEntities).toEqual(entities);
+  });
+
+  it('does not duplicate a streaming assistant row that also carries partial content', () => {
+    const local = [
+      msg('user-1', 'user', 'question'),
+      msg('assistant-1', 'assistant', 'partial...', { isStreaming: true }),
+    ];
+    const server = [msg('db-u1', 'user', 'question')];
+    const merged = mergeThreadMessages(local, server);
+    const assistants = merged.filter((m) => m.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0].isStreaming).toBe(true);
+  });
+
   it('preserves local protocol metadata when server row lacks it', () => {
     const creationOutcomes = [{ mention: 'Juan', action: 'create' as const, entityId: 'c1' }];
     const local = [msg('assistant-1', 'assistant', 'reply', { creationOutcomes })];
