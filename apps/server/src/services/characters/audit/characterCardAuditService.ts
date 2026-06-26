@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../supabaseClient';
+import { logger } from '../../../logger';
 import {
   isAmbiguousRoleLabel,
   isGenericFamilyLabel,
@@ -238,6 +239,20 @@ class CharacterCardAuditService {
   }
 
   async audit(userId: string): Promise<CharacterCardAuditReport> {
+    // Self-heal missing provenance before auditing: cards from recovery/un-merge
+    // land without any captured story context, but the conversations that named
+    // them are intact in chat history. Backfill reconnects them so the audit
+    // reflects what the user actually said instead of "No provenance captured
+    // yet". Best-effort — never let it block the audit.
+    try {
+      const { characterProvenanceBackfillService } = await import(
+        './characterProvenanceBackfillService'
+      );
+      await characterProvenanceBackfillService.backfillUser(userId);
+    } catch (backfillError) {
+      logger.warn({ error: backfillError, userId }, 'character provenance backfill skipped');
+    }
+
     const { data, error } = await supabaseAdmin
       .from('characters')
       .select('id, name, alias, metadata, context_of_mention, status')

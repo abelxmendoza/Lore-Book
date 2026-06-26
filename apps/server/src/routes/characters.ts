@@ -845,6 +845,28 @@ router.get('/card-audit', requireAuth, asyncHandler(async (req: AuthenticatedReq
   res.json(report);
 }));
 
+router.post('/card-audit/backfill-provenance', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const body = z
+    .object({
+      force: z.boolean().optional(),
+      characterIds: z.array(z.string()).optional(),
+      // Opt-in Tier-2 LLM narrative. Off by default: the deterministic backfill
+      // is free and runs regardless; this only adds a single batched OpenAI call.
+      enrich: z.boolean().optional(),
+    })
+    .parse(req.body ?? {});
+  const { characterProvenanceBackfillService } = await import(
+    '../services/characters/audit/characterProvenanceBackfillService'
+  );
+  const report = await characterProvenanceBackfillService.backfillUser(userId, {
+    force: body.force,
+    characterIds: body.characterIds,
+    enrich: body.enrich,
+  });
+  res.json({ success: true, report });
+}));
+
 router.post('/card-audit/apply', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const body = z.object({ dryRun: z.boolean().optional() }).parse(req.body ?? {});
