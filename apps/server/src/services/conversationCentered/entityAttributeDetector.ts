@@ -38,6 +38,7 @@ export type AttributeType =
   | 'living_situation';      // lives_with_family, alone, roommate, etc.
 
 export type DetectedAttribute = {
+  id?: string;
   entityId: string;
   entityType: 'omega_entity' | 'character';
   attributeType: AttributeType;
@@ -477,22 +478,75 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
         return [];
       }
 
-      return attributes.map(attr => ({
-        entityId: attr.entity_id,
-        entityType: attr.entity_type as 'omega_entity' | 'character',
-        attributeType: attr.attribute_type as AttributeType,
-        attributeValue: attr.attribute_value,
-        confidence: attr.confidence,
-        isCurrent: attr.is_current,
-        startTime: attr.start_time,
-        endTime: attr.end_time,
-        evidence: attr.metadata?.evidence || '',
-        evidenceSourceIds: attr.evidence_source_ids || [],
-      }));
+      return attributes.map(attr => this.mapAttributeRow(attr));
     } catch (error) {
       logger.error({ error, userId, entityId }, 'Failed to get entity attributes');
       return [];
     }
+  }
+
+  /**
+   * Get attributes for many entities at once.
+   *
+   * Single round-trip replacement for calling getEntityAttributes() per entity
+   * (the character grid was firing one request per card). Returns a map keyed
+   * by entityId; every requested id is present (empty array if none found).
+   */
+  async getEntityAttributesBatch(
+    userId: string,
+    entityIds: string[],
+    entityType: 'omega_entity' | 'character',
+    currentOnly: boolean = false
+  ): Promise<Record<string, DetectedAttribute[]>> {
+    const result: Record<string, DetectedAttribute[]> = {};
+    const uniqueIds = Array.from(new Set(entityIds.filter(Boolean)));
+    for (const id of uniqueIds) {
+      result[id] = [];
+    }
+    if (uniqueIds.length === 0) {
+      return result;
+    }
+
+    try {
+      let query = supabaseAdmin
+        .from('entity_attributes')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('entity_type', entityType)
+        .in('entity_id', uniqueIds);
+
+      if (currentOnly) {
+        query = query.eq('is_current', true);
+      }
+
+      const { data: attributes } = await query;
+
+      for (const attr of attributes ?? []) {
+        const mapped = this.mapAttributeRow(attr);
+        (result[attr.entity_id] ??= []).push(mapped);
+      }
+
+      return result;
+    } catch (error) {
+      logger.error({ error, userId, count: uniqueIds.length }, 'Failed to get entity attributes (batch)');
+      return result;
+    }
+  }
+
+  private mapAttributeRow(attr: any): DetectedAttribute {
+    return {
+      id: attr.id,
+      entityId: attr.entity_id,
+      entityType: attr.entity_type as 'omega_entity' | 'character',
+      attributeType: attr.attribute_type as AttributeType,
+      attributeValue: attr.attribute_value,
+      confidence: attr.confidence,
+      isCurrent: attr.is_current,
+      startTime: attr.start_time,
+      endTime: attr.end_time,
+      evidence: attr.metadata?.evidence || '',
+      evidenceSourceIds: attr.evidence_source_ids || [],
+    };
   }
 }
 

@@ -2197,6 +2197,55 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
  *       404:
  *         description: Character not found
  */
+/**
+ * POST /api/characters/attributes/batch
+ *
+ * Returns current attributes for many characters in one round-trip, keyed by
+ * character id. Replaces the per-card GET /:id/attributes fan-out the character
+ * grid was doing (one request per visible character). Only characters owned by
+ * the requesting user are included.
+ *
+ * Body: { ids: string[], currentOnly?: boolean }
+ * Response: { attributes: Record<characterId, CharacterAttribute[]> }
+ */
+router.post('/attributes/batch', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = Array.from(
+      new Set(rawIds.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0))
+    );
+    const currentOnly = req.body?.currentOnly !== false; // default true
+
+    if (ids.length === 0) {
+      return res.json({ attributes: {} });
+    }
+
+    // Restrict to characters the user actually owns before reading attributes.
+    const { data: owned } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('user_id', req.user!.id)
+      .in('id', ids);
+
+    const ownedIds = (owned ?? []).map((c) => c.id);
+    if (ownedIds.length === 0) {
+      return res.json({ attributes: {} });
+    }
+
+    const attributes = await entityAttributeDetector.getEntityAttributesBatch(
+      req.user!.id,
+      ownedIds,
+      'character',
+      currentOnly
+    );
+
+    res.json({ attributes });
+  } catch (error) {
+    logger.error({ error }, 'Failed to get character attributes (batch)');
+    res.status(500).json({ error: 'Failed to get character attributes' });
+  }
+});
+
 router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const id = String(req.params.id);

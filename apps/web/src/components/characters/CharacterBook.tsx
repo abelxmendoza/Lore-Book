@@ -3,7 +3,7 @@ import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, 
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { MyFamilyModal } from '../family/MyFamilyModal';
-import { CharacterProfileCard, type Character } from './CharacterProfileCard';
+import { CharacterProfileCard, type Character, type CharacterAttribute } from './CharacterProfileCard';
 import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCharacterProfileCard';
 import { MainCharacterDetailModal } from './MainCharacterDetailModal';
 import { CharacterBookPage } from './CharacterBookPage';
@@ -18,6 +18,7 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { fetchCharacterById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { supabase, useAuth } from '../../lib/supabase';
@@ -2732,6 +2733,36 @@ export const CharacterBook = () => {
     });
   }, [characters]);
 
+  // Batch-fetch current attributes for all characters in a single request,
+  // replacing the per-card GET /:id/attributes fan-out (one request per card).
+  const [characterAttributes, setCharacterAttributes] = useState<Record<string, CharacterAttribute[]>>({});
+  const characterIdsKey = useMemo(
+    () => characters.map((c) => c.id).filter(Boolean).sort().join(','),
+    [characters]
+  );
+  useEffect(() => {
+    const ids = characterIdsKey ? characterIdsKey.split(',') : [];
+    if (ids.length === 0 || !canCallAuthenticatedApi()) {
+      setCharacterAttributes({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetchJson<{ attributes: Record<string, CharacterAttribute[]> }>(
+          '/api/characters/attributes/batch',
+          { method: 'POST', body: JSON.stringify({ ids, currentOnly: true }) }
+        );
+        if (!cancelled) setCharacterAttributes(response.attributes || {});
+      } catch {
+        if (!cancelled) setCharacterAttributes({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [characterIdsKey]);
+
   const loadCharacters = async () => {
     if (authLoading) return;
     if (isMockDataEnabled || isMockEnabled) return;
@@ -3781,6 +3812,7 @@ export const CharacterBook = () => {
                             >
                               <CharacterProfileCard
                                 character={character}
+                                attributes={characterAttributes[character.id] ?? []}
                                 relationship={relationships.get(character.id)}
                                 selectionMode={selectionMode}
                                 selected={selectedForMerge.has(character.id)}
@@ -3815,6 +3847,7 @@ export const CharacterBook = () => {
                             >
                               <CharacterProfileCard
                                 character={character}
+                                attributes={characterAttributes[character.id] ?? []}
                                 relationship={relationships.get(character.id)}
                                 selectionMode={selectionMode}
                                 selected={selectedForMerge.has(character.id)}
@@ -3874,6 +3907,7 @@ export const CharacterBook = () => {
                                     >
                                       <CharacterProfileCard
                                         character={character}
+                                        attributes={characterAttributes[character.id] ?? []}
                                         relationship={relationships.get(character.id)}
                                         selectionMode={selectionMode}
                                         selected={selectedForMerge.has(character.id)}

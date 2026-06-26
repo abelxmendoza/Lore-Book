@@ -6,9 +6,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '../../test/utils';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
+import { fetchJson } from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn().mockResolvedValue({ attributes: [] }),
+}));
+
+// The card's self-fetch path is gated on an authenticated runtime; force it on
+// so the controlled-vs-self-fetch behavior is actually exercised in tests.
+vi.mock('../../lib/runtimeIdentity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/runtimeIdentity')>()),
+  canCallAuthenticatedApi: () => true,
 }));
 
 const baseCharacter: Character = {
@@ -27,6 +35,29 @@ describe('CharacterProfileCard', () => {
   it('renders character name', () => {
     render(<CharacterProfileCard character={baseCharacter} />);
     expect(screen.getByText('Test Person')).toBeInTheDocument();
+  });
+
+  it('self-fetches attributes when no attributes prop is provided (standalone usage)', async () => {
+    render(<CharacterProfileCard character={baseCharacter} />);
+    await waitFor(() => {
+      expect(fetchJson).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/characters/${baseCharacter.id}/attributes`)
+      );
+    });
+  });
+
+  it('renders provided attributes and skips the per-card fetch (controlled/batched usage)', async () => {
+    render(
+      <CharacterProfileCard
+        character={baseCharacter}
+        attributes={[
+          { id: 'a1', attributeType: 'occupation', attributeValue: 'Barista', confidence: 0.9, isCurrent: true },
+        ]}
+      />
+    );
+    expect(screen.getByText('Barista')).toBeInTheDocument();
+    // Controlled mode must not trigger the N+1 per-card request.
+    expect(fetchJson).not.toHaveBeenCalled();
   });
 
   it('renders importance badge when importance_level is set', () => {

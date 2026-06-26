@@ -107,7 +107,7 @@ export type Character = {
   };
 };
 
-type CharacterAttribute = {
+export type CharacterAttribute = {
   id: string;
   attributeType: string;
   attributeValue: string;
@@ -150,6 +150,13 @@ type CharacterProfileCardProps = {
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelected?: () => void;
+  /**
+   * Pre-fetched attributes for this character. When provided (controlled mode),
+   * the card renders these and skips its own per-card fetch — used by the grid
+   * to batch all characters into a single request. When undefined, the card
+   * self-fetches (backward compatible for standalone usages).
+   */
+  attributes?: CharacterAttribute[];
 };
 
 export const CharacterProfileCard = ({
@@ -159,16 +166,21 @@ export const CharacterProfileCard = ({
   selectionMode = false,
   selected = false,
   onToggleSelected,
+  attributes: attributesProp,
 }: CharacterProfileCardProps) => {
-  const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
+  const isControlled = attributesProp !== undefined;
+  const [fetchedAttributes, setFetchedAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const attributes = isControlled ? attributesProp : fetchedAttributes;
 
-  // Load attributes for this character
+  // Load attributes for this character only when not provided by the parent
+  // (the grid batches them in a single request and passes them down).
   useEffect(() => {
+    if (isControlled) return;
     const loadAttributes = async () => {
       if (!character.id) return;
       if (!canCallAuthenticatedApi()) {
-        setAttributes([]);
+        setFetchedAttributes([]);
         setLoadingAttributes(false);
         return;
       }
@@ -177,15 +189,15 @@ export const CharacterProfileCard = ({
         const response = await fetchJson<{ attributes: CharacterAttribute[] }>(
           `/api/characters/${character.id}/attributes?currentOnly=true`
         );
-        setAttributes(response.attributes || []);
+        setFetchedAttributes(response.attributes || []);
       } catch {
-        setAttributes([]);
+        setFetchedAttributes([]);
       } finally {
         setLoadingAttributes(false);
       }
     };
     void loadAttributes();
-  }, [character.id]);
+  }, [character.id, isControlled]);
   const getArchetypeColor = (archetype?: string) => {
     const colors: Record<string, string> = {
       'ally': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
