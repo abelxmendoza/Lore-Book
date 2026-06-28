@@ -20,6 +20,17 @@ export function normalizeNameKey(name: string): string {
 }
 
 /**
+ * Apostrophe-insensitive variant of {@link normalizeNameKey} for duplicate
+ * detection: collapses possessive variants ("Mom's House" === "Moms House",
+ * "Abuela's house" === "Abuelas House") that exact-key grouping would otherwise
+ * miss. Kept separate from normalizeNameKey because possessive detection
+ * elsewhere (e.g. placeClusterKey) relies on the apostrophe being present.
+ */
+export function normalizeDuplicateKey(name: string): string {
+  return normalizeNameKey(name).replace(/['’`]/g, '');
+}
+
+/**
  * Whole-token containment between two normalized names: every token of the
  * shorter name appears, in order, among the longer name's tokens (possessive
  * "'s"/"s" tolerated). Catches the duplicate shapes seen in production:

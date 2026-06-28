@@ -201,6 +201,29 @@ function residentialAliasKey(name: string): string {
     .trim();
 }
 
+function residentialOwnerKey(classification: PlaceClassification, rawName: string): string | null {
+  const owner = classification.possessive?.ownerName ?? (() => {
+    const n = norm(rawName);
+    const kin = /^(mom|dad|mother|father|abuela|abuelo|grandma|grandpa|tio|tío|tia|tía|aunt|uncle)s?\s+(?:house|home|place|apartment|apt|condo|residence|casa)\b/.exec(n);
+    if (kin) return kin[1];
+    const possessive = /^([a-zà-ÿ][\wà-ÿ.\s-]*?)(?:'s|s)\s+(?:house|home|place|apartment|apt|condo|residence|casa)\b/i.exec(rawName.trim());
+    return possessive?.[1];
+  })();
+  if (!owner) return null;
+  return norm(owner)
+    .replace(/^mother$/, 'mom')
+    .replace(/^father$/, 'dad')
+    .replace(/^grandma$/, 'abuela')
+    .replace(/^grandpa$/, 'abuelo')
+    .replace(/^tía$/, 'tia')
+    .replace(/^tío$/, 'tio');
+}
+
+function isGenericResidenceName(name: string): boolean {
+  const n = norm(name);
+  return /\bfamily\s+(?:home|house)\b/.test(n) || /^(?:home|house|family home|family house|the house|our house|my house)$/.test(n);
+}
+
 function reviewResult(
   left: PlaceClassification,
   right: PlaceClassification,
@@ -282,6 +305,34 @@ export function reviewPlaceDuplicateCompatibility(
   }
 
   if (leftFamily === 'PROPERTY' && rightFamily === 'PROPERTY') {
+    const leftOwner = residentialOwnerKey(left, a);
+    const rightOwner = residentialOwnerKey(right, b);
+    if (leftOwner && rightOwner && leftOwner !== rightOwner) {
+      return reviewResult(
+        left,
+        right,
+        'incompatible_type',
+        'incompatible_type',
+        0.2,
+        false,
+        false,
+        [`different residence owners: ${leftOwner} vs ${rightOwner}`, ...evidence],
+      );
+    }
+
+    if ((leftOwner || rightOwner) && !(isGenericResidenceName(a) || isGenericResidenceName(b))) {
+      return reviewResult(
+        left,
+        right,
+        'incompatible_type',
+        'incompatible_type',
+        Math.min(overlap, 0.4),
+        false,
+        false,
+        ['owner-specific residence does not match an unowned residence alias', ...evidence],
+      );
+    }
+
     return reviewResult(
       left,
       right,

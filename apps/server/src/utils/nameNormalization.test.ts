@@ -4,6 +4,7 @@ import {
   containmentIsPossessive,
   nameContained,
   namesOverlapByContainment,
+  normalizeDuplicateKey,
   normalizeNameKey,
   splitPersonName,
 } from './nameNormalization';
@@ -11,6 +12,14 @@ import {
 describe('nameNormalization', () => {
   it('normalizes case, accents, and whitespace', () => {
     expect(normalizeNameKey('  Tía   Maribel  ')).toBe('tia maribel');
+  });
+
+  it('normalizeDuplicateKey collapses apostrophe possessive variants', () => {
+    expect(normalizeDuplicateKey("Mom's House")).toBe(normalizeDuplicateKey('Moms House'));
+    expect(normalizeDuplicateKey("Abuela's house")).toBe(normalizeDuplicateKey('Abuelas House'));
+    expect(normalizeDuplicateKey("O'Brien")).toBe('obrien');
+    // normalizeNameKey itself must keep apostrophes (possessive detection depends on it).
+    expect(normalizeNameKey("Mom's House")).toBe("mom's house");
   });
 
   it('matches whole-token containment without substring collisions', () => {

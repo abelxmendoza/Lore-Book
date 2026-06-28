@@ -8,7 +8,7 @@ import type {
   MemoryEntry,
   PeoplePlaceEntity
 } from '../types';
-import { normalizeNameKey } from '../utils/nameNormalization';
+import { normalizeNameKey, normalizeDuplicateKey } from '../utils/nameNormalization';
 
 import { chapterService } from './chapterService';
 import { locationAnalyticsService } from './locationAnalyticsService';
@@ -71,7 +71,10 @@ type LocationCharacterLink = {
 
 class LocationService {
   private normalizeKey(name: string) {
-    return name.trim().toLowerCase();
+    // Accent- and apostrophe-insensitive so the book collapses the same place
+    // across sources (people_places "Moms House" ↔ canonical "Mom's House")
+    // into one entry instead of showing both. Canonical id still wins.
+    return normalizeDuplicateKey(name);
   }
 
   private slugify(name: string) {

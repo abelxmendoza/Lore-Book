@@ -110,4 +110,17 @@ describe('placeIntelligence', () => {
     expect(review.canMerge).toBe(false);
     expect(placeDuplicateScore('Anaheim', 'Anaheim Family Home')).toBe(0);
   });
+
+  it('does not merge different owner-specific private residences', () => {
+    const review = reviewPlaceDuplicateCompatibility("Mom's House", "Abuela's House");
+    expect(review.canMerge).toBe(false);
+    expect(review.relationship).toBe('incompatible_type');
+    expect(review.evidence.some((item) => item.includes('different residence owners'))).toBe(true);
+  });
+
+  it('still allows possessive spelling variants for the same residence owner', () => {
+    const review = reviewPlaceDuplicateCompatibility('Moms House', "Mom's House");
+    expect(review.canMerge).toBe(true);
+    expect(review.relationship).toBe('alias_of');
+  });
 });

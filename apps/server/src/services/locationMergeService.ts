@@ -296,6 +296,13 @@ class LocationMergeService {
     await this.mergeEntityFacts(userId, sourceId, targetId, report);
     await this.mergeEntityAttributes(userId, sourceId, targetId, report);
     await this.rewriteAssociatedLocationIds(userId, sourceId, targetId);
+    // Re-point the remaining FK references to the source before deleting it.
+    // interest_mentions.mentioned_at_location is ON DELETE NO ACTION, so leaving
+    // a reference here makes the source delete throw and the whole merge fail.
+    // parent_location_id is ON DELETE SET NULL, which would silently drop the
+    // hierarchy — re-point children to the survivor instead.
+    await this.rewriteInterestMentionLocations(userId, sourceId, targetId);
+    await this.rewriteParentLocationIds(userId, sourceId, targetId);
     const card = await this.mergeCardData(userId, source, target);
     report.canonicalName = card.name;
     report.aliases = card.aliases;
@@ -497,6 +504,40 @@ class LocationMergeService {
         .eq('id', row.id)
         .eq('user_id', userId);
     }
+  }
+
+  /**
+   * Move interest mentions from the source location to the survivor. This FK is
+   * ON DELETE NO ACTION, so an un-re-pointed reference would make the source
+   * delete fail and abort the merge ("source delete failed").
+   */
+  private async rewriteInterestMentionLocations(userId: string, sourceId: string, targetId: string) {
+    const { error } = await supabaseAdmin
+      .from('interest_mentions')
+      .update({ mentioned_at_location: targetId })
+      .eq('user_id', userId)
+      .eq('mentioned_at_location', sourceId);
+    if (error) {
+      logger.warn({ error, sourceId, targetId }, '[LocationMerge] interest_mentions re-point failed');
+    }
+  }
+
+  /**
+   * Re-point child locations whose parent was the source to the survivor, and
+   * clear the survivor's parent if it pointed at the source (no self-parent).
+   */
+  private async rewriteParentLocationIds(userId: string, sourceId: string, targetId: string) {
+    await supabaseAdmin
+      .from('locations')
+      .update({ parent_location_id: targetId })
+      .eq('user_id', userId)
+      .eq('parent_location_id', sourceId);
+    await supabaseAdmin
+      .from('locations')
+      .update({ parent_location_id: null })
+      .eq('user_id', userId)
+      .eq('id', targetId)
+      .eq('parent_location_id', targetId);
   }
 
   private async mergeCardData(

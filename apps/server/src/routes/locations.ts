@@ -12,10 +12,35 @@ import { reviewPlaceDuplicateCompatibility } from '../services/ontology/placeInt
 import { labelPlaceDuplicate } from '../services/lexical/places/placeDuplicateLabeler';
 import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
-import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
+import { normalizeNameKey, normalizeDuplicateKey, namesOverlapByContainment } from '../utils/nameNormalization';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
+
+type LocationDuplicateRow = {
+  id: string;
+  name: string;
+  type?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  importance_score?: number | null;
+};
+
+export type LocationDuplicateGroup = {
+  match_type: 'exact' | 'containment' | 'alias';
+  canonical_name: string;
+  confidence: number;
+  reason: string;
+  /** Subtype-aware human label ("Private residence alias", "City alias", …). */
+  label?: string;
+  place_subtype?: string;
+  owner_display_name?: string;
+  privacy_sensitive?: boolean;
+  variant_reason?: string;
+  evidence: string[];
+  locations: LocationDuplicateRow[];
+};
 
 function locationAliasNames(row: { name: string; metadata?: Record<string, unknown> | null }): string[] {
   const aliases = Array.isArray(row.metadata?.aliases)
@@ -36,6 +61,130 @@ function aliasMatch(
     if (rightName) return `"${leftName}" matches "${rightName}"`;
   }
   return null;
+}
+
+function residenceOwnerKey(name: string): string | null {
+  const n = normalizeNameKey(name).replace(/[’‘`]/g, "'");
+  const kin = /^(mom|dad|mother|father|abuela|abuelo|grandma|grandpa|tio|tío|tia|tía|aunt|uncle)s?\s+(?:house|home|place|apartment|apt|condo|residence|casa)\b/.exec(n);
+  const possessive = /^([a-zà-ÿ][\wà-ÿ.\s-]*?)(?:'s|s)\s+(?:house|home|place|apartment|apt|condo|residence|casa)\b/i.exec(n);
+  const raw = kin?.[1] ?? possessive?.[1];
+  if (!raw) return null;
+  return raw
+    .replace(/^mother$/, 'mom')
+    .replace(/^father$/, 'dad')
+    .replace(/^grandma$/, 'abuela')
+    .replace(/^grandpa$/, 'abuelo')
+    .replace(/^tía$/, 'tia')
+    .replace(/^tío$/, 'tio');
+}
+
+function isGenericResidenceName(name: string): boolean {
+  const n = normalizeNameKey(name);
+  return /\bfamily\s+(?:home|house)\b/.test(n) || /^(?:home|house|family home|family house|the house|our house|my house)$/.test(n);
+}
+
+function isElderFamilyResidenceOwner(owner: string | null): boolean {
+  return owner != null && /^(?:abuela|abuelo|grandma|grandpa)$/.test(owner);
+}
+
+export function buildLocationDuplicateGroups(rows: LocationDuplicateRow[]): LocationDuplicateGroup[] {
+  const groups: LocationDuplicateGroup[] = [];
+
+  const byKey = new Map<string, LocationDuplicateRow[]>();
+  for (const row of rows) {
+    // Apostrophe-insensitive so "Mom's House" and "Moms House" group as one.
+    const key = normalizeDuplicateKey(row.name);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(row);
+  }
+
+  for (const [canonical_name, locations] of byKey.entries()) {
+    if (locations.length > 1) {
+      const exactLabel = labelPlaceDuplicate(locations[0].name, locations[1].name);
+      groups.push({
+        match_type: 'exact',
+        canonical_name: exactLabel.canonicalSuggestion || canonical_name,
+        confidence: 1,
+        reason: exactLabel.variantReason ?? 'normalized name match',
+        label: exactLabel.label,
+        place_subtype: exactLabel.placeSubtype,
+        owner_display_name: exactLabel.ownerDisplayName,
+        privacy_sensitive: exactLabel.privacySensitive,
+        variant_reason: exactLabel.variantReason,
+        evidence: ['exact duplicate normalized_name'],
+        locations,
+      });
+    }
+  }
+
+  const ownerSpecificResidenceOwners = new Set(
+    rows
+      .map((row) => residenceOwnerKey(row.name))
+      .filter((owner): owner is string => !!owner)
+  );
+  const hasElderResidenceOwner = Array.from(ownerSpecificResidenceOwners).some(isElderFamilyResidenceOwner);
+  const seenPairs = new Set<string>();
+  const seenGenericOwnerPairs = new Set<string>();
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const left = rows[i];
+      const right = rows[j];
+      const leftKey = normalizeDuplicateKey(left.name);
+      const rightKey = normalizeDuplicateKey(right.name);
+      if (leftKey === rightKey) continue;
+
+      const review = reviewPlaceDuplicateCompatibility(left.name, right.name);
+      const genericResidencePair = isGenericResidenceName(left.name) || isGenericResidenceName(right.name);
+      const pairedOwner = residenceOwnerKey(left.name) ?? residenceOwnerKey(right.name);
+      const genericOwnerAmbiguous =
+        ownerSpecificResidenceOwners.size > 1 &&
+        genericResidencePair &&
+        pairedOwner &&
+        review.relationship === 'possible_alias' &&
+        (hasElderResidenceOwner ? !isElderFamilyResidenceOwner(pairedOwner) : true);
+      if (genericOwnerAmbiguous) continue;
+
+      if (genericResidencePair && pairedOwner) {
+        const genericName = isGenericResidenceName(left.name) ? left.name : right.name;
+        const genericOwnerKey = `${normalizeDuplicateKey(genericName)}:${pairedOwner}`;
+        if (seenGenericOwnerPairs.has(genericOwnerKey)) continue;
+        seenGenericOwnerPairs.add(genericOwnerKey);
+      }
+
+      const containment = namesOverlapByContainment(leftKey, rightKey);
+      const aliasesOverlap = aliasMatch(left, right);
+      if (!review.canMerge && !containment && !aliasesOverlap) continue;
+      if (!review.canMerge && !aliasesOverlap) continue;
+
+      const pairKey = [left.id, right.id].sort().join(':');
+      if (seenPairs.has(pairKey)) continue;
+      seenPairs.add(pairKey);
+
+      const match_type = aliasesOverlap || review.relationship === 'alias_of' ? 'alias' as const : 'containment' as const;
+      const dupLabel = labelPlaceDuplicate(left.name, right.name);
+      groups.push({
+        match_type,
+        canonical_name: dupLabel.canonicalSuggestion || (leftKey.length <= rightKey.length ? left.name : right.name),
+        confidence: aliasesOverlap ? Math.max(review.confidence, 0.95) : review.confidence,
+        reason: dupLabel.variantReason ?? (aliasesOverlap ? 'possible_alias' : review.reason),
+        label: dupLabel.label,
+        place_subtype: dupLabel.placeSubtype,
+        owner_display_name: dupLabel.ownerDisplayName,
+        privacy_sensitive: dupLabel.privacySensitive,
+        variant_reason: dupLabel.variantReason,
+        evidence: [
+          ...(aliasesOverlap ? [`alias: ${aliasesOverlap}`] : []),
+          `relationship: ${review.relationship}`,
+          `score: ${review.confidence.toFixed(2)}`,
+          `names: "${left.name}" ↔ "${right.name}"`,
+          ...review.evidence,
+        ],
+        locations: [left, right],
+      });
+    }
+  }
+
+  return groups;
 }
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -128,90 +277,7 @@ router.get(
       .order('created_at', { ascending: true });
     if (error) throw error;
 
-    const rows = data ?? [];
-    const groups: Array<{
-      match_type: 'exact' | 'containment' | 'alias';
-      canonical_name: string;
-      confidence: number;
-      reason: string;
-      /** Subtype-aware human label ("Private residence alias", "City alias", …). */
-      label?: string;
-      place_subtype?: string;
-      owner_display_name?: string;
-      privacy_sensitive?: boolean;
-      variant_reason?: string;
-      evidence: string[];
-      locations: typeof rows;
-    }> = [];
-
-    const byKey = new Map<string, typeof rows>();
-    for (const row of rows) {
-      const key = normalizeNameKey(row.name);
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key)!.push(row);
-    }
-
-    for (const [canonical_name, locations] of byKey.entries()) {
-      if (locations.length > 1) {
-        const exactLabel = labelPlaceDuplicate(locations[0].name, locations[1].name);
-        groups.push({
-          match_type: 'exact',
-          canonical_name,
-          confidence: 1,
-          reason: exactLabel.variantReason ?? 'normalized name match',
-          label: exactLabel.label,
-          place_subtype: exactLabel.placeSubtype,
-          owner_display_name: exactLabel.ownerDisplayName,
-          privacy_sensitive: exactLabel.privacySensitive,
-          variant_reason: exactLabel.variantReason,
-          evidence: ['exact duplicate normalized_name'],
-          locations,
-        });
-      }
-    }
-
-    const seenPairs = new Set<string>();
-    for (let i = 0; i < rows.length; i++) {
-      for (let j = i + 1; j < rows.length; j++) {
-        const left = rows[i];
-        const right = rows[j];
-        const leftKey = normalizeNameKey(left.name);
-        const rightKey = normalizeNameKey(right.name);
-        if (leftKey === rightKey) continue;
-
-        const review = reviewPlaceDuplicateCompatibility(left.name, right.name);
-        const containment = namesOverlapByContainment(leftKey, rightKey);
-        const aliasesOverlap = aliasMatch(left, right);
-        if (!review.canMerge && !containment && !aliasesOverlap) continue;
-        if (!review.canMerge && !aliasesOverlap) continue;
-
-        const pairKey = [left.id, right.id].sort().join(':');
-        if (seenPairs.has(pairKey)) continue;
-        seenPairs.add(pairKey);
-
-        const match_type = aliasesOverlap || review.relationship === 'alias_of' ? 'alias' as const : 'containment' as const;
-        const dupLabel = labelPlaceDuplicate(left.name, right.name);
-        groups.push({
-          match_type,
-          canonical_name: dupLabel.canonicalSuggestion || (leftKey.length <= rightKey.length ? left.name : right.name),
-          confidence: aliasesOverlap ? Math.max(review.confidence, 0.95) : review.confidence,
-          reason: dupLabel.variantReason ?? (aliasesOverlap ? 'possible_alias' : review.reason),
-          label: dupLabel.label,
-          place_subtype: dupLabel.placeSubtype,
-          owner_display_name: dupLabel.ownerDisplayName,
-          privacy_sensitive: dupLabel.privacySensitive,
-          variant_reason: dupLabel.variantReason,
-          evidence: [
-            ...(aliasesOverlap ? [`alias: ${aliasesOverlap}`] : []),
-            `relationship: ${review.relationship}`,
-            `score: ${review.confidence.toFixed(2)}`,
-            `names: "${left.name}" ↔ "${right.name}"`,
-            ...review.evidence,
-          ],
-          locations: [left, right],
-        });
-      }
-    }
+    const groups = buildLocationDuplicateGroups((data ?? []) as LocationDuplicateRow[]);
 
     res.json({ duplicate_groups: groups });
   })
