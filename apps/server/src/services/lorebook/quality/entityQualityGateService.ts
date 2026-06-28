@@ -68,6 +68,13 @@ export function evaluateEntityQuality(
   const timeOnly = guardStandaloneTimePhrase(normalized);
   if (timeOnly) return timeOnly;
 
+  // Locations-only: reject activity narration / time phrases / fragments /
+  // emotions / pronouns / unspecific generic categories that the place detector
+  // emits as bogus place names. Runs before the bare-category guard so a generic
+  // category ("gym") can't be contextualized ("Gym from Kelly") instead.
+  const place = guardPlaceCandidate(normalized);
+  if (place) return place;
+
   const bare = guardBareCategoryWord(normalized);
   if (bare) {
     if (bare.gate === 'contextualize' && bare.displayName) {
@@ -76,11 +83,6 @@ export function evaluateEntityQuality(
       return bare;
     }
   }
-
-  // Locations-only: reject activity narration / time phrases / fragments / generic
-  // nouns that the place detector emits as bogus place names.
-  const place = guardPlaceCandidate(normalized);
-  if (place) return place;
 
   const cross = guardCrossDomainKnownEntity(normalized, options);
   if (cross) return cross;

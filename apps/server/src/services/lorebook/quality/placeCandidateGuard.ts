@@ -75,6 +75,43 @@ const FRAGMENT_FILLER =
 const POSSESSIVE_GENERIC =
   /^(?:my|our|your|their|his|her)\s+(?:project|app|thing|stuff|place|spot|repo|code|work|laptop|phone|startup|company|idea|build|side\s?project)\b/i;
 
+/** Emotions/states and pronouns/determiners mis-grabbed as places ("depressed", "either"). */
+const NON_PLACE_WORDS = new Set([
+  // emotional states — "I stayed in depressed last night"
+  'depressed', 'depression', 'sad', 'happy', 'anxious', 'angry', 'mad', 'lonely',
+  'tired', 'sick', 'drunk', 'high', 'bored', 'stressed', 'excited', 'scared',
+  'nervous', 'exhausted', 'numb', 'fine', 'okay', 'good', 'bad',
+  // pronouns / determiners — "didn't want to go to either"
+  'either', 'neither', 'both', 'one', 'another', 'each', 'none', 'some', 'any',
+  'it', 'here', 'there', 'somewhere', 'anywhere', 'nowhere', 'everywhere',
+  'this', 'that', 'these', 'those', 'somewhere else',
+]);
+
+/**
+ * Generic place CATEGORIES. A named place carries a proper noun ("Bricks Bar",
+ * "Bad Dogg Compound"); a bare category ("goth club", "gym", "the bar") is a
+ * type, not a specific place, and should not become a card.
+ */
+const PLACE_CATEGORY_NOUNS = new Set([
+  'bar', 'club', 'nightclub', 'gym', 'house', 'home', 'store', 'shop', 'cafe',
+  'restaurant', 'school', 'park', 'office', 'venue', 'mall', 'library', 'church',
+  'hospital', 'clinic', 'bank', 'hotel', 'motel', 'station', 'market', 'pharmacy',
+  'salon', 'studio', 'theater', 'theatre', 'stadium', 'arena', 'museum', 'beach',
+  'doctor', 'dentist', 'place', 'spot', 'room', 'apartment', 'condo', 'casa',
+]);
+
+/**
+ * True when the name is an all-lowercase place category with no proper noun —
+ * i.e. unspecific. Real named places carry a capitalized proper-noun token, so
+ * the presence of any uppercase letter exempts the name.
+ */
+function isUnspecificPlace(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed !== trimmed.toLowerCase()) return false;
+  const tokens = normalizeNameKey(trimmed).split(' ').filter(Boolean);
+  return tokens.length > 0 && PLACE_CATEGORY_NOUNS.has(tokens[tokens.length - 1]);
+}
+
 function reject(name: string, domain: EntityQualityCandidate['domain'], rule: string): EntityQualityVerdict {
   return {
     gate: 'reject',
@@ -93,7 +130,9 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   if (!name) return null;
   const key = normalizeNameKey(name);
 
+  if (NON_PLACE_WORDS.has(key)) return reject(name, candidate.domain, 'not_a_place_word');
   if (GENERIC_NON_PLACE.has(key)) return reject(name, candidate.domain, 'generic_non_place_word');
+  if (isUnspecificPlace(name)) return reject(name, candidate.domain, 'unspecific_generic_place');
   if (POSSESSIVE_GENERIC.test(name)) return reject(name, candidate.domain, 'possessive_generic_non_place');
   if (TEMPORAL_SPAN.test(name)) return reject(name, candidate.domain, 'temporal_phrase_not_place');
   if (ACTIVITY_SPAN.test(name)) return reject(name, candidate.domain, 'activity_narration_not_place');

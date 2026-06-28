@@ -54,6 +54,24 @@ describe('guardPlaceCandidate', () => {
     expect(loc('The Lounge anniversary where everyone danced')?.gate).toBe('reject');
   });
 
+  it('rejects emotions and pronouns mis-grabbed as places', () => {
+    expect(loc('depressed')?.rejectionReason).toBe('not_a_place_word');
+    expect(loc('either')?.rejectionReason).toBe('not_a_place_word');
+  });
+
+  it('rejects unspecific generic place categories but keeps named venues', () => {
+    // Generic categories — "go to the goth club", "goes to the gym".
+    expect(loc('goth club')?.rejectionReason).toBe('unspecific_generic_place');
+    expect(loc('gym')?.rejectionReason).toBe('unspecific_generic_place');
+    expect(loc('house')?.rejectionReason).toBe('unspecific_generic_place');
+    expect(loc('the bar')?.rejectionReason).toBe('unspecific_generic_place');
+    expect(loc('music venue')?.rejectionReason).toBe('unspecific_generic_place');
+    // Named, specific venues survive (proper noun present).
+    expect(loc('Bricks Bar')).toBeNull();
+    expect(loc('Bad Dogg Compound')).toBeNull();
+    expect(loc('Anaheim')).toBeNull();
+  });
+
   it('isLikelyPlaceName mirrors the guard for write paths', () => {
     expect(isLikelyPlaceName('Love')).toBe(false);
     expect(isLikelyPlaceName('all day')).toBe(false);
