@@ -55,6 +55,20 @@ function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Ar
   return out;
 }
 
+/**
+ * Normalize the LLM-provided entity type to a valid EntityType. Used only as a
+ * fallback when the deterministic classifier is UNKNOWN — so a venue/org/event
+ * the LLM correctly typed is NOT force-defaulted to PERSON (which polluted the
+ * graph: "Club Bar Sinister"/"Evoekore Entertainment"/bands all became people).
+ * Anything outside the known set stays UNKNOWN and is dropped, so generic tokens
+ * ("band", "park", "scene") fall out instead of becoming PERSON.
+ */
+const LLM_ENTITY_TYPES = new Set<EntityType>(['PERSON', 'CHARACTER', 'LOCATION', 'ORG', 'EVENT']);
+function llmEntityType(raw: unknown): EntityType {
+  const t = typeof raw === 'string' ? raw.toUpperCase().trim() : '';
+  return (LLM_ENTITY_TYPES.has(t as EntityType) ? t : 'UNKNOWN') as EntityType;
+}
+
 // All omega_entities columns EXCEPT the 1536-dim `embedding` (~6KB/row on the
 // wire). Resolution read paths never use the vector — semantic matching runs
 // server-side in the match_omega_entities RPC — so fetching it on every
@@ -264,10 +278,7 @@ export class OmegaMemoryService {
     if (!gate.hasCandidates) {
       logger.debug({ reason: gate.reason }, 'ingestion.entity_extraction.skipped');
       return uniqueEntities(
-        deterministicCandidates.map((e) => ({
-          name: e.name,
-          type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
-        }))
+        deterministicCandidates.map((e) => ({ name: e.name, type: e.type as EntityType }))
       ).filter((entity) => entity.type !== 'UNKNOWN');
     }
 
@@ -315,18 +326,19 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         .filter((e: any) => e.confidence >= 0.5 && typeof e.name === 'string')
         .map((e: any) => {
           const classification = classifyEntity(e.name, text);
+          const deterministicType = toOmegaType(classification.rootType) as EntityType;
+          // Deterministic classifier wins when it's confident; otherwise keep the
+          // LLM's typed guess (LOCATION/ORG/EVENT/PERSON) rather than defaulting
+          // everything to PERSON. Untypable -> UNKNOWN (dropped below).
           return {
             name: e.name,
-            type: toOmegaType(classification.rootType) as EntityType,
+            type: deterministicType !== 'UNKNOWN' ? deterministicType : llmEntityType(e.type),
           };
         });
 
       const expanded = expandEntityCandidates(text, [...deterministicCandidates, ...llmEntities]);
       return uniqueEntities(
-        expanded.map((e) => ({
-          name: e.name,
-          type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
-        }))
+        expanded.map((e) => ({ name: e.name, type: e.type as EntityType }))
       ).filter((entity) => entity.type !== 'UNKNOWN');
     } catch (error: any) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
@@ -370,11 +382,8 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       .map(({ name, type }) => ({ name, type }));
 
     return uniqueEntities(
-      expandEntityCandidates(text, base).map((e) => ({
-        name: e.name,
-        type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
-      }))
-    );
+      expandEntityCandidates(text, base).map((e) => ({ name: e.name, type: e.type as EntityType }))
+    ).filter((entity) => entity.type !== 'UNKNOWN');
   }
 
   /**
