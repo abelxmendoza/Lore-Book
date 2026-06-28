@@ -12,6 +12,7 @@ import {
 } from './crossDomainKnownEntityGuard';
 import { guardDuplicateEntity } from './duplicateEntityGuard';
 import { guardGenericReference } from './genericReferenceGuard';
+import { guardPlaceCandidate } from './placeCandidateGuard';
 import { guardSensitiveEntity } from './sensitiveEntityGuard';
 import { guardStandaloneTimePhrase } from '../../timeline/timelineSuggestionGuard';
 import type {
@@ -75,6 +76,11 @@ export function evaluateEntityQuality(
       return bare;
     }
   }
+
+  // Locations-only: reject activity narration / time phrases / fragments / generic
+  // nouns that the place detector emits as bogus place names.
+  const place = guardPlaceCandidate(normalized);
+  if (place) return place;
 
   const cross = guardCrossDomainKnownEntity(normalized, options);
   if (cross) return cross;
