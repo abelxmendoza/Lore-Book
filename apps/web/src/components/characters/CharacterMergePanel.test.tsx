@@ -3,9 +3,16 @@ import { render, screen } from '@testing-library/react';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import type { Character } from './CharacterProfileCard';
 
-vi.mock('../../store/api/entitiesApi', () => ({
-  useGetCharactersBookQuery: vi.fn(() => ({ dataUpdatedAt: 0, refetch: vi.fn() })),
-}));
+vi.mock('../../store/api/entitiesApi', () => {
+  const mutationHook = () =>
+    vi.fn(() => [vi.fn(() => ({ unwrap: vi.fn().mockResolvedValue({}) })), {}]);
+  return {
+    useGetCharactersBookQuery: vi.fn(() => ({ dataUpdatedAt: 0, refetch: vi.fn() })),
+    useUpdateCharacterMutation: mutationHook(),
+    useDeleteCharacterMutation: mutationHook(),
+    useMergeCharactersMutation: mutationHook(),
+  };
+});
 
 vi.mock('../../store/invalidateEntityCache', () => ({
   invalidateEntityTags: vi.fn(),

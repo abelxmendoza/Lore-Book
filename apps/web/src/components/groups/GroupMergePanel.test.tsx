@@ -83,7 +83,7 @@ describe('GroupMergePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /review duplicates/i }));
     expect(screen.getByText(/Review duplicate groups/i)).toBeInTheDocument();
 
-    const keepButtons = screen.getAllByRole('button', { name: /keep this/i });
+    const keepButtons = screen.getAllByRole('button', { name: /keep /i });
     fireEvent.click(keepButtons[0]);
 
     expect(await screen.findByText(/Demo merge preview/i)).toBeInTheDocument();

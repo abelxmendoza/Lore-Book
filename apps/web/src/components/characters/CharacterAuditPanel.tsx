@@ -109,12 +109,12 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
 
   const actionableResults = useMemo(() => {
     if (!report) return [];
-    return report.results.filter((r) => isActionable(r) && !dismissed.has(r.characterId));
+    return (report.results ?? []).filter((r) => isActionable(r) && !dismissed.has(r.characterId));
   }, [report, dismissed]);
 
   const visibleResults = useMemo(() => {
     if (!report) return [];
-    return report.results.filter((r) => !dismissed.has(r.characterId));
+    return (report.results ?? []).filter((r) => !dismissed.has(r.characterId));
   }, [report, dismissed]);
 
   const issueCount = actionableResults.length;
@@ -370,7 +370,7 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
 
               {report && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
-                  {Object.entries(report.summary)
+                  {Object.entries(report.summary ?? {})
                     .filter(([, count]) => count > 0)
                     .map(([status, count]) => (
                       <div
