@@ -59,15 +59,12 @@ function toRedirectResult(
 async function loadCharacterCandidates(userId: string): Promise<NameCandidate[]> {
   const { data } = await supabaseAdmin
     .from('characters')
-    .select('id, name, alias, aliases, metadata')
+    .select('id, name, alias, metadata')
     .eq('user_id', userId);
   return (data ?? []).map((row) => ({
     id: String(row.id),
     name: String(row.name ?? ''),
-    aliases: [
-      ...(Array.isArray(row.alias) ? row.alias : []),
-      ...(Array.isArray(row.aliases) ? row.aliases : []),
-    ].map(String),
+    aliases: (Array.isArray(row.alias) ? row.alias : []).map(String),
     metadata: (row.metadata ?? null) as Record<string, unknown> | null,
   }));
 }
@@ -75,12 +72,12 @@ async function loadCharacterCandidates(userId: string): Promise<NameCandidate[]>
 async function loadLocationCandidates(userId: string): Promise<NameCandidate[]> {
   const { data } = await supabaseAdmin
     .from('locations')
-    .select('id, name, nicknames')
+    .select('id, name, aliases')
     .eq('user_id', userId);
   return (data ?? []).map((row) => ({
     id: String(row.id),
     name: String(row.name ?? ''),
-    aliases: (Array.isArray(row.nicknames) ? row.nicknames : []).map(String),
+    aliases: (Array.isArray(row.aliases) ? row.aliases : []).map(String),
   }));
 }
 
@@ -169,7 +166,7 @@ async function mergeCharacterAlias(userId: string, characterId: string, alias: s
 async function mergeLocationAlias(userId: string, locationId: string, alias: string): Promise<void> {
   const { data } = await supabaseAdmin
     .from('locations')
-    .select('id, name, nicknames')
+    .select('id, name, aliases')
     .eq('id', locationId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -178,10 +175,10 @@ async function mergeLocationAlias(userId: string, locationId: string, alias: str
   const canonical = String(data.name ?? '');
   if (normalizeNameKey(alias) === normalizeNameKey(canonical)) return;
 
-  const nicknames = new Set<string>([...(Array.isArray(data.nicknames) ? data.nicknames : []), alias]);
+  const nextAliases = new Set<string>([...(Array.isArray(data.aliases) ? data.aliases : []), alias]);
   await supabaseAdmin
     .from('locations')
-    .update({ nicknames: [...nicknames], updated_at: new Date().toISOString() })
+    .update({ aliases: [...nextAliases], updated_at: new Date().toISOString() })
     .eq('id', locationId)
     .eq('user_id', userId);
 }

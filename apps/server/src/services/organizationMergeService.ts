@@ -22,8 +22,7 @@ interface OrgRow {
   name: string;
   aliases?: string[] | null;
   description?: string | null;
-  usage_count?: number | null;
-  confidence?: number | null;
+  importance_score?: number | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string;
 }
@@ -56,7 +55,7 @@ class OrganizationMergeService {
   async findDuplicates(userId: string): Promise<DuplicateCluster[]> {
     const { data: orgs, error } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, aliases, usage_count, confidence, created_at')
+      .select('id, name, aliases, importance_score, created_at')
       .eq('user_id', userId);
 
     if (error || !orgs || orgs.length < 2) return [];
@@ -77,7 +76,7 @@ class OrganizationMergeService {
     const used = new Set<string>();
     const clusters: DuplicateCluster[] = [];
 
-    const rank = (o: OrgRow) => (o.usage_count ?? 0) * 100 + (o.confidence ?? 0) * 10;
+    const rank = (o: OrgRow) => o.importance_score ?? 0;
 
     for (let i = 0; i < orgs.length; i++) {
       const a = orgs[i] as OrgRow;
@@ -184,7 +183,6 @@ class OrganizationMergeService {
 
     let aliases = new Set<string>([...(primary.aliases ?? [])]);
     let metadata: Record<string, unknown> = { ...(primary.metadata ?? {}) };
-    let usage = primary.usage_count ?? 0;
     let description: string | undefined = primary.description ?? undefined;
     const absorbedNames: string[] = [];
 
@@ -245,7 +243,6 @@ class OrganizationMergeService {
       } else if (dup.description) {
         description = [description, dup.description].filter(Boolean).join('\n\n');
       }
-      usage += dup.usage_count ?? 0;
 
       await supabaseAdmin.from('organizations').delete().eq('id', dupId).eq('user_id', userId);
       report.merged_ids.push(dupId);
@@ -263,20 +260,14 @@ class OrganizationMergeService {
       'Some merged text may refer only to the absorbed group name — review on the group card.'
     );
 
-    // Persist combined identity onto the primary.
-    const { count: memberCount } = await supabaseAdmin
-      .from('organization_members')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', primaryId);
-
+    // Persist combined identity onto the primary. (usage_count/member_count are
+    // not columns on organizations — derived counts live elsewhere.)
     await supabaseAdmin
       .from('organizations')
       .update({
         aliases: [...aliases].filter(a => a && a !== primary.name),
         metadata,
         description,
-        usage_count: usage,
-        member_count: memberCount ?? undefined,
         updated_at: new Date().toISOString(),
       })
       .eq('id', primaryId)

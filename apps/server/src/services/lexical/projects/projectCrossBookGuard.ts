@@ -139,15 +139,12 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
   try {
     const { data } = await supabaseAdmin
       .from('characters')
-      .select('name, alias, aliases')
+      .select('name, alias')
       .eq('user_id', userId);
     for (const row of data ?? []) {
       const name = String(row.name ?? '').trim();
       if (name) characters.push(name);
-      const aliasList = [
-        ...(Array.isArray(row.alias) ? row.alias : []),
-        ...(Array.isArray(row.aliases) ? row.aliases : []),
-      ];
+      const aliasList = Array.isArray(row.alias) ? row.alias : [];
       for (const alias of aliasList) {
         const a = String(alias ?? '').trim();
         if (a) characters.push(a);
@@ -160,12 +157,12 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
   try {
     const { data } = await supabaseAdmin
       .from('locations')
-      .select('name, nicknames')
+      .select('name, aliases')
       .eq('user_id', userId);
     for (const row of data ?? []) {
       const name = String(row.name ?? '').trim();
       if (name) places.push(name);
-      for (const nickname of row.nicknames ?? []) {
+      for (const nickname of row.aliases ?? []) {
         const n = String(nickname ?? '').trim();
         if (n) places.push(n);
       }
@@ -197,10 +194,10 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
   try {
     const { data } = await supabaseAdmin
       .from('skills')
-      .select('name')
+      .select('skill_name')
       .eq('user_id', userId);
     for (const row of data ?? []) {
-      const name = String(row.name ?? '').trim();
+      const name = String(row.skill_name ?? '').trim();
       if (name) skills.push(name);
     }
   } catch {
@@ -210,14 +207,12 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
   try {
     const { data } = await supabaseAdmin
       .from('character_timeline_events')
-      .select('title, label')
+      .select('event_title')
       .eq('user_id', userId)
       .limit(500);
     for (const row of data ?? []) {
-      const title = String(row.title ?? '').trim();
-      const label = String(row.label ?? '').trim();
+      const title = String(row.event_title ?? '').trim();
       if (title) events.push(title);
-      if (label) events.push(label);
     }
   } catch {
     // timeline events optional

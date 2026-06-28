@@ -258,7 +258,7 @@ export class LorebookSearchParser {
       // Get all characters for user
       const { data: characters, error } = await supabaseAdmin
         .from('characters')
-        .select('id, name, aliases')
+        .select('id, name, alias')
         .eq('user_id', userId)
         .limit(100); // Limit for performance
 
@@ -284,7 +284,7 @@ export class LorebookSearchParser {
           const searchName = match[1].toLowerCase();
           for (const char of characters) {
             const nameLower = char.name?.toLowerCase() || '';
-            const aliases = (char.aliases as string[]) || [];
+            const aliases = (char.alias as string[]) || [];
             const aliasLower = aliases.map(a => a.toLowerCase());
 
             if (nameLower.includes(searchName) || searchName.includes(nameLower) || 
@@ -301,7 +301,7 @@ export class LorebookSearchParser {
       if (matchedIds.length === 0) {
         for (const char of characters) {
           const nameLower = char.name?.toLowerCase() || '';
-          const aliases = (char.aliases as string[]) || [];
+          const aliases = (char.alias as string[]) || [];
           const aliasLower = aliases.map(a => a.toLowerCase());
 
           // Check if character name or alias appears in query
@@ -453,7 +453,7 @@ export class LorebookSearchParser {
         if (match && match[1]) {
           const searchName = match[1].toLowerCase().trim();
           for (const skill of skills) {
-            const nameLower = (skill.skill_name || skill.name || '').toLowerCase();
+            const nameLower = (skill.skill_name || '').toLowerCase();
             const descLower = skill.description?.toLowerCase() || '';
 
             if (nameLower.includes(searchName) || searchName.includes(nameLower) ||
@@ -469,7 +469,7 @@ export class LorebookSearchParser {
       // Fallback: direct name matching
       if (matchedIds.length === 0) {
         for (const skill of skills) {
-          const nameLower = (skill.skill_name || skill.name || '').toLowerCase();
+          const nameLower = (skill.skill_name || '').toLowerCase();
           const descLower = skill.description?.toLowerCase() || '';
 
           if (queryLower.includes(nameLower) || (descLower && queryLower.includes(descLower))) {

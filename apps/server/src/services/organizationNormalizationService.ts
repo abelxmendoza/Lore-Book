@@ -192,7 +192,7 @@ class OrganizationNormalizationService {
   async getMergeSuggestions(userId: string) {
     const { data, error } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, group_type, social_category, usage_count, metadata')
+      .select('id, name, group_type, social_category, importance_score, metadata')
       .eq('user_id', userId);
     if (error) throw error;
     const rows = data ?? [];
@@ -214,7 +214,7 @@ class OrganizationNormalizationService {
         const confidence = sameCategory ? Math.max(score, 0.75) : score;
         if (confidence < 0.65) continue;
         seen.add(pairKey);
-        const target = (a.usage_count ?? 0) >= (b.usage_count ?? 0) ? a : b;
+        const target = (a.importance_score ?? 0) >= (b.importance_score ?? 0) ? a : b;
         const source = target.id === a.id ? b : a;
         suggestions.push({
           sourceId: source.id, targetId: target.id,

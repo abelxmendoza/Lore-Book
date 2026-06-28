@@ -23,12 +23,12 @@ export async function loadHistoryContext(userId: string): Promise<HistoryContext
   try {
     const { data: chars } = await supabaseAdmin
       .from('characters')
-      .select('id, name, aliases')
+      .select('id, name, alias')
       .eq('user_id', userId);
     for (const c of chars ?? []) {
       const name = String(c.name ?? '').trim();
       if (!name) continue;
-      const aliases = Array.isArray(c.aliases) ? c.aliases.map(String) : [];
+      const aliases = Array.isArray(c.alias) ? c.alias.map(String) : [];
       people.set(norm(name), { id: c.id, name, aliases });
       for (const a of aliases) {
         if (a.trim()) people.set(norm(a), { id: c.id, name, aliases });
@@ -69,10 +69,10 @@ export async function loadHistoryContext(userId: string): Promise<HistoryContext
   try {
     const { data: skillRows } = await supabaseAdmin
       .from('skills')
-      .select('name')
+      .select('skill_name')
       .eq('user_id', userId);
     for (const s of skillRows ?? []) {
-      const n = String(s.name ?? '').trim();
+      const n = String(s.skill_name ?? '').trim();
       if (n) skills.add(norm(n));
     }
   } catch {

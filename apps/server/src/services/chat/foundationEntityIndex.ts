@@ -32,7 +32,7 @@ export async function loadFoundationEntityIndex(userId: string): Promise<Map<str
 
   const [charsResult, locsResult, orgsResult] = await Promise.all([
     supabaseAdmin.from('characters').select('id, name, alias').eq('user_id', userId),
-    supabaseAdmin.from('locations').select('id, name, nicknames').eq('user_id', userId),
+    supabaseAdmin.from('locations').select('id, name, aliases').eq('user_id', userId),
     supabaseAdmin.from('organizations').select('id, name, aliases').eq('user_id', userId),
   ]);
 
@@ -46,7 +46,7 @@ export async function loadFoundationEntityIndex(userId: string): Promise<Map<str
   }
   for (const row of locsResult.data ?? []) {
     indexEntityName(map, row.name, row.id, 'place');
-    indexAliasNames(map, row.nicknames, row.id, 'place');
+    indexAliasNames(map, row.aliases, row.id, 'place');
   }
   for (const row of orgsResult.data ?? []) {
     indexEntityName(map, row.name, row.id, 'organization');
@@ -65,7 +65,7 @@ export async function loadKnownNameSet(userId: string): Promise<Set<string>> {
 /** Legacy-shaped rows for RAG pass-through (`allPeoplePlaces` is not prompt-visible). */
 export function buildLegacyPeoplePlacesView(
   characters: Array<{ id: string; name: string; alias?: string[] | null }>,
-  locations: Array<{ id: string; name: string; nicknames?: string[] | null }>,
+  locations: Array<{ id: string; name: string; aliases?: string[] | null }>,
   organizations: Array<{ id: string; name: string; aliases?: string[] | null }> = []
 ): Array<{ id: string; name: string; type: string; corrected_names: string[] }> {
   return [
@@ -79,7 +79,7 @@ export function buildLegacyPeoplePlacesView(
       id: l.id,
       name: l.name,
       type: 'place',
-      corrected_names: l.nicknames ?? [],
+      corrected_names: l.aliases ?? [],
     })),
     ...organizations.map((o) => ({
       id: o.id,

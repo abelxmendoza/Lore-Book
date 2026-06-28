@@ -2761,7 +2761,9 @@ router.post(
 
     const { data: relationship, error: relationshipError } = await supabaseAdmin
       .from('romantic_relationships')
-      .select('id, person_id, person_type, partner_name, metadata')
+      // partner_name is not a column — the display name is resolved from
+      // person_id or metadata.partner_name (see enrichRomanticRelationshipsForUser).
+      .select('id, person_id, person_type, metadata')
       .eq('id', id)
       .eq('user_id', userId)
       .single();
@@ -2785,7 +2787,6 @@ router.post(
       const metadata = (relationship.metadata ?? {}) as Record<string, unknown>;
       const name =
         parsed.data.character_name?.trim() ||
-        (typeof relationship.partner_name === 'string' ? relationship.partner_name.trim() : '') ||
         (typeof metadata.partner_name === 'string' ? metadata.partner_name.trim() : '') ||
         (typeof metadata.person_name === 'string' ? metadata.person_name.trim() : '');
       if (!name) {
