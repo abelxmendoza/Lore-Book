@@ -250,10 +250,16 @@ class LocationMergeService {
     sourceId = resolvedSourceId;
     targetId = resolvedTargetId;
 
-    const [{ data: sourceData }, { data: targetData }] = await Promise.all([
+    const [{ data: sourceData, error: sourceErr }, { data: targetData, error: targetErr }] = await Promise.all([
       supabaseAdmin.from('locations').select(LOC_COLUMNS).eq('id', sourceId).eq('user_id', userId).maybeSingle(),
       supabaseAdmin.from('locations').select(LOC_COLUMNS).eq('id', targetId).eq('user_id', userId).maybeSingle(),
     ]);
+    // Surface a real query failure (e.g. a missing column from schema drift)
+    // instead of mislabeling it "Source location not found" — that masked the
+    // locations.summary column being absent and made every merge appear to fail
+    // on a missing row.
+    if (sourceErr) throw new Error(`Failed to load source location: ${sourceErr.message}`);
+    if (targetErr) throw new Error(`Failed to load target location: ${targetErr.message}`);
 
     let source = sourceData as LocationRow | null;
     let target = targetData as LocationRow | null;
