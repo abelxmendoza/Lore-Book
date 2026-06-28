@@ -16,7 +16,7 @@
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { EntityQualityCandidate, EntityQualityVerdict } from './entityQualityGuardTypes';
 
-/** Bare common nouns that are never a useful place NAME on their own. */
+/** Bare common nouns / abstractions that are never a useful place NAME. */
 const GENERIC_NON_PLACE = new Set([
   'work',
   'mail',
@@ -37,11 +37,31 @@ const GENERIC_NON_PLACE = new Set([
   'breakfast',
   'break',
   'media',
+  // Abstractions that get mis-extracted as places (e.g. "Love").
+  'love',
+  'life',
+  'fun',
+  'money',
+  'luck',
+  'hope',
+  'peace',
+  'vibe',
+  'vibes',
+  'everything',
+  'nothing',
+  'anything',
 ]);
+
+/**
+ * A real place name is a noun phrase, not a clause. A standalone relative
+ * pronoun means we captured a description ("The Club Metro anniversary where
+ * Goth Tio danced"), not a name. Word-boundaried so "Wherehouse" is unaffected.
+ */
+const RELATIVE_CLAUSE = /\b(?:where|who|whom|which)\b/i;
 
 /** Narrative activity verbs/gerunds — a place name does not contain these. */
 const ACTIVITY_SPAN =
-  /\b(?:coding|coded|texted|texting|ghosting|ghosted|blocking|blocked|onboarding|onboarded|applied|applying|investing|invested|improved|improving|eating|ate|sleeping|slept|driving|drove|teared|messaging|messaged|scrolling)\b/i;
+  /\b(?:coding|coded|texted|texting|ghosting|ghosted|blocking|blocked|onboarding|onboarded|applied|applying|investing|invested|improved|improving|eating|ate|sleeping|slept|driving|drove|teared|messaging|messaged|scrolling|danced|dancing|partied|partying|celebrated|hung\s+out|chilled|kicked\s+it)\b/i;
 
 /** Standalone or embedded time expressions. */
 const TEMPORAL_SPAN =
@@ -78,6 +98,17 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   if (TEMPORAL_SPAN.test(name)) return reject(name, candidate.domain, 'temporal_phrase_not_place');
   if (ACTIVITY_SPAN.test(name)) return reject(name, candidate.domain, 'activity_narration_not_place');
   if (FRAGMENT_FILLER.test(name)) return reject(name, candidate.domain, 'sentence_fragment_span');
+  if (RELATIVE_CLAUSE.test(name)) return reject(name, candidate.domain, 'descriptive_clause_fragment');
 
   return null;
+}
+
+/**
+ * Reusable predicate for write paths and extractors: false when the name is not
+ * a plausible place name. Same rules as the suggestion gate so junk is rejected
+ * everywhere a place can be created, not just in the suggestion list.
+ */
+export function isLikelyPlaceName(name: string | null | undefined): boolean {
+  if (!name || !name.trim()) return false;
+  return guardPlaceCandidate({ name, domain: 'locations' }) === null;
 }

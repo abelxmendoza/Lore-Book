@@ -7,6 +7,7 @@ import {
 } from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import { isLikelyPlaceName } from './lorebook/quality/placeCandidateGuard';
 
 import { supabaseAdmin } from './supabaseClient';
 
@@ -325,6 +326,13 @@ Generate a unique, contextual nickname that includes relationship information:`
     try {
       const normalizedName = normalizeNameKey(location.name);
       if (!normalizedName) return null;
+
+      // Never persist a non-place span (activity narration, time phrase,
+      // descriptive fragment, generic/abstract noun) as a location.
+      if (!isLikelyPlaceName(location.name)) {
+        logger.info({ userId, name: location.name }, 'Skipped non-place location candidate');
+        return null;
+      }
 
       const { data: existingByName } = await supabaseAdmin
         .from('locations')

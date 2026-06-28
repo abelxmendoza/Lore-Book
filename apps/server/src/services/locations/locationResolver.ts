@@ -3,6 +3,7 @@ import { logger } from '../../logger';
 import { FuzzyLocationMatcher } from './fuzzyLocationMatcher';
 import { LocationExtractor } from './locationExtractor';
 import { LocationStorage } from './storageService';
+import { isLikelyPlaceName } from '../lorebook/quality/placeCandidateGuard';
 import type { ResolvedLocation, ExtractedLocation } from './types';
 
 /**
@@ -39,6 +40,8 @@ export class LocationResolver {
 
       for (const loc of extracted) {
         if (!loc.extractedName) continue;
+        // Don't persist non-place spans (activity/time/fragment/generic).
+        if (!isLikelyPlaceName(loc.extractedName)) continue;
 
         let match: ResolvedLocation | null = null;
 

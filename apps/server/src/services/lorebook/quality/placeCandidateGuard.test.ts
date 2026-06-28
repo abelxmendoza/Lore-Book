@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { guardPlaceCandidate } from './placeCandidateGuard';
+import { guardPlaceCandidate, isLikelyPlaceName } from './placeCandidateGuard';
 
 const loc = (name: string) => guardPlaceCandidate({ name, domain: 'locations' });
 
@@ -46,5 +46,20 @@ describe('guardPlaceCandidate', () => {
     expect(loc('my project')?.rejectionReason).toBe('possessive_generic_non_place');
     expect(loc('home coding Lorebook all weekend')?.rejectionReason).toMatch(/activity|temporal/);
     expect(loc('Amazon as a Quality Assurance Technician')?.rejectionReason).toBe('sentence_fragment_span');
+  });
+
+  it('rejects abstractions and descriptive-clause fragments', () => {
+    // Stored junk found in the founder's Places book.
+    expect(loc('Love')?.rejectionReason).toBe('generic_non_place_word');
+    expect(loc('The Lounge anniversary where everyone danced')?.gate).toBe('reject');
+  });
+
+  it('isLikelyPlaceName mirrors the guard for write paths', () => {
+    expect(isLikelyPlaceName('Love')).toBe(false);
+    expect(isLikelyPlaceName('all day')).toBe(false);
+    expect(isLikelyPlaceName('The Lounge anniversary where everyone danced')).toBe(false);
+    expect(isLikelyPlaceName('Riverside Park')).toBe(true);
+    expect(isLikelyPlaceName('Main Street Pool and Billiards')).toBe(true);
+    expect(isLikelyPlaceName('')).toBe(false);
   });
 });
