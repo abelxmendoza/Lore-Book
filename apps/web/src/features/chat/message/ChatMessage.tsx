@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen, AlertTriangle } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -70,6 +70,7 @@ import { entityMentionsFromMessage, mergeEntityMentionRefs } from '../../../lib/
 import { TextWithEntityPills } from '../../../components/entity/TextWithEntityPills';
 import { HowLoreBookUnderstoodThis } from '../../../components/chat/HowLoreBookUnderstoodThis';
 import type { LoreEntityKind } from '../../../lib/loreEntities';
+import { KnowledgeCorrectionModal } from './KnowledgeCorrectionModal';
 
 export type Message = {
   id: string;
@@ -178,7 +179,12 @@ type ChatMessageProps = {
   showCognitiveTrace?: boolean;
   animateEnter?: boolean;
   onCopy?: () => void;
+  onRegenerate?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   onSourceClick?: (source: ChatSource) => void;
+  onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
+  onFork?: () => void;
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   onPrefillComposer?: (prompt: string) => void;
   threadEntityMentions?: EntityMentionRef[];
@@ -196,6 +202,8 @@ export const ChatMessage = ({
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showKnowledgeCorrection, setShowKnowledgeCorrection] = useState(false);
+  const [correctionSaved, setCorrectionSaved] = useState(false);
 
   const handleCopy = async () => {
     try {
@@ -335,16 +343,32 @@ export const ChatMessage = ({
           }`}
         >
           {/* Message Actions Menu */}
-          {showActions && onCopy && (
+          {showActions && (onCopy || !isUser) && (
             <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-9 sm:-top-10 flex bg-black/80 backdrop-blur-sm rounded-lg p-0.5 sm:p-1 z-10 shadow-xl border border-white/10`}>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
-                title={copied ? 'Copied!' : 'Copy message'}
-              >
-                <Copy className={`h-3.5 w-3.5 ${copied ? 'text-green-400' : ''}`} />
-              </button>
+              {onCopy && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
+                  title={copied ? 'Copied!' : 'Copy message'}
+                >
+                  <Copy className={`h-3.5 w-3.5 ${copied ? 'text-green-400' : ''}`} />
+                </button>
+              )}
+              {!isUser && (
+                <button
+                  type="button"
+                  onClick={() => setShowKnowledgeCorrection(true)}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-amber-200 active:bg-amber-500/20 hover:bg-amber-500/10 rounded transition-colors touch-manipulation"
+                  title={correctionSaved ? 'Correction saved' : 'Correct app knowledge'}
+                >
+                  {correctionSaved ? (
+                    <Check className="h-3.5 w-3.5 text-green-400" />
+                  ) : (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
             </div>
           )}
 
@@ -812,6 +836,16 @@ export const ChatMessage = ({
         <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
           <UserIcon className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
+      )}
+      {showKnowledgeCorrection && (
+        <KnowledgeCorrectionModal
+          message={message}
+          onCancel={() => setShowKnowledgeCorrection(false)}
+          onSaved={() => {
+            setCorrectionSaved(true);
+            window.setTimeout(() => setCorrectionSaved(false), 3000);
+          }}
+        />
       )}
     </div>
   );

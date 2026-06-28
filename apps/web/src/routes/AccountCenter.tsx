@@ -59,7 +59,7 @@ function NavItem({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${
         active
           ? 'bg-primary/15 text-primary border border-primary/25'
           : 'text-white/50 hover:text-white/80 hover:bg-white/[0.05]'
@@ -76,7 +76,7 @@ function NavItem({
 
 function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30">
+    <div className="rounded-lg border border-white/10 bg-black/30">
       {title && (
         <div className="px-5 pt-5 pb-3 border-b border-white/8">
           <p className="text-sm font-semibold text-white/60 uppercase tracking-wider">{title}</p>
@@ -250,9 +250,6 @@ export default function AccountCenter() {
   if (isGuest && !user) {
     return (
       <div className="min-h-screen bg-[#080510] text-white">
-        <div className="fixed inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-primary/6 rounded-full blur-[120px] translate-x-1/4 -translate-y-1/3" />
-        </div>
         <div className="relative z-10 max-w-lg mx-auto px-4 py-10 sm:py-14">
           <button
             onClick={() => navigate('/')}
@@ -260,7 +257,7 @@ export default function AccountCenter() {
           >
             ← Back to app
           </button>
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-6 sm:p-8">
+          <div className="rounded-lg border border-white/10 bg-black/30 p-6 sm:p-8">
             <GuestExperienceCard variant="panel" onEndSession={handleLogout} />
           </div>
         </div>
@@ -294,28 +291,22 @@ export default function AccountCenter() {
 
   return (
     <div className="min-h-screen bg-[#080510] text-white">
-
-      {/* Subtle glow */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-primary/6 rounded-full blur-[120px] translate-x-1/4 -translate-y-1/3" />
-      </div>
-
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 py-10">
 
         {/* Page header — back button + user identity + sign out */}
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex flex-col gap-3 mb-8 sm:flex-row sm:items-center">
           {/* Back to app — visible button, not a text link */}
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/15 bg-white/[0.05] hover:bg-white/10 hover:text-white text-white/60 text-sm font-medium transition shrink-0"
+            className="inline-flex w-fit items-center gap-1.5 px-3 py-2 rounded-lg border border-white/15 bg-white/[0.05] hover:bg-white/10 hover:text-white text-white/60 text-sm font-medium transition"
           >
             ← App
           </button>
 
           {/* Avatar + name */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm select-none shrink-0">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm select-none shrink-0">
               {getAvatarInitial(profile.name, displayEmail)}
             </div>
             <div className="min-w-0">
@@ -354,7 +345,7 @@ export default function AccountCenter() {
           <button
             type="button"
             onClick={handleLogout}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/20 text-xs font-medium transition shrink-0"
+            className="inline-flex w-fit items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 text-white/45 hover:text-white hover:border-white/20 text-xs font-medium transition sm:ml-auto"
           >
             <LogOut className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Sign out</span>
@@ -363,13 +354,13 @@ export default function AccountCenter() {
 
         {/* Status banners */}
         {success && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-400">
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-400">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             {success}
           </div>
         )}
         {error && (
-          <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3 text-sm text-red-400">
+          <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/8 px-4 py-3 text-sm text-red-400">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               {error}
@@ -390,7 +381,7 @@ export default function AccountCenter() {
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap flex-shrink-0 transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 transition-all ${
                     activeTab === t.id
                       ? 'bg-primary/15 text-primary border border-primary/25'
                       : 'text-white/45 hover:text-white/75 border border-white/8 bg-white/[0.03]'
@@ -434,7 +425,7 @@ export default function AccountCenter() {
                               value={profile.name}
                               onChange={e => setProfile(p => ({ ...p, name: e.target.value }))}
                               placeholder="Your name"
-                              className="w-full bg-white/[0.05] border border-white/12 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
+                              className="w-full bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
                             />
                           ) : (
                             <p className="text-sm text-white">{profile.name || <span className="text-white/30">Not set</span>}</p>
@@ -457,7 +448,7 @@ export default function AccountCenter() {
                               value={profile.phone}
                               onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))}
                               placeholder="+1 (555) 000-0000"
-                              className="w-full bg-white/[0.05] border border-white/12 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
+                              className="w-full bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
                             />
                           ) : (
                             <p className="text-sm text-white">{profile.phone || <span className="text-white/30">Not set</span>}</p>
@@ -472,17 +463,17 @@ export default function AccountCenter() {
                               type="button"
                               onClick={handleSaveProfile}
                               disabled={saving}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
                             >
                               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                               Save
                             </button>
-                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-xl border border-white/15 text-white/50 text-sm hover:text-white transition">
+                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-lg border border-white/15 text-white/50 text-sm hover:text-white transition">
                               Cancel
                             </button>
                           </>
                         ) : (
-                          <button type="button" onClick={() => setIsEditing(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 text-white/60 text-sm hover:text-white transition">
+                          <button type="button" onClick={() => setIsEditing(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/15 text-white/60 text-sm hover:text-white transition">
                             Edit profile
                           </button>
                         )}
@@ -526,19 +517,19 @@ export default function AccountCenter() {
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
                             placeholder="New password (min 8 characters)"
-                            className="w-full bg-white/[0.05] border border-white/12 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
+                            className="w-full bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50"
                           />
                           <div className="flex gap-2">
                             <button
                               type="button"
                               onClick={handleChangePassword}
                               disabled={changingPassword}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
                             >
                               {changingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                               Update password
                             </button>
-                            <button type="button" onClick={() => setShowPasswordForm(false)} className="px-4 py-2 rounded-xl border border-white/15 text-white/50 text-sm hover:text-white transition">
+                            <button type="button" onClick={() => setShowPasswordForm(false)} className="px-4 py-2 rounded-lg border border-white/15 text-white/50 text-sm hover:text-white transition">
                               Cancel
                             </button>
                           </div>
@@ -571,7 +562,7 @@ export default function AccountCenter() {
                         <select
                           value={privacy.profileVisibility}
                           onChange={e => setPrivacy(p => ({ ...p, profileVisibility: e.target.value as any }))}
-                          className="bg-white/[0.05] border border-white/12 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50"
+                          className="bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50"
                         >
                           <option value="private">Private — only you</option>
                           <option value="friends">Friends only</option>
@@ -608,7 +599,7 @@ export default function AccountCenter() {
                       type="button"
                       onClick={handleSavePrivacy}
                       disabled={saving}
-                      className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition disabled:opacity-50"
                     >
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Save privacy settings
@@ -662,7 +653,7 @@ export default function AccountCenter() {
                           type="button"
                           onClick={() => handleExport('json')}
                           disabled={saving}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 text-white/70 text-sm hover:text-white hover:border-white/30 transition disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/15 text-white/70 text-sm hover:text-white hover:border-white/30 transition disabled:opacity-50"
                         >
                           <Download className="h-4 w-4" />
                           Export JSON
@@ -671,7 +662,7 @@ export default function AccountCenter() {
                           type="button"
                           onClick={() => handleExport('csv')}
                           disabled={saving}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 text-white/70 text-sm hover:text-white hover:border-white/30 transition disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/15 text-white/70 text-sm hover:text-white hover:border-white/30 transition disabled:opacity-50"
                         >
                           <FileText className="h-4 w-4" />
                           Export CSV
@@ -685,14 +676,14 @@ export default function AccountCenter() {
                         Permanently delete your account and all associated data. This action cannot be undone.
                       </p>
                       {showDeleteConfirm ? (
-                        <div className="rounded-xl border border-red-500/30 bg-red-500/8 p-4 space-y-3">
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/8 p-4 space-y-3">
                           <p className="text-sm text-red-300 font-medium">Are you absolutely sure?</p>
                           <p className="text-xs text-white/40">Your memories, characters, timeline, and all data will be permanently deleted.</p>
                           <div className="flex gap-2">
-                            <button type="button" onClick={handleDeleteAccount} disabled={saving} className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition">
+                            <button type="button" onClick={handleDeleteAccount} disabled={saving} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition">
                               Yes, delete everything
                             </button>
-                            <button type="button" onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 rounded-xl border border-white/15 text-white/50 text-sm hover:text-white transition">
+                            <button type="button" onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 rounded-lg border border-white/15 text-white/50 text-sm hover:text-white transition">
                               Cancel
                             </button>
                           </div>
@@ -701,7 +692,7 @@ export default function AccountCenter() {
                         <button
                           type="button"
                           onClick={() => setShowDeleteConfirm(true)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-400 text-sm hover:bg-red-500/10 transition"
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 text-red-400 text-sm hover:bg-red-500/10 transition"
                         >
                           <Trash2 className="h-4 w-4" />
                           Delete my account

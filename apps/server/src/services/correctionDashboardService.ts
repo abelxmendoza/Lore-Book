@@ -7,6 +7,7 @@
 import { logger } from '../logger';
 
 import { supabaseAdmin } from './supabaseClient';
+import { correctionTracker } from './activeLearning/correctionTracker';
 
 export type TargetType = 'CLAIM' | 'UNIT' | 'EVENT' | 'ENTITY';
 export type CorrectionType =
@@ -63,6 +64,52 @@ export interface CorrectionDashboardData {
   corrections: CorrectionRecord[];
   deprecated_units: DeprecatedUnitView[];
   open_contradictions: ContradictionReview[];
+}
+
+export type ManualKnowledgeTargetType =
+  | 'unit'
+  | 'entry'
+  | 'claim'
+  | 'event'
+  | 'entity'
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'chapter'
+  | 'task'
+  | 'hqi'
+  | 'fabric'
+  | 'assistant_response'
+  | 'message';
+
+export interface ManualKnowledgeCorrectionInput {
+  target_type: ManualKnowledgeTargetType;
+  target_id?: string;
+  target_title?: string;
+  original_text?: string;
+  corrected_text: string;
+  reason?: string;
+  source_message_id?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ManualKnowledgeCorrectionResult {
+  applied_to_knowledge: boolean;
+  correction_record?: CorrectionRecord;
+  training_signal_id?: string;
+}
+
+function isUuid(value?: string): value is string {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function targetTypeToRecordType(targetType: ManualKnowledgeTargetType): TargetType | null {
+  if (targetType === 'unit') return 'UNIT';
+  if (targetType === 'claim') return 'CLAIM';
+  if (targetType === 'event') return 'EVENT';
+  if (['entity', 'character', 'location', 'organization', 'skill'].includes(targetType)) return 'ENTITY';
+  return null;
 }
 
 export class CorrectionDashboardService {
@@ -500,7 +547,7 @@ export class CorrectionDashboardService {
     unitId: string,
     correctedText: string,
     reason: string
-  ): Promise<void> {
+  ): Promise<CorrectionRecord> {
     try {
       // Get unit before correction
       const { data: unit, error: fetchError } = await supabaseAdmin
@@ -536,24 +583,122 @@ export class CorrectionDashboardService {
       }
 
       // Record correction
-      await this.recordCorrection(
+      const record = await this.recordCorrection(
         userId,
         'UNIT',
         unitId,
         'USER_CORRECTION',
         beforeSnapshot,
-        { content: correctedText, manually_corrected: true },
+        { ...beforeSnapshot, content: correctedText, manually_corrected: true },
         reason,
         'USER',
         true,
-        { action: 'MANUAL_CORRECTION' }
+        { action: 'MANUAL_CORRECTION', trains_future_inference: true }
       );
 
+      await correctionTracker.recordCorrection(userId, {
+        correction_type: 'extraction',
+        original_value: unit.content,
+        corrected_value: correctedText,
+        context: reason,
+        source_unit_id: unitId,
+        metadata: {
+          correction_record_id: record.id,
+          target_type: 'unit',
+          action: 'MANUAL_KNOWLEDGE_CORRECTION',
+          trains_future_inference: true,
+        },
+      }).catch((error) => {
+        logger.warn({ error, userId, unitId }, 'Failed to record unit correction training signal');
+      });
+
       logger.info({ userId, unitId, reason }, 'Unit manually corrected');
+      return record;
     } catch (error) {
       logger.error({ error, userId, unitId }, 'Failed to manually correct unit');
       throw error;
     }
+  }
+
+  /**
+   * Capture a manual correction from UI surfaces that expose inferred knowledge.
+   * Unit targets are directly updated; other targets become durable override
+   * signals consumed by RAG/context builders and active-learning jobs.
+   */
+  async manuallyCorrectKnowledge(
+    userId: string,
+    input: ManualKnowledgeCorrectionInput
+  ): Promise<ManualKnowledgeCorrectionResult> {
+    const reason = input.reason?.trim() || 'Manual correction from UI';
+    const correctedText = input.corrected_text.trim();
+    const originalText = input.original_text?.trim() || input.target_title || '';
+
+    if (input.target_type === 'unit' && isUuid(input.target_id)) {
+      const correctionRecord = await this.manuallyCorrectUnit(userId, input.target_id, correctedText, reason);
+      return {
+        applied_to_knowledge: true,
+        correction_record: correctionRecord,
+      };
+    }
+
+    const metadata = {
+      ...(input.metadata || {}),
+      action: 'MANUAL_KNOWLEDGE_CORRECTION',
+      target_type: input.target_type,
+      target_id: input.target_id,
+      target_title: input.target_title,
+      source_message_id: input.source_message_id,
+      trains_future_inference: true,
+    };
+
+    const trainingSignal = await correctionTracker.recordCorrection(userId, {
+      correction_type: 'extraction',
+      original_value: originalText || `[${input.target_type}] ${input.target_id || 'unknown target'}`,
+      corrected_value: correctedText,
+      context: reason,
+      source_message_id: isUuid(input.source_message_id) ? input.source_message_id : undefined,
+      source_unit_id: input.target_type === 'unit' ? input.target_id : undefined,
+      metadata,
+    });
+
+    let correctionRecord: CorrectionRecord | undefined;
+    const recordTargetType = targetTypeToRecordType(input.target_type);
+    if (recordTargetType && isUuid(input.target_id)) {
+      correctionRecord = await this.recordCorrection(
+        userId,
+        recordTargetType,
+        input.target_id,
+        'USER_CORRECTION',
+        {
+          content: originalText,
+          target_type: input.target_type,
+          target_title: input.target_title,
+        },
+        {
+          content: correctedText,
+          manually_corrected: true,
+          correction_reason: reason,
+        },
+        reason,
+        'USER',
+        true,
+        {
+          ...metadata,
+          training_signal_id: trainingSignal.id,
+        }
+      );
+    }
+
+    logger.info(
+      { userId, targetType: input.target_type, targetId: input.target_id, applied: !!correctionRecord },
+      'Manual knowledge correction recorded'
+    );
+
+    return {
+      applied_to_knowledge: !!correctionRecord,
+      correction_record: correctionRecord,
+      training_signal_id: trainingSignal.id,
+    };
   }
 
   /**
@@ -592,4 +737,3 @@ export class CorrectionDashboardService {
 }
 
 export const correctionDashboardService = new CorrectionDashboardService();
-

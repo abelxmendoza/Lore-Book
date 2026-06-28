@@ -13,6 +13,24 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
+const manualKnowledgeTargetTypes = [
+  'unit',
+  'entry',
+  'claim',
+  'event',
+  'entity',
+  'character',
+  'location',
+  'organization',
+  'skill',
+  'chapter',
+  'task',
+  'hqi',
+  'fabric',
+  'assistant_response',
+  'message',
+] as const;
+
 /**
  * GET /api/corrections/dashboard
  * Get all correction dashboard data
@@ -209,6 +227,39 @@ router.post(
 );
 
 /**
+ * POST /api/correction-dashboard/manual
+ * Record a manual correction from chat/detail modals.
+ */
+router.post(
+  '/manual',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const schema = z.object({
+      target_type: z.enum(manualKnowledgeTargetTypes),
+      target_id: z.string().min(1).max(200).optional(),
+      target_title: z.string().max(500).optional(),
+      original_text: z.string().max(10000).optional(),
+      corrected_text: z.string().min(1).max(10000),
+      reason: z.string().max(1000).optional(),
+      source_message_id: z.string().max(200).optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    });
+
+    const parsed = schema.parse(req.body);
+
+    try {
+      const result = await correctionDashboardService.manuallyCorrectKnowledge(userId, parsed);
+      res.status(201).json({ success: true, ...result });
+    } catch (error) {
+      logger.error({ error, userId, target: parsed.target_type }, 'Failed to record manual knowledge correction');
+      res.status(500).json({ success: false, error: 'Failed to save correction' });
+    }
+  })
+);
+
+/**
  * GET /api/corrections/target/:targetType/:targetId
  * Get corrections for a specific target (for chat context)
  */
@@ -238,4 +289,3 @@ router.get(
 );
 
 export default router;
-
