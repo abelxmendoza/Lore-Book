@@ -27,6 +27,7 @@ import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
 import { CharacterInfoPanel } from './CharacterInfoPanel';
+import { EditableEntityName } from '../common/EditableEntityName';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useMockData } from '../../contexts/MockDataContext';
 import {
@@ -308,6 +309,107 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     } finally {
       setDeleteBusy(false);
     }
+  };
+
+  const handleRenameCharacter = async (nextName: string) => {
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed === editedCharacter.name) return;
+    setEditedCharacter((prev) => ({ ...prev, name: trimmed }));
+    if (isMockDataEnabled) {
+      mockDataService.mutate.characters.upsert({ ...(editedCharacter as Character), name: trimmed });
+      onUpdate();
+      return;
+    }
+    try {
+      await updateCharacter({
+        id: character.id,
+        values: {
+          name: trimmed,
+          metadata: { name_source: 'user_confirmed', name_confirmed_at: new Date().toISOString() },
+        },
+      }).unwrap();
+      invalidateCache(character.id);
+      onUpdate();
+    } catch (err) {
+      // Roll back optimistic rename and surface the error inline (EditableEntityName).
+      setEditedCharacter((prev) => ({ ...prev, name: editedCharacter.name }));
+      throw err instanceof Error ? err : new Error('Failed to rename character');
+    }
+  };
+
+  const invalidateRelationshipViews = () => {
+    invalidateCache(character.id);
+    invalidateCache('/api/characters');
+    invalidateCache('/api/conversation/romantic-relationships');
+  };
+
+  const upsertLocalRelationship = (nextRelationship: Relationship) => {
+    setEditedCharacter((prev) => {
+      const relationships = prev.relationships ?? [];
+      const withoutExisting = relationships.filter((rel) => {
+        if (nextRelationship.id && rel.id === nextRelationship.id) return false;
+        return rel.character_id !== nextRelationship.character_id;
+      });
+      return {
+        ...prev,
+        relationships: [nextRelationship, ...withoutExisting],
+        relationship_count: Math.max(prev.relationship_count ?? 0, withoutExisting.length + 1),
+      };
+    });
+  };
+
+  const addWorldPerson = async (targetCharacterId: string, relationshipType: string, status: string) => {
+    if (isMockDataEnabled) return;
+    const response = await fetchJson<{ success: boolean; relationship: Relationship }>(
+      '/api/relationships/character-links',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          source_character_id: editedCharacter.id ?? character.id,
+          target_character_id: targetCharacterId,
+          relationship_type: relationshipType,
+          status,
+        }),
+      }
+    );
+    upsertLocalRelationship(response.relationship);
+    invalidateRelationshipViews();
+    onUpdate();
+  };
+
+  const updateWorldPerson = async (
+    relationshipId: string,
+    patch: { relationship_type?: string; status?: string },
+  ) => {
+    if (isMockDataEnabled) return;
+    const response = await fetchJson<{ success: boolean; relationship: Relationship }>(
+      `/api/relationships/character-links/${relationshipId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }
+    );
+    upsertLocalRelationship(response.relationship);
+    invalidateRelationshipViews();
+    onUpdate();
+  };
+
+  const deleteWorldPerson = async (relationshipId: string) => {
+    if (isMockDataEnabled) return;
+    await fetchJson<{ success: boolean }>(
+      `/api/relationships/character-links/${relationshipId}`,
+      { method: 'DELETE' }
+    );
+    setEditedCharacter((prev) => {
+      const relationships = (prev.relationships ?? []).filter((rel) => rel.id !== relationshipId);
+      return {
+        ...prev,
+        relationships,
+        relationship_count: relationships.length,
+      };
+    });
+    invalidateRelationshipViews();
+    onUpdate();
   };
 
   const resetDeleteFlow = () => {
@@ -2143,7 +2245,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <h2 className="text-base font-bold text-white truncate">{displayName}</h2>
+                  <h2 className="text-base font-bold text-white truncate">
+                    {displayName === editedCharacter.name ? (
+                      <EditableEntityName
+                        name={editedCharacter.name}
+                        onSave={handleRenameCharacter}
+                        label="character name"
+                        className="truncate"
+                      />
+                    ) : (
+                      displayName
+                    )}
+                  </h2>
                   {isMainCharacter && (
                     <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300" aria-hidden />
                   )}
@@ -2227,7 +2340,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               <div className="flex-1 min-w-0">
 	                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
 	                  <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white tracking-tight break-words">
-	                    {displayName}
+	                    {displayName === editedCharacter.name ? (
+	                      <EditableEntityName
+	                        name={editedCharacter.name}
+	                        onSave={handleRenameCharacter}
+	                        label="character name"
+	                      />
+	                    ) : (
+	                      displayName
+	                    )}
 	                  </h2>
                     {isMainCharacter && (
                       <>
@@ -2576,6 +2697,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 loreProfile={loreProfile}
                 loreProfileLoading={loreProfileLoading}
                 onOpenCharacterById={openCharacterById}
+                onAddWorldPerson={addWorldPerson}
+                onUpdateWorldPerson={updateWorldPerson}
+                onDeleteWorldPerson={deleteWorldPerson}
               />
             )}
 

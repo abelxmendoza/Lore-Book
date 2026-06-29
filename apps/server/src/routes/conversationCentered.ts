@@ -78,7 +78,7 @@ const romanticRelationshipPatchSchema = z.object({
   love_status: z.enum(['in_love', 'falling_in_love', 'loved', 'love_faded', 'never_loved', 'uncertain']).nullable().optional(),
   love_declared_at: z.string().datetime().nullable().optional(),
   love_reciprocated: z.boolean().nullable().optional(),
-  status: z.enum(['active', 'on_break', 'ended', 'complicated', 'paused']).optional(),
+  status: z.enum(['active', 'on_break', 'ended', 'complicated', 'paused', 'ghosted', 'blocked', 'unrequited', 'fading', 'rekindled']).optional(),
   start_date: z.string().datetime().nullable().optional(),
   end_date: z.string().datetime().nullable().optional(),
   is_current: z.boolean().optional(),
