@@ -249,6 +249,49 @@ describe('OmegaMemoryService', () => {
     });
   });
 
+  describe('findSimilarClaims', () => {
+    const claim = {
+      id: '',
+      user_id: 'user-123',
+      entity_id: 'entity-1',
+      text: 'John likes pizza',
+      source: 'USER' as const,
+      confidence: 0.8,
+      start_time: new Date().toISOString(),
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    function mockSimilarClaimsQuery(data: unknown[] = []) {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        then: (resolve: any) => resolve({ data, error: null }),
+      };
+      vi.mocked(supabaseAdmin.from).mockReturnValue(chain as any);
+      return chain;
+    }
+
+    it('does not send an empty id filter for new unsaved claims', async () => {
+      const chain = mockSimilarClaimsQuery([{ id: 'claim-2', text: 'Existing claim' }]);
+
+      const result = await omegaMemoryService.findSimilarClaims('user-123', claim);
+
+      expect(result).toEqual([{ id: 'claim-2', text: 'Existing claim' }]);
+      expect(chain.neq).not.toHaveBeenCalled();
+    });
+
+    it('excludes the current claim when it already has an id', async () => {
+      const chain = mockSimilarClaimsQuery();
+
+      await omegaMemoryService.findSimilarClaims('user-123', { ...claim, id: 'claim-1' });
+
+      expect(chain.neq).toHaveBeenCalledWith('id', 'claim-1');
+    });
+  });
+
   describe('rankClaims', () => {
     it('should rank claims by score', async () => {
       const claims = [
