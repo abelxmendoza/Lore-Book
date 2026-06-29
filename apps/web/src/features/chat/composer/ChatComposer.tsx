@@ -5,7 +5,7 @@ import { ComposerEntityChips } from './ComposerEntityChips';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
 import { JournalComposerOverlay } from './JournalComposerOverlay';
 import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { useVisualViewportSize, getComposerStats } from '../hooks/useVisualViewportSize';
 import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
@@ -28,6 +28,8 @@ type ChatComposerProps = {
   disabled?: boolean;
   onUploadComplete?: (result: UploadCompletePayload) => void;
   initialPrompt?: string | null;
+  /** Called once the initialPrompt has been injected, so the source can clear it (one-shot prefill). */
+  onInitialPromptApplied?: () => void;
   initialDate?: string | null;
   /** Tighter layout for character/org modals — hides upload chrome, reduces padding */
   variant?: 'default' | 'embedded';
@@ -48,6 +50,7 @@ export const ChatComposer = ({
   disabled = false,
   onUploadComplete,
   initialPrompt,
+  onInitialPromptApplied,
   initialDate,
   variant = 'default',
   placeholder,
@@ -122,13 +125,24 @@ export const ChatComposer = ({
     [handleSubmit, isMobile, embedded]
   );
 
+  // One-shot prefill: inject a focus/prefill prompt only when it changes to a new
+  // value. `input` is intentionally NOT a dependency — previously it was, with a
+  // `!input` guard, so clearing the field re-ran this effect and re-injected the
+  // prompt on every delete (an endless "it keeps coming back" loop).
+  const appliedInitialPromptRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialPrompt && !input) {
-      setInput(initialPrompt);
-      if (isMobile && !embedded) setMobileCollapsed(false);
-      setTimeout(() => textareaRef.current?.focus(), 100);
+    if (!initialPrompt) {
+      appliedInitialPromptRef.current = null;
+      return;
     }
-  }, [initialPrompt, input, setInput, textareaRef, isMobile, embedded]);
+    if (appliedInitialPromptRef.current === initialPrompt) return;
+    appliedInitialPromptRef.current = initialPrompt;
+    setInput(initialPrompt);
+    if (isMobile && !embedded) setMobileCollapsed(false);
+    const focusTimer = setTimeout(() => textareaRef.current?.focus(), 100);
+    onInitialPromptApplied?.();
+    return () => clearTimeout(focusTimer);
+  }, [initialPrompt, setInput, textareaRef, isMobile, embedded, onInitialPromptApplied]);
 
   const resolvedPlaceholder = placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
   const stats = getComposerStats(input);

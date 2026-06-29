@@ -885,6 +885,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             loading={isLoading}
             disabled={isGuest && !canSendChatMessage()}
             initialPrompt={initialPrompt}
+            onInitialPromptApplied={() => setInitialPrompt(null)}
             initialDate={initialDate}
             threadId={activeThreadId ?? undefined}
             defaultCollapsed={isMobile && messages.length > 0}
