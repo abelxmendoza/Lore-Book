@@ -104,9 +104,10 @@ export function findLegacyPoolMatch(name: string, pool: Entity[]): LegacyMatchDe
 export function resolveMentionWithCore(
   mention: string,
   pool: Entity[],
-  context: ResolutionContext = {}
+  context: ResolutionContext = {},
+  providedType?: string
 ): ResolutionResult {
-  return resolveMention(mention, pool.map(entityToResolutionCandidate), context);
+  return resolveMention(mention, pool.map(entityToResolutionCandidate), context, providedType);
 }
 
 export function coreProductionDecision(result: ResolutionResult): CoreProductionDecision {
@@ -284,7 +285,7 @@ export function logCharacterCreationShadowComparison(comparison: CharacterCreati
 export function resolveWithCore(options: ResolveWithCoreOptions): ResolveWithCoreResult {
   const { mention, entityType, pool, context = {} } = options;
   const legacy = findLegacyPoolMatch(mention, pool);
-  const core = resolveMentionWithCore(mention, pool, context);
+  const core = resolveMentionWithCore(mention, pool, context, entityType);
   const comparison = compareLegacyAndCore(mention, entityType, legacy, core);
 
   if (isEntityResolutionShadowEnabled()) {

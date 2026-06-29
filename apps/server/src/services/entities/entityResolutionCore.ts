@@ -125,7 +125,16 @@ function recencyScore(lastMentionedAt: string | null | undefined, now: number): 
 export function resolveMention(
   mention: string,
   candidates: ResolutionCandidate[],
-  context: ResolutionContext = {}
+  context: ResolutionContext = {},
+  /**
+   * The type the upstream extractor already assigned to this mention (omega
+   * EntityType, e.g. 'PERSON'). resolveMention re-classifies the bare surface
+   * form for ranking, but classifyEntity needs context to type a personal name —
+   * "Ink"/"Sol"/"Genni" classify UNKNOWN in isolation. Without this, a freshly
+   * extracted, correctly-typed person with no existing match was SKIPPED (dropped
+   * from ingestion entirely). When provided and concrete, it prevents that skip.
+   */
+  providedType?: string
 ): ResolutionResult {
   const classification = classifyEntity(mention).type;
   const now = context.now ?? Date.now();
@@ -138,9 +147,15 @@ export function resolveMention(
     .filter((x) => x.lex.matched);
 
   if (matches.length === 0) {
-    // Nothing to resolve to. Create only if we can classify it positively;
-    // unknown/unclassified mentions are skipped (they require more evidence).
-    const action: ResolutionAction = classification === 'UNKNOWN' || classification === 'UNCLASSIFIED' ? 'skip' : 'create';
+    // Nothing to resolve to. Create only if we have positive evidence of an
+    // entity — either the context-free classifier typed it, OR the upstream
+    // extractor already typed it (it had the full message context we lack here).
+    // Trusting the extractor's concrete type is what stops real, correctly-typed
+    // people ("Ink", "Sol", "Genni") from being skipped and silently dropped.
+    const selfClassifiable = classification !== 'UNKNOWN' && classification !== 'UNCLASSIFIED';
+    const providedConcrete =
+      !!providedType && providedType !== 'UNKNOWN' && providedType !== 'UNCLASSIFIED';
+    const action: ResolutionAction = selfClassifiable || providedConcrete ? 'create' : 'skip';
     const conf = action === 'create' ? 0.6 : 0.1;
     return { action, recommendation: recommend(action, conf), resolvedId: null, confidence: conf, classification, ranked: [] };
   }
