@@ -36,6 +36,97 @@ export function normalizeForMatching(name: string): string {
   return normalizeNameKey(name.replace(PUNCTUATION_RE, ' '));
 }
 
+/**
+ * Relational placeholders — labels that DESCRIBE a person by their relationship
+ * to a *named* anchor rather than naming them directly:
+ *   "friend of Shyla", "Shyla's friend", "an old coworker of Juan".
+ *
+ * The placeholder refers to a DIFFERENT (usually still-unnamed) person than the
+ * anchor, so it must never dedupe-merge into the anchor. It stays a real card the
+ * user can rename once the actual name is known. Kinship-titled people with a
+ * given name ("Tío Juan") are NOT placeholders — they match neither pattern.
+ */
+const RELATIONAL_NOUNS = new Set<string>([
+  'friend', 'friends', 'bestie', 'buddy', 'pal', 'boyfriend', 'girlfriend',
+  'partner', 'ex', 'roommate', 'flatmate', 'coworker', 'colleague',
+  'boss', 'manager', 'employee', 'assistant', 'neighbor', 'neighbour',
+  'classmate', 'schoolmate', 'teammate', 'mentor', 'mentee', 'student',
+  'teacher', 'professor', 'client', 'customer', 'landlord', 'tenant', 'date',
+  'fling', 'crush', 'acquaintance', 'contact', 'associate', 'rival', 'enemy',
+  'nemesis', 'fan', 'follower', 'guest', 'host', 'sponsor', 'coach', 'trainer',
+  'doctor', 'therapist', 'lawyer', 'agent', 'driver', 'barber', 'stylist',
+]);
+
+export type RelationalPlaceholder = {
+  /** Head relational noun, e.g. "friend". */
+  relation: string;
+  /** The named person referenced, e.g. "Shyla". */
+  anchor: string;
+};
+
+/** True when the last token of a relation phrase is a known relational noun. */
+function relationHead(phrase: string): string | null {
+  const tokens = phrase.toLowerCase().replace(PUNCTUATION_RE, ' ').split(/\s+/).filter(Boolean);
+  const head = tokens[tokens.length - 1];
+  return head && RELATIONAL_NOUNS.has(head) ? head : null;
+}
+
+export function parseRelationalPlaceholder(name: string): RelationalPlaceholder | null {
+  const cleaned = (name ?? '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+
+  // "<Name>'s <relation>"  →  Shyla's friend / Shyla's best friend
+  const poss = cleaned.match(/^(.+?)['’]s\s+(.+)$/i);
+  if (poss) {
+    const head = relationHead(poss[2]);
+    const anchor = poss[1].trim();
+    if (head && anchor) return { relation: head, anchor };
+  }
+
+  // "<a|the|my|…>? <relation> of <Name>"  →  friend of Shyla / a coworker of Juan
+  const of = cleaned.match(/^(?:a|an|the|some|my|her|his|their|our)?\s*(.+?)\s+of\s+(.+)$/i);
+  if (of) {
+    const head = relationHead(of[1]);
+    const anchor = of[2].trim();
+    if (head && anchor) return { relation: head, anchor };
+  }
+
+  return null;
+}
+
+export function isRelationalPlaceholder(name: string): boolean {
+  return parseRelationalPlaceholder(name) !== null;
+}
+
+/**
+ * Stage-name / nickname identity profile. The nickname is the PRIMARY identity
+ * label (Oscuridad, Strawhat, Knucklehead); givenName is the real first name
+ * (Juan, Luffy, Tom). A givenName is a *weak* dedup key — shared first names
+ * across two different people must not trigger an auto-merge.
+ */
+export type NameProfile = {
+  nickname?: string | null;
+  givenName?: string | null;
+  kind?: 'stage_name' | 'nickname' | 'callsign' | null;
+  display?: string | null;
+};
+
+/** "Oscuridad" + "Juan" → "Oscuridad Juan" ([NICKNAME] [FIRSTNAME]). */
+export function formatNicknameName(nickname?: string | null, givenName?: string | null): string {
+  const n = (nickname ?? '').trim();
+  const g = (givenName ?? '').trim();
+  if (n && g && normalizeForMatching(n) !== normalizeForMatching(g)) return `${n} ${g}`;
+  return n || g;
+}
+
+/** Real first names recorded on a profile that must not, alone, drive a merge. */
+export function weakGivenNameKeys(profile?: NameProfile | null): Set<string> {
+  const keys = new Set<string>();
+  const given = profile?.givenName?.trim();
+  if (given) keys.add(normalizeForMatching(given));
+  return keys;
+}
+
 /** Extract kinship role bucket if the entire name is a title-only kinship term. */
 export function kinshipRoleKey(name: string): string | null {
   const norm = normalizeForMatching(name);
@@ -142,6 +233,23 @@ const STRONG_FUZZY_THRESHOLD = 0.93;
  */
 export function matchCharacterNames(a: string, b: string): NameMatchResult {
   if (!a?.trim() || !b?.trim()) return { matches: false, confidence: 0, method: 'none' };
+
+  // Relational placeholders ("friend of Shyla") reference a DIFFERENT person than
+  // their anchor, so they never collapse into the anchor by name/containment.
+  const phA = parseRelationalPlaceholder(a);
+  const phB = parseRelationalPlaceholder(b);
+  if (phA || phB) {
+    if (phA && phB) {
+      const same =
+        phA.relation === phB.relation &&
+        normalizeForMatching(phA.anchor) === normalizeForMatching(phB.anchor);
+      return same
+        ? { matches: true, confidence: 0.9, method: 'exact', reason: 'same_placeholder' }
+        : { matches: false, confidence: 0, method: 'none', reason: 'distinct_placeholder' };
+    }
+    // One placeholder vs a direct name → definitionally different entities.
+    return { matches: false, confidence: 0, method: 'none', reason: 'relational_placeholder' };
+  }
 
   const pa = parseCharacterName(a);
   const pb = parseCharacterName(b);

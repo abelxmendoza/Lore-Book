@@ -4,7 +4,15 @@
  */
 
 import { logger } from '../logger';
-import { matchCharacterName, buildMatchKeys, parseCharacterName } from '../utils/characterNameMatching';
+import {
+  matchCharacterName,
+  buildMatchKeys,
+  parseCharacterName,
+  isRelationalPlaceholder,
+  weakGivenNameKeys,
+  normalizeForMatching,
+  type NameProfile,
+} from '../utils/characterNameMatching';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
@@ -201,21 +209,78 @@ class CharacterDeduplicationService {
       if (ra !== rb) parent.set(rb, ra);
     };
 
+    // Pairs the user explicitly marked distinct must never re-merge, even when
+    // they share a first name (e.g. stage-named "Oscuridad" whose real name is
+    // Juan vs the user's "Tío Juan").
+    const pairKey = (a: string, b: string) => [a, b].sort().join('|');
+    const distinctPairs = new Set<string>();
+    for (const c of characters) {
+      const m = (c.metadata ?? {}) as Record<string, unknown>;
+      const ids = [
+        ...((m.confirmed_distinct_from as string[]) ?? []),
+        ...((m.distinct_from as string[]) ?? []),
+      ];
+      for (const other of ids) distinctPairs.add(pairKey(c.id, other));
+    }
+
+    const profileOf = (c: CharacterRecord): NameProfile | null =>
+      ((c.metadata?.nameProfile as NameProfile | undefined) ?? null);
+
+    // Normalized identity tokens drawn from a card's name + aliases (title-stripped).
+    const identityTokens = (c: CharacterRecord): Set<string> => {
+      const toks = new Set<string>();
+      const addFrom = (label: string) => {
+        const core = parseCharacterName(label).coreName || normalizeForMatching(label);
+        for (const t of core.split(/\s+/).filter(Boolean)) toks.add(t);
+      };
+      addFrom(c.name);
+      for (const a of c.alias ?? []) addFrom(a);
+      return toks;
+    };
+
     // Only union pairs with a DIRECT title-aware name match — no transitive
     // overlap-only chains (prevents unrelated characters collapsing together).
     for (let i = 0; i < characters.length; i++) {
       for (let j = i + 1; j < characters.length; j++) {
         const ca = characters[i];
         const cb = characters[j];
+        if (distinctPairs.has(pairKey(ca.id, cb.id))) continue;
+
+        // Relational placeholders ("friend of Shyla") only union with the SAME
+        // placeholder, never with their anchor or unrelated people.
+        if (isRelationalPlaceholder(ca.name) || isRelationalPlaceholder(cb.name)) {
+          const m = matchCharacterName(ca.name, cb.name);
+          if (m.matches && m.confidence >= 0.88) union(ca.id, cb.id);
+          continue;
+        }
+
+        // A bridge that is ONLY a shared real first name (a stage-named person's
+        // givenName, e.g. "Oscuridad Juan" vs "Tío Juan") is too weak to merge.
+        const weak = new Set<string>([
+          ...weakGivenNameKeys(profileOf(ca)),
+          ...weakGivenNameKeys(profileOf(cb)),
+        ]);
+        if (weak.size > 0) {
+          const tb = identityTokens(cb);
+          const shared = [...identityTokens(ca)].filter((t) => tb.has(t));
+          if (shared.length > 0 && shared.every((t) => weak.has(t))) continue;
+        }
+
         const direct = matchCharacterName(ca.name, cb.name);
         if (!direct.matches || direct.confidence < 0.88) {
-          // Check mention against aliases only when name match fails
+          // Cross-match each card's labels against the OTHER card's labels only —
+          // never a card against its own aliases (that self-match would union any
+          // two cards sharing a first name).
+          const labelsA = [ca.name, ...(ca.alias ?? [])];
+          const labelsB = [cb.name, ...(cb.alias ?? [])];
           let aliasHit = false;
-          for (const alias of [...(ca.alias ?? []), ...(cb.alias ?? [])]) {
-            const m = matchCharacterName(ca.name, alias) ;
-            if (m.matches && m.confidence >= 0.88) {
-              aliasHit = true;
-              break;
+          outer: for (const la of labelsA) {
+            for (const lb of labelsB) {
+              const m = matchCharacterName(la, lb);
+              if (m.matches && m.confidence >= 0.88) {
+                aliasHit = true;
+                break outer;
+              }
             }
           }
           if (!aliasHit) continue;
