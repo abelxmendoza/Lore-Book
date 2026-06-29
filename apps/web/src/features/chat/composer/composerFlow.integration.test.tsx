@@ -121,4 +121,29 @@ describe('Composer entity chip flow (integration)', () => {
     });
     expect(screen.getByTestId('composer-index-retry')).toBeInTheDocument();
   });
+
+  it('applies initialPrompt once and does NOT re-inject it after the field is cleared', async () => {
+    const onApplied = vi.fn();
+    renderComposer(
+      <ChatComposer
+        onSubmit={vi.fn()}
+        loading={false}
+        initialPrompt="Catch up with Maria"
+        onInitialPromptApplied={onApplied}
+      />,
+    );
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe('Catch up with Maria'));
+    expect(onApplied).toHaveBeenCalledTimes(1);
+
+    // Regression: clearing the field must not re-trigger the prompt injection
+    // (previously `input` was an effect dep with a `!input` guard → endless loop).
+    fireEvent.change(textarea, { target: { value: '' } });
+    await waitFor(() => expect(textarea.value).toBe(''));
+    // Give any stray effects a chance to run, then confirm it stayed cleared.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(textarea.value).toBe('');
+    expect(onApplied).toHaveBeenCalledTimes(1);
+  });
 });
