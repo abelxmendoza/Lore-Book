@@ -60,12 +60,18 @@ describe('openaiResponsesBridge', () => {
       max_output_tokens: 500,
       store: false,
       instructions: 'Extract JSON only.',
-      input: [{ role: 'user', content: 'Ada is 54' }],
       text: { format: { type: 'json_object' } },
     });
+    // The Responses API checks `input` (not `instructions`) for the "json"
+    // keyword. The system prompt's "JSON" lives in `instructions`, so the hint
+    // must be injected into `input` to avoid a 400.
+    expect(responses.input).toEqual([
+      { role: 'user', content: 'Ada is 54' },
+      { role: 'user', content: 'Respond with valid JSON.' },
+    ]);
   });
 
-  it('adds json hint when json_object format lacks the keyword', () => {
+  it('injects the json keyword into input (not instructions) for json_object', () => {
     const responses = chatCompletionParamsToResponses({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
@@ -75,7 +81,27 @@ describe('openaiResponsesBridge', () => {
       ],
     });
 
-    expect(responses.instructions).toContain('JSON');
+    // instructions are left untouched; the keyword goes into input where the
+    // Responses API actually enforces it.
+    expect(responses.instructions).toBe('Return structured data.');
+    expect(JSON.stringify(responses.input)).toMatch(/json/i);
+  });
+
+  it('does not modify input that already contains json', () => {
+    const responses = chatCompletionParamsToResponses({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: 'reply in json please' }],
+    });
+    expect(responses.input).toEqual([{ role: 'user', content: 'reply in json please' }]);
+  });
+
+  it('leaves input untouched when no json format is requested', () => {
+    const responses = chatCompletionParamsToResponses({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'just chat' }],
+    });
+    expect(JSON.stringify(responses.input)).not.toMatch(/json/i);
   });
 
   it('does not route streaming or tool-call requests', () => {
