@@ -29,6 +29,8 @@ import {
   type BiographyTheme,
   type LifePeriod,
 } from './biographyFoundationService';
+import { evaluateWrongDomain } from './characters/audit/wrongDomainCharacterGuard';
+import { normalizeNameKey } from '../utils/nameNormalization';
 
 // ── Card types ────────────────────────────────────────────────────────────────
 
@@ -109,11 +111,29 @@ export async function getLivingBiographyCard(userId: string): Promise<LivingBiog
  * excluded — "who matters most" should reflect the present, not the archive.
  */
 function deriveKeyPeople(bio: BiographyOutput): LivingBiographyPerson[] {
-  return bio.facts.relationships
+  const byName = new Map<string, LivingBiographyPerson & { evidenceCount: number }>();
+
+  for (const relationship of bio.facts.relationships
     .filter(r => r.status !== 'ended')
-    .sort((a, b) => b.sourceMemoryIds.length - a.sourceMemoryIds.length)
+    .filter(r => !evaluateWrongDomain(r.name).wrongDomain)) {
+    const key = normalizeNameKey(relationship.name);
+    if (!key) continue;
+    const next = {
+      name: relationship.name,
+      relationship: relationship.type,
+      status: relationship.status,
+      evidenceCount: relationship.sourceMemoryIds.length,
+    };
+    const existing = byName.get(key);
+    if (!existing || next.evidenceCount > existing.evidenceCount) {
+      byName.set(key, next);
+    }
+  }
+
+  return [...byName.values()]
+    .sort((a, b) => b.evidenceCount - a.evidenceCount)
     .slice(0, MAX_PEOPLE)
-    .map(r => ({ name: r.name, relationship: r.type, status: r.status }));
+    .map(({ evidenceCount: _evidenceCount, ...person }) => person);
 }
 
 /**

@@ -24,6 +24,12 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Gathering', 'talked about magic gathering cards').kind).toBe('game');
   });
 
+  it('detects Cyberpunk 2077 as a game without blocking future nickname evidence', () => {
+    expect(classifyMentionKind('Cyberpunk 2077').kind).toBe('game');
+    expect(classifyMentionKind('Cyberpunk', 'I was talking about the video game called Cyberpunk 2077').kind).toBe('game');
+    expect(classifyMentionKind('Cyberpunk', 'Cyberpunk is his nickname on stage').kind).not.toBe('game');
+  });
+
   it('requires person evidence for unknown proper nouns', () => {
     expect(classifyMentionKind('Alex Morgan').kind).toBe('unknown');
     expect(classifyMentionKind('Alex').kind).toBe('unknown');

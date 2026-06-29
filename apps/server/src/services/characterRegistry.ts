@@ -88,6 +88,7 @@ export type CreationDecision =
 
 export type ClassifyForCreationOptions = {
   context?: ResolutionContext;
+  sourceEntityType?: 'person' | 'unknown';
 };
 
 type CharacterRow = CharacterResolutionRow;
@@ -182,6 +183,12 @@ class CharacterRegistry {
     return Boolean(omega?.length);
   }
 
+  private isContextualRelationshipCardForMention(character: CharacterRow, mentionNorm: string): boolean {
+    const cardNorm = normalizeNameKey(character.name);
+    if (!cardNorm || !mentionNorm || cardNorm === mentionNorm) return false;
+    return new RegExp(`\\b(?:friend|boyfriend|girlfriend|partner|roommate|coworker|classmate|neighbor|mentor|teacher|student|cousin|sibling|brother|sister|parent|mom|mother|dad|father|uncle|aunt|grandma|grandmother|grandpa|grandfather) of ${mentionNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(cardNorm);
+  }
+
   /**
    * Decide what to do with an extracted person name. Single choke point for
    * every character-creating pipeline.
@@ -200,7 +207,7 @@ class CharacterRegistry {
       return { action: 'reject', reason: 'bare_title_without_context' };
     }
 
-    if (await this.isKnownNonPerson(userId, cleanName)) {
+    if (options?.sourceEntityType !== 'person' && await this.isKnownNonPerson(userId, cleanName)) {
       return { action: 'reject', reason: 'known_location_or_org' };
     }
 
@@ -226,28 +233,29 @@ class CharacterRegistry {
 
     const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
     const mentionNorm = normalizeNameKey(cleanName);
+    const resolutionExisting = existing.filter(c => !this.isContextualRelationshipCardForMention(c, mentionNorm));
 
-    const exactMatches = existing.filter(
-      c => normalizeNameKey(c.name) === mentionNorm
-        || (c.alias ?? []).some(a => normalizeNameKey(a) === mentionNorm)
+    const exactMatches = resolutionExisting.filter(
+      c => (normalizeNameKey(c.name) === mentionNorm
+        || (c.alias ?? []).some(a => normalizeNameKey(a) === mentionNorm))
     );
     if (exactMatches.length >= 1 && (exactMatches.length > 1 || hasDistinctnessCue)) {
       return await this.deferWith(userId, cleanName, rawName, exactMatches);
     }
 
     if (isEntityResolutionCoreActive()) {
-      return this.classifyWithCore(userId, cleanName, rawName, existing, hasDistinctnessCue, options?.context);
+      return this.classifyWithCore(userId, cleanName, rawName, resolutionExisting, hasDistinctnessCue, options?.context);
     }
 
-    const legacyDecision = await this.classifyForCreationLegacy(userId, cleanName, rawName, existing, hasDistinctnessCue);
+    const legacyDecision = await this.classifyForCreationLegacy(userId, cleanName, rawName, resolutionExisting, hasDistinctnessCue);
 
     if (isEntityResolutionShadowEnabled()) {
       const coreResult = resolveMention(
         cleanName,
-        existing.map(characterToResolutionCandidate),
+        resolutionExisting.map(characterToResolutionCandidate),
         options?.context ?? {}
       );
-      const coreDecision = await this.classifyWithCore(userId, cleanName, rawName, existing, hasDistinctnessCue, options?.context);
+      const coreDecision = await this.classifyWithCore(userId, cleanName, rawName, resolutionExisting, hasDistinctnessCue, options?.context);
       logCharacterCreationShadowComparison(
         compareCharacterCreationDecisions(
           cleanName,
@@ -286,6 +294,7 @@ class CharacterRegistry {
 
     let possessiveAmbiguity = false;
     const candidates = existing.filter(c => {
+      if (this.isContextualRelationshipCardForMention(c, mentionNorm)) return false;
       const candNorm = normalizeNameKey(c.name);
       const candFirst = candNorm.split(' ')[0];
       const candHasSurname = candNorm.includes(' ');

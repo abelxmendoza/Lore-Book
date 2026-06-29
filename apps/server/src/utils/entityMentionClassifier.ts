@@ -66,6 +66,7 @@ const KNOWN_EVENTS = new Set([
 
 /** Game / product names that must never become person cards. */
 const KNOWN_GAMES_AND_PRODUCTS: Record<string, string> = {
+  'cyberpunk 2077': 'Cyberpunk 2077',
   'magic the gathering': 'Magic: The Gathering',
   'magic: the gathering': 'Magic: The Gathering',
   'mtg': 'Magic: The Gathering',
@@ -111,6 +112,13 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
   const gameCanonical = KNOWN_GAMES_AND_PRODUCTS[key];
   if (gameCanonical) {
     return { kind: 'game', omegaType: 'ORG', canonicalName: gameCanonical, reason: 'known_game' };
+  }
+
+  if (key === 'cyberpunk' && rawContext) {
+    const ctx = normalizeNameKey(rawContext);
+    if (/\bcyberpunk\s+2077\b/.test(ctx) || /\b(video game|videogame|game called cyberpunk|played cyberpunk)\b/.test(ctx)) {
+      return { kind: 'game', omegaType: 'ORG', canonicalName: 'Cyberpunk 2077', reason: 'cyberpunk_game_context' };
+    }
   }
 
   // "Memorial Day", "Labor Day", etc.
