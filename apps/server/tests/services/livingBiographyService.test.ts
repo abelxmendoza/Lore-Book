@@ -136,6 +136,28 @@ describe('getLivingBiographyCard', () => {
     expect(names).not.toContain('Old Friend');
   });
 
+  it('dedupes key people and filters wrong-domain interests from the home card', async () => {
+    const bio = makeBio({
+      facts: {
+        ...makeBio().facts,
+        relationships: [
+          { name: 'Cyberpunk', type: 'interest', status: 'active', characterId: 'bad-1', relationshipId: 'r-bad', sourceMemoryIds: ['m0', 'm1', 'm2', 'm3'] },
+          { name: 'Shyla', type: 'friend', status: 'active', characterId: 'c1', relationshipId: 'r1', sourceMemoryIds: ['m1'] },
+          { name: 'Shyla', type: 'friend', status: 'active', characterId: 'c2', relationshipId: 'r2', sourceMemoryIds: ['m1', 'm2'] },
+          { name: 'Genni', type: 'friend', status: 'active', characterId: 'c3', relationshipId: 'r3', sourceMemoryIds: ['m3'] },
+        ],
+      },
+    });
+    getBiography.mockResolvedValue(bio);
+    tableResults.journal_entries = { data: [], error: null, count: 0 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+
+    const card = await getLivingBiographyCard('user-1');
+
+    expect(card.keyPeople.map(p => p.name)).toEqual(['Shyla', 'Genni']);
+    expect(card.keyPeople).toHaveLength(2);
+  });
+
   it('orders recent developments newest-first from key events', async () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);

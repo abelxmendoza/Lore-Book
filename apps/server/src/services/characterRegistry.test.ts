@@ -73,6 +73,38 @@ describe('characterRegistry', () => {
     });
   });
 
+  it('does not merge a person into a contextual relationship card that mentions them', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
+      if (table === 'characters') {
+        return chain([{ id: 'friend-card', name: 'friend of Shyla', alias: ['Shyla'], metadata: {} }]);
+      }
+      return chain([]);
+    });
+
+    const decision = await characterRegistry.classifyForCreation('user-1', 'Shyla');
+
+    expect(decision).toMatchObject({ action: 'create', cleanName: 'Shyla' });
+  });
+
+  it('allows explicit omega person promotions to override stale non-person canon rows', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'locations') return chain([]);
+      if (table === 'organizations') return chain([{ id: 'stale-org' }]);
+      if (table === 'omega_entities') return chain([]);
+      if (table === 'characters') return chain([]);
+      return chain([]);
+    });
+
+    const ordinary = await characterRegistry.classifyForCreation('user-1', 'Genni');
+    expect(ordinary).toMatchObject({ action: 'reject', reason: 'known_location_or_org' });
+
+    const omegaPerson = await characterRegistry.classifyForCreation('user-1', 'Genni', {
+      sourceEntityType: 'person',
+    });
+    expect(omegaPerson).toMatchObject({ action: 'create', cleanName: 'Genni' });
+  });
+
   it('uses entityResolutionCore when ENTITY_RESOLUTION_CORE=on', async () => {
     const prev = process.env.ENTITY_RESOLUTION_CORE;
     process.env.ENTITY_RESOLUTION_CORE = 'on';

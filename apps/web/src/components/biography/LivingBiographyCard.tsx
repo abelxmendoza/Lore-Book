@@ -97,9 +97,9 @@ export const LivingBiographyCard = () => {
               <span className="text-xs font-medium text-white/40">People who matter most</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {card.keyPeople.map((p) => (
+              {card.keyPeople.map((p, index) => (
                 <button
-                  key={p.name}
+                  key={`${p.name}-${p.relationship}-${index}`}
                   type="button"
                   onClick={(e) => generateLorebook(e, `my story with ${p.name}`)}
                   title={`Generate a lorebook about ${p.name}`}

@@ -46,6 +46,13 @@ function isTableMissing(error: unknown): boolean {
   return (error as { code?: string })?.code === 'PGRST205';
 }
 
+function isContextualRelationshipCardForMention(character: CharacterAuthorityRow, mentionNorm: string): boolean {
+  const cardNorm = normalizeNameKey(character.name);
+  if (!cardNorm || !mentionNorm || cardNorm === mentionNorm) return false;
+  const escapedMention = mentionNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b(?:friend|boyfriend|girlfriend|partner|roommate|coworker|classmate|neighbor|mentor|teacher|student|cousin|sibling|brother|sister|parent|mom|mother|dad|father|uncle|aunt|grandma|grandmother|grandpa|grandfather) of ${escapedMention}\\b`).test(cardNorm);
+}
+
 class CharacterAuthorityService {
   private indexCache = new Map<string, { loadedAt: number; rows: CharacterAuthorityRow[] }>();
   private readonly CACHE_TTL_MS = 30_000;
@@ -104,13 +111,14 @@ class CharacterAuthorityService {
   async resolveByName(userId: string, name: string): Promise<ResolveResult> {
     const rows = filterSelfCandidatesForIncoming([name], await this.loadCharacters(userId));
     const norm = normalizeNameKey(name);
+    const resolutionRows = rows.filter(row => !isContextualRelationshipCardForMention(row, norm));
 
     // Exact name
-    const exact = rows.find(r => normalizeNameKey(r.name) === norm);
+    const exact = resolutionRows.find(r => normalizeNameKey(r.name) === norm);
     if (exact) return { characterId: exact.id, confidence: 1, method: 'exact', matchedName: exact.name };
 
     // Alias exact
-    for (const row of rows) {
+    for (const row of resolutionRows) {
       for (const alias of row.alias ?? []) {
         if (normalizeNameKey(alias) === norm) {
           return { characterId: row.id, confidence: 0.98, method: 'alias', matchedName: row.name };
@@ -120,7 +128,7 @@ class CharacterAuthorityService {
 
     // Authority map alias
     const mapped = await this.lookupAuthorityMapByAlias(userId, name);
-    if (mapped?.characterId && rows.some((row) => row.id === mapped.characterId)) return mapped;
+    if (mapped?.characterId && resolutionRows.some((row) => row.id === mapped.characterId)) return mapped;
     if (mapped?.characterId) {
       logger.warn(
         { userId, characterId: mapped.characterId, incomingName: name },
@@ -129,7 +137,7 @@ class CharacterAuthorityService {
     }
 
     // Title-aware + fuzzy via dedup service
-    const candidates = characterDeduplicationService.findCandidates(name, rows);
+    const candidates = characterDeduplicationService.findCandidates(name, resolutionRows);
     if (candidates.length > 0 && candidates[0].confidence >= 0.85) {
       const c = candidates[0];
       const row = rows.find(r => r.id === c.characterId)!;

@@ -17,7 +17,7 @@
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
-import { splitPersonName } from '../utils/nameNormalization';
+import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { parseKinshipFromName } from './kinship/kinshipGlossary';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
@@ -501,6 +501,54 @@ class CharacterFoundationService {
     }
   }
 
+  private async repairOmegaCharacterName(
+    userId: string,
+    character: Pick<CharacterRow, 'id' | 'name' | 'alias' | 'metadata'>,
+    entity: { id: string; primary_name: string; aliases?: string[] | null; mention_count?: number }
+  ): Promise<void> {
+    const cleanName = entity.primary_name?.trim();
+    if (!cleanName || normalizeNameKey(character.name) === normalizeNameKey(cleanName)) return;
+
+    const { firstName, lastName } = parseNameParts(cleanName);
+    const aliases = Array.from(new Set(entity.aliases ?? []))
+      .filter(alias => normalizeNameKey(alias) !== normalizeNameKey(cleanName))
+      .filter(alias => normalizeNameKey(alias) !== normalizeNameKey(character.name));
+    const previousNames = new Set<string>(
+      Array.isArray(character.metadata?.previous_names)
+        ? (character.metadata.previous_names as string[]).filter(Boolean)
+        : []
+    );
+    if (character.name) previousNames.add(character.name);
+
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({
+        name: cleanName,
+        alias: aliases.length > 0 ? aliases : null,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        metadata: {
+          ...(character.metadata ?? {}),
+          omega_entity_id: entity.id,
+          mention_count: entity.mention_count ?? character.metadata?.mention_count ?? 1,
+          previous_names: Array.from(previousNames),
+          repaired_by: 'omega_character_name_repair',
+          repaired_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('id', character.id);
+
+    if (error) {
+      logger.warn({ error, userId, characterId: character.id, cleanName }, 'Failed to repair omega character name');
+      return;
+    }
+
+    await characterAuthorityService.registerCharacterAuthority(userId, character.id, cleanName, aliases);
+    characterAuthorityService.invalidateCache(userId);
+  }
+
   async promoteOmegaEntityToCharacter(
     userId: string,
     entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number },
@@ -523,18 +571,22 @@ class CharacterFoundationService {
 
     const { data: existing } = await supabaseAdmin
       .from('characters')
-      .select('id')
+      .select('id, name, alias, metadata')
       .eq('user_id', userId)
       .eq('metadata->>omega_entity_id', entity.id)
       .limit(1);
 
     if (existing?.[0]) {
-      await this.reviveIfArchived(userId, existing[0].id as string);
-      return existing[0].id as string;
+      const row = existing[0] as Pick<CharacterRow, 'id' | 'name' | 'alias' | 'metadata'>;
+      await this.repairOmegaCharacterName(userId, row, entity);
+      await this.reviveIfArchived(userId, row.id);
+      return row.id;
     }
 
     // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
-    const decision = await characterRegistry.classifyForCreation(userId, entity.primary_name);
+    const decision = await characterRegistry.classifyForCreation(userId, entity.primary_name, {
+      sourceEntityType: entity.type === 'PERSON' || entity.type === 'CHARACTER' ? 'person' : 'unknown',
+    });
     if (decision.action === 'reject') {
       logger.debug({ name: entity.primary_name, reason: decision.reason }, 'Registry rejected character creation (chat)');
       import('./misclassifiedEntityRouter').then(({ misclassifiedEntityRouter }) => {

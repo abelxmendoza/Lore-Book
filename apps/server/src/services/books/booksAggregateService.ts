@@ -12,6 +12,7 @@ import { skillService } from '../skills/skillService';
 import { skillSuggestionService } from '../skills/skillSuggestionService';
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { evaluateWrongDomain } from '../characters/audit/wrongDomainCharacterGuard';
 
 export type BookCounts = {
   characters: number;
@@ -41,6 +42,49 @@ async function loadCounts(userId: string): Promise<BookCounts> {
   };
 }
 
+function characterProvenanceText(row: { metadata?: unknown }): string {
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  return [
+    metadata.storyContext,
+    metadata.provenance,
+    metadata.sourceText,
+    metadata.source_excerpt,
+    metadata.evidence,
+  ]
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((value): value is string => typeof value === 'string')
+    .join('\n');
+}
+
+function isVisibleCharacter(row: { name?: string | null; metadata?: unknown }): boolean {
+  const name = String(row.name ?? '').trim();
+  if (!name) return false;
+  return !evaluateWrongDomain(name, characterProvenanceText(row)).wrongDomain;
+}
+
+function dedupeCharacters<T extends { name?: string | null; importance_score?: number | null; updated_at?: string | null }>(
+  rows: T[],
+): T[] {
+  const byName = new Map<string, T>();
+  for (const row of rows) {
+    const key = normalizeNameKey(String(row.name ?? ''));
+    if (!key) continue;
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, row);
+      continue;
+    }
+    const rowScore = row.importance_score ?? 0;
+    const existingScore = existing.importance_score ?? 0;
+    const rowUpdated = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+    const existingUpdated = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+    if (rowScore > existingScore || (rowScore === existingScore && rowUpdated > existingUpdated)) {
+      byName.set(key, row);
+    }
+  }
+  return [...byName.values()];
+}
+
 export async function loadCharactersBook(userId: string, opts?: { includeDuplicates?: boolean }) {
   const [{ data: characters, error }, counts] = await Promise.all([
     supabaseAdmin
@@ -54,9 +98,12 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
 
   if (error) throw error;
 
+  const visibleCharacters = dedupeCharacters((characters ?? []).filter(isVisibleCharacter));
+  const visibleCounts = { ...counts, characters: visibleCharacters.length };
+
   let duplicate_groups: unknown[] = [];
   if (opts?.includeDuplicates !== false) {
-    const rows = (characters ?? []).filter((row) => {
+    const rows = visibleCharacters.filter((row) => {
       const meta = (row.metadata ?? {}) as Record<string, unknown>;
       return meta.is_self !== true && meta.is_user !== true;
     });
@@ -75,7 +122,7 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
       }));
   }
 
-  return { characters: characters ?? [], duplicate_groups, counts };
+  return { characters: visibleCharacters, duplicate_groups, counts: visibleCounts };
 }
 
 export async function loadLocationsBook(userId: string) {

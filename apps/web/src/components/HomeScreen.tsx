@@ -7,33 +7,46 @@
 //   4. What you're working toward  → Top active quests
 //   5. How you're growing          → Top skills by level
 //
-// No new backend. No new tables. Uses existing APIs only.
+// Uses existing backend APIs and refreshes visible dashboard data.
 
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Sparkles, X, Users, Target, TrendingUp,
   MessageSquareText, ArrowRight, ChevronRight,
   Clock, Zap, Star, BookOpen,
 } from 'lucide-react';
-import { useAuth } from '../lib/supabase';
-import { fetchJson } from '../lib/api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { fetchCharacterList } from '../api/characterList';
+import { skillsApi } from '../api/skills';
+import { fetchWhatChanged } from '../api/whatChanged';
+import { useRecentChatThreads } from '../contexts/ChatThreadContext';
+import { useQuestBoard } from '../hooks/useQuests';
+import { useVisiblePolling } from '../hooks/useVisiblePolling';
+import { apiCache } from '../lib/cache';
 import { cn } from '../lib/cn';
+import { useAuth } from '../lib/supabase';
+import type { Quest } from '../types/quest';
+import type { Skill } from '../types/skill';
+
 import { LivingBiographyCard } from './biography/LivingBiographyCard';
 import { CareerHomeCard } from './career/CareerHomeCard';
-import { fetchWhatChanged } from '../api/whatChanged';
-import { skillsApi } from '../api/skills';
-import { useQuestBoard } from '../hooks/useQuests';
 import type { Character } from './characters/CharacterProfileCard';
-import type { Skill } from '../types/skill';
-import { useRecentChatThreads } from '../contexts/ChatThreadContext';
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LAST_VISIT_KEY = 'lk_home_last_visit_';
 const MIN_GAP_HOURS  = 20;
 const MAX_GAP_HOURS  = 24 * 60; // 60 days
+const HOME_REFRESH_INTERVAL_MS = 60_000;
+
+const HOME_CACHE_PATTERNS = [
+  /\/api\/books\/characters(?:\?|:|$)/,
+  /\/api\/books\/skills(?:\?|:|$)/,
+  /\/api\/skills(?:\?|:|$)/,
+  /\/api\/quests\/board(?:\?|:|$)/,
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +83,23 @@ function getAndRefreshLastVisit(userId: string): string | null {
   return prev;
 }
 
+function invalidateHomeCaches(): void {
+  HOME_CACHE_PATTERNS.forEach((pattern) => apiCache.deletePattern(pattern));
+}
+
+function uniqueCharactersForHome(characters: Character[]): Character[] {
+  const byName = new Map<string, Character>();
+  for (const character of characters) {
+    const key = character.name?.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!key) continue;
+    const existing = byName.get(key);
+    if (!existing || (character.importance_score ?? 0) > (existing.importance_score ?? 0)) {
+      byName.set(key, character);
+    }
+  }
+  return [...byName.values()];
+}
+
 // ─── WhatChangedHomeCard ──────────────────────────────────────────────────────
 // Adapted from WhatChangedSinceLastTime but keyed off home-visit timestamp
 // instead of a specific chat thread.
@@ -93,8 +123,6 @@ const WhatChangedHomeCard = ({ userId }: { userId: string }) => {
         setDays(summary.gapDays);
       })
       .catch(() => {});
-  // Run once on mount only.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   if (!lines || lines.length === 0 || dismissed) return null;
@@ -286,8 +314,9 @@ export const HomeScreen = () => {
   // ── Data state ─────────────────────────────────────────────────────────────
   const [topChars,       setTopChars]       = useState<Character[]>([]);
   const [topSkills,      setTopSkills]      = useState<Skill[]>([]);
+  const refreshSeq = useRef(0);
 
-  const { data: board } = useQuestBoard();
+  const { data: board, refetch: refetchQuestBoard } = useQuestBoard();
 
   // Top 3 active quests — main quests first, then side quests
   const topQuests = useMemo<Quest[]>(() => {
@@ -299,26 +328,46 @@ export const HomeScreen = () => {
     return active.slice(0, 3);
   }, [board]);
 
-  // ── Fetch characters, skills, threads in parallel ──────────────────────────
-  useEffect(() => {
-    // Top characters
-    fetchCharacterList<Character>()
+  const refreshHomeData = useCallback((forceServerRefresh = false) => {
+    if (forceServerRefresh) invalidateHomeCaches();
+
+    const seq = ++refreshSeq.current;
+
+    void fetchCharacterList<Character>()
       .then((characters) => {
-        const sorted = [...characters]
+        if (seq !== refreshSeq.current) return;
+        const sorted = uniqueCharactersForHome(characters)
           .sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0));
         setTopChars(sorted.slice(0, 3));
       })
       .catch(() => {});
 
-    // Top skills
-    skillsApi.getSkills({ active_only: true })
+    void skillsApi.getSkills({ active_only: true })
       .then(skills => {
+        if (seq !== refreshSeq.current) return;
         const sorted = [...skills]
           .sort((a, b) => b.current_level - a.current_level);
         setTopSkills(sorted.slice(0, 3));
       })
       .catch(() => {});
-  }, []);
+
+    if (forceServerRefresh) {
+      void refetchQuestBoard?.();
+    }
+  }, [refetchQuestBoard]);
+
+  // Keep dashboard panels tied to backend state while the home screen is open.
+  useVisiblePolling(
+    () => refreshHomeData(true),
+    HOME_REFRESH_INTERVAL_MS,
+    { immediate: true, runOnVisible: true },
+  );
+
+  useEffect(() => {
+    const refreshOnFocus = () => refreshHomeData(true);
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [refreshHomeData]);
 
   // ── Derived display flags ──────────────────────────────────────────────────
   const hasChars  = topChars.length  > 0;
