@@ -39,23 +39,43 @@ describe('persistConfirmedPreviewSpan', () => {
     expect(confirmComposerEntity).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT create a character for a place span (handled by send→ingest)', async () => {
-    const result = await persistConfirmedPreviewSpan(span('Tokyo', { type: 'PLACE', colorKey: 'place' }));
-    expect(result).toBeNull();
-    expect(confirmComposerEntity).not.toHaveBeenCalled();
+  it('creates a location for a place span', async () => {
+    confirmComposerEntity.mockResolvedValue({ id: 'l1', name: 'Tokyo', type: 'location', created: true });
+    await persistConfirmedPreviewSpan(span('Tokyo', { type: 'PLACE', colorKey: 'place' }));
+    expect(confirmComposerEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Tokyo', type: 'location', status: 'draft' }),
+    );
   });
 
-  it('does NOT create for an organization span', async () => {
-    const result = await persistConfirmedPreviewSpan(span('Google', { type: 'ORGANIZATION', colorKey: 'organization' }));
-    expect(result).toBeNull();
-    expect(confirmComposerEntity).not.toHaveBeenCalled();
+  it('creates an organization for an organization span', async () => {
+    confirmComposerEntity.mockResolvedValue({ id: 'o1', name: 'Google', type: 'organization', created: true });
+    await persistConfirmedPreviewSpan(span('Google', { type: 'ORGANIZATION', colorKey: 'organization' }));
+    expect(confirmComposerEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Google', type: 'organization', status: 'draft' }),
+    );
   });
 
-  it('respects a user type correction away from person', async () => {
-    const result = await persistConfirmedPreviewSpan(
+  it('routes a group span to the organization book', async () => {
+    confirmComposerEntity.mockResolvedValue({ id: 'o2', name: 'Chess Club', type: 'organization', created: true });
+    await persistConfirmedPreviewSpan(span('Chess Club', { type: 'GROUP', colorKey: 'group' }));
+    expect(confirmComposerEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Chess Club', type: 'organization' }),
+    );
+  });
+
+  it('honors a user type correction (uncertain → organization)', async () => {
+    confirmComposerEntity.mockResolvedValue({ id: 'o3', name: 'Apple', type: 'organization', created: true });
+    await persistConfirmedPreviewSpan(
       span('Apple', { type: 'OBJECT', colorKey: 'uncertain' }),
       { spanId: '0:5', text: 'Apple', correctedType: 'ORGANIZATION' } as never,
     );
+    expect(confirmComposerEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Apple', type: 'organization' }),
+    );
+  });
+
+  it('skips kinds without a name-based create (e.g. skill)', async () => {
+    const result = await persistConfirmedPreviewSpan(span('Guitar', { type: 'SKILL', colorKey: 'skill' }));
     expect(result).toBeNull();
     expect(confirmComposerEntity).not.toHaveBeenCalled();
   });
