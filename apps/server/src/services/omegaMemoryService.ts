@@ -902,13 +902,18 @@ Only extract clear relationships. Include temporal context when available.`
     // NOTE: this is the ONE claim read that intentionally keeps `select('*')` —
     // conflictDetected() reuses the stored embedding to avoid a per-claim OpenAI
     // re-embed (cost + latency + 429 risk). Egress here is a deliberate trade.
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('omega_claims')
       .select('*')
       .eq('user_id', userId)
       .eq('entity_id', claim.entity_id)
-      .eq('is_active', true)
-      .neq('id', claim.id || '');
+      .eq('is_active', true);
+
+    if (claim.id) {
+      query = query.neq('id', claim.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       logger.error({ err: error, userId, claimId: claim.id }, 'Failed to find similar claims');
