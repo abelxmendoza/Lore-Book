@@ -240,19 +240,34 @@ export async function confirmComposerEntity(entity: CertifiedEntityMatch): Promi
       break;
     }
     case 'organization': {
-      if (entity.id.startsWith('sug:')) {
-        throw new Error('Organization suggestion is missing a candidate id — open Groups to confirm.');
+      if (entity.status === 'draft' || entity.id.startsWith('draft:')) {
+        // Freshly detected composer span — no group candidate exists yet, so
+        // create the organization by name directly.
+        const response = await fetchJson<{ organization?: { id?: string; name?: string } }>('/api/organizations', {
+          method: 'POST',
+          body: JSON.stringify({ name: entity.name }),
+        });
+        confirmed = {
+          id: String(response.organization?.id ?? entity.id),
+          name: String(response.organization?.name ?? entity.name),
+          type: entity.type,
+          created: true,
+        };
+      } else {
+        if (entity.id.startsWith('sug:')) {
+          throw new Error('Organization suggestion is missing a candidate id — open Groups to confirm.');
+        }
+        const response = await fetchJson<{ organization_id?: string }>(`/api/group-candidates/${entity.id}/accept`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        confirmed = {
+          id: String(response.organization_id ?? entity.id),
+          name: entity.name,
+          type: entity.type,
+          created: true,
+        };
       }
-      const response = await fetchJson<{ organization_id?: string }>(`/api/group-candidates/${entity.id}/accept`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      confirmed = {
-        id: String(response.organization_id ?? entity.id),
-        name: entity.name,
-        type: entity.type,
-        created: true,
-      };
       invalidateEntityTags(['Organization']);
       triggerCelebration({
         variant: 'organization',
