@@ -43,16 +43,22 @@ import { embeddingService } from './embeddingService';
 import { provenanceEdgeService } from './provenance/provenanceEdgeService';
 import { supabaseAdmin } from './supabaseClient';
 
-function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Array<{ name: string; type: EntityType }> {
-  const seen = new Set<string>();
-  const out: Array<{ name: string; type: EntityType }> = [];
+function uniqueEntities<T extends { name: string; type: EntityType; bornConfirmed?: boolean }>(
+  entities: T[]
+): T[] {
+  const byKey = new Map<string, T>();
   for (const entity of entities) {
     const key = `${normalizeNameKey(entity.name)}:${entity.type}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(entity);
+    const existing = byKey.get(key);
+    if (existing) {
+      // A later mention of the same name may carry the recall-active signal the
+      // first occurrence lacked — OR it in rather than dropping the duplicate.
+      if (entity.bornConfirmed) existing.bornConfirmed = true;
+      continue;
+    }
+    byKey.set(key, { ...entity });
   }
-  return out;
+  return [...byKey.values()];
 }
 
 /**
@@ -148,7 +154,7 @@ export function writeCache<T>(cache: Map<string, CacheBox<T>>, key: string, valu
   }
 }
 
-const extractEntitiesCache = new Map<string, CacheBox<Array<{ name: string; type: EntityType }>>>();
+const extractEntitiesCache = new Map<string, CacheBox<Array<{ name: string; type: EntityType; bornConfirmed?: boolean }>>>();
 const resolveEntitiesCache = new Map<string, CacheBox<Entity[]>>();
 
 export class OmegaMemoryService {
@@ -247,7 +253,7 @@ export class OmegaMemoryService {
    * Extract entities from text using LLM
    * Made public for mocking in tests
    */
-  async extractEntities(text: string): Promise<Array<{ name: string; type: EntityType }>> {
+  async extractEntities(text: string): Promise<Array<{ name: string; type: EntityType; bornConfirmed?: boolean }>> {
     // FIX 1: Hard fail in tests - prevent LLM access during unit tests
     if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
       throw new Error(
@@ -267,7 +273,7 @@ export class OmegaMemoryService {
     return extracted;
   }
 
-  private async extractEntitiesUncached(text: string): Promise<Array<{ name: string; type: EntityType }>> {
+  private async extractEntitiesUncached(text: string): Promise<Array<{ name: string; type: EntityType; bornConfirmed?: boolean }>> {
     const deterministicCandidates = this.extractDeterministicEntities(text);
 
     // Pre-LLM gate: skip the extraction call entirely when the text has no
@@ -338,7 +344,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
 
       const expanded = expandEntityCandidates(text, [...deterministicCandidates, ...llmEntities]);
       return uniqueEntities(
-        expanded.map((e) => ({ name: e.name, type: e.type as EntityType }))
+        expanded.map((e) => ({ name: e.name, type: e.type as EntityType, bornConfirmed: e.bornConfirmed }))
       ).filter((entity) => entity.type !== 'UNKNOWN');
     } catch (error: any) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
@@ -354,7 +360,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
     }
   }
 
-  private extractDeterministicEntities(text: string): Array<{ name: string; type: EntityType }> {
+  private extractDeterministicEntities(text: string): Array<{ name: string; type: EntityType; bornConfirmed?: boolean }> {
     const candidates = new Set<string>();
     const properNounPattern = /\b([A-ZÀ-Ý][a-zÀ-ÿ0-9'’.-]+(?:\s+[A-ZÀ-Ý][a-zÀ-ÿ0-9'’.-]+){0,3})\b/g;
     let match: RegExpExecArray | null;
@@ -382,7 +388,11 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       .map(({ name, type }) => ({ name, type }));
 
     return uniqueEntities(
-      expandEntityCandidates(text, base).map((e) => ({ name: e.name, type: e.type as EntityType }))
+      expandEntityCandidates(text, base).map((e) => ({
+        name: e.name,
+        type: e.type as EntityType,
+        bornConfirmed: e.bornConfirmed,
+      }))
     ).filter((entity) => entity.type !== 'UNKNOWN');
   }
 
@@ -396,7 +406,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
    */
   async resolveEntities(
     userId: string,
-    candidates: Array<{ name: string; type: EntityType }>,
+    candidates: Array<{ name: string; type: EntityType; bornConfirmed?: boolean }>,
     options?: { context?: ResolutionContext }
   ): Promise<Entity[]> {
     if (candidates.length === 0) return [];
@@ -424,7 +434,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
 
   private async resolveEntitiesUncached(
     userId: string,
-    candidates: Array<{ name: string; type: EntityType }>,
+    candidates: Array<{ name: string; type: EntityType; bornConfirmed?: boolean }>,
     options?: { context?: ResolutionContext }
   ): Promise<Entity[]> {
     if (candidates.length === 0) return [];
@@ -498,7 +508,9 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         if (bridged.useCore && bridged.productionDecision === 'skip') {
           continue;
         }
-        match = await this.createEntity(userId, candidate.name, candidate.type);
+        match = await this.createEntity(userId, candidate.name, candidate.type, [], {
+          bornConfirmed: candidate.bornConfirmed,
+        });
         pool.push(match);
         typeEntities.set(candidate.type, pool);
       }
@@ -611,8 +623,15 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
     userId: string,
     name: string,
     type: EntityType,
-    aliases: string[] = []
+    aliases: string[] = [],
+    options: { bornConfirmed?: boolean } = {}
   ): Promise<Entity> {
+    // A new entity is born 'mentioned_only' (a suggestion-queue candidate that
+    // chat recall ignores) unless the extracting mention carried positive PERSON
+    // evidence — see expandEntityCandidates. Born-confirmed entities are
+    // recall-active immediately, so a named person engaged with even once
+    // ("Bill texted me") is remembered rather than waiting for a second mention.
+    const bornConfirmed = options.bornConfirmed === true;
     // Race condition guard: a concurrent request may have just created this
     // entity. ilike is case- but not accent-insensitive ("Tía" vs "Tia"), so
     // fetch the user's entities of this type and compare normalized keys.
@@ -628,7 +647,10 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         normalizeNameKey(e.primary_name) === nameKey ||
         (Array.isArray(e.aliases) && e.aliases.some((a: string) => normalizeNameKey(a) === nameKey))
     );
-    if (existing) return existing;
+    if (existing) {
+      if (bornConfirmed) this.confirmIfMentionedOnly(userId, existing);
+      return existing;
+    }
 
     // Resolve-before-write gate: even callers that reach createEntity directly
     // (bypassing resolveEntities) must pass through the authority resolver, so a
@@ -642,6 +664,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       : bridged.legacy.entity;
     if (resolvedExisting) {
       this.registerAliasIfNew(userId, resolvedExisting, name).catch(() => {});
+      if (bornConfirmed) this.confirmIfMentionedOnly(userId, resolvedExisting);
       return resolvedExisting;
     }
 
@@ -657,7 +680,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         aliases,
         embedding: `[${embedding.join(',')}]`,
         mention_count: 1,
-        mention_status: 'mentioned_only',
+        mention_status: bornConfirmed ? 'confirmed' : 'mentioned_only',
       })
       .select(OMEGA_ENTITY_COLS) // don't echo the embedding we just wrote back
       .single();
@@ -986,6 +1009,27 @@ Only extract clear relationships. Include temporal context when available.`
     } catch (err) {
       logger.warn({ err, entityId: entity.id, alias: name }, 'alias registration failed (non-fatal)');
     }
+  }
+
+  /**
+   * Fire-and-forget: flip an existing 'mentioned_only' entity to 'confirmed'
+   * when a later mention arrives carrying positive PERSON evidence (born-confirmed
+   * signal). This rescues people first seen as a bare name-drop (suggestion-queue
+   * only) the moment the conversation actually engages with them.
+   */
+  private confirmIfMentionedOnly(userId: string, entity: Entity): void {
+    const e = entity as Entity & { mention_status?: string };
+    if (e.mention_status !== 'mentioned_only') return;
+    e.mention_status = 'confirmed';
+    Promise.resolve(
+      supabaseAdmin
+        .from('omega_entities')
+        .update({ mention_status: 'confirmed' })
+        .eq('id', entity.id)
+        .eq('user_id', userId)
+    ).catch((err: unknown) =>
+      logger.warn({ err, entityId: entity.id }, 'born-confirmed promotion failed (non-fatal)')
+    );
   }
 
   private promoteMentionIfNeeded(userId: string, entity: Entity): void {

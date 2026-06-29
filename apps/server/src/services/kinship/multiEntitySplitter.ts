@@ -5,7 +5,7 @@ import { extractKinshipMentions } from './kinshipGlossary';
 import { classifyEntity, toOmegaType } from '../entities/entityClassifier';
 import type { EntityType } from '../../types/omegaMemory';
 
-export type EntityCandidate = { name: string; type: EntityType; kinshipRole?: string };
+export type EntityCandidate = { name: string; type: EntityType; kinshipRole?: string; bornConfirmed?: boolean };
 
 const LIST_SPLIT = /\s+(?:,|\band\b|\by\b|\&)\s+/i;
 
@@ -30,18 +30,31 @@ export function expandEntityCandidates(
   const out: EntityCandidate[] = [];
   const seen = new Set<string>();
 
-  const push = (name: string, type: EntityType, kinshipRole?: string) => {
+  const push = (name: string, type: EntityType, kinshipRole?: string, bornConfirmed?: boolean) => {
     const key = name.trim().toLowerCase();
     if (!key || seen.has(key)) return;
     seen.add(key);
-    out.push({ name: name.trim(), type, ...(kinshipRole ? { kinshipRole } : {}) });
+    out.push({
+      name: name.trim(),
+      type,
+      ...(kinshipRole ? { kinshipRole } : {}),
+      ...(bornConfirmed ? { bornConfirmed: true } : {}),
+    });
   };
 
   for (const c of candidates) {
     const parts = splitCompoundMention(c.name);
     for (const part of parts) {
       const classification = classifyEntity(part, text);
-      push(part, c.type === 'UNKNOWN' ? toOmegaType(classification.rootType) as EntityType : c.type);
+      const finalType = c.type === 'UNKNOWN' ? (toOmegaType(classification.rootType) as EntityType) : c.type;
+      // Born recall-active only when this mention carries positive PERSON
+      // evidence in-context (honorific+name, or a person predicate like
+      // "Bill texted me"). A bare capitalized phrase with no predicate stays
+      // a suggestion-queue candidate — that's how we avoid confirming
+      // concept/place look-alikes ("Computer Science", "Discovery Cube").
+      const bornConfirmed =
+        classification.type === 'PERSON' && (finalType === 'PERSON' || finalType === 'CHARACTER');
+      push(part, finalType, undefined, bornConfirmed);
     }
   }
 
@@ -49,7 +62,9 @@ export function expandEntityCandidates(
     const classification = classifyEntity(kin.sourcePhrase, text);
     const type = toOmegaType(classification.rootType);
     if (type === 'PERSON' || type === 'CHARACTER' || type === 'UNKNOWN') {
-      push(kin.sourcePhrase, 'PERSON', kin.role.toLowerCase());
+      // Kinship-with-name ("Tío Juan") classifies PERSON → recall-active;
+      // a bare kinship title ("uncle") stays a candidate until named.
+      push(kin.sourcePhrase, 'PERSON', kin.role.toLowerCase(), classification.type === 'PERSON');
     }
   }
 
