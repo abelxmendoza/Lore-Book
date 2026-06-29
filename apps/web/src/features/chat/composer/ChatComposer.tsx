@@ -16,6 +16,7 @@ import { cn } from '../../../lib/cn';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
+import { persistConfirmedPreviewSpan } from '../../../lib/persistConfirmedPreviewSpan';
 
 type ChatComposerProps = {
   onSubmit: (
@@ -311,7 +312,10 @@ export const ChatComposer = ({
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
-            onConfirmPreviewSpan={(span) => correction.confirmPreviewSpan(span)}
+            onConfirmPreviewSpan={(span) => {
+              correction.confirmPreviewSpan(span);
+              void persistConfirmedPreviewSpan(span, correction.getCorrectedSpan(span));
+            }}
             onDismissPreviewSpan={(span) => correction.dismissPreviewSpan(span)}
           />
 

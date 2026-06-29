@@ -5,6 +5,7 @@ import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
 import { ComposerEntityChips } from './ComposerEntityChips';
+import { persistConfirmedPreviewSpan } from '../../../lib/persistConfirmedPreviewSpan';
 import { getComposerStats } from '../hooks/useVisualViewportSize';
 
 type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
@@ -131,7 +132,10 @@ export const JournalComposerOverlay = ({
             onDismiss={onDismiss}
             onConfirm={onConfirm}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
-            onConfirmPreviewSpan={(span) => correction.confirmPreviewSpan(span)}
+            onConfirmPreviewSpan={(span) => {
+              correction.confirmPreviewSpan(span);
+              void persistConfirmedPreviewSpan(span, correction.getCorrectedSpan(span));
+            }}
             onDismissPreviewSpan={(span) => correction.dismissPreviewSpan(span)}
           />
           <EntityHighlightedComposer

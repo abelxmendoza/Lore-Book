@@ -17,6 +17,7 @@ import {
   runLexicalIntelligence,
   intelligenceSpanToPreview,
 } from './intelligence/lexicalIntelligenceService';
+import { classifyEntity } from '../entities/entityClassifier';
 
 export type LexicalPreviewSpan = {
   text: string;
@@ -63,6 +64,43 @@ function filterNoiseSpans(spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
   return filtered.filter((s) => {
     if (s.type !== 'PERSON') return true;
     return !orgSpans.some((o) => s.start < o.end && s.end > o.start);
+  });
+}
+
+// EntityClass (from the ingestion classifier) → composer preview type + colorKey.
+// Used to rescue proper nouns the lightweight analyzer leaves as OBJECT/uncertain
+// — without this they fall through the frontend's `?? 'person'` default and every
+// place/org/group shows up as a person chip.
+const CLASS_TO_PREVIEW: Record<string, { type: string; colorKey: string }> = {
+  PERSON: { type: 'PERSON', colorKey: 'person' },
+  FAMILY: { type: 'PERSON', colorKey: 'person' },
+  PLACE: { type: 'PLACE', colorKey: 'place' },
+  LOCATION: { type: 'PLACE', colorKey: 'place' },
+  HOUSEHOLD: { type: 'PLACE', colorKey: 'place' },
+  ORGANIZATION: { type: 'ORGANIZATION', colorKey: 'organization' },
+  BRAND: { type: 'ORGANIZATION', colorKey: 'organization' },
+  APP: { type: 'ORGANIZATION', colorKey: 'organization' },
+  GROUP: { type: 'GROUP', colorKey: 'group' },
+  EVENT: { type: 'EVENT', colorKey: 'event' },
+  SKILL: { type: 'SKILL', colorKey: 'skill' },
+};
+
+/**
+ * Re-type proper-noun spans the analyzer left untyped (OBJECT/PROPER_NOUN →
+ * colorKey "uncertain") using the contextual entity classifier. Place/org/group
+ * proper nouns get correct chips; genuinely ambiguous spans (e.g. a bare first
+ * name with no evidence) are left as-is so they keep the person default.
+ */
+export function upgradeProperNounSpans(text: string, spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
+  return spans.map((span) => {
+    const untyped =
+      span.colorKey === 'uncertain' ||
+      (span.type === 'OBJECT' && (span.subtype === 'PROPER_NOUN' || !span.subtype));
+    if (!untyped) return span;
+    const cls = classifyEntity(span.text, text);
+    const mapped = CLASS_TO_PREVIEW[cls.type];
+    if (!mapped || cls.confidence < 0.55) return span;
+    return { ...span, type: mapped.type, colorKey: mapped.colorKey };
   });
 }
 
@@ -199,6 +237,9 @@ export async function previewLexicalSpans(input: {
 
   let spans: LexicalPreviewSpan[] = intelligence.spans.map(intelligenceSpanToPreview);
   spans = filterNoiseSpans(spans);
+  // Type proper nouns the analyzer left as OBJECT/uncertain BEFORE downstream
+  // inference (school/friendship/workplace) reads spans by PERSON/PLACE/GROUP.
+  spans = upgradeProperNounSpans(text, spans);
 
   const history = await loadHistoryContext(userId);
   const className = extractSchoolClassName(text);
