@@ -124,22 +124,34 @@ export function chatCompletionParamsToResponses(
   return responsesParams;
 }
 
-/** Responses API requires the word "json" in input when using json_object format. */
+/**
+ * Responses API requires the word "json" in the INPUT when using json_object
+ * format. Crucially the check is against `input` only — NOT `instructions` — so a
+ * prompt whose "JSON" lives in the system message (now `instructions`) still
+ * 400s. Most call sites do exactly that, so verify the keyword in `input` and, if
+ * absent, inject it into `input` (not instructions).
+ */
 function ensureJsonKeywordForResponses(
   params: OpenAI.Responses.ResponseCreateParamsNonStreaming,
 ): void {
   if (params.text?.format?.type !== 'json_object') return;
 
-  const haystack = [
-    params.instructions ?? '',
-    typeof params.input === 'string' ? params.input : JSON.stringify(params.input ?? ''),
-  ].join('\n');
+  const inputHasJson =
+    typeof params.input === 'string'
+      ? /json/i.test(params.input)
+      : Array.isArray(params.input) &&
+        params.input.some((item) => /json/i.test(JSON.stringify(item ?? '')));
 
-  if (/json/i.test(haystack)) return;
+  if (inputHasJson) return;
 
-  params.instructions = params.instructions
-    ? `${params.instructions}\n\nRespond with valid JSON.`
-    : 'Respond with valid JSON.';
+  const note = 'Respond with valid JSON.';
+  if (typeof params.input === 'string') {
+    params.input = params.input ? `${params.input}\n\n${note}` : note;
+  } else if (Array.isArray(params.input)) {
+    params.input = [...params.input, { role: 'user', content: note }];
+  } else {
+    params.input = note;
+  }
 }
 
 /** Read assistant text from a Responses result (SDK helper or output items). */
