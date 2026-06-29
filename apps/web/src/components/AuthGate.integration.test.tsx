@@ -53,6 +53,7 @@ vi.mock('../hooks/useTermsAcceptance', () => ({
 
 vi.mock('../routes/Demo', () => ({
   clearDemoSession: vi.fn(),
+  isDemoSession: vi.fn(() => false),
   default: () => null,
 }));
 

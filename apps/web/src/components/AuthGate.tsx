@@ -4,7 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 
 import { getConfigDebug, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { LANDING_PATH, saveAuthReturnPath } from '../lib/authReturnPath';
-import { clearDemoSession } from '../routes/Demo';
+import { clearDemoSession, isDemoSession } from '../routes/Demo';
 import { Logo } from './Logo';
 import { TermsOfServiceAgreement } from './security/TermsOfServiceAgreement';
 import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
@@ -33,6 +33,8 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const { status: termsStatus, loading: termsLoading } = useTermsAcceptance();
   const { isGuest, endGuestSession } = useGuest();
   const { needsAuth, needsTerms } = useRuntimeIdentity();
+  // A demo runtime grants the same no-auth, mock-data-only access as a guest.
+  const inDemo = isDemoSession();
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
@@ -179,7 +181,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   // Guest/demo/degraded runtimes skip ToS, but only after explicit entry (session,
   // Continue as Guest, or Demo Mode) — never for a cold visit to /home, /chat, etc.
   if (!needsAuth && !needsTerms) {
-    if (session || isGuest) {
+    if (session || isGuest || inDemo) {
       return <>{children}</>;
     }
   }
@@ -223,7 +225,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (loading && !isGuest) {
+  if (loading && !isGuest && !inDemo) {
     return (
       <BookGhostLoader
         fullScreen
@@ -234,7 +236,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (!session && !isGuest) {
+  if (!session && !isGuest && !inDemo) {
     saveAuthReturnPath(location.pathname, location.search);
     return <Navigate to={LANDING_PATH} replace />;
   }
