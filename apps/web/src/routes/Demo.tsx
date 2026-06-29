@@ -41,3 +41,13 @@ export default function DemoRuntime() {
 export function clearDemoSession() {
   sessionStorage.removeItem(DEMO_SESSION_KEY);
 }
+
+/**
+ * True when this tab is in a demo runtime. A demo session has no Supabase auth
+ * token, so every API call is unauthenticated → mock data only; it grants the
+ * app shell the same no-data-exposure access as a guest session.
+ */
+export function isDemoSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(DEMO_SESSION_KEY) === 'true';
+}
