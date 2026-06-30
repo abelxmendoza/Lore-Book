@@ -17,6 +17,7 @@ import {
 } from './conversationCentered/romanticRelationshipDetector';
 import { extractAndLogInteraction } from './conversationCentered/romanticInteractionExtractor';
 import { assessRomanticPartnerEligibility } from './conversationCentered/romanticEligibility';
+import { organizationService } from './organizationService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
 import type { EntityType } from '../types/omegaMemory';
@@ -118,8 +119,15 @@ export async function applyRomanticLexicalHit(
   const partner = partnerOverride ?? (await resolveRomanticPartner(userId, hit.partnerName));
   if (!partner) return null;
 
-  // Skip role labels / third-party partners before touching the DB.
-  const eligibility = assessRomanticPartnerEligibility({ name: partner.name, evidence: hit.evidence });
+  // Skip role labels / third-party partners / band names before touching the DB.
+  const knownOrganizationNames = await organizationService
+    .listOrganizationLabels(userId)
+    .catch(() => [] as string[]);
+  const eligibility = assessRomanticPartnerEligibility({
+    name: partner.name,
+    evidence: hit.evidence,
+    knownOrganizationNames,
+  });
   if (!eligibility.eligible) return null;
 
   const detected: DetectedRomanticRelationship = {

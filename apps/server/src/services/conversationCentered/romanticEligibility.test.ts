@@ -51,4 +51,48 @@ describe('assessRomanticPartnerEligibility', () => {
   it('rejects collective / non-individual names', () => {
     expect(assessRomanticPartnerEligibility({ name: 'The Engineers' }).eligible).toBe(false);
   });
+
+  describe('Groups & Organizations cross-reference', () => {
+    const orgs = ['Ex Lover', 'Northwind Robotics'];
+
+    it("does not romance a bandmate when the romantic cue is the band's name", () => {
+      // "Ex Lover" is a band in the Orgs book → the ex-lover cue is really the band.
+      const r = assessRomanticPartnerEligibility({
+        name: 'Oscuridad',
+        evidence: 'played a show with my ex lover bandmates',
+        knownOrganizationNames: orgs,
+      });
+      expect(r.eligible).toBe(false);
+      expect(r.reason).toBe('role_cue_is_known_organization');
+    });
+
+    it('rejects a "partner" that is actually one of the user\'s organizations', () => {
+      const r = assessRomanticPartnerEligibility({
+        name: 'Northwind Robotics',
+        evidence: 'I love Northwind Robotics',
+        knownOrganizationNames: orgs,
+      });
+      expect(r.eligible).toBe(false);
+      // Caught as a non-individual person before the org check, but still rejected.
+      expect(r.eligible).toBe(false);
+    });
+
+    it('still accepts a genuine partner even with an org book present', () => {
+      const r = assessRomanticPartnerEligibility({
+        name: 'Sol',
+        evidence: 'I was dating Sol for a while',
+        knownOrganizationNames: orgs,
+      });
+      expect(r.eligible).toBe(true);
+    });
+
+    it('does not over-suppress when the band name is not a relationship word', () => {
+      const r = assessRomanticPartnerEligibility({
+        name: 'Sol',
+        evidence: 'Sol and I went to a Northwind Robotics meetup',
+        knownOrganizationNames: orgs,
+      });
+      expect(r.eligible).toBe(true);
+    });
+  });
 });

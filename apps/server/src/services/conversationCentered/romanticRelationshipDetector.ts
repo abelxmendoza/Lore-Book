@@ -8,6 +8,8 @@ import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { assessRomanticPartnerEligibility } from './romanticEligibility';
+import { organizationService } from '../organizationService';
+import { persistThirdPartyRomances } from './thirdPartyRelationshipService';
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -202,15 +204,27 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
   ): Promise<void> {
     // Guard: never store role labels ("Ex Lover") or someone else's partner
     // (evidence like "her boyfriend Juan") as the user's romantic relationship.
+    const knownOrganizationNames = await organizationService
+      .listOrganizationLabels(userId)
+      .catch(() => [] as string[]);
     const eligibility = assessRomanticPartnerEligibility({
       name: relationship.partnerName,
       evidence: relationship.evidence,
+      knownOrganizationNames,
     });
     if (!eligibility.eligible) {
       logger.info(
         { userId, personId: relationship.personId, reason: eligibility.reason },
         'Skipped ineligible romantic relationship'
       );
+      // A "third-party partner" ("her boyfriend Juan") is not the user's romance,
+      // but it IS a romance between two other people — record that edge instead of
+      // dropping the fact entirely.
+      if (eligibility.reason === 'third_party_partner') {
+        await persistThirdPartyRomances(userId, relationship.evidence, sourceMessageId).catch((err) =>
+          logger.debug({ err, userId }, 'third-party romance persistence failed')
+        );
+      }
       return;
     }
     try {

@@ -79,10 +79,16 @@ export type RomanticEligibility = { eligible: boolean; reason?: string };
 /**
  * Decide whether a detected romantic partner should be stored as one of the
  * user's romantic relationships.
+ *
+ * Pass `knownOrganizationNames` (the user's Groups & Organizations book) to make
+ * this consistent with what the app already knows: a romantic signal that is
+ * really a band/org name ("Ex Lover", "Lover", "Crush") must not romance the
+ * org's members.
  */
 export function assessRomanticPartnerEligibility(input: {
   name?: string | null;
   evidence?: string | null;
+  knownOrganizationNames?: Iterable<string> | null;
 }): RomanticEligibility {
   const name = input.name?.trim() ?? '';
 
@@ -98,5 +104,27 @@ export function assessRomanticPartnerEligibility(input: {
   if (hasThirdPartyPartnerCue(input.evidence)) {
     return { eligible: false, reason: 'third_party_partner' };
   }
+
+  // ── Cross-reference the Groups & Organizations book ──────────────────────
+  const orgLabels = [...(input.knownOrganizationNames ?? [])]
+    .map(normalizeRoleLabel)
+    .filter(Boolean);
+  if (orgLabels.length > 0) {
+    const orgSet = new Set(orgLabels);
+    const nameKey = normalizeRoleLabel(name);
+    // The "partner" is actually one of the user's organizations/bands.
+    if (nameKey && orgSet.has(nameKey)) {
+      return { eligible: false, reason: 'partner_is_known_organization' };
+    }
+    // The romantic cue came from a band name that doubles as a relationship word
+    // (the band "Ex Lover" in the evidence → not a real "ex lover" of this person).
+    const evidenceKey = normalizeRoleLabel(input.evidence ?? '');
+    for (const org of orgSet) {
+      if (RELATIONSHIP_ROLE_LABELS.has(org) && evidenceKey.split(' ').length > 0 && ` ${evidenceKey} `.includes(` ${org} `)) {
+        return { eligible: false, reason: 'role_cue_is_known_organization' };
+      }
+    }
+  }
+
   return { eligible: true };
 }
