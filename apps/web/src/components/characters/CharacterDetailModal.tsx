@@ -30,6 +30,7 @@ import { CharacterInfoPanel } from './CharacterInfoPanel';
 import { EditableEntityName } from '../common/EditableEntityName';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useMockData } from '../../contexts/MockDataContext';
+import { mockDataService } from '../../services/mockDataService';
 import {
   getMockAttributes,
   getMockAllAttributes,
