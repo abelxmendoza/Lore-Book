@@ -16,7 +16,10 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
+import { toFieldSource } from '../common/FieldSourceBadge';
+import { EditableField, type EditableFieldOption } from '../common/EditableField';
 import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
+import { fetchJson } from '../../lib/api';
 import type { Character } from './CharacterProfileCard';
 import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel';
@@ -44,6 +47,7 @@ type Relationship = {
   cons?: string[];
   red_flags?: string[];
   green_flags?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 type CharacterAttribute = {
@@ -96,6 +100,9 @@ export type CharacterInfoPanelProps = {
   loreProfile?: CharacterLoreProfile | null;
   loreProfileLoading?: boolean;
   onOpenCharacterById?: (characterId: string) => void;
+  onAddWorldPerson?: (targetCharacterId: string, relationshipType: string, status: string) => Promise<void>;
+  onUpdateWorldPerson?: (relationshipId: string, patch: { relationship_type?: string; status?: string }) => Promise<void>;
+  onDeleteWorldPerson?: (relationshipId: string) => Promise<void>;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -133,6 +140,9 @@ export function CharacterInfoPanel({
   loreProfile,
   loreProfileLoading = false,
   onOpenCharacterById,
+  onAddWorldPerson,
+  onUpdateWorldPerson,
+  onDeleteWorldPerson,
 }: CharacterInfoPanelProps) {
   const [updateCharacter] = useUpdateCharacterMutation();
   const meta = (editedCharacter.metadata ?? {}) as Record<string, unknown>;
@@ -140,6 +150,55 @@ export function CharacterInfoPanel({
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
   const sexValue = typeof meta.sex === 'string' ? meta.sex : 'unknown';
   const orientationValue = typeof meta.sexual_orientation === 'string' ? meta.sexual_orientation : 'unknown';
+  const sexSource = toFieldSource(meta.sex_source, sexValue !== 'unknown');
+  const orientationSource = toFieldSource(meta.sexual_orientation_source, orientationValue !== 'unknown');
+
+  const humanizeType = (t: string) =>
+    t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const baseRelationshipTypeOptions: EditableFieldOption[] = [
+    { value: 'boyfriend', label: 'Boyfriend' },
+    { value: 'girlfriend', label: 'Girlfriend' },
+    { value: 'wife', label: 'Wife' },
+    { value: 'husband', label: 'Husband' },
+    { value: 'fiancé', label: 'Fiance' },
+    { value: 'fiancée', label: 'Fiancee' },
+    { value: 'lover', label: 'Lover' },
+    { value: 'fuck_buddy', label: 'Fuck buddy' },
+    { value: 'ex_boyfriend', label: 'Ex-boyfriend' },
+    { value: 'ex_girlfriend', label: 'Ex-girlfriend' },
+    { value: 'ex_wife', label: 'Ex-wife' },
+    { value: 'ex_husband', label: 'Ex-husband' },
+    { value: 'ex_lover', label: 'Ex-lover' },
+    { value: 'situationship', label: 'Situationship' },
+    { value: 'crush', label: 'Crush' },
+    { value: 'dating', label: 'Dating' },
+    { value: 'talking', label: 'Talking' },
+    { value: 'hooking_up', label: 'Hooking up' },
+    { value: 'one_night_stand', label: 'One-night stand' },
+    { value: 'friends_with_benefits', label: 'Friends with benefits' },
+    { value: 'complicated', label: 'Complicated' },
+    { value: 'on_break', label: 'On break' },
+    { value: 'in_love', label: 'In love' },
+    { value: 'obsession', label: 'Obsession' },
+    { value: 'infatuation', label: 'Infatuation' },
+    { value: 'lust', label: 'Lust' },
+  ];
+  const relationshipTypeOptions: EditableFieldOption[] =
+    relationship?.relationship_type && !baseRelationshipTypeOptions.some((option) => option.value === relationship.relationship_type)
+      ? [{ value: relationship.relationship_type, label: humanizeType(relationship.relationship_type) }, ...baseRelationshipTypeOptions]
+      : baseRelationshipTypeOptions;
+  const relationshipStatusOptions: EditableFieldOption[] = [
+    { value: 'active', label: 'Active' },
+    { value: 'on_break', label: 'On break' },
+    { value: 'ended', label: 'Ended' },
+    { value: 'complicated', label: 'Complicated' },
+    { value: 'paused', label: 'Paused' },
+    { value: 'ghosted', label: 'Ghosted' },
+    { value: 'blocked', label: 'Blocked' },
+    { value: 'unrequited', label: 'Unrequited' },
+    { value: 'fading', label: 'Fading' },
+    { value: 'rekindled', label: 'Rekindled' },
+  ];
   const tierLabels: Record<string, string> = {
     inner_circle: 'Inner circle',
     close: 'Close',
@@ -165,8 +224,47 @@ export function CharacterInfoPanel({
       await updateCharacter({ id: characterId, values: { metadata: patch } }).unwrap();
       onUpdate();
     } catch (err) {
-      console.error('Failed to save ranking override:', err);
+      console.error('Failed to save character override:', err);
+      throw err instanceof Error ? err : new Error('Could not save character field');
     }
+  };
+
+  const persistRelationshipType = async (nextType: string) => {
+    if (!relationship?.id) throw new Error('This relationship is not editable yet.');
+    await fetchJson<{ success: boolean; relationship: Relationship }>(
+      `/api/conversation/romantic-relationships/${relationship.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          relationship_type: nextType,
+          metadata: {
+            relationship_type_source: 'user_confirmed',
+            relationship_type_confirmed_at: new Date().toISOString(),
+          },
+          reason: 'user_corrected_relationship_type',
+        }),
+      }
+    );
+    onUpdate();
+  };
+
+  const persistRelationshipStatus = async (nextStatus: string) => {
+    if (!relationship?.id) throw new Error('This relationship is not editable yet.');
+    await fetchJson<{ success: boolean; relationship: Relationship }>(
+      `/api/conversation/romantic-relationships/${relationship.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: nextStatus,
+          metadata: {
+            relationship_status_source: 'user_confirmed',
+            relationship_status_confirmed_at: new Date().toISOString(),
+          },
+          reason: 'user_corrected_relationship_status',
+        }),
+      }
+    );
+    onUpdate();
   };
 
   const healthScore = dynamics?.health?.health_score;
@@ -273,34 +371,24 @@ export function CharacterInfoPanel({
               your stated attraction profile; unknown values stay visible for review.
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Sex</span>
-                <select
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-                  value={sexValue}
-                  onChange={(event) => void persistOverride('sex', event.target.value)}
-                >
-                  {SEX_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Sexual orientation</span>
-                <select
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-                  value={orientationValue}
-                  onChange={(event) => void persistOverride('sexual_orientation', event.target.value)}
-                >
-                  {ORIENTATION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <EditableField
+                label="Sex"
+                value={sexValue}
+                displayValue={SEX_OPTIONS.find((option) => option.value === sexValue)?.label ?? humanizeType(sexValue)}
+                source={sexSource}
+                variant="select"
+                options={SEX_OPTIONS}
+                onSave={(next) => persistOverride('sex', next)}
+              />
+              <EditableField
+                label="Sexual orientation"
+                value={orientationValue}
+                displayValue={ORIENTATION_OPTIONS.find((option) => option.value === orientationValue)?.label ?? humanizeType(orientationValue)}
+                source={orientationSource}
+                variant="select"
+                options={ORIENTATION_OPTIONS}
+                onSave={(next) => persistOverride('sexual_orientation', next)}
+              />
             </div>
           </div>
         </div>
@@ -310,9 +398,14 @@ export function CharacterInfoPanel({
       <CharacterLoreProfileSection
         profile={loreProfile ?? null}
         loading={loreProfileLoading}
+        currentCharacterId={characterId}
         characterFirstName={editedCharacter.name.split(' ')[0]}
+        relationships={editedCharacter.relationships}
         onAskInChat={askInChat}
         onOpenCharacter={onOpenCharacterById}
+        onAddPerson={onAddWorldPerson}
+        onUpdatePerson={onUpdateWorldPerson}
+        onDeletePerson={onDeleteWorldPerson}
       />
 
       {/* ── 3. Your relationship (romantic / close) ──────────────────── */}
@@ -322,17 +415,33 @@ export function CharacterInfoPanel({
             <Heart className="h-4 w-4 text-rose-400" />
             <h3 className="text-sm font-bold text-white">Your relationship</h3>
           </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Badge variant="outline" className="bg-rose-500/15 text-rose-200 border-rose-500/30 capitalize">
-              {relationship.relationship_type.replace(/_/g, ' ')}
-            </Badge>
-            {relationship.is_situationship && (
-              <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">Situationship</Badge>
-            )}
-            {relationship.status && (
-              <Badge variant="outline" className="text-xs capitalize border-white/15 text-white/60">{relationship.status}</Badge>
-            )}
+          <div className="mb-3 grid gap-3 sm:grid-cols-2">
+            <EditableField
+              label="Relationship type"
+              value={relationship.relationship_type}
+              displayValue={relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ?? humanizeType(relationship.relationship_type)}
+              source={toFieldSource(relationship.metadata?.relationship_type_source, Boolean(relationship.relationship_type))}
+              variant="select"
+              options={relationshipTypeOptions}
+              onSave={persistRelationshipType}
+              disabled={!relationship.id || isMockDataEnabled}
+            />
+            <EditableField
+              label="Status"
+              value={relationship.status ?? 'active'}
+              displayValue={relationshipStatusOptions.find((option) => option.value === relationship.status)?.label ?? humanizeType(relationship.status ?? 'active')}
+              source={toFieldSource(relationship.metadata?.relationship_status_source, Boolean(relationship.status))}
+              variant="select"
+              options={relationshipStatusOptions}
+              onSave={persistRelationshipStatus}
+              disabled={!relationship.id || isMockDataEnabled}
+            />
           </div>
+          {relationship.is_situationship && (
+            <div className="mb-3">
+              <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">Situationship</Badge>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             <StatCell label="Compatibility" value={`${Math.round((relationship.compatibility_score ?? 0) * 100)}%`} />
             <StatCell label="Health" value={`${Math.round((relationship.relationship_health ?? 0) * 100)}%`} />

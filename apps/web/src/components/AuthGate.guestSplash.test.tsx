@@ -41,7 +41,7 @@ vi.mock('../hooks/useTermsAcceptance', () => ({
   useTermsAcceptance: () => ({ status: { accepted: true }, loading: false }),
 }));
 
-vi.mock('../routes/Demo', () => ({ clearDemoSession: vi.fn(), default: () => null }));
+vi.mock('../routes/Demo', () => ({ clearDemoSession: vi.fn(), isDemoSession: () => false, default: () => null }));
 
 describe('AuthGate — welcome splash on guest/demo entry', () => {
   beforeEach(() => {
