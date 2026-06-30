@@ -8,6 +8,7 @@ import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { assessRomanticPartnerEligibility } from './romanticEligibility';
+import { organizationService } from '../organizationService';
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -202,9 +203,13 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
   ): Promise<void> {
     // Guard: never store role labels ("Ex Lover") or someone else's partner
     // (evidence like "her boyfriend Juan") as the user's romantic relationship.
+    const knownOrganizationNames = await organizationService
+      .listOrganizationLabels(userId)
+      .catch(() => [] as string[]);
     const eligibility = assessRomanticPartnerEligibility({
       name: relationship.partnerName,
       evidence: relationship.evidence,
+      knownOrganizationNames,
     });
     if (!eligibility.eligible) {
       logger.info(

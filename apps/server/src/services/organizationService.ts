@@ -450,6 +450,28 @@ export class OrganizationService {
   }
 
   /**
+   * Flat list of every organization label (name + aliases) for the user. Used by
+   * romantic-relationship guards to avoid romancing the members of a band/org
+   * whose name doubles as a relationship word (e.g. the band "Ex Lover").
+   */
+  async listOrganizationLabels(userId: string): Promise<string[]> {
+    const { data, error } = await supabaseAdmin
+      .from('organizations')
+      .select('name, aliases')
+      .eq('user_id', userId)
+      .limit(500);
+    if (error || !data?.length) return [];
+    const labels = new Set<string>();
+    for (const row of data) {
+      if (row.name) labels.add(String(row.name));
+      for (const alias of ((row.aliases as string[] | null) ?? [])) {
+        if (alias) labels.add(String(alias));
+      }
+    }
+    return [...labels];
+  }
+
+  /**
    * Create a new organization
    */
   async createOrganization(userId: string, data: Partial<Organization>): Promise<Organization> {
