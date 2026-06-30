@@ -6,6 +6,7 @@ import { isOpenAiCircuitOpen } from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
 import { processPlaceSuggestionsFromCorpus } from './lexical/places/placeSuggestionService';
 import { materializeSpatialEvents } from './events/spatialEventMaterializer';
+import { materializeVenueAreas } from './locations/spatialVenueAreaMaterializer';
 import {
   filterRedundantPlaceSuggestions,
   placeClusterKey,
@@ -217,6 +218,17 @@ class LocationSuggestionService {
           if (eventRefs.length > 0) {
             void materializeSpatialEvents(userId, eventRefs).catch((err) =>
               logger.debug({ err, userId }, 'spatial event materialization failed'),
+            );
+          }
+
+          // Venue sub-areas ("the pit at Bad Dogg Compound") become nested
+          // locations under their parent venue when it's already known.
+          const areaRefs = bounded
+            .filter((p) => p.status === 'rejected' && p.rejectedAs === 'VENUE_AREA')
+            .map((p) => ({ name: p.text, evidence: p.evidencePhrases[0] }));
+          if (areaRefs.length > 0) {
+            void materializeVenueAreas(userId, areaRefs).catch((err) =>
+              logger.debug({ err, userId }, 'venue-area materialization failed'),
             );
           }
         }
