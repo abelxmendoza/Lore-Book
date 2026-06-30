@@ -5,6 +5,7 @@
 import { isOpenAiCircuitOpen } from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
 import { processPlaceSuggestionsFromCorpus } from './lexical/places/placeSuggestionService';
+import { materializeSpatialEvents } from './events/spatialEventMaterializer';
 import {
   filterRedundantPlaceSuggestions,
   placeClusterKey,
@@ -203,6 +204,21 @@ class LocationSuggestionService {
             privacySensitive: place.privacySensitive,
             ownerDisplayName: place.ownerDisplayName,
           });
+        }
+
+        // Candidates the place guard reclassified as events ("Ink Fest",
+        // "Ink's Ska Prom") become real Event cards instead of being dropped.
+        // Deduped + idempotent; gated to deliberate rescans so it isn't a side
+        // effect of every suggestion fetch.
+        if (options?.rescan) {
+          const eventRefs = bounded
+            .filter((p) => p.status === 'rejected' && (p.rejectedAs === 'EVENT' || p.rejectedAs === 'MUSIC_EVENT'))
+            .map((p) => ({ name: p.text, evidence: p.evidencePhrases[0] }));
+          if (eventRefs.length > 0) {
+            void materializeSpatialEvents(userId, eventRefs).catch((err) =>
+              logger.debug({ err, userId }, 'spatial event materialization failed'),
+            );
+          }
         }
 
         // Phase 1b: lexical intelligence place spans
