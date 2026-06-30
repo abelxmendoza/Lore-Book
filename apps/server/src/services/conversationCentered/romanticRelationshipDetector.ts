@@ -9,6 +9,7 @@ import { supabaseAdmin } from '../supabaseClient';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { assessRomanticPartnerEligibility } from './romanticEligibility';
 import { organizationService } from '../organizationService';
+import { persistThirdPartyRomances } from './thirdPartyRelationshipService';
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -216,6 +217,14 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
         { userId, personId: relationship.personId, reason: eligibility.reason },
         'Skipped ineligible romantic relationship'
       );
+      // A "third-party partner" ("her boyfriend Juan") is not the user's romance,
+      // but it IS a romance between two other people — record that edge instead of
+      // dropping the fact entirely.
+      if (eligibility.reason === 'third_party_partner') {
+        await persistThirdPartyRomances(userId, relationship.evidence, sourceMessageId).catch((err) =>
+          logger.debug({ err, userId }, 'third-party romance persistence failed')
+        );
+      }
       return;
     }
     try {
