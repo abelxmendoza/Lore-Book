@@ -13,6 +13,7 @@ import {
   type PlaceSuggestionOptions,
 } from './placeSuggestionTypes';
 import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateResidenceGuard';
+import { classifySpatialReference } from '../../lorebook/quality/spatialContextResolver';
 
 const norm = (s: string) =>
   (s ?? '').toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
@@ -143,6 +144,26 @@ export function guardPlaceCandidate(
       rulesFired: ['event_not_place'],
       needsReview: /\bcode\s+red\b/i.test(n),
     };
+  }
+
+  // Spatial Context Resolver — catches the event/venue-area/relative-position/
+  // generic-reference/age cases the patterns above miss ("Ink's Ska Prom",
+  // "Genni's Pit", "front of Shyla", "Security Kickout Venue", "my age").
+  const spatial = classifySpatialReference(text);
+  if (!spatial.isPlace) {
+    const rejectedAs: NonPlaceEntityType =
+      spatial.referenceType === 'event'
+        ? MUSIC_EVENT.test(n)
+          ? 'MUSIC_EVENT'
+          : 'EVENT'
+        : spatial.referenceType === 'venue_area'
+          ? 'VENUE_AREA'
+          : spatial.referenceType === 'demographic'
+            ? 'DEMOGRAPHIC'
+            : spatial.referenceType === 'unresolved_location'
+              ? 'UNRESOLVED_LOCATION'
+              : 'RELATIVE_LOCATION_CONTEXT'; // spatial_relationship | relative_position
+    return { allowed: false, rejectedAs, confidenceBoost: 0, rulesFired: [`spatial:${spatial.reason}`] };
   }
 
   if (analyzePrivateResidence(text)) {

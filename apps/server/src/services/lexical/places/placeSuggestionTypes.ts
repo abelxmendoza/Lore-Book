@@ -21,7 +21,11 @@ export type NonPlaceEntityType =
   | 'SKILL'
   | 'OBJECT'
   | 'EMOTION'
-  | 'EDUCATION_ORGANIZATION';
+  | 'EDUCATION_ORGANIZATION'
+  | 'VENUE_AREA'
+  | 'UNRESOLVED_LOCATION'
+  | 'DEMOGRAPHIC'
+  | 'RELATIVE_LOCATION_CONTEXT';
 
 export type PlaceTaxonomyType =
   | 'country'
