@@ -15,6 +15,7 @@
 
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { EntityQualityCandidate, EntityQualityVerdict } from './entityQualityGuardTypes';
+import { classifySpatialReference } from './spatialContextResolver';
 
 /** Bare common nouns / abstractions that are never a useful place NAME. */
 const GENERIC_NON_PLACE = new Set([
@@ -138,6 +139,12 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   if (ACTIVITY_SPAN.test(name)) return reject(name, candidate.domain, 'activity_narration_not_place');
   if (FRAGMENT_FILLER.test(name)) return reject(name, candidate.domain, 'sentence_fragment_span');
   if (RELATIVE_CLAUSE.test(name)) return reject(name, candidate.domain, 'descriptive_clause_fragment');
+
+  // Spatial Context Resolver (runs last so the specific generic/category reasons
+  // above win): events / venue sub-areas / relative positions / generic venue
+  // references / age are not Places, however many location cues they carry.
+  const spatial = classifySpatialReference(name);
+  if (!spatial.isPlace) return reject(name, candidate.domain, spatial.reason);
 
   return null;
 }
