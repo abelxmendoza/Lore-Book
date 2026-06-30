@@ -11,6 +11,8 @@ import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
 import { FamilyTreePanel, CharacterAffiliationsPanel } from '../family/FamilyTreePanel';
+import { RelationshipEditor } from '../family/RelationshipEditor';
+import { useFamilyTreeEditing } from '../family/useFamilyTreeEditing';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -1078,6 +1080,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [provenanceLoaded, setProvenanceLoaded] = useState(false);
 
   const [familyRefreshKey, setFamilyRefreshKey] = useState(0);
+  // Make this character's family tree editable in the modal — same exclude/delete/
+  // keep/edit-relationship actions as the user's own Family Book.
+  const familyEditing = useFamilyTreeEditing({
+    enabled: !isMockDataEnabled,
+    onChanged: () => setFamilyRefreshKey((k) => k + 1),
+  });
 
   // ── Temporal attributes (all historical, not just current) ─────────────────
   const [allAttributes, setAllAttributes] = useState<any[]>([]);
@@ -2920,6 +2928,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           refreshKey={familyRefreshKey}
                           title={`No family tree for ${editedCharacter.name.split(' ')[0]} yet`}
                           hint="Share how they're related to you or others in chat — LoreBook infers positions and keeps updating."
+                          {...familyEditing.editHandlers}
                           onMemberClick={(id, name) => {
                             if (id.startsWith('name-')) return;
                             void (async () => {
@@ -4296,6 +4305,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           }}
         />
       )}
+
+      {/* Family-tree relationship editor (this character's tree) */}
+      {familyEditing.editorMember && (
+        <RelationshipEditor
+          member={familyEditing.editorMember}
+          members={[]}
+          onSave={(edit) => familyEditing.saveRelationship(familyEditing.editorMember!, edit)}
+          onClose={() => familyEditing.setEditorMember(null)}
+        />
+      )}
+      <familyEditing.ToastContainer />
 
       {/* Location Detail Modal */}
       {selectedLocation && (
