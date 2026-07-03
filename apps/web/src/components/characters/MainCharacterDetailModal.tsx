@@ -26,14 +26,17 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { CharacterAvatar } from './CharacterAvatar';
 import { CharacterDetailModal } from './CharacterDetailModal';
+import { CharacterTitleSection } from './CharacterTitleSection';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import type { Character } from './CharacterProfileCard';
 import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
 import { useMainCharacterProfile } from '../../hooks/useMainCharacterProfile';
+import { selfCharacterApi } from '../../api/selfCharacter';
 import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelfSummary } from '../../lib/characterDisplay';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { format, parseISO } from 'date-fns';
+import { fetchJson } from '../../lib/api';
 
 type Props = {
   character: Character;
@@ -125,9 +128,28 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
   const [selectedConnection, setSelectedConnection] = useState<Character | null>(null);
   const profile = useMainCharacterProfile(character);
 
+  // Local editable state for solidifying self identity in this modal
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [editFirst, setEditFirst] = useState('');
+  const [editMiddle, setEditMiddle] = useState('');
+  const [editLast, setEditLast] = useState('');
+  const [editOccupation, setEditOccupation] = useState('');
+  const [editAliases, setEditAliases] = useState<string[]>([]);
+  const [newEditAlias, setNewEditAlias] = useState('');
+
   const displayName = getMainCharacterDisplayName(profile.character, user);
   const isYouName = /^you$/i.test(displayName.trim());
   const roleLine = getSelfProfileRoleTagline(profile.roleTagline || profile.character.role);
+
+  // Sync editable identity fields when profile updates (for rendering and editing)
+  useEffect(() => {
+    const ch = profile.character || {};
+    setEditFirst(ch.first_name || '');
+    setEditMiddle((ch.metadata?.middle_name as string) || ch.middle_name || '');
+    setEditLast(ch.last_name || '');
+    setEditOccupation(ch.role || '');
+    setEditAliases(ch.alias || []);
+  }, [profile.character]);
 
   const avatarUrl =
     profile.character.avatar_url ||
@@ -183,6 +205,59 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     onClose();
   };
 
+  const saveIdentityEdits = async () => {
+    if (!profile.character?.id) return;
+    try {
+      await fetchJson(`/api/characters/${profile.character.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          firstName: editFirst.trim() || undefined,
+          middleName: editMiddle.trim() || undefined,
+          lastName: editLast.trim() || undefined,
+          role: editOccupation.trim() || undefined,
+          alias: editAliases.filter(Boolean),
+          metadata: {
+            ...(profile.character.metadata || {}),
+            middle_name: editMiddle.trim() || null,
+            occupation_source: 'user_confirmed',
+          },
+        }),
+      });
+      await profile.reload();
+      setEditingIdentity(false);
+      onUpdate?.();
+      // Bring everything together: solidify identity across lore, continuity, knowledge
+      await selfCharacterApi.repairIdentity().catch(() => {});
+    } catch (e) {
+      console.error('Failed to save self identity edits', e);
+      alert('Could not save changes. Please try again.');
+    }
+  };
+
+  const cancelIdentityEdits = () => {
+    setEditingIdentity(false);
+    // reset from current profile
+    const ch = profile.character || {};
+    setEditFirst(ch.first_name || '');
+    setEditMiddle((ch.metadata?.middle_name as string) || ch.middle_name || '');
+    setEditLast(ch.last_name || '');
+    setEditOccupation(ch.role || '');
+    setEditAliases(ch.alias || []);
+  };
+
+  const addEditAlias = (val?: string) => {
+    const v = val !== undefined ? val : newEditAlias;
+    const trimmed = v.trim();
+    if (trimmed && !editAliases.includes(trimmed)) {
+      setEditAliases([...editAliases, trimmed]);
+      setNewEditAlias('');
+    }
+  };
+
+  const removeEditAlias = (val: string) => {
+    setEditAliases(editAliases.filter(a => a !== val));
+  };
+
   const knowledgeInitialData = useMemo((): Partial<CharacterKnowledgeBaseData> => ({
       characterId: profile.character.id,
       name: displayName,
@@ -216,6 +291,14 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+
+  if (profile.loading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90">
+        <div className="text-amber-200/70">Loading your profile…</div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -310,6 +393,35 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 {!isYouName && (
                   <p className="mt-1 break-words text-sm text-amber-200/70">{displayName}</p>
                 )}
+                {/* Structured names under official title - consistent with other modals */}
+                {(() => {
+                  const ch = profile.character || {};
+                  const first = ch.first_name || '';
+                  const middle = (typeof ch.metadata?.middle_name === 'string' ? ch.metadata.middle_name : ch.middle_name) || '';
+                  const last = ch.last_name || '';
+                  const full = [first, middle, last].filter(Boolean).join(' ').trim();
+                  const aliases = (ch.alias || []).filter(Boolean);
+                  if (!full && aliases.length === 0) return null;
+                  return (
+                    <p className="mt-0.5 text-xs text-amber-300/70 truncate">
+                      {full && <span>{full}</span>}
+                      {aliases.length > 0 && <span className="text-amber-400/60"> {full ? '· ' : ''}{aliases.join(' / ')}</span>}
+                    </p>
+                  );
+                })()}
+
+                {/* Editable official title for main/self too */}
+                <div className="mt-1 max-w-xl">
+                  <CharacterTitleSection
+                    character={profile.character}
+                    onUpdated={() => {
+                      // refresh self to bring edits into profile, lore, continuity
+                      selfCharacterApi?.ensureSelf?.().catch(() => {});
+                      void profile.reload();
+                    }}
+                  />
+                </div>
+
                 <p className="mt-1 break-words text-sm font-medium text-amber-200/60">{roleLine}</p>
 
                 {profile.character.archetype &&
@@ -418,6 +530,74 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     {heroSummary}
                   </p>
                 </blockquote>
+
+                {/* Editable core identity - to solidify basic knowledge, attributes, name, occupation, aliases about self */}
+                <section className="rounded-xl border border-amber-500/20 bg-black/30 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-300/80">Core identity (editable)</h3>
+                    {!editingIdentity ? (
+                      <Button size="sm" variant="outline" className="border-amber-500/30 text-xs" onClick={() => setEditingIdentity(true)}>
+                        Edit
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" onClick={cancelIdentityEdits}>Cancel</Button>
+                        <Button size="sm" onClick={saveIdentityEdits}>Save & solidify</Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {editingIdentity ? (
+                    <div className="space-y-3 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-amber-200/70 mb-0.5">First name</label>
+                          <input value={editFirst} onChange={e => setEditFirst(e.target.value)} className="w-full bg-black/50 border border-amber-500/20 rounded px-2 py-1 text-white text-xs" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-amber-200/70 mb-0.5">Middle name</label>
+                          <input value={editMiddle} onChange={e => setEditMiddle(e.target.value)} className="w-full bg-black/50 border border-amber-500/20 rounded px-2 py-1 text-white text-xs" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-amber-200/70 mb-0.5">Last name</label>
+                          <input value={editLast} onChange={e => setEditLast(e.target.value)} className="w-full bg-black/50 border border-amber-500/20 rounded px-2 py-1 text-white text-xs" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-amber-200/70 mb-0.5">Occupation / Role</label>
+                        <input value={editOccupation} onChange={e => setEditOccupation(e.target.value)} className="w-full bg-black/50 border border-amber-500/20 rounded px-2 py-1 text-white text-xs" placeholder="Your occupation or primary role" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-amber-200/70 mb-0.5">Nicknames & Aliases (multiple)</label>
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {editAliases.map((a, i) => (
+                            <span key={i} className="bg-amber-500/10 border border-amber-500/20 text-amber-100 text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
+                              {a} <button onClick={() => removeEditAlias(a)} className="text-amber-300 hover:text-white">×</button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <input 
+                            value={newEditAlias}
+                            onChange={e => setNewEditAlias(e.target.value)}
+                            placeholder="Add alias" 
+                            className="flex-1 bg-black/50 border border-amber-500/20 rounded px-2 py-1 text-xs text-white" 
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEditAlias(); } }}
+                          />
+                          <button onClick={() => addEditAlias()} className="text-xs border border-amber-500/30 px-2 rounded hover:bg-amber-500/10">Add</button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-amber-400/60">Saving will update your core identity across Lore, continuity, and knowledge systems.</p>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-white/70">
+                      <div>First: <span className="text-white">{editFirst || '—'}</span> Middle: <span className="text-white">{editMiddle || '—'}</span> Last: <span className="text-white">{editLast || '—'}</span></div>
+                      <div>Occupation: <span className="text-white">{editOccupation || profile.character.role || '—'}</span></div>
+                      {editAliases.length > 0 && <div>Aliases: <span className="text-white">{editAliases.join(', ')}</span></div>}
+                      <p className="mt-1 text-[10px] text-amber-400/50">Click Edit to solidify your identity details.</p>
+                    </div>
+                  )}
+                </section>
 
                 <OnboardingProfileSection
                   profile={

@@ -8,6 +8,7 @@ import {
   getCharacterDisplayTitle,
   getCharacterSubtitle,
   getTitleStabilityLabel,
+  suggestDisplayTitleFromNames,
 } from '../../lib/characterDisplayTitle';
 import type { Character } from './CharacterProfileCard';
 
@@ -314,6 +315,22 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
             <Button size="sm" variant="outline" onClick={() => setShowAliasForm((v) => !v)} disabled={busy}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Add alias
             </Button>
+            {stability !== 'locked' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const auto = suggestDisplayTitleFromNames(character);
+                  if (auto && auto !== draftTitle) {
+                    setDraftTitle(auto);
+                  }
+                }}
+                disabled={busy}
+                title="Generate title from structured first name + primary nickname"
+              >
+                Auto from names
+              </Button>
+            )}
             {isContextual ? (
               <Button size="sm" variant="outline" onClick={() => setShowResolveForm((v) => !v)} disabled={busy}>
                 <Link2 className="h-3.5 w-3.5 mr-1" /> Merge with name

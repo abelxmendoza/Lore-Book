@@ -4,7 +4,7 @@
  */
 import { inferenceBase } from '../inferenceAssociationTypes';
 
-const ROLE_RE = /\bas\s+(?:a|an)\s+([a-z][\w\s-]{1,80}?)(?:\s+with|\s*[,.]|$|\s+at\b|\s+for\b)/i;
+const ROLE_RE = /\b(?:(?:working|currently working|now working)\s+(?:as|at)\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer|[Mm]anager|[Oo]perator))|my\s+role\s+is\s+([A-Za-z][\w\s&-]{3,60})|I['’]m\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer)))\b/i;
 
 export interface ExtractedRole {
   surface: string;
@@ -34,15 +34,20 @@ function expandRoleTitle(raw: string): string {
 
 export function extractRoleFromText(text: string): ExtractedRole | null {
   const m = ROLE_RE.exec(text);
-  if (!m?.[1]) return null;
-  const surface = m[1].trim();
-  if (surface.length < 2) return null;
+  let surface = (m?.[1] || m?.[2] || m?.[3] || '').trim();
+  if (!surface || surface.length < 3) {
+    // Fallback direct title detection for known good titles
+    const direct = text.match(/\b(Quality Assurance Technician|QA Technician|Robot Technician)\b/i);
+    if (direct) surface = direct[1];
+    else return null;
+  }
+
   return {
     surface,
     normalized: surface.toLowerCase(),
     displayTitle: expandRoleTitle(surface),
-    confidence: 0.88,
-    evidencePhrase: m[0],
+    confidence: 0.87,
+    evidencePhrase: m?.[0] || surface,
     requiresReview: true,
   };
 }

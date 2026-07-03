@@ -1,13 +1,42 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, RefreshCw, TreePine } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, TreePine } from 'lucide-react';
 import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Organization } from '../organizations/OrganizationProfileCard';
+import type { Character } from '../characters/CharacterProfileCard';
 
 type Scope = 'mine' | 'character' | 'organization';
+
+const FAMILY_RELATION_OPTIONS = [
+  { value: 'parent', label: 'Parent' },
+  { value: 'step_parent', label: 'Step-parent' },
+  { value: 'grandparent', label: 'Grandparent' },
+  { value: 'child', label: 'Child' },
+  { value: 'step_child', label: 'Step-child' },
+  { value: 'grandchild', label: 'Grandchild' },
+  { value: 'sibling', label: 'Sibling' },
+  { value: 'half_sibling', label: 'Half-sibling' },
+  { value: 'step_sibling', label: 'Step-sibling' },
+  { value: 'aunt', label: 'Aunt' },
+  { value: 'uncle', label: 'Uncle' },
+  { value: 'niece', label: 'Niece' },
+  { value: 'nephew', label: 'Nephew' },
+  { value: 'cousin', label: 'Cousin' },
+  { value: 'spouse', label: 'Spouse / Partner' },
+  { value: 'in_law', label: 'In-law' },
+  { value: 'related', label: 'Other relative' },
+] as const;
+
+const FAMILY_SIDE_OPTIONS = [
+  { value: '', label: 'Side unknown' },
+  { value: 'maternal', label: "Mother's side" },
+  { value: 'paternal', label: "Father's side" },
+  { value: 'both', label: 'Both sides' },
+  { value: 'other', label: 'Other side' },
+] as const;
 
 interface FamilyTreePanelProps {
   scope: Scope;
@@ -39,6 +68,14 @@ export const FamilyTreePanel = ({
   const [tree, setTree] = useState<FamilyTree | null>(null);
   const [loading, setLoading] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [characterOptions, setCharacterOptions] = useState<Character[]>([]);
+  const [charactersLoading, setCharactersLoading] = useState(false);
+  const [selectedCharacterId, setSelectedCharacterId] = useState('');
+  const [selectedRelation, setSelectedRelation] = useState('parent');
+  const [selectedSide, setSelectedSide] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const endpoint = scope === 'mine'
     ? '/api/family-trees/mine'
@@ -81,6 +118,127 @@ export const FamilyTreePanel = ({
     }
   };
 
+  const loadCharacterOptions = async () => {
+    if (charactersLoading || characterOptions.length > 0) return;
+    setCharactersLoading(true);
+    setAddError(null);
+    try {
+      const response = await fetchJson<{ characters: Character[] }>('/api/characters');
+      setCharacterOptions((response.characters ?? []).filter((item) => item.status !== 'archived'));
+    } catch (error) {
+      console.error('Failed to load characters for family tree:', error);
+      setAddError('Could not load character cards.');
+    } finally {
+      setCharactersLoading(false);
+    }
+  };
+
+  const toggleAdd = async () => {
+    const next = !addOpen;
+    setAddOpen(next);
+    if (next) await loadCharacterOptions();
+  };
+
+  const addExistingCharacter = async () => {
+    if (!selectedCharacterId) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      if (scope === 'character' && entityId) {
+        await fetchJson(`/api/family-trees/${entityId}/members`, {
+          method: 'POST',
+          body: JSON.stringify({
+            characterId: selectedCharacterId,
+            relation: selectedRelation,
+            side: selectedSide || undefined,
+          }),
+        });
+      } else {
+        await fetchJson(`/api/family-trees/member/${selectedCharacterId}/relationship`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            relation: selectedRelation,
+            side: selectedSide || undefined,
+          }),
+        });
+      }
+      setSelectedCharacterId('');
+      setSelectedRelation('parent');
+      setSelectedSide('');
+      setAddOpen(false);
+      await load();
+    } catch (error) {
+      console.error('Failed to add existing character to family tree:', error);
+      setAddError(error instanceof Error ? error.message : 'Could not add family member.');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const existingMemberIds = new Set((tree?.members ?? []).map((member) => member.id));
+  const availableCharacterOptions = characterOptions.filter(
+    (option) => !existingMemberIds.has(option.id) && option.id !== entityId
+  );
+  const canManuallyAdd = scope !== 'organization';
+
+  const manualAddPanel = canManuallyAdd ? (
+    <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-white/80">Add existing person</p>
+          <p className="text-[10px] text-white/35">Use a character card already in your People book.</p>
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 text-xs text-white/55" onClick={() => void toggleAdd()}>
+          <Plus className="h-3.5 w-3.5" />
+          <span className="ml-1.5">{addOpen ? 'Close' : 'Add'}</span>
+        </Button>
+      </div>
+      {addOpen && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <select
+            value={selectedCharacterId}
+            onChange={(e) => setSelectedCharacterId(e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-emerald-400/60 focus:outline-none"
+            disabled={charactersLoading}
+            aria-label="Existing character"
+          >
+            <option value="">{charactersLoading ? 'Loading...' : 'Select person'}</option>
+            {availableCharacterOptions.map((character) => (
+              <option key={character.id} value={character.id}>
+                {character.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedRelation}
+            onChange={(e) => setSelectedRelation(e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-emerald-400/60 focus:outline-none"
+            aria-label="Family relationship"
+          >
+            {FAMILY_RELATION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={selectedSide}
+            onChange={(e) => setSelectedSide(e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-emerald-400/60 focus:outline-none"
+            aria-label="Family side"
+          >
+            {FAMILY_SIDE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <Button size="sm" className="h-8 text-xs" disabled={!selectedCharacterId || adding} onClick={() => void addExistingCharacter()}>
+            {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            <span className="ml-1.5">Add</span>
+          </Button>
+          {addError && <p className="text-xs text-red-300 sm:col-span-4">{addError}</p>}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-white/50 text-sm">
@@ -91,18 +249,21 @@ export const FamilyTreePanel = ({
 
   if (!tree || tree.members.length === 0) {
     return (
-      <div className="text-center py-10 px-4">
-        <TreePine className="h-10 w-10 mx-auto mb-3 text-white/20" />
-        <p className="text-sm font-medium text-white/55">{title ?? 'No family tree yet'}</p>
-        <p className="text-xs text-white/35 mt-1 max-w-sm mx-auto">
-          {hint ?? 'Mention family members in chat — LoreBook infers positions and updates the tree as you share more.'}
-        </p>
-        {scope === 'character' && entityId && (
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => void rebuild()} disabled={rebuilding}>
-            {rebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <RefreshCw className="h-3.5 w-3.5 mr-2" />}
-            Scan conversations
-          </Button>
-        )}
+      <div className="space-y-4">
+        <div className="text-center py-10 px-4">
+          <TreePine className="h-10 w-10 mx-auto mb-3 text-white/20" />
+          <p className="text-sm font-medium text-white/55">{title ?? 'No family tree yet'}</p>
+          <p className="text-xs text-white/35 mt-1 max-w-sm mx-auto">
+            {hint ?? 'Mention family members in chat — LoreBook infers positions and updates the tree as you share more.'}
+          </p>
+          {scope === 'character' && entityId && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => void rebuild()} disabled={rebuilding}>
+              {rebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <RefreshCw className="h-3.5 w-3.5 mr-2" />}
+              Scan conversations
+            </Button>
+          )}
+        </div>
+        {manualAddPanel}
       </div>
     );
   }
@@ -120,6 +281,7 @@ export const FamilyTreePanel = ({
           </Button>
         )}
       </div>
+      {manualAddPanel}
       <FamilyTreeView
         tree={tree}
         compact={compact}

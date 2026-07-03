@@ -160,6 +160,10 @@ export function CharacterLoreProfileSection({
   const [selectedType, setSelectedType] = useState('friend');
   const [selectedStatus, setSelectedStatus] = useState('active');
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  // Characters removed this session — kept out of the list so a deleted person
+  // doesn't reappear from the lore-derived side (state stays consistent until the
+  // next reload, when the server no longer surfaces them).
+  const [dismissedCharacterIds, setDismissedCharacterIds] = useState<Set<string>>(new Set());
   const [editorError, setEditorError] = useState<string | null>(null);
 
   const mergedPeople = useMemo<EditablePerson[]>(() => {
@@ -198,8 +202,10 @@ export function CharacterLoreProfileSection({
       });
     }
 
-    return Array.from(byKey.values());
-  }, [profile?.people, relationships]);
+    return Array.from(byKey.values()).filter(
+      (person) => !person.characterId || !dismissedCharacterIds.has(person.characterId),
+    );
+  }, [profile?.people, relationships, dismissedCharacterIds]);
 
   const existingCharacterIds = new Set(
     mergedPeople.map((person) => person.characterId).filter((id): id is string => Boolean(id))
@@ -248,6 +254,23 @@ export function CharacterLoreProfileSection({
     }
   };
 
+  // Convert an auto-detected (lore-derived) person into a real, managed
+  // relationship — the easy way to add an existing character you already see
+  // listed. Once linked they gain the type/status editors and a delete button.
+  const linkPerson = async (characterId: string, relationshipType: string) => {
+    if (!onAddPerson) return;
+    setSavingKey(`link-${characterId}`);
+    setEditorError(null);
+    try {
+      await onAddPerson(characterId, relationshipType || 'friend', 'active');
+    } catch (error) {
+      console.error('Failed to link world person:', error);
+      setEditorError(error instanceof Error ? error.message : 'Could not add this connection.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
   const updatePerson = async (
     relationshipId: string,
     patch: { relationship_type?: string; status?: string },
@@ -265,12 +288,14 @@ export function CharacterLoreProfileSection({
     }
   };
 
-  const deletePerson = async (relationshipId: string) => {
+  const deletePerson = async (relationshipId: string, characterId?: string) => {
     if (!onDeletePerson) return;
     setSavingKey(`${relationshipId}-delete`);
     setEditorError(null);
     try {
       await onDeletePerson(relationshipId);
+      // Keep them out of the list even if they'd otherwise re-derive from lore.
+      if (characterId) setDismissedCharacterIds((prev) => new Set(prev).add(characterId));
     } catch (error) {
       console.error('Failed to delete world person:', error);
       setEditorError(error instanceof Error ? error.message : 'Could not remove this connection.');
@@ -488,7 +513,7 @@ export function CharacterLoreProfileSection({
                       </select>
                       <button
                         type="button"
-                        onClick={() => deletePerson(person.relationshipId!)}
+                        onClick={() => deletePerson(person.relationshipId!, person.characterId ?? undefined)}
                         disabled={savingKey === `${person.relationshipId}-delete`}
                         className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-red-500/20 text-red-300/80 hover:bg-red-500/10 disabled:opacity-50"
                         aria-label={`Remove ${person.name}`}
@@ -499,10 +524,27 @@ export function CharacterLoreProfileSection({
                       </button>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-white/45 capitalize truncate">
-                      {person.relationshipType.replace(/_/g, ' ')}
-                      {person.domain ? ` · ${person.domain}` : ''}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-white/45 capitalize truncate">
+                        {person.relationshipType.replace(/_/g, ' ')}
+                        {person.domain ? ` · ${person.domain}` : ''}
+                      </p>
+                      {person.characterId && onAddPerson && (
+                        <button
+                          type="button"
+                          onClick={() => linkPerson(person.characterId!, person.relationshipType)}
+                          disabled={savingKey === `link-${person.characterId}`}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary/90 hover:bg-primary/20 disabled:opacity-50"
+                          title={`Add ${person.name} as a managed relationship`}
+                          aria-label={`Add ${person.name} as a relationship`}
+                        >
+                          {savingKey === `link-${person.characterId}`
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Plus className="h-3 w-3" />}
+                          Add
+                        </button>
+                      )}
+                    </div>
                   )}
                   {person.summary && (
                     <p className="text-[10px] text-white/35 mt-1 line-clamp-2">{person.summary}</p>

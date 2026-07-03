@@ -124,6 +124,27 @@ router.patch('/member/:characterId/relationship', requireAuth, async (req: Authe
   }
 });
 
+// POST /api/family-trees/:anchorId/members — add an existing character card to this family tree
+router.post('/:anchorId/members', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const anchorId = String(req.params.anchorId);
+  const memberId = typeof req.body?.characterId === 'string' ? req.body.characterId.trim() : '';
+  const relation = typeof req.body?.relation === 'string' ? req.body.relation.trim() : '';
+  const side = ['maternal', 'paternal', 'both', 'other'].includes(req.body?.side) ? req.body.side : undefined;
+  if (!memberId || !relation) {
+    return res.status(400).json({ success: false, error: 'characterId and relation are required' });
+  }
+  try {
+    const ok = await familyTreeService.addExistingFamilyMember(userId, anchorId, memberId, { relation, side });
+    if (!ok) return res.status(404).json({ success: false, error: 'Could not add family member' });
+    const tree = await familyTreeService.getCharacterFamilyTree(userId, anchorId);
+    res.json({ success: true, tree: tree ?? { members: [], branches: [], self_id: anchorId } });
+  } catch (error) {
+    logger.error({ error, userId, anchorId, memberId }, 'Failed to add existing family member');
+    res.status(500).json({ success: false, error: 'Failed to add family member' });
+  }
+});
+
 // POST /api/family-trees/member/:characterId/ensure-card — create + link a card if missing
 router.post('/member/:characterId/ensure-card', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

@@ -20,6 +20,7 @@ import {
   getCharacterWittyTagline,
   getMainCharacterDisplayName,
 } from '../../lib/characterDisplay';
+import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import type { Character } from './CharacterProfileCard';
 
 type CharacterAttribute = {
@@ -107,6 +108,17 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const displayName = getMainCharacterDisplayName(resolvedCharacter, user);
   const showMeBadge = /^me$/i.test(resolvedCharacter.name?.trim() ?? '') && displayName !== 'Me';
 
+  // Structured names + aliases under official title (match modal header exactly)
+  const officialTitle = getCharacterDisplayTitle(resolvedCharacter);
+  const first = resolvedCharacter.first_name || '';
+  const middle = (typeof resolvedCharacter.metadata?.middle_name === 'string' ? resolvedCharacter.metadata.middle_name : resolvedCharacter.middle_name) || '';
+  const last = resolvedCharacter.last_name || '';
+  const fullStructured = [first, middle, last].filter(Boolean).join(' ').trim();
+  const aliases = (resolvedCharacter.alias || []).filter(Boolean);
+  const namesUnderTitle = fullStructured || aliases.length > 0
+    ? `${fullStructured}${aliases.length > 0 ? (fullStructured ? ' · ' : '') + aliases.join(' / ') : ''}`
+    : null;
+
   const avatarUrl =
     resolvedCharacter.avatar_url ||
     (user?.user_metadata?.custom_avatar_url as string | undefined) ||
@@ -172,7 +184,10 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
     profileSummary ||
     resolvedCharacter.summary ||
     'Your story grows with every conversation — attributes and facts sync from chat and resume.';
-  const subtitle = roleTagline || resolvedCharacter.role || 'Protagonist · Your story';
+  // Reflect modal's occupation emphasis
+  const occupationFromAttrs = attributes.length > 0 ? attributes.find((a: any) => a.attributeType === 'occupation')?.attributeValue : null;
+  const occupation = resolvedCharacter.role || occupationFromAttrs || roleTagline;
+  const subtitle = occupation || 'Protagonist · Your story';
   const sceneNetwork = getSceneNetwork(resolvedCharacter);
 
   return (
@@ -230,6 +245,16 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                     you
                   </span>
                 </div>
+                {namesUnderTitle && (
+                  <p className="text-[10px] sm:text-xs text-amber-300/70 mt-0.5 leading-tight truncate">
+                    {namesUnderTitle}
+                  </p>
+                )}
+                {officialTitle && officialTitle !== displayName && (
+                  <p className="text-xs sm:text-sm text-amber-200/70 mt-0.5 font-medium">
+                    {officialTitle}
+                  </p>
+                )}
                 <p className="text-xs sm:text-sm text-amber-200/70 mt-0.5 font-medium line-clamp-2">
                   {subtitle}
                 </p>

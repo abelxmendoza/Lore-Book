@@ -11,7 +11,9 @@ import type {
 import { normalizeNameKey, normalizeDuplicateKey } from '../utils/nameNormalization';
 
 import { chapterService } from './chapterService';
+import { entityDeletionRecoveryService } from './entityDeletionRecoveryService';
 import { locationAnalyticsService } from './locationAnalyticsService';
+import { ragPacketCacheService } from './ragPacketCacheService';
 import { supabaseAdmin } from './supabaseClient';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
@@ -498,6 +500,7 @@ class LocationService {
     userId: string,
     locationId: string,
     update: {
+      name?: string;
       type?: string | null;
       place_tags?: string[];
       place_significance?: string[];
@@ -506,7 +509,7 @@ class LocationService {
   ): Promise<LocationProfile | null> {
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('locations')
-      .select('id, metadata')
+      .select('id, name, metadata')
       .eq('user_id', userId)
       .eq('id', locationId)
       .maybeSingle();
@@ -530,6 +533,22 @@ class LocationService {
       metadata,
       updated_at: new Date().toISOString(),
     };
+    if (update.name !== undefined) {
+      const name = update.name.trim();
+      if (!name) throw new Error('Location name is required');
+      patch.name = name;
+      patch.normalized_name = this.normalizeKey(name);
+      metadata.name_source = 'user_confirmed';
+      metadata.name_confirmed_at = new Date().toISOString();
+      metadata.previous_names = Array.from(new Set([
+        ...(
+          Array.isArray(metadata.previous_names)
+            ? (metadata.previous_names as unknown[]).filter((value): value is string => typeof value === 'string')
+            : []
+        ),
+        existing.name,
+      ].filter((value) => normalizeNameKey(value) !== normalizeNameKey(name))));
+    }
     if (update.type !== undefined) {
       patch.type = update.type;
     }
@@ -541,6 +560,9 @@ class LocationService {
       .eq('id', locationId);
 
     if (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new Error('A location with that name already exists.');
+      }
       logger.error({ error, locationId }, 'Failed to update location');
       throw error;
     }
@@ -552,14 +574,29 @@ class LocationService {
    * Delete a location (user-scoped) and clean up its character links so no
    * dangling references remain. Returns false if the row didn't exist.
    */
-  async deleteLocation(userId: string, locationId: string): Promise<boolean> {
+  async deleteLocation(
+    userId: string,
+    locationId: string,
+    opts: { reason?: string } = {},
+  ): Promise<boolean> {
     const { data: existing } = await supabaseAdmin
       .from('locations')
-      .select('id')
+      .select('id, name, metadata')
       .eq('user_id', userId)
       .eq('id', locationId)
       .maybeSingle();
     if (!existing) return false;
+
+    await entityDeletionRecoveryService.runBeforeDelete(userId, {
+      entityType: 'location',
+      entityId: existing.id as string,
+      name: existing.name as string,
+      aliases: Array.isArray(existing.metadata?.aliases) ? existing.metadata.aliases as string[] : [],
+      metadata: (existing.metadata ?? {}) as Record<string, unknown>,
+      omegaEntityId: (existing.metadata as Record<string, unknown> | null)?.omega_entity_id as string | undefined,
+      reason: opts.reason ?? 'User deleted place card',
+      mode: 'permanent',
+    }).catch((err) => logger.warn({ err, locationId }, 'location deletion recovery failed'));
 
     // Remove links first (best-effort) to avoid orphaned join rows.
     await supabaseAdmin
@@ -568,6 +605,71 @@ class LocationService {
       .eq('user_id', userId)
       .eq('location_id', locationId)
       .then(undefined, (err) => logger.debug({ err, locationId }, 'location link cleanup failed'));
+
+    await supabaseAdmin
+      .from('entity_facts')
+      .delete()
+      .eq('user_id', userId)
+      .eq('entity_type', 'location')
+      .eq('entity_id', locationId)
+      .then(undefined, (err) => logger.debug({ err, locationId }, 'location fact cleanup failed'));
+
+    await supabaseAdmin
+      .from('entity_conversation_links')
+      .delete()
+      .eq('user_id', userId)
+      .eq('entity_type', 'location')
+      .eq('entity_id', locationId)
+      .then(undefined, (err) => logger.debug({ err, locationId }, 'location conversation link cleanup failed'));
+
+    await supabaseAdmin
+      .from('entity_mentions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('entity_type', 'location')
+      .eq('entity_id', locationId)
+      .then(undefined, (err) => logger.debug({ err, locationId }, 'location mention cleanup failed'));
+
+    const { data: events } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, locations')
+      .eq('user_id', userId)
+      .contains('locations', [locationId]);
+
+    for (const event of (events ?? []) as Array<{ id: string; locations: string[] | null }>) {
+      await supabaseAdmin
+        .from('resolved_events')
+        .update({
+          locations: (event.locations ?? []).filter((id) => id !== locationId),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', event.id)
+        .eq('user_id', userId)
+        .then(undefined, (err) => logger.debug({ err, locationId, eventId: event.id }, 'event location detach failed'));
+    }
+
+    const { data: nestedLocations } = await supabaseAdmin
+      .from('locations')
+      .select('id, parent_location_id, associated_location_ids')
+      .eq('user_id', userId)
+      .or(`parent_location_id.eq.${locationId},associated_location_ids.cs.{${locationId}}`);
+
+    for (const nested of (nestedLocations ?? []) as Array<{
+      id: string;
+      parent_location_id: string | null;
+      associated_location_ids: string[] | null;
+    }>) {
+      await supabaseAdmin
+        .from('locations')
+        .update({
+          parent_location_id: nested.parent_location_id === locationId ? null : nested.parent_location_id,
+          associated_location_ids: (nested.associated_location_ids ?? []).filter((id) => id !== locationId),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .eq('id', nested.id)
+        .then(undefined, (err) => logger.debug({ err, locationId, nestedLocationId: nested.id }, 'nested location cleanup failed'));
+    }
 
     const { error } = await supabaseAdmin
       .from('locations')
@@ -578,6 +680,8 @@ class LocationService {
       logger.error({ error, locationId }, 'Failed to delete location');
       throw error;
     }
+    ragPacketCacheService.invalidateLoreCache(userId);
+    ragPacketCacheService.clearUserCache(userId);
     return true;
   }
 }

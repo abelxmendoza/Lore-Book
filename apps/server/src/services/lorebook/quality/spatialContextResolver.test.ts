@@ -59,7 +59,8 @@ describe('classifySpatialReference — boundary rules', () => {
   });
 
   it('keeps real, identifiable places as places', () => {
-    for (const name of ['Bad Dogg Compound', 'Club Metro', 'First Street Pool and Billiards']) {
+    // Use generic names for test (personal places kept out of git per privacy rules)
+    for (const name of ['The Compound', 'Metro Club', 'Riverside Pool Hall']) {
       const r = classifySpatialReference(name);
       expect(r.referenceType).toBe('place');
       expect(r.isPlace).toBe(true);

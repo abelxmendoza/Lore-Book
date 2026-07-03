@@ -7,8 +7,10 @@ import { randomUUID } from 'crypto';
 import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
 import { organizationService } from '../organizationService';
+import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { skillService } from '../skills/skillService';
 import { supabaseAdmin } from '../supabaseClient';
+import { normalizeNameKey } from '../../utils/nameNormalization';
 
 import type {
   ParsedResume,
@@ -20,6 +22,7 @@ import type {
 } from './resumeStructuredTypes';
 import { normalizeResumeDate } from './resumeDateUtils';
 import { resumeCharacterEnrichmentService } from './resumeCharacterEnrichmentService';
+import { conflictedCompanyKeys, resumeRoleConflictService } from './resumeRoleConflictService';
 
 export { normalizeResumeDate } from './resumeDateUtils';
 
@@ -92,6 +95,8 @@ class ResumeLorePopulationService {
       organizations: 0,
       facts: 0,
       characterAttributes: 0,
+      projectsSuggested: 0,
+      roleConflicts: [],
       entryIds: [],
       eventIds: [],
     };
@@ -102,8 +107,22 @@ class ResumeLorePopulationService {
     // Contact info → entity facts + summary entry
     await this.populateContact(userId, parsed, meta, selfId, result);
 
+    // Review-first: resume-current jobs that disagree with the existing current
+    // employer become review conflicts and never take over "current" silently.
+    try {
+      result.roleConflicts = await resumeRoleConflictService.detectForUser(
+        userId,
+        parsed.employment,
+        context.sourceFileId
+      );
+    } catch (error) {
+      logger.warn({ error, userId }, 'resume lore: role conflict detection failed (non-blocking)');
+    }
+    const conflictedCompanies = conflictedCompanyKeys(result.roleConflicts);
+
     // Employers as organizations
     for (const job of parsed.employment) {
+      const conflicted = job.isCurrent && conflictedCompanies.has(normalizeNameKey(job.company));
       try {
         await organizationService.createOrganization(userId, {
           name: job.company,
@@ -111,12 +130,21 @@ class ResumeLorePopulationService {
           group_type: 'company',
           user_relationship: 'employee',
           description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
-          status: job.isCurrent ? 'active' : 'inactive',
+          status: job.isCurrent && !conflicted ? 'active' : 'inactive',
           metadata: {
             ...meta,
+            section: 'employment',
             job_title: job.title,
             start_date: job.startDate,
             end_date: job.endDate,
+            ...(conflicted
+              ? {
+                  pending_status_review: true,
+                  status_conflict: result.roleConflicts.find(
+                    (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
+                  ),
+                }
+              : {}),
           },
         });
         result.organizations++;
@@ -146,11 +174,53 @@ class ResumeLorePopulationService {
           description: `From resume: ${context.fileName}`,
           auto_detected: true,
           confidence_score: 0.85,
-          metadata: meta,
+          metadata: { ...meta, section: 'skills' },
         });
         result.skills++;
       } catch (error) {
         logger.warn({ error, skill: name }, 'resume lore: skill create skipped');
+      }
+    }
+
+    // Projects → Projects book as review-first suggestions (rule: projects never
+    // land in Characters/Places; they surface as pending Project cards).
+    if (parsed.projects.length > 0) {
+      try {
+        result.projectsSuggested = await projectSuggestionService.upsertManyFromExtraction(
+          userId,
+          parsed.projects.map((project) => ({
+            name: project.name,
+            description: project.description,
+            type: 'project',
+            status: project.endDate ? ('completed' as const) : ('active' as const),
+            confidence: 0.85,
+            reasoning: `Listed under Technical Projects in resume ${context.fileName}`,
+            evidence: [
+              [project.name, project.description].filter(Boolean).join(' — ').slice(0, 300),
+            ],
+          })),
+          { source: 'resume' }
+        );
+      } catch (error) {
+        logger.warn({ error, userId }, 'resume lore: project suggestions failed (non-blocking)');
+      }
+    }
+
+    // Languages + career targets → facts on self
+    if (selfId) {
+      for (const language of parsed.languages ?? []) {
+        const ok = await this.insertSelfFact(userId, selfId, `Language: ${language}`, 'general', {
+          ...meta,
+          section: 'languages',
+        });
+        if (ok) result.facts++;
+      }
+      for (const target of parsed.careerTargets ?? []) {
+        const ok = await this.insertSelfFact(userId, selfId, `Career target: ${target}`, 'career', {
+          ...meta,
+          section: 'summary',
+        });
+        if (ok) result.facts++;
       }
     }
 
@@ -243,6 +313,33 @@ class ResumeLorePopulationService {
     return result;
   }
 
+  private async insertSelfFact(
+    userId: string,
+    selfId: string,
+    fact: string,
+    category: string,
+    metadata: Record<string, unknown>
+  ): Promise<boolean> {
+    const { error } = await supabaseAdmin.from('entity_facts').insert({
+      user_id: userId,
+      entity_id: selfId,
+      entity_type: 'character',
+      fact,
+      category,
+      confidence: 0.85,
+      mention_count: 1,
+      status: 'active',
+      first_seen_at: new Date().toISOString(),
+      last_confirmed_at: new Date().toISOString(),
+      metadata,
+    });
+    if (error) {
+      logger.warn({ error, fact }, 'resume lore: self fact insert skipped');
+      return false;
+    }
+    return true;
+  }
+
   private async populateContact(
     userId: string,
     parsed: ParsedResume,
@@ -266,7 +363,7 @@ class ResumeLorePopulationService {
       date: new Date().toISOString(),
       tags: ['resume', 'contact'],
       source: 'document_upload',
-      metadata: { ...meta, contact },
+      metadata: { ...meta, section: 'header', contact },
     });
     result.entryIds.push(entry.id);
     result.journalEntries++;
@@ -324,7 +421,7 @@ class ResumeLorePopulationService {
       tags: ['resume', 'career', 'employment', job.company.toLowerCase().replace(/\s+/g, '-')],
       source: 'document_upload',
       summary: `${job.title} at ${job.company}`,
-      metadata: { ...meta, employment: job },
+      metadata: { ...meta, section: 'employment', employment: job },
     });
 
     let eventId: string | null = null;
@@ -341,7 +438,7 @@ class ResumeLorePopulationService {
         confidence: 0.88,
         tags: ['resume', 'employment'],
         people: selfId ? [selfId] : [],
-        metadata: { ...meta, employment: job },
+        metadata: { ...meta, section: 'employment', employment: job },
       });
       if (error) {
         logger.warn({ error, company: job.company }, 'resume lore: timeline event failed');
@@ -373,7 +470,7 @@ class ResumeLorePopulationService {
       tags: ['resume', 'education', edu.institution?.toLowerCase().replace(/\s+/g, '-') ?? 'school'],
       source: 'document_upload',
       summary: `Education at ${edu.institution}`,
-      metadata: { ...meta, education: edu, timeline_track: 'education' },
+      metadata: { ...meta, section: 'education', education: edu, timeline_track: 'education' },
     });
 
     let eventId: string | null = null;
@@ -390,7 +487,7 @@ class ResumeLorePopulationService {
         confidence: 0.86,
         tags: ['resume', 'education'],
         people: selfId ? [selfId] : [],
-        metadata: { ...meta, education: edu, timeline_track: 'education' },
+        metadata: { ...meta, section: 'education', education: edu, timeline_track: 'education' },
       });
       if (error) {
         logger.warn({ error, institution: edu.institution }, 'resume lore: education event failed');
@@ -418,7 +515,7 @@ class ResumeLorePopulationService {
       tags: ['resume', 'project'],
       source: 'document_upload',
       summary: project.name,
-      metadata: { ...meta, project },
+      metadata: { ...meta, section: 'projects', project },
     });
     return entry.id;
   }
@@ -435,7 +532,7 @@ class ResumeLorePopulationService {
       tags: ['resume', 'career', 'unemployment'],
       source: 'document_upload',
       summary: 'Between jobs',
-      metadata: { ...meta, employment_gap: gap },
+      metadata: { ...meta, section: 'employment', employment_gap: gap },
     });
     return entry.id;
   }

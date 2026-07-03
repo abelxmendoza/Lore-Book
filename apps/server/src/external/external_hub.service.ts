@@ -9,6 +9,7 @@ import { photosAdapter } from './photos.adapter';
 import { summarizeMilestonesBridge } from './summarizer.bridge';
 import { ExternalEvent, ExternalSource, ExternalSummary } from './types';
 import { xAdapter } from './x.adapter';
+import { fetchOriginalXPosts } from './x.client';
 
 interface TimelineRepository {
   _entries: ExternalSummary[];
@@ -31,7 +32,7 @@ export const orchestratorDelta = new EventEmitter();
 
 export class ExternalHubService {
   async ingest(source: ExternalSource, payload: unknown): Promise<ExternalSummary[]> {
-    const normalized = await this.normalize(source, payload);
+    const normalized = await this.normalize(source, await this.resolvePayload(source, payload));
     const filtered = filterNoise(normalized);
     const milestones = classifyMilestones(filtered);
     const summaries = await this.summarize(milestones);
@@ -39,6 +40,20 @@ export class ExternalHubService {
 
     orchestratorDelta.emit('external_ingest', { type: 'external_ingest', entries });
     return entries;
+  }
+
+  async resolvePayload(source: ExternalSource, payload: unknown): Promise<unknown> {
+    if (source !== 'x') return payload;
+    if (hasXPostsPayload(payload)) return payload;
+
+    const options = isRecord(payload) ? payload : {};
+    return fetchOriginalXPosts({
+      handle: typeof options.handle === 'string' ? options.handle : undefined,
+      userId: typeof options.userId === 'string' ? options.userId : undefined,
+      maxPosts: typeof options.maxPosts === 'number' ? options.maxPosts : undefined,
+      sinceId: typeof options.sinceId === 'string' ? options.sinceId : undefined,
+      includeReplies: typeof options.includeReplies === 'boolean' ? options.includeReplies : undefined,
+    });
   }
 
   async normalize(source: ExternalSource, data: any): Promise<ExternalEvent[]> {
@@ -93,3 +108,15 @@ export class ExternalHubService {
 }
 
 export const externalHubService = new ExternalHubService();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasXPostsPayload(payload: unknown): boolean {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  if (Array.isArray(payload.posts)) return true;
+  if (Array.isArray(payload.data)) return true;
+  return isRecord(payload.data);
+}

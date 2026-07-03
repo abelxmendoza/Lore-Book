@@ -98,6 +98,10 @@ type EnvConfig = {
   nanoModel: string;
   embeddingModel: string;
   xBearerToken?: string;
+  xConsumerKey?: string;
+  xConsumerSecret?: string;
+  xDefaultHandle?: string;
+  xDefaultUserId?: string;
   microsoftClientId?: string;
   microsoftClientSecret?: string;
   microsoftTenantId?: string;
@@ -219,6 +223,10 @@ export const config: EnvConfig = {
   openAiSkillRescanOpsId: process.env.OPENAI_SKILL_RESCAN_OPS_ID,
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
+  xConsumerKey: process.env.X_API_CONSUMER_KEY ?? process.env.TWITTER_CONSUMER_KEY ?? '',
+  xConsumerSecret: process.env.X_API_CONSUMER_SECRET ?? process.env.TWITTER_CONSUMER_SECRET ?? '',
+  xDefaultHandle: process.env.X_API_HANDLE ?? process.env.X_HANDLE ?? process.env.TWITTER_HANDLE,
+  xDefaultUserId: process.env.X_API_USER_ID ?? process.env.TWITTER_USER_ID,
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',
   microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? '',
   microsoftTenantId: process.env.MICROSOFT_TENANT_ID ?? 'common',

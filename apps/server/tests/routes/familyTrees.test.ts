@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   keepMember: vi.fn(),
   deleteMember: vi.fn(),
   setMemberRelationship: vi.fn(),
+  addExistingFamilyMember: vi.fn(),
   ensureMemberCard: vi.fn(),
 }));
 
@@ -25,6 +26,7 @@ vi.mock('../../src/services/familyTreeService', () => ({
     keepMember: (...a: unknown[]) => m.keepMember(...a),
     deleteMember: (...a: unknown[]) => m.deleteMember(...a),
     setMemberRelationship: (...a: unknown[]) => m.setMemberRelationship(...a),
+    addExistingFamilyMember: (...a: unknown[]) => m.addExistingFamilyMember(...a),
     ensureMemberCard: (...a: unknown[]) => m.ensureMemberCard(...a),
     getUserFamilyTree: vi.fn(),
     getCharacterFamilyTree: vi.fn(),
@@ -105,6 +107,22 @@ describe('family-tree member mutation routes', () => {
     it('400 when relation is missing', async () => {
       await request(app()).patch('/api/family-trees/member/char-1/relationship').send({}).expect(400);
       expect(m.setMemberRelationship).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /:anchorId/members', () => {
+    it('200 + adds an existing character to the anchored tree', async () => {
+      m.addExistingFamilyMember.mockResolvedValue(true);
+      const res = await request(app())
+        .post('/api/family-trees/anchor-1/members')
+        .send({ characterId: 'char-2', relation: 'cousin', side: 'maternal' })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(m.addExistingFamilyMember).toHaveBeenCalledWith('user-1', 'anchor-1', 'char-2', {
+        relation: 'cousin',
+        side: 'maternal',
+      });
     });
   });
 

@@ -167,6 +167,22 @@ export class UnifiedFileIngestionService {
     const factsCreated =
       (await this.promoteResumeClaimsToEntityFacts(userId, createdClaims, sourceFileId)) + lore.facts;
 
+    // Persist role conflicts on the resume document so the review UI can surface them.
+    if (lore.roleConflicts.length > 0) {
+      const { error: conflictError } = await supabaseAdmin
+        .from('resume_documents')
+        .update({
+          parsed_data: {
+            ...(document.parsed_data ?? {}),
+            role_conflicts: lore.roleConflicts,
+          },
+        })
+        .eq('id', document.id);
+      if (conflictError) {
+        logger.warn({ error: conflictError, userId }, 'Failed to persist resume role conflicts');
+      }
+    }
+
     await this.runGraphRecovery(userId, sourceFileId);
 
     const derivedCounts = {
@@ -194,6 +210,8 @@ export class UnifiedFileIngestionService {
       skillsCreated: lore.skills,
       organizationsCreated: lore.organizations,
       eventsCreated: lore.timelineEvents,
+      projectsSuggested: lore.projectsSuggested,
+      roleConflicts: lore.roleConflicts,
       structured,
     };
   }

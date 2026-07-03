@@ -76,7 +76,15 @@ describe('entity DELETE routes (integration)', () => {
       m.deleteLocation.mockResolvedValue(true);
       const res = await request(app('/api/locations', locationsRouter)).delete('/api/locations/loc-1').expect(200);
       expect(res.body.success).toBe(true);
-      expect(m.deleteLocation).toHaveBeenCalledWith('user-1', 'loc-1');
+      expect(m.deleteLocation).toHaveBeenCalledWith('user-1', 'loc-1', { reason: 'User deleted place card' });
+    });
+    it('passes an explicit deletion reason through', async () => {
+      m.deleteLocation.mockResolvedValue(true);
+      await request(app('/api/locations', locationsRouter))
+        .delete('/api/locations/loc-1')
+        .send({ reason: 'duplicate_location' })
+        .expect(200);
+      expect(m.deleteLocation).toHaveBeenCalledWith('user-1', 'loc-1', { reason: 'duplicate_location' });
     });
     it('404 when the location does not exist', async () => {
       m.deleteLocation.mockResolvedValue(false);

@@ -51,10 +51,17 @@ const DESTINATION_PATTERN =
 
 const DIAGNOSTIC_NON_PLACE_PATTERNS: Array<{ pattern: RegExp; group?: number }> = [
   { pattern: /\b(Amazon)\b(?=[^.!?]*\b(?:work(?:ing)? at|onboarding|Ring doorbell product)\b)/gi, group: 1 },
+  { pattern: /\b(Ring)\b(?=[^.!?\n]*\b(?:Technician|Failure Analysis|Prototype|sub\s+company|Amazon|manager|team|worked\s+with)\b)/gi, group: 1 },
+  { pattern: /\b(Ring Technician Job)\b/gi, group: 1 },
+  { pattern: /\b(Ring a sub company of Amazon)\b/gi, group: 1 },
+  { pattern: /\b(Ring with)\b/gi, group: 1 },
   { pattern: /\b(Ring doorbell product)\b/gi, group: 1 },
   { pattern: /\b(shows?)\b/gi, group: 1 },
   { pattern: /\b(another show in the pit)\b/gi, group: 1 },
+  { pattern: /\b(pit\s+she\s+still\s+said\s+no)\b/gi, group: 1 },
   { pattern: /\b(pit|stage|bar area|parking lot|dance floor)\b/gi, group: 1 },
+  { pattern: /\b(her presence)\b/gi, group: 1 },
+  { pattern: /\b(This other promoter named Ruben)\b/gi, group: 1 },
   { pattern: /\bat\s+(home)\b/gi, group: 1 },
   { pattern: /\b(Lore[Bb]ook)\b/g, group: 1 },
   { pattern: /\b(code later)(?:\s+so\b[^.!?]*)?/gi, group: 1 },

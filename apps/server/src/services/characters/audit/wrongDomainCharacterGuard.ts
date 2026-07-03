@@ -26,6 +26,14 @@ const INTEREST_GENRE_LABELS = new Set([
 
 const JUNK_TEST_LABELS = new Set(['foo', 'bar', 'baz', 'test', 'asdf', 'qwerty', 'xxx']);
 
+const ROLE_TITLE_PATTERNS = [
+  /\b(technician|engineer|manager|operator|qa technician|quality assurance technician|developer|analyst)\b/i,
+  /technician$/i,
+  /engineer$/i,
+  // Resume-shaped titles: "Field Robotics Agent", "Robotics Deployment Specialist", …
+  /\b(agent|specialist|coordinator|consultant|architect|scientist|intern|supervisor|administrator|director)$/i,
+];
+
 export type WrongDomainResult = {
   wrongDomain: boolean;
   target?: 'group' | 'interest' | 'system';
@@ -61,6 +69,18 @@ export function evaluateWrongDomain(
         wrongDomain: true,
         target: 'interest',
         reason: 'Genre/style/interest label unless explicitly used as a person nickname',
+      };
+    }
+  }
+
+  // Prevent role titles (e.g. "Quality Assurance Technician", "Engineer") from becoming Character cards.
+  // They should be Work Roles attached to user / orgs.
+  for (const pat of ROLE_TITLE_PATTERNS) {
+    if (pat.test(name) && !/\b(person|guy|girl|friend|colleague|coworker|my|I)\b/i.test(provenanceText)) {
+      return {
+        wrongDomain: true,
+        target: 'group', // or 'system' — roles go to work/organizations domain
+        reason: 'Role or job title (e.g. technician, engineer) — attach to user as Work Role, not as Character',
       };
     }
   }

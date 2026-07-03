@@ -352,6 +352,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const locationId = String(req.params.id);
 
   const schema = z.object({
+    name: z.string().trim().min(1).max(160).optional(),
     type: z.string().nullable().optional(),
     place_tags: z.array(z.string()).optional(),
     place_significance: z.array(z.string()).optional(),
@@ -375,17 +376,32 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.json({ success: true, location });
   } catch (error) {
     logger.error({ error, locationId }, 'Failed to update location');
-    res.status(500).json({ success: false, error: 'Failed to update location' });
+    const message = error instanceof Error ? error.message : 'Failed to update location';
+    res.status(message.includes('already exists') || message.includes('required') ? 400 : 500).json({
+      success: false,
+      error: message,
+    });
   }
 });
 
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const locationId = String(req.params.id);
+  const schema = z.object({
+    reason: z.string().trim().max(500).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
   try {
     const canonicalId = (await locationMergeService.resolveCanonicalLocationId(userId, locationId)) ?? locationId;
     const existing = await locationService.getLocationProfile(userId, canonicalId);
-    const deleted = await locationService.deleteLocation(userId, canonicalId);
+    const deletionReason = parsed.data.reason || 'User deleted place card';
+    const deleted = await locationService.deleteLocation(userId, canonicalId, {
+      reason: deletionReason,
+    });
     if (!deleted) {
       res.status(404).json({ success: false, error: 'Location not found' });
       return;
@@ -397,7 +413,7 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         entityId: canonicalId,
         name: existing.name,
         aliases: Array.isArray(existing.metadata?.aliases) ? (existing.metadata!.aliases as string[]) : [],
-        reason: 'User deleted place card',
+        reason: deletionReason,
       });
     }
     res.json({ success: true });

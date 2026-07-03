@@ -11,6 +11,10 @@ export function detectMilestone(event: ExternalEvent): string | null {
     return event.type;
   }
 
+  if (event.source === 'x' && event.type === 'post') {
+    return 'post';
+  }
+
   const text = event.text?.toLowerCase() ?? '';
   const keyword = milestoneKeywords.find((keyword) => text.includes(keyword));
   return keyword ?? null;

@@ -19,6 +19,9 @@ import { buildAtomsFromTimeline, buildAtomsFromEventCandidates } from './narrati
 import { preservedContentPlacer } from './preservedContentPlacer';
 import { timePeriodAnalyzer } from './timePeriodAnalyzer';
 import { themeAnalyzer } from './themeAnalyzer';
+import { createCurrentRoleSnapshot } from '../career/currentRoleSnapshotService'; // Current Occupation/Role Resolver wired here for biography
+import { resolveWorkStatus } from '../inference/work/workStatusResolver';
+import { resolveOrganizationHierarchy } from '../organizations/inference/organizationHierarchyResolver';
 import { voidAwarenessService } from './voidAwarenessService';
 import { atomPrioritizer } from './atomPrioritizer';
 import { fallbackGenerator } from './fallbackGenerator';

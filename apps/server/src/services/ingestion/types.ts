@@ -33,6 +33,14 @@ export type NormalizedArtifact = {
 
 export type IngestKind = 'document' | 'resume' | 'photo' | 'voice' | 'chat_import';
 
+export type ResumeImportConflict = {
+  resumeCompany: string;
+  resumeTitle: string;
+  existingOrganization: string;
+  existingSource: string;
+  reason: string;
+};
+
 export type UnifiedIngestResult = {
   userFileId: string;
   processingStatus: 'completed' | 'failed';
@@ -44,6 +52,8 @@ export type UnifiedIngestResult = {
   skillsCreated?: number;
   organizationsCreated?: number;
   eventsCreated?: number;
+  projectsSuggested?: number;
+  roleConflicts?: ResumeImportConflict[];
   entryIds?: string[];
   structured?: Record<string, unknown>;
   error?: string;

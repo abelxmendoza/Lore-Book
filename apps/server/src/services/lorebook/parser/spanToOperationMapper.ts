@@ -22,6 +22,7 @@ import {
   findCanonEntity,
 } from './canonIndexBuilder';
 import type { CanonIndex } from './loreBookParserTypes';
+import { extractRoleFromText } from '../../../services/inference/work/roleInferenceService';
 import {
   evaluateMergeGate,
   gateForLink,
@@ -755,8 +756,30 @@ function extractPatternOperations(ctx: SpanMappingContext): LoreBookOperation[] 
     }
   }
 
+  // Enhanced role detection — use roleInference + guard against Character creation for titles.
+  // Roles go to work domain / current role snapshot, not as standalone Character cards.
+  const roleFromNew = extractRoleFromText(text);
+  if (roleFromNew) {
+    // Do not push as 'person' or default Character. Push to work domain with note.
+    pushUniqueOp(
+      ops,
+      {
+        kind: 'suggest_add',
+        domain: 'work',
+        name: roleFromNew.displayTitle,
+        evidence: { quote: text, parserRulesFired: ['pattern_role', 'current_occupation_resolver'] },
+        confidence: roleFromNew.confidence,
+        sourceSpans: [],
+        gate: 'suggest',
+        metadata: { isRoleTitle: true, note: 'Do not create as Character — attach as Work Role to user' },
+      },
+      opKey
+    );
+  }
+
+  // legacy role match (kept for compatibility)
   const roleMatch = text.match(/\bas\s+(?:a\s+)?([a-z][\w\s-]{2,40}?)(?:\s+(?:doing|at|in|for)\b|,|\.|$)/i);
-  if (roleMatch?.[1] && /\b(?:robot tech|engineer|developer|manager)\b/i.test(roleMatch[1])) {
+  if (roleMatch?.[1] && /\b(?:robot tech|engineer|developer|manager|technician)\b/i.test(roleMatch[1]) && !roleFromNew) {
     pushUniqueOp(
       ops,
       {

@@ -773,6 +773,74 @@ class FamilyTreeService {
     return true;
   }
 
+  /** Add an existing character card to a family tree centered on `anchorId`. */
+  async addExistingFamilyMember(
+    userId: string,
+    anchorId: string,
+    memberId: string,
+    input: { relation: string; side?: 'maternal' | 'paternal' | 'both' | 'other' },
+  ): Promise<boolean> {
+    if (!anchorId || !memberId || anchorId === memberId) return false;
+    if (isSyntheticNodeId(anchorId) || isSyntheticNodeId(memberId)) return false;
+    const relation = (input.relation ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!(relation in RELATION_GENERATION)) return false;
+
+    const { data: rows } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .in('id', [anchorId, memberId]);
+    if ((rows ?? []).length !== 2) return false;
+
+    const relationshipType = relation === 'related' ? 'related_to' : `${relation}_of`;
+    await this.upsertFamilyEdge(userId, memberId, anchorId, relationshipType);
+
+    const member = (rows ?? []).find((row) => row.id === memberId) as
+      | { id: string; metadata?: Record<string, unknown> | null }
+      | undefined;
+    const metadata = {
+      ...((member?.metadata as Record<string, unknown> | null) ?? {}),
+      family_reviewed: true,
+      family_manual_add: {
+        anchor_id: anchorId,
+        relation,
+        side: input.side ?? null,
+        at: new Date().toISOString(),
+      },
+    };
+    delete metadata.family_excluded;
+    if (input.side) {
+      metadata.family_override = {
+        ...((metadata.family_override as Record<string, unknown> | undefined) ?? {}),
+        side: input.side,
+        at: new Date().toISOString(),
+      };
+    }
+
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({ metadata, updated_at: new Date().toISOString() })
+      .eq('id', memberId)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, userId, anchorId, memberId }, 'Failed to mark manually added family member');
+      return false;
+    }
+
+    const { identityLedgerService } = await import('./identity/identityLedgerService');
+    await identityLedgerService.recordMutation({
+      userId,
+      entityId: memberId,
+      entityType: 'character',
+      mutationType: 'RELATIONSHIP_CREATED',
+      newValue: { anchor_id: anchorId, relation, side: input.side ?? null },
+      reason: `Added existing character to family tree as ${relation}`,
+      source: 'USER',
+      metadata: { operation_type: 'family_manual_add', user_asserted: true },
+    });
+    return true;
+  }
+
   /**
    * Upsert a user-asserted family edge into the shared relationship graph.
    * `relationshipType` follows the `<kin>_of` convention (source IS the <kin>

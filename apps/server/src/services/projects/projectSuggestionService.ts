@@ -108,7 +108,7 @@ class ProjectSuggestionService {
     opts: {
       sourceMessageId?: string;
       sourceThreadId?: string | null;
-      source?: 'chat' | 'journal' | 'llm_scan';
+      source?: 'chat' | 'journal' | 'llm_scan' | 'resume';
     },
     filterOptions: ProjectSuggestionOptions
   ) {
@@ -173,7 +173,7 @@ class ProjectSuggestionService {
     opts: {
       sourceMessageId?: string;
       sourceThreadId?: string | null;
-      source?: 'chat' | 'journal' | 'llm_scan';
+      source?: 'chat' | 'journal' | 'llm_scan' | 'resume';
     } = {}
   ): Promise<void> {
     const [index, crossBook] = await Promise.all([
@@ -199,7 +199,7 @@ class ProjectSuggestionService {
     opts: {
       sourceMessageId?: string;
       sourceThreadId?: string | null;
-      source?: 'chat' | 'journal' | 'llm_scan';
+      source?: 'chat' | 'journal' | 'llm_scan' | 'resume';
     } = {}
   ): Promise<number> {
     if (extractedList.length === 0) return 0;

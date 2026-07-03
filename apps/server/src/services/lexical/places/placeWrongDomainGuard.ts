@@ -7,6 +7,7 @@ import {
   type PlaceSuggestionStatus,
   type PlaceTaxonomyType,
 } from './placeSuggestionTypes';
+import { arbitrateCandidateDomain } from '../domainArbitrationLayer';
 
 const norm = (s: string) =>
   (s ?? '')
@@ -55,6 +56,18 @@ export function guardPlaceWrongDomain(span: string, contextLine = ''): WrongDoma
 
   if (!text) {
     return { allowed: false, status: 'rejected', rejectedAs: 'OBJECT', placeType: 'unknown_place', confidence: 0.1, rulesFired: ['empty_span'] };
+  }
+
+  const arbitration = arbitrateCandidateDomain(text, contextLine);
+  if (!arbitration.allowedAsPlace) {
+    return {
+      allowed: false,
+      status: arbitration.winningDomain === 'VENUE_SUBAREA_CONTEXT' ? 'attached_context' : 'rejected',
+      rejectedAs: arbitration.winningDomain,
+      placeType: arbitration.placeType ?? 'unknown_place',
+      confidence: arbitration.confidence,
+      rulesFired: arbitration.rulesFired.map((rule) => `dal:${rule}`),
+    };
   }
 
   if (/[.!?]\s+\w/.test(text) && !/^(?:bad dogg compound|dtla|la|club nova)\b/i.test(text)) {
