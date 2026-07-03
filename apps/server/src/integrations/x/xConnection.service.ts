@@ -153,7 +153,7 @@ async function getConnection(userId: string): Promise<XConnectionRow | null> {
 
   if (error) {
     if (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? '')) {
-      throw new Error('External account connections table is missing. Run migrations before connecting X.');
+      throw new Error('External account connections table is missing. Run: npm run migrate base');
     }
     throw error;
   }
@@ -469,7 +469,21 @@ export class XConnectionService {
 
     if (error) {
       logger.warn({ error }, 'Failed to load X integration admin summary');
-      return { configured: Boolean(config.xOAuthClientId), connections: [], total: 0, error: error.message };
+
+      const isMissingTable =
+        error.code === 'PGRST205' ||
+        /schema cache|could not find the table|external_account_connections/i.test(error.message ?? '');
+
+      const friendlyError = isMissingTable
+        ? 'External account connections table is missing. Run: npm run migrate base (includes the 20260703 X connections table). Reload schema cache in Supabase if needed.'
+        : error.message;
+
+      return {
+        configured: Boolean(config.xOAuthClientId),
+        connections: [],
+        total: 0,
+        error: friendlyError,
+      };
     }
 
     return {

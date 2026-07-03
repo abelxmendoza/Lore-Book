@@ -223,7 +223,14 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
           </div>
         </div>
 
-        {xSummary?.error && <p className="mt-3 text-sm text-amber-300">{xSummary.error}</p>}
+        {xSummary?.error && (
+          <p className="mt-3 text-sm text-amber-300">
+            {xSummary.error}
+            <span className="block text-xs text-amber-400/70 mt-0.5">
+              Run <code className="font-mono">npm run migrate base</code> then reload schema cache in Supabase (Database → ... ) if the table is still not visible.
+            </span>
+          </p>
+        )}
 
         {xSummary?.connections?.length ? (
           <div className="mt-4 overflow-x-auto">

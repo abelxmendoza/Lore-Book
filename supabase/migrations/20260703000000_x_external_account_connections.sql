@@ -1,3 +1,8 @@
+-- X / Twitter (and future external provider) OAuth connection storage
+-- Used by AccountCenter integrations for importing personal posts/commits/etc.
+-- Run via: npm run migrate base   (or the file command)
+-- or via Supabase CLI / db push.
+
 CREATE TABLE IF NOT EXISTS external_account_connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -28,7 +33,6 @@ CREATE POLICY "Users can read own external account connections"
   ON external_account_connections FOR SELECT
   USING (auth.uid() = user_id);
 
--- Full ownership policies (defensive; backend mostly uses service_role which bypasses RLS)
 CREATE POLICY "Users can insert own external account connections"
   ON external_account_connections FOR INSERT
   WITH CHECK (auth.uid() = user_id);
@@ -42,5 +46,4 @@ CREATE POLICY "Users can delete own external account connections"
   ON external_account_connections FOR DELETE
   USING (auth.uid() = user_id);
 
--- Helpful comment for PostgREST schema cache
-COMMENT ON TABLE external_account_connections IS 'Stores encrypted X (and future) OAuth connections for personal data import. Created via 20260703 migration.';
+COMMENT ON TABLE external_account_connections IS 'Encrypted OAuth tokens for external services (X, future GitHub/IG etc). Service role bypasses RLS for server-side connect flows.';

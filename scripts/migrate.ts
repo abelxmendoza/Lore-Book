@@ -23,6 +23,8 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const BASE_MIGRATIONS = [
   'migrations/000_setup_all_tables.sql',
   'migrations/20250102_conversational_orchestration.sql',
+  // X / external OAuth connections (added for AccountCenter integrations)
+  'migrations/20260703_x_account_connections.sql',
 ];
 
 export const QUEST_MIGRATIONS = [
@@ -201,7 +203,8 @@ export async function runMigrate(argv: string[]): Promise<void> {
   const resolved = await resolveCommand(argv);
   if (!resolved) {
     throw new Error(
-      'Usage: migrate.ts <base|engine|ops|quests|ontology|relationship-peripherals|romantic-peripherals|file <path...>>',
+      'Usage: migrate.ts <base|engine|ops|quests|ontology|relationship-peripherals|romantic-peripherals|file <path...>>\n' +
+      'Note: external_account_connections (X OAuth) is included when running "base".',
     );
   }
   await applyMigrations({ root: ROOT, label: resolved.label, ...resolved.cmd });
