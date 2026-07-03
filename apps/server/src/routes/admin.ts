@@ -22,6 +22,7 @@ import { resolveAccountAuthorityFromAuthUser } from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { getCostSummary, costAttributionService } from '../services/costAttributionService';
 import { getOpenAiBudgetSnapshot } from '../services/openaiBudgetService';
+import { xConnectionService } from '../integrations/x/xConnection.service';
 
 import { chronicleAdminRouter } from './chronicleAdmin';
 
@@ -32,6 +33,16 @@ router.use(requireAuth);
 router.use(requireAdmin);
 
 router.use('/chronicle', chronicleAdminRouter);
+
+router.get('/integrations/x', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const summary = await xConnectionService.adminSummary();
+    return res.json(summary);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching X integration admin summary');
+    return res.status(500).json({ error: 'Failed to fetch X integration summary' });
+  }
+});
 
 /**
  * Log admin action
@@ -555,4 +566,3 @@ router.post('/agent/skills/run', async (req: AuthenticatedRequest, res) => {
 });
 
 export const adminRouter = router;
-

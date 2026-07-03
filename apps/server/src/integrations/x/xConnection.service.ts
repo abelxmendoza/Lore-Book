@@ -1,0 +1,465 @@
+import crypto from 'node:crypto';
+
+import type { Request } from 'express';
+
+import { config } from '../../config';
+import { xApiGuard } from '../../lib/externalCircuitBreaker';
+import { logger } from '../../logger';
+import { encrypt, decrypt } from '../../services/encryption';
+import { memoryService } from '../../services/memoryService';
+import { supabaseAdmin } from '../../services/supabaseClient';
+import { xAdapter, type XResponse } from '../../external/x.adapter';
+import { summarizeMilestonesBridge } from '../../external/summarizer.bridge';
+import type { ExternalSummary } from '../../external/types';
+
+const PROVIDER = 'x';
+const X_AUTHORIZE_URL = 'https://x.com/i/oauth2/authorize';
+const X_TOKEN_URL = 'https://api.x.com/2/oauth2/token';
+const X_API_BASE_URL = 'https://api.x.com/2';
+const X_SCOPES = ['tweet.read', 'users.read', 'offline.access'];
+const STATE_TTL_MS = 10 * 60 * 1000;
+
+type XConnectionRow = {
+  id: string;
+  user_id: string;
+  provider: string;
+  provider_user_id: string | null;
+  provider_username: string | null;
+  access_token_enc: string | null;
+  refresh_token_enc: string | null;
+  scopes: string[] | null;
+  expires_at: string | null;
+  last_sync_at: string | null;
+  status: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type XTokenResponse = {
+  token_type?: string;
+  expires_in?: number;
+  access_token: string;
+  refresh_token?: string;
+  scope?: string;
+};
+
+type SignedStatePayload = {
+  userId: string;
+  codeVerifier: string;
+  returnTo: string;
+  exp: number;
+  nonce: string;
+};
+
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString('base64url');
+}
+
+function sha256Base64url(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('base64url');
+}
+
+function stateSecret(): string {
+  return config.encryptionSalt || config.xOAuthClientSecret || 'x-oauth-state-dev-secret';
+}
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', stateSecret()).update(value).digest('base64url');
+}
+
+function signedState(payload: SignedStatePayload): string {
+  const body = base64url(JSON.stringify(payload));
+  return `${body}.${sign(body)}`;
+}
+
+function verifySignedState(state: string): SignedStatePayload {
+  const [body, signature] = state.split('.');
+  if (!body || !signature) throw new Error('Invalid OAuth state');
+
+  const expected = sign(body);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
+    throw new Error('Invalid OAuth state signature');
+  }
+
+  const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SignedStatePayload;
+  if (!payload.userId || !payload.codeVerifier || Date.now() > payload.exp) {
+    throw new Error('Expired OAuth state');
+  }
+  return payload;
+}
+
+function requestBaseUrl(req: Request): string {
+  const configured = process.env.API_URL || process.env.BACKEND_URL;
+  if (configured) return configured.trim().replace(/\/$/, '');
+  const proto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0] || req.protocol || 'http';
+  return `${proto}://${req.get('host')}`;
+}
+
+function redirectUri(req: Request): string {
+  return config.xOAuthRedirectUri || `${requestBaseUrl(req)}/api/integrations/x/callback`;
+}
+
+function webReturnUrl(returnTo = '/account'): string {
+  const root = (process.env.FRONTEND_URL || config.mcpWebAppUrl || 'http://localhost:5173').replace(/\/$/, '');
+  const path = returnTo.startsWith('/') ? returnTo : '/account';
+  return `${root}${path}`;
+}
+
+function requireOAuthConfig() {
+  if (!config.xOAuthClientId) {
+    throw new Error('X OAuth Client ID is not configured. Set X_OAUTH_CLIENT_ID or X_API_CLIENT_ID.');
+  }
+}
+
+function basicAuthHeader(): Record<string, string> {
+  if (!config.xOAuthClientId || !config.xOAuthClientSecret) return {};
+  return {
+    Authorization: `Basic ${Buffer.from(`${config.xOAuthClientId}:${config.xOAuthClientSecret}`).toString('base64')}`,
+  };
+}
+
+function serializeConnection(row: XConnectionRow | null) {
+  return {
+    connected: Boolean(row && row.status === 'connected'),
+    provider: PROVIDER,
+    username: row?.provider_username ?? null,
+    providerUserId: row?.provider_user_id ?? null,
+    scopes: row?.scopes ?? [],
+    expiresAt: row?.expires_at ?? null,
+    lastSyncAt: row?.last_sync_at ?? null,
+    status: row?.status ?? 'disconnected',
+    metadata: row?.metadata ?? {},
+  };
+}
+
+async function getConnection(userId: string): Promise<XConnectionRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from('external_account_connections')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('provider', PROVIDER)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? '')) {
+      throw new Error('External account connections table is missing. Run migrations before connecting X.');
+    }
+    throw error;
+  }
+  return (data as XConnectionRow | null) ?? null;
+}
+
+async function saveConnection(input: {
+  userId: string;
+  xUserId: string;
+  username: string;
+  token: XTokenResponse;
+}) {
+  const scopes = input.token.scope?.split(/\s+/).filter(Boolean) ?? X_SCOPES;
+  const expiresAt = input.token.expires_in
+    ? new Date(Date.now() + input.token.expires_in * 1000).toISOString()
+    : null;
+
+  const { error } = await supabaseAdmin.from('external_account_connections').upsert(
+    {
+      user_id: input.userId,
+      provider: PROVIDER,
+      provider_user_id: input.xUserId,
+      provider_username: input.username,
+      access_token_enc: encrypt(input.token.access_token),
+      refresh_token_enc: input.token.refresh_token ? encrypt(input.token.refresh_token) : null,
+      scopes,
+      expires_at: expiresAt,
+      status: 'connected',
+      metadata: { token_type: input.token.token_type ?? 'bearer' },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,provider' }
+  );
+
+  if (error) throw error;
+}
+
+async function exchangeCode(code: string, verifier: string, callbackUri: string): Promise<XTokenResponse> {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: config.xOAuthClientId ?? '',
+    code,
+    redirect_uri: callbackUri,
+    code_verifier: verifier,
+  });
+
+  const response = await xApiGuard.run(() =>
+    fetch(X_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...basicAuthHeader(),
+      },
+      body,
+    })
+  );
+
+  if (!response.ok) {
+    throw new Error(`X token exchange failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json() as Promise<XTokenResponse>;
+}
+
+async function refreshAccessToken(row: XConnectionRow): Promise<XTokenResponse> {
+  if (!row.refresh_token_enc) throw new Error('X refresh token is missing. Reconnect X.');
+  const refreshToken = decrypt(row.refresh_token_enc);
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.xOAuthClientId ?? '',
+    refresh_token: refreshToken,
+  });
+
+  const response = await xApiGuard.run(() =>
+    fetch(X_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...basicAuthHeader(),
+      },
+      body,
+    })
+  );
+
+  if (!response.ok) {
+    throw new Error(`X token refresh failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json() as Promise<XTokenResponse>;
+}
+
+async function getValidAccessToken(userId: string): Promise<{ row: XConnectionRow; accessToken: string }> {
+  const row = await getConnection(userId);
+  if (!row || row.status !== 'connected' || !row.access_token_enc) {
+    throw new Error('X is not connected for this account.');
+  }
+
+  const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : 0;
+  if (expiresAt && expiresAt - Date.now() < 60_000 && row.refresh_token_enc) {
+    const refreshed = await refreshAccessToken(row);
+    await saveConnection({
+      userId,
+      xUserId: row.provider_user_id ?? '',
+      username: row.provider_username ?? '',
+      token: {
+        ...refreshed,
+        refresh_token: refreshed.refresh_token ?? decrypt(row.refresh_token_enc),
+      },
+    });
+    const updated = await getConnection(userId);
+    return { row: updated ?? row, accessToken: refreshed.access_token };
+  }
+
+  return { row, accessToken: decrypt(row.access_token_enc) };
+}
+
+async function fetchMe(accessToken: string): Promise<{ id: string; username: string }> {
+  const response = await xApiGuard.run(() =>
+    fetch(`${X_API_BASE_URL}/users/me?user.fields=username`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  );
+  if (!response.ok) throw new Error(`Failed to fetch X profile: ${response.status} ${await response.text()}`);
+  const payload = (await response.json()) as { data?: { id?: string; username?: string } };
+  if (!payload.data?.id || !payload.data.username) throw new Error('X profile response was missing id or username.');
+  return { id: payload.data.id, username: payload.data.username };
+}
+
+async function fetchUserPosts(accessToken: string, xUserId: string, maxPosts: number): Promise<XResponse> {
+  const params = new URLSearchParams({
+    max_results: `${Math.min(Math.max(maxPosts, 5), 100)}`,
+    expansions: 'author_id,attachments.media_keys,referenced_tweets.id',
+    'tweet.fields': 'created_at,public_metrics,entities,attachments,referenced_tweets,lang,note_tweet',
+    'user.fields': 'username',
+    'media.fields': 'url,preview_image_url,type',
+    exclude: 'retweets,replies',
+  });
+
+  const response = await xApiGuard.run(() =>
+    fetch(`${X_API_BASE_URL}/users/${encodeURIComponent(xUserId)}/tweets?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  );
+  if (!response.ok) throw new Error(`Failed to fetch X posts: ${response.status} ${await response.text()}`);
+  return response.json() as Promise<XResponse>;
+}
+
+async function importedSourceIds(userId: string, sourceIds: string[]): Promise<Set<string>> {
+  if (!sourceIds.length) return new Set();
+
+  const { data, error } = await supabaseAdmin
+    .from('journal_entries')
+    .select('metadata')
+    .eq('user_id', userId)
+    .eq('source', PROVIDER)
+    .in('metadata->>sourceId', sourceIds);
+
+  if (error) throw error;
+
+  return new Set(
+    (data ?? [])
+      .map((row: any) => row?.metadata?.sourceId)
+      .filter((sourceId: unknown): sourceId is string => typeof sourceId === 'string')
+  );
+}
+
+async function persistXImports(userId: string, summaries: ExternalSummary[]) {
+  const importable = summaries.filter((summary) => summary.sourceId && (summary.text || summary.summary));
+  const alreadyImported = await importedSourceIds(
+    userId,
+    importable.map((summary) => summary.sourceId!)
+  );
+
+  let imported = 0;
+  let skipped = 0;
+  const entryIds: string[] = [];
+
+  for (const summary of importable) {
+    if (!summary.sourceId || alreadyImported.has(summary.sourceId)) {
+      skipped += 1;
+      continue;
+    }
+
+    const entry = await memoryService.saveEntry({
+      userId,
+      content: summary.text ?? summary.summary,
+      date: summary.timestamp,
+      tags: Array.from(new Set(['x-import', summary.type, ...(summary.tags ?? [])])),
+      summary: summary.milestone ?? summary.summary,
+      source: PROVIDER,
+      original_content: summary.text ?? null,
+      preserve_original_language: true,
+      metadata: {
+        provider: PROVIDER,
+        sourceId: summary.sourceId,
+        url: summary.url,
+        importedAt: new Date().toISOString(),
+        eventType: summary.type,
+        imageUrl: summary.imageUrl,
+        x: summary.metadata ?? {},
+      },
+    });
+
+    alreadyImported.add(summary.sourceId);
+    entryIds.push(entry.id);
+    imported += 1;
+  }
+
+  return { imported, skipped, entryIds };
+}
+
+export class XConnectionService {
+  begin(userId: string, req: Request, returnTo = '/account') {
+    requireOAuthConfig();
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = sha256Base64url(codeVerifier);
+    const callbackUri = redirectUri(req);
+    const state = signedState({
+      userId,
+      codeVerifier,
+      returnTo,
+      exp: Date.now() + STATE_TTL_MS,
+      nonce: crypto.randomBytes(16).toString('base64url'),
+    });
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: config.xOAuthClientId ?? '',
+      redirect_uri: callbackUri,
+      scope: X_SCOPES.join(' '),
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+
+    return {
+      authorizationUrl: `${X_AUTHORIZE_URL}?${params.toString()}`,
+      redirectUri: callbackUri,
+      scopes: X_SCOPES,
+    };
+  }
+
+  async complete(code: string, state: string, req: Request): Promise<{ redirectTo: string }> {
+    requireOAuthConfig();
+    const payload = verifySignedState(state);
+    const token = await exchangeCode(code, payload.codeVerifier, redirectUri(req));
+    const profile = await fetchMe(token.access_token);
+    await saveConnection({
+      userId: payload.userId,
+      xUserId: profile.id,
+      username: profile.username,
+      token,
+    });
+    return { redirectTo: `${webReturnUrl(payload.returnTo)}?x=connected` };
+  }
+
+  async status(userId: string) {
+    const row = await getConnection(userId);
+    return serializeConnection(row);
+  }
+
+  async disconnect(userId: string) {
+    const { error } = await supabaseAdmin
+      .from('external_account_connections')
+      .delete()
+      .eq('user_id', userId)
+      .eq('provider', PROVIDER);
+    if (error) throw error;
+    return { connected: false };
+  }
+
+  async sync(userId: string, maxPosts = 25) {
+    const { row, accessToken } = await getValidAccessToken(userId);
+    const xUserId = row.provider_user_id;
+    if (!xUserId) throw new Error('X connection is missing provider user id. Reconnect X.');
+
+    const payload = await fetchUserPosts(accessToken, xUserId, maxPosts);
+    const events = xAdapter(payload);
+    const summaries = await summarizeMilestonesBridge(events);
+    const persistence = await persistXImports(userId, summaries);
+
+    await supabaseAdmin
+      .from('external_account_connections')
+      .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('provider', PROVIDER);
+
+    return {
+      count: summaries.length,
+      imported: persistence.imported,
+      skipped: persistence.skipped,
+      entryIds: persistence.entryIds,
+      events: summaries,
+    };
+  }
+
+  async adminSummary() {
+    const { data, error } = await supabaseAdmin
+      .from('external_account_connections')
+      .select('id, user_id, provider_username, status, last_sync_at, updated_at')
+      .eq('provider', PROVIDER)
+      .order('updated_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      logger.warn({ error }, 'Failed to load X integration admin summary');
+      return { configured: Boolean(config.xOAuthClientId), connections: [], total: 0, error: error.message };
+    }
+
+    return {
+      configured: Boolean(config.xOAuthClientId),
+      connections: data ?? [],
+      total: data?.length ?? 0,
+    };
+  }
+}
+
+export const xConnectionService = new XConnectionService();

@@ -100,6 +100,9 @@ type EnvConfig = {
   xBearerToken?: string;
   xConsumerKey?: string;
   xConsumerSecret?: string;
+  xOAuthClientId?: string;
+  xOAuthClientSecret?: string;
+  xOAuthRedirectUri?: string;
   xDefaultHandle?: string;
   xDefaultUserId?: string;
   microsoftClientId?: string;
@@ -225,6 +228,19 @@ export const config: EnvConfig = {
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
   xConsumerKey: process.env.X_API_CONSUMER_KEY ?? process.env.TWITTER_CONSUMER_KEY ?? '',
   xConsumerSecret: process.env.X_API_CONSUMER_SECRET ?? process.env.TWITTER_CONSUMER_SECRET ?? '',
+  xOAuthClientId:
+    process.env.X_OAUTH_CLIENT_ID ??
+    process.env.X_API_CLIENT_ID ??
+    process.env.X_API_CONSUMER_KEY ??
+    process.env.TWITTER_CONSUMER_KEY ??
+    '',
+  xOAuthClientSecret:
+    process.env.X_OAUTH_CLIENT_SECRET ??
+    process.env.X_API_CLIENT_SECRET ??
+    process.env.X_API_CONSUMER_SECRET ??
+    process.env.TWITTER_CONSUMER_SECRET ??
+    '',
+  xOAuthRedirectUri: process.env.X_OAUTH_REDIRECT_URI,
   xDefaultHandle: process.env.X_API_HANDLE ?? process.env.X_HANDLE ?? process.env.TWITTER_HANDLE,
   xDefaultUserId: process.env.X_API_USER_ID ?? process.env.TWITTER_USER_ID,
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',

@@ -1,5 +1,7 @@
-import { ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { fetchJson } from '../../lib/api';
 import { EXTERNAL_SERVICES, type ExternalService } from '../../lib/externalServiceLinks';
 import { StripeDashboardLinks } from './StripeDashboardLinks';
 import type { StripeConfigStatus } from '../../lib/stripeConfigStatus';
@@ -58,6 +60,30 @@ const ACCENT: Record<ExternalService['accent'], { border: string; bg: string; te
 type Props = {
   stripeConfig?: StripeConfigStatus | null;
 };
+
+type XAdminSummary = {
+  configured: boolean;
+  total: number;
+  error?: string;
+  connections: Array<{
+    id: string;
+    user_id: string;
+    provider_username: string | null;
+    status: string | null;
+    last_sync_at: string | null;
+    updated_at: string | null;
+  }>;
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return 'Never';
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 function ServiceCard({ service, stripeConfig }: { service: ExternalService; stripeConfig?: StripeConfigStatus | null }) {
   const accent = ACCENT[service.accent];
@@ -126,6 +152,29 @@ function ServiceCard({ service, stripeConfig }: { service: ExternalService; stri
 }
 
 export function ExternalServicesPanel({ stripeConfig }: Props) {
+  const [xSummary, setXSummary] = useState<XAdminSummary | null>(null);
+  const [xLoading, setXLoading] = useState(false);
+
+  const loadX = async () => {
+    setXLoading(true);
+    try {
+      setXSummary(await fetchJson<XAdminSummary>('/api/admin/integrations/x'));
+    } catch (error) {
+      setXSummary({
+        configured: false,
+        total: 0,
+        connections: [],
+        error: error instanceof Error ? error.message : 'Failed to load X integration status',
+      });
+    } finally {
+      setXLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadX();
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className={cn('rounded-lg border p-4', ACCENT.slate.border, ACCENT.slate.bg)}>
@@ -134,6 +183,74 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
           Direct links to manage LoreBook infrastructure — database, hosting, billing, AI, auth, and monitoring.
           All links open in a new tab.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-sky-500/25 bg-black/40 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-sky-200">X user connections</h3>
+            <p className="mt-1 text-sm text-white/50">
+              OAuth connection health for account-center X imports.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadX}
+            disabled={xLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100 hover:bg-sky-500/20 disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-4 w-4', xLoading && 'animate-spin')} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs uppercase tracking-wide text-white/35">OAuth Config</p>
+            <p className={cn('mt-1 text-sm font-semibold', xSummary?.configured ? 'text-emerald-300' : 'text-amber-300')}>
+              {xSummary?.configured ? 'Configured' : 'Missing'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs uppercase tracking-wide text-white/35">Connections</p>
+            <p className="mt-1 text-sm font-semibold text-white">{xSummary?.total ?? '—'}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs uppercase tracking-wide text-white/35">Last Sync</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {formatDate(xSummary?.connections?.[0]?.last_sync_at)}
+            </p>
+          </div>
+        </div>
+
+        {xSummary?.error && <p className="mt-3 text-sm text-amber-300">{xSummary.error}</p>}
+
+        {xSummary?.connections?.length ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-white/10 text-left text-white/45">
+                  <th className="py-2 pr-3 font-medium">Handle</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Last Sync</th>
+                  <th className="py-2 pr-3 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {xSummary.connections.slice(0, 10).map((connection) => (
+                  <tr key={connection.id} className="border-b border-white/5">
+                    <td className="py-2 pr-3 text-white/80">@{connection.provider_username ?? 'unknown'}</td>
+                    <td className="py-2 pr-3 text-white/60">{connection.status ?? 'unknown'}</td>
+                    <td className="py-2 pr-3 text-white/50">{formatDate(connection.last_sync_at)}</td>
+                    <td className="py-2 pr-3 text-white/50">{formatDate(connection.updated_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-white/40">No users have connected X yet.</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

@@ -59,6 +59,7 @@ import { hqiRouter } from './hqi';
 import wellnessRouter from './wellness';
 import { insightsRouter } from './insights';
 import { integrationsRouter } from './integrations';
+import { xIntegrationCallbackRouter } from '../integrations/x/x.router';
 import { legalRouter } from './legal';
 import { locationsRouter } from './locations';
 import { projectsRouter } from './projects';
@@ -1342,6 +1343,13 @@ export const routeRegistry: RouteEntry[] = [
 
   // ---- EXTERNAL INTEGRATIONS ----------------------------------------------
   {
+    path: '/api/integrations/x/callback',
+    router: xIntegrationCallbackRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Public X OAuth callback',
+  },
+  {
     path: '/api/x',
     router: xRouter,
     requiresAuth: false,
@@ -1357,7 +1365,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/integrations',
     router: integrationsRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Third-party integrations hub',
   },
   {

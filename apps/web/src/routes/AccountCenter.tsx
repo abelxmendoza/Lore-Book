@@ -12,6 +12,7 @@ import { GuestExperienceCard } from '../components/guest/GuestExperienceCard';
 import { useGuest } from '../contexts/GuestContext';
 import { LANDING_PATH } from '../lib/authReturnPath';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
+import { XConnectionPanel } from '../features/integrations/XConnectionPanel';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import {
   canAccessAdmin,
@@ -34,7 +35,7 @@ import {
   type StorageUsage,
 } from '../api/user';
 
-type Tab = 'profile' | 'subscription' | 'privacy' | 'activity' | 'data';
+type Tab = 'profile' | 'subscription' | 'integrations' | 'privacy' | 'activity' | 'data';
 
 function getDisplayEmail(user: any): string {
   return user?.email?.trim()
@@ -279,6 +280,7 @@ export default function AccountCenter() {
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: 'profile',      label: 'Profile',          icon: User },
     { id: 'subscription', label: 'Subscription',     icon: Sparkles },
+    { id: 'integrations', label: 'Integrations',     icon: Link2 },
     { id: 'privacy',      label: 'Privacy',          icon: Shield },
     { id: 'activity',     label: 'Activity',         icon: Activity },
     { id: 'data',         label: 'Data & Export',    icon: Download },
@@ -551,6 +553,13 @@ export default function AccountCenter() {
                 {/* ── SUBSCRIPTION ──────────────────────────────────────── */}
                 {activeTab === 'subscription' && (
                   <SubscriptionManagement />
+                )}
+
+                {/* ── INTEGRATIONS ─────────────────────────────────────── */}
+                {activeTab === 'integrations' && (
+                  <div className="space-y-5">
+                    <XConnectionPanel />
+                  </div>
                 )}
 
                 {/* ── PRIVACY ───────────────────────────────────────────── */}
