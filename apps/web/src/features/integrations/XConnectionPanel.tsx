@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Link2, Loader2, RefreshCw, Unlink } from 'lucide-react';
+import { CheckCircle2, Link2, Loader2, RefreshCw, Unlink, Twitter } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
 
@@ -104,52 +104,69 @@ export function XConnectionPanel() {
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-black/30 p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-white">X</h3>
-            {status?.connected && (
-              <span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 shadow-sm">
+      <div className="flex items-start gap-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10">
+          <Twitter className="h-5 w-5 text-white/90" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-white">X (Twitter)</h3>
+            {status?.connected ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
                 <CheckCircle2 className="h-3 w-3" />
                 Connected
               </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.03] px-2.5 py-0.5 text-xs font-medium text-white/50">
+                Not connected
+              </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-white/45">
-            Import your original posts into LoreBook as personal history, with X post IDs and URLs preserved.
+
+          <p className="mt-1.5 text-sm leading-relaxed text-white/55">
+            Import your original posts and replies into LoreBook as personal history.
+            X post IDs and permalinks are preserved for provenance.
           </p>
+
           {status?.connected && (
-            <div className="mt-3 grid gap-1 text-xs text-white/45">
-              <p>@{status.username ?? 'unknown'}</p>
-              <p>Last sync: {formatDate(status.lastSyncAt)}</p>
-              <p>Scopes: {status.scopes.length ? status.scopes.join(', ') : 'unknown'}</p>
+            <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+              <div className="text-white/40">
+                Account <span className="font-mono text-white/70">@{status.username ?? 'unknown'}</span>
+              </div>
+              <div className="text-white/40">
+                Last sync <span className="text-white/70">{formatDate(status.lastSyncAt)}</span>
+              </div>
+              <div className="text-white/40 sm:col-span-2">
+                Scopes <span className="font-mono text-white/60">{status.scopes.length ? status.scopes.join(', ') : '—'}</span>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
           {loading ? (
-            <span className="inline-flex items-center gap-2 px-3 py-2 text-sm text-white/50">
+            <div className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading
-            </span>
+              Loading…
+            </div>
           ) : status?.connected ? (
             <>
               <button
                 type="button"
                 onClick={sync}
                 disabled={working}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/35 bg-primary/15 px-3 py-2 text-sm text-white hover:bg-primary/25 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Sync
+                {working ? 'Syncing…' : 'Sync posts'}
               </button>
               <button
                 type="button"
                 onClick={disconnect}
                 disabled={working}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm text-white/60 hover:text-white disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.02] px-3.5 py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Unlink className="h-4 w-4" />
                 Disconnect
@@ -160,17 +177,25 @@ export function XConnectionPanel() {
               type="button"
               onClick={connect}
               disabled={working}
-              className="inline-flex items-center gap-2 rounded-lg border border-primary/35 bg-primary/15 px-3 py-2 text-sm text-white hover:bg-primary/25 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-              Connect X
+              {working ? 'Connecting…' : 'Connect X'}
             </button>
           )}
         </div>
       </div>
 
-      {message && <p className="mt-4 text-sm text-emerald-300">{message}</p>}
-      {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+      {message && (
+        <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-300">
+          {message}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-300">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
