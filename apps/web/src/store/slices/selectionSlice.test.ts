@@ -83,7 +83,7 @@ describe('selectionSlice', () => {
       entityName: 'Alex',
       entityType: 'character' as const,
       sourceSurface: 'love' as const,
-      sourceLabel: 'Love & Relationships',
+      sourceLabel: 'Dating & Romance',
       relationshipId: 'rel-001',
       sessionStats: emptyChatFocusSessionStats(),
     };

@@ -11,7 +11,7 @@ describe('chatFocusUtils', () => {
       entityName: 'Alex',
       entityType: 'character',
       sourceSurface: 'love',
-      sourceLabel: 'Love & Relationships',
+      sourceLabel: 'Dating & Romance',
       relationshipId: 'rel-001',
       sessionStats: emptyChatFocusSessionStats(),
     };

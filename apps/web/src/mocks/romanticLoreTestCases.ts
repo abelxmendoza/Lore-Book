@@ -1,5 +1,5 @@
 /**
- * Canonical Love & Relationships lore fixtures — shared by server tests and web mock UI.
+ * Canonical Dating & Romance lore fixtures — shared by server tests and web mock UI.
  * Each case maps a chat snippet → expected lexical parse → demo relationship card.
  */
 

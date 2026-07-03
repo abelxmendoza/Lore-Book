@@ -313,7 +313,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       discovery: 'Discovery Hub',
       continuity: 'Continuity',
       guide: 'User Guide',
-      love: 'Love & Relationships',
+      love: 'Dating & Romance',
       quests: 'Quests',
       gaps: 'Knowledge Gaps',
       saga: 'Life Saga',

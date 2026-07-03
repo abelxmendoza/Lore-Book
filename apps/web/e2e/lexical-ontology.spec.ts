@@ -4,7 +4,7 @@ import { test, expect, type Page } from '@playwright/test';
  * E2E smoke coverage for the lexical-intelligence / ontology surfaces:
  *   - /ontology       → admin Ontology Explorer (hierarchy + analytics)
  *   - /characters     → Character Book (hosts the Lexical compliance panel)
- *   - /love           → Love & Relationships (romantic lexical insights)
+ *   - /love           → Dating & Romance (romantic lexical insights)
  *
  * Assertions are intentionally tolerant: admin gating, mock-data availability,
  * and "hide when healthy" panels mean exact content varies by environment. The

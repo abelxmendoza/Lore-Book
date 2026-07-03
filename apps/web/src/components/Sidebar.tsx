@@ -265,7 +265,7 @@ const SidebarContent = ({
             )}
           >
             <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
-            Love & Relationships
+            Dating & Romance
           </button>
 
           {/* 3. Gossip & claims */}

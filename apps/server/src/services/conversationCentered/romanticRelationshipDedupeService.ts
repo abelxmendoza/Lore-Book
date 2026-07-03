@@ -1,7 +1,7 @@
 /**
  * Romantic relationship dedupe + Character-Book linking.
  *
- * Self-heals the Love & Relationships data the same way the character audit
+ * Self-heals the Dating & Romance data the same way the character audit
  * self-heals provenance — deterministically, no LLM:
  *   1. Link omega-backed (or orphaned) rows to an existing Character Book card
  *      by exact normalized name/alias, so every partner shows up in the book.

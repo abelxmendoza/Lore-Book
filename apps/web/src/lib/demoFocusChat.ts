@@ -25,7 +25,7 @@ export function getDemoFocusResponse(message: string, focus: ChatFocus): string 
   if (focus.sourceSurface === 'love') {
     if (/pattern|cycle|drift|red flag|green flag/i.test(message)) {
       return (
-        `*(Demo — Love & Relationships focus on ${name})*\n\n` +
+        `*(Demo — Dating & Romance focus on ${name})*\n\n` +
         `You opened this thread from **${section}**, so I'm weighting ${name}'s relationship patterns heavily.\n\n` +
         `${deepeningLine}\n\n` +
         `From what you've logged, there's a mix of warmth and recurring tension with ${name}. ` +
@@ -35,7 +35,7 @@ export function getDemoFocusResponse(message: string, focus: ChatFocus): string 
     }
     if (/how are things|going with|what should i know/i.test(message)) {
       return (
-        `*(Demo — Love & Relationships focus on ${name})*\n\n` +
+        `*(Demo — Dating & Romance focus on ${name})*\n\n` +
         `I'm pulling from your **${section}** context for **${name}** — history, flags, and recent emotional tone.\n\n` +
         `${deepeningLine}\n\n` +
         `Things with ${name} look **active but nuanced**: affection is present, and you're paying attention to how the connection *feels*, not just facts. ` +
@@ -43,7 +43,7 @@ export function getDemoFocusResponse(message: string, focus: ChatFocus): string 
       );
     }
     return (
-      `*(Demo — Love & Relationships focus on ${name})*\n\n` +
+      `*(Demo — Dating & Romance focus on ${name})*\n\n` +
       `You're chatting from **${section}** about **${name}**, so I'm prioritizing feelings, attachment, and relationship dynamics.\n\n` +
       `${deepeningLine}\n\n` +
       `I hear you. In a full session I'd weave this into ${name}'s relationship card — patterns, drift, and what this moment adds to the picture. ` +

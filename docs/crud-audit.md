@@ -13,7 +13,7 @@ Refine can stay useful as a separate internal admin cockpit, but production CRUD
    - Started: centralized `updateCharacter`, `deleteCharacter`, `mergeCharacters`, and `linkRomanticRelationshipToCharacter` mutations in `entitiesApi`.
    - Started: Character merge/delete panel and Love relationship linking now use shared mutations.
 
-2. Love & Relationships
+2. Dating & Romance
    - Relationships must resolve to the same Character Book entity before users edit identity details or delete bad characters.
    - Started: Love cards can link an Omega relationship to a Character Book record and open the shared character modal.
 

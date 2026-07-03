@@ -130,7 +130,7 @@ export async function enrichRomanticRelationshipsForUser(
           reviewed: orientationReviewed,
           eligible: orientationEligible,
           note: !eligibleSexes
-            ? 'Set your confirmed sex and orientation to filter Love & Relationships.'
+            ? 'Set your confirmed sex and orientation to filter Dating & Romance.'
             : !partnerSex
               ? 'Partner sex is unknown or unconfirmed; kept visible for review.'
               : orientationEligible

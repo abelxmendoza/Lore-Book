@@ -24,7 +24,7 @@ export const MOCK_CHARACTER_BOOK_NAMES: string[] = [
   'Ava Mitchell',
 ];
 
-/** Names already tracked in demo Love & Relationships cards. */
+/** Names already tracked in demo Dating & Romance cards. */
 export const MOCK_ROMANTIC_RELATIONSHIP_NAMES: string[] = [
   'Alex',
   'Jordan',

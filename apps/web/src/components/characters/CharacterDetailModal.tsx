@@ -172,7 +172,7 @@ type CharacterDetailModalProps = {
   relationship?: RomanticRelationship;
   /** Protagonist / self profile — amber styling, no delete, synthetic-id safe. */
   isMainCharacter?: boolean;
-  /** Open directly on a tab (e.g. from Love & Relationships → Character Book link). */
+  /** Open directly on a tab (e.g. from Dating & Romance → Character Book link). */
   initialTab?: TabKey;
 };
 

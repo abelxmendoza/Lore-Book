@@ -1,5 +1,5 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
-// Mock Data for Love & Relationships Section
+// Mock Data for Dating & Romance Section
 
 import type { CharacterSuggestion } from '../api/entitySuggestions';
 import { enrichMockAnalytics } from './romanticDemoProfiles';

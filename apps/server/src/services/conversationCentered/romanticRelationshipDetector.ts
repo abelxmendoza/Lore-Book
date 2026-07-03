@@ -143,7 +143,7 @@ Return JSON:
 
 If the message says they blocked the user or ghosted the user, classify status as "blocked" or "ghosted" and treat it as not current. Only include relationships with confidence >= 0.7. Be conservative.
 
-IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never classify groups, teams, departments, companies, or plural collective references (e.g. "Amazon Engineers", "the recruiters", "my coworkers") as romantic partners. Those belong in group/organization tracking, not Love & Relationships.`,
+IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never classify groups, teams, departments, companies, or plural collective references (e.g. "Amazon Engineers", "the recruiters", "my coworkers") as romantic partners. Those belong in group/organization tracking, not Dating & Romance.`,
           },
           {
             role: 'user',
@@ -231,7 +231,7 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
       // One romantic relationship per person — match on identity only, not on
       // (relationship_type, status). Matching those too spawned a fresh row each
       // time a person's status evolved (one_night_stand -> ex_lover), which is
-      // what produced the Love & Relationships duplicates.
+      // what produced the Dating & Romance duplicates.
       const { data: existing } = await supabaseAdmin
         .from('romantic_relationships')
         .select('*')

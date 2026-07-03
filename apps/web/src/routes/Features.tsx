@@ -278,7 +278,7 @@ export default function Features() {
         <section className="py-16 px-4 sm:px-6 lg:px-8">
           <div className="max-w-5xl mx-auto">
             <FeatureRow
-              pill="Love & Relationships"
+              pill="Dating & Romance"
               headline="An advisor who has actually read your journals"
               body="When you talk about your love life, LoreBook doesn't give you generic advice. It knows the history — who this person is, what pattern you're in, what happened last time, whether things are getting closer or drifting. It reasons from evidence."
               bullets={[

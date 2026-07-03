@@ -1847,7 +1847,7 @@ export const dummyCharacters: Character[] = [
     likelihood_to_meet: 'unlikely',
     context_of_mention: 'Suspected overlap while you were seeing Sam — hearsay from summer party thread',
     associated_with_character_ids: ['char-003'],
-    summary: 'Named in chat as someone Sam was texting during your situationship. You have never met him; surfaced via Love & Relationships periphery intelligence.',
+    summary: 'Named in chat as someone Sam was texting during your situationship. You have never met him; surfaced via Dating & Romance periphery intelligence.',
     tags: ['romantic-peripheral', 'side_partner', 'unmet', 'suspected'],
     metadata: {
       relationship_type: 'romantic_peripheral',

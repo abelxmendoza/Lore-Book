@@ -1,4 +1,4 @@
-# Love & Relationships Analytics Plan
+# Dating & Romance Analytics Plan
 
 ## Current Classification Decision
 

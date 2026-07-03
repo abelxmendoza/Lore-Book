@@ -231,14 +231,10 @@ export const config: EnvConfig = {
   xOAuthClientId:
     process.env.X_OAUTH_CLIENT_ID ??
     process.env.X_API_CLIENT_ID ??
-    process.env.X_API_CONSUMER_KEY ??
-    process.env.TWITTER_CONSUMER_KEY ??
     '',
   xOAuthClientSecret:
     process.env.X_OAUTH_CLIENT_SECRET ??
     process.env.X_API_CLIENT_SECRET ??
-    process.env.X_API_CONSUMER_SECRET ??
-    process.env.TWITTER_CONSUMER_SECRET ??
     '',
   xOAuthRedirectUri: process.env.X_OAUTH_REDIRECT_URI,
   xDefaultHandle: process.env.X_API_HANDLE ?? process.env.X_HANDLE ?? process.env.TWITTER_HANDLE,

@@ -1,6 +1,6 @@
 # LoreBook — Principal Engineer Architecture Audit (Opus)
 
-**Scope:** Sprints X, Y, AD, AH, AI, AJ, AK, AL, AM + Discovery redesign, character merge, relationship scoring, event significance, meaning generation, recall routing, conversation intelligence, character importance, biography generation, entity resolution, thread recall, memory diagnostics, Love & Relationships, Life Log, Discovery Hub, What AI Knows, Character Book.
+**Scope:** Sprints X, Y, AD, AH, AI, AJ, AK, AL, AM + Discovery redesign, character merge, relationship scoring, event significance, meaning generation, recall routing, conversation intelligence, character importance, biography generation, entity resolution, thread recall, memory diagnostics, Dating & Romance, Life Log, Discovery Hub, What AI Knows, Character Book.
 
 **Verdict in one sentence:** The product has a sound data foundation and genuinely good ideas, but the **chat/recall layer has accreted ~6 overlapping retrieval subsystems sprint-over-sprint with no consolidation**, intent routing is brittle regex cascades, and the new "intelligence scores" are **denormalized derived data with no recompute path** (guaranteed drift). The fix is consolidation and a single retrieval contract — not more sprints.
 
@@ -122,10 +122,10 @@ Services: `questionIntentClassifier`, `memoryEvidenceFormatter`, `antiRepetition
 
 ## E. Discovery Hub
 
-I did not find a single "Discovery Hub" container with clearly separable panels in the time budget; what exists is a set of Books/surfaces (Character Book, Life Log, Love & Relationships, "What AI Knows"/diagnostics, locations, organizations). The strong signal from the service layer is **conceptual duplication** that surfaces as UI duplication:
+I did not find a single "Discovery Hub" container with clearly separable panels in the time budget; what exists is a set of Books/surfaces (Character Book, Life Log, Dating & Romance, "What AI Knows"/diagnostics, locations, organizations). The strong signal from the service layer is **conceptual duplication** that surfaces as UI duplication:
 
 - "What AI Knows" / memory diagnostics / `intelligenceHealthCoverage` / `storyCoverageDiagnostics` / `memoryDebugMode` / `buildRecallCoverageReport` — there are now **five** diagnostic surfaces answering variations of "does the system actually know this?". These should collapse into **one** "Memory Health" concept with one backing service.
-- Character Book, Love & Relationships, and the family roster all render **the same underlying entity+relationship graph** through different formatters. They are views, not separate systems — confirm they share one data source (the adjacency map from §B) rather than each running their own roster/relationship queries.
+- Character Book, Dating & Romance, and the family roster all render **the same underlying entity+relationship graph** through different formatters. They are views, not separate systems — confirm they share one data source (the adjacency map from §B) rather than each running their own roster/relationship queries.
 
 **Recommendation:** reduce Discovery to **three** durable concepts: **People** (entities + relationship graph), **Timeline/Life Log** (events + chapters), **Memory Health** (one diagnostic). Everything else is a filter or formatter over those.
 

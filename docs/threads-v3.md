@@ -48,7 +48,7 @@ Examples:
 
 - `Tía Grace's House` — Family / LoreBook origin scene. `4 people · 1 scene · 1 open ambiguity`
 - `Amazon Hiring Process` — Career project. `7 events · 2 decisions · updated yesterday`
-- `Ashley After Club Metro` — Love & Relationships. `relationship story · closed arc`
+- `Ashley After Club Metro` — Dating & Romance. `relationship story · closed arc`
 
 ## While Chatting
 

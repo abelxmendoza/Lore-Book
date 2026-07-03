@@ -1,5 +1,5 @@
 /**
- * Per-relationship demo personas for Love & Relationships modals.
+ * Per-relationship demo personas for Dating & Romance modals.
  * Each card showcases a different slice of what LoreBook can infer — without
  * dumping the same four percentages on every profile.
  */
@@ -11,7 +11,7 @@ export type DemoMetricKey = 'affection' | 'compatibility' | 'health' | 'intensit
 export type RomanticDemoProfile = {
   /** One-line human read on this bond — shown at top of Overview */
   headline: string;
-  /** Short filter-friendly label (matches Love & Relationships tabs) */
+  /** Short filter-friendly label (matches Dating & Romance tabs) */
   showcaseTag: string;
   /** Which scores to surface in Overview (omit the rest) */
   primaryMetrics: DemoMetricKey[];

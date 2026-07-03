@@ -39,7 +39,7 @@ type Props = {
   existingCharacterNames?: string[];
   /** Book entries with ids for merge hints (preferred over name list). */
   existingBookEntries?: Array<{ id: string; name: string; aliases?: string[] }>;
-  /** Love & Relationships uses romantic-only individual suggestions. */
+  /** Dating & Romance uses romantic-only individual suggestions. */
   variant?: 'general' | 'romantic';
 };
 

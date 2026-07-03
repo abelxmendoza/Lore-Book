@@ -1,7 +1,7 @@
 /**
  * Romantic-partner eligibility guards.
  *
- * Reverse-engineered from real mis-extractions in Love & Relationships:
+ * Reverse-engineered from real mis-extractions in Dating & Romance:
  *   - "Ex Lover" (a band) and bare role labels were stored as romantic partners
  *     because they pass generic person-name validation.
  *   - "Juan" was stored as the user's ex_lover when the evidence actually says

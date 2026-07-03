@@ -207,7 +207,7 @@ describe('Sprint AM — story intelligence & memory utilization', () => {
   });
 
   describe('AM-6 relationship story summaries', () => {
-    it('formats Alex relationship narrative for Love & Relationships', () => {
+    it('formats Alex relationship narrative for Dating & Romance', () => {
       const story: RelationshipStory = {
         personName: 'Alex',
         relationshipType: 'hookup',

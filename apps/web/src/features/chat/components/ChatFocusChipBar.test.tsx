@@ -14,7 +14,7 @@ const baseFocus: ChatFocus = {
   entityName: 'Alex',
   entityType: 'character',
   sourceSurface: 'love',
-  sourceLabel: 'Love & Relationships',
+  sourceLabel: 'Dating & Romance',
   relationshipId: 'rel-001',
   knowledgeScope: 'romantic relationship',
   sessionStats: { ...emptyChatFocusSessionStats(), messagesSent: 1, connectionDelta: 4, affectionDelta: 1.6 },
@@ -37,7 +37,7 @@ describe('ChatFocusChipBar', () => {
 
     expect(screen.getByTestId('chat-focus-chip-bar')).toBeInTheDocument();
     expect(screen.getByText(/Alex/)).toBeInTheDocument();
-    expect(screen.getByText(/Love & Relationships/)).toBeInTheDocument();
+    expect(screen.getByText(/Dating & Romance/)).toBeInTheDocument();
     expect(screen.getByText('Demo')).toBeInTheDocument();
     expect(screen.getByText(/~94%/)).toBeInTheDocument();
     expect(screen.getByText(/\+4/)).toBeInTheDocument();

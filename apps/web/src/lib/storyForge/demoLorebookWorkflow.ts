@@ -24,7 +24,7 @@ export type DemoCompileResult =
 const TOPIC_TITLES: Partial<Record<LoreTopicId, string>> = {
   full_life: 'Full Life Story',
   professional: 'Career & Work',
-  relationships: 'Love & Relationships',
+  relationships: 'Dating & Romance',
   family: 'Family Story',
   creative: 'Creative Life',
   health: 'Health & Body',

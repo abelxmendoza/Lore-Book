@@ -2,7 +2,7 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe('Love & Relationships — connected lore', () => {
+test.describe('Dating & Romance — connected lore', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?mockData=true');
     await page.waitForSelector('[data-testid="app-content"]', { timeout: 15000 }).catch(() => {});

@@ -1,4 +1,4 @@
-// Mock vicarious romantic periphery for Love & Relationships demo
+// Mock vicarious romantic periphery for Dating & Romance demo
 
 import type { RomanticPeripheral } from '../api/romanticPeripherals';
 

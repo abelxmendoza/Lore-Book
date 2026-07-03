@@ -1,6 +1,6 @@
 /**
  * Live + batch romantic lexical ingestion — applies glossary/ontology parsing
- * to a single message and upserts Love & Relationships records.
+ * to a single message and upserts Dating & Romance records.
  */
 
 import { logger } from '../logger';

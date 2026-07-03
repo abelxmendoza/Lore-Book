@@ -437,7 +437,7 @@ class EntityFactsService {
       .eq('id', characterId)
       .eq('user_id', userId);
 
-    // Romantic people also belong in the Love & Relationships view, which
+    // Romantic people also belong in the Dating & Romance view, which
     // reads romantic_relationships keyed by character id.
     if (archetype === 'romantic') {
       try {

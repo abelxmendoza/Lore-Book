@@ -1,6 +1,6 @@
 /**
  * Full-story romantic relationship rescan — replays chat + journal through
- * lexical romantic intelligence and upserts Love & Relationships records.
+ * lexical romantic intelligence and upserts Dating & Romance records.
  */
 
 import { logger } from '../logger';

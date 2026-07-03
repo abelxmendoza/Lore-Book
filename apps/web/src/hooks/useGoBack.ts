@@ -30,7 +30,7 @@ const SURFACE_LABELS: Record<SurfaceKey, string> = {
   discovery: 'Discovery Hub',
   continuity: 'Continuity',
   guide: 'User Guide',
-  love: 'Love & Relationships',
+  love: 'Dating & Romance',
   quests: 'Quests',
   gaps: 'Knowledge Gaps',
   saga: 'Life Saga',

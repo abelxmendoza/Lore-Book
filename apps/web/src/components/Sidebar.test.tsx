@@ -104,7 +104,7 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Account & help').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders story-entity nav: Characters, Locations, Life Log, Groups, Skills, Love & Relationships', () => {
+  it('renders story-entity nav: Characters, Locations, Life Log, Groups, Skills, Dating & Romance', () => {
     render(<Sidebar {...defaultProps} />);
     expect(screen.getAllByRole('button', { name: /Open chat interface/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open characters view/i }).length).toBeGreaterThanOrEqual(1);

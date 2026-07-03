@@ -1,6 +1,6 @@
 /**
  * Detect placeholder / unresolved person labels that should never appear as
- * a character name in user-facing UI (e.g. Love & Relationships cards).
+ * a character name in user-facing UI (e.g. Dating & Romance cards).
  */
 
 import {

@@ -54,7 +54,7 @@ Legend: **KEEP** (becomes canonical or stays as-is) · **MERGE** (folds into a c
 | Surface | Disposition | Becomes |
 |---|---|---|
 | Character Book | **KEEP as a view** | Filtered view of `person` nodes + their edges/episodes (one data source). |
-| Love & Relationships | **KEEP as a view** | View of `relationship_state` nodes + trajectories. |
+| Dating & Romance | **KEEP as a view** | View of `relationship_state` nodes + trajectories. |
 | Life Log | **KEEP as a view** | View of `episodes`/`event` nodes ordered by time, framed by `chapter`s. |
 | Discovery Hub | **COLLAPSE → 3 concepts** | People (graph) · Timeline/Life Log (events+chapters) · Memory Health (diagnostics). |
 | "What AI Knows" | **MERGE → Memory Health** | Lists semantic facts *with provenance + confidence*. |
@@ -83,7 +83,7 @@ Do the P0 items first (journal fallback, claim-to-reality, context-aware resolut
 ### Stage 3 — Cut over readers, one surface at a time (behind flags)
 Order by risk, lowest first:
 1. **Memory Health / "What AI Knows"** → read from graph (read-only surface; safe).
-2. **Character Book / Life Log / Love & Relationships** → graph-backed views (golden-snapshot tests vs current output).
+2. **Character Book / Life Log / Dating & Romance** → graph-backed views (golden-snapshot tests vs current output).
 3. **Recall (the assembler)** → the big one. Run the assembler in **shadow** alongside the current routers, compare answers on a labeled transcript set, then flip the flag. Keep the routers one release for rollback.
 
 ### Stage 4 — Delete legacy

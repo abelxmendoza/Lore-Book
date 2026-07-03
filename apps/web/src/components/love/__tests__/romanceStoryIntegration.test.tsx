@@ -24,7 +24,7 @@ vi.mock('../../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
-describe('Love & Relationships — lore story integration', () => {
+describe('Dating & Romance — lore story integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useMockData as ReturnType<typeof vi.fn>).mockReturnValue({ useMockData: true });

@@ -40,7 +40,7 @@ Lorekeeper is organized as a set of **Books** — full-page views for each domai
 | **Family** | `/family` | Family tree, households, family groups, and relationship analytics |
 | **Groups** | `/organizations` | Organizations, communities, and social groups with hierarchy and network graph |
 | **Life Log** | `/events` | EventsBook — chronicle grid, recurring scenes, and the 4-tab event modal |
-| **Love & Relationships** | `/love` | Romantic relationships — drift, cycles, milestones, cross-relationship patterns |
+| **Dating & Romance** | `/love` | Romantic relationships — drift, cycles, milestones, cross-relationship patterns |
 | **Timeline** | `/timeline` | OmniTimeline with search, hierarchy panel, and life-arc positioning |
 | **Life Saga** | `/saga` | Narrative arc view — eras, chapters, and turning points synthesized from your record |
 | **Quest Board** | `/quests` | Goals and pursuits with status, priority, progress, and detected suggestions |

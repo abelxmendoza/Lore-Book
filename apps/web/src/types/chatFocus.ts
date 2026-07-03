@@ -61,7 +61,7 @@ export interface ChatFocus {
 }
 
 export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = {
-  love: 'Love & Relationships',
+  love: 'Dating & Romance',
   characters: 'Characters',
   locations: 'Locations',
   projects: 'Projects',

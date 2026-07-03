@@ -174,7 +174,7 @@ Each card answers the six required questions: **Responsibility · Owns · Overla
 
 #### `romantic_relationships`
 - **Responsibility:** Rich romance/dating domain model (type, love_status, affection/compatibility/health scores, situationship fields) + child tables (`romantic_dates`, `romantic_interactions`, `relationship_breakups`).
-- **Owns:** The Love & Relationships book. `20250126000043_…`, reshaped `20260611200000_…`.
+- **Owns:** The Dating & Romance book. `20250126000043_…`, reshaped `20260611200000_…`.
 - **Overlaps:** `character_relationships` (`ROMANTIC_INTEREST`, `SPOUSE_OF`, `DATED` exist in `er/erSchema.ts`). Written by a **separate path** (`romanticRelationshipDetector.ts`, `romanticLexicalIngestionService.ts`) that bypasses `writeRelationship.ts`.
 - **Authoritative or derived:** Authoritative for the romance domain.
 - **Can merge?** Partially: the *edge* ("X is my girlfriend, valid 2024–now") belongs in the unified edge table; the *rich analytics* (affection scores, dates, breakups) stay in a domain extension keyed by edge id.

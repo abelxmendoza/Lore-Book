@@ -644,7 +644,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-white">Correct this relationship</h3>
-                    <p className="text-xs text-white/45">Use this when the relationship status is wrong or the row should not be in Love & Relationships.</p>
+                    <p className="text-xs text-white/45">Use this when the relationship status is wrong or the row should not be in Dating & Romance.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button

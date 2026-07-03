@@ -13,7 +13,7 @@ type TheirConnectionsPanelProps = {
   onCloseModal?: () => void;
 };
 
-/** Love & Relationships — romantic periphery tab (wraps shared panel). */
+/** Dating & Romance — romantic periphery tab (wraps shared panel). */
 export function TheirConnectionsPanel({
   relationshipId,
   anchorName,

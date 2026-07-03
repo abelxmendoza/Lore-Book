@@ -1,7 +1,7 @@
 /**
  * Sprint AM-6 — Relationship Story Summaries
  *
- * Powers Love & Relationships with facts + meaning narratives.
+ * Powers Dating & Romance with facts + meaning narratives.
  */
 
 import { supabaseAdmin } from '../supabaseClient';

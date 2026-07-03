@@ -10,7 +10,7 @@ describe('demoFocusChat', () => {
     entityName: 'Alex',
     entityType: 'character',
     sourceSurface: 'love',
-    sourceLabel: 'Love & Relationships',
+    sourceLabel: 'Dating & Romance',
     relationshipId: 'rel-001',
     knowledgeScope: 'romantic relationship',
     sessionStats: emptyChatFocusSessionStats(),
@@ -20,7 +20,7 @@ describe('demoFocusChat', () => {
   it('returns love-focused demo copy with connection deepening', () => {
     const text = getDemoFocusResponse('How are things going with Alex?', loveFocus);
     expect(text).toContain('Alex');
-    expect(text).toContain('Love & Relationships');
+    expect(text).toContain('Dating & Romance');
     expect(text).toContain('Connection deepening');
     expect(text).toContain('Demo');
   });

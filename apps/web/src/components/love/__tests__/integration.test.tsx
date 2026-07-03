@@ -43,7 +43,7 @@ vi.mock('../RomanticLexicalInsights', () => ({
   RomanticLexicalInsights: () => null,
 }));
 
-describe('Love & Relationships Integration Tests', () => {
+describe('Dating & Romance Integration Tests', () => {
   const mockRelationships = [
     {
       id: 'rel-001',

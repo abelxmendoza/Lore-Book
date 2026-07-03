@@ -228,7 +228,7 @@ Character peek shows 80% of value in 40% of space.
 | Thread intelligence | Person chip → character peek |
 | Search V2 | Person result → full page |
 | Chat | "Ask about Abuela" pre-loads WMA with PERSON_QUERY intent |
-| Love & Relationships | Relationship graph is a **view** over character relationships, not duplicate data |
+| Dating & Romance | Relationship graph is a **view** over character relationships, not duplicate data |
 
 ---
 
