@@ -70,6 +70,11 @@ if (!securityCheck.passed) {
 
 const app = express();
 
+// Trust proxy (Railway, load balancers, vercel etc) so x-forwarded-proto/host are reliable for computing OAuth redirect URIs in integrations
+if (!isDevelopment) {
+  app.set('trust proxy', 1);
+}
+
 // Configure Helmet with strict security in production, permissive in development
 app.use(
   helmet({

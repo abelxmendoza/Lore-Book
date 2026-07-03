@@ -95,11 +95,20 @@ function requestBaseUrl(req: Request): string {
   const configured = process.env.API_URL || process.env.BACKEND_URL;
   if (configured) return configured.trim().replace(/\/$/, '');
   const proto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0] || req.protocol || 'http';
-  return `${proto}://${req.get('host')}`;
+  const host = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0] || req.get('host') || 'localhost:4000';
+  return `${proto}://${host}`;
 }
 
 function redirectUri(req: Request): string {
-  return config.xOAuthRedirectUri || `${requestBaseUrl(req)}/api/integrations/x/callback`;
+  if (config.xOAuthRedirectUri) {
+    return config.xOAuthRedirectUri;
+  }
+  let base = requestBaseUrl(req);
+  // Normalize common local dev hosts (127.0.0.1 / 0.0.0.0 -> localhost) so the URL shown to register is the most common one
+  if (/^https?:\/\/(127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(base)) {
+    base = base.replace(/127\.0\.0\.1|0\.0\.0\.0/, 'localhost');
+  }
+  return `${base}/api/integrations/x/callback`;
 }
 
 function webReturnUrl(returnTo = '/account'): string {
@@ -110,7 +119,7 @@ function webReturnUrl(returnTo = '/account'): string {
 
 function requireOAuthConfig() {
   if (!config.xOAuthClientId) {
-    throw new Error('X OAuth Client ID is not configured. Set X_OAUTH_CLIENT_ID or X_API_CLIENT_ID.');
+    throw new Error('X OAuth Client ID is not configured. Create an OAuth 2.0 app in https://developer.x.com and set X_OAUTH_CLIENT_ID (and SECRET). Do NOT use old Consumer API keys here.');
   }
 }
 
@@ -459,6 +468,16 @@ export class XConnectionService {
       connections: data ?? [],
       total: data?.length ?? 0,
     };
+  }
+
+  /** Returns the exact redirect/callback URI that will be sent to X for authorization (for registration in dev console). */
+  getCallbackUrl(req: Request): string {
+    try {
+      requireOAuthConfig();
+    } catch {
+      // still return a plausible default for display
+    }
+    return redirectUri(req);
   }
 }
 

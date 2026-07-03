@@ -17,8 +17,13 @@ const syncSchema = z.object({
   maxPosts: z.number().min(5).max(100).optional(),
 });
 
-function accountErrorRedirect() {
-  return `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/account?x=error`;
+function accountErrorRedirect(req?: any) {
+  const base = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '') + '/account?x=error';
+  if (req?.query?.error_description) {
+    const d = encodeURIComponent(String(req.query.error_description).slice(0, 120));
+    return `${base}&desc=${d}`;
+  }
+  return base;
 }
 
 xIntegrationRouter.get('/status', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -27,6 +32,15 @@ xIntegrationRouter.get('/status', requireAuth, async (req: AuthenticatedRequest,
     return res.json(status);
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to load X connection status' });
+  }
+});
+
+xIntegrationRouter.get('/callback-url', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const redirectUri = xConnectionService.getCallbackUrl(req);
+    return res.json({ redirectUri });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to compute callback URL' });
   }
 });
 
@@ -69,7 +83,7 @@ xIntegrationCallbackRouter.get('/', async (req, res) => {
 
   if (error) {
     logger.warn({ error, description: req.query.error_description }, 'X OAuth returned error');
-    return res.redirect(accountErrorRedirect());
+    return res.redirect(accountErrorRedirect(req));
   }
 
   if (!code || !state) {
@@ -81,6 +95,6 @@ xIntegrationCallbackRouter.get('/', async (req, res) => {
     return res.redirect(result.redirectTo);
   } catch (err: any) {
     logger.error({ err }, 'Failed to complete X OAuth');
-    return res.redirect(accountErrorRedirect());
+    return res.redirect(accountErrorRedirect(req));
   }
 });

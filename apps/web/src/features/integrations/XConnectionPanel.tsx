@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Link2, Loader2, RefreshCw, Unlink, Twitter } from 'lucide-react';
+import { CheckCircle2, Link2, Loader2, RefreshCw, Unlink, Twitter, Copy, Info } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
 
@@ -35,6 +35,7 @@ export function XConnectionPanel() {
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,18 +50,50 @@ export function XConnectionPanel() {
     }
   }, []);
 
+  const loadCallbackUrl = useCallback(async () => {
+    try {
+      const res = await fetchJson<{ redirectUri: string }>('/api/integrations/x/callback-url');
+      setCallbackUrl(res.redirectUri);
+    } catch {
+      // fallback for local dev (matches normalized value)
+      setCallbackUrl('http://localhost:4000/api/integrations/x/callback');
+    }
+  }, []);
+
   useEffect(() => {
     void load();
+    void loadCallbackUrl();
+  }, [load, loadCallbackUrl]);
+
+  // Handle redirect back from X OAuth (success or error via ?x= params)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const xParam = params.get('x');
+    if (xParam === 'connected') {
+      setMessage('X connected successfully. Sync your posts to import history.');
+      // clean URL
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+      void load();
+    } else if (xParam === 'error') {
+      const desc = params.get('desc') || params.get('error_description');
+      setError(desc ? `X authorization failed: ${desc}.` : 'X authorization failed. Check callback URL registration and try again.');
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    }
   }, [load]);
 
   const connect = async () => {
     setWorking(true);
     setError(null);
+    setMessage(null);
     try {
-      const result = await fetchJson<{ authorizationUrl: string }>('/api/integrations/x/begin', {
+      const result = await fetchJson<{ authorizationUrl: string; redirectUri?: string }>('/api/integrations/x/begin', {
         method: 'POST',
         body: JSON.stringify({ returnTo: '/account' }),
       });
+      if (result.redirectUri) {
+        // Helpful for user to verify in X developer portal
+        console.info('[X OAuth] Register this EXACT Callback URL:', result.redirectUri);
+      }
       window.location.href = result.authorizationUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start X connection');
@@ -130,6 +163,28 @@ export function XConnectionPanel() {
             X post IDs and permalinks are preserved for provenance.
           </p>
 
+          {/* Guidance for OAuth setup — the #1 cause of "Something went wrong / give access" errors */}
+          {!loading && !status?.connected && callbackUrl && (
+            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.015] p-2.5 text-[11px] text-white/60">
+              <div className="flex items-start gap-1.5">
+                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <div>
+                  <span className="font-medium text-white/70">Before connecting:</span> In{' '}
+                  <a href="https://developer.x.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">X Developer Portal</a>{' '}
+                  → your App → User authentication settings, add this <span className="font-mono text-[10px] text-white/80 break-all">{callbackUrl}</span> exactly as a Callback URL / Redirect URI.
+                  <br />Use the <strong>OAuth 2.0 Client ID + Secret</strong> (not the old Consumer Key). Enable Read permissions + Offline access.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { if (callbackUrl) { navigator.clipboard?.writeText(callbackUrl); setMessage('Callback URL copied. Paste it exactly into X settings.'); } }}
+                className="mt-1.5 inline-flex items-center gap-1 rounded border border-white/15 px-1.5 py-0.5 text-[10px] hover:bg-white/5"
+              >
+                <Copy className="h-3 w-3" /> Copy callback URL
+              </button>
+            </div>
+          )}
+
           {status?.connected && (
             <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
               <div className="text-white/40">
@@ -194,6 +249,9 @@ export function XConnectionPanel() {
       {error && (
         <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-300">
           {error}
+          <div className="mt-1 text-[11px] text-red-300/70">
+            Common fix: verify the Callback URL above matches <em>exactly</em> (protocol, host, port, path) what you registered in X dev console. Reload after fixing settings.
+          </div>
         </div>
       )}
     </div>
