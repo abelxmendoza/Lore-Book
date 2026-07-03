@@ -16,6 +16,11 @@ describe('extractThirdPartyRomances', () => {
     expect(r.anchorRole).toBe('girlfriend');
   });
 
+  it('handles the predicate form "<Name> is her boyfriend"', () => {
+    const found = extractThirdPartyRomances('Daisy was there and Oscuridad is her boyfriend, a cool dude.');
+    expect(found[0]).toMatchObject({ anchorName: 'Daisy', partnerName: 'Oscuridad', partnerRole: 'boyfriend' });
+  });
+
   it('handles the possessive form "X\'s girlfriend Y"', () => {
     const found = extractThirdPartyRomances('Marcus introduced me to Sarah, his girlfriend.');
     // "his girlfriend" with no trailing name → no partner captured here
