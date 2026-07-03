@@ -215,8 +215,13 @@ class LocationSuggestionService {
           const eventRefs = bounded
             .filter((p) => p.status === 'rejected' && (p.rejectedAs === 'EVENT' || p.rejectedAs === 'MUSIC_EVENT'))
             .map((p) => ({ name: p.text, evidence: p.evidencePhrases[0] }));
-          if (eventRefs.length > 0) {
-            void materializeSpatialEvents(userId, eventRefs).catch((err) =>
+          // Unresolved venue references ("that venue", "Security Kickout Venue") get
+          // linked to the event they share an evidence line with — never a Place.
+          const unresolvedVenues = bounded
+            .filter((p) => p.status === 'rejected' && p.rejectedAs === 'UNRESOLVED_LOCATION')
+            .map((p) => ({ name: p.text, evidence: p.evidencePhrases[0] }));
+          if (eventRefs.length > 0 || unresolvedVenues.length > 0) {
+            void materializeSpatialEvents(userId, eventRefs, { unresolvedVenues }).catch((err) =>
               logger.debug({ err, userId }, 'spatial event materialization failed'),
             );
           }
