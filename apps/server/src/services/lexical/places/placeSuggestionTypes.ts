@@ -22,6 +22,7 @@ export type NonPlaceEntityType =
   | 'OBJECT'
   | 'EMOTION'
   | 'EDUCATION_ORGANIZATION'
+  
   | 'VENUE_AREA'
   | 'UNRESOLVED_LOCATION'
   | 'DEMOGRAPHIC'

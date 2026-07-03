@@ -17,6 +17,9 @@ const TRAILING_EDUCATION_TAIL = /\s+that\s+taught\b.*$/i;
 
 const TRAILING_SENTENCE_PRONOUN = /[.!?]\s*(?:i|it|he|she|they|we|you|her|him|them)\b.*$/i;
 
+const TRAILING_PRONOUN_CLAUSE =
+  /\s+(?:i|it|he|she|they|we|you|her|him|them)\s+(?:still|said|was|were|did|didn'?t|does|don'?t|had|has|went|came|told|asked|wanted|want)\b.*$/i;
+
 const TRAILING_WITH_PERSON = /\s+with\s+(?:my\s+|our\s+|the\s+)?[A-ZÀ-Ý]?[A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ý]?[A-Za-zÀ-ÿ]+){0,2}\s*$/;
 
 const LEADING_RELATIVE_CONTEXT = /^(?:here|there)\s+(?:at|in)\s+/i;
@@ -53,6 +56,7 @@ export function resolvePlaceBoundary(candidate: string): BoundaryResolution {
   }
 
   apply(TRAILING_SENTENCE_PRONOUN, 'sentence_pronoun_bleed');
+  apply(TRAILING_PRONOUN_CLAUSE, 'pronoun_clause_bleed');
   apply(TRAILING_TIME, 'time_period');
   apply(TRAILING_WITH_PERSON, 'with_person_tail');
   apply(TRAILING_ROLE, 'role_phrase');

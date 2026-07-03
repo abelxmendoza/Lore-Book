@@ -5,6 +5,7 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
+import { apiCache } from '../../lib/cache';
 import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
@@ -33,6 +34,7 @@ import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
 import { Button } from '../ui/button';
 import { Pencil } from 'lucide-react';
+import { EditableEntityName } from '../common/EditableEntityName';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 
@@ -47,7 +49,7 @@ type LocationDetailModalProps = {
   onLocationDeleted?: (id: string) => void;
 };
 
-type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge' | 'chat';
+type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge' | 'chat' | 'delete';
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'overview',  label: 'Overview',    shortLabel: 'Overview', icon: FileText },
@@ -56,6 +58,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'people',    label: 'People',      shortLabel: 'People',   icon: Users },
   { key: 'insights',  label: 'Insights',    shortLabel: 'Insights', icon: Sparkles },
   { key: 'chat',      label: 'Chat',        shortLabel: 'Chat',     icon: MessageSquare },
+  { key: 'delete',    label: 'Delete',      shortLabel: 'Delete',   icon: Trash2 },
 ];
 
 export const LocationDetailModal = ({
@@ -70,17 +73,33 @@ export const LocationDetailModal = ({
   const [location, setLocation] = useState(locationProp);
   const [editingProfile, setEditingProfile] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<'review' | 'confirm'>('review');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteReason, setDeleteReason] = useState('wrong_place_or_not_relevant');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDeleteLocation = async () => {
     if (deleting || !location.id) return;
-    if (!window.confirm(`Delete "${location.name}"? This can't be undone.`)) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
-      await fetchJson(`/api/locations/${location.id}`, { method: 'DELETE' });
+      if (isMockDataEnabled) {
+        // Demo mode does not persist destructive location deletion; parent state
+        // still removes the card for the current session.
+      } else {
+        await fetchJson(`/api/locations/${location.id}`, {
+          method: 'DELETE',
+          body: JSON.stringify({
+            reason: deleteReason,
+          }),
+        });
+        apiCache.deletePattern(/\/api\/(locations|knowledge|conversation|counts|books)/);
+      }
       onLocationDeleted?.(location.id);
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id], deleted: true } }));
       onClose();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to delete location.');
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete location.');
       setDeleting(false);
     }
   };
@@ -88,6 +107,10 @@ export const LocationDetailModal = ({
   useEffect(() => {
     setLocation(locationProp);
     setEditingProfile(false);
+    setDeleteStep('review');
+    setDeleteConfirmText('');
+    setDeleteReason('wrong_place_or_not_relevant');
+    setDeleteError(null);
   }, [locationProp.id]);
 
   useEffect(() => {
@@ -426,6 +449,39 @@ export const LocationDetailModal = ({
     setEditingProfile(false);
   };
 
+  const handleRenameLocation = async (nextName: string) => {
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed === location.name) return;
+    if (isMockDataEnabled) {
+      const next = {
+        ...location,
+        name: trimmed,
+        metadata: {
+          ...(location.metadata ?? {}),
+          name_source: 'user_confirmed',
+          name_confirmed_at: new Date().toISOString(),
+        },
+      };
+      const saved = mockDataService.mutate.locations.update(location.id, next) ?? next;
+      setLocation(saved);
+      onLocationUpdated?.(saved);
+      return;
+    }
+    const r = await fetchJson<{ success: boolean; location: LocationProfile }>(
+      `/api/locations/${location.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ name: trimmed }),
+      },
+    );
+    if (r.success && r.location) {
+      setLocation(r.location);
+      onLocationUpdated?.(r.location);
+      apiCache.deletePattern(/\/api\/(locations|knowledge|conversation|counts|books)/);
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id], renamed: true } }));
+    }
+  };
+
   const identityFields = [
     { label: 'Place type', value: placeType ? formatPlaceType(placeType) : location.type ?? undefined },
     { label: 'Location', value: placeLine },
@@ -444,18 +500,6 @@ export const LocationDetailModal = ({
         {/* ── Header — compact on mobile ── */}
         <div className="relative border-b border-white/8 shrink-0 bg-gradient-to-r from-teal-950/30 via-black/40 to-teal-950/20">
           <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex items-center gap-1">
-            {onLocationDeleted && !isMockDataEnabled && (
-              <button
-                type="button"
-                onClick={handleDeleteLocation}
-                disabled={deleting}
-                className="p-1.5 rounded-lg text-white/40 hover:text-red-300 hover:bg-red-500/10 transition-colors touch-manipulation disabled:opacity-50"
-                aria-label="Delete location"
-                title="Delete location"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
             <button
               type="button"
               onClick={onClose}
@@ -475,7 +519,14 @@ export const LocationDetailModal = ({
                 <MapPin className="h-4 w-4 text-teal-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="text-base font-bold text-white truncate">{location.name}</h2>
+                <EditableEntityName
+                  name={location.name}
+                  onSave={handleRenameLocation}
+                  disabled={isEphemeralEntityId(location.id)}
+                  label="location name"
+                  className="block truncate text-base font-bold text-white"
+                  inputClassName="min-w-0 w-full rounded-md border border-white/20 bg-black/60 px-2 py-1 text-base font-bold text-white outline-none focus:border-teal-400"
+                />
                 <p className="text-[11px] text-white/45 truncate mt-0.5">
                   {[placeType ? formatPlaceType(placeType) : location.type?.replace(/_/g, ' '), `${location.visitCount} visits`]
                     .filter(Boolean)
@@ -490,7 +541,14 @@ export const LocationDetailModal = ({
             <MapPin className="h-5 w-5 text-teal-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white leading-tight">{location.name}</h2>
+            <EditableEntityName
+              name={location.name}
+              onSave={handleRenameLocation}
+              disabled={isEphemeralEntityId(location.id)}
+              label="location name"
+              className="text-lg font-bold text-white leading-tight"
+              inputClassName="min-w-0 rounded-md border border-white/20 bg-black/60 px-2 py-1 text-lg font-bold text-white outline-none focus:border-teal-400"
+            />
             <div className="flex flex-wrap items-center gap-3 mt-1">
               {placeType && (
                 <span className="text-xs text-teal-300/80">{formatPlaceType(placeType)}</span>
@@ -1171,6 +1229,122 @@ export const LocationDetailModal = ({
                   loading={chatLoading}
                 />
               </div>
+            </div>
+          )}
+
+          {/* ── DELETE ── */}
+          {activeTab === 'delete' && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-red-500/25 bg-red-950/20 p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10">
+                    <Trash2 className="h-4 w-4 text-red-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-white">Delete this place</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-white/60">
+                      This removes the place card and detaches it from linked events, facts, people, and recall caches. The system records the deletion so the same wrong place is less likely to come back.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-white/35">Memories</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{location.entries.length}</p>
+                  <p className="mt-1 text-[11px] text-white/40">Source memories stay saved.</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-white/35">People</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{verifiedPeople.length}</p>
+                  <p className="mt-1 text-[11px] text-white/40">Verified links are removed.</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-white/35">Knowledge</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{locationFacts.length}</p>
+                  <p className="mt-1 text-[11px] text-white/40">Facts are preserved as deletion context.</p>
+                </div>
+              </div>
+
+              {deleteStep === 'review' ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-white/70 mb-2" htmlFor="location-delete-reason">
+                      Why are you deleting it?
+                    </label>
+                    <select
+                      id="location-delete-reason"
+                      value={deleteReason}
+                      onChange={(event) => setDeleteReason(event.target.value)}
+                      className="h-10 w-full rounded-lg border border-white/10 bg-black/50 px-3 text-sm text-white"
+                    >
+                      <option value="wrong_place_or_not_relevant">Wrong place or not relevant</option>
+                      <option value="duplicate_location">Duplicate location</option>
+                      <option value="not_a_real_location">Not a real location</option>
+                      <option value="private_or_sensitive">Private or sensitive</option>
+                      <option value="cleanup_requested_by_user">Manual cleanup</option>
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-red-500/30 text-red-200 hover:bg-red-500/10"
+                    onClick={() => setDeleteStep('confirm')}
+                    disabled={!onLocationDeleted}
+                  >
+                    Continue to confirmation
+                  </Button>
+                  {!onLocationDeleted && (
+                    <p className="text-xs text-white/40">
+                      Deletion is unavailable from this view.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-red-500/25 bg-black/30 p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-white/70 mb-2" htmlFor="location-delete-confirm">
+                      Type <span className="font-bold text-white">{location.name}</span> to confirm
+                    </label>
+                    <input
+                      id="location-delete-confirm"
+                      value={deleteConfirmText}
+                      onChange={(event) => setDeleteConfirmText(event.target.value)}
+                      className="h-10 w-full rounded-lg border border-white/10 bg-black/50 px-3 text-sm text-white outline-none focus:border-red-400"
+                      autoComplete="off"
+                    />
+                  </div>
+                  {deleteError && (
+                    <p className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                      {deleteError}
+                    </p>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/15 text-white/70 hover:bg-white/10"
+                      onClick={() => {
+                        setDeleteStep('review');
+                        setDeleteConfirmText('');
+                        setDeleteError(null);
+                      }}
+                      disabled={deleting}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      className="bg-red-600 text-white hover:bg-red-500"
+                      onClick={() => void handleDeleteLocation()}
+                      disabled={deleting || deleteConfirmText.trim() !== location.name}
+                    >
+                      {deleting ? 'Deleting...' : 'Delete place'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

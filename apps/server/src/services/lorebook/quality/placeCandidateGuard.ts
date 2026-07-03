@@ -16,6 +16,7 @@
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { EntityQualityCandidate, EntityQualityVerdict } from './entityQualityGuardTypes';
 import { classifySpatialReference } from './spatialContextResolver';
+import { arbitrateCandidateDomain } from '../../lexical/domainArbitrationLayer';
 
 /** Bare common nouns / abstractions that are never a useful place NAME. */
 const GENERIC_NON_PLACE = new Set([
@@ -130,6 +131,11 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   const name = candidate.name.trim();
   if (!name) return null;
   const key = normalizeNameKey(name);
+  const arbitration = arbitrateCandidateDomain(name, candidate.contextText ?? candidate.evidence ?? '');
+
+  if (!arbitration.allowedAsPlace) {
+    return reject(name, candidate.domain, `dal_${arbitration.winningDomain.toLowerCase()}`);
+  }
 
   if (NON_PLACE_WORDS.has(key)) return reject(name, candidate.domain, 'not_a_place_word');
   if (GENERIC_NON_PLACE.has(key)) return reject(name, candidate.domain, 'generic_non_place_word');

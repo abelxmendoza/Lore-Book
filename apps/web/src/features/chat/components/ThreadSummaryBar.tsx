@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, RefreshCw, Sparkles } from 'lucide-react';
 import { useThreadSummary } from '../hooks/useThreadSummary';
+import type { ThreadSummaryPayload } from '../../../api/threadSummary';
 
 type ThreadSummaryBarProps = {
   threadId: string | null;
@@ -8,6 +9,50 @@ type ThreadSummaryBarProps = {
   isMobile?: boolean;
   onRecallInChat?: (prompt: string) => void;
 };
+
+function normalizeSummary(value?: string | null) {
+  return value
+    ?.replace(/\s+/g, ' ')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .trim() || null;
+}
+
+export function getDisplaySummary(summary?: ThreadSummaryPayload | null, loading = false) {
+  if (!summary) return loading ? 'Summarizing this thread...' : null;
+  const short = normalizeSummary(summary.short);
+  const medium = normalizeSummary(summary.medium);
+  const long = normalizeSummary(summary.long);
+
+  if (medium && short) {
+    const normalizedShort = short.toLowerCase();
+    const normalizedMedium = medium.toLowerCase();
+    if (normalizedMedium === normalizedShort || normalizedMedium.startsWith(normalizedShort)) {
+      return medium;
+    }
+  }
+
+  return medium || short || long || (loading ? 'Summarizing this thread...' : null);
+}
+
+function SummaryChipGroup({ label, items }: { label: string; items: string[] }) {
+  const visibleItems = items.map((item) => item.trim()).filter(Boolean).slice(0, 4);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="min-w-0">
+      <span className="block text-[10px] uppercase tracking-wide text-white/35 mb-1">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {visibleItems.map((item) => (
+          <span
+            key={`${label}-${item}`}
+            className="max-w-full truncate rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/65"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function ThreadSummaryBar({
   threadId,
@@ -20,49 +65,44 @@ export function ThreadSummaryBar({
 
   if (!threadId || messageCount === 0) return null;
 
-  const summaryLine =
-    data?.summary.short ||
-    data?.summary.medium ||
-    (loading ? 'Summarizing this thread…' : null);
+  const summaryLine = getDisplaySummary(data?.summary, loading);
 
   if (!summaryLine && !error) return null;
 
   const recallText = data?.recallText?.trim();
+  const hasContext =
+    (data?.summary.people?.length ?? 0) > 0 ||
+    (data?.summary.places?.length ?? 0) > 0 ||
+    (data?.summary.themes?.length ?? 0) > 0;
+  const canExpand = Boolean(hasContext);
 
   return (
     <div
       data-testid="thread-summary-bar"
-      className="flex-shrink-0 border-b border-white/10 bg-black/30 px-3 sm:px-4 py-2"
+      className="flex-shrink-0 border-b border-white/10 bg-black/35 px-3 py-2.5 sm:px-4"
     >
-      <div className="flex items-start gap-2">
-        <Sparkles className="h-4 w-4 text-primary/80 flex-shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary/80" />
           <button
             type="button"
-            className="w-full text-left"
+            className="min-w-0 flex-1 text-left"
             onClick={() => setExpanded((v) => !v)}
+            disabled={!canExpand}
             aria-expanded={expanded}
           >
-            <p className="text-xs sm:text-sm text-white/75 leading-relaxed line-clamp-2 sm:line-clamp-none">
+            <p className="line-clamp-3 text-xs leading-relaxed text-white/78 sm:line-clamp-2 sm:text-sm">
               {error ? 'Summary unavailable — your messages are still saved.' : summaryLine}
             </p>
           </button>
-          {expanded && data?.summary.medium && data.summary.medium !== data.summary.short && (
-            <p className="mt-1.5 text-xs text-white/55 leading-relaxed">{data.summary.medium}</p>
-          )}
-          {expanded && data?.continuity && (
-            <pre className="mt-2 text-[11px] text-white/45 whitespace-pre-wrap font-sans leading-relaxed">
-              {data.continuity}
-            </pre>
-          )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center justify-end gap-1">
           {onRecallInChat && recallText && (
             <button
               type="button"
               data-testid="thread-recall-button"
               onClick={() => onRecallInChat('Recap everything we discussed in this thread.')}
-              className="text-[11px] px-2 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors touch-manipulation"
+              className="min-h-8 rounded-md bg-primary/15 px-2.5 py-1 text-[11px] text-primary transition-colors touch-manipulation hover:bg-primary/25"
             >
               Recall
             </button>
@@ -71,21 +111,30 @@ export function ThreadSummaryBar({
             type="button"
             onClick={() => void refresh()}
             disabled={refreshing}
-            className="h-8 w-8 flex items-center justify-center rounded-md text-white/40 hover:text-white/70 hover:bg-white/10 transition-colors touch-manipulation"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-white/40 transition-colors touch-manipulation hover:bg-white/10 hover:text-white/70 disabled:opacity-50"
             aria-label="Refresh thread summary"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="h-8 w-8 flex items-center justify-center rounded-md text-white/40 hover:text-white/70 hover:bg-white/10 transition-colors touch-manipulation sm:hidden"
-            aria-label={expanded ? 'Collapse summary' : 'Expand summary'}
-          >
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
+          {canExpand && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-white/40 transition-colors touch-manipulation hover:bg-white/10 hover:text-white/70"
+              aria-label={expanded ? 'Collapse summary context' : 'Expand summary context'}
+            >
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       </div>
+      {expanded && hasContext && (
+        <div className="mt-2 grid gap-2 pl-6 sm:grid-cols-3">
+          <SummaryChipGroup label="People" items={data?.summary.people ?? []} />
+          <SummaryChipGroup label="Places" items={data?.summary.places ?? []} />
+          <SummaryChipGroup label="Themes" items={data?.summary.themes ?? []} />
+        </div>
+      )}
     </div>
   );
 }

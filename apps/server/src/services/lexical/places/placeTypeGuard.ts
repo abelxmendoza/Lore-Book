@@ -14,6 +14,7 @@ import {
 } from './placeSuggestionTypes';
 import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateResidenceGuard';
 import { classifySpatialReference } from '../../lorebook/quality/spatialContextResolver';
+import { arbitrateCandidateDomain } from '../domainArbitrationLayer';
 
 const norm = (s: string) =>
   (s ?? '').toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
@@ -88,6 +89,16 @@ export function guardPlaceCandidate(
 
   if (!text || text.length < 2) {
     return { allowed: false, rejectedAs: 'OBJECT', confidenceBoost: 0, rulesFired: ['too_short'] };
+  }
+
+  const arbitration = arbitrateCandidateDomain(text, contextLine);
+  if (!arbitration.allowedAsPlace) {
+    return {
+      allowed: false,
+      rejectedAs: arbitration.winningDomain,
+      confidenceBoost: 0,
+      rulesFired: arbitration.rulesFired.map((rule) => `dal:${rule}`),
+    };
   }
 
   if (isOrphanPossessiveResidence(text)) {

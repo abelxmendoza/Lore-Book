@@ -121,6 +121,29 @@ async function collectSourceMessages(
     }
   }
 
+  if (entityType === 'location') {
+    const { data: memories } = await supabaseAdmin
+      .from('location_mentions')
+      .select('memory_id')
+      .eq('user_id', userId)
+      .eq('location_id', entityId);
+
+    for (const mem of memories ?? []) {
+      if (!mem.memory_id) continue;
+      const { data: entry } = await supabaseAdmin
+        .from('journal_entries')
+        .select('source_message_id, metadata')
+        .eq('id', mem.memory_id as string)
+        .eq('user_id', userId)
+        .maybeSingle();
+      const meta = (entry?.metadata ?? {}) as Record<string, unknown>;
+      const src =
+        (entry?.source_message_id as string | undefined) ??
+        (meta.chat_message_id as string | undefined);
+      if (src) messageIds.add(src);
+    }
+  }
+
   return { messageIds: [...messageIds], threadIds: [...threadIds] };
 }
 
@@ -298,13 +321,13 @@ class EntityDeletionRecoveryService {
     let factsPreserved = 0;
     let claimsCreated = 0;
 
-    if (omegaEntityId && input.entityType === 'character') {
+    if (omegaEntityId && (input.entityType === 'character' || input.entityType === 'location')) {
       const migrated = await migrateFactsToClaims(
         userId,
-        'character',
+        input.entityType,
         input.entityId,
         omegaEntityId,
-        input.entityId
+        input.entityType === 'character' ? input.entityId : undefined
       );
       factsPreserved = migrated.factsPreserved;
       claimsCreated = migrated.claimsCreated;

@@ -13,7 +13,9 @@ import {
   Briefcase,
   User,
   Users,
+  Save,
 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
 import { toFieldSource } from '../common/FieldSourceBadge';
@@ -26,6 +28,7 @@ import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel
 import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
 import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
+import { suggestDisplayTitleFromNames, getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 
 type Relationship = {
   id?: string;
@@ -115,6 +118,42 @@ function StatCell({ label, value, sub }: { label: string; value: React.ReactNode
   );
 }
 
+function parseAliases(raw: string, primaryName: string): string[] {
+  const primaryKey = primaryName.trim().toLowerCase();
+  const seen = new Set<string>();
+  const aliases: string[] = [];
+  for (const part of raw.split(/[,;\n]/)) {
+    const alias = part.replace(/\s+/g, ' ').trim();
+    const key = alias.toLowerCase();
+    if (!alias || key === primaryKey || seen.has(key)) continue;
+    seen.add(key);
+    aliases.push(alias);
+  }
+  return aliases;
+}
+
+function inferNameParts(character: Character): { firstName: string; middleName: string; lastName: string } {
+  const meta = (character.metadata ?? {}) as Record<string, unknown>;
+  const explicitMiddle = typeof meta.middle_name === 'string' ? meta.middle_name : character.middle_name;
+  const firstName = character.first_name ?? '';
+  const lastName = character.last_name ?? '';
+  if (firstName || explicitMiddle || lastName) {
+    const lastParts = lastName.trim().split(/\s+/).filter(Boolean);
+    return {
+      firstName,
+      middleName: explicitMiddle ?? (lastParts.length > 1 ? lastParts.slice(0, -1).join(' ') : ''),
+      lastName: explicitMiddle ? lastName : (lastParts.length > 1 ? lastParts[lastParts.length - 1] : lastName),
+    };
+  }
+
+  const parts = character.name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? '',
+    middleName: parts.length > 2 ? parts.slice(1, -1).join(' ') : '',
+    lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+  };
+}
+
 export function CharacterInfoPanel({
   editedCharacter,
   setEditedCharacter,
@@ -152,6 +191,42 @@ export function CharacterInfoPanel({
   const orientationValue = typeof meta.sexual_orientation === 'string' ? meta.sexual_orientation : 'unknown';
   const sexSource = toFieldSource(meta.sex_source, sexValue !== 'unknown');
   const orientationSource = toFieldSource(meta.sexual_orientation_source, orientationValue !== 'unknown');
+  const inferredNameParts = useMemo(
+    () => inferNameParts(editedCharacter),
+    [
+      editedCharacter.id,
+      editedCharacter.name,
+      editedCharacter.first_name,
+      editedCharacter.middle_name,
+      editedCharacter.last_name,
+      editedCharacter.metadata?.middle_name,
+    ],
+  );
+  const [firstNameDraft, setFirstNameDraft] = useState(inferredNameParts.firstName);
+  const [middleNameDraft, setMiddleNameDraft] = useState(inferredNameParts.middleName);
+  const [lastNameDraft, setLastNameDraft] = useState(inferredNameParts.lastName);
+  const [aliasesList, setAliasesList] = useState<string[]>(editedCharacter.alias ?? []);
+  const [newAlias, setNewAlias] = useState('');
+  const [roleDraft, setRoleDraft] = useState(editedCharacter.role || '');
+
+  const addAlias = () => {
+    const val = newAlias.trim();
+    if (val && !aliasesList.includes(val)) {
+      setAliasesList([...aliasesList, val]);
+      setNewAlias('');
+    }
+  };
+
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFirstNameDraft(inferredNameParts.firstName);
+    setMiddleNameDraft(inferredNameParts.middleName);
+    setLastNameDraft(inferredNameParts.lastName);
+    setAliasesList(editedCharacter.alias ?? []);
+    setRoleDraft(editedCharacter.role || '');
+  }, [editedCharacter.id, inferredNameParts.firstName, inferredNameParts.middleName, inferredNameParts.lastName, editedCharacter.alias, editedCharacter.role]);
 
   const humanizeType = (t: string) =>
     t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -229,6 +304,83 @@ export function CharacterInfoPanel({
     }
   };
 
+  const saveIdentityNames = async () => {
+    const aliases = [...aliasesList];
+    const firstName = firstNameDraft.trim();
+    const middleName = middleNameDraft.trim();
+    const lastName = lastNameDraft.trim();
+    const role = roleDraft.trim();
+    const metadataPatch = {
+      middle_name: middleName || null,
+      middle_name_source: middleName ? 'user_confirmed' : 'user_cleared',
+      name_parts_confirmed_at: new Date().toISOString(),
+    };
+
+    setIdentitySaving(true);
+    setIdentityError(null);
+    setEditedCharacter((prev) => ({
+      ...prev,
+      first_name: firstName || null,
+      middle_name: middleName || null,
+      last_name: lastName || null,
+      alias: aliases,
+      role: role || null,
+      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch },
+    }));
+
+    try {
+      await updateCharacter({
+        id: characterId,
+        values: {
+          name: editedCharacter.name,
+          firstName: firstName || undefined,
+          middleName: middleName || undefined,
+          lastName: lastName || undefined,
+          alias: aliases,
+          role: role || undefined,
+          metadata: metadataPatch,
+        },
+      }).unwrap();
+
+      // Auto-sync a friendly card title from the new structured names (nickname + first)
+      // only if the user hasn't locked a custom title. This keeps names vs title clearly separated
+      // while giving good defaults for cards.
+      const currentTitleMeta = (editedCharacter.metadata?.display_title as any) || {};
+      const isLocked = currentTitleMeta.stability === 'locked';
+      if (!isLocked) {
+        const suggested = suggestDisplayTitleFromNames({
+          ...editedCharacter,
+          first_name: firstName,
+          last_name: lastName,
+          alias: aliases,
+          metadata: { ...(editedCharacter.metadata || {}), ...metadataPatch },
+        });
+        if (suggested && suggested !== getCharacterDisplayTitle(editedCharacter as any)) {
+          setEditedCharacter((prev) => ({
+            ...prev,
+            metadata: {
+              ...((prev.metadata ?? {}) as Record<string, unknown>),
+              display_title: {
+                ...currentTitleMeta,
+                primaryTitle: suggested,
+                stability: 'stable',
+                titleType: 'structured',
+                generatedFromNames: true,
+              },
+            },
+          }));
+        }
+      }
+
+      onUpdate();
+    } catch (err) {
+      console.error('Failed to save character identity names:', err);
+      setIdentityError(err instanceof Error ? err.message : 'Could not save names.');
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
+
   const persistRelationshipType = async (nextType: string) => {
     if (!relationship?.id) throw new Error('This relationship is not editable yet.');
     await fetchJson<{ success: boolean; relationship: Relationship }>(
@@ -299,7 +451,7 @@ export function CharacterInfoPanel({
           <div className="min-w-0 flex-1">
             <h2 className="text-base sm:text-lg font-bold text-white">Who they are to you</h2>
             {editedCharacter.role && (
-              <p className="text-xs text-primary/80 mt-0.5 capitalize">{editedCharacter.role.replace(/_/g, ' ')}</p>
+              <p className="text-xs text-primary/80 mt-0.5 capitalize">Occupation: {editedCharacter.role.replace(/_/g, ' ')}</p>
             )}
           </div>
         </div>
@@ -365,11 +517,101 @@ export function CharacterInfoPanel({
             <User className="h-4 w-4 text-white/55" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-white">Identity details</h3>
+            <h3 className="text-sm font-bold text-white">Identity details (structured names)</h3>
             <p className="mt-1 text-xs leading-relaxed text-white/45">
-              Use confirmed information only. Love & Relationships uses these fields to avoid surfacing people outside
-              your stated attraction profile; unknown values stay visible for review.
+              First / Middle / Last + Nicknames are the canonical record for this person. These drive matching, family trees,
+              and relationship logic. The <span className="font-medium text-white/70">card title</span> (shown on lists and in CharacterTitleSection) is a separate, presentational value — typically “Nickname (First Last)” or a contextual form.
             </p>
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <label className="block">
+                  <span className="text-[10px] uppercase tracking-wide text-white/35">First</span>
+                  <input
+                    value={firstNameDraft}
+                    onChange={(e) => setFirstNameDraft(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] uppercase tracking-wide text-white/35">Middle</span>
+                  <input
+                    value={middleNameDraft}
+                    onChange={(e) => setMiddleNameDraft(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] uppercase tracking-wide text-white/35">Last</span>
+                  <input
+                    value={lastNameDraft}
+                    onChange={(e) => setLastNameDraft(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none"
+                    autoComplete="off"
+                  />
+                </label>
+              </div>
+              <label className="mt-3 block">
+                <span className="text-[10px] uppercase tracking-wide text-white/35">Occupation / Role</span>
+                <input
+                  value={roleDraft}
+                  onChange={(e) => setRoleDraft(e.target.value)}
+                  placeholder="e.g. Software Engineer, Student, Musician"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none"
+                  autoComplete="off"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="text-[10px] uppercase tracking-wide text-white/35">Nicknames / aliases (multiple)</span>
+                <div className="mt-1 flex flex-wrap gap-1 min-h-[32px]">
+                  {aliasesList.map((alias, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-xs text-white">
+                      {alias}
+                      <button
+                        type="button"
+                        onClick={() => setAliasesList(aliasesList.filter((_, i) => i !== idx))}
+                        className="ml-1 text-white/50 hover:text-white/80"
+                        aria-label={`Remove ${alias}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    value={newAlias}
+                    onChange={(e) => setNewAlias(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAlias(); } }}
+                    placeholder="Add nickname or alias and press Enter"
+                    className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-sm text-white focus:border-primary/60 focus:outline-none"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={addAlias}
+                    disabled={!newAlias.trim()}
+                    className="rounded-lg border border-primary/35 bg-primary/15 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/25 disabled:opacity-60"
+                  >
+                    Add
+                  </button>
+                </div>
+              </label>
+              {identityError && <p className="mt-2 text-xs text-red-300">{identityError}</p>}
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void saveIdentityNames()}
+                  disabled={identitySaving}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/35 bg-primary/15 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/25 disabled:opacity-60"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {identitySaving ? 'Saving...' : 'Save names'}
+                </button>
+              </div>
+            </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <EditableField
                 label="Sex"

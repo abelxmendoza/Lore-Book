@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ThreadSummaryBar } from './ThreadSummaryBar';
+import { getDisplaySummary, ThreadSummaryBar } from './ThreadSummaryBar';
 
 vi.mock('../hooks/useThreadSummary', () => ({
   useThreadSummary: vi.fn(),
@@ -48,8 +48,21 @@ describe('ThreadSummaryBar', () => {
     );
 
     expect(screen.getByTestId('thread-summary-bar')).toBeInTheDocument();
-    expect(screen.getByText(/Discussed family in San Diego/)).toBeInTheDocument();
+    expect(screen.getByText(/You talked about visiting Tía Maria/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('thread-recall-button'));
     expect(onRecall).toHaveBeenCalledWith('Recap everything we discussed in this thread.');
+  });
+
+  it('uses one clean display summary when short duplicates medium', () => {
+    expect(getDisplaySummary({
+      short: 'Discussed Shyla and Genni.',
+      medium: 'Discussed Shyla and Genni. You also clarified that Cyberpunk was a game mention, not a person.',
+      long: 'Long recap',
+      version: 1,
+      messageCount: 4,
+      people: ['Shyla', 'Genni'],
+      places: [],
+      themes: ['character cleanup'],
+    })).toBe('Discussed Shyla and Genni. You also clarified that Cyberpunk was a game mention, not a person.');
   });
 });

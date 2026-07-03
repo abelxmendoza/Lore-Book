@@ -440,6 +440,15 @@ export const entitiesApi = baseApi.injectEndpoints({
         await invalidateOrganizationCaches(organizationId, queryFulfilled);
       },
     }),
+
+    reclassifyEntity: build.mutation<unknown, { id: string; targetDomain: string }>({
+      query: ({ id, targetDomain }) => ({
+        url: `/api/characters/${id}/reclassify`,
+        method: 'POST',
+        body: { targetDomain },
+      }),
+      invalidatesTags: ['Character', 'Organization', 'Location', 'Project', 'Skill'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -475,4 +484,5 @@ export const {
   useRemoveOrganizationLocationMutation,
   useAddOrganizationRelationshipMutation,
   useRemoveOrganizationRelationshipMutation,
+  useReclassifyEntityMutation,
 } = entitiesApi;

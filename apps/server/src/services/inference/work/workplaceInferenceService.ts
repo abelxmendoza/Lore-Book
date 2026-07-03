@@ -24,6 +24,9 @@ import {
   buildWorkplaceCommunity,
   formatCareerTimelineSummary,
 } from './workplaceTimelineInferenceService';
+import { resolveWorkStatus } from './workStatusResolver';
+import { resolveOrganizationHierarchy as resolveOrgHierarchy, buildHierarchyFromResults } from '../../organizations/inference/organizationHierarchyResolver';
+import { createCurrentRoleSnapshot } from '../../career/currentRoleSnapshotService';
 import type { CareerTimelineEntry, SkillProgressionRecord } from './workplaceTypes';
 
 export const ROBOTICS_WORKPLACE_FIXTURE_TEXT =
@@ -190,8 +193,10 @@ export function inferWorkplaceAssociations(
   }
   skills.push(...inferredSkills);
 
-  // Career timeline + community + hierarchy
+  // Career timeline + community + hierarchy + current role snapshot
   let careerTimeline: CareerTimelineEntry | undefined;
+  const hierarchies = resolveOrgHierarchy(text);
+  const workStatus = resolveWorkStatus(text);
   if (employerName) {
     careerTimeline = buildCareerTimelineEntry({
       employerName,
@@ -218,11 +223,28 @@ export function inferWorkplaceAssociations(
       });
     }
 
-    if (deploymentSites.length > 0) {
-      const hierarchy = buildOrganizationHierarchy({ employerName, deploymentSites });
-      memoryReviewCandidates.push(
-        `${hierarchy.name} → Deployment Sites → ${deploymentSites.map((d) => d.displayName).join(', ')}`
-      );
+    if (hierarchies.length > 0) {
+      const h = buildHierarchyFromResults(hierarchies);
+      memoryReviewCandidates.push(`Org hierarchy: ${JSON.stringify(h)}`);
+    }
+
+    // Current role snapshot (core of the resolver)
+    const snapshot = createCurrentRoleSnapshot({
+      text,
+      role,
+      employer: employerName,
+      hierarchies,
+      statusSignals: [workStatus],
+      evidence: [text.substring(0, 200)],
+    });
+    if (snapshot) {
+      memoryReviewCandidates.push(`CurrentRoleSnapshot: ${JSON.stringify(snapshot)}`);
+      actionExtras.push({
+        kind: 'current_role_snapshot',
+        label: `Update current role: ${snapshot.title}`,
+        payload: snapshot,
+        confidence: snapshot.confidence,
+      });
     }
   }
 

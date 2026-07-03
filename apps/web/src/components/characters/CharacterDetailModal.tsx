@@ -71,7 +71,7 @@ import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { useChatStream } from '../../hooks/useChatStream';
 import { useCharacterProfileBundle } from '../../hooks/useCharacterProfileBundle';
-import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
+import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
 
 type SocialMedia = {
   instagram?: string;
@@ -106,6 +106,7 @@ type CharacterAttribute = {
 
 type CharacterDetail = Character & {
   first_name?: string | null;
+  middle_name?: string | null;
   last_name?: string | null;
   importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
   importance_score?: number | null;
@@ -223,6 +224,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Reclassify / switch entity type (for misclassified groups, places, events etc in Character Book)
+  const [reclassifyTarget, setReclassifyTarget] = useState('');
+  const [reclassifyBusy, setReclassifyBusy] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState<string | null>(null);
+  const [reclassifySuccess, setReclassifySuccess] = useState(false);
+
+  const reclassifyMutation = useReclassifyEntityMutation();
+  const { mutateAsync: reclassifyEntity } = reclassifyMutation;
   const loreAvatarsEnabled = import.meta.env.VITE_ENABLE_LORE_AVATARS === 'true';
   const [loreAvatarBusy, setLoreAvatarBusy] = useState(false);
   const [loreAvatarError, setLoreAvatarError] = useState<string | null>(null);
@@ -333,6 +343,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }).unwrap();
       invalidateCache(character.id);
       onUpdate();
+
+      // For main/self character: immediately adapt the system
+      if (isMainCharacter && !isMockDataEnabled) {
+        selfCharacterApi.ensureSelf().catch(() => {});
+        selfCharacterApi.getProfile().then(applySelfProfile).catch(() => {});
+        selfCharacterApi.repairIdentity().catch(() => {});
+        onStoryDataUpdated();
+      }
     } catch (err) {
       // Roll back optimistic rename and surface the error inline (EditableEntityName).
       setEditedCharacter((prev) => ({ ...prev, name: editedCharacter.name }));
@@ -377,7 +395,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     );
     upsertLocalRelationship(response.relationship);
     invalidateRelationshipViews();
-    onUpdate();
+    onStoryDataUpdated();
+    // Manual "People in their world" add is recorded with user_confirmed + manual flags in backend.
+    // This feeds entity authority, continuity, biography, and lorebook so the system learns the connection
+    // as high-confidence ground truth for identity and long-term narrative.
+    if (isMainCharacter && !isMockDataEnabled) {
+      selfCharacterApi.ensureSelf().catch(() => {});
+      selfCharacterApi.repairIdentity().catch(() => {});
+      onStoryDataUpdated();
+    }
   };
 
   const updateWorldPerson = async (
@@ -394,7 +420,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     );
     upsertLocalRelationship(response.relationship);
     invalidateRelationshipViews();
-    onUpdate();
+    onStoryDataUpdated();
+    // Manual update learned by system (high authority for continuity/identity).
   };
 
   const deleteWorldPerson = async (relationshipId: string) => {
@@ -412,7 +439,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       };
     });
     invalidateRelationshipViews();
-    onUpdate();
+    onStoryDataUpdated();
+    // Delete from "People in their world" is a user correction — system treats removal as authoritative for graph/continuity.
+    if (isMainCharacter && !isMockDataEnabled) {
+      selfCharacterApi.ensureSelf().catch(() => {});
+      selfCharacterApi.repairIdentity().catch(() => {});
+      onStoryDataUpdated();
+    }
   };
 
   const resetDeleteFlow = () => {
@@ -421,6 +454,42 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setDeleteReason('wrong_person_or_not_real');
     setDeleteReasonNote('');
     setDeleteError(null);
+  };
+
+  const handleReclassify = async () => {
+    if (!reclassifyTarget) return;
+    setReclassifyBusy(true);
+    setReclassifyError(null);
+    setReclassifySuccess(false);
+    try {
+      if (isMockDataEnabled) {
+        // For mock, just update locally and pretend moved
+        mockDataService.mutate.characters.upsert({
+          ...(editedCharacter as Character),
+          metadata: {
+            ...(editedCharacter.metadata || {}),
+            reclassified_to: reclassifyTarget,
+            reclassified_at: new Date().toISOString(),
+          },
+        });
+        setReclassifySuccess(true);
+        onUpdate();
+        setTimeout(() => onClose(), 800);
+        return;
+      }
+
+      await reclassifyEntity({ id: character.id, targetDomain: reclassifyTarget });
+      setReclassifySuccess(true);
+      invalidateCache(character.id);
+      onUpdate();
+      // Close after success so user sees it in the target book
+      setTimeout(() => onClose(), 600);
+    } catch (err) {
+      console.error('Reclassify failed', err);
+      setReclassifyError(err instanceof Error ? err.message : 'Failed to reclassify entity');
+    } finally {
+      setReclassifyBusy(false);
+    }
   };
 
   const getImportanceLabel = (level?: string | null) => {
@@ -544,7 +613,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   const getRoleTooltip = (role?: string | null) => {
-    return `Role: "${role}" describes this person's role in your life or story. This is automatically detected from how you describe them in conversations, such as "my friend", "colleague", "family member", etc.`;
+    return `Occupation / Role: "${role}" — for you (main character) this is typically your occupation or primary activity. For others, it describes their role in your life or story. Editable in the Info tab.`;
   };
 
   const getArchetypeTooltip = (archetype?: string | null) => {
@@ -2022,6 +2091,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         values: {
           name: editedCharacter.name,
           firstName: editedCharacter.first_name,
+          middleName:
+            editedCharacter.middle_name ??
+            (typeof editedCharacter.metadata?.middle_name === 'string' ? editedCharacter.metadata.middle_name : undefined),
           lastName: editedCharacter.last_name,
           alias: editedCharacter.alias,
           pronouns: editedCharacter.pronouns,
@@ -2182,7 +2254,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       role="dialog"
       aria-modal="true"
     >
-      <div className={`bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-[95vh] sm:max-h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl ${
+      <div className={`bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-[92vh] sm:max-h-[92vh] sm:max-w-5xl lg:max-w-6xl xl:max-w-7xl overflow-hidden flex flex-col shadow-2xl ${
         isMainCharacter
           ? 'border-amber-500/40 shadow-amber-500/15'
           : 'border-primary/30 shadow-primary/20'
@@ -2202,12 +2274,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             <X className="h-4 w-4 sm:h-5 sm:w-5" />
           </Button>
 
-          {/* Mobile: minimal sticky header — keeps tabs + content scrollable */}
+          {/* Mobile: minimal sticky header — compact */}
           <div
-            className="sm:hidden px-3 py-2 pr-12 border-b border-white/10"
-            style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+            className="sm:hidden px-2 py-1.5 pr-12 border-b border-white/10"
+            style={{ paddingTop: 'max(0.25rem, env(safe-area-inset-top, 0px))' }}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <div className="relative flex-shrink-0 flex flex-col items-center gap-1">
                 <CharacterAvatar
                   url={editedCharacter.avatar_url}
@@ -2215,7 +2287,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   archetype={editedCharacter.archetype}
                   role={editedCharacter.role}
                   name={editedCharacter.name}
-                  size={36}
+                  size={28}
                 />
                 {!isMainCharacter && loreAvatarsEnabled && (
                   <Button
@@ -2279,11 +2351,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             </div>
           </div>
 
-          {/* Desktop: full header */}
-          <div className="hidden sm:block p-6 pr-14">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-2.5 sm:gap-4 flex-1 min-w-0">
-              <div className="relative flex-shrink-0 flex flex-col items-center gap-1.5">
+          {/* Desktop: full header - compacted for more content space */}
+          <div className="hidden sm:block p-3 pr-12 lg:p-4 lg:pr-14">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className="relative flex-shrink-0 flex flex-col items-center gap-1">
                 {/* Phase ring around avatar */}
                 {(() => {
                   const c = editedCharacter.analytics?.closeness_score ?? 0;
@@ -2301,8 +2373,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         archetype={editedCharacter.archetype}
                         role={editedCharacter.role}
                         name={editedCharacter.name}
-                        size={48}
-                        className="sm:w-16 sm:h-16"
+                        size={36}
+                        className="sm:w-10 sm:h-10 lg:w-12 lg:h-12"
                       />
                     </div>
                   );
@@ -2347,8 +2419,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 )}
               </div>
               <div className="flex-1 min-w-0">
-	                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
-	                  <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white tracking-tight break-words">
+	                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 flex-wrap">
+	                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight break-words">
 	                    {displayName === editedCharacter.name ? (
 	                      <EditableEntityName
 	                        name={editedCharacter.name}
@@ -2361,7 +2433,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 	                  </h2>
                     {isMainCharacter && (
                       <>
-                        <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/50 text-[9px] sm:text-xs px-1.5 sm:px-2 py-0.5 flex items-center gap-1">
+                        <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/50 text-[9px] sm:text-xs px-1.5 py-0.5 flex items-center gap-1">
                           <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
                           Main Character
                         </Badge>
@@ -2376,26 +2448,52 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                       </>
                     )}
 	                </div>
+
+                {/* Official title + structured names under it (compact) */}
+                <div className="mb-1.5 max-w-2xl">
+                  <CharacterTitleSection
+                    character={editedCharacter}
+                    onUpdated={(patch) => {
+                      setEditedCharacter((prev) => ({ ...prev, ...patch }));
+                      if (isMainCharacter && !isMockDataEnabled) {
+                        selfCharacterApi.ensureSelf().catch(() => {});
+                        selfCharacterApi.getProfile().then(applySelfProfile).catch(() => {});
+                        selfCharacterApi.repairIdentity().catch(() => {});
+                        onStoryDataUpdated();
+                      }
+                    }}
+                  />
+                  {/* Display all names under the official title - now for main character too */}
+                  {(() => {
+                    const first = editedCharacter.first_name || '';
+                    const middle = (typeof editedCharacter.metadata?.middle_name === 'string' ? editedCharacter.metadata.middle_name : editedCharacter.middle_name) || '';
+                    const last = editedCharacter.last_name || '';
+                    const full = [first, middle, last].filter(Boolean).join(' ').trim();
+                    const aliases = (editedCharacter.alias || []).filter(Boolean);
+                    if (!full && aliases.length === 0) return null;
+                    return (
+                      <div className="text-[10px] sm:text-xs text-white/55 mt-0.5 leading-tight truncate">
+                        {full && <span className="font-medium text-white/70">{full}</span>}
+                        {aliases.length > 0 && (
+                          <span className="text-white/40"> {full ? ' · ' : ''}{aliases.join(' / ')}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {wittyTagline && (
-                  <p className="text-sm sm:text-base text-white/75 italic leading-snug mb-2 max-w-2xl">
+                  <p className="text-xs sm:text-sm text-white/70 italic leading-snug mb-1 max-w-2xl">
                     {wittyTagline}
                   </p>
                 )}
-                {!isMainCharacter ? (
-                  <div className="mb-3 max-w-2xl">
-                    <CharacterTitleSection
-                      character={editedCharacter}
-                      onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
-                    />
-                  </div>
-                ) : null}
                 {profileContextHooks.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {profileContextHooks.slice(0, 5).map((hook) => (
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {profileContextHooks.slice(0, 4).map((hook) => (
                       <Badge
                         key={hook}
                         variant="outline"
-                        className={`text-[9px] sm:text-[10px] px-1.5 py-0.5 ${
+                        className={`text-[8px] sm:text-[9px] px-1 py-0 ${
                           isMainCharacter
                             ? 'bg-amber-500/10 text-amber-200/90 border-amber-500/25'
                             : 'bg-primary/10 text-primary/90 border-primary/25'
@@ -2406,26 +2504,24 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     ))}
                   </div>
                 )}
-                {/* Compact info row on mobile */}
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
+                {/* Compact info row - reduced for desktop space */}
+                <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-0.5 text-[9px] sm:text-[10px]">
                   {editedCharacter.role && (
                     <Tooltip content={getRoleTooltip(editedCharacter.role)}>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1">
-                        <Tag className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                        <span className="truncate max-w-[80px] sm:max-w-none">{editedCharacter.role}</span>
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 cursor-help">
+                        <Briefcase className="h-2.5 w-2.5 mr-0.5" />Occupation: {editedCharacter.role}
                       </Badge>
                     </Tooltip>
                   )}
                   {editedCharacter.pronouns && (
                     <Tooltip content={getPronounsTooltip(editedCharacter.pronouns)}>
-                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1">
-                        <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5">
                         {editedCharacter.pronouns}
                       </Badge>
                     </Tooltip>
                   )}
                   {editedCharacter.metadata?.kinship_label && (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1">
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5">
                       {String(editedCharacter.metadata.kinship_label)}
                     </Badge>
                   )}
@@ -2433,38 +2529,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
                     <Badge 
                       variant="outline" 
-                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1 cursor-help`}
+                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5 cursor-help`}
                     >
                       {getImportanceIcon(editedCharacter.importance_level)}
                       <span className="hidden sm:inline">{getImportanceLabel(editedCharacter.importance_level)}</span>
-                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
-                        <span className="text-[8px] sm:text-xs opacity-70 hidden sm:inline">({Math.round(editedCharacter.importance_score)})</span>
-                      )}
                     </Badge>
                     </Tooltip>
                   )}
-                  {/* Rare in story but high impact on you */}
-                  {((editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
-                    (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70) && (
-                    <Badge variant="outline" className="bg-purple-500/20 text-purple-400 border-purple-500/40 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1" title="Rare in your story, but high impact on you">
-                      <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                      <span className="hidden sm:inline">Rare in story, high impact on you</span>
-                      <span className="sm:hidden">High impact</span>
-                    </Badge>
-                  )}
                 </div>
-                {!hasHonorificFirstName && editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
-                  <p className="text-[10px] sm:text-sm text-white/60 mb-0.5 sm:mb-1 truncate">
-                    Display: {editedCharacter.name}
-                  </p>
-                )}
-                {editedCharacter.alias && editedCharacter.alias.length > 0 && (
-                  <p className="text-[10px] sm:text-base text-white/70 mb-1 sm:mb-2 line-clamp-2 sm:line-clamp-none sm:truncate">
-                    <span className="text-white/50 hidden sm:inline">Also known as: </span>
-                    <span className="text-white/50 sm:hidden">AKA: </span>
-                    {editedCharacter.alias.join(', ')}
-                  </p>
-                )}
                 {/* Archetype badge - show separately on mobile */}
                 {editedCharacter.archetype && (
                   <div className="mt-1 sm:mt-0">
@@ -2557,15 +2629,43 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 );
               })}
             </div>
+
+            {/* Reclassify / switch entity type — for groups, places, events that landed in Character Book by mistake */}
+            <div className="border-t border-white/10 p-2 sm:p-3 mt-2">
+              <div className="text-[10px] uppercase tracking-wide text-white/40 mb-1">Switch type</div>
+              <select
+                value={reclassifyTarget}
+                onChange={(e) => { setReclassifyTarget(e.target.value); setReclassifyError(null); setReclassifySuccess(false); }}
+                className="w-full mb-1.5 text-xs bg-black/40 border border-white/15 rounded px-2 py-1 text-white"
+                disabled={reclassifyBusy || reclassifySuccess}
+              >
+                <option value="">Choose new type...</option>
+                <option value="organization">Organization / Group</option>
+                <option value="location">Location / Place</option>
+                <option value="event">Event</option>
+                <option value="project">Project</option>
+                <option value="skill">Skill</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleReclassify}
+                disabled={!reclassifyTarget || reclassifyBusy || reclassifySuccess}
+                className="w-full text-xs px-2 py-1.5 rounded border border-white/15 hover:bg-white/5 disabled:opacity-50 text-white/80"
+              >
+                {reclassifyBusy ? 'Switching...' : reclassifySuccess ? 'Switched ✓' : 'Switch type (no archive)'}
+              </button>
+              {reclassifyError && <p className="text-[10px] text-red-400 mt-1">{reclassifyError}</p>}
+              {reclassifySuccess && <p className="text-[10px] text-emerald-400 mt-1">Moved to target book.</p>}
+            </div>
           </nav>
 
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
           {/* Desktop: vertical sidebar */}
           <nav
-            className="hidden md:flex flex-shrink-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20 flex-col min-h-0"
+            className="hidden md:flex flex-shrink-0 md:border-r border-border/60 md:w-44 lg:w-52 overflow-y-hidden overflow-x-hidden bg-black/20 flex-col min-h-0 h-full"
             aria-label="Character sections"
           >
-            <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.key;
@@ -2589,8 +2689,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 );
               })}
             </div>
+
+            {/* Archive pinned at bottom of sidebar (desktop only) — no longer overlaps tabs because tabs list is scrollable */}
             {canDeleteCharacter && (
-              <div className="mt-auto border-t border-amber-500/15 p-2 sm:p-3">
+              <div className="flex-shrink-0 border-t border-amber-500/15 p-2 sm:p-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -2613,7 +2715,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             className={`flex-1 min-h-0 bg-black/40 touch-pan-y [-webkit-overflow-scrolling:touch] ${
               activeTab === 'chat'
                 ? 'flex flex-col overflow-hidden'
-                : 'overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-8 pb-[max(4rem,env(safe-area-inset-bottom,0px))] sm:pb-32'
+                : 'overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 lg:space-y-8 pb-8 sm:pb-12 lg:pb-16'
             }`}
           >
             {/* Mobile: profile context lives in scroll body, not fixed header */}
@@ -2622,12 +2724,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 {wittyTagline && (
                   <p className="text-xs text-white/70 italic leading-snug line-clamp-2">{wittyTagline}</p>
                 )}
-                {!isMainCharacter ? (
-                  <CharacterTitleSection
-                    character={editedCharacter}
-                    onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
-                  />
-                ) : null}
+                <CharacterTitleSection
+                  character={editedCharacter}
+                  onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
+                />
                 {profileContextHooks.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {profileContextHooks.slice(0, 4).map((hook) => (

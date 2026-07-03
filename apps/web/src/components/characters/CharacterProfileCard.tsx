@@ -36,6 +36,7 @@ export type Character = {
   id: string;
   name: string;
   first_name?: string | null;
+  middle_name?: string | null;
   last_name?: string | null;
   alias?: string[];
   pronouns?: string;

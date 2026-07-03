@@ -104,6 +104,7 @@ function sanitizeCharacterCreateBody(body: unknown): unknown {
 const createCharacterSchema = z.object({
   name: z.string().min(1),
   firstName: z.string().optional(),
+  middleName: z.string().optional(),
   lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
@@ -139,6 +140,7 @@ const createCharacterSchema = z.object({
 const updateCharacterSchema = z.object({
   name: z.string().optional(),
   firstName: z.string().optional(),
+  middleName: z.string().optional(),
   lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
@@ -1723,6 +1725,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       created_at: character.created_at,
       updated_at: character.updated_at,
       first_name: character.first_name ?? null,
+      middle_name: typeof metadata.middle_name === 'string' ? metadata.middle_name : null,
       last_name: character.last_name ?? null,
       is_nickname: character.is_nickname ?? null,
       importance_level: character.importance_level ?? null,
@@ -1778,7 +1781,13 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const updatedMetadata: Record<string, unknown> = {
       ...existingMetadata,
       ...metadataPatch,
-      ...(updateData.social_media ? { social_media: updateData.social_media } : {})
+      ...(updateData.social_media ? { social_media: updateData.social_media } : {}),
+      ...(updateData.middleName !== undefined
+        ? {
+            middle_name: updateData.middleName.trim() || null,
+            middle_name_source: updateData.middleName.trim() ? 'user_confirmed' : 'user_cleared',
+          }
+        : {})
     };
     // Explicit null clears a user override (UI "Auto" choice) — a shallow
     // merge alone can never remove a key.
@@ -1927,6 +1936,121 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
     res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+/**
+ * Reclassify / switch entity type for a record that ended up in the wrong book.
+ * E.g. a group or place that was created as a character.
+ * Does not archive — moves or marks it for the target domain/book.
+ */
+router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { targetDomain } = req.body || {};
+    if (!targetDomain || typeof targetDomain !== 'string') {
+      return res.status(400).json({ error: 'targetDomain required (organization, location, event, project, skill)' });
+    }
+
+    const { data: existing, error: checkErr } = await supabaseAdmin
+      .from('characters')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .single();
+
+    if (checkErr || !existing) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Update metadata to record the reclassification
+    const meta = { ...(existing.metadata || {}) as Record<string, any> };
+    meta.reclassified_from = 'character';
+    meta.reclassified_to = targetDomain;
+    meta.reclassified_at = new Date().toISOString();
+
+    // For certain targets, attempt to seed the target book with the data (name + summary + metadata)
+    if (targetDomain === 'organization') {
+      try {
+        await supabaseAdmin.from('organizations').insert({
+          user_id: userId,
+          name: existing.name,
+          summary: existing.summary || `Reclassified from character: ${existing.name}`,
+          metadata: { ...meta, reclassified_from_character_id: existing.id },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // may already exist or validation — continue
+      }
+    } else if (targetDomain === 'location') {
+      try {
+        await supabaseAdmin.from('omega_entities').insert({
+          user_id: userId,
+          entity_type: 'LOCATION',
+          display_name: existing.name,
+          summary: existing.summary || null,
+          metadata: { ...meta, reclassified_from_character_id: existing.id },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {}
+    } else if (targetDomain === 'project') {
+      try {
+        await supabaseAdmin.from('projects').insert({
+          user_id: userId,
+          name: existing.name,
+          summary: existing.summary || null,
+          metadata: { ...meta, reclassified_from_character_id: existing.id },
+        });
+      } catch (e) {}
+    } else if (targetDomain === 'skill') {
+      try {
+        await supabaseAdmin.from('skills').insert({
+          user_id: userId,
+          name: existing.name,
+          summary: existing.summary || null,
+          metadata: { ...meta, reclassified_from_character_id: existing.id },
+        });
+      } catch (e) {}
+    } else if (targetDomain === 'event') {
+      try {
+        await supabaseAdmin.from('event_candidates').insert({
+          user_id: userId,
+          title: existing.name,
+          summary: existing.summary || null,
+          metadata: { ...meta, reclassified_from_character_id: existing.id },
+        });
+      } catch (e) {}
+    } else {
+      meta.original_book = 'characters';
+    }
+
+    // Mark the character so Character Book excludes it (treated as moved)
+    const payload: any = {
+      metadata: meta,
+      status: 'reclassified',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('characters')
+      .update(payload)
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+
+    // Invalidate caches
+    invalidateCache(req.params.id);
+    // The target books will pick up via their loaders or the flag can be used by suggestion systems
+
+    res.json({ success: true, reclassified_to: targetDomain, character: updated });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reclassify entity');
+    res.status(500).json({ error: 'Failed to reclassify entity' });
   }
 });
 

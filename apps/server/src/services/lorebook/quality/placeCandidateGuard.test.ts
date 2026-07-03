@@ -45,7 +45,16 @@ describe('guardPlaceCandidate', () => {
     expect(loc('mail')?.rejectionReason).toBe('generic_non_place_word');
     expect(loc('my project')?.rejectionReason).toBe('possessive_generic_non_place');
     expect(loc('home coding Lorebook all weekend')?.rejectionReason).toMatch(/activity|temporal/);
-    expect(loc('Amazon as a Quality Assurance Technician')?.rejectionReason).toBe('sentence_fragment_span');
+    expect(loc('Amazon as a Quality Assurance Technician')?.rejectionReason).toBe('dal_role');
+  });
+
+  it('uses domain arbitration before place acceptance', () => {
+    expect(loc('Ring Technician Job')?.rejectionReason).toBe('dal_role');
+    expect(loc('Ring a sub company of Amazon')?.rejectionReason).toBe('dal_organization');
+    expect(loc('Ring with')?.rejectionReason).toBe('dal_broken_span');
+    expect(loc('pit she still said no')?.rejectionReason).toBe('dal_venue_subarea_context');
+    expect(loc('her presence')?.rejectionReason).toBe('dal_social_context');
+    expect(loc('This other promoter named Ruben')?.rejectionReason).toBe('dal_person');
   });
 
   it('rejects abstractions and descriptive-clause fragments', () => {

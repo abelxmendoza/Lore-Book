@@ -2995,7 +2995,7 @@ export const CharacterBook = () => {
       filtered = filtered.filter(char => char.status === 'pending_deletion');
     } else {
       filtered = filtered.filter(
-        char => char.status !== 'archived' && char.status !== 'pending_deletion'
+        char => char.status !== 'archived' && char.status !== 'pending_deletion' && char.status !== 'reclassified'
       );
 
       if (importanceFilter !== 'all') {
@@ -3178,14 +3178,14 @@ export const CharacterBook = () => {
           isMockDataEnabled
             ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
             : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion')
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
                 .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
         }
         existingCharacterNames={
           isMockDataEnabled
             ? getMockCharacterSuggestionBookNames('general')
             : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion')
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
                 .flatMap(c => [c.name, ...(c.alias ?? [])])
         }
         onRescanComplete={() => {
