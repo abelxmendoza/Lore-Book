@@ -91,5 +91,14 @@ export function extractThirdPartyRomances(text: string): ThirdPartyRomance[] {
     push(anchor, partner, m[1]);
   }
 
+  // 3) Predicate: "Oscuridad is her boyfriend" → partner = subject, anchor = the
+  //    pronoun's antecedent (nearest name before the subject).
+  const predicate = new RegExp(`(${NAME})\\s+(?:is|was|are|were|being)\\s+(?:[Hh]er|[Hh]is|[Tt]heir)\\s+${ROMANTIC_ROLE_GROUP}`, 'gu');
+  for (const m of text.matchAll(predicate)) {
+    const partner = m[1];
+    const anchor = nearestPriorName(text, m.index ?? 0);
+    push(anchor, partner, m[2]);
+  }
+
   return out;
 }
