@@ -110,3 +110,4 @@ supabase/.temp/
 
 # OpenAI skill upload artifacts (manifest.json contains skill IDs — optional to commit)
 openai-skills/dist/
+lorekeeper-refine/
