@@ -37,8 +37,8 @@ xIntegrationRouter.get('/status', requireAuth, async (req: AuthenticatedRequest,
 
 xIntegrationRouter.get('/callback-url', requireAuth, (req: AuthenticatedRequest, res) => {
   try {
-    const redirectUri = xConnectionService.getCallbackUrl(req);
-    return res.json({ redirectUri });
+    const info = xConnectionService.getCallbackInfo(req);
+    return res.json(info);
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to compute callback URL' });
   }

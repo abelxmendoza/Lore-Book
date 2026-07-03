@@ -104,10 +104,9 @@ function redirectUri(req: Request): string {
     return config.xOAuthRedirectUri;
   }
   let base = requestBaseUrl(req);
-  // Normalize common local dev hosts (127.0.0.1 / 0.0.0.0 -> localhost) so the URL shown to register is the most common one
-  if (/^https?:\/\/(127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(base)) {
-    base = base.replace(/127\.0\.0\.1|0\.0\.0\.0/, 'localhost');
-  }
+  // Aggressively normalize local dev hosts. Many people (and browsers) use either localhost or 127.0.0.1.
+  // The exact string sent in redirect_uri MUST match one you registered in the X app settings.
+  base = base.replace(/^(https?:\/\/)(127\.0\.0\.1|0\.0\.0\.0|::1)(:\d+)?/i, '$1localhost$3');
   return `${base}/api/integrations/x/callback`;
 }
 
@@ -389,8 +388,18 @@ export class XConnectionService {
       code_challenge_method: 'S256',
     });
 
+    const authorizationUrl = `${X_AUTHORIZE_URL}?${params.toString()}`;
+
+    // Log for debugging OAuth "Something went wrong / 400" issues — the redirect_uri here *must* exactly match a registered Callback URL in X Developer Portal
+    logger.warn({ 
+      clientId: config.xOAuthClientId, 
+      redirectUri: callbackUri, 
+      returnTo,
+      scopes: X_SCOPES 
+    }, 'X OAuth begin: generated authorization URL (verify this redirectUri is registered in X Dev Portal)');
+
     return {
-      authorizationUrl: `${X_AUTHORIZE_URL}?${params.toString()}`,
+      authorizationUrl,
       redirectUri: callbackUri,
       scopes: X_SCOPES,
     };
@@ -471,13 +480,19 @@ export class XConnectionService {
   }
 
   /** Returns the exact redirect/callback URI that will be sent to X for authorization (for registration in dev console). */
-  getCallbackUrl(req: Request): string {
+  getCallbackInfo(req: Request) {
     try {
       requireOAuthConfig();
     } catch {
-      // still return a plausible default for display
+      // still return info
     }
-    return redirectUri(req);
+    const effective = redirectUri(req);
+    const usingOverride = !!config.xOAuthRedirectUri;
+    return {
+      redirectUri: effective,
+      usingExplicitRedirectUri: usingOverride,
+      clientId: config.xOAuthClientId || null,
+    };
   }
 }
 
