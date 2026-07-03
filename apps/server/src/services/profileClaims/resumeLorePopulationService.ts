@@ -128,7 +128,7 @@ class ResumeLorePopulationService {
           name: job.company,
           type: 'company',
           group_type: 'company',
-          user_relationship: 'employee',
+          user_relationship: 'member',
           description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
           status: job.isCurrent && !conflicted ? 'active' : 'inactive',
           metadata: {

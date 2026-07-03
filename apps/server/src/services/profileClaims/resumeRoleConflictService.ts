@@ -73,10 +73,9 @@ class ResumeRoleConflictService {
   ): Promise<ExistingCurrentEmployer[]> {
     const { data, error } = await supabaseAdmin
       .from('organizations')
-      .select('name, status, user_relationship, metadata')
+      .select('name, status, type, group_type, user_relationship, metadata')
       .eq('user_id', userId)
-      .eq('status', 'active')
-      .in('user_relationship', ['employee', 'employer', 'member']);
+      .eq('status', 'active');
 
     if (error) {
       logger.warn({ error, userId }, 'resume conflicts: failed to load current employers');
@@ -87,8 +86,14 @@ class ResumeRoleConflictService {
       .filter((row) => {
         const meta = (row.metadata ?? {}) as Record<string, unknown>;
         if (excludeSourceFileId && meta.source_file_id === excludeSourceFileId) return false;
-        // Only employment-shaped org links count as "current employer" canon.
-        return row.user_relationship === 'employee';
+        // Only employment-shaped org links count as "current employer" canon:
+        // company-typed orgs, or anything carrying a job title (chat/resume derived).
+        return (
+          row.type === 'company' ||
+          row.group_type === 'company' ||
+          Boolean(meta.job_title) ||
+          row.user_relationship === 'employee'
+        );
       })
       .map((row) => {
         const meta = (row.metadata ?? {}) as Record<string, unknown>;
