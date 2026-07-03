@@ -9,7 +9,7 @@ import { supabaseAdmin } from '../supabaseClient';
 import { profileClaimsService, type CreateClaimInput, type ClaimType } from './profileClaimsService';
 import { detectEmploymentGaps } from './resumeLorePopulationService';
 import { mergeParsedResume, parseResumeHeuristics } from './resumeHeuristicParser';
-import type { ParsedResume } from './resumeStructuredTypes';
+import type { ParsedResume, ResumeSection } from './resumeStructuredTypes';
 
 
 
@@ -36,6 +36,8 @@ export interface ExtractedClaim {
   claim_text: string;
   confidence: number;
   context?: string;
+  /** Resume section the claim came from — provenance for review UI. */
+  section?: ResumeSection;
 }
 
 export type { ParsedResume } from './resumeStructuredTypes';
@@ -86,6 +88,8 @@ class ResumeParsingService {
         confidence: claim.confidence,
         metadata: {
           context: claim.context,
+          section: claim.section,
+          quote: claim.context ?? claim.claim_text,
           extracted_at: new Date().toISOString(),
           ...(fileData.sourceFileId ? { source_file_id: fileData.sourceFileId } : {}),
         },
@@ -183,7 +187,9 @@ class ResumeParsingService {
   ],
   "certifications": [
     { "name": "string", "issuer": "string or null", "date": "string or null" }
-  ]
+  ],
+  "languages": ["spoken/written human languages, e.g. English, Spanish"],
+  "careerTargets": ["target industries or focus areas from the summary, e.g. robotics, aerospace, defense, embedded autonomy"]
 }
 
 Rules:
@@ -219,6 +225,8 @@ ${resumeText.substring(0, 12000)}`;
         projects: Array.isArray(raw.projects) ? raw.projects : [],
         certifications: Array.isArray(raw.certifications) ? raw.certifications : [],
         employmentGaps: [],
+        languages: Array.isArray(raw.languages) ? raw.languages : [],
+        careerTargets: Array.isArray(raw.careerTargets) ? raw.careerTargets : [],
       };
       const heuristics = parseResumeHeuristics(resumeText);
       return mergeParsedResume(llmParsed, heuristics);
@@ -250,6 +258,8 @@ ${resumeText.substring(0, 12000)}`;
         .filter((c) => c.claim_type === 'certification')
         .map((c) => ({ name: c.claim_text })),
       employmentGaps: [],
+      languages: [],
+      careerTargets: [],
     };
   }
 
@@ -264,6 +274,7 @@ ${resumeText.substring(0, 12000)}`;
         claim_text: text,
         confidence: 0.9,
         context: dates || job.description,
+        section: 'employment',
       });
     }
     for (const edu of structured.education) {
@@ -272,6 +283,7 @@ ${resumeText.substring(0, 12000)}`;
         claim_text: [edu.degree, edu.field, edu.institution].filter(Boolean).join(' — '),
         confidence: 0.88,
         context: [edu.startDate, edu.endDate].filter(Boolean).join(' – ') || undefined,
+        section: 'education',
       });
     }
     for (const skill of structured.skills) {
@@ -279,6 +291,7 @@ ${resumeText.substring(0, 12000)}`;
         claim_type: 'skill',
         claim_text: skill,
         confidence: 0.85,
+        section: 'skills',
       });
     }
     for (const project of structured.projects) {
@@ -287,6 +300,7 @@ ${resumeText.substring(0, 12000)}`;
         claim_text: project.name,
         confidence: 0.85,
         context: project.description,
+        section: 'projects',
       });
     }
     for (const cert of structured.certifications) {
@@ -295,10 +309,32 @@ ${resumeText.substring(0, 12000)}`;
         claim_text: cert.name,
         confidence: 0.85,
         context: cert.issuer,
+        section: 'certifications',
+      });
+    }
+    for (const language of structured.languages) {
+      claims.push({
+        claim_type: 'skill',
+        claim_text: `Language: ${language}`,
+        confidence: 0.85,
+        section: 'languages',
+      });
+    }
+    for (const target of structured.careerTargets) {
+      claims.push({
+        claim_type: 'experience',
+        claim_text: `Career target: ${target}`,
+        confidence: 0.75,
+        section: 'summary',
       });
     }
     if (structured.contact.email) {
-      claims.push({ claim_type: 'experience', claim_text: `Email: ${structured.contact.email}`, confidence: 0.95 });
+      claims.push({
+        claim_type: 'experience',
+        claim_text: `Email: ${structured.contact.email}`,
+        confidence: 0.95,
+        section: 'header',
+      });
     }
 
     return claims.filter((c) => c.claim_text?.trim());

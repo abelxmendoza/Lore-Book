@@ -103,14 +103,23 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
       organizationsCreated: result.organizationsCreated ?? 0,
       eventsCreated: result.eventsCreated ?? 0,
       momentsCreated: result.momentsCreated ?? 0,
+      projectsSuggested: result.projectsSuggested ?? 0,
+      roleConflicts: result.roleConflicts ?? [],
       chatFeedback: feedback?.chatFeedback ?? null,
       careerTimeline: feedback?.careerTimeline ?? [],
       educationTimeline: feedback?.educationTimeline ?? [],
       savedToLibrary: true,
       fileName: file.originalname,
-      message: feedback?.chatFeedback
-        ? `Resume saved to your library and memory.`
-        : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
+      message: [
+        feedback?.chatFeedback
+          ? `Resume saved to your library and memory.`
+          : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
+        (result.roleConflicts?.length ?? 0) > 0
+          ? `${result.roleConflicts!.length} current-role conflict(s) need review — your existing current role was kept.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process resume');

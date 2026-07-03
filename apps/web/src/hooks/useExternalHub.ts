@@ -86,7 +86,7 @@ function buildSamplePayload(source: ExternalSource): Record<string, unknown> {
         ],
       };
     case 'x':
-      return { posts: [{ created_at: new Date().toISOString(), text: 'Shipping the External Hub' }] };
+      return {};
     case 'calendar':
       return {
         events: [

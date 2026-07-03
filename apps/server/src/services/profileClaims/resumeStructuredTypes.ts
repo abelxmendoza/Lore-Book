@@ -58,6 +58,31 @@ export type ParsedResume = {
   projects: ResumeProject[];
   certifications: ResumeCertification[];
   employmentGaps: ResumeEmploymentGap[];
+  languages: string[];
+  careerTargets: string[];
+};
+
+/** Resume section a fact was extracted from — stored as provenance on every imported item. */
+export type ResumeSection =
+  | 'header'
+  | 'summary'
+  | 'skills'
+  | 'employment'
+  | 'projects'
+  | 'education'
+  | 'certifications'
+  | 'languages';
+
+/**
+ * A resume-current job that disagrees with what LoreBook already believes is
+ * the user's current employer. Review-first: canon is never overwritten.
+ */
+export type ResumeRoleConflict = {
+  resumeCompany: string;
+  resumeTitle: string;
+  existingOrganization: string;
+  existingSource: string;
+  reason: string;
 };
 
 export type ResumeLorePopulationResult = {
@@ -67,6 +92,8 @@ export type ResumeLorePopulationResult = {
   organizations: number;
   facts: number;
   characterAttributes: number;
+  projectsSuggested: number;
+  roleConflicts: ResumeRoleConflict[];
   entryIds: string[];
   eventIds: string[];
 };

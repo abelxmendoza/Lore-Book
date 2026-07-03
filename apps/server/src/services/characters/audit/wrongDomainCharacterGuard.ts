@@ -30,6 +30,8 @@ const ROLE_TITLE_PATTERNS = [
   /\b(technician|engineer|manager|operator|qa technician|quality assurance technician|developer|analyst)\b/i,
   /technician$/i,
   /engineer$/i,
+  // Resume-shaped titles: "Field Robotics Agent", "Robotics Deployment Specialist", …
+  /\b(agent|specialist|coordinator|consultant|architect|scientist|intern|supervisor|administrator|director)$/i,
 ];
 
 export type WrongDomainResult = {

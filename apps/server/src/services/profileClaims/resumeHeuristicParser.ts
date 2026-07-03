@@ -169,6 +169,34 @@ function extractSummary(text: string): string | undefined {
   return block?.replace(/\s+/g, ' ').trim().slice(0, 500) || undefined;
 }
 
+function extractLanguages(text: string): string[] {
+  const line = text.split('\n').find((l) => /^Languages?\s*[:\u2014-]/i.test(l.trim()));
+  if (!line) return [];
+  const after = line.split(/[:\u2014-]/).slice(1).join(':');
+  return after
+    .split(/[,|\u00b7;]/)
+    .map((s) => s.replace(/\([^)]*\)/g, '').trim())
+    .filter((s) => s.length > 1 && s.length < 40)
+    .slice(0, 10);
+}
+
+const CAREER_TARGET_TERMS = [
+  'robotics',
+  'embedded systems',
+  'embedded autonomy',
+  'aerospace',
+  'defense',
+  'autonomy',
+];
+
+function extractCareerTargets(text: string): string[] {
+  const summary = extractSummary(text) ?? '';
+  const scope = `${summary} ${text.split(/Additional/i)[1] ?? ''}`.toLowerCase();
+  const targets = CAREER_TARGET_TERMS.filter((t) => scope.includes(t));
+  if (/ITAR\/EAR/i.test(text)) targets.push('ITAR/EAR eligible');
+  return [...new Set(targets)];
+}
+
 export function parseResumeHeuristics(text: string): ParsedResume {
   return {
     contact: extractContact(text),
@@ -179,6 +207,8 @@ export function parseResumeHeuristics(text: string): ParsedResume {
     projects: extractProjects(text),
     certifications: extractCertifications(text),
     employmentGaps: [],
+    languages: extractLanguages(text),
+    careerTargets: extractCareerTargets(text),
   };
 }
 
@@ -194,6 +224,8 @@ export function mergeParsedResume(llm: ParsedResume, heuristics: ParsedResume): 
       (c, i, arr) => arr.findIndex((x) => x.name === c.name) === i
     ),
     employmentGaps: llm.employmentGaps.length ? llm.employmentGaps : heuristics.employmentGaps,
+    languages: [...new Set([...llm.languages, ...heuristics.languages])].slice(0, 10),
+    careerTargets: [...new Set([...llm.careerTargets, ...heuristics.careerTargets])].slice(0, 10),
   };
 }
 
