@@ -176,6 +176,22 @@ router.post('/reconcile-relationships', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+// GET /api/organizations/:id/mentions
+// Trace every known label for this organization back into chat messages,
+// legacy conversation messages, and extracted facts.
+router.get('/:id/mentions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  try {
+    const trace = await organizationService.getMentionTrace(userId, organizationId, { limit });
+    res.json({ success: true, trace });
+  } catch (error) {
+    logger.error({ error, userId, organizationId }, 'Failed to get organization mention trace');
+    res.status(500).json({ success: false, error: 'Failed to get mention trace' });
+  }
+});
+
 // GET /api/organizations/:id
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
@@ -253,6 +269,24 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
   try {
     const organization = await organizationService.updateOrganization(userId, organizationId, parsed.data);
+    if (parsed.data.metadata && parsed.data.metadata.manual_identity_correction) {
+      const { correctionTracker } = await import('../services/activeLearning/correctionTracker');
+      await correctionTracker.recordCorrection(userId, {
+        correction_type: 'entity',
+        original_value: JSON.stringify(parsed.data.metadata.previous_identity ?? {}),
+        corrected_value: JSON.stringify(parsed.data.metadata.manual_identity_correction),
+        context: `Manual organization identity edit for ${organization.name}`,
+        source_unit_id: organizationId,
+        metadata: {
+          entity_type: 'organization',
+          entity_id: organizationId,
+          source: 'organization_detail_modal',
+          corrected_fields: Object.keys(parsed.data.metadata.manual_identity_correction as Record<string, unknown>),
+        },
+      }).catch((error) => {
+        logger.warn({ error, userId, organizationId }, 'Failed to record organization correction');
+      });
+    }
     res.json({ success: true, organization });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to update organization');

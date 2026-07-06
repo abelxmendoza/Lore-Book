@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin } from 'lucide-react';
+import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -195,6 +196,119 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'metadata',      label: 'Metadata',          shortLabel: 'Meta',       icon: Database },
 ];
 
+/**
+ * Entity types a misfiled character can be moved to. Each target book applies
+ * its own admission rules server-side (see reclassifyCharacterService) — e.g.
+ * Places rejects events/relative positions, Projects rejects non-project
+ * phrases — so a move can come back with the rule's rejection reason.
+ */
+const RECLASSIFY_OPTIONS: Array<{ value: string; label: string; hint: string; icon: typeof FileText }> = [
+  { value: 'organization', label: 'Group / Organization', hint: 'Bands, teams, companies, communities', icon: Building2 },
+  { value: 'location',     label: 'Location / Place',     hint: 'Checked against Places rules first',   icon: MapPin },
+  { value: 'event',        label: 'Event',                hint: 'A happening — moves to the Events book', icon: Calendar },
+  { value: 'project',      label: 'Project',              hint: 'Checked against Projects rules first', icon: Briefcase },
+  { value: 'skill',        label: 'Skill',                hint: 'An ability or craft',                  icon: Award },
+];
+
+/**
+ * Entity type switcher (header control). The single place to reclassify
+ * a misclassified entity to another book.
+ */
+const EntityTypeSwitcher = ({
+  busy,
+  success,
+  error,
+  target,
+  onSelect,
+  onOpenMenu,
+}: {
+  busy: boolean;
+  success: boolean;
+  error: string | null;
+  target: string;
+  onSelect: (value: string) => void;
+  /** Called when the menu is toggled — lets the modal clear a stale error. */
+  onOpenMenu: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  const successLabel = RECLASSIFY_OPTIONS.find((o) => o.value === target)?.label ?? target;
+
+  return (
+    <div className="relative shrink-0" ref={menuRef}>
+      <Tooltip content="Entity in the wrong book? Click to reclassify (e.g. group or place). The target book validates it.">
+        <button
+          type="button"
+          onClick={() => { setOpen((v) => !v); onOpenMenu(); }}
+          disabled={busy || success}
+          aria-haspopup="menu"
+          aria-expanded={open ? 'true' : 'false'}
+          aria-label="Reclassify entity type (if in wrong book)"
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-60 shadow-sm ${
+            success
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+              : 'bg-white/10 text-white/80 border-white/20 hover:bg-white/15 hover:text-white hover:border-white/30'
+          }`}
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <User className="h-3 w-3" />}
+          {success ? `Moved to ${successLabel} ✓` : 'Person'}
+          {!success && <ChevronDown className="h-3 w-3 opacity-70" />}
+        </button>
+      </Tooltip>
+      {open && !success && (
+        <div
+          role="menu"
+          aria-label="Change entity type"
+          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-white/15 bg-zinc-900/95 backdrop-blur-sm shadow-xl p-1"
+        >
+          <p className="px-2 pt-1.5 pb-2 text-[9px] text-white/50">
+            Move to the correct book (target validates).
+          </p>
+          {RECLASSIFY_OPTIONS.map((option) => {
+            const OptionIcon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitem"
+                onClick={() => onSelect(option.value)}
+                disabled={busy}
+                className="w-full flex items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                <OptionIcon className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-white/50" />
+                <span className="min-w-0">
+                  <span className="block text-xs text-white/85 font-medium">{option.label}</span>
+                  <span className="block text-[10px] text-white/40 leading-tight">{option.hint}</span>
+                </span>
+                {busy && target === option.value && (
+                  <Loader2 className="h-3 w-3 ml-auto mt-1 animate-spin text-white/60" />
+                )}
+              </button>
+            );
+          })}
+          {error && (
+            <p className="px-2 py-1.5 text-[10px] text-red-400 border-t border-white/10 mt-1">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp, initialTab }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [updateCharacter] = useUpdateCharacterMutation();
@@ -225,14 +339,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Reclassify / switch entity type (for misclassified groups, places, events etc in Character Book)
+  // Reclassify state (controlled via the EntityTypeSwitcher in the header)
   const [reclassifyTarget, setReclassifyTarget] = useState('');
   const [reclassifyBusy, setReclassifyBusy] = useState(false);
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [reclassifySuccess, setReclassifySuccess] = useState(false);
 
-  const reclassifyMutation = useReclassifyEntityMutation();
-  const { mutateAsync: reclassifyEntity } = reclassifyMutation;
+  const [reclassifyEntity] = useReclassifyEntityMutation();
   const loreAvatarsEnabled = import.meta.env.VITE_ENABLE_LORE_AVATARS === 'true';
   const [loreAvatarBusy, setLoreAvatarBusy] = useState(false);
   const [loreAvatarError, setLoreAvatarError] = useState<string | null>(null);
@@ -456,8 +569,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setDeleteError(null);
   };
 
-  const handleReclassify = async () => {
-    if (!reclassifyTarget) return;
+  const handleReclassify = async (target: string) => {
+    if (!target || reclassifyBusy || reclassifySuccess) return;
+    setReclassifyTarget(target);
     setReclassifyBusy(true);
     setReclassifyError(null);
     setReclassifySuccess(false);
@@ -468,7 +582,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           ...(editedCharacter as Character),
           metadata: {
             ...(editedCharacter.metadata || {}),
-            reclassified_to: reclassifyTarget,
+            reclassified_to: target,
             reclassified_at: new Date().toISOString(),
           },
         });
@@ -478,7 +592,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         return;
       }
 
-      await reclassifyEntity({ id: character.id, targetDomain: reclassifyTarget });
+      await reclassifyEntity({ id: character.id, targetDomain: target }).unwrap();
       setReclassifySuccess(true);
       invalidateCache(character.id);
       onUpdate();
@@ -486,7 +600,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       setTimeout(() => onClose(), 600);
     } catch (err) {
       console.error('Reclassify failed', err);
-      setReclassifyError(err instanceof Error ? err.message : 'Failed to reclassify entity');
+      // 422 = the target book's rules rejected the move; surface the reason.
+      const serverMessage = (err as { data?: { error?: string } })?.data?.error;
+      setReclassifyError(
+        serverMessage ?? (err instanceof Error ? err.message : 'Failed to reclassify entity')
+      );
     } finally {
       setReclassifyBusy(false);
     }
@@ -2341,6 +2459,16 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   {isMainCharacter && (
                     <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300" aria-hidden />
                   )}
+                  {!isMainCharacter && (
+                    <EntityTypeSwitcher
+                      busy={reclassifyBusy}
+                      success={reclassifySuccess}
+                      error={reclassifyError}
+                      target={reclassifyTarget}
+                      onSelect={handleReclassify}
+                      onOpenMenu={() => setReclassifyError(null)}
+                    />
+                  )}
                 </div>
                 {editedCharacter.role ? (
                   <p className="text-[11px] text-white/50 truncate">{editedCharacter.role}</p>
@@ -2447,6 +2575,16 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         </span>
                       </>
                     )}
+                    {!isMainCharacter && (
+                      <EntityTypeSwitcher
+                        busy={reclassifyBusy}
+                        success={reclassifySuccess}
+                        error={reclassifyError}
+                        target={reclassifyTarget}
+                        onSelect={handleReclassify}
+                        onOpenMenu={() => setReclassifyError(null)}
+                      />
+                    )}
 	                </div>
 
                 {/* Official title + structured names under it (compact) */}
@@ -2504,6 +2642,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     ))}
                   </div>
                 )}
+
                 {/* Compact info row - reduced for desktop space */}
                 <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-0.5 text-[9px] sm:text-[10px]">
                   {editedCharacter.role && (
@@ -2527,14 +2666,24 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   )}
                   {editedCharacter.importance_level && (
                     <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
-                    <Badge 
-                      variant="outline" 
+                    <Badge
+                      variant="outline"
                         className={`${getImportanceColor(editedCharacter.importance_level)} text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5 cursor-help`}
                     >
                       {getImportanceIcon(editedCharacter.importance_level)}
                       <span className="hidden sm:inline">{getImportanceLabel(editedCharacter.importance_level)}</span>
                     </Badge>
                     </Tooltip>
+                  )}
+                  {(editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
+                    (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70 && (
+                    <Badge
+                      variant="outline"
+                      className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5"
+                    >
+                      <Zap className="h-2.5 w-2.5" />
+                      Rare in story, high impact on you
+                    </Badge>
                   )}
                 </div>
                 {/* Archetype badge - show separately on mobile */}
@@ -2630,33 +2779,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               })}
             </div>
 
-            {/* Reclassify / switch entity type — for groups, places, events that landed in Character Book by mistake */}
-            <div className="border-t border-white/10 p-2 sm:p-3 mt-2">
-              <div className="text-[10px] uppercase tracking-wide text-white/40 mb-1">Switch type</div>
-              <select
-                value={reclassifyTarget}
-                onChange={(e) => { setReclassifyTarget(e.target.value); setReclassifyError(null); setReclassifySuccess(false); }}
-                className="w-full mb-1.5 text-xs bg-black/40 border border-white/15 rounded px-2 py-1 text-white"
-                disabled={reclassifyBusy || reclassifySuccess}
-              >
-                <option value="">Choose new type...</option>
-                <option value="organization">Organization / Group</option>
-                <option value="location">Location / Place</option>
-                <option value="event">Event</option>
-                <option value="project">Project</option>
-                <option value="skill">Skill</option>
-              </select>
-              <button
-                type="button"
-                onClick={handleReclassify}
-                disabled={!reclassifyTarget || reclassifyBusy || reclassifySuccess}
-                className="w-full text-xs px-2 py-1.5 rounded border border-white/15 hover:bg-white/5 disabled:opacity-50 text-white/80"
-              >
-                {reclassifyBusy ? 'Switching...' : reclassifySuccess ? 'Switched ✓' : 'Switch type (no archive)'}
-              </button>
-              {reclassifyError && <p className="text-[10px] text-red-400 mt-1">{reclassifyError}</p>}
-              {reclassifySuccess && <p className="text-[10px] text-emerald-400 mt-1">Moved to target book.</p>}
-            </div>
           </nav>
 
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
@@ -2690,7 +2812,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               })}
             </div>
 
-            {/* Archive pinned at bottom of sidebar (desktop only) — no longer overlaps tabs because tabs list is scrollable */}
             {canDeleteCharacter && (
               <div className="flex-shrink-0 border-t border-amber-500/15 p-2 sm:p-3">
                 <button
@@ -4302,6 +4423,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
                         value={deleteReason}
                         onChange={(event) => setDeleteReason(event.target.value)}
+                        aria-label="Why are you removing this card?"
                       >
                         <option value="wrong_person_or_not_real">Wrong character, not real, or hallucinated</option>
                         <option value="not_relevant_to_my_life">Not relevant to my life</option>

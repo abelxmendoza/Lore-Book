@@ -20,6 +20,7 @@ import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+import { incrementAiRequestCount } from '../services/usageTracking';
 import { displayAvatarUrl, backfillMissingAvatars } from '../services/characterAvatarService';
 import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
@@ -1948,7 +1949,10 @@ router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, re
   try {
     const userId = req.user!.id;
     const { targetDomain } = req.body || {};
-    if (!targetDomain || typeof targetDomain !== 'string') {
+    const { isReclassifyTarget, validateReclassification, reclassifyCharacterService } = await import(
+      '../services/characters/reclassifyCharacterService'
+    );
+    if (!isReclassifyTarget(targetDomain)) {
       return res.status(400).json({ error: 'targetDomain required (organization, location, event, project, skill)' });
     }
 
@@ -1963,79 +1967,39 @@ router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, re
       return res.status(404).json({ error: 'Character not found' });
     }
 
-    // Update metadata to record the reclassification
-    const meta = { ...(existing.metadata || {}) as Record<string, any> };
+    // The target book's own admission rules decide whether the move is valid.
+    const context = [existing.summary, (existing.metadata as Record<string, unknown> | null)?.context]
+      .filter(Boolean)
+      .join(' ');
+    const validation = validateReclassification(existing.name, context, targetDomain);
+    if (!validation.allowed) {
+      return res.status(422).json({
+        error: validation.reason ?? `"${existing.name}" does not pass the ${targetDomain} book's rules.`,
+        rulesFired: validation.rulesFired ?? [],
+      });
+    }
+
+    // Create in the target book first — the character is only marked moved
+    // once the target book actually accepted the record.
+    const outcome = await reclassifyCharacterService.performReclassification(
+      userId,
+      { id: existing.id, name: existing.name, summary: existing.summary, metadata: existing.metadata },
+      targetDomain
+    );
+
+    const meta = { ...((existing.metadata || {}) as Record<string, unknown>) };
     meta.reclassified_from = 'character';
     meta.reclassified_to = targetDomain;
     meta.reclassified_at = new Date().toISOString();
-
-    // For certain targets, attempt to seed the target book with the data (name + summary + metadata)
-    if (targetDomain === 'organization') {
-      try {
-        await supabaseAdmin.from('organizations').insert({
-          user_id: userId,
-          name: existing.name,
-          summary: existing.summary || `Reclassified from character: ${existing.name}`,
-          metadata: { ...meta, reclassified_from_character_id: existing.id },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-      } catch (e) {
-        // may already exist or validation — continue
-      }
-    } else if (targetDomain === 'location') {
-      try {
-        await supabaseAdmin.from('omega_entities').insert({
-          user_id: userId,
-          entity_type: 'LOCATION',
-          display_name: existing.name,
-          summary: existing.summary || null,
-          metadata: { ...meta, reclassified_from_character_id: existing.id },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-      } catch (e) {}
-    } else if (targetDomain === 'project') {
-      try {
-        await supabaseAdmin.from('projects').insert({
-          user_id: userId,
-          name: existing.name,
-          summary: existing.summary || null,
-          metadata: { ...meta, reclassified_from_character_id: existing.id },
-        });
-      } catch (e) {}
-    } else if (targetDomain === 'skill') {
-      try {
-        await supabaseAdmin.from('skills').insert({
-          user_id: userId,
-          name: existing.name,
-          summary: existing.summary || null,
-          metadata: { ...meta, reclassified_from_character_id: existing.id },
-        });
-      } catch (e) {}
-    } else if (targetDomain === 'event') {
-      try {
-        await supabaseAdmin.from('event_candidates').insert({
-          user_id: userId,
-          title: existing.name,
-          summary: existing.summary || null,
-          metadata: { ...meta, reclassified_from_character_id: existing.id },
-        });
-      } catch (e) {}
-    } else {
-      meta.original_book = 'characters';
-    }
-
-    // Mark the character so Character Book excludes it (treated as moved)
-    const payload: any = {
-      metadata: meta,
-      status: 'reclassified',
-      updated_at: new Date().toISOString(),
-    };
+    if (outcome.targetId) meta.reclassified_target_id = outcome.targetId;
 
     const { data: updated, error } = await supabaseAdmin
       .from('characters')
-      .update(payload)
+      .update({
+        metadata: meta,
+        status: 'reclassified',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', req.params.id)
       .eq('user_id', userId)
       .select('*')
@@ -2043,14 +2007,16 @@ router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, re
 
     if (error) throw error;
 
-    // Invalidate caches
-    invalidateCache(req.params.id);
-    // The target books will pick up via their loaders or the flag can be used by suggestion systems
-
-    res.json({ success: true, reclassified_to: targetDomain, character: updated });
+    res.json({
+      success: true,
+      reclassified_to: targetDomain,
+      target: outcome,
+      character: updated,
+    });
   } catch (error) {
     logger.error({ err: error }, 'Failed to reclassify entity');
-    res.status(500).json({ error: 'Failed to reclassify entity' });
+    const message = error instanceof Error ? error.message : 'Failed to reclassify entity';
+    res.status(500).json({ error: message });
   }
 });
 

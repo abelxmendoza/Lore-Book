@@ -92,6 +92,8 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
       .select('*')
       .eq('user_id', userId)
       .neq('status', 'archived')
+      // Reclassified characters live in another book now (see reclassifyCharacterService)
+      .neq('status', 'reclassified')
       .order('updated_at', { ascending: false }),
     loadCounts(userId),
   ]);

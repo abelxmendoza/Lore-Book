@@ -87,6 +87,8 @@ export type SaveEntryPayload = {
   narrativeOrder?: number | null;
   /** Parent entry when this was materialized as a story slice (backward-storytelling pipeline). */
   derivedFromEntryId?: string | null;
+  /** Skip the automatic ER ingestion (used by external syncs that call ingestExternalPost themselves for provenance). */
+  skipIngestion?: boolean;
 };
 
 class MemoryService {
@@ -254,7 +256,8 @@ class MemoryService {
     }
 
     // Journal ER ingestion (fire-and-forget): unified ER path
-    if (!isEncrypted && payload.content && payload.content.length > 20) {
+    // Skip for external sources that manually invoke the provenance-aware ingestExternalPost
+    if (!isEncrypted && payload.content && payload.content.length > 20 && !payload.skipIngestion) {
       ingestJournalEntry(payload.userId, entry.id, payload.content);
     }
 

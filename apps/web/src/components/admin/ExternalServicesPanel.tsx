@@ -154,6 +154,7 @@ function ServiceCard({ service, stripeConfig }: { service: ExternalService; stri
 export function ExternalServicesPanel({ stripeConfig }: Props) {
   const [xSummary, setXSummary] = useState<XAdminSummary | null>(null);
   const [xLoading, setXLoading] = useState(false);
+  const [creatingTable, setCreatingTable] = useState(false);
 
   const loadX = async () => {
     setXLoading(true);
@@ -170,6 +171,24 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
       setXLoading(false);
     }
   };
+
+  const createXTable = async () => {
+    setCreatingTable(true);
+    try {
+      const res = await fetchJson<any>('/api/admin/integrations/x/create-table', { method: 'POST' });
+      if (res?.created && res?.summary) {
+        setXSummary(res.summary);
+      } else {
+        await loadX();
+      }
+    } catch {
+      await loadX();
+    } finally {
+      setCreatingTable(false);
+    }
+  };
+
+  const isTableMissingError = !!xSummary?.error && /table|auto-created|schema cache|could not be found/i.test(xSummary.error);
 
   useEffect(() => {
     void loadX();
@@ -196,12 +215,23 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
           <button
             type="button"
             onClick={loadX}
-            disabled={xLoading}
+            disabled={xLoading || creatingTable}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100 hover:bg-sky-500/20 disabled:opacity-50"
           >
             <RefreshCw className={cn('h-4 w-4', xLoading && 'animate-spin')} />
             Refresh
           </button>
+          {isTableMissingError && (
+            <button
+              type="button"
+              onClick={createXTable}
+              disabled={creatingTable || xLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+            >
+              {creatingTable ? 'Creating...' : 'Create table now'}
+            </button>
+          )}
+          {creatingTable && <span className="text-xs text-emerald-300 self-center">This may take a couple seconds + schema reload...</span>}
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -210,6 +240,9 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
             <p className={cn('mt-1 text-sm font-semibold', xSummary?.configured ? 'text-emerald-300' : 'text-amber-300')}>
               {xSummary?.configured ? 'Configured' : 'Missing'}
             </p>
+            {!xSummary?.configured && (
+              <p className="text-[10px] text-amber-400/60 mt-0.5">Set X_OAUTH_CLIENT_ID / SECRET in server env</p>
+            )}
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
             <p className="text-xs uppercase tracking-wide text-white/35">Connections</p>
@@ -227,7 +260,7 @@ export function ExternalServicesPanel({ stripeConfig }: Props) {
           <p className="mt-3 text-sm text-amber-300">
             {xSummary.error}
             <span className="block text-xs text-amber-400/70 mt-0.5">
-              Run <code className="font-mono">npm run migrate base</code> then reload schema cache in Supabase (Database → ... ) if the table is still not visible.
+              Use the "Create table now" button above if your server environment has a direct DB connection string. Otherwise run <code className="font-mono">npm run migrate base</code>.
             </span>
           </p>
         )}

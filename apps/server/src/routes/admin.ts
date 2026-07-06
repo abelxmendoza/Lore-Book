@@ -22,7 +22,7 @@ import { resolveAccountAuthorityFromAuthUser } from '../lib/accountAuthority';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { getCostSummary, costAttributionService } from '../services/costAttributionService';
 import { getOpenAiBudgetSnapshot } from '../services/openaiBudgetService';
-import { xConnectionService } from '../integrations/x/xConnection.service';
+import { xConnectionService, ensureExternalAccountConnectionsTable } from '../integrations/x/xConnection.service';
 
 import { chronicleAdminRouter } from './chronicleAdmin';
 
@@ -41,6 +41,25 @@ router.get('/integrations/x', async (_req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ error }, 'Error fetching X integration admin summary');
     return res.status(500).json({ error: 'Failed to fetch X integration summary' });
+  }
+});
+
+/** One-click helper for admins to create the X connections table if missing (uses direct DB connection if available in env). */
+router.post('/integrations/x/create-table', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const created = await ensureExternalAccountConnectionsTable();
+    if (created) {
+      // Re-fetch summary after creation
+      const summary = await xConnectionService.adminSummary();
+      return res.json({ created: true, summary });
+    }
+    return res.status(400).json({
+      created: false,
+      error: 'Could not auto-create table. Set a direct DB connection string (SUPABASE_CONNECTION_STRING, SUPABASE_POOLER_SESSION_URL or DATABASE_URL) in the server environment, or run `npm run migrate base` manually.',
+    });
+  } catch (error: any) {
+    logger.error({ error }, 'Error creating X connections table');
+    return res.status(500).json({ created: false, error: error?.message || 'Failed to create table' });
   }
 });
 

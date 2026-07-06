@@ -10,6 +10,7 @@ import { characterMergeService } from '../../characterMergeService';
 import { supabaseAdmin } from '../../supabaseClient';
 import { characterCardAuditService } from './characterCardAuditService';
 import { characterRescanStateService } from './characterRescanStateService';
+import { isWrongDomainStatus } from './characterCardAuditTypes';
 import type { CharacterCardAuditResult, CharacterAuditStatus } from './characterCardAuditTypes';
 
 export const CARD_AUDIT_MAX_REVIEW_ROUNDS = 3;
@@ -53,6 +54,7 @@ type ReviewQueueMeta = {
 
 const UNCERTAIN_STATUSES = new Set<CharacterAuditStatus>([
   'needs_context',
+  'contextual_character_needs_context',
   'duplicate_or_merge_candidate',
   'needs_identity_resolution',
 ]);
@@ -66,7 +68,7 @@ function isConfidentAutoFix(result: CharacterCardAuditResult, metadata: Record<s
 
   if (result.status === 'junk_test_data' || result.status === 'bare_title_invalid') return true;
   if (result.status === 'broken_span' && result.mergeCandidates?.[0]) return true;
-  if (result.status === 'wrong_domain') return true;
+  if (isWrongDomainStatus(result.status)) return true;
   if (
     result.recommendedAction === 'rename_with_context' &&
     result.suggestedTitle &&
@@ -278,7 +280,7 @@ class CharacterCardRescanAuditService {
       return { type: 'merge' };
     }
 
-    if (result.status === 'wrong_domain') {
+    if (isWrongDomainStatus(result.status)) {
       if (result.recommendedAction === 'delete' || result.wrongDomainTarget === 'system') {
         await characterDeletionService.deleteCharacter(userId, result.characterId, {
           redistribute: true,

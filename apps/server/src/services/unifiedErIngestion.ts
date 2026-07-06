@@ -28,13 +28,25 @@ import { entityRelationshipDetector } from './conversationCentered/entityRelatio
 import { entityScopeService } from './conversationCentered/entityScopeService';
 import { entityResolutionCache } from './entityResolutionCache';
 import { omegaMemoryService } from './omegaMemoryService';
+import { supabaseAdmin } from './supabaseClient';
 
 const RESOLVE_CHUNK_SIZE = 5;
+
+/** External origin of the ingested text (e.g. an X post) — stamped onto every entity it creates or references. */
+export type ExternalProvenance = {
+  provider: string;
+  sourceId?: string;
+  url?: string;
+  postedAt?: string;
+  /** Short quote of the original post for context_of_mention. */
+  excerpt?: string;
+};
 
 export type RunERIngestionOpts = {
   memoryId?: string;
   sourceMessageId?: string;
   sourceJournalEntryId?: string;
+  provenance?: ExternalProvenance;
 };
 
 function dedupeByNameAndType(
@@ -123,6 +135,64 @@ function toDetectorEntities(
 }
 
 /**
+ * Stamp the external origin (e.g. X post) onto an entity's stored record so
+ * the UI can link back to the post it came from. Deduped by provider+sourceId,
+ * capped, best-effort — never blocks ingestion.
+ */
+async function stampEntityProvenance(
+  userId: string,
+  entity: Entity,
+  provenance: ExternalProvenance
+): Promise<void> {
+  const table =
+    toStorageEntityType(toErEntityType(entity.type)) === 'character'
+      ? 'characters'
+      : 'omega_entities';
+  try {
+    const { data: row } = await supabaseAdmin
+      .from(table)
+      .select(table === 'characters' ? 'metadata, context_of_mention' : 'metadata')
+      .eq('id', entity.id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!row) return;
+
+    const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}) };
+    const sources = Array.isArray(metadata.external_sources)
+      ? [...(metadata.external_sources as Array<Record<string, unknown>>)]
+      : [];
+    const exists = sources.some(
+      (s) => s.provider === provenance.provider && s.sourceId === provenance.sourceId
+    );
+    if (exists) return;
+    sources.push({
+      provider: provenance.provider,
+      sourceId: provenance.sourceId,
+      url: provenance.url,
+      postedAt: provenance.postedAt,
+      excerpt: provenance.excerpt?.slice(0, 240),
+      recordedAt: new Date().toISOString(),
+    });
+    metadata.external_sources = sources.slice(-20);
+
+    const update: Record<string, unknown> = {
+      metadata,
+      updated_at: new Date().toISOString(),
+    };
+    if (
+      table === 'characters' &&
+      !(row as { context_of_mention?: string | null }).context_of_mention &&
+      provenance.excerpt
+    ) {
+      update.context_of_mention = provenance.excerpt.slice(0, 500);
+    }
+    await supabaseAdmin.from(table).update(update).eq('id', entity.id).eq('user_id', userId);
+  } catch (err) {
+    logger.warn({ err, entityId: entity.id, table }, 'external provenance stamp skipped');
+  }
+}
+
+/**
  * Shared ER ingestion for any text. Call from journal and conversation.
  */
 export async function runERIngestionForText(
@@ -131,9 +201,19 @@ export async function runERIngestionForText(
   opts?: RunERIngestionOpts
 ): Promise<void> {
   const extracted = await omegaMemoryService.extractEntities(text);
-  if (extracted.length < 2) return;
+  // Relationship detection needs 2+ entities, but externally-sourced text
+  // (X posts) should still resolve + stamp a single mentioned entity.
+  if (extracted.length === 0) return;
+  if (extracted.length < 2 && !opts?.provenance) return;
 
   const resolved = await resolveEntitiesWithCache(userId, extracted);
+  if (resolved.size === 0) return;
+
+  if (opts?.provenance) {
+    for (const entity of resolved.values()) {
+      await stampEntityProvenance(userId, entity, opts.provenance);
+    }
+  }
   if (resolved.size < 2) return;
 
   const resolvedMap = buildResolvedMap(resolved);
@@ -223,6 +303,24 @@ export function ingestJournalEntry(
     sourceJournalEntryId: journalEntryId,
   }).catch((err) => {
     logger.warn({ err, userId, journalEntryId }, 'Journal ER ingestion failed (non-blocking)');
+  });
+}
+
+/**
+ * External-post entry point (X/Twitter etc.). AWAITED — the caller reports
+ * how much lore came out of the sync — and stamps every touched entity with
+ * the originating post (provider, sourceId, url).
+ */
+export async function ingestExternalPost(
+  userId: string,
+  journalEntryId: string,
+  text: string,
+  provenance: ExternalProvenance
+): Promise<void> {
+  await runERIngestionForText(userId, text, {
+    memoryId: journalEntryId,
+    sourceJournalEntryId: journalEntryId,
+    provenance,
   });
 }
 

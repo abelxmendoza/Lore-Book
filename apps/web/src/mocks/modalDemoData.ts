@@ -31,6 +31,25 @@ export type ModalFact = {
   previous_value?: string;
 };
 
+export type MockOrganizationMentionTrace = {
+  labels: string[];
+  total_mentions: number;
+  source_counts: Record<string, number>;
+  mentions: Array<{
+    id: string;
+    source: 'chat_messages' | 'conversation_messages' | 'entity_facts';
+    source_id: string;
+    session_id?: string | null;
+    thread_title?: string | null;
+    role?: string | null;
+    matched_label: string;
+    occurrence_count: number;
+    snippet: string;
+    created_at?: string | null;
+  }>;
+  facts: ModalFact[];
+};
+
 export function getMockLocationFacts(location: LocationProfile): ModalFact[] {
   const tags = location.tagCounts.slice(0, 3).map((t) => t.tag);
   const people = location.relatedPeople.slice(0, 2).map((p) => p.name);
@@ -309,6 +328,20 @@ export function getMockMemberAffiliations(
 
 export function getMockOrganizationFacts(org: Organization): ModalFact[] {
   const facts: ModalFact[] = [];
+  facts.push({
+    id: `${org.id}-identity`,
+    category: 'identity',
+    fact: `${org.name} is a ${String(org.group_type ?? org.type ?? 'group').replace(/_/g, ' ')}${org.is_public_entity ? ' and official/public entity' : ''}.`,
+    confidence: org.confidence ?? 0.88,
+    status: org.metadata?.identity_locked_by_user ? 'corrected' : 'updated',
+  });
+  facts.push({
+    id: `${org.id}-relationship`,
+    category: 'relationship',
+    fact: `Your relationship to ${org.name} is ${String(org.user_relationship ?? 'referenced').replace(/_/g, ' ')}.`,
+    confidence: 0.82,
+    status: org.metadata?.identity_locked_by_user ? 'corrected' : 'updated',
+  });
   if (org.description) {
     facts.push({
       id: `${org.id}-desc`,
@@ -347,6 +380,87 @@ export function getMockOrganizationFacts(org: Organization): ModalFact[] {
           status: 'updated',
         },
       ];
+}
+
+export function getMockOrganizationMentionTrace(org: Organization): MockOrganizationMentionTrace {
+  const labels = [...new Set([org.name, ...(org.aliases ?? [])].filter(Boolean))];
+  const facts = getMockOrganizationFacts(org);
+  const now = new Date();
+  const primary = labels[0] ?? org.name;
+  const secondary = labels[1] ?? primary;
+  const typeLabel = String(org.group_type ?? org.type ?? 'group').replace(/_/g, ' ');
+  const snippets = [
+    {
+      source: 'chat_messages' as const,
+      role: 'user',
+      title: org.group_type === 'band' ? 'Music identity thread' : 'Group context thread',
+      label: primary,
+      count: Math.max(1, Math.min(4, org.usage_count || 2)),
+      text:
+        org.group_type === 'band'
+          ? `Actually ${primary} is a band, not a person. I want LoreBook to remember that when it comes up in my story.`
+          : `We talked about ${primary} and where it fits in my life, including who belongs and why it matters.`,
+      daysAgo: 3,
+    },
+    {
+      source: 'chat_messages' as const,
+      role: 'assistant',
+      title: org.group_type === 'band' ? 'Music identity thread' : 'Group context thread',
+      label: primary,
+      count: 1,
+      text: `Noted: ${primary} should be treated as a ${typeLabel}. I will use your correction as the canonical identity in demo mode.`,
+      daysAgo: 3,
+    },
+    {
+      source: 'conversation_messages' as const,
+      role: 'user',
+      title: org.group_type === 'band' ? 'Older band memories' : 'Older group memories',
+      label: secondary,
+      count: 2,
+      text:
+        org.stories?.[0]?.summary ??
+        `${secondary} came up while you were reviewing old story context and deciding what the card should preserve.`,
+      daysAgo: 36,
+    },
+    ...facts.slice(0, 4).map((fact, idx) => ({
+      source: 'entity_facts' as const,
+      role: null,
+      title: 'Extracted identity facts',
+      label: labels.find((label) => fact.fact.toLowerCase().includes(label.toLowerCase())) ?? primary,
+      count: 1,
+      text: fact.fact,
+      daysAgo: 8 + idx,
+    })),
+  ];
+
+  const mentions = snippets.map((snippet, idx) => ({
+    id: `${org.id}-mock-mention-${idx}`,
+    source: snippet.source,
+    source_id: `${org.id}-mock-source-${idx}`,
+    session_id: snippet.source === 'entity_facts' ? null : `${org.id}-mock-session-${idx < 2 ? 1 : 2}`,
+    thread_title: snippet.title,
+    role: snippet.role,
+    matched_label: snippet.label,
+    occurrence_count: snippet.count,
+    snippet: snippet.text,
+    created_at: subDays(now, snippet.daysAgo).toISOString(),
+  }));
+
+  const source_counts = mentions.reduce<Record<string, number>>(
+    (acc, mention) => {
+      acc[mention.source] = (acc[mention.source] ?? 0) + mention.occurrence_count;
+      return acc;
+    },
+    { chat_messages: 0, conversation_messages: 0, entity_facts: 0 },
+  );
+
+  return {
+    labels,
+    total_mentions: mentions.reduce((sum, mention) => sum + mention.occurrence_count, 0),
+    source_counts,
+    mentions,
+    facts,
+  };
 }
 
 export function enrichSkillForDemo(skill: Skill): Skill {
@@ -587,7 +701,7 @@ export function buildMockMemoryModalData(
       themes: memory.tags.slice(0, 3),
       mood: memory.mood ?? 'reflective',
       people: memory.characters ?? [],
-      summary: memory.summary ?? memory.title,
+      summary: memory.content?.slice(0, 180) ?? memory.title,
     },
   };
 }

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { InstagramCard } from './InstagramCard';
 import { RepoCard } from './RepoCard';
 import { SyncStatus } from './SyncStatus';
+import { XCard } from './XCard';
 
 export const IntegrationPanel = () => {
   const { sources, latest, loading, error, ingest } = useExternalHub();
@@ -32,6 +33,12 @@ export const IntegrationPanel = () => {
       <div className="grid gap-4 md:grid-cols-2">
         <RepoCard name="GitHub" description="Commits and milestones summarize into timeline events." onSync={() => ingest('github')} lastSync={sources.find((s) => s.source === 'github')?.lastSync} />
         <InstagramCard handle="@you" onSync={() => ingest('instagram')} lastSync={sources.find((s) => s.source === 'instagram')?.lastSync} />
+        <XCard 
+          username={sources.find((s) => s.source === 'x') ? 'connected' : undefined} 
+          connected={!!sources.find((s) => s.source === 'x')?.connected} 
+          lastSync={sources.find((s) => s.source === 'x')?.lastSync} 
+          onSync={() => ingest('x')} 
+        />
       </div>
 
       <Card className="border border-indigo-800/40 bg-indigo-950/40 text-white">

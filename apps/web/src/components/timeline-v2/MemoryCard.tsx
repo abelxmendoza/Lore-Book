@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Tag, Users, MapPin } from 'lucide-react';
+import { Calendar, Clock, Tag, Users, MapPin, Twitter } from 'lucide-react';
 import type { ChronologyEntry } from '../../types/timelineV2';
 
 interface MemoryCardProps {
@@ -31,11 +31,15 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ entry, onExpand, compact
     approximate: 'Approximate'
   }[entry.time_precision] || 'Unknown';
 
+  const isX = entry.source === 'x' || (entry.metadata as any)?.source === 'x' || (entry.metadata as any)?.provider === 'x';
+  const xUrl = (entry.metadata as any)?.url || (entry.metadata as any)?.x?.url;
+  const xSourceId = (entry.metadata as any)?.sourceId || (entry.metadata as any)?.x?.sourceId;
+
   return (
     <div
       className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 cursor-pointer hover:shadow-md transition-shadow ${
         compact ? 'p-2' : ''
-      }`}
+      } ${isX ? 'border-sky-500/40 bg-sky-950/10' : ''}`}
       onClick={onExpand}
     >
       <div className="flex items-start justify-between mb-2">
@@ -43,6 +47,18 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ entry, onExpand, compact
           {entry.content.substring(0, compact ? 50 : 100)}
           {entry.content.length > (compact ? 50 : 100) && '...'}
         </h3>
+        {isX && (
+          <a
+            href={xUrl || (xSourceId ? `https://x.com/i/web/status/${xSourceId}` : '#')}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="ml-2 inline-flex items-center gap-1 rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] text-sky-300 hover:bg-sky-500/30"
+            title="View original post on X"
+          >
+            <Twitter className="h-3 w-3" /> X
+          </a>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">

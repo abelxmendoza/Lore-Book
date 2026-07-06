@@ -32,6 +32,7 @@ export function FamilyBook() {
   const [tab, setTab] = useState<Tab>('tree');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [demoTree, setDemoTree] = useState<FamilyTree | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
   const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
@@ -39,7 +40,9 @@ export function FamilyBook() {
 
   const load = useCallback(async () => {
     if (shouldUseMock) {
-      setSummary(DEMO_FAMILY_SUMMARY);
+      const base = DEMO_FAMILY_SUMMARY as SummaryResponse;
+      setSummary(base);
+      setDemoTree(base.tree);
       setLoading(false);
       return;
     }
@@ -157,6 +160,19 @@ export function FamilyBook() {
     ), [runEdit]);
 
   const saveRelationship = useCallback(async (member: FamilyMember, edit: RelationshipEdit): Promise<void> => {
+    if (shouldUseMock && demoTree) {
+      const updatedMembers = demoTree.members.map(mem =>
+        mem.id === member.id
+          ? { ...mem, relation: edit.relation, side: edit.side || undefined, parent_id: edit.connectsToId || undefined }
+          : mem
+      );
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Updated ${member.name}'s relationship (demo)`);
+      setEditorMember(null);
+      return;
+    }
     await runEdit(
       () => fetchJson(`/api/family-trees/member/${member.id}/relationship`, {
         method: 'PATCH',
@@ -165,11 +181,42 @@ export function FamilyBook() {
       `Updated ${member.name}'s relationship`,
       `Couldn't update ${member.name}'s relationship`,
     );
-  }, [runEdit]);
+  }, [runEdit, shouldUseMock, demoTree, summary, success]);
 
-  // Only real accounts can edit; demo graph stays read-only.
+  // Demo mode: local editing on the mock tree (no API calls)
+  const mockEditHandlers = shouldUseMock ? {
+    onEditRelationship: (m: FamilyMember) => setEditorMember(m),
+    onExclude: (m: FamilyMember) => {
+      if (!demoTree) return;
+      const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Removed ${m.name} (demo)`);
+    },
+    onDelete: (m: FamilyMember) => {
+      const ok = typeof window === 'undefined' ? true : window.confirm(`Delete "${m.name}" in demo?`);
+      if (!ok || !demoTree) return;
+      const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Deleted ${m.name} (demo)`);
+    },
+    onKeep: (m: FamilyMember) => {
+      if (!demoTree) return;
+      const updatedMembers = demoTree.members.map(mem =>
+        mem.id === m.id ? { ...mem, inference_status: 'asserted' as const } : mem
+      );
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Kept ${m.name} (demo)`);
+    },
+  } : {};
+
   const editHandlers = shouldUseMock
-    ? {}
+    ? mockEditHandlers
     : {
         onEditRelationship: (m: FamilyMember) => setEditorMember(m),
         onExclude: (m: FamilyMember) => void excludeMember(m),
@@ -245,16 +292,17 @@ export function FamilyBook() {
                   Tree view
                 </button>
               </div>
-              {viewMode === 'hierarchical' && summary?.tree?.members?.length ? (
+              {viewMode === 'hierarchical' && (demoTree || summary?.tree)?.members?.length ? (
                 <HierarchicalFamilyTree
-                  tree={summary.tree}
+                  tree={demoTree || summary.tree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : viewMode === 'visual' && shouldUseMock && summary?.tree?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && (demoTree || summary?.tree)?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
-                    tree={summary.tree}
+                    tree={demoTree || summary.tree}
                     onMemberClick={(m) => void openCharacter(m.id, m.name)}
+                    {...editHandlers}
                   />
                 </div>
               ) : (

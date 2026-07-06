@@ -44,12 +44,19 @@ vi.mock('../../contexts/MockDataContext', () => ({
   MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
+const { reclassifyTrigger } = vi.hoisted(() => ({
+  reclassifyTrigger: vi.fn(() => ({
+    unwrap: vi.fn().mockResolvedValue({}),
+  })),
+}));
+
 vi.mock('../../store/api/entitiesApi', () => ({
   useUpdateCharacterMutation: () => [
     vi.fn(() => ({
       unwrap: vi.fn().mockResolvedValue({}),
     })),
   ],
+  useReclassifyEntityMutation: () => [reclassifyTrigger],
 }));
 
 const mockCharacter: Character = {
@@ -166,6 +173,73 @@ describe('CharacterDetailModal', () => {
 
     // Should still render without crashing — check for Info tab (default)
     expect(screen.getAllByText(/^info$/i).length).toBeGreaterThan(0);
+  });
+
+  describe('entity type switcher (header)', () => {
+    it('reclassifies through the header type menu and shows success', async () => {
+      const user = userEvent.setup();
+      render(
+        <CharacterDetailModal
+          character={mockCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+        />
+      );
+
+      // Rendered in both mobile and desktop headers in jsdom.
+      const [typeBadge] = screen.getAllByRole('button', { name: /change entity type/i });
+      await user.click(typeBadge);
+
+      await user.click(screen.getByRole('menuitem', { name: /location \/ place/i }));
+
+      await waitFor(() => {
+        expect(reclassifyTrigger).toHaveBeenCalledWith({ id: 'char-1', targetDomain: 'location' });
+      });
+      await waitFor(() => {
+        expect(mockOnUpdate).toHaveBeenCalled();
+      });
+      expect(screen.getAllByText(/Moved to Location \/ Place/i).length).toBeGreaterThan(0);
+    });
+
+    it('surfaces the target book rule rejection and keeps the menu open', async () => {
+      reclassifyTrigger.mockImplementationOnce(() => ({
+        unwrap: vi.fn().mockRejectedValue({
+          data: { error: 'Places rules rejected "John Doe" — it reads as a person name.' },
+        }),
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <CharacterDetailModal
+          character={mockCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+        />
+      );
+
+      const [typeBadge] = screen.getAllByRole('button', { name: /change entity type/i });
+      await user.click(typeBadge);
+      await user.click(screen.getByRole('menuitem', { name: /location \/ place/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Places rules rejected "John Doe"/i)).toBeInTheDocument();
+      });
+      // Rejected move must not mark the card as moved.
+      expect(screen.queryByText(/Moved to/i)).not.toBeInTheDocument();
+    });
+
+    it('does not offer the type switcher for the main character', () => {
+      render(
+        <CharacterDetailModal
+          character={mockCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          isMainCharacter
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /change entity type/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('distant but high impact', () => {

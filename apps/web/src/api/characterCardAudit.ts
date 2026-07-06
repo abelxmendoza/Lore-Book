@@ -3,8 +3,17 @@ import { fetchJson } from '../lib/api';
 export type CharacterAuditStatus =
   | 'valid_identity'
   | 'valid_contextual_reference'
+  | 'contextual_character_needs_context'
   | 'needs_context'
   | 'wrong_domain'
+  | 'wrong_domain_tool'
+  | 'wrong_domain_media'
+  | 'wrong_domain_band'
+  | 'wrong_domain_role'
+  | 'wrong_domain_event'
+  | 'wrong_domain_process'
+  | 'sentence_bleed'
+  | 'pronoun_fragment'
   | 'broken_span'
   | 'duplicate_or_merge_candidate'
   | 'junk_test_data'
@@ -17,6 +26,7 @@ export type CharacterAuditAction =
   | 'merge'
   | 'move_to_group'
   | 'move_to_interest'
+  | 'move_to_book'
   | 'delete'
   | 'needs_review';
 
@@ -35,7 +45,18 @@ export type CharacterCardAuditResult = {
   recommendedAction: CharacterAuditAction;
   suggestedTitle?: string;
   mergeCandidates?: MergeCandidateRef[];
-  wrongDomainTarget?: 'group' | 'interest' | 'system';
+  wrongDomainTarget?:
+    | 'group'
+    | 'interest'
+    | 'system'
+    | 'tool'
+    | 'media'
+    | 'band'
+    | 'role'
+    | 'event'
+    | 'process'
+    | 'skill'
+    | 'place';
   provenanceSummary?: string;
   aliasToAdd?: string;
 };

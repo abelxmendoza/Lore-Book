@@ -8,6 +8,7 @@ import {
   MapPin,
   Link2,
   Clock,
+  Search,
   TreePine,
   Trash2,
   MoreHorizontal,
@@ -27,6 +28,7 @@ export type OrgModalTabKey =
   | 'events'
   | 'locations'
   | 'relationships'
+  | 'sources'
   | 'timeline'
   | 'influence'
   | 'insights'
@@ -213,6 +215,7 @@ export const ORG_MODAL_BASE_TABS: TabDef[] = [
   { key: 'events', label: 'Events', shortLabel: 'Events', icon: Calendar },
   { key: 'locations', label: 'Places', shortLabel: 'Places', icon: MapPin },
   { key: 'relationships', label: 'Relationships', shortLabel: 'Links', icon: Link2 },
+  { key: 'sources', label: 'Sources', shortLabel: 'Sources', icon: Search },
   { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
   { key: 'influence', label: 'Influence', shortLabel: 'Influence', icon: Zap },
   { key: 'insights', label: 'Insights', shortLabel: 'Insights', icon: Wand2 },

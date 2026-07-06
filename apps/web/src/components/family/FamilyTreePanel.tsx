@@ -4,6 +4,8 @@ import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import type { Character } from '../characters/CharacterProfileCard';
@@ -65,6 +67,7 @@ export const FamilyTreePanel = ({
   onDelete,
   onKeep,
 }: FamilyTreePanelProps) => {
+  const shouldUseMock = useShouldUseMockData();
   const [tree, setTree] = useState<FamilyTree | null>(null);
   const [loading, setLoading] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
@@ -85,6 +88,14 @@ export const FamilyTreePanel = ({
 
   const load = useCallback(async () => {
     if (scope !== 'mine' && !entityId) return;
+    if (shouldUseMock) {
+      const mock = scope === 'mine'
+        ? createMockUserFamilyTree()
+        : createMockFamilyTreeForCharacter('') || createMockUserFamilyTree();
+      setTree(mock);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const r = await fetchJson<{ success: boolean; tree: FamilyTree }>(endpoint);
@@ -94,7 +105,7 @@ export const FamilyTreePanel = ({
     } finally {
       setLoading(false);
     }
-  }, [endpoint, scope, entityId]);
+  }, [endpoint, scope, entityId, shouldUseMock]);
 
   useEffect(() => {
     void load();

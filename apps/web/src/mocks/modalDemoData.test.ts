@@ -11,6 +11,28 @@ import {
 import { MOCK_QUESTS } from './quests';
 import type { Organization } from '../components/organizations/OrganizationProfileCard';
 
+function testOrganization(overrides: Partial<Organization>): Organization {
+  const now = new Date().toISOString();
+  return {
+    id: 'test-org',
+    name: 'Test Org',
+    aliases: [],
+    type: 'other',
+    group_type: 'other',
+    membership_model: 'strict',
+    user_relationship: 'member',
+    is_public_entity: false,
+    status: 'active',
+    member_count: 0,
+    usage_count: 0,
+    confidence: 0.8,
+    last_seen: now,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  };
+}
+
 describe('modalDemoData', () => {
   it('builds location knowledge facts from profile fields', () => {
     const location = dummyLocations[0];
@@ -35,18 +57,20 @@ describe('modalDemoData', () => {
   });
 
   it('builds organization relationships and member affiliations', () => {
-    const orgA: Organization = {
+    const orgA = testOrganization({
       id: 'mock-1',
       name: 'The Thursday Crew',
       type: 'other',
+      group_type: 'crew',
       members: [{ id: 'm1', character_name: 'Marcus Johnson', status: 'active' }],
-    };
-    const orgB: Organization = {
+    });
+    const orgB = testOrganization({
       id: 'mock-4',
       name: 'The Midnight Circuit',
       type: 'other',
+      group_type: 'band',
       members: [{ id: 'm2', character_name: 'Marcus Johnson', status: 'active' }],
-    };
+    });
     const allOrgs = [orgA, orgB];
     const { relationships, relatedOrgs } = getMockOrganizationRelationships(orgA, allOrgs);
     expect(relationships.length).toBeGreaterThan(0);

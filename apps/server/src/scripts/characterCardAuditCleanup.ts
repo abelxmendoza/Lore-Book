@@ -56,7 +56,7 @@ async function main() {
       r.recommendedAction !== 'keep' ||
       r.status === 'junk_test_data' ||
       r.status === 'bare_title_invalid' ||
-      r.status === 'wrong_domain' ||
+      r.status.startsWith('wrong_domain') ||
       r.status === 'broken_span',
   );
 

@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine, AlertTriangle } from 'lucide-react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine, AlertTriangle, Search } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -50,6 +50,7 @@ import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { getMockOrganizationDerivedEvents } from '../../mocks/organizationTimeline';
 import {
   getMockOrganizationFacts,
+  getMockOrganizationMentionTrace,
   getMockMemberAffiliations,
   getMockOrganizationRelationships,
   enrichOrganizationForDemo,
@@ -117,6 +118,25 @@ type ChatMessage = {
   timestamp: Date;
 };
 
+type OrganizationMentionTrace = {
+  labels: string[];
+  total_mentions: number;
+  source_counts: Record<string, number>;
+  mentions: Array<{
+    id: string;
+    source: 'chat_messages' | 'conversation_messages' | 'entity_facts';
+    source_id: string;
+    session_id?: string | null;
+    thread_title?: string | null;
+    role?: string | null;
+    matched_label: string;
+    occurrence_count: number;
+    snippet: string;
+    created_at?: string | null;
+  }>;
+  facts: any[];
+};
+
 const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
   part_of: 'Part of',
   affiliated_with: 'Affiliated with',
@@ -140,10 +160,51 @@ const AUDIENCE_BADGE: Record<NonNullable<DerivedEvent['audience']>, string> = {
 };
 
 const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
+const GROUP_TYPE_OPTIONS: Array<{ value: Organization['group_type']; label: string }> = [
+  { value: 'band', label: 'Band' },
+  { value: 'friend_group', label: 'Friend group' },
+  { value: 'company', label: 'Company' },
+  { value: 'club', label: 'Club' },
+  { value: 'community', label: 'Community' },
+  { value: 'crew', label: 'Crew' },
+  { value: 'collective', label: 'Collective' },
+  { value: 'sports_team', label: 'Sports team' },
+  { value: 'team', label: 'Team' },
+  { value: 'nonprofit', label: 'Nonprofit' },
+  { value: 'institution', label: 'Institution' },
+  { value: 'brand', label: 'Brand' },
+  { value: 'vendor', label: 'Vendor' },
+  { value: 'family', label: 'Family' },
+  { value: 'household', label: 'Household' },
+  { value: 'public_entity', label: 'Public entity' },
+  { value: 'project', label: 'Project' },
+  { value: 'event_group', label: 'Event group' },
+  { value: 'other', label: 'Other' },
+];
+const MEMBERSHIP_MODEL_OPTIONS: Array<{ value: Organization['membership_model']; label: string }> = [
+  { value: 'strict', label: 'Defined roster' },
+  { value: 'fuzzy', label: 'Loose or scene-based' },
+  { value: 'none', label: 'Referenced only' },
+];
+const USER_RELATIONSHIP_OPTIONS: Array<{ value: Organization['user_relationship']; label: string }> = [
+  { value: 'member', label: 'Member' },
+  { value: 'fan', label: 'Fan' },
+  { value: 'aware_of', label: 'Aware of' },
+  { value: 'referenced', label: 'Referenced' },
+  { value: 'adjacent', label: 'Adjacent' },
+  { value: 'collaborator', label: 'Collaborator' },
+  { value: 'former_member', label: 'Former member' },
+  { value: 'leader', label: 'Leader' },
+  { value: 'founder', label: 'Founder' },
+  { value: 'alumnus', label: 'Alumnus' },
+];
 
 const BASE_TABS = ORG_MODAL_BASE_TABS;
 const TAB_PANEL = 'mt-0 space-y-3';
 const TAB_HEADING = 'text-base sm:text-lg font-semibold text-white';
+const FIELD_LABEL = 'text-[10px] font-semibold uppercase tracking-wide text-white/40';
+const FIELD_INPUT = 'h-10 bg-black/55 border-white/10 text-white focus:border-primary/50 focus:ring-primary/20';
+const FIELD_SELECT = 'h-10 w-full rounded-lg border border-white/10 bg-black/55 px-3 text-sm text-white focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20';
 
 export const OrganizationDetailModal = ({ organization, allOrganizations = [], onSelectOrganization, onClose, onUpdate }: OrganizationDetailModalProps) => {
   const isMockDataEnabled = useShouldUseMockData();
@@ -163,6 +224,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingIdentity, setEditingIdentity] = useState(false);
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -244,6 +306,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [orgFacts, setOrgFacts] = useState<any[]>([]);
   const [factsLoading, setFactsLoading] = useState(false);
   const [factsLoaded, setFactsLoaded] = useState(false);
+  const [mentionTrace, setMentionTrace] = useState<OrganizationMentionTrace | null>(null);
+  const [mentionsLoading, setMentionsLoading] = useState(false);
+  const [mentionsLoaded, setMentionsLoaded] = useState(false);
 
   // Modal states for nested entities
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
@@ -349,6 +414,31 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
   }, [activeTab, organization, factsLoaded, isMockDataEnabled]);
 
+  useEffect(() => {
+    if (mentionsLoaded || !organization.id || isMockDataEnabled) return;
+    if (activeTab !== 'sources' && activeTab !== 'info') return;
+    setMentionsLoading(true);
+    fetchJson<{ success: boolean; trace: OrganizationMentionTrace }>(
+      `/api/organizations/${organization.id}/mentions?limit=120`
+    )
+      .then(r => {
+        if (r.success) setMentionTrace(r.trace);
+      })
+      .catch(() => {})
+      .finally(() => {
+        setMentionsLoading(false);
+        setMentionsLoaded(true);
+      });
+  }, [activeTab, organization.id, mentionsLoaded, isMockDataEnabled]);
+
+  useEffect(() => {
+    if (!isMockDataEnabled || mentionsLoaded) return;
+    if (activeTab !== 'sources' && activeTab !== 'info') return;
+    setMentionTrace(getMockOrganizationMentionTrace(editedOrg));
+    setMentionsLoaded(true);
+    setMentionsLoading(false);
+  }, [activeTab, editedOrg, isMockDataEnabled, mentionsLoaded]);
+
   const loadMemberAffiliations = async () => {
     if (!organization.id) return;
     setAffiliationsLoading(true);
@@ -377,6 +467,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   useEffect(() => {
     return onStoryDataUpdated(() => {
       setDerivedLoaded(false);
+      setMentionsLoaded(false);
       setFamilyRefreshKey(k => k + 1);
       setRelationshipsLoaded(false);
       void loadMemberAffiliations();
@@ -517,18 +608,75 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates = {
+      const previousIdentity = {
+        name: organization.name,
+        aliases: organization.aliases,
+        type: organization.type,
+        group_type: organization.group_type,
+        membership_model: organization.membership_model,
+        user_relationship: organization.user_relationship,
+        is_public_entity: organization.is_public_entity,
+        founded_year: organization.founded_year,
+        dissolved_year: organization.dissolved_year,
+        description: organization.description,
+        location: organization.location,
+        founded_date: organization.founded_date,
+        status: organization.status,
+      };
+      const correctedIdentity = {
         name: editedOrg.name,
         aliases: editedOrg.aliases,
         type: editedOrg.type,
+        group_type: editedOrg.group_type,
+        membership_model: editedOrg.membership_model,
+        user_relationship: editedOrg.user_relationship,
+        is_public_entity: editedOrg.is_public_entity,
+        founded_year: editedOrg.founded_year,
+        dissolved_year: editedOrg.dissolved_year,
         description: editedOrg.description,
         location: editedOrg.location,
         founded_date: editedOrg.founded_date,
         status: editedOrg.status,
       };
+      const updates = {
+        name: editedOrg.name,
+        aliases: editedOrg.aliases,
+        type: editedOrg.type,
+        group_type: editedOrg.group_type,
+        membership_model: editedOrg.membership_model,
+        user_relationship: editedOrg.user_relationship,
+        is_public_entity: editedOrg.is_public_entity,
+        founded_year: editedOrg.founded_year,
+        dissolved_year: editedOrg.dissolved_year,
+        description: editedOrg.description,
+        location: editedOrg.location,
+        founded_date: editedOrg.founded_date,
+        status: editedOrg.status,
+        metadata: {
+          ...(organization.metadata ?? {}),
+          ...(editedOrg.metadata ?? {}),
+          identity_locked_by_user: true,
+          identity_last_corrected_at: new Date().toISOString(),
+          previous_identity: previousIdentity,
+          manual_identity_correction: correctedIdentity,
+        },
+      };
+
+      if (isMockDataEnabled) {
+        setEditedOrg(prev => ({
+          ...prev,
+          ...updates,
+        }));
+        setEditingIdentity(false);
+        setMentionTrace(getMockOrganizationMentionTrace({ ...editedOrg, ...updates }));
+        setMentionsLoaded(true);
+        return;
+      }
 
       await updateOrganization({ id: organization.id, values: updates }).unwrap();
 
+      setEditingIdentity(false);
+      setMentionsLoaded(false);
       onUpdate?.();
     } catch (error) {
       console.error('Failed to save organization:', error);
@@ -927,7 +1075,207 @@ User's message: ${currentInput}`;
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 sm:py-4 min-h-0">
             {/* Overview Tab */}
-            <TabsContent value="info" className="mt-0 space-y-0">
+            <TabsContent value="info" className="mt-0 space-y-3">
+              <Card className="overflow-hidden border-white/10 bg-black/50">
+                <CardContent className="p-0">
+                  <div className="border-b border-white/8 bg-white/[0.03] px-3 py-3 sm:px-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-amber-400/20 bg-amber-400/10">
+                            <Edit2 className="h-3.5 w-3.5 text-amber-300" />
+                          </span>
+                          <h3 className="text-sm font-semibold text-white">Canonical identity</h3>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              editedOrg.metadata?.identity_locked_by_user
+                                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+                                : 'border-sky-500/25 bg-sky-500/10 text-sky-200'
+                            }`}
+                          >
+                            {editedOrg.metadata?.identity_locked_by_user ? 'User corrected' : 'Auto learned'}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-white/45">
+                          Edits here become the trusted group identity and feed future detection.
+                        </p>
+                      </div>
+                      {editingIdentity ? (
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 border-white/10"
+                            onClick={() => {
+                              setEditedOrg(resolvedOrganization);
+                              setEditingIdentity(false);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button size="sm" className="h-9" onClick={() => void handleSave()} disabled={saving}>
+                            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                            <span className="ml-1.5">Save</span>
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button variant="outline" size="sm" className="h-9 w-full border-white/10 sm:w-auto" onClick={() => setEditingIdentity(true)}>
+                          <Edit2 className="h-3.5 w-3.5 mr-1.5" />
+                          Edit identity
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {editingIdentity ? (
+                    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Name</span>
+                        <Input
+                          value={editedOrg.name}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, name: e.target.value }))}
+                          className={FIELD_INPUT}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Aliases</span>
+                        <Input
+                          value={(editedOrg.aliases ?? []).join(', ')}
+                          onChange={e => setEditedOrg(prev => ({
+                            ...prev,
+                            aliases: e.target.value.split(',').map(v => v.trim()).filter(Boolean),
+                          }))}
+                          className={FIELD_INPUT}
+                          placeholder="Comma-separated names"
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Group type</span>
+                        <select
+                          value={editedOrg.group_type ?? 'other'}
+                          onChange={e => {
+                            const groupType = e.target.value as Organization['group_type'];
+                            const legacyTypes = new Set(['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'family', 'martial_arts', 'other']);
+                            setEditedOrg(prev => ({
+                              ...prev,
+                              group_type: groupType,
+                              type: (legacyTypes.has(groupType) ? groupType : 'other') as Organization['type'],
+                            }));
+                          }}
+                          className={FIELD_SELECT}
+                        >
+                          {GROUP_TYPE_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Your relationship</span>
+                        <select
+                          value={editedOrg.user_relationship ?? 'referenced'}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, user_relationship: e.target.value as Organization['user_relationship'] }))}
+                          className={FIELD_SELECT}
+                        >
+                          {USER_RELATIONSHIP_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Membership model</span>
+                        <select
+                          value={editedOrg.membership_model ?? 'none'}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, membership_model: e.target.value as Organization['membership_model'] }))}
+                          className={FIELD_SELECT}
+                        >
+                          {MEMBERSHIP_MODEL_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Status</span>
+                        <select
+                          value={editedOrg.status ?? 'active'}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, status: e.target.value as Organization['status'] }))}
+                          className={FIELD_SELECT}
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                          <option value="dissolved">Dissolved</option>
+                        </select>
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Location</span>
+                        <Input
+                          value={editedOrg.location ?? ''}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, location: e.target.value }))}
+                          className={FIELD_INPUT}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className={FIELD_LABEL}>Founded date</span>
+                        <Input
+                          type="date"
+                          value={editedOrg.founded_date ?? ''}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, founded_date: e.target.value || undefined }))}
+                          className={FIELD_INPUT}
+                        />
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-3 sm:col-span-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editedOrg.is_public_entity)}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, is_public_entity: e.target.checked }))}
+                          className="mt-0.5 h-4 w-4 shrink-0"
+                        />
+                        <span className="text-sm leading-relaxed text-white/75">This is an official/public entity, not a private friend group.</span>
+                      </label>
+                      <label className="space-y-1.5 sm:col-span-2">
+                        <span className={FIELD_LABEL}>Description</span>
+                        <Textarea
+                          value={editedOrg.description ?? ''}
+                          onChange={e => setEditedOrg(prev => ({ ...prev, description: e.target.value }))}
+                          className="min-h-[96px] bg-black/55 border-white/10 text-white focus:border-primary/50 focus:ring-primary/20"
+                          rows={3}
+                          placeholder="What this group or organization actually is"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 p-3 sm:p-4">
+                      {editedOrg.description && (
+                        <p className="text-sm leading-relaxed text-white/70 line-clamp-3">
+                          {editedOrg.description}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
+                        <p className={FIELD_LABEL}>Type</p>
+                        <p className="mt-1 font-medium text-white capitalize">{String(editedOrg.group_type ?? editedOrg.type).replace(/_/g, ' ')}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
+                        <p className={FIELD_LABEL}>Relationship</p>
+                        <p className="mt-1 font-medium text-white capitalize">{String(editedOrg.user_relationship ?? 'referenced').replace(/_/g, ' ')}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('sources')}
+                        className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5 text-left transition hover:border-primary/35 hover:bg-primary/5"
+                      >
+                        <p className={FIELD_LABEL}>Mentions</p>
+                        <p className="mt-1 font-semibold text-white tabular-nums">{mentionsLoading ? '...' : mentionTrace?.total_mentions ?? 0}</p>
+                      </button>
+                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
+                        <p className={FIELD_LABEL}>Scope</p>
+                        <p className="mt-1 font-medium text-white">{editedOrg.is_public_entity ? 'Official' : 'Personal'}</p>
+                      </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
               <OrganizationModalOverview
                 organization={editedOrg}
                 allOrganizations={allOrganizations}
@@ -1744,6 +2092,152 @@ User's message: ${currentInput}`;
               )}
             </TabsContent>
 
+            {/* Sources Tab */}
+            <TabsContent value="sources" className={TAB_PANEL}>
+              <div className="rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-400/20 bg-sky-400/10">
+                        <Search className="h-4 w-4 text-sky-300" />
+                      </span>
+                      <div>
+                        <h3 className={TAB_HEADING}>Sources and mentions</h3>
+                        <p className="text-xs text-white/45">
+                          Evidence for this identity across chats, older threads, and extracted facts.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-full border-white/10 sm:w-auto"
+                    disabled={mentionsLoading}
+                    onClick={() => {
+                      setMentionsLoaded(false);
+                      setMentionTrace(null);
+                    }}
+                  >
+                    {mentionsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    <span className="ml-1.5">Rescan</span>
+                  </Button>
+                </div>
+              </div>
+
+              {mentionsLoading ? (
+                <Card className="border-white/10 bg-black/40">
+                  <CardContent className="py-8 text-center text-white/55">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                    Searching messages, extracted facts, and older threads...
+                  </CardContent>
+                </Card>
+              ) : !mentionTrace ? (
+                <Card className="border-white/10 bg-black/40">
+                  <CardContent className="py-8 text-center text-white/55">
+                    Open this tab to scan for mentions.
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-100/60">Total</p>
+                      <p className="mt-1 text-2xl font-bold leading-none text-white tabular-nums">{mentionTrace.total_mentions}</p>
+                    </div>
+                    <SourceMetric label="Chat" value={mentionTrace.source_counts.chat_messages ?? 0} />
+                    <SourceMetric label="Older" value={mentionTrace.source_counts.conversation_messages ?? 0} />
+                    <SourceMetric label="Facts" value={mentionTrace.facts.length} />
+                  </div>
+
+                  {mentionTrace.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 rounded-xl border border-white/8 bg-white/[0.02] p-2">
+                      {mentionTrace.labels.map(label => (
+                        <Badge key={label} variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-200">
+                          {label}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <Card className="border-white/10 bg-black/45">
+                    <CardHeader className="p-3 pb-2 sm:p-4 sm:pb-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-sm font-semibold text-white">Extracted identity facts</h4>
+                        <Badge variant="outline" className="border-white/10 text-[10px] text-white/50">
+                          {mentionTrace.facts.length}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-0 sm:p-4 sm:pt-0">
+                      {mentionTrace.facts.length === 0 ? (
+                        <p className="text-sm text-white/45">No extracted facts are tied to this organization yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {mentionTrace.facts.slice(0, 12).map((fact: any) => (
+                            <div key={fact.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                              <p className="text-sm leading-relaxed text-white/80">{fact.fact}</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {fact.category && <Badge variant="outline" className="border-white/10 text-[10px] text-white/45">{fact.category}</Badge>}
+                                {typeof fact.confidence === 'number' && <Badge variant="outline" className="border-emerald-500/20 text-[10px] text-emerald-200/75">{Math.round(fact.confidence * 100)}%</Badge>}
+                                {fact.status && <Badge variant="outline" className="border-amber-500/20 text-[10px] text-amber-200/75">{fact.status}</Badge>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-2.5">
+                    {mentionTrace.mentions.length === 0 ? (
+                      <Card className="border-white/10 bg-black/40">
+                        <CardContent className="py-8 text-center text-white/55">
+                          No message mentions found for the current name or aliases.
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      mentionTrace.mentions.map(mention => (
+                        <Card key={mention.id} className="border-white/10 bg-black/45 transition-colors hover:border-sky-500/25">
+                          <CardContent className="p-3 sm:p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                  <Badge variant="outline" className="border-sky-500/25 bg-sky-500/10 text-[10px] text-sky-200">
+                                    {mention.matched_label}
+                                  </Badge>
+                                  <Badge variant="outline" className="border-white/10 text-[10px] text-white/45">
+                                    {mention.source === 'chat_messages'
+                                      ? 'Chat'
+                                      : mention.source === 'conversation_messages'
+                                        ? 'Legacy thread'
+                                        : 'Entity fact'}
+                                  </Badge>
+                                  {mention.role && <Badge variant="outline" className="border-white/10 text-[10px] capitalize text-white/45">{mention.role}</Badge>}
+                                </div>
+                                {mention.thread_title && (
+                                  <p className="mb-1 truncate text-xs font-medium text-white/65">{mention.thread_title}</p>
+                                )}
+                                <p className="text-sm leading-relaxed text-white/75 whitespace-pre-wrap">{mention.snippet}</p>
+                                <div className="mt-2 flex items-center gap-2 text-[10px] text-white/30">
+                                  {mention.created_at && <span>{formatDate(mention.created_at)}</span>}
+                                  <span className="h-1 w-1 rounded-full bg-white/20" />
+                                  <span>{mention.source_id.slice(0, 8)}</span>
+                                </div>
+                              </div>
+                              <div className="flex h-8 w-full shrink-0 items-center justify-center rounded-lg border border-white/8 bg-white/[0.03] text-xs font-semibold text-white/70 tabular-nums sm:w-12">
+                                x{mention.occurrence_count}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
             {/* Family Tree Tab (family groups) */}
             <TabsContent value="family" className={TAB_PANEL}>
               <div>
@@ -1936,3 +2430,12 @@ User's message: ${currentInput}`;
   </>
   );
 };
+
+function SourceMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-white/35">{label}</p>
+      <p className="mt-1 text-2xl font-bold leading-none text-white tabular-nums">{value}</p>
+    </div>
+  );
+}

@@ -8,9 +8,11 @@ import { logger } from '../../logger';
 import { encrypt, decrypt } from '../../services/encryption';
 import { memoryService } from '../../services/memoryService';
 import { supabaseAdmin } from '../../services/supabaseClient';
+import postgres from 'postgres';
 import { xAdapter, type XResponse } from '../../external/x.adapter';
 import { summarizeMilestonesBridge } from '../../external/summarizer.bridge';
 import type { ExternalSummary } from '../../external/types';
+import { ingestExternalPost, type ExternalProvenance } from '../../services/unifiedErIngestion';
 
 const PROVIDER = 'x';
 const X_AUTHORIZE_URL = 'https://x.com/i/oauth2/authorize';
@@ -18,6 +20,113 @@ const X_TOKEN_URL = 'https://api.x.com/2/oauth2/token';
 const X_API_BASE_URL = 'https://api.x.com/2';
 const X_SCOPES = ['tweet.read', 'users.read', 'offline.access'];
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+const EXTERNAL_CONNECTIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS external_account_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  provider_user_id TEXT,
+  provider_username TEXT,
+  access_token_enc TEXT,
+  refresh_token_enc TEXT,
+  scopes TEXT[] NOT NULL DEFAULT '{}',
+  expires_at TIMESTAMPTZ,
+  last_sync_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'connected',
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS external_account_connections_provider_idx
+  ON external_account_connections (provider, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS external_account_connections_user_idx
+  ON external_account_connections (user_id, provider);
+
+ALTER TABLE external_account_connections ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own external account connections"
+  ON external_account_connections FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own external account connections"
+  ON external_account_connections FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own external account connections"
+  ON external_account_connections FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own external account connections"
+  ON external_account_connections FOR DELETE
+  USING (auth.uid() = user_id);
+`;
+
+/**
+ * Best-effort: if the table is missing (common after fresh deploy or before running migrate),
+ * create it directly via the postgres connection string (using the 'postgres' package already in deps).
+ * Also attempts to notify PostgREST to reload schema so the JS client sees it immediately.
+ *
+ * Tries multiple common connection string env vars so it works in most Supabase setups.
+ */
+export async function ensureExternalAccountConnectionsTable(): Promise<boolean> {
+  const candidates = [
+    process.env.SUPABASE_CONNECTION_STRING,
+    process.env.SUPABASE_POOLER_SESSION_URL,
+    process.env.SUPABASE_POOLER_TRANSACTION_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter((c): c is string => !!c && c.length > 0);
+
+  if (candidates.length === 0) {
+    logger.warn('No direct database connection string found for auto-creating external_account_connections table. Set SUPABASE_CONNECTION_STRING, SUPABASE_POOLER_SESSION_URL, DATABASE_URL etc.');
+    return false;
+  }
+
+  for (const conn of candidates) {
+    const masked = conn.replace(/:[^@]+@/, ':***@').slice(0, 40) + '...';
+    logger.info({ masked }, 'Attempting to ensure external_account_connections table using connection string');
+
+    try {
+      const sql = postgres(conn, {
+        ssl: { rejectUnauthorized: false },
+        max: 1,
+        idle_timeout: 5,
+      });
+
+      try {
+        // Use unsafe for the block of DDL (multi-statement)
+        await sql.unsafe(EXTERNAL_CONNECTIONS_TABLE_SQL);
+
+        // Tell PostgREST to reload its schema cache immediately
+        try {
+          await sql`SELECT pg_notify('pgrst', 'reload schema');`;
+        } catch {
+          // notify may fail depending on user/permissions, non-fatal
+        }
+
+        // Give PostgREST a moment to process the reload before retrying queries from the JS client
+        await new Promise((r) => setTimeout(r, 1500));
+
+        logger.info('Auto-created external_account_connections table (and notified pgrst)');
+        return true;
+      } finally {
+        await sql.end({ timeout: 1 });
+      }
+    } catch (err) {
+      logger.warn({ err, masked }, 'Auto table creation attempt failed for this connection string');
+      // try next candidate
+    }
+  }
+
+  logger.warn('All auto table creation attempts for external_account_connections failed. Run the migration manually.');
+  return false;
+}
 
 type XConnectionRow = {
   id: string;
@@ -152,8 +261,22 @@ async function getConnection(userId: string): Promise<XConnectionRow | null> {
     .maybeSingle();
 
   if (error) {
-    if (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? '')) {
-      throw new Error('External account connections table is missing. Run: npm run migrate base');
+    const isMissing = error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? '');
+    if (isMissing) {
+      const created = await ensureExternalAccountConnectionsTable();
+      if (created) {
+        // retry once
+        const { data: retryData, error: retryErr } = await supabaseAdmin
+          .from('external_account_connections')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('provider', PROVIDER)
+          .maybeSingle();
+        if (!retryErr) {
+          return (retryData as XConnectionRow | null) ?? null;
+        }
+      }
+      throw new Error('External account connections table is missing. (Auto-create attempted using pooler URL; otherwise run: npm run migrate base)');
     }
     throw error;
   }
@@ -171,7 +294,7 @@ async function saveConnection(input: {
     ? new Date(Date.now() + input.token.expires_in * 1000).toISOString()
     : null;
 
-  const { error } = await supabaseAdmin.from('external_account_connections').upsert(
+  let { error } = await supabaseAdmin.from('external_account_connections').upsert(
     {
       user_id: input.userId,
       provider: PROVIDER,
@@ -187,6 +310,29 @@ async function saveConnection(input: {
     },
     { onConflict: 'user_id,provider' }
   );
+
+  if (error && (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? ''))) {
+    const created = await ensureExternalAccountConnectionsTable();
+    if (created) {
+      const res = await supabaseAdmin.from('external_account_connections').upsert(
+        {
+          user_id: input.userId,
+          provider: PROVIDER,
+          provider_user_id: input.xUserId,
+          provider_username: input.username,
+          access_token_enc: encrypt(input.token.access_token),
+          refresh_token_enc: input.token.refresh_token ? encrypt(input.token.refresh_token) : null,
+          scopes,
+          expires_at: expiresAt,
+          status: 'connected',
+          metadata: { token_type: input.token.token_type ?? 'bearer' },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' }
+      );
+      error = res.error;
+    }
+  }
 
   if (error) throw error;
 }
@@ -354,7 +500,23 @@ async function persistXImports(userId: string, summaries: ExternalSummary[]) {
         imageUrl: summary.imageUrl,
         x: summary.metadata ?? {},
       },
+      skipIngestion: true, // we will call the external provenance-aware path below
     });
+
+    // Use the dedicated external post ingestion path so entities get stamped with X provenance
+    const provenance: ExternalProvenance = {
+      provider: PROVIDER,
+      sourceId: summary.sourceId,
+      url: summary.url,
+      postedAt: summary.timestamp,
+      excerpt: (summary.text ?? summary.summary)?.slice(0, 280),
+    };
+
+    try {
+      await ingestExternalPost(userId, entry.id, summary.text ?? summary.summary, provenance);
+    } catch (ingestErr) {
+      logger.warn({ ingestErr, sourceId: summary.sourceId }, 'X post ER ingestion failed (non-fatal)');
+    }
 
     alreadyImported.add(summary.sourceId);
     entryIds.push(entry.id);
@@ -425,11 +587,23 @@ export class XConnectionService {
   }
 
   async disconnect(userId: string) {
-    const { error } = await supabaseAdmin
+    let { error } = await supabaseAdmin
       .from('external_account_connections')
       .delete()
       .eq('user_id', userId)
       .eq('provider', PROVIDER);
+
+    if (error && (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? ''))) {
+      const created = await ensureExternalAccountConnectionsTable();
+      if (created) {
+        const retry = await supabaseAdmin
+          .from('external_account_connections')
+          .delete()
+          .eq('user_id', userId)
+          .eq('provider', PROVIDER);
+        error = retry.error;
+      }
+    }
     if (error) throw error;
     return { connected: false };
   }
@@ -444,11 +618,29 @@ export class XConnectionService {
     const summaries = await summarizeMilestonesBridge(events);
     const persistence = await persistXImports(userId, summaries);
 
-    await supabaseAdmin
+    let updateErr: any = null;
+    const updateRes = await supabaseAdmin
       .from('external_account_connections')
       .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('user_id', userId)
       .eq('provider', PROVIDER);
+    updateErr = updateRes.error;
+
+    if (updateErr && (updateErr.code === 'PGRST205' || /schema cache|external_account_connections/i.test(updateErr.message ?? ''))) {
+      const created = await ensureExternalAccountConnectionsTable();
+      if (created) {
+        const retry = await supabaseAdmin
+          .from('external_account_connections')
+          .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('provider', PROVIDER);
+        updateErr = retry.error;
+      }
+    }
+    if (updateErr) {
+      // non-fatal for sync
+      logger.warn({ updateErr }, 'Failed to update last_sync_at (table may have been missing)');
+    }
 
     return {
       count: summaries.length,
@@ -468,14 +660,35 @@ export class XConnectionService {
       .limit(100);
 
     if (error) {
-      logger.warn({ error }, 'Failed to load X integration admin summary');
-
       const isMissingTable =
         error.code === 'PGRST205' ||
         /schema cache|could not find the table|external_account_connections/i.test(error.message ?? '');
 
+      if (isMissingTable) {
+        const created = await ensureExternalAccountConnectionsTable();
+        if (created) {
+          // retry the summary query
+          const { data: retryData, error: retryError } = await supabaseAdmin
+            .from('external_account_connections')
+            .select('id, user_id, provider_username, status, last_sync_at, updated_at')
+            .eq('provider', PROVIDER)
+            .order('updated_at', { ascending: false })
+            .limit(100);
+
+          if (!retryError) {
+            return {
+              configured: Boolean(config.xOAuthClientId),
+              connections: retryData ?? [],
+              total: retryData?.length ?? 0,
+            };
+          }
+        }
+      }
+
+      logger.warn({ error }, 'Failed to load X integration admin summary');
+
       const friendlyError = isMissingTable
-        ? 'External account connections table is missing. Run: npm run migrate base (includes the 20260703 X connections table). Reload schema cache in Supabase if needed.'
+        ? 'External account connections table could not be found or auto-created. Check that SUPABASE_POOLER_SESSION_URL or DATABASE_URL is set, or run: npm run migrate base'
         : error.message;
 
       return {

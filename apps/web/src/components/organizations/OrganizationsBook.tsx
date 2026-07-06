@@ -446,6 +446,64 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     analytics: mkAnalytics(28, 58, 'stable', ['Learning opportunity', 'Broadens my network']),
   },
 
+  {
+    id: 'mock-bill-skasby',
+    name: 'Bill Skasby',
+    aliases: ['Skasby', 'Bill Skasby Band'],
+    type: 'other', group_type: 'band',
+    membership_model: 'none', user_relationship: 'fan', is_public_entity: true,
+    description: 'Official band entity. Demo mode treats Bill Skasby as a group/organization, not a character, and keeps the corrected identity locked for future mentions.',
+    location: 'Independent music scene',
+    status: 'active',
+    member_count: 0,
+    usage_count: 19,
+    confidence: 0.93,
+    last_seen: subDays(new Date(), 1).toISOString(),
+    created_at: subDays(new Date(), 220).toISOString(),
+    updated_at: subDays(new Date(), 1).toISOString(),
+    metadata: {
+      identity_locked_by_user: true,
+      identity_last_corrected_at: subDays(new Date(), 1).toISOString(),
+      previous_identity: {
+        name: 'Bill Skasby',
+        type: 'character',
+        group_type: undefined,
+        description: 'Misclassified as an individual character.',
+      },
+      manual_identity_correction: {
+        name: 'Bill Skasby',
+        aliases: ['Skasby', 'Bill Skasby Band'],
+        type: 'other',
+        group_type: 'band',
+        membership_model: 'none',
+        user_relationship: 'fan',
+        is_public_entity: true,
+        description: 'Bill Skasby is a band.',
+        status: 'active',
+      },
+    },
+    members: [],
+    stories: [
+      {
+        id: 's1',
+        title: 'Correction from character to band',
+        summary: 'The card was moved out of the character book after you clarified that Bill Skasby is a band. The corrected identity should drive future detection.',
+        date: subDays(new Date(), 1).toISOString(),
+      },
+      {
+        id: 's2',
+        title: 'Repeated story mention',
+        summary: 'Bill Skasby came up while you were talking about music references in the story, not as a person in the cast.',
+        date: subDays(new Date(), 25).toISOString(),
+      },
+    ],
+    events: [
+      { id: 'e1', title: 'Identity correction saved', date: subDays(new Date(), 1).toISOString(), type: 'other' },
+    ],
+    locations: [],
+    analytics: culturalAnalytics(64),
+  },
+
   // ── SCENES ────────────────────────────────────────────────────────
 
   {

@@ -10,12 +10,13 @@ import { characterDeletionService } from '../../characterDeletionService';
 import { supabaseAdmin } from '../../supabaseClient';
 import { characterCardAuditService } from './characterCardAuditService';
 import { characterRescanStateService } from './characterRescanStateService';
+import { isWrongDomainStatus } from './characterCardAuditTypes';
 import type { CharacterCardAuditResult } from './characterCardAuditTypes';
 
 export type CharacterCardCleanupAction = {
   characterId: string;
   currentTitle: string;
-  applied: 'delete' | 'merge' | 'rename' | 'archive' | 'skipped';
+  applied: 'delete' | 'merge' | 'rename' | 'archive' | 'move' | 'skipped';
   reason: string;
   targetTitle?: string;
   mergeTargetId?: string;
@@ -38,8 +39,9 @@ function shouldAutoApply(result: CharacterCardAuditResult, metadata: Record<stri
   if (result.status === 'needs_identity_resolution') return false;
 
   if (result.status === 'junk_test_data' || result.status === 'bare_title_invalid') return true;
+  if (result.status === 'sentence_bleed' || result.status === 'pronoun_fragment') return true;
   if (result.status === 'broken_span' && result.mergeCandidates?.[0]) return true;
-  if (result.status === 'wrong_domain') return true;
+  if (isWrongDomainStatus(result.status)) return true;
   if (
     result.recommendedAction === 'rename_with_context' &&
     result.suggestedTitle &&
@@ -54,6 +56,102 @@ function shouldAutoApply(result: CharacterCardAuditResult, metadata: Record<stri
 }
 
 class CharacterCardCleanupService {
+  /**
+   * Move a wrong-domain card into its correct book (Organizations, Events,
+   * Skills, Locations, Interests). Domains with no book — tool, role, system —
+   * are archived with the review trail. Returns null when archived.
+   */
+  private async moveToTargetBook(
+    userId: string,
+    result: CharacterCardAuditResult,
+    metadata: Record<string, unknown>,
+  ): Promise<{ targetName: string } | null> {
+    const target = result.wrongDomainTarget;
+    const reviewTrail = {
+      card_audit_review: {
+        action: result.recommendedAction,
+        wrongDomainTarget: target,
+        reviewedAt: new Date().toISOString(),
+        appliedBy: 'card_cleanup',
+      },
+    };
+
+    const markCard = async (status: 'reclassified' | 'archived', extra: Record<string, unknown> = {}) => {
+      await supabaseAdmin
+        .from('characters')
+        .update({
+          status,
+          updated_at: new Date().toISOString(),
+          metadata: { ...metadata, ...reviewTrail, ...extra },
+        })
+        .eq('id', result.characterId)
+        .eq('user_id', userId);
+    };
+
+    const reclassifyTarget =
+      target === 'band' || target === 'group'
+        ? ('organization' as const)
+        : target === 'event' || target === 'process'
+          ? ('event' as const)
+          : target === 'skill'
+            ? ('skill' as const)
+            : target === 'place'
+              ? ('location' as const)
+              : null;
+
+    if (reclassifyTarget) {
+      try {
+        const { reclassifyCharacterService } = await import('../reclassifyCharacterService');
+        const outcome = await reclassifyCharacterService.performReclassification(
+          userId,
+          { id: result.characterId, name: result.currentTitle, summary: null, metadata },
+          reclassifyTarget,
+        );
+        await markCard('reclassified', {
+          reclassified_from: 'character',
+          reclassified_to: reclassifyTarget,
+          reclassified_at: new Date().toISOString(),
+          ...(outcome.targetId ? { reclassified_target_id: outcome.targetId } : {}),
+        });
+        return { targetName: outcome.targetName };
+      } catch (moveError) {
+        logger.warn(
+          { error: moveError, characterId: result.characterId, reclassifyTarget },
+          'card cleanup: book move failed — archiving instead',
+        );
+      }
+    }
+
+    if (target === 'media' || target === 'interest') {
+      try {
+        const { interestTracker } = await import('../../conversationCentered/interestTracker');
+        await interestTracker.saveInterest(userId, {
+          interest_name: result.currentTitle,
+          interest_category: 'entertainment',
+          confidence: 0.8,
+          emotional_intensity: 0.5,
+          sentiment: 0.3,
+          evidence: result.provenanceSummary ?? `Reclassified from character: ${result.currentTitle}`,
+          context: 'Moved from Character Book by card audit',
+        });
+        await markCard('reclassified', {
+          reclassified_from: 'character',
+          reclassified_to: 'interest',
+          reclassified_at: new Date().toISOString(),
+        });
+        return { targetName: result.currentTitle };
+      } catch (interestError) {
+        logger.warn(
+          { error: interestError, characterId: result.characterId },
+          'card cleanup: interest move failed — archiving instead',
+        );
+      }
+    }
+
+    await markCard('archived');
+    return null;
+  }
+
   async applySafeFixes(
     userId: string,
     opts: { dryRun?: boolean } = {},
@@ -99,8 +197,12 @@ class CharacterCardCleanupService {
           characterId: result.characterId,
           currentTitle: result.currentTitle,
           applied:
-            result.status === 'wrong_domain'
-              ? 'archive'
+            isWrongDomainStatus(result.status)
+              ? ['band', 'group', 'event', 'process', 'skill', 'place', 'media', 'interest'].includes(
+                  result.wrongDomainTarget ?? '',
+                )
+                ? 'move'
+                : 'archive'
               : result.recommendedAction === 'merge'
                 ? 'merge'
                 : result.recommendedAction === 'rename_with_context'
@@ -114,16 +216,48 @@ class CharacterCardCleanupService {
       }
 
       try {
-        if (result.status === 'junk_test_data' || result.status === 'bare_title_invalid') {
-          await characterDeletionService.deleteCharacter(userId, result.characterId, {
-            redistribute: true,
-            reason: 'character_card_audit_cleanup',
-          });
+        if (
+          result.status === 'junk_test_data' ||
+          result.status === 'bare_title_invalid' ||
+          result.status === 'sentence_bleed' ||
+          result.status === 'pronoun_fragment'
+        ) {
+          let appliedKind: 'delete' | 'archive' = 'delete';
+          try {
+            await characterDeletionService.deleteCharacter(userId, result.characterId, {
+              redistribute: true,
+              reason: 'character_card_audit_cleanup',
+            });
+          } catch (deleteError) {
+            // Deletion policy requires the pending-deletion queue — archive with
+            // the review trail instead so the card leaves the book either way.
+            logger.warn(
+              { error: deleteError, characterId: result.characterId },
+              'card cleanup: direct delete blocked — archiving instead',
+            );
+            await supabaseAdmin
+              .from('characters')
+              .update({
+                status: 'archived',
+                updated_at: new Date().toISOString(),
+                metadata: {
+                  ...metadata,
+                  card_audit_review: {
+                    action: 'delete',
+                    reviewedAt: new Date().toISOString(),
+                    appliedBy: 'card_cleanup',
+                  },
+                },
+              })
+              .eq('id', result.characterId)
+              .eq('user_id', userId);
+            appliedKind = 'archive';
+          }
           applied += 1;
           actions.push({
             characterId: result.characterId,
             currentTitle: result.currentTitle,
-            applied: 'delete',
+            applied: appliedKind,
             reason: result.reason,
           });
           continue;
@@ -147,7 +281,7 @@ class CharacterCardCleanupService {
           continue;
         }
 
-        if (result.status === 'wrong_domain') {
+        if (isWrongDomainStatus(result.status)) {
           if (result.recommendedAction === 'delete' || result.wrongDomainTarget === 'system') {
             await characterDeletionService.deleteCharacter(userId, result.characterId, {
               redistribute: true,
@@ -163,29 +297,16 @@ class CharacterCardCleanupService {
             continue;
           }
 
-          await supabaseAdmin
-            .from('characters')
-            .update({
-              status: 'archived',
-              updated_at: new Date().toISOString(),
-              metadata: {
-                ...metadata,
-                card_audit_review: {
-                  action: result.recommendedAction,
-                  wrongDomainTarget: result.wrongDomainTarget,
-                  reviewedAt: new Date().toISOString(),
-                  appliedBy: 'card_cleanup',
-                },
-              },
-            })
-            .eq('id', result.characterId)
-            .eq('user_id', userId);
+          // Move the entity into its correct book where one exists; archive
+          // only the domains that have no book (tool, role, interest, system).
+          const moved = await this.moveToTargetBook(userId, result, metadata);
           applied += 1;
           actions.push({
             characterId: result.characterId,
             currentTitle: result.currentTitle,
-            applied: 'archive',
+            applied: moved ? 'move' : 'archive',
             reason: result.reason,
+            targetTitle: moved?.targetName,
           });
           continue;
         }

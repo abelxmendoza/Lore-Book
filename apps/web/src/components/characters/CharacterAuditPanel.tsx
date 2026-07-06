@@ -35,8 +35,17 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 const STATUS_LABEL: Record<CharacterAuditStatus, string> = {
   valid_identity: 'Valid identity',
   valid_contextual_reference: 'Contextual reference',
+  contextual_character_needs_context: 'Needs contextual rename',
   needs_context: 'Needs context',
   wrong_domain: 'Wrong domain',
+  wrong_domain_tool: 'Tool / software',
+  wrong_domain_media: 'Media / fandom',
+  wrong_domain_band: 'Band / group',
+  wrong_domain_role: 'Role / occupation',
+  wrong_domain_event: 'Event / show',
+  wrong_domain_process: 'Work process',
+  sentence_bleed: 'Sentence bleed',
+  pronoun_fragment: 'Pronoun fragment',
   broken_span: 'Broken span',
   duplicate_or_merge_candidate: 'Possible duplicate',
   junk_test_data: 'Junk / test',
@@ -44,11 +53,22 @@ const STATUS_LABEL: Record<CharacterAuditStatus, string> = {
   needs_identity_resolution: 'Identity unresolved',
 };
 
+const WRONG_DOMAIN_TONE = 'text-orange-200 border-orange-500/30 bg-orange-500/10';
+
 const STATUS_TONE: Record<CharacterAuditStatus, string> = {
   valid_identity: 'text-emerald-200 border-emerald-500/30 bg-emerald-500/10',
   valid_contextual_reference: 'text-teal-200 border-teal-500/30 bg-teal-500/10',
+  contextual_character_needs_context: 'text-amber-200 border-amber-500/30 bg-amber-500/10',
   needs_context: 'text-amber-200 border-amber-500/30 bg-amber-500/10',
-  wrong_domain: 'text-orange-200 border-orange-500/30 bg-orange-500/10',
+  wrong_domain: WRONG_DOMAIN_TONE,
+  wrong_domain_tool: WRONG_DOMAIN_TONE,
+  wrong_domain_media: WRONG_DOMAIN_TONE,
+  wrong_domain_band: WRONG_DOMAIN_TONE,
+  wrong_domain_role: WRONG_DOMAIN_TONE,
+  wrong_domain_event: WRONG_DOMAIN_TONE,
+  wrong_domain_process: WRONG_DOMAIN_TONE,
+  sentence_bleed: 'text-red-200 border-red-500/30 bg-red-500/10',
+  pronoun_fragment: 'text-red-200 border-red-500/30 bg-red-500/10',
   broken_span: 'text-violet-200 border-violet-500/30 bg-violet-500/10',
   duplicate_or_merge_candidate: 'text-fuchsia-200 border-fuchsia-500/30 bg-fuchsia-500/10',
   junk_test_data: 'text-red-200 border-red-500/30 bg-red-500/10',
@@ -70,6 +90,7 @@ function suggestedFix(result: CharacterCardAuditResult): string {
   }
   if (result.recommendedAction === 'move_to_group') return 'Move to Groups book';
   if (result.recommendedAction === 'move_to_interest') return 'Move to Interests';
+  if (result.recommendedAction === 'move_to_book') return 'Move to correct book';
   if (result.recommendedAction === 'delete') return 'Remove card';
   if (result.recommendedAction === 'needs_review') return 'Review provenance before merging';
   return '—';
@@ -415,6 +436,7 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                             {editing ? (
                               <input
                                 className="w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-white"
+                                aria-label="New card title"
                                 value={renameDraft.value}
                                 onChange={(e) => setRenameDraft({ id: result.characterId, value: e.target.value })}
                                 onKeyDown={(e) => {

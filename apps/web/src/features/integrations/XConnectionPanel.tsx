@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Link2, Loader2, RefreshCw, Unlink, Twitter, Copy, Info } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 type XStatus = {
   connected: boolean;
@@ -30,6 +31,7 @@ function formatDate(value?: string | null) {
 }
 
 export function XConnectionPanel() {
+  const isMock = useShouldUseMockData();
   const [status, setStatus] = useState<XStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -37,21 +39,64 @@ export function XConnectionPanel() {
   const [error, setError] = useState<string | null>(null);
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const [usingOverride, setUsingOverride] = useState(false);
+  const [recentImports, setRecentImports] = useState<Array<{ id: string; content: string; metadata?: any; date: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      if (isMock) {
+        // Mock X integration for demo mode
+        const mockStatus: XStatus = {
+          connected: true,
+          username: 'demo_user',
+          providerUserId: 'demo123',
+          scopes: ['tweet.read', 'users.read', 'offline.access'],
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
+          lastSyncAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+          status: 'connected',
+        };
+        setStatus(mockStatus);
+
+        // Mock recent X posts (as if imported)
+        const mockPosts = [
+          { id: 'mock-x-1', content: 'Just finished an amazing hike in the mountains. The views were breathtaking! #nature', metadata: { url: 'https://x.com/demo_user/status/1' }, date: new Date(Date.now() - 1000*60*60*5).toISOString() },
+          { id: 'mock-x-2', content: 'Working on a new project called LoreBook. Super excited about the AI memory features.', metadata: { url: 'https://x.com/demo_user/status/2' }, date: new Date(Date.now() - 1000*60*60*24).toISOString() },
+          { id: 'mock-x-3', content: 'Met up with old friends today. Reminiscing about our college days always makes me smile.', metadata: { url: 'https://x.com/demo_user/status/3' }, date: new Date(Date.now() - 1000*60*60*48).toISOString() },
+        ];
+        setRecentImports(mockPosts);
+        setLoading(false);
+        return;
+      }
+
       const next = await fetchJson<XStatus>('/api/integrations/x/status');
       setStatus(next);
+
+      // Load recent X imports for preview (throughout app visibility)
+      if (next?.connected) {
+        try {
+          const res = await fetchJson<any>(`/api/entries?keyword=x-import&limit=5`);
+          const items = (res.entries || res.results || []).map((e: any) => ({
+            id: e.id,
+            content: e.content || e.summary || '',
+            metadata: e.metadata,
+            date: e.date || e.created_at,
+          }));
+          setRecentImports(items);
+        } catch {}
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load X connection');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMock]);
 
   const loadCallbackUrl = useCallback(async () => {
+    if (isMock) {
+      setCallbackUrl('https://demo.lorebook.ai/api/integrations/x/callback');
+      return;
+    }
     try {
       const res = await fetchJson<{ redirectUri: string; usingExplicitRedirectUri?: boolean; clientId?: string | null }>('/api/integrations/x/callback-url');
       setCallbackUrl(res.redirectUri);
@@ -63,12 +108,12 @@ export function XConnectionPanel() {
       // fallback for local dev
       setCallbackUrl('http://localhost:4000/api/integrations/x/callback');
     }
-  }, []);
+  }, [isMock]);
 
   useEffect(() => {
     void load();
     void loadCallbackUrl();
-  }, [load, loadCallbackUrl]);
+  }, [load, loadCallbackUrl, isMock]);
 
   // Client-side hint when we see a 127 variant (common with Vite proxy)
   useEffect(() => {
@@ -94,6 +139,30 @@ export function XConnectionPanel() {
   }, [load]);
 
   const connect = async () => {
+    if (isMock) {
+      setWorking(true);
+      setError(null);
+      setMessage(null);
+      setTimeout(() => {
+        setStatus({
+          connected: true,
+          username: 'demo_user',
+          providerUserId: 'demo123',
+          scopes: ['tweet.read', 'users.read', 'offline.access'],
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
+          lastSyncAt: new Date().toISOString(),
+          status: 'connected',
+        });
+        setRecentImports([
+          { id: 'mock-x-1', content: 'Just finished an amazing hike in the mountains. The views were breathtaking! #nature', metadata: { url: 'https://x.com/demo_user/status/1' }, date: new Date(Date.now() - 1000*60*60*5).toISOString() },
+          { id: 'mock-x-2', content: 'Working on a new project called LoreBook. Super excited about the AI memory features.', metadata: { url: 'https://x.com/demo_user/status/2' }, date: new Date(Date.now() - 1000*60*60*24).toISOString() },
+          { id: 'mock-x-3', content: 'Met up with old friends today. Reminiscing about our college days always makes me smile.', metadata: { url: 'https://x.com/demo_user/status/3' }, date: new Date(Date.now() - 1000*60*60*48).toISOString() },
+        ]);
+        setMessage('Demo mode: X connected (mock data). Imported sample posts will appear in Timeline, Memory Explorer (filter by X), and entity provenance.');
+        setWorking(false);
+      }, 800);
+      return;
+    }
     setWorking(true);
     setError(null);
     setMessage(null);
@@ -114,17 +183,32 @@ export function XConnectionPanel() {
   };
 
   const sync = async () => {
+    if (isMock) {
+      setWorking(true);
+      setError(null);
+      setMessage(null);
+      setTimeout(() => {
+        const newMock = [
+          { id: 'mock-x-4', content: 'Demo post about my latest adventure exploring the city at night. Loved the lights!', metadata: { url: 'https://x.com/demo_user/status/4' }, date: new Date().toISOString() },
+          { id: 'mock-x-5', content: 'Reflecting on how technology and memory apps like LoreBook are changing how we remember our lives.', metadata: { url: 'https://x.com/demo_user/status/5' }, date: new Date(Date.now() - 1000*60*30).toISOString() },
+        ];
+        setRecentImports(prev => [...newMock, ...prev].slice(0, 5));
+        setMessage('Demo: Synced 2 more mock X posts. They are now part of your lore with X provenance links in entities and timeline.');
+        setWorking(false);
+      }, 700);
+      return;
+    }
     setWorking(true);
     setError(null);
     setMessage(null);
     try {
       const result = await fetchJson<XSyncResult>('/api/integrations/x/sync', {
         method: 'POST',
-        body: JSON.stringify({ maxPosts: 25 }),
+        body: JSON.stringify({ maxPosts: 8 }), // latest only to avoid lore overwhelm
       });
       const imported = result.imported ?? result.count;
       const skipped = result.skipped ?? 0;
-      setMessage(`Imported ${imported} original X posts${skipped ? `; skipped ${skipped} already in LoreBook` : ''}.`);
+      setMessage(`Synced ${imported} recent X posts into lore (journal + ER entities/relationships with full provenance back to the X post)${skipped ? `; skipped ${skipped} duplicates` : ''}.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync X posts');
@@ -134,6 +218,24 @@ export function XConnectionPanel() {
   };
 
   const disconnect = async () => {
+    if (isMock) {
+      setWorking(true);
+      setTimeout(() => {
+        setStatus({
+          connected: false,
+          username: null,
+          providerUserId: null,
+          scopes: [],
+          expiresAt: null,
+          lastSyncAt: null,
+          status: 'disconnected',
+        });
+        setRecentImports([]);
+        setMessage('Demo: X disconnected (mock).');
+        setWorking(false);
+      }, 400);
+      return;
+    }
     setWorking(true);
     setError(null);
     setMessage(null);
@@ -171,12 +273,12 @@ export function XConnectionPanel() {
           </div>
 
           <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-            Import your original posts and replies into LoreBook as personal history.
-            X post IDs and permalinks are preserved for provenance.
+            Import your original posts and replies into LoreBook as personal history (journal entries + entities/relationships via the ER pipeline).
+            Full post text is preserved. Any entities referenced or created will be stamped with provenance back to the originating X post (see entity metadata.external_sources and entry metadata).
           </p>
 
-          {/* Guidance for OAuth setup — the #1 cause of "Something went wrong / give access" + 400 errors on /authorize */}
-          {!loading && !status?.connected && callbackUrl && (
+          {/* Guidance for OAuth setup — hidden in demo/mock mode */}
+          {!isMock && !loading && !status?.connected && callbackUrl && (
             <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-200/90">
               <div className="flex items-start gap-1.5">
                 <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -225,6 +327,29 @@ export function XConnectionPanel() {
               </div>
             </div>
           )}
+
+          {/* Recent X imports preview — surfaces the integration throughout the lore UI */}
+          {recentImports.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[10px] uppercase tracking-wide text-white/40 mb-1.5">Recent imports (appear in Timeline, Memory Explorer, Entities with provenance)</p>
+              <div className="space-y-1.5">
+                {recentImports.slice(0, 3).map((imp) => {
+                  const xUrl = imp.metadata?.url;
+                  return (
+                    <div key={imp.id} className="rounded border border-white/10 bg-white/[0.015] p-2 text-xs flex gap-2">
+                      <Twitter className="h-3.5 w-3.5 mt-0.5 text-sky-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white/80 truncate">{imp.content}</div>
+                        {xUrl && (
+                          <a href={xUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline text-[10px]">view on X →</a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
@@ -262,7 +387,7 @@ export function XConnectionPanel() {
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-              {working ? 'Connecting…' : 'Connect X'}
+              {working ? 'Connecting…' : (isMock ? 'Connect X (demo)' : 'Connect X')}
             </button>
           )}
         </div>

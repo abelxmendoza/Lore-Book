@@ -8,6 +8,7 @@ import { FeatureCard } from '../components/landing/FeatureCard';
 import { IntelligenceSection } from '../components/landing/IntelligenceSection';
 import { CTASection } from '../components/landing/CTASection';
 import { FounderContact } from '../components/landing/FounderContact';
+import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
 import {
   BookOpen,
   Users,
@@ -19,9 +20,12 @@ import {
   RefreshCw,
   Heart,
   ScanSearch,
+  Twitter,
 } from 'lucide-react';
 
 export default function Landing() {
+  const isMock = useShouldUseMockData();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black overflow-x-clip">
       <LandingHeader />
@@ -69,6 +73,98 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+        {/* Mock X Integration Demo on Homepage — only in demo mode */}
+        {isMock && (
+          <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-6xl mx-auto">
+              <div className="text-center mb-10 sm:mb-12">
+                <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-medium text-sky-300 mb-4">
+                  <Twitter className="h-3.5 w-3.5" />
+                  MOCK X INTEGRATION (DEMO MODE)
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3 px-2 sm:px-0">
+                  Pull in your X posts as lore
+                </h2>
+                <p className="text-base sm:text-lg text-white/60 max-w-2xl mx-auto px-4 sm:px-0">
+                  Connect once. Your recent posts flow straight into the system — full text preserved, entities and relationships extracted with provenance back to the original tweet.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
+                {/* Mock X Posts "imported" */}
+                <div className="rounded-2xl border border-sky-500/20 bg-black/40 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Twitter className="h-5 w-5 text-sky-400" />
+                      <span className="font-semibold text-white">Recent posts from @demo_user</span>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Synced</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { text: "Just wrapped the biggest project of my career. The team crushed it.", time: "2h ago" },
+                      { text: "Hiking the ridge at sunrise — reminded me why I moved out here.", time: "Yesterday" },
+                      { text: "Coffee with an old mentor today. Same advice, different decade.", time: "3d ago" },
+                    ].map((post, i) => (
+                      <div key={i} className="rounded-xl border border-white/10 bg-white/[0.015] p-4">
+                        <p className="text-sm text-white/90 leading-relaxed">“{post.text}”</p>
+                        <div className="mt-2 flex items-center justify-between text-[10px] text-white/40">
+                          <span>{post.time}</span>
+                          <span className="text-sky-400 hover:text-sky-300 cursor-pointer">View on X →</span>
+                        </div>
+                        <div className="mt-2 text-[10px] text-emerald-400/80">→ Became journal entry + 2 new entity links (with X source)</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 text-center">
+                    <button 
+                      onClick={() => window.location.href = '/demo'} 
+                      className="text-xs px-4 py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 transition"
+                    >
+                      Connect X in demo →
+                    </button>
+                  </div>
+                </div>
+
+                {/* What happens in the app */}
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-6 flex flex-col">
+                  <div className="text-sm font-semibold text-white/80 mb-3">Instantly becomes part of your lore</div>
+
+                  <div className="space-y-4 flex-1">
+                    <div className="flex gap-3">
+                      <div className="text-emerald-400 mt-0.5">→</div>
+                      <div>
+                        <div className="text-sm text-white">Full post text + original URL saved</div>
+                        <div className="text-xs text-white/50">Preserved forever with source provenance</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="text-emerald-400 mt-0.5">→</div>
+                      <div>
+                        <div className="text-sm text-white">Entities extracted &amp; linked</div>
+                        <div className="text-xs text-white/50">“The team”, “the ridge”, “old mentor” become queryable lore</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="text-emerald-400 mt-0.5">→</div>
+                      <div>
+                        <div className="text-sm text-white">Shows up everywhere</div>
+                        <div className="text-xs text-white/50">Timeline • Memory Explorer (filter by X) • Character cards with “sourced from X”</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-white/10 text-[11px] text-white/40">
+                    Mock data shown for demo. Real sync uses your X OAuth connection.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-black/20">
           <div className="max-w-4xl mx-auto text-center">

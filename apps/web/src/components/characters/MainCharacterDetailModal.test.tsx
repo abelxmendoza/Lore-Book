@@ -63,7 +63,8 @@ describe('MainCharacterDetailModal', () => {
 
     expect(screen.getByTestId('main-character-modal')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 2, name: 'You' }).length).toBeGreaterThan(0);
-    expect(screen.getByText('Alex Rivera')).toBeInTheDocument();
+    // Name renders in both the hero and the editable identity section.
+    expect(screen.getAllByText('Alex Rivera').length).toBeGreaterThan(0);
     expect(screen.getByText(/Your personal profile/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('Your messages')).toBeInTheDocument();

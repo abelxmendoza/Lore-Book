@@ -197,6 +197,39 @@ export interface DerivedGroupContext {
   hierarchy: DerivedGroupHierarchy;
 }
 
+export type OrganizationMentionSource = 'chat_messages' | 'conversation_messages' | 'entity_facts';
+
+export interface OrganizationMentionTrace {
+  id: string;
+  source: OrganizationMentionSource;
+  source_id: string;
+  session_id?: string | null;
+  thread_title?: string | null;
+  role?: string | null;
+  matched_label: string;
+  occurrence_count: number;
+  snippet: string;
+  created_at?: string | null;
+  metadata?: Record<string, any> | null;
+}
+
+export interface OrganizationMentionTraceResult {
+  labels: string[];
+  total_mentions: number;
+  source_counts: Record<OrganizationMentionSource, number>;
+  mentions: OrganizationMentionTrace[];
+  facts: Array<{
+    id: string;
+    fact: string;
+    category?: string | null;
+    confidence?: number | null;
+    status?: string | null;
+    metadata?: Record<string, any> | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  }>;
+}
+
 export interface Organization {
   id: string;
   user_id: string;
@@ -270,6 +303,188 @@ export class OrganizationService {
     return load;
   }
 
+  async getMentionTrace(
+    userId: string,
+    organizationId: string,
+    options: { limit?: number } = {}
+  ): Promise<OrganizationMentionTraceResult> {
+    const org = await this.getOrganization(userId, organizationId);
+    if (!org) {
+      return {
+        labels: [],
+        total_mentions: 0,
+        source_counts: { chat_messages: 0, conversation_messages: 0, entity_facts: 0 },
+        mentions: [],
+        facts: [],
+      };
+    }
+
+    const labels = [...new Set([org.name, ...(org.aliases ?? [])].map(label => label?.trim()).filter(Boolean) as string[])];
+    const limit = Math.max(1, Math.min(options.limit ?? 80, 200));
+    const mentionsByKey = new Map<string, OrganizationMentionTrace>();
+
+    const countOccurrences = (text: string, label: string): number => {
+      if (!text || !label) return 0;
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b${escaped}\\b`, 'gi');
+      return text.match(re)?.length ?? 0;
+    };
+
+    const snippetFor = (text: string, label: string): string => {
+      const idx = text.toLowerCase().indexOf(label.toLowerCase());
+      if (idx < 0) return text.slice(0, 260);
+      const start = Math.max(0, idx - 120);
+      const end = Math.min(text.length, idx + label.length + 160);
+      const prefix = start > 0 ? '...' : '';
+      const suffix = end < text.length ? '...' : '';
+      return `${prefix}${text.slice(start, end)}${suffix}`;
+    };
+
+    const addMention = (mention: OrganizationMentionTrace) => {
+      const key = `${mention.source}:${mention.source_id}:${mention.matched_label}`;
+      const existing = mentionsByKey.get(key);
+      if (existing) {
+        existing.occurrence_count += mention.occurrence_count;
+        return;
+      }
+      mentionsByKey.set(key, mention);
+    };
+
+    for (const label of labels) {
+      const pattern = `%${label}%`;
+      const [chatRows, conversationRows] = await Promise.all([
+        supabaseAdmin
+          .from('chat_messages')
+          .select('id, session_id, role, content, created_at, metadata')
+          .eq('user_id', userId)
+          .ilike('content', pattern)
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabaseAdmin
+          .from('conversation_messages')
+          .select('id, session_id, role, content, created_at, metadata')
+          .eq('user_id', userId)
+          .ilike('content', pattern)
+          .order('created_at', { ascending: false })
+          .limit(limit),
+      ]);
+
+      if (chatRows.error) logger.debug({ error: chatRows.error, userId, organizationId }, 'chat_messages mention trace unavailable');
+      if (conversationRows.error) logger.debug({ error: conversationRows.error, userId, organizationId }, 'conversation_messages mention trace unavailable');
+
+      for (const row of (chatRows.data ?? []) as Array<Record<string, any>>) {
+        const content = String(row.content ?? '');
+        const count = countOccurrences(content, label);
+        if (count <= 0) continue;
+        addMention({
+          id: `chat-${row.id}-${label}`,
+          source: 'chat_messages',
+          source_id: String(row.id),
+          session_id: row.session_id ? String(row.session_id) : null,
+          role: row.role ? String(row.role) : null,
+          matched_label: label,
+          occurrence_count: count,
+          snippet: snippetFor(content, label),
+          created_at: row.created_at ? String(row.created_at) : null,
+          metadata: (row.metadata as Record<string, any> | null) ?? null,
+        });
+      }
+
+      for (const row of (conversationRows.data ?? []) as Array<Record<string, any>>) {
+        const content = String(row.content ?? '');
+        const count = countOccurrences(content, label);
+        if (count <= 0) continue;
+        addMention({
+          id: `conversation-${row.id}-${label}`,
+          source: 'conversation_messages',
+          source_id: String(row.id),
+          session_id: row.session_id ? String(row.session_id) : null,
+          role: row.role ? String(row.role) : null,
+          matched_label: label,
+          occurrence_count: count,
+          snippet: snippetFor(content, label),
+          created_at: row.created_at ? String(row.created_at) : null,
+          metadata: (row.metadata as Record<string, any> | null) ?? null,
+        });
+      }
+
+    }
+
+    const mentions = [...mentionsByKey.values()]
+      .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+      .slice(0, limit);
+
+    const sessionIds = [...new Set(mentions.map(m => m.session_id).filter(Boolean) as string[])];
+    if (sessionIds.length > 0) {
+      const { data: sessions, error } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('id, title, summary')
+        .eq('user_id', userId)
+        .in('id', sessionIds);
+      if (!error) {
+        const titleById = new Map((sessions ?? []).map((row: any) => [String(row.id), String(row.title || row.summary || '')]));
+        for (const mention of mentions) {
+          if (mention.session_id) mention.thread_title = titleById.get(mention.session_id) || null;
+        }
+      }
+    }
+
+    const { data: factData, error: factError } = await supabaseAdmin
+      .from('entity_facts')
+      .select('id, fact, category, confidence, status, metadata, created_at, updated_at')
+      .eq('user_id', userId)
+      .eq('entity_type', 'organization')
+      .eq('entity_id', organizationId)
+      .is('superseded_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(80);
+    if (factError) logger.debug({ error: factError, userId, organizationId }, 'entity_facts mention trace unavailable');
+
+    for (const row of ((factData ?? []) as Array<Record<string, any>>)) {
+      const fact = String(row.fact ?? '');
+      const matchedLabel = labels.find(label => countOccurrences(fact, label) > 0) ?? org.name;
+      const count = Math.max(1, countOccurrences(fact, matchedLabel));
+      addMention({
+        id: `fact-${row.id}`,
+        source: 'entity_facts',
+        source_id: String(row.id),
+        matched_label: matchedLabel,
+        occurrence_count: count,
+        snippet: fact,
+        created_at: row.updated_at ? String(row.updated_at) : row.created_at ? String(row.created_at) : null,
+        metadata: (row.metadata as Record<string, any> | null) ?? null,
+      });
+    }
+
+    const finalMentions = [...mentionsByKey.values()]
+      .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+      .slice(0, limit);
+
+    const source_counts: Record<OrganizationMentionSource, number> = {
+      chat_messages: 0,
+      conversation_messages: 0,
+      entity_facts: 0,
+    };
+    for (const mention of finalMentions) source_counts[mention.source] += mention.occurrence_count;
+
+    return {
+      labels,
+      total_mentions: finalMentions.reduce((sum, mention) => sum + mention.occurrence_count, 0),
+      source_counts,
+      mentions: finalMentions,
+      facts: ((factData ?? []) as Array<Record<string, any>>).map(row => ({
+        id: String(row.id),
+        fact: String(row.fact ?? ''),
+        category: row.category ? String(row.category) : null,
+        confidence: typeof row.confidence === 'number' ? row.confidence : null,
+        status: row.status ? String(row.status) : null,
+        metadata: (row.metadata as Record<string, any> | null) ?? null,
+        created_at: row.created_at ? String(row.created_at) : null,
+        updated_at: row.updated_at ? String(row.updated_at) : null,
+      })),
+    };
+  }
+
   /** One cache-miss fan-out: 1 org read + 4 batched child reads (O(orgs) rows). */
   private async loadOrganizationsFromDb(userId: string): Promise<Organization[]> {
     try {
@@ -281,7 +496,7 @@ export class OrganizationService {
 
       if (error) throw error;
 
-      const organizationRows = orgs || [];
+      const organizationRows = ((orgs || []) as unknown) as Organization[];
       if (organizationRows.length === 0) {
         orgListCache.set(userId, { at: Date.now(), data: [] });
         return [];
@@ -363,7 +578,7 @@ export class OrganizationService {
    */
   async getOrganization(userId: string, organizationId: string): Promise<Organization | null> {
     try {
-      const { data: org, error } = await supabaseAdmin
+      const { data: orgData, error } = await supabaseAdmin
         .from('organizations')
         .select(ORG_COLS)
         .eq('id', organizationId)
@@ -371,6 +586,7 @@ export class OrganizationService {
         .single();
 
       if (error) throw error;
+      const org = (orgData as unknown) as Organization | null;
       if (!org) return null;
 
       const [members, stories, events, locations] = await Promise.all([

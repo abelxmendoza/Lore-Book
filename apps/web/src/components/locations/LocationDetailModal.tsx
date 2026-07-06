@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2 } from 'lucide-react';
+import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
