@@ -22,6 +22,8 @@ import { fetchCharacterList } from '../api/characterList';
 import { skillsApi } from '../api/skills';
 import { fetchWhatChanged } from '../api/whatChanged';
 import { useRecentChatThreads } from '../contexts/ChatThreadContext';
+import { XConnectionPanel } from '../features/integrations/XConnectionPanel';
+import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import { useExternalHub } from '../hooks/useExternalHub';
 import { useQuestBoard } from '../hooks/useQuests';
 import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
@@ -308,6 +310,9 @@ export const HomeScreen = () => {
   const recentThreads = useRecentChatThreads(3);
   const isMock = useShouldUseMockData();
   const { latest: externalLatest, sources, ingest, refresh } = useExternalHub();
+  // Server-driven authority: the real X panel on Home is admin-only.
+  const { authority } = useAccountAuthority();
+  const showAdminXPanel = !isMock && authority?.canAccessAdmin === true;
 
   const userId = user?.id ?? '';
   const displayName =
@@ -416,6 +421,10 @@ export const HomeScreen = () => {
 
         {/* ── 3b. Career — resume-sourced job history ─────────────────────── */}
         <CareerHomeCard />
+
+        {/* ── X Integration (admin account) — real connection, sync receipt,
+               lore intake controls, right on Home ─────────────────────────── */}
+        {showAdminXPanel && <XConnectionPanel />}
 
         {/* ── Mock X Integration (Demo Mode only) ─────────────────────────── */}
         {isMock && (
