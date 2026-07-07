@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveMention } from './entityResolutionCore';
 
-// "Ink" / "Sol" / "Genni" are real personal names that classifyEntity cannot
+// "Ink" / "Sol" / "Renna" are real personal names that classifyEntity cannot
 // type without context — they classify UNKNOWN in isolation. Before the fix,
 // resolveMention skipped (and ingestion dropped) such a mention even when the
 // extractor had already typed it PERSON.

@@ -70,7 +70,7 @@ describe('materializeSpatialEvents', () => {
     const { deps } = fakeDeps();
     const res = await materializeSpatialEvents(
       'u1',
-      [{ name: 'Bad Dogg Compound' }, { name: "Genni's Pit" }, { name: 'my age' }],
+      [{ name: 'Bad Dogg Compound' }, { name: "Renna's Pit" }, { name: 'my age' }],
       { deps },
     );
     expect(res.created).toBe(0);

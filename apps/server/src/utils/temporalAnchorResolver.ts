@@ -333,7 +333,7 @@ export function resolveTemporalAnchor(
   }
 
   // ── Entity-anchored expressions ────────────────────────────────────────────
-  // "when Sol and I…" / "when I was with Genni…" / "when I was at UCSB…"
+  // "when Sol and I…" / "when I was with Renna…" / "when I was at UCSB…"
   // If we have entity timestamp data, use it as the anchor window.
 
   if (entityDates && entityDates.size > 0) {

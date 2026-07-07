@@ -55,14 +55,14 @@ describe('ThreadSummaryBar', () => {
 
   it('uses one clean display summary when short duplicates medium', () => {
     expect(getDisplaySummary({
-      short: 'Discussed Shyla and Genni.',
-      medium: 'Discussed Shyla and Genni. You also clarified that Cyberpunk was a game mention, not a person.',
+      short: 'Discussed Mara and Renna.',
+      medium: 'Discussed Mara and Renna. You also clarified that Cyberpunk was a game mention, not a person.',
       long: 'Long recap',
       version: 1,
       messageCount: 4,
-      people: ['Shyla', 'Genni'],
+      people: ['Mara', 'Renna'],
       places: [],
       themes: ['character cleanup'],
-    })).toBe('Discussed Shyla and Genni. You also clarified that Cyberpunk was a game mention, not a person.');
+    })).toBe('Discussed Mara and Renna. You also clarified that Cyberpunk was a game mention, not a person.');
   });
 });

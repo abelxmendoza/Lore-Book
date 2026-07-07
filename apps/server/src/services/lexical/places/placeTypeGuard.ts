@@ -159,7 +159,7 @@ export function guardPlaceCandidate(
 
   // Spatial Context Resolver — catches the event/venue-area/relative-position/
   // generic-reference/age cases the patterns above miss ("Ink's Ska Prom",
-  // "Genni's Pit", "front of Shyla", "Security Kickout Venue", "my age").
+  // "Renna's Pit", "front of Shyla", "Security Kickout Venue", "my age").
   const spatial = classifySpatialReference(text);
   if (!spatial.isPlace) {
     const rejectedAs: NonPlaceEntityType =

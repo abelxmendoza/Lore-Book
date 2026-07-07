@@ -130,7 +130,7 @@ export function resolveMention(
    * The type the upstream extractor already assigned to this mention (omega
    * EntityType, e.g. 'PERSON'). resolveMention re-classifies the bare surface
    * form for ranking, but classifyEntity needs context to type a personal name —
-   * "Ink"/"Sol"/"Genni" classify UNKNOWN in isolation. Without this, a freshly
+   * "Ink"/"Sol"/"Renna" classify UNKNOWN in isolation. Without this, a freshly
    * extracted, correctly-typed person with no existing match was SKIPPED (dropped
    * from ingestion entirely). When provided and concrete, it prevents that skip.
    */
@@ -151,7 +151,7 @@ export function resolveMention(
     // entity — either the context-free classifier typed it, OR the upstream
     // extractor already typed it (it had the full message context we lack here).
     // Trusting the extractor's concrete type is what stops real, correctly-typed
-    // people ("Ink", "Sol", "Genni") from being skipped and silently dropped.
+    // people ("Ink", "Sol", "Renna") from being skipped and silently dropped.
     const selfClassifiable = classification !== 'UNKNOWN' && classification !== 'UNCLASSIFIED';
     const providedConcrete =
       !!providedType && providedType !== 'UNKNOWN' && providedType !== 'UNCLASSIFIED';

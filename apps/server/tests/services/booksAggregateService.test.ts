@@ -95,9 +95,9 @@ describe('booksAggregateService.loadCharactersBook', () => {
           metadata: {},
         },
         {
-          id: 'genni-1',
+          id: 'renna-1',
           user_id: 'user-1',
-          name: 'Genni',
+          name: 'Renna',
           importance_score: 8,
           updated_at: '2026-06-03T00:00:00.000Z',
           status: 'active',
@@ -108,8 +108,8 @@ describe('booksAggregateService.loadCharactersBook', () => {
 
     const book = await loadCharactersBook('user-1');
 
-    expect(book.characters.map((c: any) => c.name)).toEqual(['Shyla', 'Genni']);
-    expect(book.characters.map((c: any) => c.id)).toEqual(['shyla-new', 'genni-1']);
+    expect(book.characters.map((c: any) => c.name)).toEqual(['Shyla', 'Renna']);
+    expect(book.characters.map((c: any) => c.id)).toEqual(['shyla-new', 'renna-1']);
     expect(book.counts.characters).toBe(2);
     expect(book.duplicate_groups).toEqual([]);
   });

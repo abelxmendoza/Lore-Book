@@ -21,7 +21,7 @@ describe('materializeVenueAreas', () => {
     const { d, inserted } = deps([VENUE]);
     const res = await materializeVenueAreas(
       'u1',
-      [{ name: "Genni's Pit", evidence: 'the pit at Bad Dogg Compound was wild' }],
+      [{ name: "Renna's Pit", evidence: 'the pit at Bad Dogg Compound was wild' }],
       d,
     );
     expect(res.created).toBe(1);

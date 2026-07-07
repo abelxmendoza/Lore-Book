@@ -18,7 +18,7 @@
  * Time complexity: O(|E| × iterations) — fast for the social/entity graph sizes in LoreBook.
  *
  * Usage in LoreBook:
- *   - Seed on entities extracted from the user's current query (Sol, Genni, etc.)
+ *   - Seed on entities extracted from the user's current query (Sol, Renna, etc.)
  *   - All nodes connected to those entities (via entity_mentions adjacency) get scored
  *   - Top-k PPR nodes identify the most contextually relevant memory entries to surface
  */

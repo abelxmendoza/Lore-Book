@@ -15,7 +15,7 @@ import { classifySpatialReference } from '../lorebook/quality/spatialContextReso
 import { supabaseAdmin } from '../supabaseClient';
 
 export interface VenueAreaRef {
-  /** Candidate text the place guard rejected as a venue area ("Genni's Pit"). */
+  /** Candidate text the place guard rejected as a venue area ("Renna's Pit"). */
   name: string;
   /** The evidence line — scanned for the parent venue. */
   evidence?: string;

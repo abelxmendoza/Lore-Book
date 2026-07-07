@@ -42,7 +42,7 @@ describe('validateReclassification', () => {
     });
 
     it('rejects venue sub-area context spans', () => {
-      expect(validateReclassification("Genni's Pit", '', 'location').allowed).toBe(false);
+      expect(validateReclassification("Renna's Pit", '', 'location').allowed).toBe(false);
     });
 
     it('allows real venues', () => {

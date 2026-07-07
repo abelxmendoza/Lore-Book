@@ -26,9 +26,11 @@ import { inferScope } from '../er/scopeInference';
 import { writeRelationship } from '../er/writeRelationship';
 import { entityRelationshipDetector } from './conversationCentered/entityRelationshipDetector';
 import { entityScopeService } from './conversationCentered/entityScopeService';
+import { hasPersonProvenanceEvidence } from './characters/audit/characterIdentityGate';
 import { entityResolutionCache } from './entityResolutionCache';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
+import { isIndividualPersonName } from '../utils/personNameValidation';
 
 const RESOLVE_CHUNK_SIZE = 5;
 
@@ -201,6 +203,60 @@ async function stampEntityProvenance(
 }
 
 /**
+ * How many NEW entities a single external post may create. External posts are
+ * low-context one-liners; they may freely REFERENCE existing lore, but must
+ * not flood the books with new cards.
+ */
+const EXTERNAL_POST_NEW_ENTITY_CAP = 2;
+
+/**
+ * Conservative candidate gate for externally-sourced text (X posts):
+ * - Candidates matching EXISTING entities always pass (reference, no creation).
+ * - New candidates spend a small per-post budget, and new PEOPLE additionally
+ *   need a person-shaped name plus person evidence in the post itself.
+ */
+async function filterExternalPostCandidates<T extends { name: string; type: string }>(
+  userId: string,
+  candidates: T[],
+  postText: string
+): Promise<T[]> {
+  const kept: T[] = [];
+  let newBudget = EXTERNAL_POST_NEW_ENTITY_CAP;
+
+  for (const candidate of candidates) {
+    const cached = await entityResolutionCache
+      .getCachedResolution(userId, candidate.name)
+      .catch(() => null);
+    if (cached?.resolved_entity_id) {
+      kept.push(candidate);
+      continue;
+    }
+    const existing = await omegaMemoryService
+      .findEntityByNameOrAlias(userId, candidate.name, candidate.type as Entity['type'])
+      .catch(() => null);
+    if (existing) {
+      kept.push(candidate);
+      continue;
+    }
+
+    if (newBudget <= 0) {
+      logger.debug({ userId, name: candidate.name }, 'external post: new-entity budget spent — skipped');
+      continue;
+    }
+    if (candidate.type === 'PERSON') {
+      if (!isIndividualPersonName(candidate.name) || !hasPersonProvenanceEvidence(postText)) {
+        logger.debug({ userId, name: candidate.name }, 'external post: person candidate lacks evidence — skipped');
+        continue;
+      }
+    }
+    kept.push(candidate);
+    newBudget -= 1;
+  }
+
+  return kept;
+}
+
+/**
  * Shared ER ingestion for any text. Call from journal and conversation.
  */
 export async function runERIngestionForText(
@@ -208,11 +264,18 @@ export async function runERIngestionForText(
   text: string,
   opts?: RunERIngestionOpts
 ): Promise<void> {
-  const extracted = await omegaMemoryService.extractEntities(text);
+  let extracted = await omegaMemoryService.extractEntities(text);
   // Relationship detection needs 2+ entities, but externally-sourced text
   // (X posts) should still resolve + stamp a single mentioned entity.
   if (extracted.length === 0) return;
   if (extracted.length < 2 && !opts?.provenance) return;
+
+  // External posts get the conservative gate: reference existing lore freely,
+  // create at most a couple of well-evidenced new entities per post.
+  if (opts?.provenance) {
+    extracted = await filterExternalPostCandidates(userId, extracted, text);
+    if (extracted.length === 0) return;
+  }
 
   const resolved = await resolveEntitiesWithCache(userId, extracted);
   if (resolved.size === 0) return;

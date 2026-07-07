@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { classifySpatialReference, isSpatialPlace } from './spatialContextResolver';
 
-const PERSONS = ['Shyla', 'Genni', 'Ink', 'Ashley', 'Ruben'];
+const PERSONS = ['Shyla', 'Renna', 'Ink', 'Ashley', 'Ruben'];
 
 describe('classifySpatialReference — boundary rules', () => {
   it('Rule 2: "front of Shyla" → spatial relationship to a person, not a place', () => {
@@ -34,8 +34,8 @@ describe('classifySpatialReference — boundary rules', () => {
     expect(r.isPlace).toBe(false);
   });
 
-  it("Rule 4/8: \"Genni's Pit\" → venue area, not a person-owned place", () => {
-    const r = classifySpatialReference("Genni's Pit", { knownPersonNames: PERSONS });
+  it("Rule 4/8: \"Renna's Pit\" → venue area, not a person-owned place", () => {
+    const r = classifySpatialReference("Renna's Pit", { knownPersonNames: PERSONS });
     expect(r.referenceType).toBe('venue_area');
     expect(r.isPlace).toBe(false);
   });

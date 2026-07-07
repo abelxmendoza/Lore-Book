@@ -96,13 +96,13 @@ describe('characterRegistry', () => {
       return chain([]);
     });
 
-    const ordinary = await characterRegistry.classifyForCreation('user-1', 'Genni');
+    const ordinary = await characterRegistry.classifyForCreation('user-1', 'Renna');
     expect(ordinary).toMatchObject({ action: 'reject', reason: 'known_location_or_org' });
 
-    const omegaPerson = await characterRegistry.classifyForCreation('user-1', 'Genni', {
+    const omegaPerson = await characterRegistry.classifyForCreation('user-1', 'Renna', {
       sourceEntityType: 'person',
     });
-    expect(omegaPerson).toMatchObject({ action: 'create', cleanName: 'Genni' });
+    expect(omegaPerson).toMatchObject({ action: 'create', cleanName: 'Renna' });
   });
 
   it('uses entityResolutionCore when ENTITY_RESOLUTION_CORE=on', async () => {

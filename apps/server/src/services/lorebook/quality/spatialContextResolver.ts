@@ -130,7 +130,7 @@ export function classifySpatialReference(name: string, hints: SpatialResolverHin
   // Rule 5/11 — generic / unnamed venue references.
   if (GENERIC_VENUE_REF.has(key)) return ref(text, 'unresolved_location', 'generic_venue_reference');
 
-  // Rule 1/2/10 — relative position ("front of Shyla", "next to Genni").
+  // Rule 1/2/10 — relative position ("front of Shyla", "next to Renna").
   const spatial = SPATIAL_PREFIX.exec(text);
   if (spatial) {
     const target = (spatial[1] ?? spatial[2] ?? '').trim();
@@ -141,7 +141,7 @@ export function classifySpatialReference(name: string, hints: SpatialResolverHin
     return ref(text, 'relative_position', 'spatial_preposition_not_place', { target });
   }
 
-  // Possessive lead — "Ink's Ska Prom", "Genni's Pit".
+  // Possessive lead — "Ink's Ska Prom", "Renna's Pit".
   const poss = text.match(/^(.+?)['’]s\s+(.+)$/);
   const remainder = poss ? poss[2].trim() : text;
   const remainderKey = normalizeNameKey(remainder);
@@ -159,7 +159,7 @@ export function classifySpatialReference(name: string, hints: SpatialResolverHin
     });
   }
 
-  // Rule 4/8 — venue sub-area (incl. "Genni's Pit": person possessive doesn't own an area).
+  // Rule 4/8 — venue sub-area (incl. "Renna's Pit": person possessive doesn't own an area).
   if (VENUE_AREA_NOUNS.has(remainderKey) || VENUE_AREA_NOUNS.has(lastToken(remainderKey))) {
     return ref(text, 'venue_area', poss ? 'possessive_person_venue_area' : 'venue_area_not_place', {
       venueArea: remainder,
