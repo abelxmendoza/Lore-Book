@@ -2643,6 +2643,46 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   </div>
                 )}
 
+                {/* Originating external posts (X/Twitter) — provenance back to the source */}
+                {(() => {
+                  const raw = editedCharacter.metadata?.external_sources;
+                  const sources = (Array.isArray(raw) ? raw : []) as Array<{
+                    provider?: string;
+                    sourceId?: string;
+                    url?: string;
+                    postedAt?: string;
+                    excerpt?: string;
+                  }>;
+                  const xSources = sources.filter((s) => s.provider === 'x' && s.url);
+                  if (xSources.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {xSources.slice(0, 3).map((s) => (
+                        <Tooltip
+                          key={s.sourceId ?? s.url}
+                          content={s.excerpt ? `“${s.excerpt}”` : 'This entity came from one of your X posts'}
+                        >
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[9px] sm:text-[10px] text-sky-300 hover:bg-sky-500/20 transition"
+                          >
+                            <Twitter className="h-2.5 w-2.5" />
+                            From X post
+                            {s.postedAt ? ` · ${new Date(s.postedAt).toLocaleDateString()}` : ''}
+                          </a>
+                        </Tooltip>
+                      ))}
+                      {xSources.length > 3 && (
+                        <span className="text-[9px] text-white/40 self-center">
+                          +{xSources.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Compact info row - reduced for desktop space */}
                 <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-0.5 text-[9px] sm:text-[10px]">
                   {editedCharacter.role && (

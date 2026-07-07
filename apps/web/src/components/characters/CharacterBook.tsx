@@ -220,6 +220,17 @@ export const dummyCharacters: Character[] = [
       relationship_type: 'friend',
       closeness_score: 95,
       first_met: '2018-09-15',
+      // Demo of X-post provenance: entity referenced in a synced X post links back to it
+      external_sources: [
+        {
+          provider: 'x',
+          sourceId: 'mock-x-3',
+          url: 'https://x.com/demo_user/status/3',
+          postedAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+          excerpt:
+            'Met up with old friends today. Reminiscing about our college days always makes me smile.',
+        },
+      ],
       social_standing: { score: 0.84, tier: 'inner_circle', degree: 5, connector: true, computed_at: new Date().toISOString() },
       relationships: {
         'char-alex-boyfriend': { type: 'friend', closeness: 75 },

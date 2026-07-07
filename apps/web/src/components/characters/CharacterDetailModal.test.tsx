@@ -187,7 +187,7 @@ describe('CharacterDetailModal', () => {
       );
 
       // Rendered in both mobile and desktop headers in jsdom.
-      const [typeBadge] = screen.getAllByRole('button', { name: /change entity type/i });
+      const [typeBadge] = screen.getAllByRole('button', { name: /reclassify entity type/i });
       await user.click(typeBadge);
 
       await user.click(screen.getByRole('menuitem', { name: /location \/ place/i }));
@@ -217,7 +217,7 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      const [typeBadge] = screen.getAllByRole('button', { name: /change entity type/i });
+      const [typeBadge] = screen.getAllByRole('button', { name: /reclassify entity type/i });
       await user.click(typeBadge);
       await user.click(screen.getByRole('menuitem', { name: /location \/ place/i }));
 
@@ -238,7 +238,42 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      expect(screen.queryByRole('button', { name: /change entity type/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /reclassify entity type/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('X post provenance', () => {
+    it('shows a link back to the originating X post when metadata.external_sources has one', () => {
+      const fromXPost: Character = {
+        ...mockCharacter,
+        name: 'Dave Fan',
+        metadata: {
+          external_sources: [
+            {
+              provider: 'x',
+              sourceId: '123',
+              url: 'https://x.com/demo_user/status/123',
+              postedAt: new Date('2026-07-05').toISOString(),
+              excerpt: 'Dave n Busters Hollywood got the best arcade games anywhere',
+            },
+          ],
+        },
+      };
+
+      render(
+        <CharacterDetailModal character={fromXPost} onClose={mockOnClose} onUpdate={mockOnUpdate} />
+      );
+
+      const link = screen.getByRole('link', { name: /from x post/i });
+      expect(link).toHaveAttribute('href', 'https://x.com/demo_user/status/123');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('shows no X chip without external sources', () => {
+      render(
+        <CharacterDetailModal character={mockCharacter} onClose={mockOnClose} onUpdate={mockOnUpdate} />
+      );
+      expect(screen.queryByRole('link', { name: /from x post/i })).not.toBeInTheDocument();
     });
   });
 

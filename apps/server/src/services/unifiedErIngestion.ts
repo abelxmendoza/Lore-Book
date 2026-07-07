@@ -149,12 +149,20 @@ async function stampEntityProvenance(
       ? 'characters'
       : 'omega_entities';
   try {
-    const { data: row } = await supabaseAdmin
-      .from(table)
-      .select(table === 'characters' ? 'metadata, context_of_mention' : 'metadata')
-      .eq('id', entity.id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: row } =
+      table === 'characters'
+        ? await supabaseAdmin
+            .from('characters')
+            .select('metadata, context_of_mention')
+            .eq('id', entity.id)
+            .eq('user_id', userId)
+            .maybeSingle()
+        : await supabaseAdmin
+            .from('omega_entities')
+            .select('metadata')
+            .eq('id', entity.id)
+            .eq('user_id', userId)
+            .maybeSingle();
     if (!row) return;
 
     const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}) };
