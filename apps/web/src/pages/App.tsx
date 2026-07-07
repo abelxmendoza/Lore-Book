@@ -361,9 +361,11 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
-      {/* Shell: viewport-locked surfaces fill the screen; book pages scroll inside main. */}
+      {/* Shell: viewport-locked surfaces fill the screen; book pages scroll inside main.
+          min-w-0 is load-bearing: as a horizontal-flex child, min-width:auto would let
+          wide content (long unwrappable lines) blow the layout past the viewport on phones. */}
       <div
-        className={`flex-1 flex flex-col min-h-0 ${
+        className={`flex-1 min-w-0 flex flex-col min-h-0 ${
           isViewportLocked || isBookScrollSurface ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
         }`}
       >
