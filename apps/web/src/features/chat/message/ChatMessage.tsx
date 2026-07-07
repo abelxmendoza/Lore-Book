@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen, AlertTriangle } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
-import { ChatLoadingDots } from '../components/ChatLoadingDots';
+import { ComposingIndicator } from '../components/ComposingIndicator';
 import { parseConnections } from '../../../utils/parseConnections';
 import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPanel';
 import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
@@ -408,14 +408,31 @@ export const ChatMessage = ({
             {!isUser ? (
               <div className="w-full min-w-0 prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
                 {message.isStreaming && !message.content.trim() ? (
-                  <ChatLoadingDots label="Composing" />
-                ) : (
-                  <MarkdownRenderer 
-                    content={message.content} 
-                    isStreaming={message.isStreaming} 
-                    className={message.isStreaming ? 'chat-message-streaming' : ''}
-                    entityMentions={inlineEntityMentions}
+                  <ComposingIndicator
+                    sourceCount={message.ragStats?.sourceCount}
+                    contextItems={message.ragStats?.contextItems}
+                    activePersona={message.activePersona}
+                    intent={message.metadata?.intent}
                   />
+                ) : (
+                  <>
+                    {message.isStreaming && (
+                      <ComposingIndicator
+                        compact
+                        contentStarted
+                        sourceCount={message.ragStats?.sourceCount}
+                        contextItems={message.ragStats?.contextItems}
+                        activePersona={message.activePersona}
+                        intent={message.metadata?.intent}
+                      />
+                    )}
+                    <MarkdownRenderer
+                      content={message.content}
+                      isStreaming={message.isStreaming}
+                      className={message.isStreaming ? 'chat-message-streaming' : ''}
+                      entityMentions={inlineEntityMentions}
+                    />
+                  </>
                 )}
               </div>
             ) : (

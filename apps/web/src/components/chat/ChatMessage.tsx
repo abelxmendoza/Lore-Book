@@ -26,6 +26,9 @@ import { MemoryCognitionPanel } from './MemoryCognitionPanel';
 import { CognitionMetaPanel } from './CognitionMetaPanel';
 import { HowLoreBookUnderstoodThis } from './HowLoreBookUnderstoodThis';
 import type { MemoryFeedbackEvent } from '../../hooks/useChatStream';
+import { ComposingIndicator } from '../../features/chat/components/ComposingIndicator';
+import type { CharacterVariant } from '../../types/certifiedEntity';
+import type { LoreEntityKind } from '../../lib/loreEntities';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -68,12 +71,23 @@ export type Message = {
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
+  metadata?: {
+    intent?: string;
+    why?: string;
+  };
   cognitionFeedback?: MemoryFeedbackEvent;
   modeDecision?: { mode: string; confidence: number; reasoning: string };
   ragStats?: { sourceCount: number; cacheHit: boolean; retrievalMs: number; contextItems: number };
   activePersona?: string;
   narrativeStory?: import('./NarrativeStoryPanel').StoryOfSelf;
   narrativeEntryCount?: number;
+  mentionedEntities?: Array<{
+    id: string;
+    name: string;
+    type: 'character' | 'location' | 'organization' | 'skill' | 'event';
+    characterVariant?: CharacterVariant;
+    loreKind?: LoreEntityKind;
+  }>;
 };
 
 type ChatMessageProps = {
@@ -151,6 +165,7 @@ export const ChatMessage = ({
 
   const isUser = message.role === 'user';
   const isSystem = message.isSystemMessage;
+  const isComposing = !isUser && message.isStreaming;
 
   // System messages get special styling
   if (isSystem) {
@@ -175,15 +190,15 @@ export const ChatMessage = ({
       onMouseLeave={() => setShowActions(false)}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+        <div className={`flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center ${isComposing && !message.content.trim() ? 'chat-avatar-thinking' : ''}`}>
           <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
       <Card
-        className={`max-w-[80%] relative ${
+        className={`max-w-[92%] sm:max-w-[80%] relative ${
           isUser
             ? 'bg-primary/10 border-primary/30'
-            : 'bg-black/40 border-border/60'
+            : `bg-black/40 border-border/60 ${isComposing ? 'chat-bubble-streaming' : ''}`
         }`}
       >
         {/* Message Actions Menu */}
@@ -280,7 +295,28 @@ export const ChatMessage = ({
           {/* Main Content */}
           <div className="relative">
             {!isUser ? (
-              <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+              !message.content.trim() && message.isStreaming ? (
+                <ComposingIndicator
+                  sourceCount={message.ragStats?.sourceCount}
+                  contextItems={message.ragStats?.contextItems}
+                  activePersona={message.activePersona}
+                  intent={message.metadata?.intent}
+                />
+              ) : (
+                <>
+                  {message.isStreaming && (
+                    <ComposingIndicator
+                      compact
+                      contentStarted
+                      sourceCount={message.ragStats?.sourceCount}
+                      contextItems={message.ragStats?.contextItems}
+                      activePersona={message.activePersona}
+                      intent={message.metadata?.intent}
+                    />
+                  )}
+                  <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+                </>
+              )
             ) : (
               <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
                 {message.content}
@@ -509,4 +545,3 @@ export const ChatMessage = ({
     </div>
   );
 };
-

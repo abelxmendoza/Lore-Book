@@ -157,7 +157,11 @@ export const ChatFirstInterface = () => {
       role: 'assistant',
       content: '',
       timestamp: new Date(),
-      isStreaming: true
+      isStreaming: true,
+      metadata: {
+        intent: 'conversation',
+        why: 'Checking relevant context before drafting the response.',
+      }
     };
 
     setMessages((prev) => [...prev, assistantMessage]);

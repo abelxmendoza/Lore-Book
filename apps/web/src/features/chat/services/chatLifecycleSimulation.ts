@@ -202,6 +202,22 @@ async function streamAssistantReply(
     timestamp: new Date(),
     isStreaming: true,
     persistStatus: 'pending',
+    activePersona: 'LoreBook',
+    ragStats: {
+      sourceCount: 3,
+      cacheHit: false,
+      retrievalMs: 220,
+      contextItems: 5,
+    },
+    modeDecision: {
+      mode: 'story_context',
+      confidence: 0.82,
+      reasoning: 'Demo mode is simulating source lookup, context connection, and response drafting.',
+    },
+    metadata: {
+      intent: 'story_context',
+      why: 'Demo mode is showing the composing flow with a visible reasoning summary.',
+    },
   });
 
   await runLoadingStages(adapter);

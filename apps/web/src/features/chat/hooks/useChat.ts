@@ -330,6 +330,10 @@ export const useChat = () => {
       timestamp: new Date(),
       isStreaming: true,
       persistStatus: 'pending',
+      metadata: {
+        intent: 'conversation',
+        why: 'Checking relevant context before drafting the response.',
+      },
     };
 
     mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, assistantMessage]);
