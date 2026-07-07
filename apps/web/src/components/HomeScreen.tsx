@@ -12,11 +12,10 @@
 import {
   Sparkles, X, Users, Target, TrendingUp,
   MessageSquareText, ArrowRight, ChevronRight,
-  Clock, Zap, Star, BookOpen, RefreshCw,
+  Clock, Zap, Star, BookOpen,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Twitter } from 'lucide-react';
 
 import { fetchCharacterList } from '../api/characterList';
 import { skillsApi } from '../api/skills';
@@ -24,7 +23,6 @@ import { fetchWhatChanged } from '../api/whatChanged';
 import { useRecentChatThreads } from '../contexts/ChatThreadContext';
 import { XConnectionPanel } from '../features/integrations/XConnectionPanel';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
-import { useExternalHub } from '../hooks/useExternalHub';
 import { useQuestBoard } from '../hooks/useQuests';
 import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
@@ -309,10 +307,10 @@ export const HomeScreen = () => {
   const navigate  = useNavigate();
   const recentThreads = useRecentChatThreads(3);
   const isMock = useShouldUseMockData();
-  const { latest: externalLatest, sources, ingest, refresh } = useExternalHub();
-  // Server-driven authority: the real X panel on Home is admin-only.
+  // X panel on Home: demo mode always (panel self-mocks), real accounts only
+  // with server-driven admin authority.
   const { authority } = useAccountAuthority();
-  const showAdminXPanel = !isMock && authority?.canAccessAdmin === true;
+  const showXPanel = isMock || authority?.canAccessAdmin === true;
 
   const userId = user?.id ?? '';
   const displayName =
@@ -422,50 +420,10 @@ export const HomeScreen = () => {
         {/* ── 3b. Career — resume-sourced job history ─────────────────────── */}
         <CareerHomeCard />
 
-        {/* ── X Integration (admin account) — real connection, sync receipt,
-               lore intake controls, right on Home ─────────────────────────── */}
-        {showAdminXPanel && <XConnectionPanel />}
-
-        {/* ── Mock X Integration (Demo Mode only) ─────────────────────────── */}
-        {isMock && (
-          <div className="rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-950/30 via-black/20 to-sky-950/10 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <Twitter className="h-4 w-4 text-sky-400" />
-                <span className="text-sm font-semibold text-sky-300">X / Twitter • Mock Sync</span>
-              </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300">Connected (demo)</span>
-            </div>
-            <div className="p-4 space-y-3">
-              <p className="text-xs text-white/60">Latest posts from your X account are pulled in as journal entries and enriched with entities/relationships.</p>
-              <div className="space-y-2">
-                {((externalLatest || []).filter(e => e.source === 'x').length > 0
-                  ? (externalLatest || []).filter(e => e.source === 'x').slice(0, 2)
-                  : [
-                      { text: "Just wrapped the final milestone for the LoreBook alpha. Feeling proud of the team.", timestamp: new Date(Date.now() - 1000*60*60*4).toISOString() },
-                      { text: "Late night thoughts: how our memories shape the stories we tell ourselves.", timestamp: new Date(Date.now() - 1000*60*60*26).toISOString() },
-                    ]
-                ).map((entry, idx) => (
-                  <div key={idx} className="rounded-lg bg-black/30 border border-white/10 p-3 text-xs">
-                    <div className="text-white/80 line-clamp-2">“{(entry as any).text || (entry as any).summary || entry.text}”</div>
-                    <div className="mt-1 text-[10px] text-sky-400/70 flex items-center gap-1">
-                      <span>Posted {new Date((entry as any).timestamp || (entry as any).date || Date.now()).toLocaleDateString()}</span>
-                      <span className="text-white/30">•</span>
-                      <span>Imported with full provenance</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-[10px] text-white/40">View full in Memory Explorer (filter: X) or Timeline. Entities linked back to original posts.</div>
-              <button
-                onClick={() => ingest('x')}
-                className="mt-2 w-full text-xs py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 flex items-center justify-center gap-1.5"
-              >
-                <RefreshCw className="h-3 w-3" /> Sync latest X posts (demo)
-              </button>
-            </div>
-          </div>
-        )}
+        {/* ── X Integration — full panel (connect, sync receipt, lore intake
+               modes). Admin accounts get the real connection; demo mode gets
+               the panel's built-in mock state so the feature is explorable. ── */}
+        {showXPanel && <XConnectionPanel />}
 
         {/* ── 4–6. Three panels: People · Quests · Skills ─────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

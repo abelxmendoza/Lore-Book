@@ -57,6 +57,11 @@ vi.mock('../contexts/GuestContext', () => ({
   useGuest: () => ({ isGuest: false }),
 }));
 
+// Controls demo mode per-test (default: real mode)
+vi.mock('../hooks/useShouldUseMockData', () => ({
+  useShouldUseMockData: vi.fn(() => false),
+}));
+
 import { HomeScreen } from './HomeScreen';
 
 function wrap(ui: React.ReactElement) {
@@ -159,6 +164,31 @@ describe('HomeScreen', () => {
     await waitFor(() => {
       // Should still render the page without crashing
       expect(container.innerHTML.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows the full X integration panel with mock data in demo mode', async () => {
+    const { useShouldUseMockData } = await import('../hooks/useShouldUseMockData');
+    vi.mocked(useShouldUseMockData).mockReturnValue(true);
+    try {
+      vi.mocked((await import('../lib/api')).fetchJson).mockResolvedValue({ characters: [] });
+      wrap(<HomeScreen />);
+      await waitFor(() => {
+        // Panel self-mocks in demo mode: connected as @demo_user with intake modes
+        expect(screen.getByText('@demo_user')).toBeInTheDocument();
+      }, { timeout: 3000 });
+      expect(screen.getByText(/Reference only/i)).toBeInTheDocument();
+      expect(screen.getByText(/Review first/i)).toBeInTheDocument();
+    } finally {
+      vi.mocked(useShouldUseMockData).mockReturnValue(false);
+    }
+  });
+
+  it('hides the X integration panel for non-admin real accounts', async () => {
+    vi.mocked((await import('../lib/api')).fetchJson).mockResolvedValue({ characters: [] });
+    wrap(<HomeScreen />);
+    await waitFor(() => {
+      expect(screen.queryByText(/Lore intake/i)).not.toBeInTheDocument();
     });
   });
 });
