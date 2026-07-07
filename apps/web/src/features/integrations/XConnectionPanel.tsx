@@ -346,13 +346,14 @@ export function XConnectionPanel() {
 
   return (
     <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-sky-950/20 via-white/[0.02] to-transparent p-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 ring-1 ring-sky-500/25">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 ring-1 ring-sky-500/25">
           <Twitter className="h-5 w-5 text-sky-400" />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            <Twitter className="h-4 w-4 text-sky-400 sm:hidden" />
             <h3 className="text-base font-semibold text-white">X (Twitter)</h3>
             {status?.connected ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
@@ -535,7 +536,7 @@ export function XConnectionPanel() {
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
           {loading ? (
             <div className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -547,7 +548,7 @@ export function XConnectionPanel() {
                 type="button"
                 onClick={sync}
                 disabled={working}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2.5 sm:py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 {working ? 'Bringing in your posts…' : 'Sync my posts'}
@@ -556,7 +557,7 @@ export function XConnectionPanel() {
                 type="button"
                 onClick={disconnect}
                 disabled={working}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.02] px-3.5 py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.02] px-3.5 py-2.5 sm:py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Unlink className="h-4 w-4" />
                 Disconnect
@@ -567,7 +568,7 @@ export function XConnectionPanel() {
               type="button"
               onClick={connect}
               disabled={working}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2.5 sm:py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               {working ? 'Connecting…' : (isMock ? 'Connect X (demo)' : 'Connect X')}

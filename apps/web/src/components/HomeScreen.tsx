@@ -387,9 +387,9 @@ export const HomeScreen = () => {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10 space-y-6">
 
         {/* ── 1. Compact greeting header ──────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white truncate">
               {getGreeting()},{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
                 {displayName}
@@ -404,10 +404,11 @@ export const HomeScreen = () => {
           <button
             type="button"
             onClick={() => navigate('/chat')}
-            className="hidden sm:flex items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:border-purple-500/60 hover:bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-300 transition-all"
+            aria-label="New chat"
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:border-purple-500/60 hover:bg-purple-500/20 px-3 py-2 sm:px-4 text-sm font-medium text-purple-300 transition-all touch-manipulation"
           >
             <MessageSquareText className="h-4 w-4" />
-            New chat
+            <span className="hidden sm:inline">New chat</span>
           </button>
         </div>
 
