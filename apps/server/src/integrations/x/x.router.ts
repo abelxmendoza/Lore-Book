@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { logger } from '../../logger';
 import { requireAuth, type AuthenticatedRequest } from '../../middleware/auth';
 
-import { xConnectionService } from './xConnection.service';
+import { xConnectionService, LORE_INTAKE_MODES } from './xConnection.service';
 
 export const xIntegrationRouter = Router();
 export const xIntegrationCallbackRouter = Router();
@@ -15,6 +15,21 @@ const beginSchema = z.object({
 
 const syncSchema = z.object({
   maxPosts: z.number().min(5).max(100).optional(),
+});
+
+const settingsSchema = z.object({
+  loreIntakeMode: z.enum(LORE_INTAKE_MODES as [string, ...string[]]),
+});
+
+const confirmCandidateSchema = z.object({
+  name: z.string().min(2).max(120),
+  type: z.string().min(2).max(40),
+  provenance: z.object({
+    sourceId: z.string().optional(),
+    url: z.string().url().optional(),
+    postedAt: z.string().optional(),
+    excerpt: z.string().max(500).optional(),
+  }),
 });
 
 function accountErrorRedirect(req?: any) {
@@ -64,6 +79,38 @@ xIntegrationRouter.post('/sync', requireAuth, async (req: AuthenticatedRequest, 
     return res.json(result);
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to sync X posts' });
+  }
+});
+
+xIntegrationRouter.post('/settings', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = settingsSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  try {
+    const result = await xConnectionService.setLoreIntakeMode(
+      req.user!.id,
+      parsed.data.loreIntakeMode as (typeof LORE_INTAKE_MODES)[number]
+    );
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to update X settings' });
+  }
+});
+
+xIntegrationRouter.post('/lore-candidate/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = confirmCandidateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten());
+
+  try {
+    const { name, type, provenance } = parsed.data;
+    const result = await xConnectionService.confirmLoreCandidate(
+      req.user!.id,
+      { name, type },
+      { provider: 'x', ...provenance }
+    );
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to add candidate to lore' });
   }
 });
 

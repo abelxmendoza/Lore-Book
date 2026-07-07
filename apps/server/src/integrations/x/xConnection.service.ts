@@ -12,7 +12,55 @@ import postgres from 'postgres';
 import { xAdapter, type XResponse } from '../../external/x.adapter';
 import { summarizeMilestonesBridge } from '../../external/summarizer.bridge';
 import type { ExternalSummary } from '../../external/types';
-import { ingestExternalPost, type ExternalProvenance } from '../../services/unifiedErIngestion';
+import {
+  ingestExternalPost,
+  confirmExternalLoreCandidate,
+  DEFAULT_LORE_INTAKE_MODE,
+  type ExternalProvenance,
+  type ExternalLoreIntakeMode,
+  type ExternalIngestReport,
+  type ExternalEntityRef,
+} from '../../services/unifiedErIngestion';
+
+export const LORE_INTAKE_MODES: readonly ExternalLoreIntakeMode[] = [
+  'reference_only',
+  'conservative',
+  'review_first',
+];
+
+/** Held candidate enriched with the post it came from, so confirm can stamp it. */
+export type HeldLoreCandidate = ExternalEntityRef & { provenance: ExternalProvenance };
+
+export type XSyncLoreReport = {
+  referenced: ExternalEntityRef[];
+  created: ExternalEntityRef[];
+  heldForReview: HeldLoreCandidate[];
+};
+
+function loreIntakeModeFrom(metadata: Record<string, unknown> | null | undefined): ExternalLoreIntakeMode {
+  const mode = metadata?.lore_intake_mode;
+  return LORE_INTAKE_MODES.includes(mode as ExternalLoreIntakeMode)
+    ? (mode as ExternalLoreIntakeMode)
+    : DEFAULT_LORE_INTAKE_MODE;
+}
+
+function mergeLoreReports(
+  aggregate: XSyncLoreReport,
+  report: ExternalIngestReport,
+  provenance: ExternalProvenance
+): void {
+  const seen = (list: ExternalEntityRef[], ref: ExternalEntityRef) =>
+    list.some((r) => r.name.toLowerCase() === ref.name.toLowerCase() && r.type === ref.type);
+  for (const ref of report.referenced) {
+    if (!seen(aggregate.referenced, ref)) aggregate.referenced.push(ref);
+  }
+  for (const ref of report.created) {
+    if (!seen(aggregate.created, ref)) aggregate.created.push(ref);
+  }
+  for (const ref of report.heldForReview) {
+    if (!seen(aggregate.heldForReview, ref)) aggregate.heldForReview.push({ ...ref, provenance });
+  }
+}
 
 const PROVIDER = 'x';
 const X_AUTHORIZE_URL = 'https://x.com/i/oauth2/authorize';
@@ -249,6 +297,7 @@ function serializeConnection(row: XConnectionRow | null) {
     lastSyncAt: row?.last_sync_at ?? null,
     status: row?.status ?? 'disconnected',
     metadata: row?.metadata ?? {},
+    loreIntakeMode: loreIntakeModeFrom(row?.metadata as Record<string, unknown> | null),
   };
 }
 
@@ -465,7 +514,11 @@ async function importedSourceIds(userId: string, sourceIds: string[]): Promise<S
   );
 }
 
-async function persistXImports(userId: string, summaries: ExternalSummary[]) {
+async function persistXImports(
+  userId: string,
+  summaries: ExternalSummary[],
+  loreIntakeMode: ExternalLoreIntakeMode
+) {
   const importable = summaries.filter((summary) => summary.sourceId && (summary.text || summary.summary));
   const alreadyImported = await importedSourceIds(
     userId,
@@ -475,6 +528,7 @@ async function persistXImports(userId: string, summaries: ExternalSummary[]) {
   let imported = 0;
   let skipped = 0;
   const entryIds: string[] = [];
+  const lore: XSyncLoreReport = { referenced: [], created: [], heldForReview: [] };
 
   for (const summary of importable) {
     if (!summary.sourceId || alreadyImported.has(summary.sourceId)) {
@@ -513,7 +567,14 @@ async function persistXImports(userId: string, summaries: ExternalSummary[]) {
     };
 
     try {
-      await ingestExternalPost(userId, entry.id, summary.text ?? summary.summary, provenance);
+      const report = await ingestExternalPost(
+        userId,
+        entry.id,
+        summary.text ?? summary.summary,
+        provenance,
+        loreIntakeMode
+      );
+      if (report) mergeLoreReports(lore, report, provenance);
     } catch (ingestErr) {
       logger.warn({ ingestErr, sourceId: summary.sourceId }, 'X post ER ingestion failed (non-fatal)');
     }
@@ -523,7 +584,7 @@ async function persistXImports(userId: string, summaries: ExternalSummary[]) {
     imported += 1;
   }
 
-  return { imported, skipped, entryIds };
+  return { imported, skipped, entryIds, lore };
 }
 
 export class XConnectionService {
@@ -616,7 +677,8 @@ export class XConnectionService {
     const payload = await fetchUserPosts(accessToken, xUserId, maxPosts);
     const events = xAdapter(payload);
     const summaries = await summarizeMilestonesBridge(events);
-    const persistence = await persistXImports(userId, summaries);
+    const loreIntakeMode = loreIntakeModeFrom(row.metadata as Record<string, unknown> | null);
+    const persistence = await persistXImports(userId, summaries, loreIntakeMode);
 
     let updateErr: any = null;
     const updateRes = await supabaseAdmin
@@ -648,7 +710,37 @@ export class XConnectionService {
       skipped: persistence.skipped,
       entryIds: persistence.entryIds,
       events: summaries,
+      loreIntakeMode,
+      lore: persistence.lore,
     };
+  }
+
+  /** Persist the user's lore-intake preference on the connection row. */
+  async setLoreIntakeMode(userId: string, mode: ExternalLoreIntakeMode) {
+    if (!LORE_INTAKE_MODES.includes(mode)) throw new Error('Invalid lore intake mode');
+    const row = await getConnection(userId);
+    if (!row) throw new Error('No X connection found. Connect X first.');
+    const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}), lore_intake_mode: mode };
+    const { error } = await supabaseAdmin
+      .from('external_account_connections')
+      .update({ metadata, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('provider', PROVIDER);
+    if (error) throw error;
+    return { loreIntakeMode: mode };
+  }
+
+  /** "Add to lore" on a held sync-receipt candidate — user-confirmed creation. */
+  async confirmLoreCandidate(
+    userId: string,
+    candidate: { name: string; type: string },
+    provenance: ExternalProvenance
+  ) {
+    const entity = await confirmExternalLoreCandidate(userId, candidate, {
+      ...provenance,
+      provider: PROVIDER,
+    });
+    return { entity };
   }
 
   async adminSummary() {

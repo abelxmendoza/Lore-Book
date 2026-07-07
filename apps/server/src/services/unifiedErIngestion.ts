@@ -44,11 +44,35 @@ export type ExternalProvenance = {
   excerpt?: string;
 };
 
+/** How much lore an external sync may create on its own. */
+export type ExternalLoreIntakeMode =
+  /** Only link posts to entities that already exist — never create. */
+  | 'reference_only'
+  /** Default: reference freely, create at most a couple of well-evidenced new entities per post. */
+  | 'conservative'
+  /** Never auto-create; new candidates are held for the user to confirm. */
+  | 'review_first';
+
+export const DEFAULT_LORE_INTAKE_MODE: ExternalLoreIntakeMode = 'conservative';
+
+export type ExternalEntityRef = { id?: string; name: string; type: string };
+
+/** Receipt of what an external post actually did to the user's lore. */
+export type ExternalIngestReport = {
+  /** Existing entities the post linked to (stamped, nothing created). */
+  referenced: ExternalEntityRef[];
+  /** New entities the post created (conservative mode only). */
+  created: ExternalEntityRef[];
+  /** Viable new candidates held back by the intake mode — user can confirm. */
+  heldForReview: ExternalEntityRef[];
+};
+
 export type RunERIngestionOpts = {
   memoryId?: string;
   sourceMessageId?: string;
   sourceJournalEntryId?: string;
   provenance?: ExternalProvenance;
+  loreIntakeMode?: ExternalLoreIntakeMode;
 };
 
 function dedupeByNameAndType(
@@ -210,50 +234,83 @@ async function stampEntityProvenance(
 const EXTERNAL_POST_NEW_ENTITY_CAP = 2;
 
 /**
- * Conservative candidate gate for externally-sourced text (X posts):
+ * Candidate gate for externally-sourced text (X posts):
  * - Candidates matching EXISTING entities always pass (reference, no creation).
- * - New candidates spend a small per-post budget, and new PEOPLE additionally
- *   need a person-shaped name plus person evidence in the post itself.
+ * - Viable new candidates route by intake mode: created (conservative, within
+ *   the per-post budget), or held for the user to confirm.
+ * - New PEOPLE always need a person-shaped name plus person evidence in the
+ *   post itself — junk person candidates are dropped in every mode.
  */
-async function filterExternalPostCandidates<T extends { name: string; type: string }>(
+export async function partitionExternalPostCandidates<T extends { name: string; type: string }>(
   userId: string,
   candidates: T[],
-  postText: string
-): Promise<T[]> {
-  const kept: T[] = [];
-  let newBudget = EXTERNAL_POST_NEW_ENTITY_CAP;
+  postText: string,
+  mode: ExternalLoreIntakeMode
+): Promise<{ existing: T[]; fresh: T[]; held: T[] }> {
+  const existing: T[] = [];
+  const fresh: T[] = [];
+  const held: T[] = [];
+  let newBudget = mode === 'conservative' ? EXTERNAL_POST_NEW_ENTITY_CAP : 0;
 
   for (const candidate of candidates) {
     const cached = await entityResolutionCache
       .getCachedResolution(userId, candidate.name)
       .catch(() => null);
     if (cached?.resolved_entity_id) {
-      kept.push(candidate);
+      existing.push(candidate);
       continue;
     }
-    const existing = await omegaMemoryService
+    const found = await omegaMemoryService
       .findEntityByNameOrAlias(userId, candidate.name, candidate.type as Entity['type'])
       .catch(() => null);
-    if (existing) {
-      kept.push(candidate);
+    if (found) {
+      existing.push(candidate);
       continue;
     }
 
-    if (newBudget <= 0) {
-      logger.debug({ userId, name: candidate.name }, 'external post: new-entity budget spent — skipped');
-      continue;
-    }
+    // Quality floor applies in every mode — junk person candidates never
+    // surface, not even as review suggestions.
     if (candidate.type === 'PERSON') {
       if (!isIndividualPersonName(candidate.name) || !hasPersonProvenanceEvidence(postText)) {
-        logger.debug({ userId, name: candidate.name }, 'external post: person candidate lacks evidence — skipped');
+        logger.debug({ userId, name: candidate.name }, 'external post: person candidate lacks evidence — dropped');
         continue;
       }
     }
-    kept.push(candidate);
-    newBudget -= 1;
+
+    if (newBudget > 0) {
+      fresh.push(candidate);
+      newBudget -= 1;
+    } else {
+      held.push(candidate);
+    }
   }
 
-  return kept;
+  return { existing, fresh, held };
+}
+
+/**
+ * User-confirmed creation of a held external candidate ("Add to lore" from the
+ * sync receipt). Resolves/creates through the normal ER path and stamps the
+ * originating post.
+ */
+export async function confirmExternalLoreCandidate(
+  userId: string,
+  candidate: { name: string; type: string },
+  provenance: ExternalProvenance
+): Promise<ExternalEntityRef> {
+  const resolved = await omegaMemoryService.resolveEntities(userId, [
+    { name: candidate.name, type: candidate.type as Entity['type'] },
+  ]);
+  const entity = resolved[0];
+  await entityResolutionCache.cacheResolution(userId, {
+    entity_name: candidate.name,
+    resolved_entity_id: entity.id,
+    entity_type: entity.type,
+    confidence: 1,
+    aliases: entity.aliases ?? [],
+  });
+  await stampEntityProvenance(userId, entity, provenance);
+  return { id: entity.id, name: entity.primary_name, type: entity.type };
 }
 
 /**
@@ -263,37 +320,52 @@ export async function runERIngestionForText(
   userId: string,
   text: string,
   opts?: RunERIngestionOpts
-): Promise<void> {
+): Promise<ExternalIngestReport | undefined> {
+  const report: ExternalIngestReport | undefined = opts?.provenance
+    ? { referenced: [], created: [], heldForReview: [] }
+    : undefined;
+
   let extracted = await omegaMemoryService.extractEntities(text);
   // Relationship detection needs 2+ entities, but externally-sourced text
   // (X posts) should still resolve + stamp a single mentioned entity.
-  if (extracted.length === 0) return;
-  if (extracted.length < 2 && !opts?.provenance) return;
+  if (extracted.length === 0) return report;
+  if (extracted.length < 2 && !opts?.provenance) return report;
 
-  // External posts get the conservative gate: reference existing lore freely,
-  // create at most a couple of well-evidenced new entities per post.
-  if (opts?.provenance) {
-    extracted = await filterExternalPostCandidates(userId, extracted, text);
-    if (extracted.length === 0) return;
+  // External posts get the intake gate: reference existing lore freely; new
+  // entity creation routes by the user's lore intake mode.
+  let freshNames = new Set<string>();
+  if (opts?.provenance && report) {
+    const mode = opts.loreIntakeMode ?? DEFAULT_LORE_INTAKE_MODE;
+    const partition = await partitionExternalPostCandidates(userId, extracted, text, mode);
+    report.heldForReview = partition.held.map((c) => ({ name: c.name, type: c.type }));
+    freshNames = new Set(partition.fresh.map((c) => c.name.toLowerCase().trim()));
+    extracted = [...partition.existing, ...partition.fresh];
+    if (extracted.length === 0) return report;
   }
 
   const resolved = await resolveEntitiesWithCache(userId, extracted);
-  if (resolved.size === 0) return;
+  if (resolved.size === 0) return report;
 
-  if (opts?.provenance) {
+  if (opts?.provenance && report) {
     for (const entity of resolved.values()) {
       await stampEntityProvenance(userId, entity, opts.provenance);
+      const ref: ExternalEntityRef = { id: entity.id, name: entity.primary_name, type: entity.type };
+      if (freshNames.has(entity.primary_name?.toLowerCase().trim() ?? '')) {
+        report.created.push(ref);
+      } else {
+        report.referenced.push(ref);
+      }
     }
   }
-  if (resolved.size < 2) return;
+  if (resolved.size < 2) return report;
 
   const resolvedMap = buildResolvedMap(resolved);
 
   const pairs = getResolvablePairs(resolvedMap);
-  if (!hasAnyDirectEdgePossible(pairs)) return;
+  if (!hasAnyDirectEdgePossible(pairs)) return report;
 
   const entitiesWithNames = toDetectorEntities(resolved);
-  if (entitiesWithNames.length < 2) return;
+  if (entitiesWithNames.length < 2) return report;
 
   const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
     userId,
@@ -386,12 +458,14 @@ export async function ingestExternalPost(
   userId: string,
   journalEntryId: string,
   text: string,
-  provenance: ExternalProvenance
-): Promise<void> {
-  await runERIngestionForText(userId, text, {
+  provenance: ExternalProvenance,
+  loreIntakeMode: ExternalLoreIntakeMode = DEFAULT_LORE_INTAKE_MODE
+): Promise<ExternalIngestReport | undefined> {
+  return runERIngestionForText(userId, text, {
     memoryId: journalEntryId,
     sourceJournalEntryId: journalEntryId,
     provenance,
+    loreIntakeMode,
   });
 }
 
