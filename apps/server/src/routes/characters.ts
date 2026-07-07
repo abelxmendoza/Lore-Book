@@ -1538,6 +1538,14 @@ router.post(
   })
 );
 
+/** Curated archetype presets for the picker (shared vocabulary with inference). */
+router.get('/archetype-presets', requireAuth, async (_req: AuthenticatedRequest, res) => {
+  const { CHARACTER_ARCHETYPE_PRESETS } = await import(
+    '../services/characters/characterArchetypeService'
+  );
+  res.json({ presets: CHARACTER_ARCHETYPE_PRESETS });
+});
+
 router.use('/:id', characterTitleRoutes);
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1767,13 +1775,35 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Check if character exists and belongs to user
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata, status')
+      .select('id, name, alias, archetype, role, metadata, status')
       .eq('id', req.params.id)
       .eq('user_id', userId)
       .single();
 
     if (checkError || !existing) {
       return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Alias corrections teach the system: removed aliases are never re-attached
+    // to this character by ingestion/dedupe; added ones are confirmed equivalences.
+    if (updateData.alias) {
+      const before = new Set(((existing.alias as string[] | null) ?? []).map((a) => a.toLowerCase().trim()));
+      const after = new Set(updateData.alias.map((a) => a.toLowerCase().trim()));
+      const removedAliases = ((existing.alias as string[] | null) ?? []).filter((a) => !after.has(a.toLowerCase().trim()));
+      const addedAliases = updateData.alias.filter((a) => !before.has(a.toLowerCase().trim()));
+      if (removedAliases.length > 0 || addedAliases.length > 0) {
+        void import('../services/entityLearningService').then(({ entityLearningService }) =>
+          entityLearningService
+            .recordAliasCorrectionLearning({
+              userId,
+              entityId: existing.id,
+              entityName: existing.name,
+              removedAliases,
+              addedAliases,
+            })
+            .catch((err) => logger.warn({ err }, 'alias correction learning skipped'))
+        );
+      }
     }
 
     // Merge social_media into metadata
@@ -1906,6 +1936,50 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         });
     }
 
+    if (metadataPatch.manual_archetype_correction && updateData.archetype !== undefined) {
+      const { correctionTracker } = await import('../services/activeLearning/correctionTracker');
+      await correctionTracker.recordCorrection(userId, {
+        correction_type: 'entity',
+        original_value: String(existing.archetype ?? ''),
+        corrected_value: updateData.archetype,
+        context: `Manual character archetype edit for ${updated.name}`,
+        source_unit_id: updated.id,
+        metadata: {
+          entity_type: 'character',
+          entity_id: updated.id,
+          field: 'archetype',
+          source: 'character_info_panel',
+          trains_future_inference: true,
+          previous_archetype: existing.archetype ?? null,
+          corrected_archetype: updateData.archetype,
+        },
+      }).catch((err) => {
+        logger.warn({ err, userId, characterId: updated.id }, 'Failed to record character archetype correction');
+      });
+    }
+
+    if (metadataPatch.manual_role_correction && updateData.role !== undefined) {
+      const { correctionTracker } = await import('../services/activeLearning/correctionTracker');
+      await correctionTracker.recordCorrection(userId, {
+        correction_type: 'entity',
+        original_value: String(existing.role ?? ''),
+        corrected_value: updateData.role,
+        context: `Manual character role edit for ${updated.name}`,
+        source_unit_id: updated.id,
+        metadata: {
+          entity_type: 'character',
+          entity_id: updated.id,
+          field: 'role',
+          source: 'character_info_panel',
+          trains_future_inference: true,
+          previous_role: existing.role ?? null,
+          corrected_role: updateData.role,
+        },
+      }).catch((err) => {
+        logger.warn({ err, userId, characterId: updated.id }, 'Failed to record character role correction');
+      });
+    }
+
     if (updateData.status !== undefined) {
       if (updateData.status === 'archived') {
         const { entityDeletionRecoveryService } = await import(
@@ -1937,6 +2011,64 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
     res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+/**
+ * Auto-assign an archetype from the card's own context. Persists only when
+ * the field is empty or was previously auto-assigned — a user's manual pick
+ * (metadata.archetype_source === 'user_confirmed') is never overwritten.
+ */
+router.post('/:id/archetype/auto', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { inferCharacterArchetype } = await import(
+      '../services/characters/characterArchetypeService'
+    );
+
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, role, summary, tags, archetype, context_of_mention, metadata')
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .single();
+    if (fetchError || !existing) return res.status(404).json({ error: 'Character not found' });
+
+    const meta = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
+    if (existing.archetype && (meta.archetype_source === 'user' || meta.archetype_source === 'user_confirmed')) {
+      return res.json({
+        archetype: existing.archetype,
+        source: 'user',
+        applied: false,
+        reason: 'You picked this one yourself — auto-detect leaves it alone.',
+      });
+    }
+
+    const inference = inferCharacterArchetype({
+      name: existing.name,
+      role: existing.role,
+      summary: existing.summary,
+      tags: (existing.tags as string[] | null) ?? [],
+      contextOfMention: existing.context_of_mention as string | null,
+      metadata: meta,
+    });
+
+    const changed = inference.archetype !== existing.archetype;
+    if (changed) {
+      meta.archetype_source = 'auto';
+      meta.archetype_reason = inference.reason;
+      const { error: updateError } = await supabaseAdmin
+        .from('characters')
+        .update({ archetype: inference.archetype, metadata: meta, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .eq('user_id', userId);
+      if (updateError) throw updateError;
+    }
+
+    res.json({ ...inference, source: 'auto', applied: changed });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to auto-assign archetype');
+    res.status(500).json({ error: 'Failed to auto-assign archetype' });
   }
 });
 

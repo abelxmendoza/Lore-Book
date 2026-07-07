@@ -30,6 +30,7 @@ export type EntityLearningLessonType =
   | 'false_positive'
   | 'suppression_rule'
   | 'entity_deleted'
+  | 'alias_rejected'
   | 'domain_reclassification';
 
 export type EntityLearningLesson = {
@@ -47,6 +48,8 @@ export type EntityLearningLesson = {
 export type UserLearningContext = {
   aliasesByDomain: Map<string, { domain: string; canonicalEntityId: string; canonicalName?: string; aliases: string[] }>;
   suppressedByDomain: Map<string, { strength: number; reason?: string }>;
+  /** `${entityId}::${normalizedAlias}` — aliases the user explicitly removed. */
+  rejectedAliases: Set<string>;
 };
 
 const DOMAIN_ENTITY_TYPE: Record<string, string> = {
@@ -266,6 +269,61 @@ class EntityLearningService {
     });
   }
 
+  /**
+   * User edited a card's alias/nickname list. Removals teach the system that a
+   * phrase is NOT this person (never re-attach it); additions confirm equivalence.
+   */
+  async recordAliasCorrectionLearning(input: {
+    userId: string;
+    entityId: string;
+    entityName: string;
+    domain?: LearningEntityDomain;
+    removedAliases: string[];
+    addedAliases: string[];
+  }): Promise<void> {
+    if (input.removedAliases.length === 0 && input.addedAliases.length === 0) return;
+    const domain: LearningEntityDomain = input.domain ?? 'characters';
+    const lessons: EntityLearningLesson[] = [
+      ...input.removedAliases.map((alias) => ({
+        lessonType: 'alias_rejected' as const,
+        domain,
+        alias,
+        normalizedPhrase: normalizeNameKey(alias),
+        canonicalEntityId: input.entityId,
+        canonicalName: input.entityName,
+        strength: 1,
+        reason: `User removed "${alias}" from ${input.entityName}'s aliases`,
+      })),
+      ...input.addedAliases.map((alias) => ({
+        lessonType: 'alias_equivalence' as const,
+        domain,
+        alias,
+        normalizedPhrase: normalizeNameKey(alias),
+        canonicalEntityId: input.entityId,
+        canonicalName: input.entityName,
+        strength: 1,
+        reason: `User added "${alias}" as an alias of ${input.entityName}`,
+      })),
+    ];
+    await identityLedgerService.recordMutation({
+      userId: input.userId,
+      entityId: input.entityId,
+      entityType: domainEntityType(domain),
+      mutationType: 'ENTITY_UPDATED',
+      previousValue: { removedAliases: input.removedAliases },
+      newValue: { addedAliases: input.addedAliases },
+      reason: `Alias correction on "${input.entityName}"`,
+      source: 'USER',
+      metadata: { learning_event: true, operation_type: 'alias_correction', lessons },
+    });
+  }
+
+  /** True when the user has explicitly removed this alias from this entity. */
+  async isAliasRejected(userId: string, entityId: string, alias: string): Promise<boolean> {
+    const ctx = await this.getUserLearningContext(userId);
+    return ctx.rejectedAliases.has(`${entityId}::${normalizeNameKey(alias)}`);
+  }
+
   async getUserLearningContext(userId: string, opts: { limit?: number } = {}): Promise<UserLearningContext> {
     const rows = await identityLedgerService.getRecentMutations(userId, {
       limit: opts.limit ?? 500,
@@ -286,11 +344,15 @@ class EntityLearningService {
 export function buildUserLearningContext(rows: IdentityMutationRow[]): UserLearningContext {
   const aliasesByDomain = new Map<string, { domain: string; canonicalEntityId: string; canonicalName?: string; aliases: string[] }>();
   const suppressedByDomain = new Map<string, { strength: number; reason?: string }>();
+  const rejectedAliases = new Set<string>();
 
   for (const row of rows) {
     const metadata = (row.metadata ?? {}) as Record<string, unknown>;
     const lessons = Array.isArray(metadata.lessons) ? metadata.lessons as EntityLearningLesson[] : [];
     for (const lesson of lessons) {
+      if (lesson.lessonType === 'alias_rejected' && lesson.normalizedPhrase && lesson.canonicalEntityId) {
+        rejectedAliases.add(`${lesson.canonicalEntityId}::${lesson.normalizedPhrase}`);
+      }
       if (lesson.lessonType === 'alias_equivalence' && lesson.alias && lesson.canonicalEntityId) {
         aliasesByDomain.set(aliasContextKey(String(lesson.domain), lesson.alias), {
           domain: String(lesson.domain),
@@ -311,7 +373,7 @@ export function buildUserLearningContext(rows: IdentityMutationRow[]): UserLearn
     }
   }
 
-  return { aliasesByDomain, suppressedByDomain };
+  return { aliasesByDomain, suppressedByDomain, rejectedAliases };
 }
 
 export const entityLearningService = new EntityLearningService();

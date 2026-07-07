@@ -655,6 +655,14 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
         return true; // Already has this nickname
       }
 
+      // Respect manual corrections: if the user removed this alias from this
+      // character, the system must not re-attach it automatically.
+      const { entityLearningService } = await import('./entityLearningService');
+      if (await entityLearningService.isAliasRejected(userId, characterId, nickname)) {
+        logger.info({ characterId, nickname }, 'nickname skipped — user previously removed this alias');
+        return false;
+      }
+
       const { error } = await supabaseAdmin
         .from('characters')
         .update({

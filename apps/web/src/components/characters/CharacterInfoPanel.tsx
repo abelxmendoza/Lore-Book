@@ -14,8 +14,10 @@ import {
   User,
   Users,
   Save,
+  Wand2,
+  Loader2,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
 import { toFieldSource } from '../common/FieldSourceBadge';
@@ -77,6 +79,168 @@ const ORIENTATION_OPTIONS = [
   { value: 'heterosexual', label: 'Heterosexual' },
   { value: 'queer', label: 'Queer' },
 ];
+
+type ArchetypePreset = {
+  value: string;
+  label: string;
+  description: string;
+};
+
+const FALLBACK_ARCHETYPE_PRESETS: ArchetypePreset[] = [
+  { value: 'friend', label: 'Friend', description: 'A steady presence you choose to spend life with.' },
+  { value: 'family', label: 'Family', description: 'Bound by blood, or raised alongside you.' },
+  { value: 'romantic', label: 'Romantic', description: 'A love story in your current chapter.' },
+  { value: 'crush', label: 'Crush', description: 'Attraction or interest that did not become a relationship.' },
+  { value: 'unrequited_crush', label: 'Unrequited Crush', description: 'A one-sided crush, overpursuit, or attraction that did not go well.' },
+  { value: 'past_romantic', label: 'Past Flame', description: 'A closed chapter that still shaped you.' },
+  { value: 'mentor', label: 'Mentor', description: 'Someone who shapes how you grow.' },
+  { value: 'ally', label: 'Ally', description: 'In your corner when it counts.' },
+  { value: 'professional', label: 'Professional', description: 'Connected through work, projects, or practical collaboration.' },
+  { value: 'rival', label: 'Rival', description: 'Pushes you forward by pushing against you.' },
+  { value: 'muse', label: 'Muse', description: 'Sparks your creative side.' },
+  { value: 'community', label: 'Community', description: 'A familiar face from your scenes and circles.' },
+  { value: 'acquaintance', label: 'Acquaintance', description: 'On the edge of your story — for now.' },
+];
+
+// Roles are FACTUAL context (what they are/were in real life). Story categories
+// like friend/mentor/rival live in the archetype presets — don't duplicate them here.
+const ROLE_PRESETS: EditableFieldOption[] = [
+  { value: '', label: 'No role yet' },
+  { value: 'student', label: 'Student' },
+  { value: 'college student', label: 'College student' },
+  { value: 'high school student', label: 'High school student' },
+  { value: 'musician', label: 'Musician' },
+  { value: 'dj', label: 'DJ' },
+  { value: 'artist', label: 'Artist' },
+  { value: 'photographer', label: 'Photographer' },
+  { value: 'dancer', label: 'Dancer' },
+  { value: 'performer', label: 'Performer' },
+  { value: 'promoter', label: 'Promoter' },
+  { value: 'venue staff', label: 'Venue staff' },
+  { value: 'bartender', label: 'Bartender' },
+  { value: 'barista', label: 'Barista' },
+  { value: 'server', label: 'Server' },
+  { value: 'coworker', label: 'Coworker' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'engineer', label: 'Engineer' },
+  { value: 'technician', label: 'Technician' },
+  { value: 'nurse', label: 'Nurse' },
+  { value: 'teacher', label: 'Teacher' },
+  { value: 'coach', label: 'Coach' },
+  { value: 'entrepreneur', label: 'Entrepreneur' },
+  { value: 'content creator', label: 'Content creator' },
+  { value: 'military', label: 'Military' },
+  { value: 'classmate', label: 'Classmate' },
+  { value: 'roommate', label: 'Roommate' },
+  { value: 'neighbor', label: 'Neighbor' },
+  { value: 'retired', label: 'Retired' },
+];
+
+const normalizeArchetype = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '_');
+
+function inferArchetypeFromLocalContext(input: {
+  role?: string;
+  summary?: string;
+  tags?: string[];
+  relationshipType?: string;
+  kinship?: string;
+}): { archetype: string; reason: string } {
+  const relationshipType = normalizeArchetype(input.relationshipType ?? '');
+  const kinship = normalizeArchetype(input.kinship ?? '');
+  const text = [input.role, input.summary, ...(input.tags ?? [])].filter(Boolean).join(' ').toLowerCase();
+  const hasCrushSignal =
+    /\b(crush|attracted|attraction|liked her|liked him|liked them|pursu(e|ed|ing)|over[- ]?pursu(e|ed|ing)|one[- ]?sided|unrequited|didn'?t go well|rejected|not interested|thought (she|he|they) (was|were) (older|20|twenty))\b/.test(text) ||
+    relationshipType === 'crush' ||
+    relationshipType === 'unrequited';
+
+  if (
+    /\b(unrequited|one[- ]?sided|over[- ]?pursu(e|ed|ing)|pursu(e|ed|ing).+(too much|hard|badly)|didn'?t go well|rejected|not interested)\b/.test(text) ||
+    relationshipType === 'unrequited'
+  ) {
+    return { archetype: 'unrequited_crush', reason: 'The context points to a one-sided crush or overpursuit rather than family.' };
+  }
+  if (hasCrushSignal && !/\b(girlfriend|boyfriend|partner|wife|husband|dating|dated)\b/.test(text)) {
+    return { archetype: 'crush', reason: 'The context points to attraction or a crush that did not become a relationship.' };
+  }
+  if ((kinship || /^(family|parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step)/.test(relationshipType)) && !hasCrushSignal) {
+    return { archetype: 'family', reason: 'Family or kinship context is already on this card.' };
+  }
+  if (/\b(ex[- ]?(girlfriend|boyfriend|partner|wife|husband)|my ex\b|broke up|used to date)\b/.test(text) || relationshipType === 'past_romantic') {
+    return { archetype: 'past_romantic', reason: 'Past romantic context appears in the character details.' };
+  }
+  if (/\b(girlfriend|boyfriend|partner|fianc[ée]e?|wife|husband|dating)\b/.test(text) || relationshipType === 'romantic') {
+    return { archetype: 'romantic', reason: 'Romantic context appears in the character details.' };
+  }
+  if (/\b(mentor|coach|teacher|professor|advisor|taught me|guided me)\b/.test(text) || relationshipType === 'mentor') {
+    return { archetype: 'mentor', reason: 'Guidance or teaching context appears in the character details.' };
+  }
+  if (/\b(coworker|co[- ]worker|colleague|boss|manager|team)\b/.test(text) || relationshipType === 'colleague') {
+    return { archetype: 'professional', reason: 'Work context appears in the character details.' };
+  }
+  if (/\b(collaborat|built together|bandmate|project together)\b/.test(text)) {
+    return { archetype: 'professional', reason: 'Collaboration context appears in the character details.' };
+  }
+  if (/\b(rival|competitor|enemy|feud)\b/.test(text) || relationshipType === 'rival') {
+    return { archetype: 'rival', reason: 'Competitive context appears in the character details.' };
+  }
+  if (/\b(friend|homie|bestie|buddy|hung out|hang out)\b/.test(text) || relationshipType === 'friend') {
+    return { archetype: 'friend', reason: 'Friendship context appears in the character details.' };
+  }
+  if (/\b(scene|show|gig|club|festival|meetup|regular at)\b/.test(text)) {
+    return { archetype: 'community', reason: 'Community or scene context appears in the character details.' };
+  }
+  return { archetype: 'acquaintance', reason: 'There is not enough specific context yet, so this starts broad.' };
+}
+
+function inferRoleFromLocalContext(input: {
+  role?: string;
+  summary?: string;
+  tags?: string[];
+  relationshipType?: string;
+  kinship?: string;
+}): { role: string; reason: string } {
+  const relationshipType = normalizeArchetype(input.relationshipType ?? '');
+  const kinship = normalizeArchetype(input.kinship ?? '');
+  const text = [input.role, input.summary, ...(input.tags ?? [])].filter(Boolean).join(' ').toLowerCase();
+
+  if (/\b(high school|senior in high school|still in school)\b/.test(text)) {
+    return { role: 'high school student', reason: 'The context says they were in high school.' };
+  }
+  if (/\b(classmate|same class|in my class)\b/.test(text)) {
+    return { role: 'classmate', reason: 'Classmate context appears in the character details.' };
+  }
+  if (/\b(college|university|student)\b/.test(text)) {
+    return { role: 'student', reason: 'Student context appears in the character details.' };
+  }
+  if (/\b(roommate|housemate|lived with)\b/.test(text)) {
+    return { role: 'roommate', reason: 'Roommate context appears in the character details.' };
+  }
+  if (/\b(neighbor|next door|lived nearby)\b/.test(text)) {
+    return { role: 'neighbor', reason: 'Neighbor context appears in the character details.' };
+  }
+  if (/\b(dj|band|singer|guitar|drummer|music|musician)\b/.test(text)) {
+    return { role: 'musician', reason: 'Music or performance context appears in the character details.' };
+  }
+  if (/\b(performer|performed|stage|show)\b/.test(text)) {
+    return { role: 'performer', reason: 'Performance context appears in the character details.' };
+  }
+  if (/\b(bartender|bouncer|host|door person|venue staff)\b/.test(text)) {
+    return { role: 'venue staff', reason: 'Venue-staff context appears in the character details.' };
+  }
+  if (/\b(artist|art|gallery|studio|designer|photographer)\b/.test(text)) {
+    return { role: 'artist', reason: 'Art or creative-work context appears in the character details.' };
+  }
+  if (/\b(coworker|co[- ]worker|colleague|worked with|work together)\b/.test(text) || relationshipType === 'coworker') {
+    return { role: 'coworker', reason: 'Workplace peer context appears in the character details.' };
+  }
+  if (/\b(boss|manager|supervisor)\b/.test(text)) {
+    return { role: 'manager', reason: 'Manager or supervisor context appears in the character details.' };
+  }
+  if (/\b(teacher|professor|coach|mentor)\b/.test(text) || relationshipType === 'mentor') {
+    return { role: 'teacher', reason: 'Teaching or guidance context appears in the character details.' };
+  }
+  return { role: '', reason: 'There is not enough factual role context yet. Relationship labels belong under Archetype.' };
+}
 
 export type CharacterInfoPanelProps = {
   editedCharacter: Character;
@@ -189,8 +353,12 @@ export function CharacterInfoPanel({
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
   const sexValue = typeof meta.sex === 'string' ? meta.sex : 'unknown';
   const orientationValue = typeof meta.sexual_orientation === 'string' ? meta.sexual_orientation : 'unknown';
+  const archetypeValue = editedCharacter.archetype ?? '';
+  const roleValue = editedCharacter.role ?? '';
   const sexSource = toFieldSource(meta.sex_source, sexValue !== 'unknown');
   const orientationSource = toFieldSource(meta.sexual_orientation_source, orientationValue !== 'unknown');
+  const archetypeSource = toFieldSource(meta.archetype_source, Boolean(archetypeValue));
+  const roleSource = toFieldSource(meta.role_source, Boolean(roleValue));
   const inferredNameParts = useMemo(
     () => inferNameParts(editedCharacter),
     [
@@ -207,7 +375,13 @@ export function CharacterInfoPanel({
   const [lastNameDraft, setLastNameDraft] = useState(inferredNameParts.lastName);
   const [aliasesList, setAliasesList] = useState<string[]>(editedCharacter.alias ?? []);
   const [newAlias, setNewAlias] = useState('');
-  const [roleDraft, setRoleDraft] = useState(editedCharacter.role || '');
+  const [archetypePresets, setArchetypePresets] = useState<ArchetypePreset[]>(FALLBACK_ARCHETYPE_PRESETS);
+  const [autoArchetypeLoading, setAutoArchetypeLoading] = useState(false);
+  const [autoArchetypeMessage, setAutoArchetypeMessage] = useState<string | null>(null);
+  const [autoRoleLoading, setAutoRoleLoading] = useState(false);
+  const [autoRoleMessage, setAutoRoleMessage] = useState<string | null>(null);
+  const autoAttemptedRef = useRef<string | null>(null);
+  const autoRoleAttemptedRef = useRef<string | null>(null);
 
   const addAlias = () => {
     const val = newAlias.trim();
@@ -220,16 +394,63 @@ export function CharacterInfoPanel({
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
 
+  const humanizeType = (t: string) =>
+    t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const archetypeOptions = useMemo<EditableFieldOption[]>(() => {
+    const normalizedCurrent = normalizeArchetype(archetypeValue);
+    const presetOptions = archetypePresets.map((preset) => ({
+      value: preset.value,
+      label: preset.label,
+    }));
+    if (normalizedCurrent && !presetOptions.some((option) => option.value === normalizedCurrent)) {
+      return [
+        { value: '', label: 'No archetype yet' },
+        { value: normalizedCurrent, label: humanizeType(normalizedCurrent) },
+        ...presetOptions,
+      ];
+    }
+    return [{ value: '', label: 'No archetype yet' }, ...presetOptions];
+  }, [archetypePresets, archetypeValue]);
+
+  const currentArchetypePreset = archetypePresets.find(
+    (preset) => preset.value === normalizeArchetype(archetypeValue),
+  );
+  const roleOptions = useMemo<EditableFieldOption[]>(() => {
+    if (roleValue && !ROLE_PRESETS.some((option) => option.value === roleValue)) {
+      return [{ value: roleValue, label: roleValue }, ...ROLE_PRESETS];
+    }
+    return ROLE_PRESETS;
+  }, [roleValue]);
+
   useEffect(() => {
     setFirstNameDraft(inferredNameParts.firstName);
     setMiddleNameDraft(inferredNameParts.middleName);
     setLastNameDraft(inferredNameParts.lastName);
     setAliasesList(editedCharacter.alias ?? []);
-    setRoleDraft(editedCharacter.role || '');
-  }, [editedCharacter.id, inferredNameParts.firstName, inferredNameParts.middleName, inferredNameParts.lastName, editedCharacter.alias, editedCharacter.role]);
+  }, [editedCharacter.id, inferredNameParts.firstName, inferredNameParts.middleName, inferredNameParts.lastName, editedCharacter.alias]);
 
-  const humanizeType = (t: string) =>
-    t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  useEffect(() => {
+    if (isMockDataEnabled) {
+      setArchetypePresets(FALLBACK_ARCHETYPE_PRESETS);
+      return;
+    }
+
+    let cancelled = false;
+    fetchJson<{ presets: ArchetypePreset[] }>('/api/characters/archetype-presets')
+      .then((response) => {
+        if (!cancelled && Array.isArray(response.presets) && response.presets.length > 0) {
+          setArchetypePresets(response.presets);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load archetype presets; using fallback presets.', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMockDataEnabled]);
   const baseRelationshipTypeOptions: EditableFieldOption[] = [
     { value: 'boyfriend', label: 'Boyfriend' },
     { value: 'girlfriend', label: 'Girlfriend' },
@@ -305,11 +526,32 @@ export function CharacterInfoPanel({
   };
 
   const saveIdentityNames = async () => {
-    const aliases = [...aliasesList];
     const firstName = firstNameDraft.trim();
     const middleName = middleNameDraft.trim();
     const lastName = lastNameDraft.trim();
-    const role = roleDraft.trim();
+    // Cohesion: aliases/nicknames must add something beyond the names already
+    // on the card — drop entries that just repeat the title or name parts.
+    const nameKeys = new Set(
+      [
+        editedCharacter.name,
+        firstName,
+        middleName,
+        lastName,
+        `${firstName} ${lastName}`,
+        `${firstName} ${middleName} ${lastName}`,
+      ]
+        .map((v) => v?.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter(Boolean),
+    );
+    const seenAliases = new Set<string>();
+    const aliases = aliasesList
+      .map((a) => a.replace(/\s+/g, ' ').trim())
+      .filter((a) => {
+        const key = a.toLowerCase();
+        if (!a || nameKeys.has(key) || seenAliases.has(key)) return false;
+        seenAliases.add(key);
+        return true;
+      });
     const metadataPatch = {
       middle_name: middleName || null,
       middle_name_source: middleName ? 'user_confirmed' : 'user_cleared',
@@ -324,7 +566,6 @@ export function CharacterInfoPanel({
       middle_name: middleName || null,
       last_name: lastName || null,
       alias: aliases,
-      role: role || null,
       metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch },
     }));
 
@@ -337,7 +578,6 @@ export function CharacterInfoPanel({
           middleName: middleName || undefined,
           lastName: lastName || undefined,
           alias: aliases,
-          role: role || undefined,
           metadata: metadataPatch,
         },
       }).unwrap();
@@ -380,6 +620,265 @@ export function CharacterInfoPanel({
       setIdentitySaving(false);
     }
   };
+
+  const persistArchetype = async (nextRaw: string) => {
+    const previousArchetype = editedCharacter.archetype ?? '';
+    const nextArchetype = nextRaw.trim().toLowerCase().replace(/\s+/g, '_');
+    const confirmedAt = new Date().toISOString();
+    const metadataPatch = {
+      archetype_source: nextArchetype ? 'user_confirmed' : 'user_cleared',
+      archetype_confirmed_at: confirmedAt,
+      manual_archetype_correction: {
+        field: 'archetype',
+        previous: previousArchetype || null,
+        corrected: nextArchetype || null,
+        corrected_at: confirmedAt,
+      },
+    };
+
+    setEditedCharacter((prev) => ({
+      ...prev,
+      archetype: nextArchetype || undefined,
+      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch },
+    }));
+
+    if (isMockDataEnabled) {
+      onUpdate();
+      return;
+    }
+
+    try {
+      await updateCharacter({
+        id: characterId,
+        values: {
+          archetype: nextArchetype,
+          metadata: metadataPatch,
+        },
+      }).unwrap();
+
+      onUpdate();
+    } catch (err) {
+      setEditedCharacter((prev) => ({
+        ...prev,
+        archetype: previousArchetype || undefined,
+        metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>) },
+      }));
+      console.error('Failed to save character archetype:', err);
+      throw err instanceof Error ? err : new Error('Could not save archetype');
+    }
+  };
+
+  const persistRole = async (nextRaw: string) => {
+    const previousRole = editedCharacter.role ?? '';
+    const nextRole = nextRaw.trim();
+    const confirmedAt = new Date().toISOString();
+    const metadataPatch = {
+      role_source: nextRole ? 'user_confirmed' : 'user_cleared',
+      role_confirmed_at: confirmedAt,
+      manual_role_correction: {
+        field: 'role',
+        previous: previousRole || null,
+        corrected: nextRole || null,
+        corrected_at: confirmedAt,
+      },
+    };
+
+    setEditedCharacter((prev) => ({
+      ...prev,
+      role: nextRole || undefined,
+      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch },
+    }));
+
+    if (isMockDataEnabled) {
+      onUpdate();
+      return;
+    }
+
+    try {
+      await updateCharacter({
+        id: characterId,
+        values: {
+          role: nextRole,
+          metadata: metadataPatch,
+        },
+      }).unwrap();
+      onUpdate();
+    } catch (err) {
+      setEditedCharacter((prev) => ({
+        ...prev,
+        role: previousRole || undefined,
+        metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>) },
+      }));
+      console.error('Failed to save character role:', err);
+      throw err instanceof Error ? err : new Error('Could not save role');
+    }
+  };
+
+  const autoDetectRole = async (trigger: 'automatic' | 'manual' = 'manual') => {
+    const userConfirmed = meta.role_source === 'user' || meta.role_source === 'user_confirmed';
+    if (userConfirmed && trigger === 'automatic') return;
+
+    setAutoRoleLoading(true);
+    setAutoRoleMessage(null);
+    try {
+      if (userConfirmed) {
+        setAutoRoleMessage('Manual role is locked. Clear it before auto-detecting again.');
+        return;
+      }
+
+      const inference = inferRoleFromLocalContext({
+        role: editedCharacter.role,
+        summary: editedCharacter.summary,
+        tags: editedCharacter.tags,
+        relationshipType: relationship?.relationship_type ?? (typeof meta.relationship_type === 'string' ? meta.relationship_type : undefined),
+        kinship: typeof meta.kinship_label === 'string' ? meta.kinship_label : undefined,
+      });
+      if (!inference.role) {
+        setAutoRoleMessage(inference.reason);
+        return;
+      }
+
+      const detectedAt = new Date().toISOString();
+      const metadataPatch = {
+        role_source: 'auto',
+        role_reason: inference.reason,
+        role_detected_at: detectedAt,
+      };
+      setEditedCharacter((prev) => ({
+        ...prev,
+        role: inference.role,
+        metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch },
+      }));
+
+      if (!isMockDataEnabled) {
+        await updateCharacter({
+          id: characterId,
+          values: {
+            role: inference.role,
+            metadata: metadataPatch,
+          },
+        }).unwrap();
+      }
+
+      setAutoRoleMessage(`Auto-detected ${inference.role}: ${inference.reason}`);
+      onUpdate();
+    } catch (err) {
+      console.error('Failed to auto-detect character role:', err);
+      setAutoRoleMessage('Could not auto-detect a factual role yet. Pick or type one manually.');
+    } finally {
+      setAutoRoleLoading(false);
+    }
+  };
+
+  const autoDetectArchetype = async (trigger: 'automatic' | 'manual' = 'manual') => {
+    const userConfirmed = meta.archetype_source === 'user' || meta.archetype_source === 'user_confirmed';
+    if (userConfirmed && trigger === 'automatic') return;
+
+    setAutoArchetypeLoading(true);
+    setAutoArchetypeMessage(null);
+
+    try {
+      if (isMockDataEnabled) {
+        if (userConfirmed) {
+          setAutoArchetypeMessage('Manual archetype is locked. Clear it before auto-detecting again.');
+          return;
+        }
+        const inference = inferArchetypeFromLocalContext({
+          role: editedCharacter.role,
+          summary: editedCharacter.summary,
+          tags: editedCharacter.tags,
+          relationshipType: relationship?.relationship_type ?? (typeof meta.relationship_type === 'string' ? meta.relationship_type : undefined),
+          kinship: typeof meta.kinship_label === 'string' ? meta.kinship_label : undefined,
+        });
+        const detectedAt = new Date().toISOString();
+        setEditedCharacter((prev) => ({
+          ...prev,
+          archetype: inference.archetype,
+          metadata: {
+            ...((prev.metadata ?? {}) as Record<string, unknown>),
+            archetype_source: 'auto',
+            archetype_reason: inference.reason,
+            archetype_detected_at: detectedAt,
+          },
+        }));
+        setAutoArchetypeMessage(`Auto-detected ${humanizeType(inference.archetype)}: ${inference.reason}`);
+        onUpdate();
+        return;
+      }
+
+      const response = await fetchJson<{
+        archetype: string;
+        source: 'auto' | 'user';
+        applied: boolean;
+        reason: string;
+        confidence?: number;
+      }>(`/api/characters/${characterId}/archetype/auto`, { method: 'POST' });
+
+      setEditedCharacter((prev) => ({
+        ...prev,
+        archetype: response.archetype || prev.archetype,
+        metadata: {
+          ...((prev.metadata ?? {}) as Record<string, unknown>),
+          archetype_source: response.source === 'user' ? 'user_confirmed' : response.source,
+          archetype_reason: response.reason,
+          archetype_confidence: response.confidence,
+          archetype_detected_at: new Date().toISOString(),
+        },
+      }));
+      setAutoArchetypeMessage(
+        response.source === 'user'
+          ? response.reason
+          : `${response.applied ? 'Auto-detected' : 'Already matched'} ${humanizeType(response.archetype)}: ${response.reason}`,
+      );
+      onUpdate();
+    } catch (err) {
+      console.error('Failed to auto-detect character archetype:', err);
+      setAutoArchetypeMessage('Could not auto-detect from context yet. Pick a preset manually.');
+    } finally {
+      setAutoArchetypeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (autoAttemptedRef.current === editedCharacter.id) return;
+    const userConfirmed = meta.archetype_source === 'user' || meta.archetype_source === 'user_confirmed';
+    const shouldAutoDetect =
+      !userConfirmed &&
+      (!editedCharacter.archetype || meta.archetype_source === 'auto') &&
+      Boolean(editedCharacter.summary || editedCharacter.role || relationship?.relationship_type || editedCharacter.tags?.length);
+    if (!shouldAutoDetect) return;
+
+    autoAttemptedRef.current = editedCharacter.id;
+    void autoDetectArchetype('automatic');
+  }, [
+    editedCharacter.id,
+    editedCharacter.archetype,
+    editedCharacter.summary,
+    editedCharacter.role,
+    editedCharacter.tags,
+    meta.archetype_source,
+    relationship?.relationship_type,
+  ]);
+
+  useEffect(() => {
+    if (autoRoleAttemptedRef.current === editedCharacter.id) return;
+    const userConfirmed = meta.role_source === 'user' || meta.role_source === 'user_confirmed';
+    const shouldAutoDetect =
+      !userConfirmed &&
+      (!editedCharacter.role || meta.role_source === 'auto') &&
+      Boolean(editedCharacter.summary || relationship?.relationship_type || editedCharacter.tags?.length);
+    if (!shouldAutoDetect) return;
+
+    autoRoleAttemptedRef.current = editedCharacter.id;
+    void autoDetectRole('automatic');
+  }, [
+    editedCharacter.id,
+    editedCharacter.role,
+    editedCharacter.summary,
+    editedCharacter.tags,
+    meta.role_source,
+    relationship?.relationship_type,
+  ]);
 
   const persistRelationshipType = async (nextType: string) => {
     if (!relationship?.id) throw new Error('This relationship is not editable yet.');
@@ -553,17 +1052,6 @@ export function CharacterInfoPanel({
                 </label>
               </div>
               <label className="mt-3 block">
-                <span className="text-[10px] uppercase tracking-wide text-white/35">Occupation / Role</span>
-                <input
-                  value={roleDraft}
-                  onChange={(e) => setRoleDraft(e.target.value)}
-                  placeholder="e.g. Software Engineer, Student, Musician"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none"
-                  autoComplete="off"
-                />
-              </label>
-
-              <label className="mt-3 block">
                 <span className="text-[10px] uppercase tracking-wide text-white/35">Nicknames / aliases (multiple)</span>
                 <div className="mt-1 flex flex-wrap gap-1 min-h-[32px]">
                   {aliasesList.map((alias, idx) => (
@@ -613,6 +1101,95 @@ export function CharacterInfoPanel({
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2">
+                <div className="mb-2 flex items-start gap-2">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/80" />
+                  <p className="text-xs leading-relaxed text-white/60">
+                    Role is the factual context: what they are or were in real life, like student, musician, coworker, or
+                    high school student. Archetype below is the story category LoreBook uses to organize the relationship.
+                  </p>
+                </div>
+                <EditableField
+                  label="Role"
+                  value={roleValue}
+                  displayValue={roleValue || null}
+                  source={roleSource}
+                  variant="select"
+                  options={roleOptions}
+                  emptyHint="Click to set role"
+                  icon={<User className="h-3.5 w-3.5 text-sky-300" />}
+                  onSave={persistRole}
+                />
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {autoRoleMessage && (
+                      <p className="text-[11px] leading-relaxed text-sky-200/75">{autoRoleMessage}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void autoDetectRole('manual')}
+                    disabled={autoRoleLoading}
+                    className="inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20 disabled:opacity-60"
+                  >
+                    {autoRoleLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3.5 w-3.5" />
+                    )}
+                    Auto-detect role
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+                  For Genni-like context, role can be “high school student” while archetype can be “Unrequited Crush”.
+                </p>
+              </div>
+              <div className="rounded-xl border border-purple-500/20 bg-purple-950/15 p-3 sm:col-span-2">
+                <div className="mb-2 flex items-start gap-2">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-purple-300/80" />
+                  <p className="text-xs leading-relaxed text-white/60">
+                    If LoreBook guessed the wrong archetype, click the pencil and correct it here. Your edit updates this
+                    character and is saved as a learning signal so future entity detection can use your correction.
+                  </p>
+                </div>
+                <EditableField
+                  label="Archetype"
+                  value={archetypeValue}
+                  displayValue={archetypeValue ? humanizeType(archetypeValue) : null}
+                  source={archetypeSource}
+                  variant="select"
+                  options={archetypeOptions}
+                  emptyHint="Click to set archetype"
+                  icon={<Sparkles className="h-3.5 w-3.5 text-purple-300" />}
+                  onSave={persistArchetype}
+                />
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {currentArchetypePreset?.description && (
+                      <p className="text-[11px] leading-relaxed text-white/45">{currentArchetypePreset.description}</p>
+                    )}
+                    {autoArchetypeMessage && (
+                      <p className="mt-1 text-[11px] leading-relaxed text-purple-200/75">{autoArchetypeMessage}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void autoDetectArchetype('manual')}
+                    disabled={autoArchetypeLoading}
+                    className="inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-purple-400/25 bg-purple-500/10 px-3 py-1.5 text-xs font-medium text-purple-200 hover:bg-purple-500/20 disabled:opacity-60"
+                  >
+                    {autoArchetypeLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3.5 w-3.5" />
+                    )}
+                    Auto-detect
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+                  Presets come from the same vocabulary used by automatic context detection.
+                </p>
+              </div>
               <EditableField
                 label="Sex"
                 value={sexValue}
