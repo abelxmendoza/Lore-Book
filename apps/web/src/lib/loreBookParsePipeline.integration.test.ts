@@ -52,7 +52,8 @@ describe('LoreBook parse composer pipeline (integration)', () => {
 
     expect(combined.some((m) => m.name === 'Abel')).toBe(true);
     expect(combined.some((m) => m.name === 'Kelly Kapoor')).toBe(true);
-    expect(combined.some((m) => m.actionLabel === 'Add as Places')).toBe(true);
+    // Redirect ops must never surface as "Add as …" composer chips.
+    expect(combined.some((m) => m.actionLabel?.startsWith('Add as'))).toBe(false);
     expect(combined.filter((m) => m.name === 'Kelly Kapoor')).toHaveLength(1);
   });
 

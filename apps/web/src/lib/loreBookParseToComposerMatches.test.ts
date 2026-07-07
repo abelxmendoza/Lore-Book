@@ -40,7 +40,7 @@ describe('loreBookParseToComposerMatches', () => {
     expect(matches[0]?.status).toBe('draft');
   });
 
-  it('maps redirect ops to clarification chips with target label', () => {
+  it('emits no composer chips for redirect ops — no "Add as …" chips', () => {
     const parse: LoreBookParseResponse = {
       operations: [],
       redirects: [
@@ -59,9 +59,7 @@ describe('loreBookParseToComposerMatches', () => {
     };
 
     const matches = loreBookParseToComposerMatches(parse, [], []);
-    expect(matches).toHaveLength(1);
-    expect(matches[0]?.actionLabel).toBe('Add as Places');
-    expect(matches[0]?.composerChipKind).toBe('needs_clarification');
+    expect(matches).toHaveLength(0);
   });
 
   it('skips blocked suggest_add operations', () => {

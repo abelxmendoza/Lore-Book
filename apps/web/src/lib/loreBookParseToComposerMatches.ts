@@ -103,25 +103,10 @@ export function loreBookParseToComposerMatches(
   for (const op of opsFromParse(parse)) {
     if (op.kind === 'suppress') continue;
 
-    if (op.kind === 'redirect') {
-      const name = titleCase(op.name.trim());
-      const key = normalizeNameKey(name);
-      if (!key) continue;
-      const targetLabel = DOMAIN_LABELS[op.toDomain] ?? op.toDomain;
-      pushMatch(matches, seen, covered, {
-        id: `lorebook:redirect:${op.toDomain}:${key}`,
-        name,
-        type: domainToEntityType(op.toDomain) ?? 'event',
-        aliases: [],
-        mentionKeys: [key],
-        status: 'suggestion',
-        matchedLabel: name,
-        matchKind: 'full',
-        composerChipKind: 'needs_clarification',
-        actionLabel: `Add as ${targetLabel}`,
-      });
-      continue;
-    }
+    // Redirect ops ("Add as Places/Project/…") are book-routing signals for the
+    // ingestion pipeline, not composer decisions — the user asked for no
+    // "Add as …" chips in the composer. Ingestion still applies the redirect.
+    if (op.kind === 'redirect') continue;
 
     if (op.kind === 'suggest_merge') {
       const name = titleCase(op.name.trim());
