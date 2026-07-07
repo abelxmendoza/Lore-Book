@@ -243,6 +243,18 @@ function hasFamilySignal(row: CharacterKinshipRow): boolean {
   const metadata = row.metadata ?? {};
   const text = searchableKinshipText(row);
   const isPublicFigure = metadata.public_figure === true || metadata.figure_type === 'creator' || metadata.figure_type === 'artist';
+
+  // A card the user confirmed DISTINCT from another character must not enter
+  // the family tree on bare relationship_type metadata alone — that's how a
+  // shared given name (Oscuridad's "Juan" vs Tío Juan) cross-wires kin. It
+  // needs a real kinship anchor: a kinship_label, family archetype, or a
+  // kinship word in its own name/story.
+  const confirmedDistinct = Array.isArray(metadata.confirmed_distinct_from) && metadata.confirmed_distinct_from.length > 0;
+  if (confirmedDistinct && !metadata.kinship_label && row.archetype !== 'family' && row.archetype !== 'kin') {
+    const hasKinshipAnchor =
+      /\b(abuela|abuelita|abuelo|abuelito|grandma|grandmother|grandpa|grandfather|tia|tía|aunt|tio|tío|uncle|cousin|primo|prima|brother|sister|mom|mother|dad|father|step)\b/.test(text);
+    if (!hasKinshipAnchor) return false;
+  }
   const explicitFamily =
     row.archetype === 'family' ||
     row.archetype === 'kin' ||
