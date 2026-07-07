@@ -6,6 +6,12 @@ import { inferenceBase } from '../inferenceAssociationTypes';
 
 const ROLE_RE = /\b(?:(?:working|currently working|now working)\s+(?:as|at)\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer|[Mm]anager|[Oo]perator))|my\s+role\s+is\s+([A-Za-z][\w\s&-]{3,60})|I['’]m\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer)))\b/i;
 
+// "worked at X as a robot tech with Gary" — the generic "as a <role>" capture
+// the hardened ROLE_RE above no longer covers (broken by the ReDoS pass).
+// Word-count bounded (no lazy quantifier spanning \s runs) so it stays safe.
+const AS_A_ROLE_RE =
+  /\bas\s+(?:a|an)\s+([a-z][a-z0-9&'-]*(?:\s+[a-z0-9&'-]+){0,7}?)(?=\s+(?:with|at|for|in|on)\b|\s*[,.;!?]|\s*$)/i;
+
 export interface ExtractedRole {
   surface: string;
   normalized: string;
@@ -33,7 +39,7 @@ function expandRoleTitle(raw: string): string {
 }
 
 export function extractRoleFromText(text: string): ExtractedRole | null {
-  const m = ROLE_RE.exec(text);
+  const m = ROLE_RE.exec(text) ?? AS_A_ROLE_RE.exec(text);
   let surface = (m?.[1] || m?.[2] || m?.[3] || '').trim();
   if (!surface || surface.length < 3) {
     // Fallback direct title detection for known good titles

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { materializeSpatialEvents, type EventMaterializerDeps } from './spatialEventMaterializer';
-rk
 
 function fakeDeps(existing: Array<{ id: string; title: string; metadata?: Record<string, unknown> }> = []) {
   const events = existing.map((e) => ({ ...e }));

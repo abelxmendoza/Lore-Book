@@ -114,7 +114,7 @@ export const ROLE_TITLE_NAME_PATTERNS: RegExp[] = [
  * user's own work role, which is exactly what must not become a Character.
  */
 const ROLE_NAMES_A_PERSON =
-  /\b(named|his name|her name|their name|guy named|girl named|met (him|her)|introduced (me|us) to)\b/i;
+  /\b(named|his name|her name|their name|guy named|girl named|met (him|her)|introduced (me|us) to|(everyone|they|we) calls?|known as|nicknamed?)\b/i;
 
 const EVENT_NAME_PATTERN =
   /\b(prom|fest|festival|concert|expo|rave|gala|showcase|show)\b/i;

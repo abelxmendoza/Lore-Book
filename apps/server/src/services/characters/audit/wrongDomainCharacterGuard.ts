@@ -79,7 +79,12 @@ export function evaluateWrongDomain(
   // First-person context ("I work as…", "my role") must NOT rescue the title —
   // that is evidence it's the user's own work role, the exact misfile this blocks.
   for (const pat of ROLE_TITLE_PATTERNS) {
-    if (pat.test(name) && !/\b(named|his name|her name|guy|girl|met (him|her))\b/i.test(provenanceText)) {
+    if (
+      pat.test(name) &&
+      !/\b(named|his name|her name|guy|girl|met (him|her)|(everyone|they|we) calls?|known as|nicknamed?)\b/i.test(
+        provenanceText,
+      )
+    ) {
       return {
         wrongDomain: true,
         target: 'group', // or 'system' — roles go to work/organizations domain

@@ -228,6 +228,13 @@ export function inferWorkplaceAssociations(
       memoryReviewCandidates.push(`Org hierarchy: ${JSON.stringify(h)}`);
     }
 
+    // Employer → Deployment Sites tree ("Vanguard Robotics → Deployment
+    // Sites → Denny's Hollywood") so review shows where the work happened.
+    if (deploymentSites.length > 0) {
+      const orgTree = buildOrganizationHierarchy({ employerName, deploymentSites });
+      memoryReviewCandidates.push(`Org hierarchy: ${JSON.stringify(orgTree)}`);
+    }
+
     // Current role snapshot (core of the resolver)
     const snapshot = createCurrentRoleSnapshot({
       text,

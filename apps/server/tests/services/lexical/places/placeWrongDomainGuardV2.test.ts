@@ -29,7 +29,7 @@ describe('place wrong-domain guard v2', () => {
     expect(findByText(text, 'Amazon')).toMatchObject({ status: 'rejected', rejectedAs: 'ORGANIZATION' });
     expect(findByText(text, 'Ring doorbell product')).toMatchObject({
       status: 'rejected',
-      rejectedAs: 'PRODUCT_OBJECT',
+      rejectedAs: 'PRODUCT',
     });
   });
 
@@ -37,7 +37,7 @@ describe('place wrong-domain guard v2', () => {
     const text = 'I like martial arts, ska, raving, and going to shows.';
 
     expect(visibleSuggestions(text)).toEqual([]);
-    expect(findByText(text, 'shows')).toMatchObject({ status: 'rejected', rejectedAs: 'EVENT_ACTIVITY' });
+    expect(findByText(text, 'shows')).toMatchObject({ status: 'rejected', rejectedAs: 'EVENT' });
   });
 
   it('keeps home as attached context and LoreBook as project context', () => {
@@ -57,7 +57,7 @@ describe('place wrong-domain guard v2', () => {
     expect(visibleSuggestions(text)).toEqual([]);
     expect(findByText(text, 'another show in the pit')).toMatchObject({
       status: 'rejected',
-      rejectedAs: 'EVENT_ACTIVITY',
+      rejectedAs: 'EVENT',
     });
     expect(findByText(text, 'pit')).toMatchObject({
       status: 'attached_context',

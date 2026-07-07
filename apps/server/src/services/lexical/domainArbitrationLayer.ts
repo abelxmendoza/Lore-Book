@@ -137,16 +137,28 @@ export function arbitrateCandidateDomain(span: string, contextLine = ''): Domain
     return verdict('ORGANIZATION', 'organization_relationship_span', 0.45, { allowedAsPlace: false });
   }
 
-  if (containsKnownOrg(key) && WORK_ORG_CONTEXT.test(context)) {
-    return verdict('ORGANIZATION', 'organization_work_context', 0.45, { allowedAsPlace: false });
-  }
-
+  // Product spans win before the org lexicon — "Ring doorbell product" is the
+  // product, not the Ring org, even inside work context.
   if (/\bring\s+doorbell(?:\s+product)?\b/i.test(text)) {
     return verdict('PRODUCT', 'product_span', 0.4, { allowedAsPlace: false });
   }
 
+  if (containsKnownOrg(key) && WORK_ORG_CONTEXT.test(context)) {
+    return verdict('ORGANIZATION', 'organization_work_context', 0.45, { allowedAsPlace: false });
+  }
+
   if (/^[A-Z][A-Za-zÀ-ÿ'-]+$/.test(text) && PERSON_CONTEXT.test(contextLine)) {
-    return verdict('PERSON', 'person_context_single_name', 0.35, { allowedAsPlace: false });
+    // A span sitting right after a locative preposition ("in DTLA",
+    // "going to RaveLa") is being used as a place — person words elsewhere
+    // in the same line ("met", "with") must not reroute it.
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const usedLocatively = new RegExp(
+      `\\b(?:in|at|to|from|near|toward|inside|outside)\\s+(?:the\\s+)?${escaped}\\b`,
+      'i',
+    ).test(contextLine);
+    if (!usedLocatively) {
+      return verdict('PERSON', 'person_context_single_name', 0.35, { allowedAsPlace: false });
+    }
   }
 
   return verdict('UNKNOWN', 'no_cross_domain_owner', 0);

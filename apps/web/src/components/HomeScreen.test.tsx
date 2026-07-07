@@ -42,6 +42,21 @@ vi.mock('../contexts/ChatThreadContext', () => ({
   useRecentChatThreads: vi.fn(() => []),
 }));
 
+// HomeScreen consumes demo-mode state via useShouldUseMockData → MockDataContext
+vi.mock('../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+  getGlobalMockDataEnabled: () => false,
+  getGlobalIsGuest: () => false,
+  getIsUserLoggedIn: () => true,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: React.ReactNode }) => children,
+}));
+
+vi.mock('../contexts/GuestContext', () => ({
+  useGuest: () => ({ isGuest: false }),
+}));
+
 import { HomeScreen } from './HomeScreen';
 
 function wrap(ui: React.ReactElement) {
