@@ -38,9 +38,9 @@ type XSyncResult = {
 };
 
 const INTAKE_MODES: Array<{ value: LoreIntakeMode; label: string; hint: string }> = [
-  { value: 'reference_only', label: 'Reference only', hint: 'Posts link to lore you already have. Never creates anything.' },
-  { value: 'conservative', label: 'Conservative', hint: 'Links freely; creates at most 2 well-evidenced entities per post.' },
-  { value: 'review_first', label: 'Review first', hint: 'Never auto-creates. New candidates wait for your confirmation below.' },
+  { value: 'reference_only', label: 'Link only', hint: 'Connect posts to people and places already in your story. Never add anything new.' },
+  { value: 'conservative', label: 'Balanced', hint: 'Link freely, and add up to two new discoveries per post when the evidence is solid.' },
+  { value: 'review_first', label: 'Ask me first', hint: 'Never add anything automatically — show me what you found and let me decide.' },
 ];
 
 function formatDate(value?: string | null) {
@@ -80,7 +80,7 @@ export function XConnectionPanel() {
       });
     } catch (err) {
       setIntakeMode(previous);
-      setError(err instanceof Error ? err.message : 'Failed to save lore intake mode');
+      setError(err instanceof Error ? err.message : "Couldn't save that preference — try again in a moment.");
     } finally {
       setSavingMode(false);
     }
@@ -110,7 +110,7 @@ export function XConnectionPanel() {
           : prev
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to add ${candidate.name} to lore`);
+      setError(err instanceof Error ? err.message : `Couldn't add ${candidate.name} just now — try again in a moment.`);
     } finally {
       setConfirmingName(null);
     }
@@ -205,7 +205,7 @@ export function XConnectionPanel() {
     const params = new URLSearchParams(window.location.search);
     const xParam = params.get('x');
     if (xParam === 'connected') {
-      setMessage('X connected successfully. Sync your posts to import history.');
+      setMessage("You're connected! Sync whenever you want to catch your story up on what you've been posting.");
       // clean URL
       window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
       void load();
@@ -255,7 +255,7 @@ export function XConnectionPanel() {
       }
       window.location.href = result.authorizationUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start X connection');
+      setError(err instanceof Error ? err.message : "Couldn't start the X connection — try again in a moment.");
       setWorking(false);
     }
   };
@@ -282,7 +282,7 @@ export function XConnectionPanel() {
           created: intakeMode === 'conservative' ? [demoCandidate] : [],
           heldForReview: intakeMode === 'conservative' ? [] : [demoCandidate],
         });
-        setMessage('Demo: Synced 2 more mock X posts. They are now part of your lore with X provenance links in entities and timeline.');
+        setMessage('Two new posts came in — the receipt below shows what they added to your story.');
         setWorking(false);
       }, 700);
       return;
@@ -298,10 +298,14 @@ export function XConnectionPanel() {
       const imported = result.imported ?? result.count;
       const skipped = result.skipped ?? 0;
       setReceipt(result.lore ?? null);
-      setMessage(`Synced ${imported} recent X posts${skipped ? `; skipped ${skipped} duplicates` : ''}.`);
+      setMessage(
+        imported === 0
+          ? 'All caught up — nothing new since your last sync.'
+          : `Brought in ${imported} new post${imported === 1 ? '' : 's'}${skipped ? ` (${skipped} you already had)` : ''}. Here's what they added:`
+      );
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync X posts');
+      setError(err instanceof Error ? err.message : "Couldn't reach X just now — give it another try in a minute.");
     } finally {
       setWorking(false);
     }
@@ -321,7 +325,7 @@ export function XConnectionPanel() {
           status: 'disconnected',
         });
         setRecentImports([]);
-        setMessage('Demo: X disconnected (mock).');
+        setMessage('Disconnected. Everything you imported is still safe in your journal.');
         setWorking(false);
       }, 400);
       return;
@@ -331,20 +335,20 @@ export function XConnectionPanel() {
     setMessage(null);
     try {
       await fetchJson('/api/integrations/x/connection', { method: 'DELETE' });
-      setMessage('X disconnected.');
+      setMessage('Disconnected. Everything you already imported stays safely in your journal.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to disconnect X');
+      setError(err instanceof Error ? err.message : "Couldn't disconnect just now — try again in a moment.");
     } finally {
       setWorking(false);
     }
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 shadow-sm">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-sky-950/20 via-white/[0.02] to-transparent p-5 shadow-sm">
       <div className="flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10">
-          <Twitter className="h-5 w-5 text-white/90" />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 ring-1 ring-sky-500/25">
+          <Twitter className="h-5 w-5 text-sky-400" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -363,8 +367,9 @@ export function XConnectionPanel() {
           </div>
 
           <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-            Import your original posts and replies into LoreBook as personal history (journal entries + entities/relationships via the ER pipeline).
-            Full post text is preserved. Any entities referenced or created will be stamped with provenance back to the originating X post (see entity metadata.external_sources and entry metadata).
+            Your posts are part of your story. Bring them in and they're saved word-for-word in
+            your journal — and when a post mentions someone or somewhere you know, it links
+            straight to them, with a trail back to the original post.
           </p>
 
           {/* Guidance for OAuth setup — hidden in demo/mock mode */}
@@ -374,7 +379,7 @@ export function XConnectionPanel() {
                 <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <div className="space-y-1">
                   <div>
-                    <span className="font-semibold">Critical:</span> The redirect URI below <span className="font-mono text-amber-100 break-all">{callbackUrl}</span> {usingOverride && <span className="text-[10px] text-amber-300">(forced by X_OAUTH_REDIRECT_URI)</span>} must be registered <strong>exactly</strong> (copy-paste) in{' '}
+                    <span className="font-semibold">One-time setup:</span> the redirect URI below <span className="font-mono text-amber-100 break-all">{callbackUrl}</span> {usingOverride && <span className="text-[10px] text-amber-300">(forced by X_OAUTH_REDIRECT_URI)</span>} must be registered <strong>exactly</strong> (copy-paste) in{' '}
                     <a href="https://developer.x.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-white font-medium">X Developer Portal → your App → User authentication settings → Callback URLs</a>.
                   </div>
                   <div className="text-[10px] text-amber-200/70">
@@ -394,7 +399,7 @@ export function XConnectionPanel() {
                     const variants = new Set([callbackUrl, callbackUrl.replace('127.0.0.1', 'localhost'), callbackUrl.replace('localhost', '127.0.0.1')]);
                     const text = Array.from(variants).join('\n');
                     navigator.clipboard?.writeText(text);
-                    setMessage('Copied common variants — register all of them in X settings for robustness.');
+                    setMessage('Copied! Paste all of these into your X app settings so every variant works.');
                   }
                 }}
                 className="mt-1.5 inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] hover:bg-amber-500/20"
@@ -407,23 +412,25 @@ export function XConnectionPanel() {
           {status?.connected && (
             <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
               <div className="text-white/40">
-                Account <span className="font-mono text-white/70">@{status.username ?? 'unknown'}</span>
+                Connected as <span className="font-medium text-sky-300">@{status.username ?? 'unknown'}</span>
               </div>
               <div className="text-white/40">
-                Last sync <span className="text-white/70">{formatDate(status.lastSyncAt)}</span>
+                Last synced <span className="text-white/70">{formatDate(status.lastSyncAt)}</span>
               </div>
               <div className="text-white/40 sm:col-span-2">
-                Scopes <span className="font-mono text-white/60">{status.scopes.length ? status.scopes.join(', ') : '—'}</span>
+                Read-only access — LoreBook can see your posts, and can never post for you.
               </div>
             </div>
           )}
 
-          {/* Lore intake mode — how much a sync may create on its own */}
+          {/* How much a sync may add to the user's story on its own */}
           {status?.connected && (
-            <div className="mt-4">
-              <p className="text-[10px] uppercase tracking-wide text-white/40 mb-1.5">
-                Lore intake {savingMode && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}
+            <div className="mt-5">
+              <p className="text-xs font-medium text-white/70 mb-0.5">
+                How much should syncs add on their own?
+                {savingMode && <Loader2 className="inline h-3 w-3 animate-spin ml-1.5 text-white/40" />}
               </p>
+              <p className="text-[11px] text-white/40 mb-2">You're always in control — pick what feels right.</p>
               <div className="flex flex-col gap-1.5 sm:flex-row">
                 {INTAKE_MODES.map((mode) => (
                   <button
@@ -432,39 +439,44 @@ export function XConnectionPanel() {
                     onClick={() => void saveIntakeMode(mode.value)}
                     disabled={working || savingMode}
                     title={mode.hint}
-                    className={`flex-1 rounded-lg border px-2.5 py-2 text-left transition disabled:opacity-60 ${
+                    className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition disabled:opacity-60 ${
                       intakeMode === mode.value
-                        ? 'border-primary/50 bg-primary/15 text-primary'
-                        : 'border-white/10 bg-white/[0.02] text-white/60 hover:bg-white/5 hover:text-white/80'
+                        ? 'border-sky-400/50 bg-sky-500/15 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]'
+                        : 'border-white/10 bg-white/[0.02] hover:bg-white/5'
                     }`}
                   >
-                    <span className="block text-xs font-medium">{mode.label}</span>
-                    <span className="block text-[10px] leading-tight opacity-70 mt-0.5">{mode.hint}</span>
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${intakeMode === mode.value ? 'text-sky-300' : 'text-white/70'}`}>
+                      {intakeMode === mode.value && <CheckCircle2 className="h-3 w-3" />}
+                      {mode.label}
+                    </span>
+                    <span className={`block text-[10px] leading-snug mt-1 ${intakeMode === mode.value ? 'text-sky-200/70' : 'text-white/40'}`}>
+                      {mode.hint}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Sync receipt — exactly what the last sync did to your lore */}
+          {/* Sync receipt — exactly what the last sync did to the user's story */}
           {receipt && (receipt.referenced.length + receipt.created.length + receipt.heldForReview.length > 0) && (
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.015] p-3">
-              <p className="text-[10px] uppercase tracking-wide text-white/40 mb-2">Last sync — what entered your lore</p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+              <p className="text-xs font-medium text-white/70 mb-2.5">What your posts added to your story</p>
               {receipt.referenced.length > 0 && (
-                <div className="mb-1.5 text-xs">
-                  <span className="text-white/45">Referenced existing: </span>
+                <div className="mb-2 text-xs">
+                  <span className="text-white/45">Mentioned people &amp; places you know: </span>
                   {receipt.referenced.map((r) => (
-                    <span key={`${r.type}:${r.name}`} className="inline-block mr-1 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300">
+                    <span key={`${r.type}:${r.name}`} className="inline-block mr-1 mb-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300">
                       {r.name}
                     </span>
                   ))}
                 </div>
               )}
               {receipt.created.length > 0 && (
-                <div className="mb-1.5 text-xs">
-                  <span className="text-white/45">Created: </span>
+                <div className="mb-2 text-xs">
+                  <span className="text-white/45">New to your books: </span>
                   {receipt.created.map((r) => (
-                    <span key={`${r.type}:${r.name}`} className="inline-block mr-1 rounded border border-sky-500/25 bg-sky-500/10 px-1.5 py-0.5 text-[11px] text-sky-300">
+                    <span key={`${r.type}:${r.name}`} className="inline-block mr-1 mb-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-300">
                       {r.name} <span className="opacity-60 lowercase">({r.type.toLowerCase()})</span>
                     </span>
                   ))}
@@ -472,10 +484,10 @@ export function XConnectionPanel() {
               )}
               {receipt.heldForReview.length > 0 && (
                 <div className="text-xs">
-                  <span className="text-white/45">Held for your review: </span>
+                  <span className="text-white/45">Spotted something new — want it in your story? </span>
                   <div className="mt-1 space-y-1">
                     {receipt.heldForReview.map((c) => (
-                      <div key={`${c.type}:${c.name}`} className="flex items-center gap-2 rounded border border-amber-500/20 bg-amber-500/[0.06] px-2 py-1">
+                      <div key={`${c.type}:${c.name}`} className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-1.5">
                         <span className="flex-1 text-[11px] text-amber-200 truncate">
                           {c.name} <span className="opacity-60 lowercase">({c.type.toLowerCase()})</span>
                         </span>
@@ -483,9 +495,9 @@ export function XConnectionPanel() {
                           type="button"
                           onClick={() => void addHeldToLore(c)}
                           disabled={confirmingName !== null}
-                          className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+                          className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 transition"
                         >
-                          {confirmingName === c.name ? 'Adding…' : 'Add to lore'}
+                          {confirmingName === c.name ? 'Adding…' : 'Yes, add it'}
                         </button>
                       </div>
                     ))}
@@ -493,7 +505,7 @@ export function XConnectionPanel() {
                 </div>
               )}
               {receipt.referenced.length === 0 && receipt.created.length === 0 && receipt.heldForReview.length === 0 && (
-                <p className="text-xs text-white/40">Nothing lore-worthy in these posts — journal entries saved, no entities touched.</p>
+                <p className="text-xs text-white/40">Nothing new this time — your posts are saved in your journal, and your books stayed tidy.</p>
               )}
             </div>
           )}
@@ -501,17 +513,18 @@ export function XConnectionPanel() {
           {/* Recent X imports preview — surfaces the integration throughout the lore UI */}
           {recentImports.length > 0 && (
             <div className="mt-4">
-              <p className="text-[10px] uppercase tracking-wide text-white/40 mb-1.5">Recent imports (appear in Timeline, Memory Explorer, Entities with provenance)</p>
+              <p className="text-xs font-medium text-white/70 mb-0.5">Recently brought in</p>
+              <p className="text-[11px] text-white/40 mb-2">These live in your journal and timeline, each linked back to the original post.</p>
               <div className="space-y-1.5">
                 {recentImports.slice(0, 3).map((imp) => {
                   const xUrl = imp.metadata?.url;
                   return (
-                    <div key={imp.id} className="rounded border border-white/10 bg-white/[0.015] p-2 text-xs flex gap-2">
+                    <div key={imp.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5 text-xs flex gap-2">
                       <Twitter className="h-3.5 w-3.5 mt-0.5 text-sky-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-white/80 truncate">{imp.content}</div>
                         {xUrl && (
-                          <a href={xUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline text-[10px]">view on X →</a>
+                          <a href={xUrl} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline text-[10px]">See the original post →</a>
                         )}
                       </div>
                     </div>
@@ -537,7 +550,7 @@ export function XConnectionPanel() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {working ? 'Syncing…' : 'Sync posts'}
+                {working ? 'Bringing in your posts…' : 'Sync my posts'}
               </button>
               <button
                 type="button"
@@ -572,8 +585,8 @@ export function XConnectionPanel() {
         <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-300">
           {error}
           <div className="mt-1 text-[11px] text-red-300/70">
-            Most common cause: redirect_uri in the generated authorize URL did not exactly match any Callback URL registered for your Client ID in the X Developer Portal (see amber box above).<br />
-            Check your backend server logs after clicking "Connect X" — it prints the exact redirectUri used. Also try registering both <span className="font-mono">localhost:4000</span> and <span className="font-mono">127.0.0.1:4000</span> variants.
+            The usual culprit: the callback URL registered in the X Developer Portal doesn't exactly match the one this app sends (see the setup note above).
+            Your server logs print the exact URL after you click Connect — registering both the <span className="font-mono">localhost</span> and <span className="font-mono">127.0.0.1</span> variants usually sorts it out.
           </div>
         </div>
       )}

@@ -177,8 +177,8 @@ describe('HomeScreen', () => {
         // Panel self-mocks in demo mode: connected as @demo_user with intake modes
         expect(screen.getByText('@demo_user')).toBeInTheDocument();
       }, { timeout: 3000 });
-      expect(screen.getByText(/Reference only/i)).toBeInTheDocument();
-      expect(screen.getByText(/Review first/i)).toBeInTheDocument();
+      expect(screen.getByText(/Link only/i)).toBeInTheDocument();
+      expect(screen.getByText(/Ask me first/i)).toBeInTheDocument();
     } finally {
       vi.mocked(useShouldUseMockData).mockReturnValue(false);
     }
@@ -188,7 +188,7 @@ describe('HomeScreen', () => {
     vi.mocked((await import('../lib/api')).fetchJson).mockResolvedValue({ characters: [] });
     wrap(<HomeScreen />);
     await waitFor(() => {
-      expect(screen.queryByText(/Lore intake/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/syncs add on their own/i)).not.toBeInTheDocument();
     });
   });
 });
