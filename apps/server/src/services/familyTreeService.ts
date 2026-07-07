@@ -468,6 +468,21 @@ class FamilyTreeService {
         }
       }
 
+      // A character's family tree may only contain kin REACHABLE from that
+      // character through family edges. The generic tree-builder fallback walks
+      // mixed relationship paths, which can drag in the user's own family — a
+      // shared given name or mutual friend must never graft two trees together.
+      const reachable = new Set<string>([characterId]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const e of edges) {
+          if (reachable.has(e.fromId) && !reachable.has(e.toId)) { reachable.add(e.toId); grew = true; }
+          if (reachable.has(e.toId) && !reachable.has(e.fromId)) { reachable.add(e.fromId); grew = true; }
+        }
+      }
+      const connectedEdges = edges.filter((e) => reachable.has(e.fromId) && reachable.has(e.toId));
+
       const { data: rootChar } = await supabaseAdmin
         .from('characters')
         .select('id, name, importance_score, metadata')
@@ -477,10 +492,10 @@ class FamilyTreeService {
 
       if (!rootChar) return null;
 
-      const names = await this.loadNames(userId, [characterId, ...edges.flatMap(e => [e.fromId, e.toId])]);
+      const names = await this.loadNames(userId, [characterId, ...connectedEdges.flatMap(e => [e.fromId, e.toId])]);
       names.set(characterId, rootChar.name);
 
-      const tree = this.buildTreeFromEdges(characterId, rootChar.name, edges, names, {
+      const tree = this.buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
         markSelf: opts.isUserTree ?? false,
         selfId: characterId,
       });
