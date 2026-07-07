@@ -271,6 +271,13 @@ jobs:
 
       - name: Build production bundle
         working-directory: apps/web
+        # Dummy Supabase env so the built app treats auth as configured and
+        # derives the same localStorage key (sb-placeholder-auth-token) the
+        # composer-chips e2e seeds its session under. Without it the e2e's
+        # bootstrapped session is invisible and AuthGate never reaches /chat.
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ci-e2e-placeholder-anon-key-not-a-real-secret-000000
         run: npm run build
 
       - name: Validate build output

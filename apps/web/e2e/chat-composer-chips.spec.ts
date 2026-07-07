@@ -50,7 +50,10 @@ function supabaseStorageKeys(): string[] {
       // try next path
     }
   }
-  if (keys.size === 0) keys.add('sb-placeholder-auth-token');
+  // Always include the CI key: the CI production build bakes in
+  // https://placeholder.supabase.co (see ci.yml web-production-build), so the
+  // app looks for this key even when a local .env resolves differently.
+  keys.add('sb-placeholder-auth-token');
   return [...keys];
 }
 
