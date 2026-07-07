@@ -1204,7 +1204,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     const fullPrompt = prompt.includes('actually') ? prompt : `${prompt}\n\n${correctionHint}`;
     const romantic =
       relationship ??
-      getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
+      (isMockDataEnabled
+        ? getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name)
+        : undefined);
     if (romantic) {
       openChatWithFocus({
         entityId: editedCharacter.id,
