@@ -96,3 +96,43 @@ describe('assessRomanticPartnerEligibility', () => {
     });
   });
 });
+
+describe('ex-lover disambiguation: band vs real ex sexual partner', () => {
+  const orgs = ['Ex Lover'];
+
+  it('keeps a genuine romantic cue even though a band shares the phrase', () => {
+    expect(
+      assessRomanticPartnerEligibility({
+        name: 'Jessica',
+        evidence: 'Jessica is my ex lover, we used to date before the scene days',
+        knownOrganizationNames: orgs,
+      }).eligible,
+    ).toBe(true);
+    expect(
+      assessRomanticPartnerEligibility({
+        name: 'Daisy',
+        evidence: 'an ex lover of mine showed up at the function',
+        knownOrganizationNames: orgs,
+      }).eligible,
+    ).toBe(true);
+  });
+
+  it('still rejects band usage of the same phrase', () => {
+    const r = assessRomanticPartnerEligibility({
+      name: 'Mr. Chino',
+      evidence: 'Ex Lover played with Vilevo and Mr. Chino sounded great',
+      knownOrganizationNames: orgs,
+    });
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toBe('role_cue_is_known_organization');
+  });
+
+  it('rejects when both usages appear (band context wins on ambiguity)', () => {
+    const r = assessRomanticPartnerEligibility({
+      name: 'Someone',
+      evidence: 'my ex lover came to the Ex Lover show',
+      knownOrganizationNames: orgs,
+    });
+    expect(r.eligible).toBe(false);
+  });
+});

@@ -116,13 +116,32 @@ export function assessRomanticPartnerEligibility(input: {
     if (nameKey && orgSet.has(nameKey)) {
       return { eligible: false, reason: 'partner_is_known_organization' };
     }
-    // The romantic cue came from a band name that doubles as a relationship word
-    // (the band "Ex Lover" in the evidence → not a real "ex lover" of this person).
-    const evidenceKey = normalizeRoleLabel(input.evidence ?? '');
+    // A band name that doubles as a relationship word ("Ex Lover") appearing in
+    // the evidence is AMBIGUOUS: it can name the band OR genuinely describe an
+    // ex sexual partner. Disambiguate by usage before rejecting:
+    //   - possessive/romantic grammar ("my ex lover", "she's my ex lover",
+    //     "an ex lover of mine") → real romantic cue, keep it.
+    //   - band grammar ("Ex Lover played", "the Ex Lover show", "saw Ex Lover")
+    //     or no romantic grammar at all → the band, reject.
+    const evidence = input.evidence ?? '';
+    const evidenceKey = normalizeRoleLabel(evidence);
     for (const org of orgSet) {
-      if (RELATIONSHIP_ROLE_LABELS.has(org) && evidenceKey.split(' ').length > 0 && ` ${evidenceKey} `.includes(` ${org} `)) {
-        return { eligible: false, reason: 'role_cue_is_known_organization' };
+      if (!RELATIONSHIP_ROLE_LABELS.has(org)) continue;
+      if (!` ${evidenceKey} `.includes(` ${org} `)) continue;
+
+      const escaped = org.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+      const romanticUsage = new RegExp(
+        `\\b(?:my|his|her|their)\\s+${escaped}\\b|\\b${escaped}\\s+of\\s+mine\\b|\\b(?:is|was|been|became)\\s+(?:my|an?)\\s+${escaped}\\b`,
+        'i',
+      );
+      const bandUsage = new RegExp(
+        `\\b${escaped}\\s+(?:band(?:mates?)?|show|set|gig|tour|merch|tickets?|album|played|plays|playing|performed|sounded)\\b|\\b(?:band|see|saw|watch(?:ed|ing)?|listen(?:ed|ing)?\\s+to)\\s+${escaped}\\b|\\bthe\\s+${escaped}\\s+(?:and|&|show|set)\\b`,
+        'i',
+      );
+      if (romanticUsage.test(evidence) && !bandUsage.test(evidence)) {
+        continue; // genuine "my ex lover …" — do not reject on the band's account
       }
+      return { eligible: false, reason: 'role_cue_is_known_organization' };
     }
   }
 

@@ -8,6 +8,7 @@
  * never pollute the Places book) and can be merged to a real venue later.
  */
 import { logger } from '../../logger';
+import { inferEventAttendance } from './eventAttendance';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { classifySpatialReference } from '../lorebook/quality/spatialContextResolver';
 
@@ -117,10 +118,18 @@ export async function materializeSpatialEvents(
         .filter(Boolean)
         .join(' ')
         .trim();
+      const { attendance, cue: attendanceCue } = inferEventAttendance(ev.evidence);
       record = await deps.insertEvent(userId, {
         title: ev.title,
         summary: summary || undefined,
-        metadata: { source: 'spatial_resolver', organizer: ev.organizer ?? null },
+        metadata: {
+          source: 'spatial_resolver',
+          organizer: ev.organizer ?? null,
+          // Awareness ≠ attendance: events the user only heard about are kept
+          // but marked, so recall/timeline never claims they were there.
+          attendance,
+          ...(attendanceCue ? { attendance_cue: attendanceCue } : {}),
+        },
       });
       if (record) {
         byTitle.set(key, record);
