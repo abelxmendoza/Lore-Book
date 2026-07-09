@@ -7,7 +7,9 @@
  *   3. Journal semantic search (memoryRecallEngine)
  */
 
-import { routeRecallQuery, type RecallResult as RoutedRecall } from './recallQueryRouter';
+import { queryEngine } from '../../cognition/query/QueryEngine';
+import type { QueryContext } from '../../cognition/query/QueryTypes';
+import type { RecallResult as RoutedRecall } from './recallQueryRouter';
 import { isFoundationPrimaryIntent } from './recallIntentPatterns';
 import { VERIFIED_SILENCE_FALLBACK } from './verifiedMemoryLanguage';
 import {
@@ -24,21 +26,27 @@ export type ExplicitRecallResponse = {
   metadata?: Record<string, unknown>;
 };
 
+type ThreadRecall = Awaited<ReturnType<typeof buildThreadRecall>>;
+
 export async function executeExplicitRecall(
   userId: string,
   message: string,
   conversationHistory: Array<{ role: string; content: string }> = [],
   options: { threadId?: string } = {}
 ): Promise<ExplicitRecallResponse> {
+  // All retrieval runs through the Query Engine's executors. The decision
+  // tree below is unchanged — the engine is the execution layer, this
+  // function remains the (legacy) answer policy.
+  const engineInput = { userId, message, conversationHistory, threadId: options.threadId };
+  const ctx: QueryContext = queryEngine.buildContext(engineInput, queryEngine.plan(engineInput));
+  const runThread = async () => (await queryEngine.executeKind('thread', ctx)).raw as ThreadRecall;
+
   const isThreadQuery =
     matchesThreadRecallQuery(message) || THREAD_RECALL_RE.test(message.trim());
 
   // Phase 2 — thread first when history exists or threadId provided
   if (isThreadQuery || conversationHistory.length > 0) {
-    const thread = await buildThreadRecall(userId, message, {
-      conversationHistory,
-      threadId: options.threadId,
-    });
+    const thread = await runThread();
 
     if (thread.hasContent) {
       return {
@@ -60,7 +68,7 @@ export async function executeExplicitRecall(
     }
   }
 
-  const routed = await routeRecallQuery(userId, message, conversationHistory);
+  const routed = (await queryEngine.executeKind('structured', ctx)).raw as RoutedRecall;
 
   if (routed.foundationPrimary && hasFoundationContent(routed)) {
     return {
@@ -75,21 +83,13 @@ export async function executeExplicitRecall(
     };
   }
 
-  const { memoryRecallEngine } = await import('../memoryRecall/memoryRecallEngine');
-  const journalRecall = await memoryRecallEngine.executeRecall({
-    raw_text: message,
-    user_id: userId,
-    persona: 'ARCHIVIST',
-  });
+  const journalRecall = (await queryEngine.executeKind('semantic', ctx)).raw as JournalRecall;
 
   // Never silence when thread had user messages
   const userTurns = conversationHistory.filter((m) => m.role === 'user');
   if (journalRecall.silence && !hasFoundationContent(routed)) {
     if (userTurns.length > 0) {
-      const threadFallback = await buildThreadRecall(userId, message, {
-        conversationHistory,
-        threadId: options.threadId,
-      });
+      const threadFallback = await runThread();
       return {
         content: threadFallback.content,
         response_mode: 'THREAD_RECALL',
@@ -109,10 +109,7 @@ export async function executeExplicitRecall(
 
   if (!content) {
     if (userTurns.length > 0) {
-      const threadFallback = await buildThreadRecall(userId, message, {
-        conversationHistory,
-        threadId: options.threadId,
-      });
+      const threadFallback = await runThread();
       return {
         content: threadFallback.content,
         response_mode: 'THREAD_RECALL',
