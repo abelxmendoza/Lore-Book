@@ -55,6 +55,33 @@ export type QueryClassification = {
   foundationPrimary: boolean;
 };
 
+/** A name mention resolved against the user's canonical entity index. */
+export type ResolvedQueryEntity = {
+  /** The raw mention as written. */
+  mention: string;
+  id?: string;
+  canonicalName?: string;
+  type?: string;
+  confidence: number;
+  method: 'exact' | 'alias' | 'partial' | 'unresolved';
+  /** Present when the mention matched several entities (ambiguity scoring). */
+  candidates?: Array<{ id: string; name: string; type: string; score: number }>;
+};
+
+/** Cost/latency/value profile an executor exposes to the planner. */
+export type ExecutorProfile = {
+  estimatedLatencyMs: number;
+  estimatedTokenCost: number;
+  /** How much a hit from this executor typically raises answer confidence. */
+  expectedConfidenceGain: number;
+  cacheable: boolean;
+  /** Lower runs earlier. Stages sharing a priority run in parallel. */
+  priority: number;
+};
+
+/** Evidence-driven conditions for adaptive execution. */
+export type StageCondition = 'always' | 'if_low_confidence' | 'if_no_records';
+
 /** Executor kinds the planner can schedule. */
 export type ExecutorKind =
   | 'structured'
@@ -74,13 +101,27 @@ export type PlannedExecutor = {
   placeholder?: boolean;
 };
 
+/** A planned executor with adaptive-execution semantics. */
+export type PlanStage = PlannedExecutor & {
+  priority: number;
+  runIf: StageCondition;
+  profile: ExecutorProfile;
+};
+
 /** Typed execution plan — the unit the rest of the system consumes. */
 export type QueryPlan = {
   intent: QueryType;
   confidence: number;
+  /** Flat lineup, kept for compatibility; derived from `stages`. */
   executors: PlannedExecutor[];
+  /** Adaptive execution pipeline: priority tiers + evidence conditions. */
+  stages: PlanStage[];
+  /** Stop executing further tiers once merged confidence reaches this. */
+  sufficientConfidence: number;
   filters: QueryFilters;
   classification: QueryClassification;
+  /** Canonical entities the plan is anchored on (entity-first planning). */
+  resolvedEntities?: ResolvedQueryEntity[];
 };
 
 /** Where a result came from and how — groundwork for evidence visualization. */
@@ -93,6 +134,17 @@ export type ProvenanceRecord = {
   journalIds?: string[];
   claimIds?: string[];
   confidence: number;
+  // ── Phase 2 extensions (all optional — existing provenance unchanged) ──
+  /** Which retrieval strategy produced this, e.g. 'adaptive_tier_1'. */
+  strategy?: string;
+  cacheHit?: boolean;
+  executor?: ExecutorKind;
+  /** Where the confidence number came from, e.g. 'router', 'merger_weighted'. */
+  confidenceSource?: string;
+  /** How the anchoring entity was resolved (exact/alias/partial). */
+  entityResolution?: { mention: string; id?: string; method: string };
+  /** Future graph traversal path, e.g. ['Abel', 'Tony', 'Renna']. */
+  traversalPath?: string[];
 };
 
 export type Citation = {
@@ -128,6 +180,11 @@ export type QueryResult = {
   raw?: unknown;
   /** Non-fatal executor problems (an executor failing never fails the plan). */
   error?: string;
+  /** True when the underlying service answered from cache. */
+  cacheHit?: boolean;
+  /** True when adaptive execution decided not to run this stage. */
+  skipped?: boolean;
+  skipReason?: string;
 };
 
 export type MergedQueryResponse = {
@@ -137,6 +194,13 @@ export type MergedQueryResponse = {
   /** Weighted overall confidence across contributing executors. */
   confidence: number;
   contributingSources: ExecutorKind[];
+  /** Explainable confidence: every contributing source's raw + weighted score. */
+  confidenceBreakdown: Array<{
+    source: ExecutorKind;
+    confidence: number;
+    weight: number;
+    weighted: number;
+  }>;
 };
 
 /** Everything an executor may need. Executors must not re-parse user text. */
@@ -146,6 +210,8 @@ export type QueryContext = {
   conversationHistory: Array<{ role: string; content: string }>;
   threadId?: string;
   plan: QueryPlan;
+  /** Canonical entity anchors available to every executor. */
+  resolvedEntities?: ResolvedQueryEntity[];
 };
 
 // ─── Graph interfaces (no graph database yet — traversal plugs in here) ──────

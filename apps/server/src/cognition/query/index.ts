@@ -6,3 +6,8 @@ export { mergeResults } from './ResultMerger';
 export { createDefaultExecutorRegistry } from './QueryExecutor';
 export type { QueryExecutor } from './QueryExecutor';
 export * from './QueryTypes';
+export { entityResolver, EntityResolver } from './EntityResolver';
+export { queryInspector } from './QueryInspector';
+export type { QueryTrace, ExecutorTrace } from './QueryInspector';
+export { executionMetrics } from './ExecutionMetrics';
+export { PLANNING_RULES, EXECUTOR_PROFILES, DEFAULT_SUFFICIENT_CONFIDENCE } from './PlanningRules';

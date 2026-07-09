@@ -70,7 +70,7 @@ existing formatting stays byte-identical. New callers should consume
 1. Add the value to `QueryType` (QueryTypes.ts).
 2. Classify it in `IntentClassifier` (add a pattern — or later, a label in the
    ML classifier).
-3. Map it to executors in `EXECUTORS_BY_TYPE` (QueryPlanner.ts).
+3. Add a rule row in `PLANNING_RULES` (PlanningRules.ts) — stages, tiers, conditions.
 4. If it needs a new backend, implement a `QueryExecutor` and register it in
    `createDefaultExecutorRegistry`.
 
@@ -94,6 +94,79 @@ enabling it is purely an executor change.
 skill usage, happiest month). Implementations must be batched SQL
 aggregations — never per-entity loops. COMPARISON and AGGREGATE plans already
 schedule the executor.
+
+## Phase 2 — Intelligent planning
+
+### Planner lifecycle
+
+```
+message
+  → classify (IntentClassifier)
+  → resolve entities (EntityResolver — canonical IDs before planning)
+  → plan (PLANNING_RULES table → PlanStage[] with priority tiers + conditions)
+  → adaptive execution (tier by tier)
+  → merge (+ explainable confidence breakdown)
+  → inspector trace + metrics
+```
+
+### Entity-first planning
+
+`EntityResolver` wraps the foundation entity index (characters, locations,
+organizations — canonical names *and* aliases, one batched load). Mentions
+resolve to `ResolvedQueryEntity` with method `exact | alias | partial |
+unresolved`, ambiguity candidates, and confidence. Plans carry
+`resolvedEntities`, the context hands them to every executor, and entity
+resolution is recorded in provenance (`entityResolution` field). Executors
+should anchor on IDs whenever present instead of re-matching names.
+
+### Cost-based + adaptive execution
+
+Every executor has an `ExecutorProfile` (estimated latency, token cost,
+expected confidence gain, cacheability, priority) in `PlanningRules.ts`.
+Execution is incremental:
+
+- stages run in **priority tiers** (same tier = parallel),
+- each stage has a `runIf` condition — `always`, `if_low_confidence`
+  (skip when merged confidence ≥ the plan's `sufficientConfidence`, default
+  0.9), or `if_no_records`,
+- after every tier the engine re-merges; once confidence is sufficient *and*
+  evidence exists, remaining tiers are skipped (recorded as `skipped` results
+  with reasons — visible in traces, ignored by the merger).
+
+So "who is X?" typically runs structured only and stops at 0.9+; a weak
+structured hit lets crystallized claims (then semantic, where planned) fire.
+
+### Planner heuristics
+
+Planning decisions are data (`PLANNING_RULES`), not switch statements:
+IDENTITY prefers structured and never runs semantic first; TIMELINE runs
+timeline+structured then semantic; GRAPH runs structured → graph → semantic
+only if nothing was found; COMPARISON runs structured → semantic-if-needed →
+analytics. Editing behavior = editing the table.
+
+### Confidence propagation
+
+Executors report confidence → the merger weights it by source trust →
+`MergedQueryResponse.confidenceBreakdown` lists every contributing source's
+raw score, weight, and weighted score, and the final confidence is the best
+weighted contribution. Confidence is explainable end-to-end.
+
+### Query Inspector (internal only)
+
+`queryInspector` keeps a ring buffer (last 100) of full traces: query, intent,
+resolved entities, the plan (stages/tiers/conditions), which executors ran or
+were skipped and why, per-executor latency/cache/record counts, merge output,
+final confidence, early-stop flag. Read with `getRecentTraces()` /
+`getLastTrace()`. Not exposed publicly — this is the retrieval debugging tool
+and the seam a future dev-console "Query Inspector" UI plugs into.
+
+### Execution metrics
+
+`executionMetrics.snapshot()` → totals, average latency/executor count/
+confidence, per-executor usage rates (semantic %, graph %), cache hit rate,
+early-stop rate, fallback frequency, knowledge-gap frequency, intent counts.
+In-memory, optional (`QUERY_METRICS_DISABLED=true`), zero I/O — the raw
+material for planner learning (which plans yield the highest confidence).
 
 ## Performance rules
 

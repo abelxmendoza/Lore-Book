@@ -41,7 +41,7 @@ export function mergeResults(results: QueryResult[]): MergedQueryResponse {
   const contributing = new Set<ExecutorKind>();
 
   for (const result of results) {
-    if (result.error) continue;
+    if (result.error || result.skipped) continue;
     const weight = SOURCE_WEIGHT[result.source] ?? 0.5;
 
     for (const record of result.records) {
@@ -63,12 +63,18 @@ export function mergeResults(results: QueryResult[]): MergedQueryResponse {
 
   const ranked = [...seenRecords.values()].sort((a, b) => b.weighted - a.weighted);
 
-  // Overall confidence: best contributing source, softened when only weak
-  // sources contributed. Never higher than the best executor claimed.
-  const confidences = results
-    .filter((r) => !r.error && r.records.length > 0)
-    .map((r) => r.confidence * (SOURCE_WEIGHT[r.source] ?? 0.5));
-  const confidence = confidences.length ? Math.min(1, Math.max(...confidences)) : 0;
+  // Explainable confidence: keep every contributing source's raw + weighted
+  // score; the final number is the best weighted contribution (never higher
+  // than the best executor claimed).
+  const confidenceBreakdown = results
+    .filter((r) => !r.error && !r.skipped && r.records.length > 0)
+    .map((r) => {
+      const weight = SOURCE_WEIGHT[r.source] ?? 0.5;
+      return { source: r.source, confidence: r.confidence, weight, weighted: r.confidence * weight };
+    });
+  const confidence = confidenceBreakdown.length
+    ? Math.min(1, Math.max(...confidenceBreakdown.map((b) => b.weighted)))
+    : 0;
 
   return {
     records: ranked.map(({ weighted: _weighted, ...record }) => record),
@@ -76,5 +82,6 @@ export function mergeResults(results: QueryResult[]): MergedQueryResponse {
     provenance,
     confidence,
     contributingSources: [...contributing],
+    confidenceBreakdown,
   };
 }

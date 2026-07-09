@@ -11,6 +11,12 @@ import { mergeResults } from './ResultMerger';
 import { QueryEngine } from './QueryEngine';
 import { QueryType, type QueryResult, type ExecutorKind } from './QueryTypes';
 import type { QueryExecutor } from './QueryExecutor';
+import { EntityResolver } from './EntityResolver';
+import { queryInspector } from './QueryInspector';
+
+/** Resolver backed by a fake index — no DB. */
+const fakeResolver = (known: Record<string, { id: string; type: string }> = {}) =>
+  new EntityResolver(async () => new Map(Object.entries(known)));
 
 const result = (source: ExecutorKind, over: Partial<QueryResult> = {}): QueryResult => ({
   source,
@@ -125,17 +131,73 @@ describe('QueryEngine', () => {
     execute: async () => result(kind, out),
   });
 
-  it('runs all planned executors and merges their output', async () => {
+  it('stops early when the first tier already yields sufficient confidence', async () => {
     const registry = new Map<ExecutorKind, QueryExecutor>([
-      ['structured', fake('structured', { records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
+      ['structured', fake('structured', { confidence: 0.95, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
       ['crystallized', fake('crystallized', { records: [{ id: 'c', type: 'claim', content: 'y' }] })],
     ]);
-    const engine = new QueryEngine(registry);
+    const engine = new QueryEngine(registry, fakeResolver());
     const out = await engine.run({ userId: 'u1', message: 'who is Renna?' });
 
     expect(out.plan.intent).toBe(QueryType.IDENTITY);
-    expect(out.results.length).toBe(out.plan.executors.length);
+    expect(out.merged.records.map((r) => r.id)).toEqual(['s']);
+    const skipped = out.results.find((r) => r.source === 'crystallized');
+    expect(skipped?.skipped).toBe(true);
+    expect(skipped?.skipReason).toMatch(/sufficient|early stop/i);
+  });
+
+  it('runs conditional stages when confidence stays low', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { confidence: 0.4, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
+      ['crystallized', fake('crystallized', { confidence: 0.8, records: [{ id: 'c', type: 'claim', content: 'y' }] })],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver());
+    const out = await engine.run({ userId: 'u1', message: 'who is Renna?' });
+
     expect(out.merged.records.map((r) => r.id)).toEqual(expect.arrayContaining(['s', 'c']));
+    expect(out.results.every((r) => !r.skipped)).toBe(true);
+  });
+
+  it('anchors plans on canonical entity ids (entity-first planning)', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { confidence: 0.95, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver({ renna: { id: 'character_42', type: 'person' } }));
+    const out = await engine.run({ userId: 'u1', message: 'who is Renna?' });
+
+    expect(out.resolvedEntities[0]).toMatchObject({ mention: 'Renna', id: 'character_42', method: 'exact' });
+    expect(out.plan.resolvedEntities?.[0]?.id).toBe('character_42');
+    expect(out.merged.provenance.some((p) => p.entityResolution?.id === 'character_42')).toBe(true);
+  });
+
+  it('exposes explainable confidence via the breakdown', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { confidence: 0.96, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver());
+    const out = await engine.run({ userId: 'u1', message: 'who is Renna?' });
+
+    expect(out.merged.confidenceBreakdown).toEqual([
+      { source: 'structured', confidence: 0.96, weight: 1.0, weighted: 0.96 },
+    ]);
+    expect(out.merged.confidence).toBeCloseTo(0.96);
+  });
+
+  it('records a full trace in the Query Inspector', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { confidence: 0.95, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
+      ['crystallized', fake('crystallized', {})],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver());
+    await engine.run({ userId: 'u1', message: 'who is Renna?' });
+
+    const trace = queryInspector.getLastTrace();
+    expect(trace?.query).toBe('who is Renna?');
+    expect(trace?.intent).toBe('IDENTITY');
+    expect(trace?.executors.find((e) => e.kind === 'structured')?.executed).toBe(true);
+    expect(trace?.executors.find((e) => e.kind === 'crystallized')?.executed).toBe(false);
+    expect(trace?.earlyStopped).toBe(true);
+    expect(trace?.finalConfidence).toBeGreaterThan(0.9);
   });
 
   it('isolates executor failures — one bad source never fails the query', async () => {
