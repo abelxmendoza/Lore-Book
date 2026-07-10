@@ -73,6 +73,8 @@ export interface ChatDiagnosticRunResult {
   syntheticUser: {
     configured: boolean;
     userId: string | null;
+    /** env | auto_created | auto_found | options_or_env */
+    source?: string;
   };
   environment: {
     nodeEnv: string | null;

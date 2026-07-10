@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -2000,6 +2000,150 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     void load();
   }, [character.id, character.name, isMockDataEnabled, orgsLoaded]);
 
+  // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
+  const [connectionAddOpen, setConnectionAddOpen] = useState(false);
+  const [connectionOptions, setConnectionOptions] = useState<Character[]>([]);
+  const [connectionOptionsLoading, setConnectionOptionsLoading] = useState(false);
+  const [connectionTargetId, setConnectionTargetId] = useState('');
+  const [connectionType, setConnectionType] = useState('friend');
+  const [connectionSaving, setConnectionSaving] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  const [orgAddOpen, setOrgAddOpen] = useState(false);
+  const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
+  const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
+  const [orgTargetId, setOrgTargetId] = useState('');
+  const [orgMemberRole, setOrgMemberRole] = useState('member');
+  const [orgSaving, setOrgSaving] = useState(false);
+  const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
+
+  const toggleConnectionAdd = async () => {
+    const next = !connectionAddOpen;
+    setConnectionAddOpen(next);
+    setConnectionError(null);
+    if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
+      setConnectionOptionsLoading(true);
+      try {
+        const res = await fetchJson<{ characters: Character[] }>('/api/characters');
+        setConnectionOptions((res.characters ?? []).filter((c) => c.status !== 'archived'));
+      } catch {
+        setConnectionError('Could not load your Character Book.');
+      } finally {
+        setConnectionOptionsLoading(false);
+      }
+    }
+  };
+
+  const addConnection = async () => {
+    if (!connectionTargetId || connectionSaving) return;
+    setConnectionSaving(true);
+    setConnectionError(null);
+    try {
+      const res = await fetchJson<{
+        success: boolean;
+        relationship: NonNullable<Character['relationships']>[number];
+      }>('/api/relationships/character-links', {
+        method: 'POST',
+        body: JSON.stringify({
+          source_character_id: editedCharacter.id,
+          target_character_id: connectionTargetId,
+          relationship_type: connectionType.trim() || 'friend',
+        }),
+      });
+      const rel = res.relationship;
+      setEditedCharacter((prev) => ({
+        ...prev,
+        relationships: [
+          ...(prev.relationships ?? []).filter((r) => r.character_id !== rel.character_id),
+          rel,
+        ],
+      }));
+      setConnectionTargetId('');
+      setConnectionType('friend');
+      setConnectionAddOpen(false);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
+    } finally {
+      setConnectionSaving(false);
+    }
+  };
+
+  const removeConnection = async (rel: { id?: string; character_name?: string }) => {
+    if (!rel.id) return;
+    const who = rel.character_name ?? 'this person';
+    if (!window.confirm(`Remove the connection with ${who}? Their character card stays in your book.`)) return;
+    try {
+      await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+      setEditedCharacter((prev) => ({
+        ...prev,
+        relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
+      }));
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not remove connection.');
+    }
+  };
+
+  const toggleOrgAdd = async () => {
+    const next = !orgAddOpen;
+    setOrgAddOpen(next);
+    setOrgMemberError(null);
+    if (next && orgOptions.length === 0 && !orgOptionsLoading) {
+      setOrgOptionsLoading(true);
+      try {
+        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
+        setOrgOptions(res.organizations ?? []);
+      } catch {
+        setOrgMemberError('Could not load your Groups & Organizations book.');
+      } finally {
+        setOrgOptionsLoading(false);
+      }
+    }
+  };
+
+  const addOrgMembership = async () => {
+    if (!orgTargetId || orgSaving) return;
+    setOrgSaving(true);
+    setOrgMemberError(null);
+    try {
+      await fetchJson(`/api/organizations/${orgTargetId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({
+          character_name: editedCharacter.name,
+          character_id: editedCharacter.id,
+          role: orgMemberRole.trim() || undefined,
+        }),
+      });
+      setOrgTargetId('');
+      setOrgMemberRole('member');
+      setOrgAddOpen(false);
+      setOrgsLoaded(false); // re-fetch memberships from the server
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not add to group.');
+    } finally {
+      setOrgSaving(false);
+    }
+  };
+
+  const removeOrgMembership = async (org: Organization) => {
+    const firstName = editedCharacter.name.split(' ')[0];
+    const member = (org.members ?? []).find(
+      (m) =>
+        m.character_id === editedCharacter.id ||
+        m.character_name.toLowerCase() === editedCharacter.name.toLowerCase(),
+    );
+    if (!member) {
+      setOrgMemberError(`Couldn't find ${firstName}'s membership record in ${org.name}.`);
+      return;
+    }
+    if (!window.confirm(`Remove ${firstName} from ${org.name}? The group stays in your book.`)) return;
+    try {
+      await fetchJson(`/api/organizations/${org.id}/members/${member.id}`, { method: 'DELETE' });
+      setOrgsLoaded(false);
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
+    }
+  };
+
   const buildThreadEntities = () => {
     const entities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> = [
       { id: character.id, name: editedCharacter.name, type: 'character' },
@@ -3210,14 +3354,89 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 </div>
 
                 {/* Friends & Other Connections */}
-                {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
+                {(
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                       <UserCircle className="h-5 w-5 text-primary" />
                       Friends & Other Connections
+                      {!isMockDataEnabled && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto h-7 text-xs text-white/55"
+                          onClick={() => void toggleConnectionAdd()}
+                          data-testid="add-connection-toggle"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
+                        </Button>
+                      )}
                     </h3>
+                    {connectionAddOpen && !isMockDataEnabled && (
+                      <Card className="bg-black/40 border-border/50 mb-3">
+                        <CardContent className="p-3">
+                          <p className="text-[10px] text-white/35 mb-2">
+                            Link a person who already exists in your Character Book.
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                            <select
+                              value={connectionTargetId}
+                              onChange={(e) => setConnectionTargetId(e.target.value)}
+                              disabled={connectionOptionsLoading}
+                              aria-label="Existing character"
+                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                            >
+                              <option value="">
+                                {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
+                              </option>
+                              {connectionOptions
+                                .filter(
+                                  (c) =>
+                                    c.id !== editedCharacter.id &&
+                                    !(editedCharacter.relationships ?? []).some(
+                                      (r) => r.character_id === c.id,
+                                    ),
+                                )
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <input
+                              list="connection-type-options"
+                              value={connectionType}
+                              onChange={(e) => setConnectionType(e.target.value)}
+                              placeholder="Relationship (e.g. friend)"
+                              aria-label="Relationship type"
+                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                            />
+                            <datalist id="connection-type-options">
+                              {['friend', 'best friend', 'close friend', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
+                                <option key={t} value={t} />
+                              ))}
+                            </datalist>
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={!connectionTargetId || connectionSaving}
+                              onClick={() => void addConnection()}
+                              data-testid="add-connection-submit"
+                            >
+                              {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                            </Button>
+                          </div>
+                          {connectionError && (
+                            <p className="text-xs text-red-400 mt-2">{connectionError}</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                    {!connectionAddOpen && connectionError && (
+                      <p className="text-xs text-red-400 mb-2">{connectionError}</p>
+                    )}
                     <div className="space-y-2">
-                      {editedCharacter.relationships
+                      {(editedCharacter.relationships ?? [])
                         .filter(rel => rel.character_name && rel.character_name !== 'You')
                         .map((rel) => (
                           <Card 
@@ -3244,11 +3463,25 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                                     <span className="text-sm font-medium text-primary">{rel.closeness_score}/10</span>
                                   </div>
                                 )}
+                                {!isMockDataEnabled && rel.id && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="ml-2 h-7 w-7 p-0 text-white/30 hover:text-red-400"
+                                    aria-label={`Remove connection with ${rel.character_name}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void removeConnection(rel);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </CardContent>
                           </Card>
                         ))}
-                      {editedCharacter.relationships.filter(rel => rel.character_name && rel.character_name !== 'You').length === 0 && (
+                      {(editedCharacter.relationships ?? []).filter(rel => rel.character_name && rel.character_name !== 'You').length === 0 && (
                         <div className="text-center py-8 text-white/40">
                           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>No connections tracked yet</p>
@@ -3302,6 +3535,20 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                       }`}>
                         {isShared ? 'Shared' : 'Theirs'}
                       </Badge>
+                      {!isMockDataEnabled && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex-shrink-0 h-6 w-6 p-0 mt-0.5 text-white/25 hover:text-red-400"
+                          aria-label={`Remove ${editedCharacter.name.split(' ')[0]} from ${org.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void removeOrgMembership(org);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   );
                   return (
@@ -3310,7 +3557,71 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         <Building2 className="h-4 w-4 text-primary" />
                         Groups &amp; Organizations
                         <span className="ml-auto text-[10px] text-white/30">{orgs.length} total</span>
+                        {!isMockDataEnabled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] text-white/55"
+                            onClick={() => void toggleOrgAdd()}
+                            data-testid="add-membership-toggle"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span className="ml-1">{orgAddOpen ? 'Close' : 'Add'}</span>
+                          </Button>
+                        )}
                       </h3>
+                      {orgAddOpen && !isMockDataEnabled && (
+                        <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.035] p-3">
+                          <p className="text-[10px] text-white/35 mb-2">
+                            Add {editedCharacter.name.split(' ')[0]} to a group that already exists in your Groups &amp; Organizations book.
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                            <select
+                              value={orgTargetId}
+                              onChange={(e) => setOrgTargetId(e.target.value)}
+                              disabled={orgOptionsLoading}
+                              aria-label="Existing group or organization"
+                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                            >
+                              <option value="">
+                                {orgOptionsLoading ? 'Loading…' : 'Choose a group…'}
+                              </option>
+                              {orgOptions
+                                .filter((o) => !orgs.some((existing: any) => existing.id === o.id))
+                                .map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <input
+                              list="org-member-role-options"
+                              value={orgMemberRole}
+                              onChange={(e) => setOrgMemberRole(e.target.value)}
+                              placeholder="Role (e.g. member)"
+                              aria-label="Membership role"
+                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                            />
+                            <datalist id="org-member-role-options">
+                              {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus'].map((r) => (
+                                <option key={r} value={r} />
+                              ))}
+                            </datalist>
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={!orgTargetId || orgSaving}
+                              onClick={() => void addOrgMembership()}
+                              data-testid="add-membership-submit"
+                            >
+                              {orgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {orgMemberError && !isMockDataEnabled && (
+                        <p className="text-xs text-red-400 mb-2">{orgMemberError}</p>
+                      )}
                       {orgs.length === 0 && (
                         <p className="text-xs text-white/30 italic text-center py-4">No group memberships detected yet.</p>
                       )}

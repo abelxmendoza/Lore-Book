@@ -15,6 +15,7 @@ describe('chat reliability diagnostics', () => {
   it('warns and skips live checks without a synthetic diagnostic user', async () => {
     const result = await runChatDiagnostics({
       runId: 'test-run',
+      executeLive: false,
       env: {
         NODE_ENV: 'test',
         API_ENV: 'dev',
@@ -31,6 +32,7 @@ describe('chat reliability diagnostics', () => {
   it('passes contract checks when synthetic and dependency env are present', async () => {
     const result = await runChatDiagnostics({
       runId: 'test-run',
+      executeLive: false,
       syntheticUserId: '00000000-0000-4000-8000-000000000001',
       env: {
         NODE_ENV: 'test',
