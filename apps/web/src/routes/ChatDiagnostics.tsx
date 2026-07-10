@@ -66,7 +66,12 @@ const statusIcon = (status: DiagnosticStatus) => {
   return <Activity className="h-4 w-4" />;
 };
 
-export default function ChatDiagnostics() {
+type ChatDiagnosticsProps = {
+  /** When true, render without full-page chrome (for Admin Console embed). */
+  embedded?: boolean;
+};
+
+export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsProps) {
   const [run, setRun] = useState<DiagnosticRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -92,13 +97,16 @@ export default function ChatDiagnostics() {
     void load();
   }, [load]);
 
-  return (
-    <main className="min-h-screen bg-zinc-950 px-6 py-6 text-zinc-100">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
+  const body = (
+      <div className={embedded ? 'flex flex-col gap-5' : 'mx-auto flex max-w-7xl flex-col gap-5'}>
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-normal">Chat Reliability Console</h1>
-            <p className="mt-1 text-sm text-zinc-400">Shared diagnostics runner for CLI, API and internal dashboard.</p>
+            <h1 className={`font-semibold tracking-normal ${embedded ? 'text-xl text-white' : 'text-2xl'}`}>
+              Chat Reliability Diagnostics
+            </h1>
+            <p className="mt-1 text-sm text-zinc-400">
+              Shared diagnostics runner for CLI, API, and Admin Console. Run end-to-end chat reliability scenarios.
+            </p>
           </div>
           <button
             type="button"
@@ -107,7 +115,7 @@ export default function ChatDiagnostics() {
             className="inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Play className="h-4 w-4" />
-            {running ? 'Running' : 'Run'}
+            {running ? 'Running' : 'Run diagnostics'}
           </button>
         </header>
 
@@ -208,6 +216,19 @@ export default function ChatDiagnostics() {
           </>
         ) : null}
       </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="rounded-lg border border-purple-500/30 bg-black/40 p-4 text-zinc-100" data-testid="admin-chat-diagnostics">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-zinc-950 px-6 py-6 text-zinc-100">
+      {body}
     </main>
   );
 }

@@ -42,7 +42,9 @@ export function useAccountAuthority() {
       setAuthority(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load account authority');
-      setAuthority(DEFAULT_AUTHORITY);
+      // Keep previous authority if we already had a successful load (e.g. transient
+      // network blip). Only fall back to free-tier defaults when we have nothing.
+      setAuthority((prev) => prev ?? DEFAULT_AUTHORITY);
     } finally {
       setLoading(false);
     }

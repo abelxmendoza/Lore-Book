@@ -4,7 +4,7 @@ import {
   User, Shield, Activity, Download, Trash2,
   Save, Lock, FileText,
   AlertTriangle, CheckCircle2, Loader2, LogOut,
-  Sparkles, Link2, ChevronRight, X,
+  Sparkles, Link2, ChevronRight, X, Settings,
 } from 'lucide-react';
 import { useAuth, supabase } from '../lib/supabase';
 import { ActivityTab } from '../components/account/ActivityTab';
@@ -371,6 +371,27 @@ export default function AccountCenter() {
             </div>
             <button type="button" onClick={() => setError(null)}><X className="h-4 w-4" /></button>
           </div>
+        )}
+
+        {/* Admin console entry — always show for owner/admin/developer */}
+        {userIsAdmin && (
+          <button
+            type="button"
+            data-testid="account-admin-console"
+            onClick={() => navigate('/admin')}
+            className="mb-6 flex w-full items-center gap-3 rounded-xl border-2 border-primary/50 bg-gradient-to-r from-primary/15 to-purple-600/15 px-4 py-3.5 text-left transition hover:border-primary hover:from-primary/25 hover:to-purple-600/25"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/20">
+              <Settings className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">Admin Console</p>
+              <p className="text-xs text-white/50">
+                Users, logs, finance, chronicle, and platform tools
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-primary" />
+          </button>
         )}
 
         {/* Body: sidebar + content */}

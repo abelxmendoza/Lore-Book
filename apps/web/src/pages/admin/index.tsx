@@ -20,6 +20,7 @@ import { getUserFriendlyMessage } from '../../lib/errorHandler';
 import { evaluateStripeConfig, type StripeConfigStatus } from '../../lib/stripeConfigStatus';
 import { StripeDashboardLinks } from '../../components/admin/StripeDashboardLinks';
 import { ExternalServicesPanel } from '../../components/admin/ExternalServicesPanel';
+import ChatDiagnostics from '../../routes/ChatDiagnostics';
 
 type AdminView = AdminSection;
 
@@ -120,6 +121,7 @@ function getSectionTitle(view: AdminView): string {
     case 'finance': return 'Finance';
     case 'cost': return 'AI Cost';
     case 'chronicle': return 'LoreBook Chronicle';
+    case 'chat-diagnostics': return 'Chat Diagnostics';
     default: return 'Admin Console';
   }
 }
@@ -256,8 +258,8 @@ export const AdminPage = () => {
       .slice(0, 50);
   }, [users]);
 
-  // Still waiting for Supabase session — show spinner, don't flash redirect
-  if (authLoading) {
+  // Still waiting for session / server authority — don't flash empty or deny
+  if (authLoading || authorityLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#080510]">
         <div className="text-center">
@@ -269,7 +271,21 @@ export const AdminPage = () => {
   }
 
   if (!isAdmin) {
-    return null;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#080510] px-4 text-center">
+        <p className="text-lg font-semibold text-white">Admin access required</p>
+        <p className="mt-2 max-w-md text-sm text-white/50">
+          Your account does not have platform admin permissions. If you are an owner or admin,
+          ensure the API is running and your role is set in app_metadata or ADMIN_EMAIL / OWNER_EMAIL.
+        </p>
+        <a
+          href="/home"
+          className="mt-6 rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white"
+        >
+          Back to app
+        </a>
+      </div>
+    );
   }
 
   const isBackendDown =
@@ -840,6 +856,11 @@ export const AdminPage = () => {
               </div>
             )}
 
+            {/* ── CHAT DIAGNOSTICS ── */}
+            {currentView === 'chat-diagnostics' && (
+              <ChatDiagnostics embedded />
+            )}
+
             {/* ── TOOLS ── */}
             {currentView === 'tools' && (
               <div className="space-y-4">
@@ -860,6 +881,19 @@ export const AdminPage = () => {
               <div className="rounded-lg border border-purple-500/30 bg-black/40 p-4">
                 <h2 className="text-xl font-semibold mb-4">Admin Tools</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg border border-primary/30 bg-primary/10">
+                    <h3 className="font-semibold text-white mb-1">Chat Reliability Diagnostics</h3>
+                    <p className="text-sm text-white/50 mb-3">
+                      Run end-to-end chat reliability scenarios (same tool as CLI /api/diagnostics/chat).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentView('chat-diagnostics')}
+                      className="px-4 py-2 rounded-lg border border-primary/40 bg-primary/15 text-sm hover:bg-primary/25 transition"
+                    >
+                      Open diagnostics
+                    </button>
+                  </div>
                   {[
                     { action: 'reindex', label: 'Reindex Embeddings', desc: 'Re-process all journal entries for semantic search.' },
                     { action: 'flush-cache', label: 'Flush Cache', desc: 'Clear all in-memory caches. Useful after config changes.' },

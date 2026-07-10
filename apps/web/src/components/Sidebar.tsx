@@ -37,8 +37,9 @@ const SidebarContent = ({
   const { user } = useAuth();
   const { isGuest, guestState } = useGuest();
   const guestUsage = getGuestUsage(guestState);
-  const { authority } = useAccountAuthority();
+  const { authority, loading: authorityLoading } = useAccountAuthority();
   const counts = useEntityCounts();
+  const userIsAdmin = canAccessAdmin(authority);
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
     const route = surfaceToRoute[surface];
@@ -53,8 +54,6 @@ const SidebarContent = ({
   const isActiveRoute = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
-
-  const userIsAdmin = canAccessAdmin(authority);
 
   return (
     <div className="flex flex-col h-full relative">
@@ -433,6 +432,69 @@ const SidebarContent = ({
             <Hash className="h-4 w-4 text-primary" aria-hidden="true" />
             Entities
           </button>
+
+          {/* Admin — visible in main nav for owner/admin/developer (server authority) */}
+          {userIsAdmin && (
+            <div className="mt-4" data-testid="sidebar-admin-section">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-primary/70 px-1">
+                Platform
+              </p>
+              <button
+                type="button"
+                onClick={() => { navigate('/admin'); onMobileDrawerClose?.(); }}
+                aria-label="Open admin console"
+                aria-current={isActiveRoute('/admin') ? 'page' : undefined}
+                data-testid="sidebar-admin-console"
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all",
+                  isActiveRoute('/admin')
+                    ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/15'
+                    : 'border-primary/50 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20'
+                )}
+              >
+                <Settings className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                <span>Admin Console</span>
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-wide bg-primary/25 text-primary px-2 py-0.5 rounded-full border border-primary/40">
+                  Admin
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { navigate('/ontology'); onMobileDrawerClose?.(); }}
+                aria-label="Open ontology explorer"
+                aria-current={isActiveRoute('/ontology') ? 'page' : undefined}
+                className={cn(
+                  "mt-2 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+                  isActiveRoute('/ontology')
+                    ? 'border-primary bg-primary/10 text-white'
+                    : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+                )}
+              >
+                <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
+                Ontology
+              </button>
+              <button
+                type="button"
+                onClick={() => { navigate('/intelligence'); onMobileDrawerClose?.(); }}
+                aria-label="Open intelligence surface"
+                aria-current={isActiveRoute('/intelligence') ? 'page' : undefined}
+                className={cn(
+                  "mt-1 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+                  isActiveRoute('/intelligence') || activeSurface === 'intelligence'
+                    ? 'border-primary bg-primary/10 text-white'
+                    : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+                )}
+              >
+                <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
+                Intelligence
+              </button>
+            </div>
+          )}
+          {authorityLoading && user && !userIsAdmin && (
+            <div className="mt-4 px-1" data-testid="sidebar-admin-loading">
+              <p className="text-[10px] text-white/30">Checking admin access…</p>
+            </div>
+          )}
 
           {/* 7. Account & help */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Account & help</p>

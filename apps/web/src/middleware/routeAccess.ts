@@ -24,11 +24,11 @@ export const PUBLIC_ROUTE_PREFIXES = [
 ] as const;
 
 /** Paths that require platform admin (owner / admin / developer). */
-export const ADMIN_ROUTE_PREFIXES = ['/admin', '/ontology', '/intelligence'] as const;
+export const ADMIN_ROUTE_PREFIXES = ['/admin', '/ontology', '/intelligence', '/diagnostics'] as const;
 
 /** Dev/operator surfaces — disabled entirely in production builds. */
 export const DEV_CONSOLE_ROUTE = '/dev-console';
-export const DEV_OPERATOR_ROUTE_PREFIXES = [DEV_CONSOLE_ROUTE, '/diagnostics'] as const;
+export const DEV_OPERATOR_ROUTE_PREFIXES = [DEV_CONSOLE_ROUTE] as const;
 
 export function isPublicRoutePath(pathname: string): boolean {
   if (pathname === '/') return true;

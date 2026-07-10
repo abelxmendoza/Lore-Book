@@ -516,7 +516,8 @@ export const Router = () => {
         path="/diagnostics/chat"
         element={
           <LazyRoute>
-            <ProtectedRoute access="dev-console">
+            {/* Admin-gated so production admins can run chat reliability diagnostics */}
+            <ProtectedRoute access="admin">
               <ChatDiagnostics />
             </ProtectedRoute>
           </LazyRoute>

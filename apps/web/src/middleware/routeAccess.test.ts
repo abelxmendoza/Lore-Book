@@ -25,19 +25,22 @@ describe('routeAccess', () => {
     expect(isAdminRoutePath('/admin')).toBe(true);
     expect(isAdminRoutePath('/ontology')).toBe(true);
     expect(isAdminRoutePath('/intelligence')).toBe(true);
+    expect(isAdminRoutePath('/diagnostics/chat')).toBe(true);
     expect(isAdminRoutePath('/chat')).toBe(false);
   });
 
   it('identifies dev console route', () => {
     expect(isDevConsoleRoutePath('/dev-console')).toBe(true);
-    expect(isDevConsoleRoutePath('/diagnostics/chat')).toBe(true);
+    // Chat diagnostics are admin-gated, not dev-console-only
+    expect(isDevConsoleRoutePath('/diagnostics/chat')).toBe(false);
     expect(isDevConsoleRoutePath('/chat')).toBe(false);
   });
 
   it('identifies protected app shell routes', () => {
     expect(isAppShellRoutePath('/home')).toBe(true);
     expect(isAppShellRoutePath('/chat')).toBe(true);
-    expect(isAppShellRoutePath('/diagnostics/chat')).toBe(false);
+    // Admin diagnostics are not app-shell (they are admin routes)
+    expect(isAppShellRoutePath('/diagnostics/chat')).toBe(true);
     expect(isAppShellRoutePath('/login')).toBe(false);
     expect(isAppShellRoutePath('/demo')).toBe(false);
   });
