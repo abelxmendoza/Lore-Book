@@ -81,6 +81,16 @@ describe('guardPlaceCandidate', () => {
     expect(loc('Anaheim')).toBeNull();
   });
 
+  it('rejects lowercase prose fragments mis-captured after prepositions', () => {
+    // Both surfaced as "music venue" suggestions from one chat message.
+    expect(loc('her right in the eyes')?.rejectionReason).toBe('prose_fragment_not_place');
+    expect(loc('shock but she let me')?.rejectionReason).toBe('prose_fragment_not_place');
+    // Lowercase real places survive: at most one function word / leading "the".
+    expect(loc('the house of blues')).toBeNull();
+    expect(loc('salt and pepper diner')).toBeNull();
+    expect(loc('catch one')).toBeNull();
+  });
+
   it('isLikelyPlaceName mirrors the guard for write paths', () => {
     expect(isLikelyPlaceName('Love')).toBe(false);
     expect(isLikelyPlaceName('all day')).toBe(false);

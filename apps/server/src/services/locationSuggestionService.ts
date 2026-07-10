@@ -8,6 +8,16 @@ import { processPlaceSuggestionsFromCorpus } from './lexical/places/placeSuggest
 import { materializeSpatialEvents } from './events/spatialEventMaterializer';
 import { materializeVenueAreas } from './locations/spatialVenueAreaMaterializer';
 import {
+  slangPlaceAliasBinder,
+  type MediaRef,
+  type SourceRef,
+} from './locations/inference/slangPlaceAliasBinder';
+import {
+  parseBareKinshipResidence,
+  resolveKinshipOwner,
+  type KinshipOwnerResolution,
+} from './locations/inference/kinshipOwnerResolver';
+import {
   filterRedundantPlaceSuggestions,
   placeClusterKey,
   pickBestPlaceName,
@@ -59,7 +69,7 @@ class LocationSuggestionService {
 
     const [profiles, { data: canonical }, { data: peoplePlaces }] = await Promise.all([
       locationService.listLocations(userId),
-      supabaseAdmin.from('locations').select('id, name, normalized_name, metadata').eq('user_id', userId),
+      supabaseAdmin.from('locations').select('id, name, normalized_name, metadata, aliases').eq('user_id', userId),
       supabaseAdmin
         .from('people_places')
         .select('id, name, type')
@@ -77,9 +87,15 @@ class LocationSuggestionService {
       if (typeof loc.normalized_name === 'string' && loc.normalized_name.trim()) {
         names.push(loc.normalized_name);
       }
-      const aliases = (loc.metadata as Record<string, unknown> | null)?.aliases;
-      if (Array.isArray(aliases)) {
-        for (const alias of aliases) {
+      // Aliases live in BOTH the aliases column (slang binder, merges) and
+      // metadata.aliases (legacy) — read both so known names always match.
+      const aliasLists = [
+        (loc as { aliases?: unknown }).aliases,
+        (loc.metadata as Record<string, unknown> | null)?.aliases,
+      ];
+      for (const list of aliasLists) {
+        if (!Array.isArray(list)) continue;
+        for (const alias of list) {
           if (typeof alias === 'string') names.push(alias);
         }
       }
@@ -226,6 +242,16 @@ class LocationSuggestionService {
             );
           }
 
+          // Slang place cards created before the alias layer existed
+          // ("Weeb City" as a standalone Place) fold into the lore entity they
+          // refer to; entry photos (X posts) attach to mentioned cards.
+          void slangPlaceAliasBinder
+            .reconcileExistingSlangPlaceCards(userId)
+            .catch((err) => logger.debug({ err, userId }, 'slang place reconciliation failed'));
+          void this.loadRecentEntryIndex(userId)
+            .then((idx) => slangPlaceAliasBinder.attachEntryMedia(userId, idx))
+            .catch((err) => logger.debug({ err, userId }, 'entry media attachment failed'));
+
           // Venue sub-areas ("the pit at Bad Dogg Compound") become nested
           // locations under their parent venue when it's already known.
           const areaRefs = bounded
@@ -332,13 +358,173 @@ class LocationSuggestionService {
       }),
     });
 
+    // Bare kinship-title residences ("Tia's House") must bind to a NAMED
+    // relative: one family-tree match renames the suggestion ("Tía Grace's
+    // House"); zero or several go to review with the candidates listed.
+    const kinResolved = await this.resolveBareKinshipOwners(userId, gated, bookExact, bookEntries);
+
+    // Slang toponyms ("Weeb City") that resolve to existing lore — as a known
+    // alias or via theme + temporal inference — bind to that entity (with
+    // source provenance and any tweet photos) instead of surfacing as new
+    // Place suggestions.
+    const unresolved = await this.bindSlangAliases(userId, kinResolved);
+
     return enrichSuggestionsWithParserAlternatives(
       userId,
       'locations',
-      gated,
+      unresolved,
       (s) => s.name,
       (s) => s.context ?? s.description
     );
+  }
+
+  /**
+   * "Tia's House" is a title, not a name — resolve WHICH tía against the
+   * user's Characters. Exactly one named match binds the place to her; zero
+   * or several surface for review with the options listed, never a guess.
+   */
+  private async resolveBareKinshipOwners(
+    userId: string,
+    suggestions: LocationSuggestion[],
+    bookExact: Set<string>,
+    bookEntries: BookNameEntryWithId[],
+  ): Promise<LocationSuggestion[]> {
+    if (!suggestions.some((s) => parseBareKinshipResidence(s.name))) return suggestions;
+
+    const out: LocationSuggestion[] = [];
+    const cache = new Map<string, KinshipOwnerResolution>();
+
+    for (const s of suggestions) {
+      const kin = parseBareKinshipResidence(s.name);
+      if (!kin) {
+        out.push(s);
+        continue;
+      }
+
+      const cacheKey = normalizeNameKey(kin.title);
+      let resolution = cache.get(cacheKey);
+      if (!resolution) {
+        resolution = await resolveKinshipOwner(userId, kin.title).catch(
+          (): KinshipOwnerResolution => ({ status: 'unknown' }),
+        );
+        cache.set(cacheKey, resolution);
+      }
+
+      if (resolution.status === 'resolved') {
+        const label = kin.placeLabel.charAt(0).toUpperCase() + kin.placeLabel.slice(1).toLowerCase();
+        const newName = `${resolution.ownerName}'s ${label}`;
+        const match = resolveBookNameMatch(newName, bookExact, bookEntries);
+        if (match.status === 'existing') continue; // already a card under the named owner
+        out.push({
+          ...s,
+          name: newName,
+          id: locationSuggestionId({ name: newName, type: s.type }),
+          associatedWith: [...new Set([...(s.associatedWith ?? []), resolution.ownerName])],
+          context: [s.context, `Matched to ${resolution.ownerName} from your family tree`]
+            .filter(Boolean)
+            .join(' · '),
+          match_status: match.status,
+          matched_book_id: match.matchedId ?? null,
+          matched_book_name: match.matchedName ?? null,
+        });
+        continue;
+      }
+
+      const note =
+        resolution.status === 'ambiguous'
+          ? `Which ${kin.title}? Your Characters have: ${resolution.candidates.join(', ')}`
+          : `No named ${kin.title} found in your Characters — kinship titles need a name`;
+      out.push({
+        ...s,
+        status: 'needs_review',
+        context: [s.context, note].filter(Boolean).join(' · '),
+      });
+    }
+
+    return out;
+  }
+
+  private async bindSlangAliases(
+    userId: string,
+    suggestions: LocationSuggestion[],
+  ): Promise<LocationSuggestion[]> {
+    if (suggestions.length === 0) return suggestions;
+    try {
+      const entryIndex = await this.loadRecentEntryIndex(userId);
+      const findSourceEntry = (s: LocationSuggestion) => {
+        const nameKey = normalizeNameKey(s.name);
+        return entryIndex.find((e) => normalizeNameKey(e.content).includes(nameKey));
+      };
+
+      const items = suggestions.map((s) => {
+        const entry = findSourceEntry(s);
+        return {
+          name: s.name,
+          evidence: s.context ?? s.description,
+          sourceDate: entry?.date,
+          sourceRef: entry?.sourceRef,
+          media: entry?.media,
+        };
+      });
+
+      const results = await slangPlaceAliasBinder.resolveMany(userId, items);
+      return suggestions.filter((s) => !results.get(normalizeNameKey(s.name))?.bound);
+    } catch (err) {
+      logger.debug({ err, userId }, 'slang alias binding failed; keeping suggestions as-is');
+      return suggestions;
+    }
+  }
+
+  /**
+   * Recent journal entries with their source refs (tweet URL for X-synced
+   * entries) and any attached media, so slang/alias mentions carry provenance
+   * and photos to the card they bind to.
+   */
+  private async loadRecentEntryIndex(userId: string): Promise<
+    Array<{ id: string; content: string; date?: string; sourceRef?: SourceRef; media: MediaRef[] }>
+  > {
+    const { data } = await supabaseAdmin
+      .from('journal_entries')
+      .select('id, content, date, source, metadata')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(40);
+
+    return ((data ?? []) as Array<{
+      id: string;
+      content: string | null;
+      date: string | null;
+      source: string | null;
+      metadata: Record<string, unknown> | null;
+    }>).map((row) => {
+      const meta = row.metadata ?? {};
+      const isX = row.source === 'x' || typeof meta.x_post_id === 'string';
+      const sourceRef: SourceRef | undefined = isX
+        ? {
+            source: 'x_post',
+            url: typeof meta.x_url === 'string' ? meta.x_url : undefined,
+            entryId: row.id,
+            excerpt: row.content?.slice(0, 240),
+            at: row.date ?? undefined,
+          }
+        : { source: 'journal', entryId: row.id, excerpt: row.content?.slice(0, 240), at: row.date ?? undefined };
+
+      const media: MediaRef[] = Array.isArray(meta.x_media)
+        ? (meta.x_media as Array<Record<string, unknown>>)
+            .filter((m) => typeof m?.url === 'string')
+            .map((m) => ({
+              url: String(m.url),
+              type: (m.type as MediaRef['type']) ?? 'photo',
+              alt: typeof m.alt_text === 'string' ? m.alt_text : undefined,
+              source: 'x_post' as const,
+              sourceUrl: typeof meta.x_url === 'string' ? meta.x_url : undefined,
+              entryId: row.id,
+              capturedAt: row.date ?? undefined,
+            }))
+        : [];
+
+      return { id: row.id, content: row.content ?? '', date: row.date ?? undefined, sourceRef, media };
+    });
   }
 
   /** Force a full corpus rescan with lexical intelligence + place pipeline. */

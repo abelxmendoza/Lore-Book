@@ -56,3 +56,65 @@ export function locationEvidenceSourcesForDisplay(metadata?: Record<string, unkn
     ...stringList(metadata?.source_message_ids),
   ].slice(0, 12);
 }
+
+export type LocationMediaItem = {
+  url: string;
+  type: 'photo' | 'video' | 'animated_gif';
+  alt?: string;
+  source?: string;
+  sourceUrl?: string;
+  capturedAt?: string;
+};
+
+/** Photos attached to the card (tweet media, folded-in cards). */
+export function locationMediaForDisplay(metadata?: Record<string, unknown> | null): LocationMediaItem[] {
+  const raw = Array.isArray(metadata?.media) ? metadata!.media : [];
+  return raw
+    .map((item): LocationMediaItem | null => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      if (typeof row.url !== 'string' || !row.url.trim()) return null;
+      return {
+        url: row.url,
+        type: row.type === 'video' || row.type === 'animated_gif' ? row.type : 'photo',
+        alt: typeof row.alt === 'string' ? row.alt : undefined,
+        source: typeof row.source === 'string' ? row.source : undefined,
+        sourceUrl: typeof row.source_url === 'string' ? row.source_url : undefined,
+        capturedAt: typeof row.captured_at === 'string' ? row.captured_at : undefined,
+      };
+    })
+    .filter((item): item is LocationMediaItem => Boolean(item))
+    .slice(0, 24);
+}
+
+export type LocationSourceRef = {
+  source: string;
+  url?: string;
+  entryId?: string;
+  threadId?: string;
+  excerpt?: string;
+  at?: string;
+};
+
+/** Mention provenance — where this place (or an alias of it) was referenced. */
+export function locationSourceRefsForDisplay(metadata?: Record<string, unknown> | null): LocationSourceRef[] {
+  const raw = Array.isArray(metadata?.sources) ? metadata!.sources : [];
+  return raw
+    .map((item): LocationSourceRef | null => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      const source = typeof row.source === 'string' ? row.source : '';
+      if (!source) return null;
+      return {
+        source,
+        url: typeof row.url === 'string' ? row.url : undefined,
+        entryId: typeof row.entry_id === 'string' ? row.entry_id : undefined,
+        threadId: typeof row.thread_id === 'string' ? row.thread_id : undefined,
+        excerpt: typeof row.excerpt === 'string' ? row.excerpt : undefined,
+        at: typeof row.at === 'string' ? row.at : undefined,
+      };
+    })
+    .filter((item): item is LocationSourceRef => Boolean(item))
+    .slice(-12)
+    .reverse();
+}

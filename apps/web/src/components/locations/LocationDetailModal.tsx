@@ -29,7 +29,9 @@ import {
 import {
   locationAliasesForDisplay,
   locationEvidenceSourcesForDisplay,
+  locationMediaForDisplay,
   locationMergeHistoryForDisplay,
+  locationSourceRefsForDisplay,
 } from '../../lib/locationMergeMetadata';
 import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
@@ -407,6 +409,8 @@ export const LocationDetailModal = ({
   const aliases = locationAliasesForDisplay(location.metadata);
   const mergeHistory = locationMergeHistoryForDisplay(location.metadata);
   const evidenceSources = locationEvidenceSourcesForDisplay(location.metadata);
+  const mediaItems = locationMediaForDisplay(location.metadata);
+  const sourceRefs = locationSourceRefsForDisplay(location.metadata);
 
   const profileDraft: PlaceProfileDraft = {
     type: resolvePlaceType(location.type, location.name) ?? location.type ?? '',
@@ -783,6 +787,67 @@ export const LocationDetailModal = ({
                   </div>
                 ) : null}
               </div>
+
+              {mediaItems.length > 0 && (
+                <div className="rounded-xl bg-white/4 border border-white/8 p-3">
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3" /> Photos
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {mediaItems.map(item => (
+                      <a
+                        key={item.url}
+                        href={item.sourceUrl ?? item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative block aspect-square overflow-hidden rounded-lg border border-white/8 bg-black/25"
+                        title={item.alt ?? (item.source === 'x_post' ? 'From an X post' : undefined)}
+                      >
+                        <img
+                          src={item.url}
+                          alt={item.alt ?? ''}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition group-hover:scale-105"
+                        />
+                        {item.source === 'x_post' && (
+                          <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-sky-300">
+                            X
+                          </span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sourceRefs.length > 0 && (
+                <div className="rounded-xl bg-white/4 border border-white/8 p-3">
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <MessageSquare className="h-3 w-3" /> Mentioned in
+                  </p>
+                  <div className="space-y-1.5">
+                    {sourceRefs.map((ref, index) => (
+                      <div
+                        key={`${ref.url ?? ref.entryId ?? ref.threadId ?? 'src'}-${index}`}
+                        className="rounded-lg bg-black/25 border border-white/6 px-3 py-2 flex items-start gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          {ref.excerpt && (
+                            <p className="text-xs text-white/70 truncate">“{ref.excerpt}”</p>
+                          )}
+                          <p className="text-[10px] text-white/35 mt-0.5">
+                            {ref.source === 'x_post' ? 'X post' : ref.source === 'chat' ? 'Chat conversation' : 'Journal entry'}
+                            {ref.at ? ` • ${fmt(ref.at)}` : ''}
+                          </p>
+                        </div>
+                        {ref.source === 'x_post' && (ref.url || ref.entryId) && (
+                          <XProvenanceBadge source={{ url: ref.url, postedAt: ref.at, excerpt: ref.excerpt }} compact />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {(placeTags.length > 0 || placeSignificance.length > 0) && !editingProfile && (
                 <div className="rounded-xl bg-white/4 border border-white/8 p-3 space-y-3">

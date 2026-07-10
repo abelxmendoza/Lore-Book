@@ -36,6 +36,38 @@ export type LocationWithNickname = {
   proximityTarget?: string;
 };
 
+const POSSESSIVE_NICKNAME = /^(?:[Tt]he\s+)?(.+?)[’']s\s+\S/;
+
+/**
+ * "The house was full of egirls", "brought the house down", "DJ in the house"
+ * — "house" describing a venue's crowd/energy, not an actual residence. These
+ * must not become house cards ("Egirl House").
+ */
+const FIGURATIVE_HOUSE =
+  /\b(?:the\s+house\s+(?:was|is|been|being)\s+(?:full|packed|bumpin\w*|poppin\w*|jumpin\w*|lit|loud|live|crazy|wild)\b|(?:bring|bring(?:s|ing)?|brought)\s+(?:down\s+)?the\s+house\b|the\s+house\s+down\b|in\s+the\s+house\b)/i;
+
+export function isFigurativeHouseReference(context: string | undefined, type: string | undefined): boolean {
+  if (!context) return false;
+  if (type && !/^(?:house|home|residence)$/i.test(type)) return false;
+  return FIGURATIVE_HOUSE.test(context);
+}
+
+/**
+ * A generated possessive label ("Genni's House") is only trustworthy when the
+ * source text itself uses the possessive ("genni's ..."). A person who is
+ * merely mentioned elsewhere in the same message is NOT the owner — the model
+ * fabricates that link from proximity. Returns null when ownership was
+ * fabricated so the caller can fall back to an owner-free label.
+ */
+export function validatePossessiveNickname(nickname: string, sourceText: string): string | null {
+  const match = nickname.match(POSSESSIVE_NICKNAME);
+  if (!match) return nickname;
+  const owner = match[1].trim().toLowerCase().replace(/[’‘]/g, "'");
+  if (!owner) return null;
+  const source = sourceText.toLowerCase().replace(/[’‘]/g, "'");
+  return source.includes(`${owner}'s`) || source.includes(`${owner}s'`) ? nickname : null;
+}
+
 class LocationNicknameService {
   /**
    * Detect unnamed locations from conversation and generate nicknames
@@ -69,6 +101,8 @@ IMPORTANT — skip these (they are NOT unnamed):
 Look for ONLY:
 - References to places without names (e.g., "this park", "that restaurant", "the pizza shop" with no owner/brand)
 - Generic place types with no anchor person or brand
+
+Also skip FIGURATIVE place words: "the house was full/packed", "brought the house down", "in the house" — "house" there describes a venue's crowd or energy, not an actual house.
 
 For each unnamed location, extract:
 - Type of place (park, restaurant, shop, cafe, store, gym, etc.)
@@ -129,6 +163,12 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
       const locationsWithNicknames: LocationWithNickname[] = [];
 
       for (const unnamedLoc of unnamedLocations) {
+        // Figurative "house" (crowd/energy talk about a venue) is not a place.
+        if (isFigurativeHouseReference(unnamedLoc.context ?? message, unnamedLoc.type)) {
+          logger.debug({ context: unnamedLoc.context }, 'Skipped figurative house reference');
+          continue;
+        }
+
         // Check if this location already exists (by type/description match)
         const similarLocation = existingLocations?.find(loc => {
           const locSummary = (loc.summary || '').toLowerCase();
@@ -231,6 +271,7 @@ Rules:
 - NEVER describe furniture or activities ("The couch at...")
 - If proximityTarget or associatedWith gives a person/place name, use it in the label
 - Generic types alone ("The Gym") are OK only when there is no named anchor
+- NEVER invent ownership: only say "X's House" when the text itself says "X's house/place". A person mentioned elsewhere in the message does NOT own the place
 
 Return only the label, no quotes.`
               : `Generate a unique, contextual nickname for an unnamed location based on its type, description, and relationships.
@@ -240,6 +281,7 @@ Guidelines:
 - Include relationship context when available (e.g., "Park by Nick's house")
 - Avoid long event-based sentences
 - If a proper name exists in the message, use that instead of inventing a nickname
+- NEVER invent ownership: only say "X's house" when the text itself says "X's house"
 
 Return only the nickname, no quotes or explanation.`
           },
@@ -261,9 +303,23 @@ Generate a unique, contextual nickname that includes relationship information:`
       });
 
       let nickname = completion.choices[0]?.message?.content?.trim() || '';
-      
+
       // Remove quotes if present
       nickname = nickname.replace(/^["']|["']$/g, '').trim();
+
+      const sourceText = [
+        location.context,
+        location.description,
+        location.eventContext,
+        currentMessage,
+        conversationContext,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      if (nickname && !validatePossessiveNickname(nickname, sourceText)) {
+        logger.info({ nickname }, 'Dropped fabricated possessive place nickname');
+        nickname = '';
+      }
 
       if (!nickname || nickname.length < 2) {
         // Fallback to contextual nickname
@@ -296,15 +352,22 @@ Generate a unique, contextual nickname that includes relationship information:`
     const type = location.type || 'place';
     const associatedWith = location.associatedWith || [];
     
-    // If associated with entities, include them in nickname
+    // If associated with entities, include them in the nickname — but only
+    // when the mention context actually names them; associatedWith can carry
+    // people from unrelated sentences in the same message.
     if (associatedWith.length > 0) {
-      const primaryAssoc = associatedWith[0];
-      
-      if (location.proximityTarget) {
+      const contextLower = (location.context ?? '').toLowerCase();
+      const primaryAssoc = associatedWith.find(
+        (name) => name && contextLower.includes(name.toLowerCase())
+      );
+
+      if (location.proximityTarget && contextLower.includes(location.proximityTarget.toLowerCase())) {
         return `The ${type} ${location.proximity || 'near'} ${location.proximityTarget}`;
       }
-      
-      return `The ${type} by ${primaryAssoc}`;
+
+      if (primaryAssoc) {
+        return `The ${type} by ${primaryAssoc}`;
+      }
     }
     
     // If event context, use it

@@ -13,6 +13,8 @@ import {
   withMergeReviewMetadata,
 } from '../utils/mergeReview';
 import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
+import { resolvePlaceBoundary } from './lexical/places/placeBoundaryResolver';
+import { isLikelyPlaceName } from './lorebook/quality/placeCandidateGuard';
 import { supabaseAdmin } from './supabaseClient';
 
 export interface LocationMergeReport {
@@ -131,6 +133,22 @@ function residenceAliasVariants(name: string): string[] {
   return [...variants].filter(Boolean);
 }
 
+/**
+ * An alias is a NAME the place is known by, not any span it was captured as.
+ * Boundary-resolve each candidate (drops over-capture tails like "weeks back")
+ * and reject non-place spans, so merging a junk-named card ("Bad Dogg Compound
+ * weeks back") never persists the junk as an alias.
+ */
+function sanitizeAliasCandidates(candidates: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of candidates) {
+    const cleaned = resolvePlaceBoundary(raw.trim().replace(/[’‘]/g, "'")).text.trim();
+    if (!cleaned || !isLikelyPlaceName(cleaned)) continue;
+    out.push(cleaned);
+  }
+  return mergeUniqueStrings(out);
+}
+
 export function buildMergedPlaceIdentity(
   source: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
   target: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
@@ -139,13 +157,17 @@ export function buildMergedPlaceIdentity(
   const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
   const targetAliases = metadataStringArray(targetMeta, 'aliases');
   const sourceAliases = metadataStringArray(sourceMeta, 'aliases');
-  const rawAliasCandidates = mergeUniqueStrings(
-    targetAliases,
-    sourceAliases,
-    [source.name, target.name],
-    [...sourceAliases, source.name, target.name].flatMap(residenceAliasVariants),
+  const rawAliasCandidates = sanitizeAliasCandidates(
+    mergeUniqueStrings(
+      targetAliases,
+      sourceAliases,
+      [source.name, target.name],
+      [...sourceAliases, source.name, target.name].flatMap(residenceAliasVariants),
+    ),
   );
-  const canonicalName = canonicalPlaceMergeName(target.name, source.name, rawAliasCandidates);
+  const cleanSourceName = sanitizeAliasCandidates([source.name])[0] ?? target.name;
+  const canonicalName =
+    canonicalPlaceMergeName(target.name, cleanSourceName, rawAliasCandidates) || target.name;
   const aliases = rawAliasCandidates.filter((alias) => alias.trim() && alias.trim() !== canonicalName);
   const mergeHistory = [
     ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as Array<Record<string, unknown>>) : []),
@@ -594,6 +616,7 @@ class LocationMergeService {
       .update({
         name: canonicalName,
         normalized_name: normalizeNameKey(canonicalName),
+        aliases,
         type,
         summary,
         importance_score: importance,

@@ -21,7 +21,44 @@ type XPost = {
     hashtags?: Array<{ tag: string }>;
     urls?: Array<{ expanded_url?: string }>;
   };
+  attachments?: {
+    media_keys?: string[];
+  };
 };
+
+export type XMediaItem = {
+  media_key: string;
+  type: 'photo' | 'video' | 'animated_gif';
+  url?: string;
+  preview_image_url?: string;
+  alt_text?: string;
+};
+
+type XTimelinePayload = {
+  data?: XPost[];
+  includes?: { media?: XMediaItem[] };
+};
+
+/**
+ * Join each post to its attached media via `includes.media`. Photos fall back
+ * to `preview_image_url` for video/gif so every attachment yields a usable
+ * image URL for the lore galleries.
+ */
+export function resolvePostMedia(payload: XTimelinePayload): Map<string, XMediaItem[]> {
+  const byKey = new Map<string, XMediaItem>(
+    (payload.includes?.media ?? []).map((m) => [m.media_key, m] as const),
+  );
+  const out = new Map<string, XMediaItem[]>();
+  for (const post of payload.data ?? []) {
+    const items = (post.attachments?.media_keys ?? [])
+      .map((k) => byKey.get(k))
+      .filter((m): m is XMediaItem => Boolean(m))
+      .map((m) => ({ ...m, url: m.url ?? m.preview_image_url }))
+      .filter((m) => Boolean(m.url));
+    if (items.length > 0) out.set(post.id, items);
+  }
+  return out;
+}
 
 type SyncOptions = {
   handle: string;
@@ -65,10 +102,15 @@ class XService {
     return userId;
   }
 
-  private async fetchRecentPosts(xUserId: string, options: SyncOptions): Promise<XPost[]> {
+  private async fetchRecentPosts(
+    xUserId: string,
+    options: SyncOptions
+  ): Promise<{ posts: XPost[]; mediaByPost: Map<string, XMediaItem[]> }> {
     const params = new URLSearchParams({
       max_results: `${Math.min(options.maxPosts ?? 20, 100)}`,
-      'tweet.fields': 'created_at,public_metrics,entities'
+      'tweet.fields': 'created_at,public_metrics,entities,attachments',
+      expansions: 'attachments.media_keys',
+      'media.fields': 'media_key,type,url,preview_image_url,alt_text'
     });
 
     params.append('exclude', options.includeReplies ? 'retweets' : 'retweets,replies');
@@ -88,8 +130,8 @@ class XService {
       throw new Error(`Failed to fetch X posts: ${response.status} ${errorText}`);
     }
 
-    const payload = (await response.json()) as { data?: XPost[] };
-    return payload.data ?? [];
+    const payload = (await response.json()) as XTimelinePayload;
+    return { posts: payload.data ?? [], mediaByPost: resolvePostMedia(payload) };
   }
 
   private async entryExists(userId: string, postId: string): Promise<boolean> {
@@ -115,8 +157,14 @@ class XService {
     return Array.from(new Set(tags));
   }
 
-  private async craftContent(handle: string, post: XPost): Promise<string> {
+  private async craftContent(handle: string, post: XPost, media: XMediaItem[]): Promise<string> {
     const fallback = `Posted on X (@${handle}): ${post.text}`;
+    const mediaNote =
+      media.length > 0
+        ? `\nAttached media: ${media
+            .map((m, i) => `${m.type}${m.alt_text ? ` (${m.alt_text})` : ` ${i + 1}`}`)
+            .join(', ')}`
+        : '';
 
     try {
       const completion = await openai.chat.completions.create({
@@ -130,9 +178,9 @@ class XService {
           },
           {
             role: 'user',
-            content: `Handle: @${handle}\nPosted at: ${post.created_at}\nText: ${post.text}\nLikes: ${post.public_metrics?.like_count ?? 0}\nReplies: ${
+            content: `Handle: @${handle}\nPosted at: ${post.created_at}\nText: ${post.text}${mediaNote}\nLikes: ${post.public_metrics?.like_count ?? 0}\nReplies: ${
               post.public_metrics?.reply_count ?? 0
-            }\nRetweets: ${post.public_metrics?.retweet_count ?? 0}\nQuotes: ${post.public_metrics?.quote_count ?? 0}\n\nTransform this into a reflective journal note and keep it under 120 words.`
+            }\nRetweets: ${post.public_metrics?.retweet_count ?? 0}\nQuotes: ${post.public_metrics?.quote_count ?? 0}\n\nTransform this into a reflective journal note and keep it under 120 words. If media is attached, mention what the photo shows when the alt text reveals it.`
           }
         ]
       });
@@ -152,7 +200,7 @@ class XService {
     entries: MemoryEntry[];
   }> {
     const xUserId = await this.fetchUserId(options.handle);
-    const posts = await this.fetchRecentPosts(xUserId, options);
+    const { posts, mediaByPost } = await this.fetchRecentPosts(xUserId, options);
 
     const entries: MemoryEntry[] = [];
     let skipped = 0;
@@ -163,12 +211,14 @@ class XService {
         continue;
       }
 
-      const content = await this.craftContent(options.handle, post);
+      const media = mediaByPost.get(post.id) ?? [];
+      const content = await this.craftContent(options.handle, post, media);
       const tags = [
         'x',
         'social',
         'post',
         `handle:${options.handle.toLowerCase()}`,
+        ...(media.length > 0 ? ['photo'] : []),
         ...this.extractTags(post.text, post.entities?.hashtags)
       ];
 
@@ -183,7 +233,8 @@ class XService {
           x_handle: options.handle,
           x_url: `https://x.com/${options.handle}/status/${post.id}`,
           public_metrics: post.public_metrics,
-          raw_post: post
+          raw_post: post,
+          ...(media.length > 0 ? { x_media: media } : {})
         }
       });
 

@@ -103,6 +103,34 @@ const PLACE_CATEGORY_NOUNS = new Set([
 ]);
 
 /**
+ * Function words that show up in mis-captured prose but not in place names.
+ * Used only for all-lowercase multi-word spans (see isProseFragment), so real
+ * venues like "First Street Pool and Billiards" (one function word) survive.
+ */
+const FUNCTION_WORDS = new Set([
+  'i', 'me', 'my', 'you', 'your', 'he', 'him', 'his', 'she', 'her', 'we', 'us',
+  'our', 'they', 'them', 'their', 'it', 'its', 'the', 'a', 'an', 'and', 'but',
+  'or', 'so', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'was', 'were', 'is',
+  'are', 'let', 'that', 'this',
+]);
+
+/**
+ * Prose slices mis-captured after a preposition ("her right in the eyes",
+ * "shock but she let me"). A real place name is a proper-noun phrase; a
+ * multi-word span with no capital letter and two or more pronouns/articles/
+ * conjunctions is a piece of a sentence, not a name. A leading "the" is
+ * ignored so lowercase mentions like "the house of blues" still pass.
+ */
+function isProseFragment(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed !== trimmed.toLowerCase()) return false;
+  let tokens = normalizeNameKey(trimmed).split(' ').filter(Boolean);
+  if (tokens[0] === 'the') tokens = tokens.slice(1);
+  if (tokens.length < 3) return false;
+  return tokens.filter((t) => FUNCTION_WORDS.has(t)).length >= 2;
+}
+
+/**
  * True when the name is an all-lowercase place category with no proper noun —
  * i.e. unspecific. Real named places carry a capitalized proper-noun token, so
  * the presence of any uppercase letter exempts the name.
@@ -144,6 +172,7 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   if (TEMPORAL_SPAN.test(name)) return reject(name, candidate.domain, 'temporal_phrase_not_place');
   if (ACTIVITY_SPAN.test(name)) return reject(name, candidate.domain, 'activity_narration_not_place');
   if (FRAGMENT_FILLER.test(name)) return reject(name, candidate.domain, 'sentence_fragment_span');
+  if (isProseFragment(name)) return reject(name, candidate.domain, 'prose_fragment_not_place');
   if (RELATIVE_CLAUSE.test(name)) return reject(name, candidate.domain, 'descriptive_clause_fragment');
 
   // Spatial Context Resolver (runs last so the specific generic/category reasons

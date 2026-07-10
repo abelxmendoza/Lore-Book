@@ -3,7 +3,7 @@
  */
 
 const TRAILING_TIME =
-  /\s+(?:march|last\s+night|yesterday|today|tonight|this\s+(?:morning|week|month|year)|(?:a\s+)?(?:few|couple)\s+weeks?(?:\s+(?:ago|now))?|(?:a\s+)?(?:few|couple)\s+days?(?:\s+ago)?|ago|now)\s*$/i;
+  /\s+(?:march|last\s+night|yesterday|today|tonight|this\s+(?:morning|week|month|year)|(?:(?:a\s+)?(?:few|couple)\s+|\d+\s+)?(?:weeks?|months?|days?|nights?|years?)\s+(?:ago|back|prior|earlier)|(?:a\s+)?(?:few|couple)\s+(?:weeks?|days?)(?:\s+now)?|ago|now)\s*$/i;
 
 const TRAILING_ROLE =
   /\s+a\s+(?:youtuber|streamer|influencer|creator|dj|producer|developer|teacher|professor|coach)\b.*$/i;
@@ -21,6 +21,12 @@ const TRAILING_PRONOUN_CLAUSE =
   /\s+(?:i|it|he|she|they|we|you|her|him|them)\s+(?:still|said|was|were|did|didn'?t|does|don'?t|had|has|went|came|told|asked|wanted|want)\b.*$/i;
 
 const TRAILING_WITH_PERSON = /\s+with\s+(?:my\s+|our\s+|the\s+)?[A-ZÀ-Ý]?[A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ý]?[A-Za-zÀ-ÿ]+){0,2}\s*$/;
+
+// "Catch One the club" — a lowercase category appositive after a proper noun
+// is a description, not part of the name. Case-sensitive so a capitalized
+// "The Club" that is genuinely part of a name survives.
+const TRAILING_CATEGORY_APPOSITIVE =
+  /\s+the\s+(?:club|nightclub|bar|venue|spot|lounge|restaurant|shop|store|gym|cafe|house|place)\s*$/;
 
 const LEADING_RELATIVE_CONTEXT = /^(?:here|there)\s+(?:at|in)\s+/i;
 
@@ -63,6 +69,7 @@ export function resolvePlaceBoundary(candidate: string): BoundaryResolution {
   apply(TRAILING_EDUCATION_TAIL, 'education_clause');
   apply(TRAILING_VERB_FRAGMENT, 'verb_fragment');
   apply(TRAILING_CLAUSE, 'clause_tail');
+  if (/[A-ZÀ-Ý]/.test(text)) apply(TRAILING_CATEGORY_APPOSITIVE, 'category_appositive');
 
   return { text, fixes, trimmedSuffix };
 }

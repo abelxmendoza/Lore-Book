@@ -51,6 +51,21 @@ const AGENT_BY_PATTERN = /\b(?:run|written|hosted|owned|created|made|built|desig
 
 const ORG_ONLY = /^(amazon|google|meta|apple|microsoft|netflix)$/i;
 
+/**
+ * The evidence line explicitly marks the name as a venue: "at Catch One the
+ * club", "the bar called Lucky's". An adjacent category word beats the
+ * ambiguous-TitleCase-name → EVENT heuristic below.
+ */
+function hasVenueAppositiveCue(text: string, contextLine: string): boolean {
+  const escaped = text.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return false;
+  return new RegExp(
+    `(?:\\b(?:club|nightclub|venue|bar|lounge)\\s+(?:called|named)\\s+${escaped}\\b` +
+      `|\\b${escaped}\\s+(?:the\\s+)?(?:club|nightclub|venue|bar|lounge)\\b)`,
+    'i',
+  ).test(contextLine);
+}
+
 function isAmbiguousVenueName(text: string): boolean {
   const n = norm(text);
   if (VENUE_COMPOUND_SUFFIX.test(n)) return false;
@@ -203,6 +218,10 @@ export function guardPlaceCandidate(
   }
 
   if (isAmbiguousVenueName(text)) {
+    if (hasVenueAppositiveCue(text, contextLine)) {
+      rulesFired.push('venue_appositive_cue');
+      return { allowed: true, confidenceBoost: 0.12, rulesFired };
+    }
     return {
       allowed: false,
       rejectedAs: 'EVENT',

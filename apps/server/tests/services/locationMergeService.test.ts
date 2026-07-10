@@ -32,6 +32,29 @@ describe('locationMergeService alias preservation', () => {
     });
   });
 
+  it('never keeps an over-captured span as an alias when merging', () => {
+    // Suggestion span bled trailing words ("weeks back"); after merge the
+    // junk must not survive as an alias of the real venue.
+    const identity = buildMergedPlaceIdentity(
+      { id: 'loc-junk', name: 'Bad Dogg Compound weeks back', metadata: {} },
+      { id: 'loc-bdc', name: 'Bad Dogg Compound', metadata: { aliases: [] } },
+    );
+
+    expect(identity.canonicalName).toBe('Bad Dogg Compound');
+    expect(identity.aliases).toEqual([]);
+  });
+
+  it('keeps clean alternate names as aliases when merging', () => {
+    const identity = buildMergedPlaceIdentity(
+      { id: 'loc-co', name: 'Catch One', metadata: {} },
+      { id: 'loc-cotc', name: 'Catch One the club', metadata: {} },
+    );
+
+    // Shorter proper name wins as canonical; no junk aliases survive.
+    expect(identity.canonicalName).toBe('Catch One');
+    expect(identity.aliases).not.toContain('Bad Dogg Compound weeks back');
+  });
+
   it('allows residential/family-home place merges even when names differ', () => {
     expect(reviewPlaceDuplicateCompatibility('Anaheim Family Home', "Abuela's House")).toMatchObject({
       canMerge: true,

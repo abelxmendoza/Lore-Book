@@ -31,8 +31,13 @@ const BRAND_PATTERN =
 const POSSESSIVE_PATTERN =
   /\b((?:my\s+|our\s+|the\s+)?(?:Tio|Tía|Tia|Mr|Mrs|Ms|Dr|Professor|Prof)\.?\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?'?s|(?:my\s+|our\s+|the\s+)?[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2}?'s|(?:my\s+|our\s+|the\s+)?(?:mom|mother|dad|father|abuela|abuelo|grandma|grandpa|moms|dads|abuelas|abuelos|tios|tias))\s+(house|home|apartment|condo|casa|place|office|clinic)\b/gi;
 
+// Case-sensitive on purpose: the captured span must START with a capital
+// letter (proper-noun place). With the `i` flag the [A-Z] anchor matched
+// lowercase prose, turning "at her right in the eyes" and "in shock but she
+// let me" into place candidates. Prepositions tolerate sentence-initial
+// capitals explicitly instead.
 const PREP_PHRASE_PATTERN =
-  /\b(?:at|in|from|near|around|outside|inside|next to|drove to|went to|take (?:her|him|them|me) to)\s+(?:the\s+)?([A-Z][A-Za-zÀ-ÿ0-9.'\s-]{1,60}?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple)|in\s+(?:a\s+)?(?:few|couple)|weren|wasn't|that|who|and|is|are|was|were|\.|,|$))/gi;
+  /\b(?:[Aa]t|[Ii]n|[Ff]rom|[Nn]ear|[Aa]round|[Oo]utside|[Ii]nside|[Nn]ext to|[Dd]rove to|[Ww]ent to|[Tt]ake (?:her|him|them|me) to)\s+(?:[Tt]he\s+)?([A-Z][A-Za-zÀ-ÿ0-9.'\s-]{1,60}?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple)|in\s+(?:a\s+)?(?:few|couple)|weren|wasn't|that|who|and|is|are|was|were|\.|,|$))/g;
 
 const SCHOOL_PATTERN = /\b(CSUF|UCI|UCLA|USC|Cal Poly)\b/g;
 
@@ -46,8 +51,9 @@ const NAMED_VENUE_PATTERN = /\b(Club Nova|Bad Dogg Compound)\b/g;
 const COMPOUND_VENUE_PATTERN =
   /\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+(?:Compound|Warehouse|Grounds|Arena|Stadium|Center|Centre))\b/g;
 
+// Case-sensitive for the same reason as PREP_PHRASE_PATTERN above.
 const DESTINATION_PATTERN =
-  /\b(?:go to|going to|went to)\s+([A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+)?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple))|[.,!?]|$)/gi;
+  /\b(?:[Gg]o to|[Gg]oing to|[Ww]ent to)\s+([A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+)?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple))|[.,!?]|$)/g;
 
 const DIAGNOSTIC_NON_PLACE_PATTERNS: Array<{ pattern: RegExp; group?: number }> = [
   { pattern: /\b(Amazon)\b(?=[^.!?]*\b(?:work(?:ing)? at|onboarding|Ring doorbell product)\b)/gi, group: 1 },

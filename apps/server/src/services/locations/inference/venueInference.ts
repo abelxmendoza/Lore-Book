@@ -52,7 +52,9 @@ export function inferVenuePlaces(text: string): LocationCandidate[] {
   }
 
   if (SHOW_CONTEXT.test(text) && PLACE_PREPOSITIONS.test(text)) {
-    const eventRe = new RegExp(EVENT_VENUE_RE.source, 'gi');
+    // 'g' only — adding 'i' would let the [A-Z] proper-noun anchor match
+    // lowercase prose fragments after "at/in".
+    const eventRe = new RegExp(EVENT_VENUE_RE.source, 'g');
     while ((match = eventRe.exec(text)) !== null) {
       const boundary = resolvePlaceBoundary(match[1]);
       const displayName = boundary.text.trim();
