@@ -64,6 +64,10 @@ export type WorkingMemoryItem = {
   confidence: number;
   score: number;
   reasons: string[];
+  /** Provenance: chat_message ids that evidence this item (episodes table). */
+  sourceMessageIds?: string[];
+  /** Provenance: conversation_sessions / thread id when known. */
+  sourceThreadId?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -382,6 +386,14 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
   const confidence = clamp01(candidate.confidence);
   const truthState = (candidate.metadata?.truth_state as string | undefined) ?? 'PENDING_VERIFICATION';
   const epistemic = truthStateWeight(truthState);
+  // Provenance-backed conversation episodes (public.episodes) rank slightly above
+  // journal/chat proxies so recall prefers citable scene memory when present.
+  const provenanceBoost =
+    candidate.source === 'episodes' &&
+    Array.isArray(candidate.sourceMessageIds) &&
+    candidate.sourceMessageIds.length > 0
+      ? 1.08
+      : 1;
   const baseScore =
     0.38 * relevance +
     0.18 * importance +
@@ -389,7 +401,7 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
     0.14 * significance +
     0.08 * relationshipDistance +
     0.06 * confidence;
-  const score = baseScore * epistemic;
+  const score = baseScore * epistemic * provenanceBoost;
 
   return {
     id: candidate.id,
@@ -407,7 +419,10 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
       `confidence=${confidence.toFixed(2)}`,
       `truth_state=${truthState}`,
       `epistemic=${epistemic.toFixed(2)}`,
+      ...(provenanceBoost > 1 ? ['provenance-backed episode'] : []),
     ],
+    sourceMessageIds: candidate.sourceMessageIds,
+    sourceThreadId: candidate.sourceThreadId,
     metadata: candidate.metadata,
   };
 }
@@ -426,10 +441,30 @@ function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'in
   };
 }
 
+function formatProvenanceCitation(item: WorkingMemoryItem): string {
+  const msgIds =
+    item.sourceMessageIds ??
+    (Array.isArray(item.metadata?.source_message_ids)
+      ? (item.metadata!.source_message_ids as string[])
+      : undefined);
+  const threadId =
+    item.sourceThreadId ??
+    (typeof item.metadata?.source_thread_id === 'string' ? item.metadata.source_thread_id : null);
+  const parts: string[] = [];
+  if (Array.isArray(msgIds) && msgIds.length > 0) {
+    const preview = msgIds.slice(0, 3).join(', ');
+    const more = msgIds.length > 3 ? `, +${msgIds.length - 3} more` : '';
+    parts.push(`evidence=${msgIds.length} msg${msgIds.length === 1 ? '' : 's'} (${preview}${more})`);
+  }
+  if (threadId) parts.push(`thread=${threadId}`);
+  return parts.length ? ` | ${parts.join(' | ')}` : '';
+}
+
 function itemLine(item: WorkingMemoryItem): string {
   const date = item.date ? ` | date=${item.date}` : '';
   const reason = item.reasons.length ? ` | reason=${item.reasons.slice(0, 3).join('; ')}` : '';
-  return `- ${item.title} [source=${item.source} | confidence=${item.confidence.toFixed(2)} | score=${item.score.toFixed(2)}${date}${reason}]\n  ${item.content}`;
+  const provenance = formatProvenanceCitation(item);
+  return `- ${item.title} [source=${item.source} | confidence=${item.confidence.toFixed(2)} | score=${item.score.toFixed(2)}${date}${provenance}${reason}]\n  ${item.content}`;
 }
 
 function section(title: string, items: WorkingMemoryItem[]): string {
@@ -998,6 +1033,218 @@ async function loadPersonCandidates(
   return out;
 }
 
+type PersistedEpisodeRow = {
+  id: string;
+  title: string;
+  start_at: string;
+  end_at: string;
+  boundary_reason: string;
+  source_message_ids: string[] | null;
+  source_entity_ids: string[] | null;
+  participant_ids: string[] | null;
+  location_ids: string[] | null;
+  source_thread_id: string;
+  source_event_ids?: string[] | null;
+};
+
+/**
+ * Load real conversation episodes from public.episodes (segmentation output).
+ * These are provenance-first: every row has source_message_ids evidence.
+ * Journal/chat proxies remain as fallbacks when this table is sparse.
+ */
+async function loadPersistedEpisodeCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string | null,
+  entityIds: { personId?: string | null; placeId?: string | null },
+  intent: WorkingMemoryIntent,
+  temporalWindow?: TemporalWindow | null
+): Promise<Candidate[]> {
+  const temporal = isTemporalIntent(intent);
+  const isoRange = temporalWindow
+    ? { gte: temporalWindow.start.toISOString(), lte: temporalWindow.end.toISOString() }
+    : null;
+  const wantsBroad =
+    temporal ||
+    intent === 'LIFE_REVIEW' ||
+    intent === 'IDENTITY_QUERY' ||
+    intent === 'EVENT_QUERY' ||
+    intent === 'PERSON_QUERY' ||
+    intent === 'RELATIONSHIP_QUERY' ||
+    intent === 'PLACE_QUERY' ||
+    intent === 'TIMELINE_QUERY';
+
+  const rows = await scope.traced(
+    'episodes',
+    temporal ? 'persisted episodes in temporal window' : 'recent persisted episodes',
+    `episodes:${intent}:${entityIds.personId ?? entityIds.placeId ?? normalizeNameKey(target ?? '')}`,
+    () => {
+      let q = supabaseAdmin
+        .from('episodes')
+        .select(
+          'id, title, start_at, end_at, boundary_reason, source_message_ids, source_entity_ids, participant_ids, location_ids, source_thread_id, source_event_ids'
+        )
+        .eq('user_id', userId);
+      if (isoRange) {
+        q = q.gte('start_at', isoRange.gte).lte('start_at', isoRange.lte);
+      }
+      return q.order('start_at', { ascending: false }).limit(wantsBroad ? 16 : 8);
+    }
+  );
+
+  if (!rows?.length) return [];
+
+  const targetKey = normalizeNameKey(target ?? '');
+  let filtered = rows as PersistedEpisodeRow[];
+
+  if (entityIds.personId) {
+    const byParticipant = filtered.filter(
+      (r) =>
+        (r.participant_ids ?? []).includes(entityIds.personId!) ||
+        (r.source_entity_ids ?? []).includes(entityIds.personId!)
+    );
+    if (byParticipant.length > 0) {
+      filtered = byParticipant;
+    } else if (targetKey && !wantsBroad) {
+      filtered = filtered.filter((r) => normalizeNameKey(r.title).includes(targetKey));
+    }
+  } else if (entityIds.placeId) {
+    const byPlace = filtered.filter((r) => (r.location_ids ?? []).includes(entityIds.placeId!));
+    if (byPlace.length > 0) {
+      filtered = byPlace;
+    } else if (targetKey) {
+      filtered = filtered.filter((r) => normalizeNameKey(r.title).includes(targetKey));
+    }
+  } else if (targetKey && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent) && !temporal) {
+    filtered = filtered.filter((r) => normalizeNameKey(r.title).includes(targetKey));
+  }
+
+  // Batch-fetch a few source messages so the model sees citable user wording, not just titles.
+  const allMsgIds = [
+    ...new Set(filtered.flatMap((r) => (r.source_message_ids ?? []).slice(0, 4))),
+  ].slice(0, 48);
+  const messageById = new Map<string, { content: string; role?: string }>();
+  if (allMsgIds.length > 0) {
+    const msgs = await scope.traced(
+      'chat_messages',
+      'episode source message snippets',
+      `chat_messages:episode_snippets:${allMsgIds.length}:${allMsgIds[0] ?? ''}`,
+      () =>
+        supabaseAdmin
+          .from('chat_messages')
+          .select('id, content, role')
+          .eq('user_id', userId)
+          .in('id', allMsgIds)
+          .limit(48)
+    );
+    for (const m of (msgs ?? []) as Array<{ id: string; content?: string; role?: string }>) {
+      messageById.set(m.id, { content: String(m.content ?? ''), role: m.role });
+    }
+  }
+
+  const out: Candidate[] = [];
+  for (const ep of filtered) {
+    if (
+      temporalWindow &&
+      !occurredInWindow(ep.start_at, temporalWindow) &&
+      !occurredInWindow(ep.end_at, temporalWindow)
+    ) {
+      continue;
+    }
+
+    const msgIds = (ep.source_message_ids ?? []).filter(Boolean);
+    const snippets = msgIds
+      .slice(0, 4)
+      .map((id) => messageById.get(id))
+      .filter((m): m is { content: string; role?: string } => Boolean(m?.content?.trim()))
+      .map((m) => {
+        const prefix = m.role === 'assistant' ? 'LoreBook' : 'you';
+        return `${prefix}: ${m.content.slice(0, 180)}`;
+      });
+
+    const content = [
+      ep.title,
+      ep.start_at && ep.end_at ? `When: ${ep.start_at} → ${ep.end_at}` : '',
+      ep.boundary_reason ? `Boundary: ${ep.boundary_reason}` : '',
+      snippets.length ? `You said / source:\n${snippets.join('\n')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 700);
+
+    const matchText = `${ep.title} ${content}`;
+    const matchesEntity =
+      (!!entityIds.personId &&
+        ((ep.participant_ids ?? []).includes(entityIds.personId) ||
+          (ep.source_entity_ids ?? []).includes(entityIds.personId))) ||
+      (!!entityIds.placeId && (ep.location_ids ?? []).includes(entityIds.placeId));
+    const matchesTarget =
+      !targetKey || matchesEntity || normalizeNameKey(matchText).includes(targetKey);
+
+    if (
+      targetKey &&
+      !matchesTarget &&
+      !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent) &&
+      !temporal
+    ) {
+      continue;
+    }
+
+    const msgCount = msgIds.length;
+    out.push({
+      id: `scene_episode:${ep.id}`,
+      type: 'episode',
+      title: ep.title || 'Conversation episode',
+      content: content || ep.title,
+      source: 'episodes',
+      date: ep.start_at,
+      confidence: 0.88,
+      relevance: matchesTarget
+        ? intent === 'EVENT_QUERY' ||
+          intent === 'PERSON_QUERY' ||
+          intent === 'RELATIONSHIP_QUERY' ||
+          intent === 'PLACE_QUERY' ||
+          temporal
+          ? 0.98
+          : 0.92
+        : temporal
+          ? 0.9
+          : 0.55,
+      importance: 0.74,
+      significance: Math.min(0.95, 0.55 + msgCount * 0.04),
+      relationshipDistance: matchesTarget || matchesEntity ? 0.95 : 0.5,
+      reasons: [
+        matchesEntity
+          ? 'episode participant/place matches target entity'
+          : matchesTarget
+            ? 'persisted episode matches target'
+            : 'recent conversation episode',
+        `messages=${msgCount}`,
+      ],
+      sourceMessageIds: msgIds,
+      sourceThreadId: ep.source_thread_id,
+      metadata: {
+        knowledge_type: 'EXPERIENCE',
+        // Conversation scenes are contextual evidence (what was said), not canonized biography.
+        truth_state: 'CONTEXTUAL',
+        source_message_ids: msgIds,
+        source_thread_id: ep.source_thread_id,
+        participant_ids: ep.participant_ids ?? [],
+        location_ids: ep.location_ids ?? [],
+        boundary_reason: ep.boundary_reason,
+        end_at: ep.end_at,
+        provenance: {
+          kind: 'episodes',
+          messageCount: msgCount,
+          messageIds: msgIds.slice(0, 8),
+        },
+      },
+    });
+  }
+
+  return out;
+}
+
 async function loadTextualCandidates(
   scope: WmaRequestScope,
   userId: string,
@@ -1193,7 +1440,14 @@ async function loadTextualCandidates(
       significance: 0.4,
       relationshipDistance: threadId ? 0.8 : 0.45,
       reasons: [threadId ? 'same thread' : 'chat text matches target'],
-      metadata: { session_id: chat.session_id, role: chat.role },
+      sourceMessageIds: [String(chat.id)],
+      sourceThreadId: chat.session_id ?? null,
+      metadata: {
+        session_id: chat.session_id,
+        role: chat.role,
+        source_message_ids: [String(chat.id)],
+        source_thread_id: chat.session_id,
+      },
     });
   }
 
@@ -1704,14 +1958,24 @@ async function loadProjectCandidates(
 const INTENT_QUOTA: Partial<Record<WorkingMemoryIntent, { types: WorkingMemoryItem['type'][]; min: number }>> = {
   // A question about a person should reliably surface at least one episode that
   // involves them, even when relationship/timeline items score higher.
-  PERSON_QUERY: { types: ['episode'], min: 1 },
+  PERSON_QUERY: { types: ['episode'], min: 2 },
+  EVENT_QUERY: { types: ['episode', 'event'], min: 2 },
+  PLACE_QUERY: { types: ['episode'], min: 1 },
+  LIFE_REVIEW: { types: ['episode'], min: 2 },
+  TODAY_QUERY: { types: ['episode'], min: 1 },
+  YESTERDAY_QUERY: { types: ['episode'], min: 1 },
+  THIS_WEEK_QUERY: { types: ['episode'], min: 2 },
+  THIS_MONTH_QUERY: { types: ['episode'], min: 2 },
+  TIME_RANGE_QUERY: { types: ['episode'], min: 2 },
+  TIMELINE_QUERY: { types: ['episode', 'timeline'], min: 2 },
   GOAL_QUERY: { types: ['goal'], min: 3 },
   DIRECTION_QUERY: { types: ['goal'], min: 2 },
   PROJECT_QUERY: { types: ['project'], min: 3 },
   SKILL_QUERY: { types: ['skill'], min: 3 },
   COMMUNITY_QUERY: { types: ['community'], min: 3 },
-  RELATIONSHIP_QUERY: { types: ['relationship'], min: 2 },
-  IDENTITY_QUERY: { types: ['goal', 'preference'], min: 2 },
+  // Prefer both relationship edges and co-present episodes for relationship recall.
+  RELATIONSHIP_QUERY: { types: ['relationship', 'episode'], min: 2 },
+  IDENTITY_QUERY: { types: ['goal', 'preference', 'episode'], min: 2 },
 };
 
 function boostCandidatesForIntent(candidates: Candidate[], intent: WorkingMemoryIntent): Candidate[] {
@@ -1879,7 +2143,12 @@ export async function assembleWorkingMemory(
     intent === 'COMMUNITY_QUERY' ||
     (intent === 'PERSON_QUERY' && !isPersonish);
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates, anchorCandidates] =
+  const placeEntity =
+    entities.find((entity) => entity.source === 'locations' && entity.id) ?? null;
+  const personEntityId =
+    primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
+
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -1894,6 +2163,15 @@ export async function assembleWorkingMemory(
       !temporalQuery ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
+      // Real public.episodes rows (segmented scenes with source_message_ids).
+      loadPersistedEpisodeCandidates(
+        scope,
+        input.userId,
+        target,
+        { personId: personEntityId, placeId: placeEntity?.id ?? null },
+        intent,
+        temporalResolved.window
+      ),
       loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window),
       !temporalQuery
         ? loadNarrativeAnchorCandidates(scope, input.userId, primaryEntity, intent)
@@ -1903,6 +2181,7 @@ export async function assembleWorkingMemory(
 
   const rankingStarted = Date.now();
   const merged = [
+    ...episodeCandidates,
     ...personCandidates,
     ...relationshipCandidates,
     ...threadRelationshipCandidates,

@@ -10,6 +10,9 @@ function makeChain(result: TableResult) {
     or: () => chain,
     in: () => chain,
     gte: () => chain,
+    lte: () => chain,
+    contains: () => chain,
+    overlaps: () => chain,
     order: () => chain,
     limit: () => chain,
     single: () => Promise.resolve(result),
@@ -275,7 +278,104 @@ describe('Working Memory Assembler', () => {
         ],
         error: null,
       },
+      // Real conversation episodes (public.episodes) — provenance-first scene log.
+      episodes: {
+        data: [
+          {
+            id: 'ep-blue-room',
+            title: 'Blue Room · Alex',
+            start_at: '2026-06-10T01:00:00Z',
+            end_at: '2026-06-10T03:00:00Z',
+            boundary_reason: 'time-gap(6h)',
+            source_message_ids: ['msg-br-1', 'msg-br-2'],
+            source_entity_ids: ['char-ashley'],
+            participant_ids: ['char-ashley'],
+            location_ids: ['loc-metro'],
+            source_thread_id: 'thread-blue-room',
+            source_event_ids: [],
+          },
+          {
+            id: 'ep-sol',
+            title: 'Sam Chen · unresolved',
+            start_at: '2026-06-11T18:00:00Z',
+            end_at: '2026-06-11T19:30:00Z',
+            boundary_reason: 'topic-shift',
+            source_message_ids: ['msg-sol-1'],
+            source_entity_ids: ['char-sol'],
+            participant_ids: ['char-sol'],
+            location_ids: [],
+            source_thread_id: 'thread-sol',
+            source_event_ids: [],
+          },
+          {
+            id: 'ep-grad',
+            title: "Morgan Gray's graduation",
+            start_at: '2026-06-07T16:00:00Z',
+            end_at: '2026-06-07T20:00:00Z',
+            boundary_reason: 'time-gap(12h)',
+            source_message_ids: ['msg-grad-1', 'msg-grad-2', 'msg-grad-3'],
+            source_entity_ids: ['char-leslie'],
+            participant_ids: ['char-leslie'],
+            location_ids: [],
+            source_thread_id: 'thread-grad',
+            source_event_ids: [],
+          },
+        ],
+        error: null,
+      },
+      resolved_events: { data: [], error: null },
     };
+
+    // Episode snippet loader reuses chat_messages; merge source message bodies dynamically
+    // so tests that override chat_messages (relationship metadata) still work.
+    const episodeSnippets: Array<{ id: string; content: string; role: string }> = [
+      {
+        id: 'msg-br-1',
+        content: 'I met Alex after Blue Room in DTLA and we walked around.',
+        role: 'user',
+      },
+      {
+        id: 'msg-br-2',
+        content: 'That night with Alex felt like a short but memorable chapter.',
+        role: 'user',
+      },
+      {
+        id: 'msg-sol-1',
+        content: 'Sam Chen still comes up when I think about unfinished feelings.',
+        role: 'user',
+      },
+      {
+        id: 'msg-grad-1',
+        content: "Morgan Gray's graduation was packed and emotional.",
+        role: 'user',
+      },
+      {
+        id: 'msg-grad-2',
+        content: 'We took photos after the ceremony.',
+        role: 'user',
+      },
+      {
+        id: 'msg-grad-3',
+        content: 'Family dinner after graduation ran late.',
+        role: 'user',
+      },
+    ];
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'chat_messages') {
+        const baseRows = Array.isArray(tableResults.chat_messages?.data)
+          ? tableResults.chat_messages.data
+          : [];
+        const merged = [
+          ...baseRows,
+          ...episodeSnippets.filter(
+            (snippet) => !baseRows.some((row: { id?: string }) => row.id === snippet.id)
+          ),
+        ];
+        return makeChain({ data: merged, error: null });
+      }
+      return makeChain(tableResults[table] ?? { data: [], error: null });
+    });
   });
 
   it('assembles a person working memory for Alex without pulling unrelated context when budgeted', async () => {
@@ -299,6 +399,56 @@ describe('Working Memory Assembler', () => {
     expect(packet.text).toContain('confidence=');
     expect(packet.text).toContain('score=');
     expect(packet.text).toContain('reason=');
+  });
+
+  it('loads public.episodes with source_message_ids provenance for person recall', async () => {
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What do you know about Alex?',
+    });
+
+    const scene = result.episodes.find((item) => item.source === 'episodes');
+    expect(scene).toBeDefined();
+    expect(scene!.sourceMessageIds?.length).toBeGreaterThan(0);
+    expect(scene!.sourceThreadId).toBe('thread-blue-room');
+    expect(scene!.id).toMatch(/^scene_episode:/);
+    expect(scene!.content).toMatch(/You said|Blue Room|Alex/i);
+    expect(fromMock).toHaveBeenCalledWith('episodes');
+
+    const packet = buildWorkingMemoryPacket(result);
+    expect(packet.text).toMatch(/evidence=\d+ msgs?/);
+    expect(packet.text).toContain('thread=thread-blue-room');
+    expect(packet.text).toContain('source=episodes');
+  });
+
+  it('prefers provenance-backed episodes over journal proxies when ranking person recall', async () => {
+    const result = await assembleWorkingMemory(
+      { userId: 'user-1', question: 'What do you know about Alex?' },
+      { maxItems: 8 }
+    );
+
+    const scene = result.episodes.find((item) => item.source === 'episodes');
+    const journalProxy = result.episodes.find((item) => item.source === 'journal_entries');
+    expect(scene).toBeDefined();
+    if (journalProxy) {
+      expect(scene!.score).toBeGreaterThanOrEqual(journalProxy.score);
+    }
+  });
+
+  it('surfaces graduation episode evidence for event queries', async () => {
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What happened at Morgan Gray's graduation?",
+    });
+
+    expect(result.intent).toBe('EVENT_QUERY');
+    const grad = result.episodes.find(
+      (item) => item.source === 'episodes' && /graduation|Morgan/i.test(`${item.title} ${item.content}`)
+    );
+    expect(grad).toBeDefined();
+    expect(grad!.sourceMessageIds).toEqual(
+      expect.arrayContaining(['msg-grad-1', 'msg-grad-2', 'msg-grad-3'])
+    );
   });
 
   it('avoids duplicate character table queries for person queries', async () => {
