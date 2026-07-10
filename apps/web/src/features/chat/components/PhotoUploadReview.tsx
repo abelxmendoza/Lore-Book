@@ -21,6 +21,10 @@ interface PhotoAnalysis {
     dates?: string[];
   };
   summary?: string;
+  isSelfie?: boolean;
+  likelyUserInFrame?: boolean;
+  subjectFocus?: string;
+  appearanceSignals?: string[];
   metadata?: {
     date?: string;
     location?: string;
@@ -34,6 +38,8 @@ interface PhotoUploadReviewProps {
   onApprove: (options: {
     addToLoreBook: boolean;
     extractTextOnly: boolean;
+    addToSelfPhotos?: boolean;
+    discussInChat?: boolean;
     suggestedLocation?: PhotoAnalysis['suggestedLocation'];
   }) => Promise<void>;
   onReject: () => void;
@@ -51,8 +57,13 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
   processProgress = null,
   processStages = [],
 }) => {
+  const looksLikeSelf =
+    Boolean(analysis.isSelfie) ||
+    Boolean(analysis.likelyUserInFrame) ||
+    analysis.subjectFocus === 'selfie';
   const [addToLoreBook, setAddToLoreBook] = useState(analysis.photoType === 'memory');
   const [extractTextOnly, setExtractTextOnly] = useState(analysis.photoType === 'document');
+  const [addToSelfPhotos, setAddToSelfPhotos] = useState(looksLikeSelf);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -67,7 +78,16 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
     await onApprove({
       addToLoreBook,
       extractTextOnly,
-      suggestedLocation: addToLoreBook ? analysis.suggestedLocation : undefined
+      addToSelfPhotos,
+      suggestedLocation: addToLoreBook ? analysis.suggestedLocation : undefined,
+    });
+  };
+
+  const handleDiscussInChat = async () => {
+    await onApprove({
+      addToLoreBook: false,
+      extractTextOnly: false,
+      discussInChat: true,
     });
   };
 
@@ -124,6 +144,22 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
 
           {analysis.summary && (
             <p className="text-xs text-white/70">{analysis.summary}</p>
+          )}
+
+          {(analysis.isSelfie || analysis.likelyUserInFrame) && (
+            <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded">
+              <p className="text-xs text-amber-200/90 font-medium">
+                {analysis.isSelfie ? 'Selfie detected' : 'You appear to be in this photo'}
+              </p>
+              {analysis.appearanceSignals && analysis.appearanceSignals.length > 0 && (
+                <p className="text-[11px] text-white/60 mt-1">
+                  Appearance: {analysis.appearanceSignals.join(' · ')}
+                </p>
+              )}
+              <p className="text-[11px] text-white/50 mt-1">
+                Saving will also add this to your main character Photos tab so LoreBook learns how you look.
+              </p>
+            </div>
           )}
 
           {analysis.suggestedLocation && (
@@ -220,25 +256,44 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
         )}
 
         {analysis.photoType === 'memory' && (
-          <label className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg cursor-pointer hover:bg-green-500/15 transition-colors">
-            <input
-              type="checkbox"
-              checked={addToLoreBook}
-              onChange={(e) => {
-                setAddToLoreBook(e.target.checked);
-                if (e.target.checked) setExtractTextOnly(false);
-              }}
-              className="mt-0.5 w-4 h-4 rounded border-border/60 bg-black/40 text-primary focus:ring-primary/50"
-            />
-            <div className="flex-1">
-              <p className="text-xs font-medium text-white">Add to Lore Book</p>
-              <p className="text-xs text-white/60 mt-0.5">
-                {analysis.suggestedLocation 
-                  ? `Will be added to: ${analysis.suggestedLocation.name}`
-                  : 'Photo will be stored and linked to your memories'}
-              </p>
-            </div>
-          </label>
+          <>
+            <label className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg cursor-pointer hover:bg-green-500/15 transition-colors">
+              <input
+                type="checkbox"
+                checked={addToLoreBook}
+                onChange={(e) => {
+                  setAddToLoreBook(e.target.checked);
+                  if (e.target.checked) setExtractTextOnly(false);
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-border/60 bg-black/40 text-primary focus:ring-primary/50"
+              />
+              <div className="flex-1">
+                <p className="text-xs font-medium text-white">Add to Lore Book + photo album</p>
+                <p className="text-xs text-white/60 mt-0.5">
+                  {analysis.suggestedLocation
+                    ? `Will be added to: ${analysis.suggestedLocation.name}`
+                    : 'Stored as a memory and listed in your Photos album'}
+                </p>
+              </div>
+            </label>
+            {(looksLikeSelf || addToLoreBook) && (
+              <label className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/25 rounded-lg cursor-pointer hover:bg-amber-500/15 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={addToSelfPhotos}
+                  onChange={(e) => setAddToSelfPhotos(e.target.checked)}
+                  disabled={!addToLoreBook}
+                  className="mt-0.5 w-4 h-4 rounded border-border/60 bg-black/40 text-primary focus:ring-primary/50"
+                />
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-white">Also save to My Photos (main character)</p>
+                  <p className="text-xs text-white/60 mt-0.5">
+                    Selfies and photos of you — used so LoreBook knows how you look
+                  </p>
+                </div>
+              </label>
+            )}
+          </>
         )}
 
         {analysis.photoType === 'junk' && (
@@ -273,29 +328,44 @@ export const PhotoUploadReview: React.FC<PhotoUploadReviewProps> = ({
           icon={Image}
         />
       ) : null}
-      <div className="flex items-center justify-between pt-2 border-t border-border/60">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onReject}
-          disabled={loading}
-        >
-          Skip
-        </Button>
-        <Button
-          size="sm"
-          onClick={handleApprove}
-          disabled={loading || (!addToLoreBook && !extractTextOnly)}
-          leftIcon={loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-        >
-          {loading 
-            ? 'Processing...' 
-            : extractTextOnly 
-              ? 'Extract Text' 
-              : addToLoreBook 
-                ? 'Add to Lore Book' 
-                : 'Process'}
-        </Button>
+      <div className="flex flex-col gap-2 pt-2 border-t border-border/60">
+        <div className="flex items-center justify-between gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReject}
+            disabled={loading}
+          >
+            Skip
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleDiscussInChat()}
+              disabled={loading}
+            >
+              Discuss in chat
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleApprove()}
+              disabled={loading || (!addToLoreBook && !extractTextOnly)}
+              leftIcon={loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            >
+              {loading
+                ? 'Processing...'
+                : extractTextOnly
+                  ? 'Extract Text'
+                  : addToLoreBook
+                    ? 'Add to Lore Book'
+                    : 'Process'}
+            </Button>
+          </div>
+        </div>
+        <p className="text-[10px] text-white/40 text-right">
+          “Discuss in chat” puts the photo in this conversation so LoreBook can talk about it.
+        </p>
       </div>
     </div>
   );

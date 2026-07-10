@@ -72,6 +72,17 @@ import { HowLoreBookUnderstoodThis } from '../../../components/chat/HowLoreBookU
 import type { LoreEntityKind } from '../../../lib/loreEntities';
 import { KnowledgeCorrectionModal } from './KnowledgeCorrectionModal';
 
+export type MessageAttachment = {
+  kind: 'image';
+  /** Session-only preview (data URL). Prefer `url` after durable storage. */
+  dataUrl?: string;
+  /** Durable public URL from photos bucket. */
+  url?: string;
+  storagePath?: string;
+  mimeType?: string;
+  detail?: string;
+};
+
 export type Message = {
   id: string;
   role: 'user' | 'assistant';
@@ -89,6 +100,8 @@ export type Message = {
   persistStatus?: 'pending' | 'saved' | 'failed';
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
+  /** Inline vision attachments for this turn (preview + metadata). */
+  attachments?: MessageAttachment[];
   metadata?: {
     intent?: string;
     expression_mode?: string;
@@ -98,6 +111,9 @@ export type Message = {
     recall_sources?: Message['recall_sources'];
     recall_meta?: Message['recall_meta'];
     disclaimer?: string;
+    attachments?: MessageAttachment[];
+    /** Extra server fields (ontology, relationship persistence, etc.). */
+    [key: string]: unknown;
   };
   // Memory Recall fields
   recall?: RecallChatPayload;
@@ -436,9 +452,76 @@ export const ChatMessage = ({
                 )}
               </div>
             ) : (
-              <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
-                <TextWithEntityPills text={message.content} entities={inlineEntityMentions} />
-              </p>
+              <div className="space-y-2">
+                {(() => {
+                  const atts =
+                    message.attachments?.length
+                      ? message.attachments
+                      : Array.isArray(message.metadata?.attachments)
+                        ? (message.metadata.attachments as MessageAttachment[])
+                        : [];
+                  const imageAtts = atts.filter((a) => a.kind === 'image');
+                  const withSrc = imageAtts.filter((a) => a.dataUrl || a.url);
+                  if (imageAtts.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-2" data-testid="message-image-attachments">
+                      {withSrc.map((att, idx) => {
+                        const src = att.dataUrl || att.url!;
+                        return (
+                          <a
+                            key={`att-${idx}-${att.storagePath ?? src.slice(0, 24)}`}
+                            href={src}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block overflow-hidden rounded-lg border border-white/15"
+                          >
+                            <img
+                              src={src}
+                              alt="Attached"
+                              className="max-h-48 max-w-[220px] object-cover"
+                            />
+                          </a>
+                        );
+                      })}
+                      {withSrc.length === 0 && (
+                        <span className="inline-flex items-center rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white/70">
+                          📷 {imageAtts.length === 1 ? 'Image attached' : `${imageAtts.length} images attached`}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const cap = message.content ?? '';
+                  const isPlaceholder =
+                    !cap ||
+                    cap === '[Image attached]' ||
+                    /^\[\d+ images attached\]$/.test(cap);
+                  // Hide auto vision-enrichment block in the bubble; show user caption only when present.
+                  const displayText = cap.includes('[Photo description]:')
+                    ? cap.split('[Photo description]:')[0].trim()
+                    : cap;
+                  if (displayText && !isPlaceholder) {
+                    return (
+                      <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
+                        <TextWithEntityPills text={displayText} entities={inlineEntityMentions} />
+                      </p>
+                    );
+                  }
+                  const hasVisual =
+                    message.attachments?.some((a) => a.dataUrl || a.url) ||
+                    (Array.isArray(message.metadata?.attachments) &&
+                      (message.metadata.attachments as MessageAttachment[]).some((a) => a.url));
+                  if (!hasVisual) {
+                    return (
+                      <p className="text-base sm:text-lg text-white/70 whitespace-pre-wrap">
+                        {isPlaceholder ? '📷 Image attached' : cap}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             )}
 
             {message.persistStatus === 'failed' && (

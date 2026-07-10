@@ -21,6 +21,12 @@ import {
   shouldSimulateDocumentUpload,
   simulateDemoDocumentUpload,
 } from '../../../services/demoDocumentUpload';
+import { config } from '../../../config/env';
+import {
+  DemoUploadProgressPanel,
+  type DemoUploadProgress,
+} from '../../../components/demo/DemoUploadProgressPanel';
+import { compressChatImage, type ChatImageAttachment } from '../types/chatImageAttachment';
 
 export type ResumeUploadResult = {
   kind: 'resume';
@@ -39,7 +45,47 @@ export type DocumentUploadResult = {
   entriesCreated?: number;
 };
 
-export type UploadCompletePayload = ResumeUploadResult | DocumentUploadResult;
+export type PhotoUploadResult = {
+  kind: 'photo';
+  fileName: string;
+  photoType: 'memory' | 'document' | 'junk';
+  analysis: {
+    photoType?: string;
+    confidence?: number;
+    summary?: string;
+    isSelfie?: boolean;
+    likelyUserInFrame?: boolean;
+    subjectFocus?: string;
+    appearanceSignals?: string[];
+    detectedEntities?: { characters?: string[]; locations?: string[]; dates?: string[] };
+    suggestedLocation?: { type?: string; name?: string; reason?: string };
+  };
+  /** When user chose Add to LoreBook / process */
+  processResult?: {
+    entryId?: string;
+    photoUrl?: string;
+    photoId?: string;
+    textExtracted?: string;
+    selfMediaId?: string;
+    selfCharacterId?: string;
+    isSelfie?: boolean;
+    appearanceSignals?: string[];
+    lookProfileUpdated?: boolean;
+  };
+  addedToLoreBook: boolean;
+  chatFeedback: string;
+  /** Compressed image for injecting into the chat turn */
+  chatImage?: ChatImageAttachment;
+  /** Discuss in chat without saving yet */
+  discussOnly?: boolean;
+};
+
+export type UploadCompletePayload = ResumeUploadResult | DocumentUploadResult | PhotoUploadResult;
+
+function apiUrl(path: string): string {
+  const base = config.api.url || '';
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 interface DocumentUploadProps {
   onUploadComplete?: (result: UploadCompletePayload) => void;
@@ -143,6 +189,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setProcessingPhoto(true);
     setPhotoUploadProgress(null);
     setUploadProgress('Analyzing photo...');
+    setUploadResult(null);
 
     try {
       if (shouldSimulatePhotoUpload()) {
@@ -164,17 +211,15 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         throw new Error('Authentication required. Please log in.');
       }
 
-      // Upload photo file directly (not base64)
       const formData = new FormData();
       formData.append('photo', file);
 
-      // Analyze photo
-      const response = await fetch('/api/photos/analyze', {
+      const response = await fetch(apiUrl('/api/photos/analyze'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: formData
+        body: formData,
       });
 
       if (!response.ok) {
@@ -186,9 +231,14 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       setPhotoReview({ file, analysis });
       setUploadProgress(null);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to analyze photo';
+      const raw = error instanceof Error ? error.message : 'Failed to analyze photo';
+      const errorMessage =
+        raw === 'Failed to fetch' || raw.includes('NetworkError') || raw.includes('Load failed')
+          ? 'Could not reach the API to analyze this photo. Start the server (apps/server on :4000) or check VITE_API_URL.'
+          : raw;
       setUploadResult({ success: false, message: errorMessage });
       onUploadError?.(errorMessage);
+      setPhotoReview(null);
     } finally {
       setProcessingPhoto(false);
       setPhotoUploadProgress(null);
@@ -198,15 +248,54 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const handlePhotoApprove = async (options: {
     addToLoreBook: boolean;
     extractTextOnly: boolean;
+    addToSelfPhotos?: boolean;
+    discussInChat?: boolean;
     suggestedLocation?: any;
   }) => {
     if (!photoReview) return;
 
     setProcessingPhoto(true);
     setPhotoProcessProgress(null);
-    setUploadProgress('Processing photo...');
+    setUploadProgress(options.discussInChat ? 'Opening in chat…' : 'Saving photo…');
 
     try {
+      let chatImage: ChatImageAttachment | undefined;
+      try {
+        chatImage = await compressChatImage(photoReview.file);
+      } catch {
+        /* optional for discuss path */
+      }
+
+      // Discuss only: inject into chat without lore process
+      if (options.discussInChat && !options.addToLoreBook && !options.extractTextOnly) {
+        const analysis = photoReview.analysis;
+        const feedback = [
+          analysis?.summary ? `I looked at this photo: ${analysis.summary}` : 'I can see this photo.',
+          analysis?.isSelfie ? 'It looks like a selfie of you.' : '',
+          analysis?.appearanceSignals?.length
+            ? `Appearance notes: ${analysis.appearanceSignals.join(', ')}.`
+            : '',
+          'Ask me anything about it, or say “add this to my lore book” to save it.',
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        onUploadComplete?.({
+          kind: 'photo',
+          fileName: photoReview.file.name,
+          photoType: (analysis?.photoType as PhotoUploadResult['photoType']) || 'memory',
+          analysis: analysis ?? {},
+          addedToLoreBook: false,
+          discussOnly: true,
+          chatFeedback: feedback,
+          chatImage,
+        });
+        setPhotoReview(null);
+        setUploadProgress(null);
+        setPhotoProcessProgress(null);
+        return;
+      }
+
       if (shouldSimulatePhotoUpload()) {
         const result = await simulateDemoPhotoProcess(
           photoReview.file,
@@ -216,18 +305,22 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
             setUploadProgress(progress.stageLabel);
           },
         );
-        setUploadResult({
-          success: true,
-          message: result.message,
+        const analysis = photoReview.analysis;
+        onUploadComplete?.({
+          kind: 'photo',
+          fileName: photoReview.file.name,
+          photoType: (analysis?.photoType as PhotoUploadResult['photoType']) || 'memory',
+          analysis: analysis ?? {},
+          processResult: { entryId: 'demo-entry', photoUrl: chatImage?.dataUrl },
+          addedToLoreBook: Boolean(options.addToLoreBook),
+          chatFeedback: result.message || 'Photo processed (demo).',
+          chatImage,
         });
+        setUploadResult({ success: true, message: result.message });
         setPhotoReview(null);
         setUploadProgress(null);
         setPhotoProcessProgress(null);
-        onUploadComplete?.();
-
-        setTimeout(() => {
-          setUploadResult(null);
-        }, 5000);
+        setTimeout(() => setUploadResult(null), 4000);
         return;
       }
 
@@ -239,20 +332,25 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         throw new Error('Authentication required. Please log in.');
       }
 
-      // Convert file to base64
-      const arrayBuffer = await photoReview.file.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString('base64');
-
       const formData = new FormData();
       formData.append('photo', photoReview.file);
-      formData.append('options', JSON.stringify(options));
+      formData.append(
+        'options',
+        JSON.stringify({
+          addToLoreBook: options.addToLoreBook,
+          extractTextOnly: options.extractTextOnly,
+          addToSelfPhotos: options.addToSelfPhotos !== false,
+          suggestedLocation: options.suggestedLocation,
+        }),
+      );
+      formData.append('analysis', JSON.stringify(photoReview.analysis ?? {}));
 
-      const response = await fetch('/api/photos/process', {
+      const response = await fetch(apiUrl('/api/photos/process'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: formData
+        body: formData,
       });
 
       if (!response.ok) {
@@ -261,22 +359,58 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       }
 
       const result = await response.json();
+      const analysis = photoReview.analysis;
+      const parts: string[] = [];
+      if (options.extractTextOnly) {
+        parts.push('I extracted the text from this photo and saved it as a memory.');
+      } else {
+        parts.push(analysis?.summary ? `Saved this photo: ${analysis.summary}` : 'Photo added to your Lore Book and photo album.');
+        if (result.isSelfie || analysis?.isSelfie) {
+          parts.push('It looked like a selfie — I also put it in your Photos (main character gallery).');
+        } else if (result.selfMediaId) {
+          parts.push('I added it to your personal photo gallery because you appear in the frame.');
+        }
+        if (result.lookProfileUpdated || analysis?.appearanceSignals?.length) {
+          parts.push('I updated how LoreBook understands your appearance from this photo.');
+        }
+      }
+
+      onUploadComplete?.({
+        kind: 'photo',
+        fileName: photoReview.file.name,
+        photoType: (analysis?.photoType as PhotoUploadResult['photoType']) || 'memory',
+        analysis: analysis ?? {},
+        processResult: {
+          entryId: result.entryId,
+          photoUrl: result.photoUrl,
+          photoId: result.photoId,
+          textExtracted: result.textExtracted,
+          selfMediaId: result.selfMediaId,
+          selfCharacterId: result.selfCharacterId,
+          isSelfie: result.isSelfie,
+          appearanceSignals: result.appearanceSignals,
+          lookProfileUpdated: result.lookProfileUpdated,
+        },
+        addedToLoreBook: Boolean(options.addToLoreBook),
+        chatFeedback: parts.join(' '),
+        chatImage: result.photoUrl
+          ? { dataUrl: chatImage?.dataUrl ?? result.photoUrl, url: result.photoUrl, mimeType: 'image/jpeg' }
+          : chatImage,
+      });
+
       setUploadResult({
         success: true,
-        message: options.extractTextOnly
-          ? 'Text extracted successfully'
-          : 'Photo added to lore book'
+        message: options.extractTextOnly ? 'Text extracted successfully' : 'Photo added to lore book',
       });
       setPhotoReview(null);
       setUploadProgress(null);
-      onUploadComplete?.();
-
-      // Auto-hide success message
-      setTimeout(() => {
-        setUploadResult(null);
-      }, 5000);
+      setTimeout(() => setUploadResult(null), 4000);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to process photo';
+      const raw = error instanceof Error ? error.message : 'Failed to process photo';
+      const errorMessage =
+        raw === 'Failed to fetch' || raw.includes('NetworkError')
+          ? 'Could not reach the API to save this photo. Is the server running on :4000?'
+          : raw;
       setUploadResult({ success: false, message: errorMessage });
       onUploadError?.(errorMessage);
     } finally {
@@ -293,6 +427,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setUploadProgress(null);
     setPhotoUploadProgress(null);
     setPhotoProcessProgress(null);
+    setProcessingPhoto(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

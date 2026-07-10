@@ -28,6 +28,9 @@ import { useAppDispatch } from '../../../store/hooks';
 import { recordChatFocusMessage } from '../../../store/slices/selectionSlice';
 import type { ChatFocus } from '../../../types/chatFocus';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
+import type { ChatImageAttachment } from '../types/chatImageAttachment';
+import { IMAGE_ATTACHED_PLACEHOLDER } from '../types/chatImageAttachment';
+import type { ThreadEntity } from '../utils/collectThreadEntities';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
@@ -40,13 +43,15 @@ import {
 
 export type ChatSendOptions = {
   entityContext?: {
-    type: 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ROMANTIC_RELATIONSHIP';
+    type: 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ROMANTIC_RELATIONSHIP' | 'PERCEPTION' | 'MEMORY' | 'GOSSIP';
     id: string;
   };
-  threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  threadEntities?: ThreadEntity[];
   composerEntities?: CertifiedEntityMatch[];
   previewCorrections?: CorrectedPreviewSpan[];
   chatFocus?: ChatFocus;
+  /** Vision attachments for this turn only (not re-sent as history). */
+  images?: ChatImageAttachment[];
 };
 
 // Guest sessions have no auth token — treat auth failures like an unavailable backend.
@@ -206,7 +211,9 @@ export const useChat = () => {
 
   // Send message
   const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {
-    if (!messageText.trim() || loading) return;
+    const hasImages = (options?.images?.length ?? 0) > 0;
+    const resolvedText = messageText.trim() || (hasImages ? IMAGE_ATTACHED_PLACEHOLDER : '');
+    if ((!resolvedText && !hasImages) || loading) return;
 
     if (isGuest && !canSendChatMessage()) {
       addMessage({
@@ -237,20 +244,22 @@ export const useChat = () => {
       return;
     }
 
-    // Handle slash commands
-    const parsed = parseSlashCommand(messageText.trim());
-    if (parsed) {
-      const result = await handleSlashCommand(parsed.command, parsed.args);
-      if (result) {
-        if (result.type === 'message') {
-          const commandMessage: Message = {
-            id: `command-${Date.now()}`,
-            role: 'assistant',
-            content: result.content || 'Command executed.',
-            timestamp: new Date()
-          };
-          addMessage(commandMessage);
-          return;
+    // Handle slash commands (text-only; ignore if images attached)
+    if (!hasImages) {
+      const parsed = parseSlashCommand(resolvedText);
+      if (parsed) {
+        const result = await handleSlashCommand(parsed.command, parsed.args);
+        if (result) {
+          if (result.type === 'message') {
+            const commandMessage: Message = {
+              id: `command-${Date.now()}`,
+              role: 'assistant',
+              content: result.content || 'Command executed.',
+              timestamp: new Date()
+            };
+            addMessage(commandMessage);
+            return;
+          }
         }
       }
     }
@@ -266,9 +275,25 @@ export const useChat = () => {
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: messageText.trim(),
+      content: resolvedText,
       timestamp: new Date(),
       persistStatus: 'pending',
+      ...(hasImages
+        ? {
+            attachments: options!.images!.map((img) => ({
+              kind: 'image' as const,
+              dataUrl: img.dataUrl,
+              mimeType: img.mimeType,
+            })),
+            metadata: {
+              attachments: options!.images!.map((img) => ({
+                kind: 'image' as const,
+                mimeType: img.mimeType,
+                detail: img.detail,
+              })),
+            },
+          }
+        : {}),
     };
 
     // Pin all writes for this send to the thread that initiated it — never the
@@ -302,14 +327,15 @@ export const useChat = () => {
     }
     
     analytics.track('chat_message_sent', { 
-      messageLength: messageText.trim().length,
-      hasSlashCommand: messageText.trim().startsWith('/'),
+      messageLength: resolvedText.length,
+      hasSlashCommand: resolvedText.startsWith('/'),
       isGuest: isGuest,
       chatFocusSurface: options?.chatFocus?.sourceSurface,
+      hasImage: hasImages,
     });
 
     if (options?.chatFocus) {
-      dispatch(recordChatFocusMessage({ message: messageText.trim() }));
+      dispatch(recordChatFocusMessage({ message: resolvedText }));
     }
 
     // Build conversation history from canonical thread cache (not stale React closure)
@@ -371,7 +397,12 @@ export const useChat = () => {
     const composerThread = (options?.composerEntities ?? [])
       .map(toComposerThreadEntity)
       .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } => e !== null);
-    const mergedThreadEntities = mergeThreadEntities(options?.threadEntities ?? [], composerThread);
+    const baseThread = (options?.threadEntities ?? [])
+      .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } =>
+        e.type === 'character' || e.type === 'location' || e.type === 'organization' || e.type === 'skill',
+      )
+      .map((e) => ({ id: e.id, name: e.name, type: e.type }));
+    const mergedThreadEntities = mergeThreadEntities(baseThread, composerThread);
 
     type PersistPayload = {
       user?: { saved: boolean; id?: string; error?: string };
@@ -480,7 +511,7 @@ export const useChat = () => {
       }
 
       await streamChat(
-        messageText.trim(),
+        resolvedText,
         conversationHistory.slice(0, -1),
         (chunk) => {
           accumulatedContent += chunk;
@@ -612,7 +643,7 @@ export const useChat = () => {
           if (!isGuest) {
             fetchJson<{ mood: number }>('/api/moods/score', {
               method: 'POST',
-              body: JSON.stringify({ text: messageText.trim() }),
+              body: JSON.stringify({ text: resolvedText }),
             }).catch(() => {});
           }
 
@@ -652,7 +683,7 @@ export const useChat = () => {
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback
               ? buildDemoChatResponse(
-                  messageText.trim(),
+                  resolvedText,
                   options?.chatFocus,
                   undefined,
                   shouldUseMockData() ? 'demo' : 'guest',
@@ -676,7 +707,8 @@ export const useChat = () => {
         options?.composerEntities,
         isGuest && guestState?.guestId ? { guestId: guestState.guestId } : undefined,
         options?.chatFocus,
-        options?.previewCorrections
+        options?.previewCorrections,
+        options?.images,
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -695,7 +727,7 @@ export const useChat = () => {
       if (useDemoFallback) {
         updateStreamMessage(assistantMessageId, {
           content: buildDemoChatResponse(
-            messageText.trim(),
+            resolvedText,
             options?.chatFocus,
             undefined,
             shouldUseMockData() ? 'demo' : 'guest',

@@ -72,7 +72,7 @@ export function chatResponseFormatToResponsesTextFormat(
     return {
       type: 'json_schema',
       name: jsonSchema.name,
-      strict: jsonSchema.strict,
+      strict: jsonSchema.strict ?? undefined,
       schema: jsonSchema.schema as Record<string, unknown>,
     };
   }
@@ -86,6 +86,10 @@ export function shouldRouteChatCompletionToResponses(
   if (params.stream) return false;
   if (params.n != null && params.n > 1) return false;
   if (params.tools?.length) return false;
+  // The generic Chat→Responses bridge intentionally flattens text-only prompts.
+  // Vision requests must stay on their native path unless the caller explicitly
+  // maps image_url to input_image, otherwise photo analysis loses the image.
+  if (params.messages?.some((message) => messageHasImageContent(message))) return false;
   if ('functions' in params && Array.isArray(params.functions) && params.functions.length > 0) {
     return false;
   }
@@ -93,6 +97,17 @@ export function shouldRouteChatCompletionToResponses(
     return false;
   }
   return true;
+}
+
+function messageHasImageContent(message: ChatMessage): boolean {
+  const content = message.content;
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => {
+    if (!part || typeof part !== 'object') return false;
+    if ('type' in part && part.type === 'image_url') return true;
+    if ('type' in part && part.type === 'input_image') return true;
+    return false;
+  });
 }
 
 /** Translate a non-streaming Chat Completions body to Responses create params. */

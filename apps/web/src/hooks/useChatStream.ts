@@ -7,6 +7,7 @@ import type { CurrentContext, SoulProfileContext } from '../types/currentContext
 import type { ChatFocus } from '../types/chatFocus';
 import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import { pollLoreBookNotice, dispatchLoreBookNotice } from '../lib/loreBookNoticeClient';
+import type { ChatImageAttachment } from '../features/chat/types/chatImageAttachment';
 
 /** A user-confirmation action chip emitted by the server's Response Compiler. */
 export type ResponseActionCandidate = {
@@ -112,11 +113,12 @@ export const useChatStream = () => {
     soulProfileContext?: SoulProfileContext | null,
     onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
     threadId?: string,
-    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
+    threadEntities?: Array<{ id: string; name: string; type: string }>,
     composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>,
     guestOptions?: { guestId: string },
     chatFocus?: ChatFocus,
-    previewCorrections?: import('../lib/entityCorrectionTypes').CorrectedPreviewSpan[]
+    previewCorrections?: import('../lib/entityCorrectionTypes').CorrectedPreviewSpan[],
+    images?: ChatImageAttachment[],
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -173,7 +175,16 @@ export const useChatStream = () => {
                   ? { previewCorrections }
                   : {}),
                 ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
-                ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
+                ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {}),
+                ...(images && images.length > 0
+                  ? {
+                      images: images.map((img) => ({
+                        dataUrl: img.dataUrl,
+                        ...(img.mimeType ? { mimeType: img.mimeType } : {}),
+                        ...(img.detail ? { detail: img.detail } : {}),
+                      })),
+                    }
+                  : {}),
               }
         ),
         signal: abortController.signal

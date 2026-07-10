@@ -11,6 +11,7 @@ const App = lazy(() => import('./App'));
 // Lazy load admin pages (only needed for admin users)
 const AdminPage = lazy(() => import('./admin'));
 const DevConsolePage = lazy(() => import('./dev-console'));
+const ChatDiagnostics = lazy(() => import('../routes/ChatDiagnostics'));
 
 // Lazy load user routes
 const Onboarding = lazy(() => import('../routes/Onboarding'));
@@ -511,6 +512,16 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
+      <Route
+        path="/diagnostics/chat"
+        element={
+          <LazyRoute>
+            <ProtectedRoute access="dev-console">
+              <ChatDiagnostics />
+            </ProtectedRoute>
+          </LazyRoute>
+        }
+      />
 
       {/* 404 - Must be last */}
       <Route 
@@ -533,4 +544,3 @@ export const Router = () => {
     </>
   );
 };
-

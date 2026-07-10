@@ -3,7 +3,8 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { photoService } from '../services/photoService';
+import type { PhotoAnalysisResult } from '../services/photoAnalysisService';
+import { photoService, type PhotoMetadata } from '../services/photoService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { createMemoryUpload } from '../middleware/multerConfig';
 
@@ -22,6 +23,61 @@ const upload = createMemoryUpload({
     }
   }
 });
+
+async function linkPhotoAnalysisEntities(
+  userId: string,
+  entryId: string,
+  analysis: PhotoAnalysisResult,
+  metadata: PhotoMetadata,
+): Promise<void> {
+  const { photoAnalysisService } = await import('../services/photoAnalysisService');
+
+  if (analysis.detectedSkills && analysis.detectedSkills.length > 0) {
+    await photoAnalysisService.linkPhotoToSkills(userId, entryId, analysis.detectedSkills);
+  }
+
+  if (analysis.detectedGroups && analysis.detectedGroups.length > 0) {
+    await photoAnalysisService.linkPhotoToGroups(userId, entryId, analysis.detectedGroups);
+  }
+
+  if (analysis.suggestedLocation?.type === 'location' && analysis.suggestedLocation.id) {
+    await supabaseAdmin
+      .from('photo_location_links')
+      .upsert({
+        user_id: userId,
+        journal_entry_id: entryId,
+        location_id: analysis.suggestedLocation.id,
+        confidence: 0.8,
+        detection_reason: analysis.suggestedLocation.reason,
+        auto_detected: true
+      })
+      .catch(err => logger.debug({ error: err }, 'Failed to link photo to location'));
+  }
+
+  if (metadata.locationName) {
+    const { data: location } = await supabaseAdmin
+      .from('locations')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('name', `%${metadata.locationName}%`)
+      .limit(1)
+      .single();
+
+    if (location) {
+      await supabaseAdmin
+        .from('photo_location_links')
+        .upsert({
+          user_id: userId,
+          journal_entry_id: entryId,
+          location_id: location.id,
+          confidence: 0.9,
+          detection_reason: `Photo taken at ${metadata.locationName}`,
+          auto_detected: true
+        })
+        .catch(err => logger.debug({ error: err }, 'Failed to link photo to location from metadata'));
+    }
+  }
+}
 
 /**
  * Upload photo - processes metadata and creates journal entry
@@ -43,7 +99,6 @@ router.post('/upload', requireAuth, upload.single('photo'), async (req: Authenti
       metadata.locationName = await photoService.reverseGeocode(metadata.latitude, metadata.longitude);
     }
 
-    // Analyze photo for skills, locations, and groups
     const { photoAnalysisService } = await import('../services/photoAnalysisService');
     const analysis = await photoAnalysisService.analyzePhoto(
       req.user!.id,
@@ -52,73 +107,27 @@ router.post('/upload', requireAuth, upload.single('photo'), async (req: Authenti
       metadata
     );
 
-    // Generate journal entry from metadata (no photo URL needed)
-    const autoEntry = await photoService.generateEntryFromPhoto(
+    const uploadResult = await photoService.uploadPhoto(
       req.user!.id,
-      '', // No photo URL - we're not storing photos
-      metadata
+      req.file.buffer,
+      filename,
+      req.file.mimetype,
+      { generateAutoEntry: false }
     );
 
-    // Auto-link photo to skills, locations, and groups
+    const autoEntry = await photoService.generateEntryFromPhotoAnalysis(
+      req.user!.id,
+      {
+        photoUrl: uploadResult.url,
+        photoId: uploadResult.photoId,
+        filename,
+        metadata,
+        analysis,
+      }
+    );
+
     if (autoEntry?.id) {
-      // Link to skills
-      if (analysis.detectedSkills && analysis.detectedSkills.length > 0) {
-        await photoAnalysisService.linkPhotoToSkills(
-          req.user!.id,
-          autoEntry.id,
-          analysis.detectedSkills
-        );
-      }
-
-      // Link to groups
-      if (analysis.detectedGroups && analysis.detectedGroups.length > 0) {
-        await photoAnalysisService.linkPhotoToGroups(
-          req.user!.id,
-          autoEntry.id,
-          analysis.detectedGroups
-        );
-      }
-
-      // Link to location if detected
-      if (analysis.suggestedLocation?.type === 'location' && analysis.suggestedLocation.id) {
-        // Link location directly
-        await supabaseAdmin
-          .from('photo_location_links')
-          .upsert({
-            user_id: req.user!.id,
-            journal_entry_id: autoEntry.id,
-            location_id: analysis.suggestedLocation.id,
-            confidence: 0.8,
-            detection_reason: analysis.suggestedLocation.reason,
-            auto_detected: true
-          })
-          .catch(err => logger.debug({ error: err }, 'Failed to link photo to location'));
-      }
-
-      // Also link to location from metadata if available
-      if (metadata.locationName) {
-        const { data: location } = await supabaseAdmin
-          .from('locations')
-          .select('id')
-          .eq('user_id', req.user!.id)
-          .ilike('name', `%${metadata.locationName}%`)
-          .limit(1)
-          .single();
-        
-        if (location) {
-          await supabaseAdmin
-            .from('photo_location_links')
-            .upsert({
-              user_id: req.user!.id,
-              journal_entry_id: autoEntry.id,
-              location_id: location.id,
-              confidence: 0.9,
-              detection_reason: `Photo taken at ${metadata.locationName}`,
-              auto_detected: true
-            })
-            .catch(err => logger.debug({ error: err }, 'Failed to link photo to location from metadata'));
-        }
-      }
+      await linkPhotoAnalysisEntities(req.user!.id, autoEntry.id, analysis, metadata);
     }
 
     logger.info({ entryId: autoEntry?.id, userId: req.user!.id }, 'Photo processed and entry created');
@@ -126,10 +135,16 @@ router.post('/upload', requireAuth, upload.single('photo'), async (req: Authenti
     res.status(201).json({ 
       success: true,
       entry: autoEntry,
+      photoId: uploadResult.photoId,
+      photoUrl: uploadResult.url,
       metadata,
       analysis: {
+        photoType: analysis.photoType,
+        confidence: analysis.confidence,
+        summary: analysis.summary,
         detectedSkills: analysis.detectedSkills,
         detectedGroups: analysis.detectedGroups,
+        detectedEntities: analysis.detectedEntities,
         suggestedLocation: analysis.suggestedLocation
       }
     });
@@ -150,25 +165,54 @@ router.post('/upload/batch', requireAuth, upload.array('photos', 50), async (req
 
     const results = await Promise.all(
       req.files.map(async (file) => {
+        const filename = file.originalname || `photo-${Date.now()}.jpg`;
         const metadata = await photoService.extractMetadata(
           file.buffer,
-          file.originalname || `photo-${Date.now()}.jpg`
+          filename
         );
         
         if (metadata.latitude && metadata.longitude) {
           metadata.locationName = await photoService.reverseGeocode(metadata.latitude, metadata.longitude);
         }
 
-        const autoEntry = await photoService.generateEntryFromPhoto(
+        const { photoAnalysisService } = await import('../services/photoAnalysisService');
+        const analysis = await photoAnalysisService.analyzePhoto(
           req.user!.id,
-          '',
+          file.buffer,
+          filename,
           metadata
         );
 
+        const uploadResult = await photoService.uploadPhoto(
+          req.user!.id,
+          file.buffer,
+          filename,
+          file.mimetype,
+          { generateAutoEntry: false }
+        );
+
+        const autoEntry = await photoService.generateEntryFromPhotoAnalysis(
+          req.user!.id,
+          {
+            photoUrl: uploadResult.url,
+            photoId: uploadResult.photoId,
+            filename,
+            metadata,
+            analysis,
+          }
+        );
+
+        if (autoEntry?.id) {
+          await linkPhotoAnalysisEntities(req.user!.id, autoEntry.id, analysis, metadata);
+        }
+
         return {
-          filename: file.originalname,
+          filename,
           entry: autoEntry,
-          metadata
+          metadata,
+          photoId: uploadResult.photoId,
+          photoUrl: uploadResult.url,
+          analysis
         };
       })
     );
@@ -180,7 +224,17 @@ router.post('/upload/batch', requireAuth, upload.array('photos', 50), async (req
       success: true,
       entriesCreated,
       totalProcessed: results.length,
-      entries: results.map(r => r.entry).filter(Boolean)
+      entries: results.map(r => r.entry).filter(Boolean),
+      results: results.map((result) => ({
+        filename: result.filename,
+        photoId: result.photoId,
+        photoUrl: result.photoUrl,
+        entryId: result.entry?.id,
+        photoType: result.analysis.photoType,
+        confidence: result.analysis.confidence,
+        summary: result.analysis.summary,
+        skipped: !result.entry,
+      }))
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process batch photos');
@@ -323,8 +377,18 @@ router.post('/process', requireAuth, upload.single('photo'), async (req: Authent
       return res.status(400).json({ error: 'No photo file provided' });
     }
 
-    const { options } = req.body;
-    const parsedOptions = typeof options === 'string' ? JSON.parse(options) : options;
+    const { options, analysis: analysisRaw } = req.body;
+    const parsedOptions = typeof options === 'string' ? JSON.parse(options) : options ?? {};
+    const clientAnalysis =
+      typeof analysisRaw === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(analysisRaw);
+            } catch {
+              return undefined;
+            }
+          })()
+        : analysisRaw;
 
     const filename = req.file.originalname || `photo-${Date.now()}.jpg`;
     const metadata = await photoService.extractMetadata(req.file.buffer, filename);
@@ -339,7 +403,13 @@ router.post('/process', requireAuth, upload.single('photo'), async (req: Authent
       req.file.buffer,
       filename,
       metadata,
-      parsedOptions
+      {
+        addToLoreBook: Boolean(parsedOptions.addToLoreBook),
+        extractTextOnly: Boolean(parsedOptions.extractTextOnly),
+        addToSelfPhotos: parsedOptions.addToSelfPhotos !== false,
+        suggestedLocation: parsedOptions.suggestedLocation,
+        analysis: clientAnalysis,
+      }
     );
 
     res.json({
@@ -389,4 +459,3 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 export const photosRouter = router;
-

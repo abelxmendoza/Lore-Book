@@ -7,6 +7,15 @@ import { supabaseAdmin } from './supabaseClient';
 
 import { openai } from './openaiClient';
 
+export type PhotoSubjectFocus =
+  | 'selfie'
+  | 'user_with_others'
+  | 'other_people'
+  | 'place'
+  | 'object'
+  | 'document'
+  | 'unknown';
+
 export type PhotoAnalysisResult = {
   photoType: 'memory' | 'document' | 'junk';
   confidence: number;
@@ -33,6 +42,14 @@ export type PhotoAnalysisResult = {
     reason: string;
   }>;
   summary?: string;
+  /** High-level subject of the photo for routing (selfies → main character photos). */
+  subjectFocus?: PhotoSubjectFocus;
+  /** Whether the camera-holder / protagonist is likely visible. */
+  likelyUserInFrame?: boolean;
+  /** True when this looks like a selfie (arm's length, mirror, front camera pose). */
+  isSelfie?: boolean;
+  /** Visual appearance traits of the person who appears to be the user (for look profile). */
+  appearanceSignals?: string[];
   metadata?: {
     date?: string;
     location?: string;
@@ -72,18 +89,25 @@ class PhotoAnalysisService {
 
       // Use OpenAI Vision API to analyze the photo
       const completion = await openai.chat.completions.create({
-        model: 'gpt-5.4-mini', // Use vision-capable model (supports vision, cheaper than gpt-4o)
+        model: config.extractionModel || config.defaultModel || 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `You are analyzing a photo to determine:
+            content: `You are analyzing a photo for LoreBook, an autobiographical memory app.
+
+Determine:
 1. Photo type: 'memory' (personal photo worth keeping), 'document' (photo of text/documents - extract text only), or 'junk' (screenshot, low quality, irrelevant)
 2. If it's a document, extract all text using OCR
 3. Suggest where it should go in the user's lore book (timeline, character, location, memoir section, or specific entry)
 4. Detect entities: people, locations, dates mentioned
-5. Detect skills being practiced (e.g., martial arts, cooking, photography, sports, music, etc.) - only if clearly visible/obvious
-6. Detect groups/organizations (e.g., gym, club, team, organization) - only if clearly visible/obvious
+5. Detect skills being practiced - only if clearly visible/obvious
+6. Detect groups/organizations - only if clearly visible/obvious
 7. Generate a brief summary
+8. Subject focus & self-detection (critical for selfies / "how I look"):
+   - subjectFocus: selfie | user_with_others | other_people | place | object | document | unknown
+   - isSelfie: true if arm's-length selfie, mirror selfie, or front-camera self-portrait cues
+   - likelyUserInFrame: true if the person who took/is the subject of a personal selfie appears present
+   - appearanceSignals: short visual traits of the person who is likely the user (hair, glasses, facial hair, clothing style, age range estimate, expression). Only when isSelfie or likelyUserInFrame. No medical diagnoses.
 
 IMPORTANT: 
 - For skills: Only include skills that match the user's CONFIRMED skills list (provided below). If a skill is detected in the photo but NOT in the user's confirmed skills, do NOT include it.
@@ -119,7 +143,11 @@ Return JSON:
       "reason": "why this group is detected"
     }
   ],
-  "summary": "brief description of photo"
+  "summary": "brief description of photo",
+  "subjectFocus": "selfie" | "user_with_others" | "other_people" | "place" | "object" | "document" | "unknown",
+  "isSelfie": false,
+  "likelyUserInFrame": false,
+  "appearanceSignals": ["short dark hair", "glasses"]
 }`
           },
           {
@@ -127,7 +155,7 @@ Return JSON:
             content: [
               {
                 type: 'text',
-                text: `Analyze this photo. Filename: ${filename}. Metadata: ${JSON.stringify(metadata)}${skillsContext ? `\n\nUser's confirmed skills: ${skillNames}` : ''}`
+                text: `Analyze this photo and return valid JSON. Filename: ${filename}. Metadata: ${JSON.stringify(metadata)}${skillsContext ? `\n\nUser's confirmed skills: ${skillNames}` : ''}`
               },
               {
                 type: 'image_url',
@@ -138,6 +166,7 @@ Return JSON:
             ]
           }
         ],
+        response_format: { type: 'json_object' },
         max_tokens: 1000
       });
 
@@ -417,7 +446,8 @@ Return JSON:
   }
 
   /**
-   * Process photo based on user's decision
+   * Process photo based on user's decision.
+   * Optionally reuses client-side analysis to avoid a second vision call.
    */
   async processPhoto(
     userId: string,
@@ -427,32 +457,43 @@ Return JSON:
     options: {
       addToLoreBook: boolean;
       extractTextOnly: boolean;
+      addToSelfPhotos?: boolean;
       suggestedLocation?: PhotoAnalysisResult['suggestedLocation'];
+      analysis?: PhotoAnalysisResult;
     }
   ): Promise<{
     entryId?: string;
     textExtracted?: string;
     photoStored?: boolean;
+    photoUrl?: string;
+    photoId?: string;
+    selfMediaId?: string;
+    selfCharacterId?: string;
+    isSelfie?: boolean;
+    appearanceSignals?: string[];
+    lookProfileUpdated?: boolean;
   }> {
     try {
+      const analysis =
+        options.analysis ??
+        (await this.analyzePhoto(userId, photoBuffer, filename, metadata));
+
       if (options.extractTextOnly) {
-        // Extract text and create entry without storing photo
-        const analysis = await this.analyzePhoto(userId, photoBuffer, filename, metadata);
         const extractedText = analysis.extractedText || '';
 
         if (extractedText) {
-          // Create journal entry from extracted text
           const { memoryService } = await import('./memoryService');
           const entry = await memoryService.saveEntry({
             userId,
             content: `[Extracted from photo: ${filename}]\n\n${extractedText}`,
             date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
             tags: ['photo', 'document', 'extracted'],
-            source: 'photo_document',
+            source: 'document_upload',
             metadata: {
               photoFilename: filename,
               extractedFromPhoto: true,
-              photoMetadata: metadata
+              photoMetadata: metadata,
+              photoAnalysis: analysis,
             }
           });
 
@@ -463,39 +504,51 @@ Return JSON:
           };
         }
       } else if (options.addToLoreBook) {
-        // Store photo and create entry
-        // Upload photo to storage
         const { photoService } = await import('./photoService');
+        const contentType = this.getMimeType(filename);
         const uploadResult = await photoService.uploadPhoto(
           userId,
           photoBuffer,
-          filename
+          filename,
+          contentType,
+          { generateAutoEntry: false }
         );
 
-        // Create entry with photo reference
+        const storagePath = `${userId}/${uploadResult.photoId}-${filename}`;
+        const summaryLine = analysis.summary?.trim() || 'Photo added to lore book';
+        const placeLine = metadata.locationName ? ` Location: ${metadata.locationName}.` : '';
+        const people =
+          analysis.detectedEntities?.characters?.length
+            ? ` People: ${analysis.detectedEntities.characters.join(', ')}.`
+            : '';
+        const entryContent = `${summaryLine}${placeLine}${people}`;
+
         const { memoryService } = await import('./memoryService');
-        const entryContent = metadata.locationName
-          ? `Photo taken at ${metadata.locationName}`
-          : 'Photo added to lore book';
+        const tags = ['photo', 'memory'];
+        if (analysis.isSelfie) tags.push('selfie');
+        if (analysis.likelyUserInFrame) tags.push('user_in_frame');
 
         const entry = await memoryService.saveEntry({
           userId,
           content: entryContent,
           date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
-          tags: ['photo', 'memory'],
-          source: 'photo_upload',
+          tags,
+          source: 'photo',
           metadata: {
             photoUrl: uploadResult.url,
             photoId: uploadResult.photoId,
+            photoFilename: filename,
             photoMetadata: metadata,
-            suggestedLocation: options.suggestedLocation
+            photoAnalysis: analysis,
+            suggestedLocation: options.suggestedLocation,
+            isSelfie: Boolean(analysis.isSelfie),
+            subjectFocus: analysis.subjectFocus,
+            appearanceSignals: analysis.appearanceSignals,
           }
         });
 
-        // Link to suggested location if provided
-        if (options.suggestedLocation?.id) {
-          if (options.suggestedLocation.type === 'timeline') {
-            // Add to timeline membership
+        if (options.suggestedLocation?.id && options.suggestedLocation.type === 'timeline') {
+          try {
             await supabaseAdmin
               .from('timeline_memberships')
               .upsert({
@@ -504,14 +557,77 @@ Return JSON:
                 timeline_id: options.suggestedLocation.id,
                 importance_score: 0.7,
                 metadata: { from_photo: true }
-              })
-              .catch(err => logger.debug({ error: err }, 'Failed to add timeline membership'));
+              });
+          } catch (err) {
+            logger.debug({ error: err }, 'Failed to add timeline membership');
+          }
+        }
+
+        // Selfie / user-in-frame → main character Photo Gallery + look profile
+        const routeToSelf =
+          options.addToSelfPhotos !== false &&
+          (Boolean(analysis.isSelfie) ||
+            Boolean(analysis.likelyUserInFrame) ||
+            analysis.subjectFocus === 'selfie' ||
+            analysis.subjectFocus === 'user_with_others');
+
+        let selfMediaId: string | undefined;
+        let selfCharacterId: string | undefined;
+        let lookProfileUpdated = false;
+
+        if (routeToSelf) {
+          try {
+            const { selfCharacterService } = await import('./selfCharacterService');
+            const self = await selfCharacterService.ensureSelfCharacter(userId);
+            const sid = self?.id ? String(self.id) : null;
+            if (sid) {
+              selfCharacterId = sid;
+              const { data: mediaRow } = await supabaseAdmin
+                .from('character_media')
+                .insert({
+                  user_id: userId,
+                  character_id: sid,
+                  kind: 'photo',
+                  url: uploadResult.url,
+                  storage_path: storagePath,
+                  caption: analysis.summary ?? null,
+                  source: analysis.isSelfie ? 'selfie' : 'chat_photo_upload',
+                  metadata: {
+                    analysis,
+                    photoId: uploadResult.photoId,
+                    journalEntryId: entry.id,
+                    isSelfie: Boolean(analysis.isSelfie),
+                    appearanceSignals: analysis.appearanceSignals ?? [],
+                  },
+                })
+                .select('id')
+                .single();
+              selfMediaId = mediaRow?.id ? String(mediaRow.id) : undefined;
+
+              if (analysis.appearanceSignals?.length) {
+                lookProfileUpdated = await this.upsertLookProfile(
+                  userId,
+                  sid,
+                  analysis.appearanceSignals,
+                  uploadResult.photoId,
+                );
+              }
+            }
+          } catch (err) {
+            logger.warn({ err, userId }, 'Failed to attach photo to self character gallery');
           }
         }
 
         return {
           entryId: entry.id,
-          photoStored: true
+          photoStored: true,
+          photoUrl: uploadResult.url,
+          photoId: uploadResult.photoId,
+          selfMediaId,
+          selfCharacterId,
+          isSelfie: Boolean(analysis.isSelfie),
+          appearanceSignals: analysis.appearanceSignals,
+          lookProfileUpdated,
         };
       }
 
@@ -519,6 +635,78 @@ Return JSON:
     } catch (error) {
       logger.error({ error, filename }, 'Failed to process photo');
       throw error;
+    }
+  }
+
+  /**
+   * Persist appearance traits on the self character so LoreBook learns how the user looks.
+   */
+  private async upsertLookProfile(
+    userId: string,
+    selfCharacterId: string,
+    signals: string[],
+    photoId: string,
+  ): Promise<boolean> {
+    const cleaned = signals.map((s) => s.trim()).filter((s) => s.length > 1 && s.length < 120);
+    if (!cleaned.length) return false;
+
+    try {
+      const { data: row } = await supabaseAdmin
+        .from('characters')
+        .select('metadata')
+        .eq('id', selfCharacterId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const prev = (row?.metadata as Record<string, unknown> | null) ?? {};
+      const prevLook = (prev.look_profile as Record<string, unknown> | undefined) ?? {};
+      const prevTraits = Array.isArray(prevLook.traits)
+        ? (prevLook.traits as string[])
+        : [];
+      const traitSet = new Set(prevTraits.map((t) => t.toLowerCase()));
+      const merged = [...prevTraits];
+      for (const s of cleaned) {
+        if (!traitSet.has(s.toLowerCase())) {
+          traitSet.add(s.toLowerCase());
+          merged.push(s);
+        }
+      }
+      const evidence = Array.isArray(prevLook.evidencePhotoIds)
+        ? (prevLook.evidencePhotoIds as string[])
+        : [];
+      if (!evidence.includes(photoId)) evidence.push(photoId);
+
+      const look_profile = {
+        traits: merged.slice(0, 40),
+        confidence: Math.min(0.95, 0.4 + merged.length * 0.05),
+        lastUpdated: new Date().toISOString(),
+        evidencePhotoIds: evidence.slice(-30),
+      };
+
+      await supabaseAdmin
+        .from('characters')
+        .update({
+          metadata: { ...prev, look_profile },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selfCharacterId)
+        .eq('user_id', userId);
+
+      // Feed appearance traits into self fact extraction (best-effort).
+      try {
+        const { entityFactsService } = await import('./entityFactsService');
+        const appearanceText = `My appearance from a photo: ${cleaned.join('; ')}.`;
+        await entityFactsService
+          .extractAndPersistSelfFacts(userId, selfCharacterId, appearanceText)
+          .catch(() => undefined);
+      } catch {
+        /* look_profile metadata is the durable source of truth */
+      }
+
+      return true;
+    } catch (err) {
+      logger.warn({ err, userId, selfCharacterId }, 'look profile update failed');
+      return false;
     }
   }
 }

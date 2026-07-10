@@ -24,7 +24,12 @@ import {
   removeComposerConfirming,
   toggleComposerIncluded,
 } from '../../../store/slices/composerSlice';
-import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
+import { getCommandSuggestions } from '../../../utils/slashCommands';
+import {
+  compressChatImages,
+  MAX_CHAT_IMAGES_PER_TURN,
+  type ChatImageAttachment,
+} from '../types/chatImageAttachment';
 
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
@@ -59,7 +64,8 @@ export const useChatComposer = (
   onSubmit: (
     message: string,
     certifiedEntities?: CertifiedEntityMatch[],
-    previewCorrections?: CorrectedPreviewSpan[]
+    previewCorrections?: CorrectedPreviewSpan[],
+    images?: ChatImageAttachment[],
   ) => void,
   initialValue?: string | null,
   options: UseChatComposerOptions = {},
@@ -74,7 +80,11 @@ export const useChatComposer = (
   const [previewCorrections, setPreviewCorrections] = useState<CorrectedPreviewSpan[]>([]);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
+  const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageCompressing, setImageCompressing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   
   const moodEngine = useMoodEngine();
   const autoTagger = useAutoTagger();
@@ -117,11 +127,43 @@ export const useChatComposer = (
     }
   }, [input, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const addPendingImages = useCallback(async (files: FileList | File[]) => {
+    setImageError(null);
+    setImageCompressing(true);
+    try {
+      const existing = pendingImages.length;
+      const { images, error } = await compressChatImages(files, existing);
+      if (error) setImageError(error);
+      if (images.length > 0) {
+        setPendingImages((prev) => [...prev, ...images].slice(0, MAX_CHAT_IMAGES_PER_TURN));
+      }
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Could not attach image');
+    } finally {
+      setImageCompressing(false);
+    }
+  }, [pendingImages.length]);
+
+  const addPendingImage = useCallback(
+    async (file: File) => addPendingImages([file]),
+    [addPendingImages],
+  );
+
+  const removePendingImage = useCallback((id?: string) => {
+    setPendingImages((prev) => (id ? prev.filter((img) => img.id !== id) : []));
+    setImageError(null);
+  }, []);
+
+  const clearPendingImages = useCallback(() => {
+    setPendingImages([]);
+    setImageError(null);
+  }, []);
+
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!input.trim()) return;
+    const text = input.trim();
+    if (!text && pendingImages.length === 0) return;
 
-    const parsed = parseSlashCommand(input);
     const entitiesToSend = visibleMatches.filter(
       (m) =>
         includedSlots.includes(composerMatchSlot(m)) &&
@@ -130,15 +172,14 @@ export const useChatComposer = (
         m.composerChipKind !== 'relationship' &&
         m.composerChipKind !== 'shared_history',
     );
-    if (parsed) {
-      onSubmit(input.trim(), entitiesToSend, previewCorrections);
-    } else {
-      onSubmit(input.trim(), entitiesToSend, previewCorrections);
-    }
+    const imagesToSend = pendingImages.length > 0 ? pendingImages : undefined;
+    onSubmit(text, entitiesToSend, previewCorrections, imagesToSend);
     setInput('');
     setPreviewCorrections([]);
+    setPendingImages([]);
+    setImageError(null);
     dispatch(clearComposerState());
-  }, [input, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch]);
+  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {
@@ -214,5 +255,14 @@ export const useChatComposer = (
     insertSuggestion,
     previewCorrections,
     setPreviewCorrections,
+    pendingImages,
+    imageError,
+    imageCompressing,
+    imageInputRef,
+    addPendingImage,
+    addPendingImages,
+    removePendingImage,
+    clearPendingImages,
+    maxImages: MAX_CHAT_IMAGES_PER_TURN,
   };
 };

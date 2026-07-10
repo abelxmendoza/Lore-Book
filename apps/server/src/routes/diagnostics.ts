@@ -4,11 +4,15 @@ import { config } from '../config';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { requireAdmin, requireDevAccess } from '../middleware/rbac';
 import { requireSelfUserIdParam } from '../middleware/tenantGuard';
-import { threadRecoveryService } from '../services/conversationCentered/threadRecoveryService';
 import { cognitionHealthService } from '../services/cognitionHealthService';
-import { supabaseAdmin } from '../services/supabaseClient';
+import { threadRecoveryService } from '../services/conversationCentered/threadRecoveryService';
+import {
+  getChatDiagnosticScenarios,
+  runChatDiagnostics,
+} from '../services/diagnostics/chatReliability/runner';
 import { entityContinuityVerifier } from '../services/entityContinuityVerifier';
 import { ingestionQueue } from '../services/ingestion/ingestionQueue';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const isDev = process.env.NODE_ENV === 'development' ||
   (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
@@ -81,6 +85,42 @@ router.get('/cors', (req: Request, res: Response) => {
         ? 'Origin is allowed'
         : 'Origin is NOT allowed - add to FRONTEND_URL or allowed origins',
   });
+});
+
+/**
+ * GET /api/diagnostics/chat
+ * Restricted chat reliability scenario catalog and latest contract check.
+ */
+router.get('/chat', requireAuth, requireDevAccess, async (_req: Request, res: Response) => {
+  try {
+    const result = await runChatDiagnostics({ includeSkipped: true });
+    res.status(result.status === 'FAIL' ? 500 : 200).json({
+      scenarios: getChatDiagnosticScenarios(),
+      result,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Chat diagnostics failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/chat
+ * Run the shared chat reliability diagnostics runner.
+ */
+router.post('/chat', requireAuth, requireDevAccess, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as {
+      scenarioIds?: string[];
+      includeSkipped?: boolean;
+    };
+    const result = await runChatDiagnostics({
+      scenarioIds: Array.isArray(body.scenarioIds) ? body.scenarioIds : undefined,
+      includeSkipped: body.includeSkipped,
+    });
+    res.status(result.status === 'FAIL' ? 500 : 200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Chat diagnostics failed', detail: String(err) });
+  }
 });
 
 /**

@@ -1,4 +1,4 @@
-import { Send, Loader2, Paperclip, MessageSquare, Maximize2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Loader2, Paperclip, MessageSquare, Maximize2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
 import { useChatComposer } from '../hooks/useChatComposer';
 import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
@@ -17,16 +17,18 @@ import { cn } from '../../../lib/cn';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import { persistConfirmedPreviewSpan } from '../../../lib/persistConfirmedPreviewSpan';
+import type { ChatImageAttachment } from '../types/chatImageAttachment';
 
 type ChatComposerProps = {
   onSubmit: (
     message: string,
     certifiedEntities?: CertifiedEntityMatch[],
-    previewCorrections?: CorrectedPreviewSpan[]
+    previewCorrections?: CorrectedPreviewSpan[],
+    images?: ChatImageAttachment[],
   ) => void;
   loading: boolean;
   disabled?: boolean;
-  onUploadComplete?: (result: UploadCompletePayload) => void;
+  onUploadComplete?: (result?: UploadCompletePayload) => void;
   initialPrompt?: string | null;
   /** Called once the initialPrompt has been injected, so the source can clear it (one-shot prefill). */
   onInitialPromptApplied?: () => void;
@@ -82,6 +84,13 @@ export const ChatComposer = ({
     handleKeyDown,
     insertSuggestion,
     setPreviewCorrections,
+    pendingImages,
+    imageError,
+    imageCompressing,
+    imageInputRef,
+    addPendingImages,
+    removePendingImage,
+    maxImages,
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
   const correction = useEntityCorrectionState(input, threadId, visibleMatches);
@@ -253,7 +262,7 @@ export const ChatComposer = ({
             onImportComplete={async (importStats) => {
               setShowChatGPTImport(false);
               console.log('ChatGPT import complete:', importStats);
-              onUploadComplete?.();
+              onUploadComplete?.(undefined);
             }}
             onImportError={(error) => {
               console.error('ChatGPT import error:', error);
@@ -277,14 +286,14 @@ export const ChatComposer = ({
                 {input.trim() ? input : resolvedPlaceholder}
               </span>
             </button>
-            {input.trim() && (
+            {(input.trim() || pendingImages.length > 0) && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   submitAndMaybeCollapse();
                 }}
-                disabled={loading || disabled}
+                disabled={loading || disabled || imageCompressing}
                 className="journal-composer-collapsed__send"
                 aria-label="Send message"
               >
@@ -333,6 +342,47 @@ export const ChatComposer = ({
             onDismissPreviewSpan={(span) => correction.dismissPreviewSpan(span)}
           />
 
+          {(pendingImages.length > 0 || imageError || imageCompressing) && (
+            <div className="flex flex-wrap items-center gap-2 px-1 pb-1" data-testid="composer-image-preview">
+              {imageCompressing && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-white/50">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Preparing image…
+                </span>
+              )}
+              {pendingImages.map((img) => (
+                <div
+                  key={img.id ?? img.dataUrl.slice(0, 32)}
+                  className="relative group rounded-lg overflow-hidden border border-white/15 bg-black/40"
+                >
+                  <img
+                    src={img.dataUrl}
+                    alt={img.fileName ?? 'Attached'}
+                    className="h-16 w-16 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePendingImage(img.id)}
+                    className="absolute top-0.5 right-0.5 rounded-full bg-black/70 p-0.5 text-white/80 hover:text-white"
+                    aria-label="Remove image"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {pendingImages.length > 0 && pendingImages.length < maxImages && (
+                <span className="text-[10px] text-white/40">
+                  {pendingImages.length}/{maxImages}
+                </span>
+              )}
+              {imageError && (
+                <span className="text-[11px] text-red-300/90" data-testid="composer-image-error">
+                  {imageError}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="journal-composer-input-wrap">
             <EntityHighlightedComposer
               value={input}
@@ -342,7 +392,11 @@ export const ChatComposer = ({
               threadId={threadId}
               correction={correction}
               onPreviewCorrectionsChange={setPreviewCorrections}
-              placeholder={resolvedPlaceholder}
+              placeholder={
+                pendingImages.length > 0
+                  ? 'Ask about this photo… (optional caption)'
+                  : resolvedPlaceholder
+              }
               disabled={loading || disabled}
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
@@ -374,8 +428,40 @@ export const ChatComposer = ({
           )}
 
           <div className="journal-composer-toolbar">
+            <div className="journal-composer-toolbar__tools">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                className="hidden"
+                data-testid="composer-image-input"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files?.length) void addPendingImages(files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={loading || disabled || imageCompressing || pendingImages.length >= maxImages}
+                className={cn(
+                  'journal-composer-tool',
+                  pendingImages.length > 0 && 'journal-composer-tool--active',
+                )}
+                aria-label="Attach images for vision chat"
+                title={`Attach images (up to ${maxImages}) — LoreBook will see them in this message`}
+                data-testid="composer-attach-image"
+              >
+                {imageCompressing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-4 w-4" />
+                )}
+              </button>
             {!embedded && (
-              <div className="journal-composer-toolbar__tools">
+              <>
                 <button
                   type="button"
                   onClick={handleUploadClick}
@@ -424,12 +510,13 @@ export const ChatComposer = ({
                     <Maximize2 className="h-4 w-4" />
                   </button>
                 )}
-              </div>
+              </>
             )}
+            </div>
 
             <button
               type="submit"
-              disabled={!input.trim() || loading || disabled}
+              disabled={(!input.trim() && pendingImages.length === 0) || loading || disabled || imageCompressing}
               className={cn(
                 'journal-composer-send',
                 isMobile && !embedded && 'journal-composer-send--mobile',

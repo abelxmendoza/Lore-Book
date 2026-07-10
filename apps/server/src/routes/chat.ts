@@ -81,58 +81,105 @@ const chatFocusSchema = z.object({
   }).optional(),
 }).optional();
 
-const chatSchema = z.object({
-  message: z.string().min(1).max(5000),
-  conversationHistory: z.array(z.object({
-    role: z.enum(['user', 'assistant']),
-    content: z.string().max(4000)
-  })).max(50).optional(),
-  stream: z.boolean().optional().default(false),
-  threadId: z.string().uuid().optional(),
-  entityContext: z.object({
-    type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP', 'ROMANTIC_RELATIONSHIP']),
-    id: z.string().min(1)
-  }).optional(),
-  chatFocus: chatFocusSchema,
-  currentContext: currentContextSchema,
-  soulProfileContext: soulProfileContextSchema,
-  threadEntities: z.array(z.object({
-    id: z.string().min(1),
-    name: z.string(),
-    type: z.enum(['character', 'location', 'organization', 'skill']),
-  })).max(20).optional(),
-  composerEntities: z.array(z.object({
-    id: z.string().min(1),
-    name: z.string(),
-    type: z.enum(['character', 'location', 'organization', 'skill', 'event']),
-    status: z.enum(['confirmed', 'suggestion']).optional(),
-  })).max(15).optional(),
-  previewCorrections: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    start: z.number(),
-    end: z.number(),
-    originalType: z.string(),
-    correctedType: z.string().optional(),
-    originalSubtype: z.string().optional(),
-    correctedSubtype: z.string().optional(),
-    entityStatus: z.enum(['known', 'new', 'ignored', 'wrong', 'confirmed']),
-    linkedEntityId: z.string().optional(),
-    linkedEntityName: z.string().optional(),
-    linkedEntityType: z.string().optional(),
-    parentEntityId: z.string().optional(),
-    parentEntityName: z.string().optional(),
-    parentEntityType: z.string().optional(),
-    displayNameOverride: z.string().optional(),
-    correctionAction: z.string(),
-    confidence: z.number().optional(),
-    confidenceOverride: z.number().optional(),
-    sensitive: z.boolean().optional(),
-    requiresReview: z.boolean().optional(),
-    userConfirmed: z.boolean().optional(),
-    correctionSource: z.enum(['composer', 'chat_chip', 'review_page']),
-  })).max(50).optional(),
+const chatImageSchema = z.object({
+  dataUrl: z
+    .string()
+    .min(32)
+    .max(6_000_000)
+    .regex(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i, 'Invalid image data URL'),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']).optional(),
+  detail: z.enum(['low', 'high', 'original', 'auto']).optional(),
 });
+
+const chatSchema = z
+  .object({
+    message: z.string().max(5000).default(''),
+    conversationHistory: z
+      .array(
+        z.object({
+          role: z.enum(['user', 'assistant']),
+          content: z.string().max(4000),
+        }),
+      )
+      .max(50)
+      .optional(),
+    stream: z.boolean().optional().default(false),
+    threadId: z.string().uuid().optional(),
+    entityContext: z
+      .object({
+        type: z.enum([
+          'CHARACTER',
+          'LOCATION',
+          'PERCEPTION',
+          'MEMORY',
+          'ENTITY',
+          'GOSSIP',
+          'ROMANTIC_RELATIONSHIP',
+        ]),
+        id: z.string().min(1),
+      })
+      .optional(),
+    chatFocus: chatFocusSchema,
+    currentContext: currentContextSchema,
+    soulProfileContext: soulProfileContextSchema,
+    threadEntities: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          name: z.string(),
+          type: z.enum(['character', 'location', 'organization', 'skill']),
+        }),
+      )
+      .max(20)
+      .optional(),
+    composerEntities: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          name: z.string(),
+          type: z.enum(['character', 'location', 'organization', 'skill', 'event']),
+          status: z.enum(['confirmed', 'suggestion']).optional(),
+        }),
+      )
+      .max(15)
+      .optional(),
+    previewCorrections: z
+      .array(
+        z.object({
+          id: z.string(),
+          text: z.string(),
+          start: z.number(),
+          end: z.number(),
+          originalType: z.string(),
+          correctedType: z.string().optional(),
+          originalSubtype: z.string().optional(),
+          correctedSubtype: z.string().optional(),
+          entityStatus: z.enum(['known', 'new', 'ignored', 'wrong', 'confirmed']),
+          linkedEntityId: z.string().optional(),
+          linkedEntityName: z.string().optional(),
+          linkedEntityType: z.string().optional(),
+          parentEntityId: z.string().optional(),
+          parentEntityName: z.string().optional(),
+          parentEntityType: z.string().optional(),
+          displayNameOverride: z.string().optional(),
+          correctionAction: z.string(),
+          confidence: z.number().optional(),
+          confidenceOverride: z.number().optional(),
+          sensitive: z.boolean().optional(),
+          requiresReview: z.boolean().optional(),
+          userConfirmed: z.boolean().optional(),
+          correctionSource: z.enum(['composer', 'chat_chip', 'review_page']),
+        }),
+      )
+      .max(50)
+      .optional(),
+    /** Inline vision attachments for this turn (max 4). Not re-sent on later turns. */
+    images: z.array(chatImageSchema).max(4).optional(),
+  })
+  .refine((data) => data.message.trim().length > 0 || (data.images?.length ?? 0) > 0, {
+    message: 'Message text or an image is required',
+    path: ['message'],
+  });
 
 // If the client supplied a threadId but no thread context, derive it so the
 // RAG builder takes the thread-scoped + cross-thread entity retrieval path.
@@ -193,7 +240,18 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], threadId, entityContext, chatFocus, soulProfileContext, threadEntities, composerEntities, previewCorrections } = parsed.data;
+    const {
+      message,
+      conversationHistory = [],
+      threadId,
+      entityContext,
+      chatFocus,
+      soulProfileContext,
+      threadEntities,
+      composerEntities,
+      previewCorrections,
+      images,
+    } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     if (shouldBlockAnonymousAiChat(req.user)) {
       return sendAnonymousAiBlocked(res);
@@ -233,7 +291,20 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
-      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId, threadEntities, validatedComposerEntities, chatFocus ?? undefined, previewCorrections);
+      result = await omegaChatService.chatStream(
+        userId,
+        message,
+        conversationHistory,
+        entityContext,
+        currentContext,
+        soulProfileContext,
+        threadId,
+        threadEntities,
+        validatedComposerEntities,
+        chatFocus ?? undefined,
+        previewCorrections,
+        images,
+      );
       const mc = getMessageCost();
       if (mc) mc.messageId = result.metadata.messageId;
     } catch (setupError) {

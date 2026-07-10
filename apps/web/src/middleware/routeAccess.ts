@@ -26,8 +26,9 @@ export const PUBLIC_ROUTE_PREFIXES = [
 /** Paths that require platform admin (owner / admin / developer). */
 export const ADMIN_ROUTE_PREFIXES = ['/admin', '/ontology', '/intelligence'] as const;
 
-/** Dev console — disabled entirely in production builds. */
+/** Dev/operator surfaces — disabled entirely in production builds. */
 export const DEV_CONSOLE_ROUTE = '/dev-console';
+export const DEV_OPERATOR_ROUTE_PREFIXES = [DEV_CONSOLE_ROUTE, '/diagnostics'] as const;
 
 export function isPublicRoutePath(pathname: string): boolean {
   if (pathname === '/') return true;
@@ -43,7 +44,9 @@ export function isAdminRoutePath(pathname: string): boolean {
 }
 
 export function isDevConsoleRoutePath(pathname: string): boolean {
-  return pathname === DEV_CONSOLE_ROUTE || pathname.startsWith(`${DEV_CONSOLE_ROUTE}/`);
+  return DEV_OPERATOR_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
 }
 
 /** App shell (/home, /chat, …) requires auth, guest entry, or demo — not a cold anonymous visit. */

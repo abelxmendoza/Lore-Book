@@ -117,6 +117,23 @@ describe('openaiResponsesBridge', () => {
     ).toBe(false);
   });
 
+  it('does not route multimodal image_url requests through the text bridge', () => {
+    expect(
+      shouldRouteChatCompletionToResponses({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze this photo.' },
+              { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,abc' } },
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it('shims responses output to chat completion shape', () => {
     const chat = responsesToChatCompletion(
       {

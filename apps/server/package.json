@@ -32,6 +32,7 @@
     "capture:ingestion-sample": "bash scripts/capture-ingestion-sample.sh",
     "typecheck": "tsc --noEmit",
     "runtime-health": "tsx scripts/runtime-health.ts",
+    "diagnose:chat": "tsx src/scripts/diagnose-chat.ts",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
     "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts",
     "egress:simulate": "tsx scripts/simulate-egress.ts",

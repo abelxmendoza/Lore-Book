@@ -123,7 +123,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         summary?: string | null;
         tags: string[];
         metadata?: Record<string, unknown>;
-      }>       }>('/api/entries/recent?sources=photo&limit=50', undefined, {
+      }>       }>('/api/entries/recent?sources=photo&sources=photo_upload&limit=50', undefined, {
         useMockData: isMockDataEnabled,
         mockData: { entries: mockEntries }
       });
@@ -229,15 +229,34 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         const data = await response.json();
         // Backend returns entries created from photos
         if (data.entriesCreated > 0 && data.entries) {
-          // Convert entries to photo metadata format
-          const newPhotos = data.entries.map((entry: any) => entryToPhotoMetadata({
-            id: entry.id,
-            date: entry.date || new Date().toISOString(),
-            content: entry.content,
-            summary: entry.summary,
-            tags: entry.tags || [],
-            metadata: entry.metadata || {}
-          }));
+          const resultPhotos = Array.isArray(data.results)
+            ? data.results
+                .filter((result: any) => result.entryId && result.photoUrl)
+                .map((result: any) => ({
+                  photoId: result.photoId || result.entryId,
+                  url: result.photoUrl,
+                  metadata: {
+                    locationName: result.locationName,
+                    dateTime: new Date().toISOString(),
+                  },
+                  autoEntry: {
+                    id: result.entryId,
+                    content: result.summary || 'Photo uploaded',
+                    tags: ['photo', result.photoType || 'memory'],
+                  },
+                }))
+            : [];
+
+          const newPhotos = resultPhotos.length > 0
+            ? resultPhotos
+            : data.entries.map((entry: any) => entryToPhotoMetadata({
+                id: entry.id,
+                date: entry.date || new Date().toISOString(),
+                content: entry.content,
+                summary: entry.summary,
+                tags: entry.tags || [],
+                metadata: entry.metadata || {}
+              }));
           
           setPhotos((prev) => [...newPhotos, ...prev]);
           newPhotos.forEach((photo) => {
@@ -387,4 +406,3 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     </Card>
   );
 };
-

@@ -9,6 +9,7 @@
     "validate": "node scripts/validate.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:health": "node scripts/smoke-health.mjs",
+    "diagnose:chat": "cd apps/server && npm run diagnose:chat",
     "smoke:health:prod": "node scripts/smoke-health.mjs https://lore-book-production.up.railway.app --origin https://lorebookai.com",
     "smoke:supabase-ops": "node scripts/supabase-pre-upgrade-check.mjs",
     "prelaunch:smoke": "node scripts/prelaunch-smoke.mjs --base https://lorebookai.com",

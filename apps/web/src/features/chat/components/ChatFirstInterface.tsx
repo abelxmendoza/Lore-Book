@@ -171,7 +171,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const handleSubmit = (
     msg: string,
     certifiedEntities?: CertifiedEntityMatch[],
-    previewCorrections?: import('../../../lib/entityCorrectionTypes').CorrectedPreviewSpan[]
+    previewCorrections?: import('../../../lib/entityCorrectionTypes').CorrectedPreviewSpan[],
+    images?: import('../types/chatImageAttachment').ChatImageAttachment[],
   ) => {
     if (greetingMessage) {
       analytics.track('greeting_responded', {
@@ -184,6 +185,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       ...chatSendOptions,
       composerEntities: certifiedEntities?.length ? certifiedEntities : chatSendOptions.composerEntities,
       previewCorrections,
+      ...(images?.length ? { images } : {}),
     });
   };
 
@@ -891,9 +893,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             defaultCollapsed={isMobile && messages.length > 0}
             focusCharacterId={chatFocus?.entityType === 'character' ? chatFocus.entityId : undefined}
             focusCharacterName={chatFocus?.entityType === 'character' ? chatFocus.entityName : undefined}
-            onUploadComplete={async (result: UploadCompletePayload) => {
+            onUploadComplete={async (result?: UploadCompletePayload) => {
               const now = new Date();
-              if (result.kind === 'resume') {
+              if (result?.kind === 'resume') {
                 setMessages((prev) => [
                   ...prev,
                   {
@@ -905,11 +907,79 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                   {
                     id: `upload-assistant-${now.getTime()}`,
                     role: 'assistant',
-                    content: result.chatFeedback,
+                    content: result.chatFeedback ?? 'Resume processed.',
                     timestamp: now,
                     isSystemMessage: true,
                   },
                 ]);
+                dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 1500 });
+              } else if (result?.kind === 'photo') {
+                const img = result.chatImage;
+
+                // Discuss: real multimodal chat turn so the model sees the image.
+                if (result.discussOnly && img?.dataUrl) {
+                  const prompt =
+                    result.analysis?.summary
+                      ? `I just shared this photo (${result.fileName}). Analysis: "${result.analysis.summary}". Talk with me about it — what should we remember?`
+                      : `I just shared this photo (${result.fileName}). What do you notice? Help me remember what matters.`;
+                  void sendMessage(prompt, {
+                    ...chatSendOptions,
+                    images: [
+                      {
+                        dataUrl: img.dataUrl,
+                        mimeType: img.mimeType,
+                        detail: 'high',
+                        url: img.url,
+                      },
+                    ],
+                  });
+                } else {
+                  // Saved to lore: show confirmation bubbles with thumbnail.
+                  const userBubble: Message = {
+                    id: `upload-photo-user-${now.getTime()}`,
+                    role: 'user',
+                    content: `📷 Saved photo: ${result.fileName}`,
+                    timestamp: now,
+                    persistStatus: 'saved',
+                    ...(img || result.processResult?.photoUrl
+                      ? {
+                          attachments: [
+                            {
+                              kind: 'image' as const,
+                              dataUrl: img?.dataUrl,
+                              url: img?.url ?? result.processResult?.photoUrl,
+                              mimeType: img?.mimeType ?? 'image/jpeg',
+                            },
+                          ],
+                        }
+                      : {}),
+                  };
+                  const assistantLines = [
+                    result.chatFeedback,
+                    result.addedToLoreBook
+                      ? 'It’s in your photo album and memories.'
+                      : '',
+                    result.processResult?.selfMediaId || result.analysis?.isSelfie
+                      ? 'Also on your main character Photos tab (selfies / photos of you).'
+                      : '',
+                    'You can keep typing below — ask follow-ups anytime.',
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n');
+
+                  setMessages([
+                    ...messages,
+                    userBubble,
+                    {
+                      id: `upload-photo-assistant-${now.getTime()}`,
+                      role: 'assistant',
+                      content: assistantLines || 'Photo processed.',
+                      timestamp: now,
+                      isSystemMessage: true,
+                    },
+                  ]);
+                }
+
                 dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 1500 });
               }
               await Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]);

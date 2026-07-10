@@ -167,4 +167,39 @@ describe('createOpenAIChatStream', () => {
       }),
     );
   });
+
+  it('maps multimodal user content to Responses input_image parts', async () => {
+    mockConfig.useResponsesApiForChat = true;
+    mockResponsesCreate.mockResolvedValueOnce(makeResponseEvents());
+
+    const dataUrl = 'data:image/jpeg;base64,/9j/4AAQ';
+    await createOpenAIChatStream({
+      model: 'gpt-5.5',
+      messages: [
+        { role: 'system', content: 'System prompt' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: "what's in this image?" },
+            { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+          ],
+        },
+      ],
+      userId: 'user-vision',
+    });
+
+    expect(mockResponsesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: "what's in this image?" },
+              { type: 'input_image', image_url: dataUrl, detail: 'high' },
+            ],
+          },
+        ],
+      }),
+    );
+  });
 });

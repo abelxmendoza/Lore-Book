@@ -6,8 +6,11 @@ import { normalizeOpenAIChatParams, openai } from '../../lib/openai';
 import { withResponsesOptimizations } from '../../lib/openaiPlatformOptimizations';
 import { logger } from '../../logger';
 import { buildFileSearchTool } from '../openaiPlatform/openaiVectorStoreService';
+import { chatContentToResponsesContent } from './chatImageInput';
 
 type ChatMessage = OpenAI.Chat.ChatCompletionMessageParam;
+
+type ResponsesMessageContent = ReturnType<typeof chatContentToResponsesContent>;
 
 export type LorekeeperChatStreamChunk = {
   choices: Array<{
@@ -80,14 +83,16 @@ async function* normalizeResponsesStream(
   }
 }
 
-function toResponsesInput(messages: ChatMessage[]): Array<{ role: 'user' | 'assistant' | 'developer'; content: string }> {
+function toResponsesInput(
+  messages: ChatMessage[],
+): Array<{ role: 'user' | 'assistant' | 'developer'; content: ResponsesMessageContent }> {
   return messages
     .filter((message): message is Extract<ChatMessage, { role: 'user' | 'assistant' | 'developer' }> =>
       message.role === 'user' || message.role === 'assistant' || message.role === 'developer'
     )
     .map((message) => ({
       role: message.role,
-      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? ''),
+      content: chatContentToResponsesContent(message.content),
     }));
 }
 
@@ -96,22 +101,20 @@ function resolveResponsesInput(
   previousResponseId?: string,
 ): OpenAI.Responses.ResponseCreateParams['input'] {
   if (!previousResponseId) {
-    return toResponsesInput(messages.filter((message) => message.role !== 'system'));
+    return toResponsesInput(messages.filter((message) => message.role !== 'system')) as OpenAI.Responses.ResponseCreateParams['input'];
   }
 
   const lastUser = [...messages].reverse().find((message) => message.role === 'user');
   if (!lastUser) {
-    return toResponsesInput(messages.filter((message) => message.role !== 'system'));
+    return toResponsesInput(messages.filter((message) => message.role !== 'system')) as OpenAI.Responses.ResponseCreateParams['input'];
   }
 
   return [
     {
       role: 'user' as const,
-      content: typeof lastUser.content === 'string'
-        ? lastUser.content
-        : JSON.stringify(lastUser.content ?? ''),
+      content: chatContentToResponsesContent(lastUser.content),
     },
-  ];
+  ] as OpenAI.Responses.ResponseCreateParams['input'];
 }
 
 export async function createOpenAIChatStream(params: {

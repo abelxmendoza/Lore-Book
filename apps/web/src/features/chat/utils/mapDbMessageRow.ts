@@ -33,6 +33,17 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
         ? null
         : undefined;
 
+  const rawAttachments = Array.isArray(metadata?.attachments)
+    ? (metadata.attachments as NonNullable<Message['attachments']>)
+    : undefined;
+  // Prefer durable public URLs for display after reload
+  const attachments = rawAttachments?.map((a) => ({
+    ...a,
+    // ensure url is top-level for bubble rendering
+    url: a.url,
+    dataUrl: a.dataUrl,
+  }));
+
   return {
     id: row.id,
     role: row.role === 'assistant' ? 'assistant' : 'user',
@@ -40,6 +51,7 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     timestamp: row.created_at ? new Date(row.created_at) : new Date(),
     persistStatus: 'saved',
     ...(metadata ? { metadata } : {}),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(mentionedEntities && mentionedEntities.length > 0 ? { mentionedEntities } : {}),
     ...(creationOutcomes && creationOutcomes.length > 0 ? { creationOutcomes } : {}),
     ...(creationOutcomeSummary !== undefined ? { creationOutcomeSummary } : {}),

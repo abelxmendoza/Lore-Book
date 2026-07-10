@@ -28,6 +28,17 @@ import { ingestionQueue, type JobPriority } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
+import {
+  attachmentMetaFromImages,
+  buildUserChatContent,
+  resolveUserMessageText,
+  type ChatImageAttachment,
+} from './chat/chatImageInput';
+import { storeChatImageAttachments } from './chat/chatAttachmentStorage';
+import {
+  buildIngestTextFromVision,
+  summarizeChatImages,
+} from './chat/chatVisionSummaryService';
 import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 import { entityAmbiguityService } from './entityAmbiguityService';
@@ -709,6 +720,121 @@ The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurfac
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 
+  /**
+   * After durable upload: summarize attached photos, enrich chat_messages.content,
+   * then run interpretation + memory ingestion on the text projection.
+   * Off the streaming critical path.
+   */
+  private async enrichAndIngestVisionMessage(params: {
+    userId: string;
+    sessionId: string;
+    messageId: string;
+    caption: string;
+    images: ChatImageAttachment[];
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+    entityContext?: { type: string; id: string };
+    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[];
+  }): Promise<void> {
+    const {
+      userId,
+      sessionId,
+      messageId,
+      caption,
+      images,
+      conversationHistory,
+      entityContext,
+      previewCorrections,
+    } = params;
+
+    try {
+      const vision = await summarizeChatImages(images, { userId, caption });
+      const ingestText = buildIngestTextFromVision(caption, vision);
+
+      const { data: existing } = await supabaseAdmin
+        .from('chat_messages')
+        .select('metadata')
+        .eq('id', messageId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const prevMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({
+          content: ingestText,
+          metadata: {
+            ...prevMeta,
+            vision_pending: false,
+            vision_summary: vision?.summary ?? null,
+            vision_details: vision
+              ? {
+                  perImage: vision.perImage,
+                  people: vision.people,
+                  places: vision.places,
+                  objects: vision.objects,
+                  textInImage: vision.textInImage,
+                }
+              : null,
+            vision_enriched_at: new Date().toISOString(),
+          },
+        })
+        .eq('id', messageId)
+        .eq('user_id', userId);
+
+      // Interpretation on enriched text (entities, lore agents)
+      void runLoreInterpretationPipeline({
+        userId,
+        messageId,
+        text: ingestText,
+        threadId: sessionId,
+        previewCorrections,
+      })
+        .then((interpretation) => {
+          if (config.enableLoreAgents) {
+            void runLoreAgents({
+              userId,
+              threadId: sessionId,
+              messageId,
+              userMessage: ingestText,
+              pipelineResult: interpretation,
+            }).catch((agentErr) => {
+              logger.warn({ err: agentErr, messageId }, 'Lore agents failed after vision enrich');
+            });
+          }
+        })
+        .catch((err) => {
+          logger.warn({ err, messageId }, 'Interpretation after vision enrich failed');
+        });
+
+      if (!entityContext) {
+        ingestionQueue.enqueue(
+          { userId, chatMessageId: messageId, sessionId, conversationHistory, force: true },
+          'NORMAL',
+        );
+      }
+
+      logger.info(
+        {
+          userId,
+          messageId,
+          imageCount: images.length,
+          hasVisionSummary: Boolean(vision?.summary),
+          ingestTextLen: ingestText.length,
+        },
+        'Chat vision message enriched for memory ingestion',
+      );
+    } catch (err) {
+      logger.warn({ err, userId, messageId }, 'Vision enrich/ingest failed — falling back to caption-only ingest');
+      // Fallback: still ingest caption so memory is not lost
+      if (!entityContext) {
+        ingestionQueue.enqueue(
+          { userId, chatMessageId: messageId, sessionId, conversationHistory },
+          'NORMAL',
+        );
+      }
+    }
+  }
+
   /** Persist user message before routing, retrieval, or generation (Chat Trust Recovery). */
   private async persistUserMessageEarly(
     userId: string,
@@ -716,14 +842,42 @@ When updating relationship analytics or emotional signals from this thread, weig
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     entityContext?: { type: string; id: string },
-    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[]
+    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
+    images?: ChatImageAttachment[],
   ): Promise<{ messageId: string; interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> } | undefined> {
     // Critical-path latency: this method runs BEFORE the assistant response is
     // set up (durable save + interpretation pipeline + enqueue). The interpretation
     // step is the prime candidate to push fully async — this timer quantifies it.
     const timer = new StageTimer('chat.persist_early', { userId, sessionId });
 
-    if (isTrivialMessage(message)) {
+    // Durable upload into photos bucket (parallel); keep dataUrl for same-turn vision.
+    type ImageWithStorage = ChatImageAttachment & { storagePath?: string; url?: string };
+    let storedImages: ImageWithStorage[] | undefined = images;
+    if (images?.length) {
+      try {
+        const stored = await storeChatImageAttachments(userId, sessionId, images);
+        storedImages = images.map((orig, i) => {
+          const hit = stored[i];
+          return {
+            ...orig,
+            url: hit?.url ?? orig.url,
+            dataUrl: orig.dataUrl,
+            mimeType: hit?.mimeType ?? orig.mimeType,
+            detail: hit?.detail ?? orig.detail,
+            storagePath: hit?.storagePath,
+          };
+        });
+      } catch (err) {
+        logger.warn({ err, userId, sessionId }, 'Chat attachment storage failed — continuing with data URLs only');
+        storedImages = images;
+      }
+      timer.mark('store_attachments');
+    }
+
+    const attachmentMeta = attachmentMetaFromImages(storedImages);
+    const hasImages = (attachmentMeta?.length ?? 0) > 0 || (images?.length ?? 0) > 0;
+
+    if (isTrivialMessage(message) && !hasImages) {
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
         .insert({
@@ -749,6 +903,13 @@ When updating relationship analytics or emotional signals from this thread, weig
       return savedMessage.id ? { messageId: savedMessage.id } : undefined;
     }
 
+    const metadata: Record<string, unknown> = {};
+    if (previewCorrections?.length) metadata.preview_corrections = previewCorrections;
+    if (attachmentMeta?.length) {
+      metadata.attachments = attachmentMeta;
+      metadata.vision_pending = true;
+    }
+
     const { data: savedMessage, error: saveError } = await supabaseAdmin
       .from('chat_messages')
       .insert({
@@ -756,9 +917,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         session_id: sessionId,
         role: 'user',
         content: message,
-        ...(previewCorrections?.length
-          ? { metadata: { preview_corrections: previewCorrections } }
-          : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       })
       .select('id')
       .single();
@@ -784,6 +943,26 @@ When updating relationship analytics or emotional signals from this thread, weig
       .eq('id', sessionId)
       .eq('user_id', userId);
     timer.mark('session_touch');
+
+    // Image turns: defer ingestion until vision summary enriches content.
+    // Text-only: enqueue immediately as before.
+    if (hasImages && images?.length) {
+      void this.enrichAndIngestVisionMessage({
+        userId,
+        sessionId,
+        messageId,
+        caption: message,
+        images: (storedImages ?? images) as ChatImageAttachment[],
+        conversationHistory,
+        entityContext,
+        previewCorrections,
+      }).catch((err) => {
+        logger.warn({ err, messageId }, 'enrichAndIngestVisionMessage crashed');
+      });
+      timer.flush({ path: 'vision_deferred' });
+      // No same-turn interpretation promise (runs after enrich)
+      return { messageId };
+    }
 
     // Enqueue the heavy background ingestion job. Cheap in-memory push; explicitly
     // NOT gated on interpretation so it starts regardless.
@@ -867,8 +1046,12 @@ When updating relationship analytics or emotional signals from this thread, weig
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
     composerEntities?: Array<{ id: string; name: string; type: string }>,
     chatFocus?: ChatFocusPayload,
-    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[]
+    previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
+    images?: ChatImageAttachment[],
   ): Promise<StreamingChatResponse> {
+    // Caption text for persistence/ingestion; placeholder when image-only.
+    message = resolveUserMessageText(message, images);
+
     // Derive entity context from modal/book focus when not explicitly set
     if (!entityContext && chatFocus?.relationshipId) {
       entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
@@ -898,7 +1081,8 @@ When updating relationship analytics or emotional signals from this thread, weig
         message,
         conversationHistory,
         entityContext,
-        previewCorrections
+        previewCorrections,
+        images,
       );
       entryId = earlyPersist?.messageId;
       interpretationPromise = earlyPersist?.interpretationPromise;
@@ -1785,13 +1969,14 @@ When updating relationship analytics or emotional signals from this thread, weig
       ? `${systemPrompt}\n\n${sessionMemoryBlock}`
       : systemPrompt;
 
+    const userTurnContent = buildUserChatContent(message, images);
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: 'system' as const, content: finalSystemPrompt },
       ...truncatedHistory.map((turn) => ({
         role: turn.role as 'user' | 'assistant',
         content: turn.content,
       })),
-      { role: 'user' as const, content: message }
+      { role: 'user' as const, content: userTurnContent },
     ];
 
     // Optional OpenAI platform state (chaining, conversations, vector stores) — all opt-in.
@@ -1818,6 +2003,13 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     // Create streaming response — flagship tier: this is the reply the user reads.
     // Streaming chat uses the Responses API by default (OPENAI_USE_RESPONSES=false to revert).
+    // When images are attached, the last user turn is multimodal (input_image).
+    if (images?.length) {
+      logger.info(
+        { userId, sessionId, imageCount: images.length },
+        'Chat turn includes vision image attachment(s)',
+      );
+    }
     const stream = await createOpenAIChatStream({
       model: config.chatModel,
       temperature: 0.7,
