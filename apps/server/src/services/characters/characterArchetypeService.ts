@@ -22,10 +22,17 @@ export const CHARACTER_ARCHETYPE_PRESETS: ArchetypePreset[] = [
   { value: 'past_romantic', label: 'Past Flame', description: 'A closed chapter that still shaped you.' },
   { value: 'mentor', label: 'Mentor', description: 'Someone who shapes how you grow.' },
   { value: 'ally', label: 'Ally', description: 'In your corner when it counts.' },
+  { value: 'confidant', label: 'Confidant', description: 'Someone trusted with private thoughts, fears, or plans.' },
+  { value: 'protector', label: 'Protector', description: 'Someone who shields, defends, or looks out for you.' },
+  { value: 'caretaker', label: 'Caretaker', description: 'Someone whose story role centers on care, support, or tending to needs.' },
   { value: 'professional', label: 'Professional', description: 'Connected through work, projects, or practical collaboration.' },
+  { value: 'catalyst', label: 'Catalyst', description: 'Someone who triggered a major change, decision, or turning point.' },
   { value: 'rival', label: 'Rival', description: 'Pushes you forward by pushing against you.' },
+  { value: 'antagonist', label: 'Antagonist', description: 'A person associated with conflict, harm, opposition, or pressure.' },
+  { value: 'estranged', label: 'Estranged', description: 'A once-meaningful connection now marked by distance, fallout, or no contact.' },
   { value: 'muse', label: 'Muse', description: 'Sparks your creative side.' },
   { value: 'community', label: 'Community', description: 'A familiar face from your scenes and circles.' },
+  { value: 'public_figure', label: 'Public Figure', description: 'A person known mostly through media, fame, or public presence.' },
   { value: 'acquaintance', label: 'Acquaintance', description: 'On the edge of your story — for now.' },
 ];
 
@@ -123,11 +130,53 @@ const RULES: Rule[] = [
       relationshipType === 'mentor',
   },
   {
+    archetype: 'estranged',
+    confidence: 0.82,
+    reason: 'Distance, fallout, or no-contact context appears in their story',
+    test: ({ text, relationshipType }) =>
+      /\b(estranged|no[- ]?contact|blocked|cut (him|her|them) off|not on speaking terms|fell out|fallout|stopped talking)\b/.test(text) ||
+      relationshipType === 'estranged',
+  },
+  {
+    archetype: 'antagonist',
+    confidence: 0.8,
+    reason: 'Conflict, harm, or opposition colors this relationship',
+    test: ({ text, relationshipType }) =>
+      /\b(antagonist|abusive|bully|betrayed|betrayal|harassed|manipulat(e|ed|ive)|toxic|unsafe|hurt me|threatened)\b/.test(text) ||
+      relationshipType === 'antagonist',
+  },
+  {
     archetype: 'rival',
     confidence: 0.8,
     reason: 'Tension and competition color this relationship',
     test: ({ text, relationshipType }) =>
       /\b(rival|nemesis|competitor|beef|feud|can'?t stand|enemy)\b/.test(text) || relationshipType === 'rival',
+  },
+  {
+    archetype: 'confidant',
+    confidence: 0.78,
+    reason: 'Trust and private disclosure show in their story',
+    test: ({ text, relationshipType }) =>
+      /\b(confidant|trusted (him|her|them)|told (him|her|them) everything|open up to|opened up to|safe to talk|kept my secret)\b/.test(text) ||
+      relationshipType === 'confidant',
+  },
+  {
+    archetype: 'protector',
+    confidence: 0.76,
+    reason: 'Protection or defense shows in their story',
+    test: ({ text }) => /\b(protected me|defended me|stood up for me|looked out for me|had my back|kept me safe)\b/.test(text),
+  },
+  {
+    archetype: 'caretaker',
+    confidence: 0.74,
+    reason: 'Caregiving or emotional support shows in their story',
+    test: ({ text }) => /\b(took care of me|cared for me|caregiver|checked on me|nursed me|supported me through)\b/.test(text),
+  },
+  {
+    archetype: 'catalyst',
+    confidence: 0.72,
+    reason: 'They triggered a meaningful change or turning point',
+    test: ({ text }) => /\b(changed my life|turning point|wake[- ]?up call|pushed me to|made me realize|because of (him|her|them) i)\b/.test(text),
   },
   {
     archetype: 'professional',
@@ -150,6 +199,14 @@ const RULES: Rule[] = [
     confidence: 0.7,
     reason: 'They spark your creative side',
     test: ({ text }) => /\b(muse|inspir(es|ed|ing)|artist i admire|their art)\b/.test(text),
+  },
+  {
+    archetype: 'public_figure',
+    confidence: 0.7,
+    reason: 'They are mostly known through public presence or media',
+    test: ({ text, relationshipType }) =>
+      /\b(celebrity|public figure|influencer|famous|artist i follow|creator i follow|parasocial)\b/.test(text) ||
+      relationshipType === 'public_figure',
   },
   {
     archetype: 'friend',

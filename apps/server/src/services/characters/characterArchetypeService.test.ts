@@ -9,8 +9,24 @@ describe('characterArchetypeService', () => {
     expect(values).toContain('crush');
     expect(values).toContain('unrequited_crush');
     expect(values).toContain('professional');
+    expect(values).toContain('confidant');
+    expect(values).toContain('protector');
+    expect(values).toContain('caretaker');
+    expect(values).toContain('catalyst');
+    expect(values).toContain('antagonist');
+    expect(values).toContain('estranged');
+    expect(values).toContain('public_figure');
     expect(values).not.toContain('colleague');
     expect(values).not.toContain('collaborator');
+  });
+
+  it('keeps professional work context in one archetype bucket', () => {
+    const inference = inferCharacterArchetype({
+      name: 'Mara',
+      summary: 'My coworker from the studio. We collaborated on a project together.',
+    });
+
+    expect(inference.archetype).toBe('professional');
   });
 
   it('does not let a stale family signal win over unrequited crush context', () => {

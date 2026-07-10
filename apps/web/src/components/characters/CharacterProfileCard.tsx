@@ -160,6 +160,14 @@ type CharacterProfileCardProps = {
   attributes?: CharacterAttribute[];
 };
 
+const splitCharacterLabels = (value?: string | null) =>
+  (value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const primaryCharacterLabel = (value?: string | null) => splitCharacterLabels(value)[0] ?? '';
+
 export const CharacterProfileCard = ({
   character,
   onClick,
@@ -173,6 +181,7 @@ export const CharacterProfileCard = ({
   const [fetchedAttributes, setFetchedAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const attributes = isControlled ? attributesProp : fetchedAttributes;
+  const primaryArchetype = primaryCharacterLabel(character.archetype);
 
   // Load attributes for this character only when not provided by the parent
   // (the grid batches them in a single request and passes them down).
@@ -316,6 +325,9 @@ export const CharacterProfileCard = ({
   const phase = getRelationshipPhase();
 
   const impactOnUser = impactOnUserWithPublicFigureCap(character);
+  const impactOverride = typeof character.metadata?.impact_override === 'number'
+    ? character.metadata.impact_override
+    : undefined;
 
   return (
     <Card 
@@ -512,10 +524,12 @@ export const CharacterProfileCard = ({
           {character.archetype && (
             <Badge
               variant="outline"
-              className={`${getArchetypeColor(character.archetype)} text-[10px] px-1.5 py-0 w-fit`}
+              className={`${getArchetypeColor(primaryArchetype)} text-[10px] px-1.5 py-0 w-fit`}
+              title={character.archetype}
             >
               <Sparkles className="h-2.5 w-2.5 mr-0.5" />
-              {character.archetype}
+              {primaryArchetype}
+              {splitCharacterLabels(character.archetype).length > 1 ? ` +${splitCharacterLabels(character.archetype).length - 1}` : ''}
             </Badge>
           )}
         </div>

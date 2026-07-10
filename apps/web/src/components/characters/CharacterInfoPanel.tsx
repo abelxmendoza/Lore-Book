@@ -95,10 +95,17 @@ const FALLBACK_ARCHETYPE_PRESETS: ArchetypePreset[] = [
   { value: 'past_romantic', label: 'Past Flame', description: 'A closed chapter that still shaped you.' },
   { value: 'mentor', label: 'Mentor', description: 'Someone who shapes how you grow.' },
   { value: 'ally', label: 'Ally', description: 'In your corner when it counts.' },
+  { value: 'confidant', label: 'Confidant', description: 'Someone trusted with private thoughts, fears, or plans.' },
+  { value: 'protector', label: 'Protector', description: 'Someone who shields, defends, or looks out for you.' },
+  { value: 'caretaker', label: 'Caretaker', description: 'Someone whose story role centers on care, support, or tending to needs.' },
   { value: 'professional', label: 'Professional', description: 'Connected through work, projects, or practical collaboration.' },
+  { value: 'catalyst', label: 'Catalyst', description: 'Someone who triggered a major change, decision, or turning point.' },
   { value: 'rival', label: 'Rival', description: 'Pushes you forward by pushing against you.' },
+  { value: 'antagonist', label: 'Antagonist', description: 'A person associated with conflict, harm, opposition, or pressure.' },
+  { value: 'estranged', label: 'Estranged', description: 'A once-meaningful connection now marked by distance, fallout, or no contact.' },
   { value: 'muse', label: 'Muse', description: 'Sparks your creative side.' },
   { value: 'community', label: 'Community', description: 'A familiar face from your scenes and circles.' },
+  { value: 'public_figure', label: 'Public Figure', description: 'A person known mostly through media, fame, or public presence.' },
   { value: 'acquaintance', label: 'Acquaintance', description: 'On the edge of your story — for now.' },
 ];
 
@@ -112,31 +119,80 @@ const ROLE_PRESETS: EditableFieldOption[] = [
   { value: 'musician', label: 'Musician' },
   { value: 'dj', label: 'DJ' },
   { value: 'artist', label: 'Artist' },
+  { value: 'designer', label: 'Designer' },
   { value: 'photographer', label: 'Photographer' },
+  { value: 'videographer', label: 'Videographer' },
   { value: 'dancer', label: 'Dancer' },
   { value: 'performer', label: 'Performer' },
   { value: 'promoter', label: 'Promoter' },
   { value: 'venue staff', label: 'Venue staff' },
+  { value: 'security', label: 'Security' },
   { value: 'bartender', label: 'Bartender' },
   { value: 'barista', label: 'Barista' },
   { value: 'server', label: 'Server' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'client', label: 'Client' },
   { value: 'coworker', label: 'Coworker' },
   { value: 'manager', label: 'Manager' },
+  { value: 'founder', label: 'Founder' },
+  { value: 'business owner', label: 'Business owner' },
   { value: 'engineer', label: 'Engineer' },
+  { value: 'developer', label: 'Developer' },
   { value: 'technician', label: 'Technician' },
+  { value: 'doctor', label: 'Doctor' },
   { value: 'nurse', label: 'Nurse' },
+  { value: 'therapist', label: 'Therapist' },
+  { value: 'lawyer', label: 'Lawyer' },
   { value: 'teacher', label: 'Teacher' },
   { value: 'coach', label: 'Coach' },
   { value: 'entrepreneur', label: 'Entrepreneur' },
   { value: 'content creator', label: 'Content creator' },
+  { value: 'influencer', label: 'Influencer' },
   { value: 'military', label: 'Military' },
   { value: 'classmate', label: 'Classmate' },
   { value: 'roommate', label: 'Roommate' },
   { value: 'neighbor', label: 'Neighbor' },
+  { value: 'landlord', label: 'Landlord' },
+  { value: 'tenant', label: 'Tenant' },
   { value: 'retired', label: 'Retired' },
 ];
 
 const normalizeArchetype = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '_');
+const MAX_CHARACTER_ARCHETYPES = 3;
+const MAX_CHARACTER_ROLES = 3;
+
+const splitMultiField = (value?: string | null): string[] => {
+  const seen = new Set<string>();
+  return (value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => {
+      const key = part.toLowerCase().replace(/\s+/g, ' ');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const joinMultiField = (values: string[], max: number) => {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value.trim())
+    .filter((value) => {
+      const key = value.toLowerCase().replace(/\s+/g, ' ');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, max)
+    .join(', ');
+};
+
+const normalizeArchetypeList = (value: string) =>
+  joinMultiField(splitMultiField(value).map(normalizeArchetype), MAX_CHARACTER_ARCHETYPES);
+
+const normalizeRoleList = (value: string) =>
+  joinMultiField(splitMultiField(value).map((role) => role.toLowerCase().replace(/\s+/g, ' ')), MAX_CHARACTER_ROLES);
 
 function inferArchetypeFromLocalContext(input: {
   role?: string;
@@ -174,6 +230,12 @@ function inferArchetypeFromLocalContext(input: {
   if (/\b(mentor|coach|teacher|professor|advisor|taught me|guided me)\b/.test(text) || relationshipType === 'mentor') {
     return { archetype: 'mentor', reason: 'Guidance or teaching context appears in the character details.' };
   }
+  if (/\b(estranged|no[- ]?contact|blocked|cut (him|her|them) off|not on speaking terms|fell out|fallout|stopped talking)\b/.test(text) || relationshipType === 'estranged') {
+    return { archetype: 'estranged', reason: 'Distance, fallout, or no-contact context appears in their story.' };
+  }
+  if (/\b(antagonist|abusive|bully|betrayed|betrayal|harassed|manipulat(e|ed|ive)|toxic|unsafe|hurt me|threatened)\b/.test(text) || relationshipType === 'antagonist') {
+    return { archetype: 'antagonist', reason: 'Conflict, harm, or opposition colors this relationship.' };
+  }
   if (/\b(coworker|co[- ]worker|colleague|boss|manager|team)\b/.test(text) || relationshipType === 'colleague') {
     return { archetype: 'professional', reason: 'Work context appears in the character details.' };
   }
@@ -183,11 +245,26 @@ function inferArchetypeFromLocalContext(input: {
   if (/\b(rival|competitor|enemy|feud)\b/.test(text) || relationshipType === 'rival') {
     return { archetype: 'rival', reason: 'Competitive context appears in the character details.' };
   }
+  if (/\b(confidant|trusted (him|her|them)|told (him|her|them) everything|open up to|opened up to|safe to talk|kept my secret)\b/.test(text) || relationshipType === 'confidant') {
+    return { archetype: 'confidant', reason: 'Trust and private disclosure show in their story.' };
+  }
+  if (/\b(protected me|defended me|stood up for me|looked out for me|had my back|kept me safe)\b/.test(text)) {
+    return { archetype: 'protector', reason: 'Protection or defense shows in their story.' };
+  }
+  if (/\b(took care of me|cared for me|caregiver|checked on me|nursed me|supported me through)\b/.test(text)) {
+    return { archetype: 'caretaker', reason: 'Caregiving or emotional support shows in their story.' };
+  }
+  if (/\b(changed my life|turning point|wake[- ]?up call|pushed me to|made me realize|because of (him|her|them) i)\b/.test(text)) {
+    return { archetype: 'catalyst', reason: 'They triggered a meaningful change or turning point.' };
+  }
   if (/\b(friend|homie|bestie|buddy|hung out|hang out)\b/.test(text) || relationshipType === 'friend') {
     return { archetype: 'friend', reason: 'Friendship context appears in the character details.' };
   }
   if (/\b(scene|show|gig|club|festival|meetup|regular at)\b/.test(text)) {
     return { archetype: 'community', reason: 'Community or scene context appears in the character details.' };
+  }
+  if (/\b(celebrity|public figure|influencer|famous|artist i follow|creator i follow|parasocial)\b/.test(text) || relationshipType === 'public_figure') {
+    return { archetype: 'public_figure', reason: 'They are mostly known through public presence or media.' };
   }
   return { archetype: 'acquaintance', reason: 'There is not enough specific context yet, so this starts broad.' };
 }
@@ -218,16 +295,40 @@ function inferRoleFromLocalContext(input: {
   if (/\b(neighbor|next door|lived nearby)\b/.test(text)) {
     return { role: 'neighbor', reason: 'Neighbor context appears in the character details.' };
   }
-  if (/\b(dj|band|singer|guitar|drummer|music|musician)\b/.test(text)) {
+  if (/\b(dj|deejay)\b/.test(text)) {
+    return { role: 'dj', reason: 'DJ context appears in the character details.' };
+  }
+  if (/\b(band|singer|guitar|drummer|music|musician)\b/.test(text)) {
     return { role: 'musician', reason: 'Music or performance context appears in the character details.' };
   }
   if (/\b(performer|performed|stage|show)\b/.test(text)) {
     return { role: 'performer', reason: 'Performance context appears in the character details.' };
   }
-  if (/\b(bartender|bouncer|host|door person|venue staff)\b/.test(text)) {
+  if (/\b(security|bouncer|door person)\b/.test(text)) {
+    return { role: 'security', reason: 'Security or door-staff context appears in the character details.' };
+  }
+  if (/\b(bartender)\b/.test(text)) {
+    return { role: 'bartender', reason: 'Bartender context appears in the character details.' };
+  }
+  if (/\b(barista)\b/.test(text)) {
+    return { role: 'barista', reason: 'Barista context appears in the character details.' };
+  }
+  if (/\b(server|waiter|waitress)\b/.test(text)) {
+    return { role: 'server', reason: 'Server context appears in the character details.' };
+  }
+  if (/\b(host|venue staff)\b/.test(text)) {
     return { role: 'venue staff', reason: 'Venue-staff context appears in the character details.' };
   }
-  if (/\b(artist|art|gallery|studio|designer|photographer)\b/.test(text)) {
+  if (/\b(photographer|photo shoot)\b/.test(text)) {
+    return { role: 'photographer', reason: 'Photography context appears in the character details.' };
+  }
+  if (/\b(videographer|video shoot|filmed)\b/.test(text)) {
+    return { role: 'videographer', reason: 'Video-production context appears in the character details.' };
+  }
+  if (/\b(designer|graphic design|fashion design)\b/.test(text)) {
+    return { role: 'designer', reason: 'Design context appears in the character details.' };
+  }
+  if (/\b(artist|art|gallery|studio)\b/.test(text)) {
     return { role: 'artist', reason: 'Art or creative-work context appears in the character details.' };
   }
   if (/\b(coworker|co[- ]worker|colleague|worked with|work together)\b/.test(text) || relationshipType === 'coworker') {
@@ -236,8 +337,62 @@ function inferRoleFromLocalContext(input: {
   if (/\b(boss|manager|supervisor)\b/.test(text)) {
     return { role: 'manager', reason: 'Manager or supervisor context appears in the character details.' };
   }
-  if (/\b(teacher|professor|coach|mentor)\b/.test(text) || relationshipType === 'mentor') {
+  if (/\b(founder|co[- ]?founder)\b/.test(text)) {
+    return { role: 'founder', reason: 'Founder context appears in the character details.' };
+  }
+  if (/\b(business owner|owns? (a|the) business|shop owner|venue owner)\b/.test(text)) {
+    return { role: 'business owner', reason: 'Business-owner context appears in the character details.' };
+  }
+  if (/\b(developer|programmer|software)\b/.test(text)) {
+    return { role: 'developer', reason: 'Software/developer context appears in the character details.' };
+  }
+  if (/\b(engineer)\b/.test(text)) {
+    return { role: 'engineer', reason: 'Engineering context appears in the character details.' };
+  }
+  if (/\b(technician|tech)\b/.test(text)) {
+    return { role: 'technician', reason: 'Technician context appears in the character details.' };
+  }
+  if (/\b(doctor|physician)\b/.test(text)) {
+    return { role: 'doctor', reason: 'Medical doctor context appears in the character details.' };
+  }
+  if (/\b(nurse)\b/.test(text)) {
+    return { role: 'nurse', reason: 'Nursing context appears in the character details.' };
+  }
+  if (/\b(therapist|counselor)\b/.test(text)) {
+    return { role: 'therapist', reason: 'Therapist or counselor context appears in the character details.' };
+  }
+  if (/\b(lawyer|attorney)\b/.test(text)) {
+    return { role: 'lawyer', reason: 'Legal role context appears in the character details.' };
+  }
+  if (/\b(coach)\b/.test(text)) {
+    return { role: 'coach', reason: 'Coach context appears in the character details.' };
+  }
+  if (/\b(teacher|professor|mentor)\b/.test(text) || relationshipType === 'mentor') {
     return { role: 'teacher', reason: 'Teaching or guidance context appears in the character details.' };
+  }
+  if (/\b(client)\b/.test(text)) {
+    return { role: 'client', reason: 'Client context appears in the character details.' };
+  }
+  if (/\b(customer)\b/.test(text)) {
+    return { role: 'customer', reason: 'Customer context appears in the character details.' };
+  }
+  if (/\b(landlord)\b/.test(text)) {
+    return { role: 'landlord', reason: 'Landlord context appears in the character details.' };
+  }
+  if (/\b(tenant)\b/.test(text)) {
+    return { role: 'tenant', reason: 'Tenant context appears in the character details.' };
+  }
+  if (/\b(influencer)\b/.test(text)) {
+    return { role: 'influencer', reason: 'Influencer context appears in the character details.' };
+  }
+  if (/\b(content creator|youtuber|streamer|tiktoker)\b/.test(text)) {
+    return { role: 'content creator', reason: 'Content-creator context appears in the character details.' };
+  }
+  if (/\b(military|soldier|marine|air force|navy|army|veteran)\b/.test(text)) {
+    return { role: 'military', reason: 'Military context appears in the character details.' };
+  }
+  if (/\b(retired|retiree)\b/.test(text)) {
+    return { role: 'retired', reason: 'Retirement context appears in the character details.' };
   }
   return { role: '', reason: 'There is not enough factual role context yet. Relationship labels belong under Archetype.' };
 }
@@ -398,29 +553,26 @@ export function CharacterInfoPanel({
     t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   const archetypeOptions = useMemo<EditableFieldOption[]>(() => {
-    const normalizedCurrent = normalizeArchetype(archetypeValue);
+    const currentValues = splitMultiField(archetypeValue).map(normalizeArchetype);
     const presetOptions = archetypePresets.map((preset) => ({
       value: preset.value,
       label: preset.label,
     }));
-    if (normalizedCurrent && !presetOptions.some((option) => option.value === normalizedCurrent)) {
-      return [
-        { value: '', label: 'No archetype yet' },
-        { value: normalizedCurrent, label: humanizeType(normalizedCurrent) },
-        ...presetOptions,
-      ];
-    }
-    return [{ value: '', label: 'No archetype yet' }, ...presetOptions];
+    const customOptions = currentValues
+      .filter((value) => value && !presetOptions.some((option) => option.value === value))
+      .map((value) => ({ value, label: humanizeType(value) }));
+    return [{ value: '', label: 'Clear archetypes' }, ...customOptions, ...presetOptions];
   }, [archetypePresets, archetypeValue]);
 
-  const currentArchetypePreset = archetypePresets.find(
-    (preset) => preset.value === normalizeArchetype(archetypeValue),
-  );
+  const currentArchetypePresets = splitMultiField(archetypeValue)
+    .map((value) => archetypePresets.find((preset) => preset.value === normalizeArchetype(value)))
+    .filter((preset): preset is ArchetypePreset => Boolean(preset));
   const roleOptions = useMemo<EditableFieldOption[]>(() => {
-    if (roleValue && !ROLE_PRESETS.some((option) => option.value === roleValue)) {
-      return [{ value: roleValue, label: roleValue }, ...ROLE_PRESETS];
-    }
-    return ROLE_PRESETS;
+    const currentValues = splitMultiField(roleValue).map((role) => role.toLowerCase().replace(/\s+/g, ' '));
+    const customOptions = currentValues
+      .filter((value) => value && !ROLE_PRESETS.some((option) => option.value === value))
+      .map((value) => ({ value, label: humanizeType(value) }));
+    return [{ value: '', label: 'Clear roles' }, ...customOptions, ...ROLE_PRESETS.filter((option) => option.value)];
   }, [roleValue]);
 
   useEffect(() => {
@@ -623,7 +775,7 @@ export function CharacterInfoPanel({
 
   const persistArchetype = async (nextRaw: string) => {
     const previousArchetype = editedCharacter.archetype ?? '';
-    const nextArchetype = nextRaw.trim().toLowerCase().replace(/\s+/g, '_');
+    const nextArchetype = normalizeArchetypeList(nextRaw);
     const confirmedAt = new Date().toISOString();
     const metadataPatch = {
       archetype_source: nextArchetype ? 'user_confirmed' : 'user_cleared',
@@ -670,7 +822,7 @@ export function CharacterInfoPanel({
 
   const persistRole = async (nextRaw: string) => {
     const previousRole = editedCharacter.role ?? '';
-    const nextRole = nextRaw.trim();
+    const nextRole = normalizeRoleList(nextRaw);
     const confirmedAt = new Date().toISOString();
     const metadataPatch = {
       role_source: nextRole ? 'user_confirmed' : 'user_cleared',
@@ -1101,12 +1253,12 @@ export function CharacterInfoPanel({
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2">
-                <div className="mb-2 flex items-start gap-2">
+              <div className="min-w-0 rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2 sm:p-3.5">
+                <div className="mb-3 flex items-start gap-2">
                   <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/80" />
-                  <p className="text-xs leading-relaxed text-white/60">
-                    Role is the factual context: what they are or were in real life, like student, musician, coworker, or
-                    high school student. Archetype below is the story category LoreBook uses to organize the relationship.
+                  <p className="min-w-0 text-xs leading-relaxed text-white/60">
+                    Roles are factual context: what they are or were in real life, like student, musician, coworker, or
+                    high school student. Keep this to the strongest few; archetypes below organize the story relationship.
                   </p>
                 </div>
                 <EditableField
@@ -1114,13 +1266,14 @@ export function CharacterInfoPanel({
                   value={roleValue}
                   displayValue={roleValue || null}
                   source={roleSource}
-                  variant="select"
+                  variant="multi-select"
                   options={roleOptions}
+                  maxSelections={MAX_CHARACTER_ROLES}
                   emptyHint="Click to set role"
                   icon={<User className="h-3.5 w-3.5 text-sky-300" />}
                   onSave={persistRole}
                 />
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">
                     {autoRoleMessage && (
                       <p className="text-[11px] leading-relaxed text-sky-200/75">{autoRoleMessage}</p>
@@ -1130,7 +1283,7 @@ export function CharacterInfoPanel({
                     type="button"
                     onClick={() => void autoDetectRole('manual')}
                     disabled={autoRoleLoading}
-                    className="inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20 disabled:opacity-60"
+                    className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20 disabled:opacity-60 sm:w-auto"
                   >
                     {autoRoleLoading ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1141,14 +1294,14 @@ export function CharacterInfoPanel({
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-white/35">
-                  For Genni-like context, role can be “high school student” while archetype can be “Unrequited Crush”.
+                  Pick up to {MAX_CHARACTER_ROLES} factual roles. Put smaller details in the summary or tags.
                 </p>
               </div>
-              <div className="rounded-xl border border-purple-500/20 bg-purple-950/15 p-3 sm:col-span-2">
-                <div className="mb-2 flex items-start gap-2">
+              <div className="min-w-0 rounded-xl border border-purple-500/20 bg-purple-950/15 p-3 sm:col-span-2 sm:p-3.5">
+                <div className="mb-3 flex items-start gap-2">
                   <Info className="mt-0.5 h-4 w-4 shrink-0 text-purple-300/80" />
-                  <p className="text-xs leading-relaxed text-white/60">
-                    If LoreBook guessed the wrong archetype, click the pencil and correct it here. Your edit updates this
+                  <p className="min-w-0 text-xs leading-relaxed text-white/60">
+                    If LoreBook guessed the wrong archetypes, click the pencil and correct them here. Your edit updates this
                     character and is saved as a learning signal so future entity detection can use your correction.
                   </p>
                 </div>
@@ -1157,16 +1310,19 @@ export function CharacterInfoPanel({
                   value={archetypeValue}
                   displayValue={archetypeValue ? humanizeType(archetypeValue) : null}
                   source={archetypeSource}
-                  variant="select"
+                  variant="multi-select"
                   options={archetypeOptions}
+                  maxSelections={MAX_CHARACTER_ARCHETYPES}
                   emptyHint="Click to set archetype"
                   icon={<Sparkles className="h-3.5 w-3.5 text-purple-300" />}
                   onSave={persistArchetype}
                 />
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">
-                    {currentArchetypePreset?.description && (
-                      <p className="text-[11px] leading-relaxed text-white/45">{currentArchetypePreset.description}</p>
+                    {currentArchetypePresets.length > 0 && (
+                      <p className="text-[11px] leading-relaxed text-white/45">
+                        {currentArchetypePresets.map((preset) => `${preset.label}: ${preset.description}`).join(' ')}
+                      </p>
                     )}
                     {autoArchetypeMessage && (
                       <p className="mt-1 text-[11px] leading-relaxed text-purple-200/75">{autoArchetypeMessage}</p>
@@ -1176,7 +1332,7 @@ export function CharacterInfoPanel({
                     type="button"
                     onClick={() => void autoDetectArchetype('manual')}
                     disabled={autoArchetypeLoading}
-                    className="inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-purple-400/25 bg-purple-500/10 px-3 py-1.5 text-xs font-medium text-purple-200 hover:bg-purple-500/20 disabled:opacity-60"
+                    className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-xs font-medium text-purple-200 hover:bg-purple-500/20 disabled:opacity-60 sm:w-auto"
                   >
                     {autoArchetypeLoading ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1187,7 +1343,7 @@ export function CharacterInfoPanel({
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-white/35">
-                  Presets come from the same vocabulary used by automatic context detection.
+                  Pick up to {MAX_CHARACTER_ARCHETYPES} story archetypes. The first one remains the primary signal for older views.
                 </p>
               </div>
               <EditableField

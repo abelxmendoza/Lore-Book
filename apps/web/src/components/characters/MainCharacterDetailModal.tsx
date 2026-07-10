@@ -20,6 +20,7 @@ import {
   Target,
   Loader2,
   RefreshCw,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
@@ -29,6 +30,7 @@ import { CharacterDetailModal } from './CharacterDetailModal';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
+import { CharacterMediaPanel } from './CharacterMediaPanel';
 import type { Character } from './CharacterProfileCard';
 import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
 import { useMainCharacterProfile } from '../../hooks/useMainCharacterProfile';
@@ -53,6 +55,7 @@ const MAIN_CHARACTER_TABS = [
   { value: 'people', label: 'Your People', shortLabel: 'People', icon: Users },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'lore', label: 'What Lore Knows', shortLabel: 'Lore', icon: Brain },
+  { value: 'photos', label: 'Your Photos', shortLabel: 'Photos', icon: ImageIcon },
   { value: 'memories', label: 'Memories', shortLabel: 'Mem', icon: Sparkles },
   { value: 'chat', label: 'Talk to Lore', shortLabel: 'Chat', icon: MessageSquare },
 ] as const;
@@ -483,7 +486,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
             </div>
 
             <TabsList
-              className="mt-2 grid h-auto w-full max-w-full shrink-0 grid-cols-3 gap-1 border border-amber-500/25 bg-black/45 p-1 sm:mt-3 sm:grid-cols-6"
+              className="mt-2 grid h-auto w-full max-w-full shrink-0 grid-cols-4 gap-1 border border-amber-500/25 bg-black/45 p-1 sm:mt-3 sm:grid-cols-7"
               aria-label="Your profile sections"
             >
               {MAIN_CHARACTER_TABS.map(({ value, label, shortLabel, icon: Icon }) => (
@@ -793,6 +796,48 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                   initialData={knowledgeInitialData}
                   isSelfProfile
                   onAskInChat={(prompt) => openSelfChat(prompt)}
+                />
+              </TabsContent>
+
+              {/* Photos — selfies & photos of you */}
+              <TabsContent value="photos" className={`${tabPanelClass} space-y-3`}>
+                {(() => {
+                  const look = (profile.character.metadata as Record<string, unknown> | undefined)?.look_profile as
+                    | { traits?: string[]; lastUpdated?: string; confidence?: number }
+                    | undefined;
+                  const traits = look?.traits ?? [];
+                  return traits.length > 0 ? (
+                    <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/80 mb-1.5">
+                        How LoreBook sees you
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {traits.map((t) => (
+                          <Badge
+                            key={t}
+                            variant="outline"
+                            className="text-[10px] border-amber-500/30 text-amber-100/90"
+                          >
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+                      {look?.lastUpdated && (
+                        <p className="mt-2 text-[10px] text-white/40">
+                          Updated {formatMemoryDate(look.lastUpdated)}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-white/50 px-1">
+                      Selfies and photos of you land here. LoreBook learns appearance traits over time.
+                    </p>
+                  );
+                })()}
+                <CharacterMediaPanel
+                  characterId={profile.character.id}
+                  characterName={displayName}
+                  kind="photo"
                 />
               </TabsContent>
 
