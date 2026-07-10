@@ -16,6 +16,8 @@ import {
   flagMergedTextSnippets,
   withMergeReviewMetadata,
 } from '../utils/mergeReview';
+import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
+import { assertEntityMergeAuthorized, type MergeAuthorization } from './entities/entityTypeCompatibility';
 
 interface OrgRow {
   id: string;
@@ -154,7 +156,12 @@ class OrganizationMergeService {
     return byName ? (byName as { id: string }).id : null;
   }
 
-  async merge(userId: string, primaryId: string, duplicateIds: string[]): Promise<OrgMergeReport> {
+  async merge(
+    userId: string,
+    primaryId: string,
+    duplicateIds: string[],
+    opts: { reason?: string; evidenceIds?: string[]; resolverVersion?: string } = {},
+  ): Promise<OrgMergeReport> {
     // Resolve to the canonical `organizations` authority before lookups.
     const resolvedPrimary = await this.resolveCanonicalOrganizationId(userId, primaryId);
     if (resolvedPrimary) primaryId = resolvedPrimary;
@@ -181,10 +188,11 @@ class OrganizationMergeService {
       .single();
     if (!primary) throw new Error('Primary organization not found');
 
-    let aliases = new Set<string>([...(primary.aliases ?? [])]);
+    const aliases = new Set<string>([...(primary.aliases ?? [])]);
     let metadata: Record<string, unknown> = { ...(primary.metadata ?? {}) };
     let description: string | undefined = primary.description ?? undefined;
     const absorbedNames: string[] = [];
+    const authorizations = new Map<string, MergeAuthorization>();
 
     for (const dupId of duplicateIds) {
       if (dupId === primaryId) continue;
@@ -195,6 +203,20 @@ class OrganizationMergeService {
         .eq('user_id', userId)
         .single();
       if (!dup) continue;
+      try {
+        authorizations.set(dupId, assertEntityMergeAuthorized({
+          sourceType: 'ORGANIZATION',
+          targetType: 'ORGANIZATION',
+          reason: opts.reason ?? `Merged organization "${dup.name}" into "${primary.name}"`,
+          evidenceIds: opts.evidenceIds?.length ? opts.evidenceIds : [`user-merge-request:${dupId}:${primaryId}`],
+          resolverVersion: opts.resolverVersion,
+          actor: 'USER',
+        }));
+      } catch (error) {
+        incrementEntityResolutionMetric('merge_authorization_failures');
+        incrementEntityResolutionMetric('merge_attempts_blocked');
+        throw error;
+      }
       absorbedNames.push(dup.name);
 
       await this.mergeEntityFacts(userId, dupId, primaryId, report);
@@ -245,6 +267,22 @@ class OrganizationMergeService {
       }
 
       await supabaseAdmin.from('organizations').delete().eq('id', dupId).eq('user_id', userId);
+      const authorization = authorizations.get(dupId)!;
+      await supabaseAdmin.from('entity_merge_records').insert({
+        user_id: userId,
+        source_entity_id: dupId,
+        target_entity_id: primaryId,
+        source_entity_type: 'ORG',
+        target_entity_type: 'ORG',
+        merged_by: 'USER',
+        reason: opts.reason ?? `Merged organization "${dup.name}" into "${primary.name}"`,
+        metadata: {
+          merge_authorized: true,
+          merge_authorization_reason: authorization.authorizationReason,
+          resolver_version: authorization.resolverVersion,
+          evidence_ids: authorization.evidenceIds,
+        },
+      });
       report.merged_ids.push(dupId);
     }
 
@@ -284,7 +322,7 @@ class OrganizationMergeService {
         newValue: { id: primaryId, canonical_name: primary.name, aliases: aliasList },
         reason: `Merged ${report.merged_ids.length} organization(s) into "${primary.name}"`,
         source: 'USER',
-        metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags },
+        metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags, mergeAuthorizations: [...authorizations.values()] },
       });
 
       report.merged_ids.forEach((sourceId, index) => {

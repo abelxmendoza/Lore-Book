@@ -187,6 +187,40 @@ describe('OmegaMemoryService', () => {
       expect(result).toHaveLength(2);
       expect(result.map(r => r.primary_name)).toEqual(['Alice', 'Paris']);
     });
+
+    it('production core never resolves Prima AI or China to seeded person candidates and replays idempotently', async () => {
+      vi.stubEnv('ENTITY_RESOLUTION_CORE', 'on');
+      const contaminatedRetrievalPool = [
+        { id: 'cousin-james', primary_name: 'Cousin James', aliases: ['Prima AI'], type: 'PERSON', user_id: 'user-1' },
+        { id: 'mr-chino', primary_name: 'Mr. Chino', aliases: ['China'], type: 'PERSON', user_id: 'user-1' },
+      ];
+      // Deliberately return cross-type rows even though production DB queries
+      // filter by type. This red-teams retrieval: authorization still rejects.
+      mockFrom.mockReturnValue(makeChain({ data: contaminatedRetrievalPool }));
+      vi.spyOn(svc, 'findEntityByNameOrAlias').mockResolvedValue(null);
+      const create = vi.spyOn(svc, 'createEntity').mockImplementation(async (userId, name, type) => ({
+        id: name === 'Prima AI' ? 'prima-ai' : 'china',
+        user_id: userId,
+        primary_name: name,
+        aliases: [],
+        type,
+        created_at: '2026-07-10T00:00:00.000Z',
+        updated_at: '2026-07-10T00:00:00.000Z',
+      }));
+
+      const input = [
+        { name: 'Prima AI', type: 'APP' as const },
+        { name: 'China', type: 'LOCATION' as const },
+      ];
+      const first = await svc.resolveEntities('user-1', input);
+      const replay = await svc.resolveEntities('user-1', input);
+
+      expect(first.map((entity) => entity.id)).toEqual(['prima-ai', 'china']);
+      expect(replay.map((entity) => entity.id)).toEqual(['prima-ai', 'china']);
+      expect([...first, ...replay].some((entity) => ['cousin-james', 'mr-chino'].includes(entity.id))).toBe(false);
+      expect(create).toHaveBeenCalledWith('user-1', 'Prima AI', 'APP', [], expect.any(Object));
+      expect(create).toHaveBeenCalledWith('user-1', 'China', 'LOCATION', [], expect.any(Object));
+    });
   });
 
   // ─── findEntityByNameOrAlias ──────────────────────────────────────────────

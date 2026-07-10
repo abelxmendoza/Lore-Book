@@ -3,6 +3,7 @@ import { logger } from '../../logger';
 import { EntityNormalizer } from './entityNormalizer';
 import { FuzzyMatcher } from './fuzzyMatcher';
 import type { ExtractedEntity, ResolvedEntity } from './types';
+import { isMatchVetoedByType } from './entityTypeCompatibility';
 
 /**
  * Detects duplicate entities using fuzzy matching
@@ -32,6 +33,7 @@ export class DuplicateDetector {
 
         // Check against existing entities
         for (const ex of existing) {
+          if (isMatchVetoedByType(ent.type, ex.type)) continue;
           // Check canonical name
           const exNormalized = this.normalizer.normalize(ex.canonical);
           if (this.matcher.isDuplicate(normalized, exNormalized)) {
@@ -63,4 +65,3 @@ export class DuplicateDetector {
     }
   }
 }
-

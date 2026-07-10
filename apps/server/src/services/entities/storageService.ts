@@ -114,7 +114,7 @@ export class EntityStorage {
   /**
    * Update entity aliases
    */
-  async updateAliases(entityId: string, aliases: string[]): Promise<void> {
+  async updateAliases(userId: string, entityId: string, aliases: string[]): Promise<void> {
     try {
       const { error } = await supabaseAdmin
         .from('entities')
@@ -122,7 +122,8 @@ export class EntityStorage {
           aliases,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', entityId);
+        .eq('id', entityId)
+        .eq('user_id', userId);
 
       if (error) {
         logger.error({ error, entityId }, 'Failed to update aliases');
@@ -132,4 +133,3 @@ export class EntityStorage {
     }
   }
 }
-

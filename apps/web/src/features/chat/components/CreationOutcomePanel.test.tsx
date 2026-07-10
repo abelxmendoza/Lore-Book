@@ -62,6 +62,22 @@ describe('CreationOutcomePanel', () => {
     expect(screen.getByRole('button', { name: /Started a record for Juan/i })).toBeInTheDocument();
   });
 
+  it('labels existing-record resolution separately from an identity merge', () => {
+    render(
+      <MemoryRouter>
+        <CreationOutcomePanel
+          messageId="msg-1"
+          outcomes={[
+            { mention: 'Prima', action: 'merge', entityId: 'tool-1', entityName: 'Prima AI', authority: 'core' },
+          ]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('button', { name: /Resolved Prima as Prima AI/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Linked Prima/i)).not.toBeInTheDocument();
+  });
+
   it('hides reject-only outcomes', () => {
     const { container } = render(
       <MemoryRouter>

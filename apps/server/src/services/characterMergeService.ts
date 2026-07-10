@@ -32,6 +32,8 @@ import {
 import { omegaMemoryService } from './omegaMemoryService';
 import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
+import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
+import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
 
 export interface MergeReport {
   sourceId: string;
@@ -204,7 +206,7 @@ class CharacterMergeService {
     userId: string,
     sourceId: string,
     targetId: string,
-    opts: { mergedBy?: 'SYSTEM' | 'USER'; reason?: string } = {}
+    opts: { mergedBy?: 'SYSTEM' | 'USER'; reason?: string; evidenceIds?: string[]; resolverVersion?: string } = {}
   ): Promise<MergeReport> {
     // Resolve both ids to the canonical `characters` authority before any check.
     const [resolvedSource, resolvedTarget] = await Promise.all([
@@ -223,6 +225,26 @@ class CharacterMergeService {
     let target = targetData as CharRow | null;
     if (!source) throw new Error('Source character not found');
     if (!target) throw new Error('Target character not found');
+
+    const actor = opts.mergedBy ?? 'USER';
+    const mergeReason = opts.reason ?? `Merged "${source.name}" into "${target.name}"`;
+    let mergeAuthorization;
+    try {
+      mergeAuthorization = assertEntityMergeAuthorized({
+        sourceType: 'CHARACTER',
+        targetType: 'CHARACTER',
+        reason: mergeReason,
+        evidenceIds: opts.evidenceIds?.length
+          ? opts.evidenceIds
+          : [`${actor.toLowerCase()}-merge-request:${sourceId}:${targetId}`],
+        resolverVersion: opts.resolverVersion,
+        actor,
+      });
+    } catch (error) {
+      incrementEntityResolutionMetric('merge_authorization_failures');
+      incrementEntityResolutionMetric('merge_attempts_blocked');
+      throw error;
+    }
 
     const targetIsSelf = target.metadata?.is_self === true || target.metadata?.is_user === true;
     const sourceIsSelf = source.metadata?.is_self === true || source.metadata?.is_user === true;
@@ -301,6 +323,12 @@ class CharacterMergeService {
       target_entity_type: 'CHARACTER',
       merged_by: opts.mergedBy ?? 'USER',
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      metadata: {
+        merge_authorized: true,
+        merge_authorization_reason: mergeAuthorization.authorizationReason,
+        resolver_version: mergeAuthorization.resolverVersion,
+        evidence_ids: mergeAuthorization.evidenceIds,
+      },
     }).then(({ error }) => {
       if (error) logger.debug({ error }, '[CharacterMerge] merge record insert failed');
     });
@@ -331,7 +359,7 @@ class CharacterMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: opts.mergedBy ?? 'USER',
-      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore },
+      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore, mergeAuthorization },
     });
 
     void entityLearningService.recordMergeLearning({

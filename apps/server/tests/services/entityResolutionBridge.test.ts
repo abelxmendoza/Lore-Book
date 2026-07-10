@@ -62,8 +62,8 @@ describe('entityResolutionBridge', () => {
   });
 
   it('findLegacyPoolMatch resolves exact and alias hits', () => {
-    expect(findLegacyPoolMatch('Grandma Rose', [abuelaEntity]).method).toBe('exact');
-    expect(findLegacyPoolMatch('Abuela', [abuelaEntity]).method).toBe('alias');
+    expect(findLegacyPoolMatch('Grandma Rose', [abuelaEntity], 'CHARACTER').method).toBe('exact');
+    expect(findLegacyPoolMatch('Abuela', [abuelaEntity], 'CHARACTER').method).toBe('alias');
   });
 
   it('shadow mode logs disagreement when core resolves kinship legacy would create', () => {
@@ -117,21 +117,21 @@ describe('entityResolutionBridge', () => {
 
   it('Daisy resolves to Hell Fairy only when alias exists', () => {
     const withAlias = resolveMention('Daisy', [
-      { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'] },
-    ]);
+      { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'], type: 'PERSON' },
+    ], {}, 'PERSON');
     expect(withAlias.resolvedId).toBe('e-hf');
 
     const withoutAlias = resolveMention('Daisy', [
-      { id: 'e-hf2', name: 'Velvet Hour', aliases: ['Hell Fairy'] },
-    ]);
+      { id: 'e-hf2', name: 'Velvet Hour', aliases: ['Hell Fairy'], type: 'PERSON' },
+    ], {}, 'PERSON');
     expect(withoutAlias.resolvedId).toBeNull();
   });
 
   it('compareLegacyAndCore marks agreement when both resolve same entity', () => {
-    const legacy = findLegacyPoolMatch('Abuela', [abuelaEntity]);
+    const legacy = findLegacyPoolMatch('Abuela', [abuelaEntity], 'CHARACTER');
     const core = resolveMention('Abuela', [
-      { id: abuelaEntity.id, name: abuelaEntity.primary_name, aliases: abuelaEntity.aliases },
-    ]);
+      { id: abuelaEntity.id, name: abuelaEntity.primary_name, aliases: abuelaEntity.aliases, type: 'PERSON' },
+    ], {}, 'PERSON');
     const comparison = compareLegacyAndCore('Abuela', 'CHARACTER', legacy, core);
     expect(comparison.agreement).toBe(true);
   });
@@ -139,12 +139,12 @@ describe('entityResolutionBridge', () => {
 
 describe('Entity variant battery (duplicate analysis fixtures)', () => {
   const pool: ResolutionCandidate[] = [
-    { id: 'e-abuela', name: 'Grandma Rose', aliases: ['Abuela', 'Abuelita', 'grandma'] },
-    { id: 'e-tiojuan', name: 'Uncle James', aliases: ['Juan', 'Tio Juan', 'Tío Juan'], relatedEntityIds: ['e-abuela'] },
-    { id: 'e-oscuri', name: 'Juan', aliases: [], relatedEntityIds: ['e-club'] },
-    { id: 'e-andrew', name: 'Andrew', aliases: ['Andy'] },
-    { id: 'e-ashley', name: 'Ashley', aliases: ['Ash'] },
-    { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'] },
+    { id: 'e-abuela', name: 'Grandma Rose', aliases: ['Abuela', 'Abuelita', 'grandma'], type: 'PERSON' },
+    { id: 'e-tiojuan', name: 'Uncle James', aliases: ['Juan', 'Tio Juan', 'Tío Juan'], relatedEntityIds: ['e-abuela'], type: 'PERSON' },
+    { id: 'e-oscuri', name: 'Juan', aliases: [], relatedEntityIds: ['e-club'], type: 'PERSON' },
+    { id: 'e-andrew', name: 'Andrew', aliases: ['Andy'], type: 'PERSON' },
+    { id: 'e-ashley', name: 'Ashley', aliases: ['Ash'], type: 'PERSON' },
+    { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'], type: 'PERSON' },
   ];
 
   const variants: Array<{ label: string; mention: string; expectedId: string | null }> = [
@@ -161,7 +161,7 @@ describe('Entity variant battery (duplicate analysis fixtures)', () => {
   ];
 
   it.each(variants)('$label → core resolves without duplicate create', ({ mention, expectedId }) => {
-    const result = resolveMention(mention, pool);
+    const result = resolveMention(mention, pool, {}, 'PERSON');
     if (expectedId) {
       expect(result.action).toBe('resolve');
       expect(result.resolvedId).toBe(expectedId);

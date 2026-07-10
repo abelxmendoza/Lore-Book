@@ -55,8 +55,8 @@ function describeOutcome(outcome: CreationOutcome): string {
   if (outcome.action === 'create') return `Started a record for ${outcome.mention}`;
   if (outcome.action === 'merge') {
     return outcome.entityName
-      ? `Linked ${outcome.mention} to ${outcome.entityName}`
-      : `Linked ${outcome.mention} to an existing record`;
+      ? `Resolved ${outcome.mention} as ${outcome.entityName}`
+      : `Resolved ${outcome.mention} as an existing record`;
   }
   if (outcome.action === 'defer') {
     const count = outcome.candidates?.length ?? 0;

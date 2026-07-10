@@ -433,7 +433,7 @@ const SidebarContent = ({
             Entities
           </button>
 
-          {/* Admin — visible in main nav for owner/admin/developer (server authority) */}
+          {/* Admin platform tools — the Admin Console entry remains in the sticky footer. */}
           {userIsAdmin && (
             <div className="mt-4" data-testid="sidebar-admin-section">
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-primary/70 px-1">
@@ -441,30 +441,11 @@ const SidebarContent = ({
               </p>
               <button
                 type="button"
-                onClick={() => { navigate('/admin'); onMobileDrawerClose?.(); }}
-                aria-label="Open admin console"
-                aria-current={isActiveRoute('/admin') ? 'page' : undefined}
-                data-testid="sidebar-admin-console"
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all",
-                  isActiveRoute('/admin')
-                    ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/15'
-                    : 'border-primary/50 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20'
-                )}
-              >
-                <Settings className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Admin Console</span>
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-wide bg-primary/25 text-primary px-2 py-0.5 rounded-full border border-primary/40">
-                  Admin
-                </span>
-              </button>
-              <button
-                type="button"
                 onClick={() => { navigate('/ontology'); onMobileDrawerClose?.(); }}
                 aria-label="Open ontology explorer"
                 aria-current={isActiveRoute('/ontology') ? 'page' : undefined}
                 className={cn(
-                  "mt-2 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
                   isActiveRoute('/ontology')
                     ? 'border-primary bg-primary/10 text-white'
                     : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'

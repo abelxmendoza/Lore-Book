@@ -253,7 +253,8 @@ class CharacterRegistry {
       const coreResult = resolveMention(
         cleanName,
         resolutionExisting.map(characterToResolutionCandidate),
-        options?.context ?? {}
+        options?.context ?? {},
+        'PERSON',
       );
       const coreDecision = await this.classifyWithCore(userId, cleanName, rawName, resolutionExisting, hasDistinctnessCue, options?.context);
       logCharacterCreationShadowComparison(
@@ -345,7 +346,8 @@ class CharacterRegistry {
     const coreResult = resolveMention(
       cleanName,
       existing.map(characterToResolutionCandidate),
-      context ?? {}
+      context ?? {},
+      'PERSON',
     );
     const coreAction = characterCreationActionFromCore(coreResult);
 

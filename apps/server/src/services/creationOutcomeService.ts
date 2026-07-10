@@ -102,7 +102,9 @@ export function summarizeCreationOutcomes(outcomes: CreationOutcome[]): string |
     if (o.action === 'create') {
       parts.push(`started a record for ${o.mention}`);
     } else if (o.action === 'merge' && o.entityName) {
-      parts.push(`linked ${o.mention} to existing ${o.entityName}`);
+      // Creation protocol "merge" means mention resolution, not a persisted
+      // identity merge. Keep user-facing mutation semantics unambiguous.
+      parts.push(`resolved ${o.mention} as existing ${o.entityName}`);
     } else if (o.action === 'defer') {
       parts.push(`needs clarification on ${o.mention}`);
     }

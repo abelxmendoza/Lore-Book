@@ -76,6 +76,14 @@ const PLACES = new Set([
   'riverside', 'anaheim', 'long beach', 'pasadena', 'irvine', 'santa ana', 'fontana',
   'rancho cucamonga', 'corona', 'temecula', 'ontario', 'pomona', 'fullerton',
   'california', 'texas', 'florida', 'arizona', 'nevada', 'mexico',
+  // Canonical country protection. These are ontology data, not one-off merge
+  // blocks: a known geographic label is typed before person-name matching.
+  'argentina', 'australia', 'brazil', 'canada', 'chile', 'china', 'colombia',
+  'costa rica', 'cuba', 'dominican republic', 'ecuador', 'egypt', 'el salvador',
+  'france', 'germany', 'guatemala', 'honduras', 'india', 'indonesia', 'ireland',
+  'italy', 'japan', 'mexico', 'nicaragua', 'nigeria', 'panama', 'peru',
+  'philippines', 'portugal', 'puerto rico', 'south korea', 'spain', 'taiwan',
+  'thailand', 'united kingdom', 'united states', 'venezuela', 'vietnam',
 ]);
 
 const VENUES = new Set(
@@ -93,7 +101,7 @@ const GEO_SUFFIX = /\b(valley|hills?|heights|springs?|beach|city|lake|mountains?
 const VENUE_SUFFIX = /\b(house|home|apartment|apt|gym|studio|cafe|coffee|restaurant|bar|club|school|hospital|mall|store|shop|market|station|office|library|museum|stadium|arena|university|college|campus|building|tower|center|centre|church|temple|airport)$/i;
 const HOUSEHOLD_RE = /^(.{1,80}?)['’]s\s+(house|home|place|apartment|apt|crib|pad|spot)$/i;
 const GROUP_RE = /^(?:the\s{1,40})?(.{1,80}?)\s{1,40}(family|familia|crew|team|band|squad|gang|group|collective|household)$/i;
-const EVENT_RE = /\b(party|wedding|graduation|funeral|birthday|reunion|quincea[nñ]era|barbecue|bbq|gathering|ceremony|celebration|memorial|baptism|anniversary)$/i;
+const EVENT_RE = /\b(party|wedding|graduation|funeral|birthday|reunion|quincea[nñ]era|barbecue|bbq|gathering|ceremony|celebration|memorial|baptism|anniversary|expo|conference|convention|festival|summit)$/i;
 const HONORIFIC_WITH_NAME_RE =
   /^(?:t[íi]o|t[íi]a|uncle|aunt|auntie|coach|pastor|mr|mrs|ms|miss|dr|prof|professor|principal|officer|captain|mayor|president|senator|judge|dean|dj|abuela|abuelo|grandma|grandpa)\.?\s+[A-ZÀ-Ý]/i;
 
@@ -103,6 +111,7 @@ function personContextEvidence(name: string, context?: string): boolean {
   const ctx = context;
   if (new RegExp(`\\bmy\\s+(friend|cousin|brother|sister|mom|mother|dad|father|coworker|colleague|boss|manager|girlfriend|boyfriend|partner|wife|husband|uncle|aunt|t[íi]o|t[íi]a|roommate|neighbou?r|buddy|homie|ex)\\s+${n}\\b`, 'i').test(ctx)) return true;
   if (new RegExp(`\\b${n}\\s+(said|told|asked|texted|called|replied|mentioned|laughed|smiled|cried|came over|showed up|agreed|invited|hugged|drove|works|lives|loves|likes|thinks|feels|is my|was my)\\b`, 'i').test(ctx)) return true;
+  if (new RegExp(`\\b${n}\\s+is\\s+(?:an?\\s+)?(?:[a-z-]+\\s+){0,3}(?:engineer|contractor|coder|developer|technician|manager|lead|coworker|colleague|friend|student|teacher|designer|doctor|nurse)\\b`, 'i').test(ctx)) return true;
   if (new RegExp(`\\b(t[íi]o|t[íi]a|uncle|aunt|cousin|mr|mrs|ms|dr)\\s+${n}\\b`, 'i').test(ctx)) return true;
   return false;
 }
@@ -113,6 +122,21 @@ export function classifyEntity(name: string, context?: string): Classification {
   const lower = norm(raw);
   const lastWord = lower.split(' ').pop() ?? '';
   const variants = normVariants(raw);
+
+  if (context) {
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const toolContext = new RegExp(`(?:chatbot|software|app|application|tool|platform)\\s+(?:called\\s+|named\\s+)?${escaped}\\b|${escaped}\\s+(?:chatbot|software|app|application|tool|platform)\\b`, 'i');
+    if (toolContext.test(context)) return result('APP', 0.95, 'software/tool noun-phrase context');
+
+    const schoolContext = new RegExp(`(?:master(?:'s|’s)?|degree|graduated|studied|school|college|university)(?:\\s+[^.!?]{0,80})?\\s+(?:from|at)\\s+${escaped}\\b`, 'i');
+    if (schoolContext.test(context)) return result('ORGANIZATION', 0.93, 'school/degree context', 'school');
+
+    const productContext = new RegExp(`${escaped}\\s+(?:camera|cameras|device|devices|product|products)\\b`, 'i');
+    if (productContext.test(context)) return result('PRODUCT', 0.92, 'product noun-phrase context');
+
+    const organizationContext = new RegExp(`(?:work|worked|working)\\s+(?:at|for)\\s+${escaped}\\b`, 'i');
+    if (organizationContext.test(context)) return result('ORGANIZATION', 0.9, 'employment organization context');
+  }
 
   const APPS = glossaryAppsLexicon();
   const FOOD_DRINKS = glossaryFoodDrinkLexicon();

@@ -9,6 +9,8 @@ import { logger } from '../logger';
 import { correctionDashboardService } from './correctionDashboardService';
 import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
+import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
+import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
 
 export type EntityType = 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ORG' | 'CONCEPT' | 'PERSON';
 export type ConflictReason =
@@ -384,7 +386,8 @@ export class EntityResolutionService {
     targetId: string,
     sourceType: EntityType,
     targetType: EntityType,
-    reason: string
+    reason: string,
+    options: { evidenceIds?: string[]; resolverVersion?: string } = {}
   ): Promise<void> {
     try {
       // Get source entity before merge
@@ -393,6 +396,24 @@ export class EntityResolutionService {
 
       if (!sourceEntity || !targetEntity) {
         throw new Error('Source or target entity not found');
+      }
+
+      let authorization;
+      try {
+        authorization = assertEntityMergeAuthorized({
+          sourceType,
+          targetType,
+          reason,
+          evidenceIds: options.evidenceIds?.length
+            ? options.evidenceIds
+            : [`user-confirmation:${sourceId}:${targetId}`],
+          resolverVersion: options.resolverVersion,
+          actor: 'USER',
+        });
+      } catch (error) {
+        incrementEntityResolutionMetric('merge_authorization_failures');
+        incrementEntityResolutionMetric('merge_attempts_blocked');
+        throw error;
       }
 
       const beforeSnapshot = { ...sourceEntity };
@@ -415,6 +436,14 @@ export class EntityResolutionService {
           merged_by: 'USER',
           reason,
           reversible: true,
+          metadata: {
+            merge_authorized: true,
+            merge_authorization_reason: authorization.authorizationReason,
+            resolver_version: authorization.resolverVersion,
+            evidence_ids: authorization.evidenceIds,
+            source_normalized_type: authorization.expectedType,
+            target_normalized_type: authorization.candidateType,
+          },
         });
 
       if (mergeError) {
@@ -971,4 +1000,3 @@ export class EntityResolutionService {
 }
 
 export const entityResolutionService = new EntityResolutionService();
-

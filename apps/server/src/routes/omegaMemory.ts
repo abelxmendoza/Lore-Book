@@ -168,7 +168,7 @@ router.post('/suggestions/:id/approve', requireAuth, async (req: AuthenticatedRe
  */
 router.post('/entities/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { source_entity_id, target_entity_id } = req.body;
+    const { source_entity_id, target_entity_id, reason, evidence_ids } = req.body;
 
     if (!source_entity_id || !target_entity_id) {
       return res.status(400).json({ error: 'source_entity_id and target_entity_id are required' });
@@ -177,13 +177,19 @@ router.post('/entities/merge', requireAuth, async (req: AuthenticatedRequest, re
     const result = await omegaMemoryService.mergeEntities(
       req.user!.id,
       source_entity_id,
-      target_entity_id
+      target_entity_id,
+      {
+        actor: 'USER',
+        reason: typeof reason === 'string' ? reason : 'User-confirmed omega entity merge',
+        evidenceIds: Array.isArray(evidence_ids) ? evidence_ids.filter((id): id is string => typeof id === 'string') : undefined,
+      }
     );
 
     res.json(result);
   } catch (error) {
     logger.error({ err: error }, 'Failed to merge entities');
-    res.status(500).json({ error: 'Failed to merge entities' });
+    const code = (error as { code?: string }).code;
+    res.status(code === 'ENTITY_MERGE_NOT_AUTHORIZED' ? 409 : 500).json({ error: 'Failed to merge entities', code });
   }
 });
 
@@ -233,4 +239,3 @@ router.patch('/claims/:id', requireAuth, async (req: AuthenticatedRequest, res) 
 });
 
 export const omegaMemoryRouter = router;
-

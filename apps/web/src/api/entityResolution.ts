@@ -61,6 +61,30 @@ export interface EntityResolutionDashboardData {
   merge_history: EntityMergeRecord[];
 }
 
+export interface IdentityIntegrityFinding {
+  findingId: string;
+  userId: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  findingType: string;
+  sourceEntityId: string | null;
+  targetEntityId: string | null;
+  sourceType: string | null;
+  targetType: string | null;
+  evidenceIds: string[];
+  mutationIds: string[];
+  explanation: string;
+  recommendedAction: string;
+  repairableAutomatically: boolean;
+}
+
+export interface IdentityIntegrityScan {
+  dryRun: true;
+  scannedAt: string;
+  findings: IdentityIntegrityFinding[];
+  queryCount: number;
+  nextCursor: string | null;
+}
+
 export interface MergePreview {
   aliases_union: string[];
   references_to_move: number;
@@ -70,6 +94,22 @@ export interface MergePreview {
 }
 
 export const entityResolutionApi = {
+  async scanIntegrity(limit = 200): Promise<IdentityIntegrityScan> {
+    const result = await fetchJson<{ success: boolean; data: IdentityIntegrityScan }>(
+      `/api/entity-resolution/integrity/scan?limit=${Math.min(Math.max(limit, 1), 500)}`
+    );
+    if (!result.success) throw new Error('Failed to scan identity integrity');
+    return result.data;
+  },
+
+  async previewIntegrityRepair(findingId: string): Promise<unknown> {
+    const result = await fetchJson<{ success: boolean; plan: unknown }>(
+      '/api/entity-resolution/integrity/repair',
+      { method: 'POST', body: JSON.stringify({ finding_id: findingId, execute: false }) }
+    );
+    if (!result.success) throw new Error('Failed to preview identity correction');
+    return result.plan;
+  },
   /**
    * Get all dashboard data
    */
@@ -218,4 +258,3 @@ export const entityResolutionApi = {
     }
   },
 };
-

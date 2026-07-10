@@ -19,6 +19,15 @@
 import { familyRoleSpecs } from '../ontology/glossary';
 
 import { classifyEntity, isCharacterEligible, type EntityClass } from './entityClassifier';
+import { incrementEntityResolutionMetric } from './entityResolutionMetrics';
+import {
+  ENTITY_RESOLVER_VERSION,
+  areEntityTypesCompatible,
+  entityTypeFamily,
+  normalizeEntityType,
+  type EntityTypeFamily,
+  type NormalizedEntityType,
+} from './entityTypeCompatibility';
 
 export interface ResolutionCandidate {
   id: string;
@@ -52,6 +61,31 @@ export type ResolutionRecommendation = 'auto_resolve' | 'merge_suggestion' | 'cr
 
 export interface ScoredCandidate { id: string; name: string; score: number; reasons: string[]; }
 
+export interface RejectedResolutionCandidate {
+  entityId: string;
+  candidateType: NormalizedEntityType;
+  rejectionReason: 'ENTITY_TYPE_MISMATCH' | 'UNKNOWN_TYPE';
+}
+
+export interface EntityResolutionTrace {
+  mention: string;
+  mentionSpan: null;
+  contextSnippet: null;
+  extractedType: NormalizedEntityType;
+  normalizedTypeFamily: EntityTypeFamily;
+  typeConfidence: number;
+  candidateCount: number;
+  rejectedCandidates: RejectedResolutionCandidate[];
+  acceptedCandidates: string[];
+  selectedEntityId: string | null;
+  selectedMethod: string | null;
+  mergeAuthorized: boolean;
+  mergeAuthorizationReason: string | null;
+  finalAction: ResolutionAction;
+  abstentionReason: string | null;
+  resolverVersion: string;
+}
+
 export interface ResolutionResult {
   action: ResolutionAction;
   recommendation: ResolutionRecommendation;
@@ -59,6 +93,7 @@ export interface ResolutionResult {
   confidence: number;          // 0..1
   classification: EntityClass;
   ranked: ScoredCandidate[];   // best-first
+  trace: EntityResolutionTrace;
 }
 
 const HIGH_CONFIDENCE = 0.7;  // ≥ → auto-resolve
@@ -137,12 +172,64 @@ export function resolveMention(
   providedType?: string
 ): ResolutionResult {
   const classification = classifyEntity(mention).type;
+  const expectedType = normalizeEntityType(
+    providedType && providedType !== 'UNKNOWN' && providedType !== 'UNCLASSIFIED'
+      ? providedType
+      : classification
+  );
   const now = context.now ?? Date.now();
   const threadSet = new Set(context.threadEntityIds ?? []);
   const recentSet = new Set(context.recentEntityIds ?? []);
 
-  // Candidates that lexically match the mention.
-  const matches = candidates
+  const rejectedCandidates: RejectedResolutionCandidate[] = [];
+  const compatibleCandidates = candidates.filter((candidate) => {
+    const compatibility = areEntityTypesCompatible(expectedType, candidate.type);
+    // Only a KNOWN cross-family mismatch vetoes matching. Unknown types must
+    // not — untyped candidates are the common case, and rejecting them vetoed
+    // exact alias/kinship matches (the resolver skip-drop bug all over again).
+    // Persisted merges remain strictly gated in authorizeEntityMerge.
+    if (compatibility.reason === 'ENTITY_TYPE_MISMATCH') {
+      rejectedCandidates.push({
+        entityId: candidate.id,
+        candidateType: compatibility.candidateType,
+        rejectionReason: 'ENTITY_TYPE_MISMATCH',
+      });
+      return false;
+    }
+    return true;
+  });
+  if (rejectedCandidates.length > 0) {
+    incrementEntityResolutionMetric('cross_type_candidates_retrieved', rejectedCandidates.length);
+    incrementEntityResolutionMetric('cross_type_candidates_rejected', rejectedCandidates.length);
+  }
+
+  const buildTrace = (params: {
+    action: ResolutionAction;
+    selectedEntityId?: string | null;
+    selectedMethod?: string | null;
+    acceptedCandidates?: string[];
+    abstentionReason?: string | null;
+  }): EntityResolutionTrace => ({
+    mention,
+    mentionSpan: null,
+    contextSnippet: null,
+    extractedType: expectedType,
+    normalizedTypeFamily: entityTypeFamily(expectedType),
+    typeConfidence: providedType ? 0.9 : classification === 'UNKNOWN' || classification === 'UNCLASSIFIED' ? 0.2 : 0.75,
+    candidateCount: candidates.length,
+    rejectedCandidates,
+    acceptedCandidates: params.acceptedCandidates ?? compatibleCandidates.map((candidate) => candidate.id),
+    selectedEntityId: params.selectedEntityId ?? null,
+    selectedMethod: params.selectedMethod ?? null,
+    mergeAuthorized: false,
+    mergeAuthorizationReason: null,
+    finalAction: params.action,
+    abstentionReason: params.abstentionReason ?? null,
+    resolverVersion: ENTITY_RESOLVER_VERSION,
+  });
+
+  // Candidates that lexically match the mention after the hard type gate.
+  const matches = compatibleCandidates
     .map((c) => ({ c, lex: lexicalMatch(mention, c) }))
     .filter((x) => x.lex.matched);
 
@@ -157,7 +244,24 @@ export function resolveMention(
       !!providedType && providedType !== 'UNKNOWN' && providedType !== 'UNCLASSIFIED';
     const action: ResolutionAction = selfClassifiable || providedConcrete ? 'create' : 'skip';
     const conf = action === 'create' ? 0.6 : 0.1;
-    return { action, recommendation: recommend(action, conf), resolvedId: null, confidence: conf, classification, ranked: [] };
+    if (action === 'skip') incrementEntityResolutionMetric('resolution_abstentions');
+    else incrementEntityResolutionMetric('provisional_entities_created');
+    return {
+      action,
+      recommendation: recommend(action, conf),
+      resolvedId: null,
+      confidence: conf,
+      classification,
+      ranked: [],
+      trace: buildTrace({
+        action,
+        abstentionReason: action === 'skip'
+          ? 'UNKNOWN_EXPECTED_TYPE'
+          : rejectedCandidates.length > 0
+            ? 'NO_COMPATIBLE_CANDIDATE'
+            : null,
+      }),
+    };
   }
 
   // Absolute confidence of a lexical match kind (for the tier decision — a single
@@ -186,7 +290,7 @@ export function resolveMention(
     const imp = Math.log1p(c.mentions ?? 0) / Math.log1p(maxMentions);
     if (imp > 0) { score += 0.07 * imp; reasons.push('important'); }
     return { id: c.id, name: c.name, score: Number(score.toFixed(4)), reasons };
-  }).sort((a, b) => b.score - a.score);
+  }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
 
   const top = ranked[0];
   const second = ranked[1];
@@ -196,10 +300,27 @@ export function resolveMention(
     // Confidence for the TIER comes from the winner's match kind (absolute), not
     // the relative ranking score — a clear/single match is genuinely high-confidence.
     const confidence = kindConfidence(kindById.get(top.id) ?? 'none');
-    return { action: 'resolve', recommendation: recommend('resolve', confidence), resolvedId: top.id, confidence, classification, ranked };
+    return {
+      action: 'resolve', recommendation: recommend('resolve', confidence), resolvedId: top.id,
+      confidence, classification, ranked,
+      trace: buildTrace({
+        action: 'resolve',
+        selectedEntityId: top.id,
+        selectedMethod: kindById.get(top.id) ?? 'lexical',
+        acceptedCandidates: ranked.map((candidate) => candidate.id),
+      }),
+    };
   }
   // Too close to call → ambiguous; surface a merge suggestion rather than guess.
-  return { action: 'disambiguate', recommendation: recommend('disambiguate', top.score), resolvedId: null, confidence: top.score, classification, ranked };
+  incrementEntityResolutionMetric('resolution_abstentions');
+  return {
+    action: 'disambiguate', recommendation: recommend('disambiguate', top.score), resolvedId: null,
+    confidence: top.score, classification, ranked,
+    trace: buildTrace({
+      action: 'disambiguate', acceptedCandidates: ranked.map((candidate) => candidate.id),
+      abstentionReason: 'AMBIGUOUS_COMPATIBLE_CANDIDATES',
+    }),
+  };
 }
 
 /** Convenience: would this mention create a NEW character? (lore-aware guard) */

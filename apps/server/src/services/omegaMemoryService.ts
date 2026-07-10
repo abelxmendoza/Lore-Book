@@ -69,7 +69,10 @@ function uniqueEntities<T extends { name: string; type: EntityType; bornConfirme
  * Anything outside the known set stays UNKNOWN and is dropped, so generic tokens
  * ("band", "park", "scene") fall out instead of becoming PERSON.
  */
-const LLM_ENTITY_TYPES = new Set<EntityType>(['PERSON', 'CHARACTER', 'LOCATION', 'ORG', 'EVENT']);
+const LLM_ENTITY_TYPES = new Set<EntityType>([
+  'PERSON', 'CHARACTER', 'LOCATION', 'ORG', 'EVENT', 'PRODUCT', 'APP', 'BRAND',
+  'PROJECT', 'SKILL', 'PET', 'VEHICLE', 'MEDIA', 'FOOD_DRINK',
+]);
 function llmEntityType(raw: unknown): EntityType {
   const t = typeof raw === 'string' ? raw.toUpperCase().trim() : '';
   return (LLM_ENTITY_TYPES.has(t as EntityType) ? t : 'UNKNOWN') as EntityType;
@@ -300,7 +303,7 @@ export class OmegaMemoryService {
 
 The text is written in FIRST-PERSON. The narrator ("I" / "me" / "my") is the journal author — do NOT extract them as an entity.
 
-Extract all OTHER people, places, organizations, and events. Rules:
+Extract all OTHER people, places, organizations, events, projects, products, and software tools. Rules:
 - Named people: use their full name if known, first name only if that is all that was mentioned.
 - Unnamed people: generate a SHORT DESCRIPTIVE NICKNAME from context, like "the barista at Blue Bottle", "guy from the show who gave free shirt", "Abuela's neighbor with the dog". Keep it under 6 words and specific enough to be recognizable.
 - Aliases and nicknames: capture any alternate names mentioned (e.g. "Tío Juan" and "Uncle Juan" → aliases of each other).
@@ -310,7 +313,7 @@ Return JSON:
   "entities": [
     {
       "name": "entity name or descriptive nickname",
-      "type": "PERSON" | "CHARACTER" | "LOCATION" | "ORG" | "EVENT",
+      "type": "PERSON" | "CHARACTER" | "LOCATION" | "ORG" | "EVENT" | "PROJECT" | "PRODUCT" | "APP",
       "aliases": ["alternative names or nicknames"],
       "confidence": 0.0-1.0
     }
@@ -1472,7 +1475,13 @@ A contradiction means the claims cannot both be true at the same time.`
   async mergeEntities(
     userId: string,
     sourceEntityId: string,
-    targetEntityId: string
+    targetEntityId: string,
+    options: {
+      actor?: 'SYSTEM' | 'USER';
+      reason?: string;
+      evidenceIds?: string[];
+      resolverVersion?: string;
+    } = {}
   ): Promise<{ success: boolean; event_id?: string }> {
     try {
       // Get entities
@@ -1492,6 +1501,26 @@ A contradiction means the claims cannot both be true at the same time.`
 
       if (!sourceEntity || !targetEntity) {
         throw new Error('Entities not found');
+      }
+
+      const { assertEntityMergeAuthorized } = await import('./entities/entityTypeCompatibility');
+      const { incrementEntityResolutionMetric } = await import('./entities/entityResolutionMetrics');
+      let mergeAuthorization;
+      try {
+        mergeAuthorization = assertEntityMergeAuthorized({
+          sourceType: sourceEntity.type,
+          targetType: targetEntity.type,
+          reason: options.reason ?? 'User-confirmed omega entity merge',
+          evidenceIds: options.evidenceIds?.length
+            ? options.evidenceIds
+            : [`user-confirmation:${sourceEntityId}:${targetEntityId}`],
+          resolverVersion: options.resolverVersion,
+          actor: options.actor ?? 'USER',
+        });
+      } catch (error) {
+        incrementEntityResolutionMetric('merge_authorization_failures');
+        incrementEntityResolutionMetric('merge_attempts_blocked');
+        throw error;
       }
 
       // Get claims for source entity
@@ -1569,6 +1598,7 @@ A contradiction means the claims cannot both be true at the same time.`
         merged_claim_ids: mergedClaimIds,
         source_entity: sourceEntity,
         target_entity: targetEntity,
+        merge_authorization: mergeAuthorization,
       });
 
       return { success: true, event_id: event.id };

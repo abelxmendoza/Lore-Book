@@ -6,6 +6,7 @@ import { logger } from '../logger';
 import { classifyMentionKind, type MentionClassification } from '../utils/entityMentionClassifier';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { supabaseAdmin } from './supabaseClient';
+import { omegaMemoryService } from './omegaMemoryService';
 
 type OmegaEntityRow = {
   id: string;
@@ -125,7 +126,11 @@ class MisclassifiedEntityRouter {
 
     for (const id of entityIds.slice(1)) {
       if (id === primaryId) continue;
-      await supabaseAdmin.from('omega_entities').delete().eq('id', id).eq('user_id', userId);
+      await omegaMemoryService.mergeEntities(userId, id, primaryId, {
+        actor: 'SYSTEM',
+        reason: 'Deterministic Magic: The Gathering fragment consolidation',
+        evidenceIds: entityIds.map((entityId) => `omega-entity:${entityId}`),
+      });
     }
     return primaryId;
   }

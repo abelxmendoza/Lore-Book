@@ -15,6 +15,7 @@ import {
   type ResolutionContext,
   type ResolutionResult,
 } from './entityResolutionCore';
+import { isMatchVetoedByType } from './entityTypeCompatibility';
 
 export type LegacyMatchMethod = 'exact' | 'alias' | 'jw' | 'none';
 
@@ -61,11 +62,15 @@ export function entityToResolutionCandidate(entity: Entity): ResolutionCandidate
 }
 
 /** In-memory legacy matcher (exact → alias → JW). Does not hit DB. */
-export function findLegacyPoolMatch(name: string, pool: Entity[]): LegacyMatchDecision {
+export function findLegacyPoolMatch(name: string, pool: Entity[], expectedType?: string): LegacyMatchDecision {
   const nameLower = normalizeNameKey(name);
+  // Only a known cross-family mismatch excludes a candidate. An undefined
+  // expectedType (or untyped pool rows) must not empty the pool — that made
+  // every untyped caller silently match nothing.
+  const compatiblePool = pool.filter((entity) => !isMatchVetoedByType(expectedType, entity.type));
 
   const exact =
-    pool.find(
+    compatiblePool.find(
       (entity) =>
         normalizeNameKey(entity.primary_name) === nameLower ||
         (Array.isArray(entity.aliases) &&
@@ -81,7 +86,7 @@ export function findLegacyPoolMatch(name: string, pool: Entity[]): LegacyMatchDe
   let bestScore = 0;
   let bestEntity: Entity | null = null;
 
-  for (const entity of pool) {
+  for (const entity of compatiblePool) {
     const names = [entity.primary_name, ...(Array.isArray(entity.aliases) ? entity.aliases : [])].filter(
       Boolean
     );
@@ -113,7 +118,9 @@ export function resolveMentionWithCore(
 export function coreProductionDecision(result: ResolutionResult): CoreProductionDecision {
   if (result.recommendation === 'skip') return 'skip';
   if (result.recommendation === 'auto_resolve' && result.resolvedId) return 'resolve';
-  if (result.recommendation === 'merge_suggestion' && result.ranked[0]) return 'resolve';
+  // A suggestion is not merge authorization. Preserve a false split until a
+  // user or stronger compatible evidence resolves the ambiguity.
+  if (result.recommendation === 'merge_suggestion') return 'create';
   return 'create';
 }
 
@@ -284,7 +291,7 @@ export function logCharacterCreationShadowComparison(comparison: CharacterCreati
 /** Compare legacy vs core and decide which path is authoritative. */
 export function resolveWithCore(options: ResolveWithCoreOptions): ResolveWithCoreResult {
   const { mention, entityType, pool, context = {} } = options;
-  const legacy = findLegacyPoolMatch(mention, pool);
+  const legacy = findLegacyPoolMatch(mention, pool, entityType);
   const core = resolveMentionWithCore(mention, pool, context, entityType);
   const comparison = compareLegacyAndCore(mention, entityType, legacy, core);
 

@@ -254,7 +254,8 @@ describe('cleanupLegacyEntities — fixQuality (e2e)', () => {
       return { data: [] };
     });
 
-    await fixQuality([]);
+    // fixQuality now refuses to run cross-user; an explicit userId is required.
+    await fixQuality(['test-user-1']);
 
     const summary = h.logInfo.mock.calls.find(
       (c) => c[1] === '=== ENTITY QUALITY BACKFILL COMPLETE ===',

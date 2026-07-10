@@ -14,6 +14,8 @@ import { recordEntityConsolidation } from './consolidationProtocol';
 import { entityLearningService } from './entityLearningService';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
+import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
+import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
 
 export interface ProjectMergeReport {
   sourceId: string;
@@ -159,7 +161,7 @@ class ProjectMergeService {
     userId: string,
     sourceId: string,
     targetId: string,
-    opts: { reason?: string } = {}
+    opts: { reason?: string; evidenceIds?: string[]; resolverVersion?: string } = {}
   ): Promise<ProjectMergeReport> {
     const [rs, rt] = await Promise.all([
       this.resolveCanonicalProjectId(userId, sourceId),
@@ -179,6 +181,22 @@ class ProjectMergeService {
     const target = td as Row | null;
     if (!source) throw new Error('Source project not found');
     if (!target) throw new Error('Target project not found');
+
+    let mergeAuthorization;
+    try {
+      mergeAuthorization = assertEntityMergeAuthorized({
+        sourceType: 'PROJECT',
+        targetType: 'PROJECT',
+        reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+        evidenceIds: opts.evidenceIds?.length ? opts.evidenceIds : [`user-merge-request:${sourceId}:${targetId}`],
+        resolverVersion: opts.resolverVersion,
+        actor: 'USER',
+      });
+    } catch (error) {
+      incrementEntityResolutionMetric('merge_authorization_failures');
+      incrementEntityResolutionMetric('merge_attempts_blocked');
+      throw error;
+    }
 
     const report: ProjectMergeReport = {
       sourceId,
@@ -232,6 +250,12 @@ class ProjectMergeService {
         target_entity_type: 'PROJECT',
         merged_by: 'USER',
         reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+        metadata: {
+          merge_authorized: true,
+          merge_authorization_reason: mergeAuthorization.authorizationReason,
+          resolver_version: mergeAuthorization.resolverVersion,
+          evidence_ids: mergeAuthorization.evidenceIds,
+        },
       })
       .then(({ error }) => {
         if (error) logger.debug({ error }, '[ProjectMerge] merge record insert failed');
@@ -257,7 +281,7 @@ class ProjectMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: 'USER',
-      metadata: { sourceId, targetId, reviewFlags: report.reviewFlags },
+      metadata: { sourceId, targetId, reviewFlags: report.reviewFlags, mergeAuthorization },
     });
 
     void entityLearningService.recordMergeLearning({

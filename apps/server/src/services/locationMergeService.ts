@@ -16,6 +16,8 @@ import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
 import { resolvePlaceBoundary } from './lexical/places/placeBoundaryResolver';
 import { isLikelyPlaceName } from './lorebook/quality/placeCandidateGuard';
 import { supabaseAdmin } from './supabaseClient';
+import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
+import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
 
 export interface LocationMergeReport {
   sourceId: string;
@@ -258,7 +260,7 @@ class LocationMergeService {
     userId: string,
     sourceId: string,
     targetId: string,
-    opts: { reason?: string } = {}
+    opts: { reason?: string; evidenceIds?: string[]; resolverVersion?: string } = {}
   ): Promise<LocationMergeReport> {
     // Resolve both ids to the canonical authority BEFORE any equality/lookup check,
     // so a people_places-id payload from the Location Book merges correctly.
@@ -287,6 +289,27 @@ class LocationMergeService {
     let target = targetData as LocationRow | null;
     if (!source) throw new Error('Source location not found');
     if (!target) throw new Error('Target location not found');
+
+    let mergeAuthorization;
+    try {
+      mergeAuthorization = assertEntityMergeAuthorized({
+        // Both rows were loaded from the canonical locations authority. Their
+        // `type` columns are place subtypes (venue, restaurant, residence), not
+        // root ontology types, so authorize against the authority root.
+        sourceType: 'LOCATION',
+        targetType: 'LOCATION',
+        reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+        evidenceIds: opts.evidenceIds?.length
+          ? opts.evidenceIds
+          : [`user-merge-request:${sourceId}:${targetId}`],
+        resolverVersion: opts.resolverVersion,
+        actor: 'USER',
+      });
+    } catch (error) {
+      incrementEntityResolutionMetric('merge_authorization_failures');
+      incrementEntityResolutionMetric('merge_attempts_blocked');
+      throw error;
+    }
 
     // Strength-weighted direction guard: a weak place identity must never absorb
     // a meaningfully stronger one. Swap so the stronger survives. Degrades to the
@@ -354,6 +377,12 @@ class LocationMergeService {
       target_entity_type: 'LOCATION',
       merged_by: 'USER',
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
+      metadata: {
+        merge_authorized: true,
+        merge_authorization_reason: mergeAuthorization.authorizationReason,
+        resolver_version: mergeAuthorization.resolverVersion,
+        evidence_ids: mergeAuthorization.evidenceIds,
+      },
     }).then(({ error }) => {
       if (error) logger.debug({ error }, '[LocationMerge] merge record insert failed');
     });
@@ -370,7 +399,7 @@ class LocationMergeService {
       newValue: { id: targetId, canonical_name: report.canonicalName, aliases: report.aliases },
       reason: opts.reason ?? `Merged "${source.name}" into "${target.name}"`,
       source: 'USER',
-      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags },
+      metadata: { sourceId, targetId, directionSwapped, sourceScore, targetScore, reviewFlags: report.reviewFlags, mergeAuthorization },
     });
 
     void entityLearningService.recordMergeLearning({

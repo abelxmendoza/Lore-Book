@@ -30,6 +30,8 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { locationMergeService } from '../services/locationMergeService';
 import { logger } from '../logger';
+import { assertEntityMergeAuthorized } from '../services/entities/entityTypeCompatibility';
+import { recordEntityConsolidation } from '../services/consolidationProtocol';
 
 // ── False positives to hard-delete ────────────────────────────────────────────
 const FALSE_POSITIVE_NAMES = new Set([
@@ -153,11 +155,16 @@ export async function reExtractAllEntries(): Promise<number> {
 
 // ── fix-quality ───────────────────────────────────────────────────────────────
 export async function fixQuality(args: string[]): Promise<void> {
+  const userId = args.find((arg) => !arg.startsWith('--'));
+  if (!userId) {
+    throw new Error('fix-quality requires an explicit userId; cross-user identity cleanup is forbidden');
+  }
   logger.info('=== ENTITY QUALITY BACKFILL START ===');
 
   const { count: before } = await supabaseAdmin
     .from('people_places')
-    .select('id', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
   logger.info({ before }, 'Entities BEFORE cleanup');
 
   // Step 1: Delete false positives
@@ -166,6 +173,7 @@ export async function fixQuality(args: string[]): Promise<void> {
     const { data, error } = await supabaseAdmin
       .from('people_places')
       .delete()
+      .eq('user_id', userId)
       .ilike('name', name)
       .select('id');
     if (error) logger.error({ error, name }, 'Failed to delete false positive');
@@ -183,6 +191,7 @@ export async function fixQuality(args: string[]): Promise<void> {
     const { data: groupRows, error: fetchErr } = await supabaseAdmin
       .from('people_places')
       .select('*')
+      .eq('user_id', userId)
       .or(allNames.map((n) => `name.ilike.${n}`).join(','));
     if (fetchErr) {
       logger.error({ fetchErr, canonical }, 'Failed to fetch merge group');
@@ -210,6 +219,30 @@ export async function fixQuality(args: string[]): Promise<void> {
     }
     mergedCorrectedNames.delete(canonical);
 
+    // MERGE_GROUPS is a curated list of person-name fragments, and legacy
+    // people_places rows frequently lack a type — fall back to the group's
+    // known type (ultimately 'person') so untyped fragments still consolidate,
+    // while two concretely-but-differently-typed rows stay blocked. A blocked
+    // group is skipped, not fatal: one bad group must not abort the run.
+    let groupAuthorized = true;
+    for (const row of groupRows) {
+      if (row.id === canonicalRow.id) continue;
+      try {
+        assertEntityMergeAuthorized({
+          sourceType: row.type ?? canonicalRow.type ?? 'person',
+          targetType: canonicalRow.type ?? row.type ?? 'person',
+          reason: `Legacy people_places canonicalization: ${row.name} -> ${canonicalRow.name}`,
+          evidenceIds: [`people_places:${row.id}`, `people_places:${canonicalRow.id}`],
+          actor: 'SYSTEM',
+        });
+      } catch (err) {
+        logger.error({ err, canonical, blockedRow: row.name }, 'Merge group blocked by type gate — skipping group');
+        groupAuthorized = false;
+        break;
+      }
+    }
+    if (!groupAuthorized) continue;
+
     const { error: updateErr } = await supabaseAdmin
       .from('people_places')
       .update({
@@ -220,7 +253,8 @@ export async function fixQuality(args: string[]): Promise<void> {
         first_mentioned_at: earliestMention,
         last_mentioned_at: latestMention,
       })
-      .eq('id', canonicalRow.id);
+      .eq('id', canonicalRow.id)
+      .eq('user_id', userId);
     if (updateErr) {
       logger.error({ updateErr, canonical }, 'Failed to update canonical record');
       continue;
@@ -228,7 +262,19 @@ export async function fixQuality(args: string[]): Promise<void> {
 
     const toDelete = groupRows.filter((r) => r.id !== canonicalRow.id).map((r) => r.id);
     if (toDelete.length) {
-      const { error: deleteErr } = await supabaseAdmin.from('people_places').delete().in('id', toDelete);
+      for (const sourceId of toDelete) {
+        await recordEntityConsolidation({
+          userId,
+          action: 'ENTITY_MERGE',
+          sourceArtifactType: 'entity',
+          sourceArtifactId: sourceId,
+          targetArtifactId: canonicalRow.id,
+          beforeState: groupRows.find((row) => row.id === sourceId) ?? { id: sourceId },
+          afterState: { merged_into: canonicalRow.id, canonical_name: canonicalRow.name },
+          rationale: 'Legacy people_places canonicalization after type-compatible authorization',
+        });
+      }
+      const { error: deleteErr } = await supabaseAdmin.from('people_places').delete().eq('user_id', userId).in('id', toDelete);
       if (deleteErr) logger.error({ deleteErr, canonical }, 'Failed to delete merged duplicates');
       else {
         merged += toDelete.length;
@@ -244,6 +290,7 @@ export async function fixQuality(args: string[]): Promise<void> {
     const { data, error } = await supabaseAdmin
       .from('people_places')
       .update({ type: correctType })
+      .eq('user_id', userId)
       .ilike('name', name)
       .select('id');
     if (error) logger.error({ error, name }, 'Failed to fix entity type');
@@ -262,7 +309,8 @@ export async function fixQuality(args: string[]): Promise<void> {
 
   const { count: after } = await supabaseAdmin
     .from('people_places')
-    .select('id', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
   logger.info({ before, after, deleted, merged, typesFixed }, '=== ENTITY QUALITY BACKFILL COMPLETE ===');
 }
 

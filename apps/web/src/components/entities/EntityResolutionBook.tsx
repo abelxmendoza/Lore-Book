@@ -16,6 +16,7 @@ import {
   type EntityConflict,
   type EntityMergeRecord,
   type EntityType,
+  type IdentityIntegrityFinding,
 } from '../../api/entityResolution';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -39,7 +40,7 @@ const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 type SortOption = 'usage_desc' | 'usage_asc' | 'name_asc' | 'name_desc' | 'confidence_desc' | 'confidence_asc' | 'recent';
 type ViewMode = 'grid' | 'list';
 type EntityCategory = 'all' | 'people' | 'locations' | 'organizations' | 'concepts' | 'conflicts';
-type HubTab = 'browse' | 'conflicts' | 'history';
+type HubTab = 'browse' | 'conflicts' | 'integrity' | 'history';
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 //
@@ -392,6 +393,8 @@ export const EntityResolutionBook: React.FC = () => {
   const [entities, setEntities] = useState<EntityCandidate[]>([]);
   const [conflicts, setConflicts] = useState<EntityConflict[]>([]);
   const [mergeHistory, setMergeHistory] = useState<EntityMergeRecord[]>([]);
+  const [integrityFindings, setIntegrityFindings] = useState<IdentityIntegrityFinding[]>([]);
+  const [repairPreview, setRepairPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -447,18 +450,20 @@ export const EntityResolutionBook: React.FC = () => {
       setEntities(MOCK_ENTITIES);
       setConflicts(MOCK_CONFLICTS);
       setMergeHistory(MOCK_MERGE_HISTORY);
+      setIntegrityFindings([]);
       setLoading(false);
       return;
     }
 
     try {
-      const [entitiesData, conflictsData, historyData] = await Promise.all([
+      const [entitiesData, conflictsData, historyData, integrityData] = await Promise.all([
         entityResolutionApi.listEntities({
           include_secondary: showAdvanced,
           include_tertiary: showAdvanced,
         }),
         entityResolutionApi.listConflicts(),
         entityResolutionApi.listMergeHistory(),
+        entityResolutionApi.scanIntegrity(),
       ]);
 
       // Mark entities with open conflicts
@@ -473,6 +478,7 @@ export const EntityResolutionBook: React.FC = () => {
       setEntities(Array.from(entityMap.values()));
       setConflicts(conflictsData.filter(c => c.status === 'OPEN'));
       setMergeHistory(historyData);
+      setIntegrityFindings(integrityData.findings);
     } catch (err: any) {
       setError(err.message ?? 'Failed to load entities');
       setEntities([]);
@@ -705,6 +711,7 @@ export const EntityResolutionBook: React.FC = () => {
         {([
           { id: 'browse',    label: 'Browse',    icon: BookOpen,  badge: null },
           { id: 'conflicts', label: 'Conflicts', icon: AlertTriangle, badge: conflicts.length > 0 ? conflicts.length : null },
+          { id: 'integrity', label: 'Integrity', icon: Bot, badge: integrityFindings.length > 0 ? integrityFindings.length : null },
           { id: 'history',   label: 'History',   icon: History,   badge: mergeHistory.length > 0 ? mergeHistory.length : null },
         ] as const).map(({ id, label, icon: Icon, badge }) => (
           <button
@@ -1069,6 +1076,68 @@ export const EntityResolutionBook: React.FC = () => {
                 />
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Identity integrity findings are read-only until the user previews a
+          CorrectionAuthority plan. The frontend never rewrites identity rows. */}
+      {activeTab === 'integrity' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Identity Integrity Review</h2>
+            <p className="text-sm text-white/50 mt-0.5">
+              Dry-run findings from merge history, resolver traces, aliases, and provenance. Previewing a correction does not change data.
+            </p>
+          </div>
+
+          {integrityFindings.length === 0 ? (
+            <div className="text-center py-16 border border-border/40 rounded-xl bg-black/20">
+              <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-emerald-400/50" />
+              <p className="text-white/50 font-medium">No suspicious identity links found</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {integrityFindings.map((finding) => (
+                <Card key={finding.findingId} className="border-orange-500/30 bg-orange-500/5">
+                  <CardContent className="pt-5 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-orange-500/40 text-orange-300">{finding.severity}</Badge>
+                      <span className="text-xs text-white/40">{finding.findingType.replaceAll('_', ' ')}</span>
+                    </div>
+                    <p className="text-sm text-white/85">{finding.explanation}</p>
+                    {(finding.sourceType || finding.targetType) && (
+                      <p className="text-xs text-white/50">
+                        Expected/source type: {finding.sourceType ?? 'unknown'} · Existing/target type: {finding.targetType ?? 'unknown'}
+                      </p>
+                    )}
+                    <p className="text-xs text-white/60">Suggested action: {finding.recommendedAction}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        const plan = await entityResolutionApi.previewIntegrityRepair(finding.findingId);
+                        setRepairPreview(JSON.stringify(plan, null, 2));
+                      }}
+                    >
+                      Preview correction
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+          {repairPreview && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="pt-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <p className="text-sm font-medium text-white">CorrectionAuthority dry-run plan</p>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRepairPreview(null)}>Close</Button>
+                </div>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-white/60">{repairPreview}</pre>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}

@@ -27,6 +27,7 @@ import {
 } from '../../lorebook/quality/slangToponymResolver';
 
 import { supabaseAdmin } from '../../supabaseClient';
+import { correctionAuthority } from '../../provenance/CorrectionAuthority';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -634,6 +635,24 @@ export class SlangPlaceAliasBinder {
       });
     }
 
+    // This is an ontology correction (a slang place-shaped phrase referring to
+    // an event/place), not an identity merge. Record the semantic distinction
+    // before the legacy card is removed so the operation is never silent.
+    await correctionAuthority.recordSystemMutation({
+      userId,
+      artifactType: 'entity',
+      artifactId: card.id,
+      mutationType: 'ENTITY_CLASSIFICATION_CORRECTION',
+      beforeState: { kind: 'location', id: card.id, name: card.name, metadata: cardMeta },
+      afterState: {
+        action: 'ALIAS_BOUND_TO_REFERENT',
+        target_kind: target.kind,
+        target_id: target.id,
+        target_name: target.name,
+        derived_state_invalidated: true,
+      },
+      rationale: `Slang toponym resolved with confidence ${result.confidence}`,
+    });
     await this.deps.deleteLocation(userId, card.id);
     logger.info(
       { userId, card: card.name, targetKind: target.kind, targetName: target.name, confidence: result.confidence },

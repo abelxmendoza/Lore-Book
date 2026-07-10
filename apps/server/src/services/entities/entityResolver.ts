@@ -56,7 +56,7 @@ export class EntityResolver {
 
           if (normalized !== canonicalNormalized && !m.match.aliases.includes(m.extracted.raw)) {
             const newAliases = [...m.match.aliases, m.extracted.raw];
-            await this.storage.updateAliases(m.match.id, newAliases);
+          await this.storage.updateAliases(ctx.user.id, m.match.id, newAliases);
             m.match.aliases = newAliases;
           }
 
@@ -123,4 +123,3 @@ export class EntityResolver {
     }
   }
 }
-

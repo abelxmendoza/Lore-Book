@@ -10,6 +10,9 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { continuityService } from '../services/continuityService';
 import { entityResolutionService } from '../services/entityResolutionService';
+import { getEntityResolutionMetrics } from '../services/entities/entityResolutionMetrics';
+import { executeIdentityIntegrityRepair, previewIdentityIntegrityRepair } from '../services/entities/identityIntegrityRepairService';
+import { scanIdentityIntegrity } from '../services/entities/identityIntegrityScanner';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -275,9 +278,10 @@ router.post(
       source_type: z.enum(['CHARACTER', 'LOCATION', 'ENTITY', 'ORG', 'CONCEPT', 'PERSON']),
       target_type: z.enum(['CHARACTER', 'LOCATION', 'ENTITY', 'ORG', 'CONCEPT', 'PERSON']),
       reason: z.string().min(1).max(500),
+      evidence_ids: z.array(z.string().min(1).max(200)).max(50).optional(),
     });
 
-    const { source_id, target_id, source_type, target_type, reason } = schema.parse(req.body);
+    const { source_id, target_id, source_type, target_type, reason, evidence_ids } = schema.parse(req.body);
 
     try {
       await entityResolutionService.mergeEntities(
@@ -286,12 +290,18 @@ router.post(
         target_id,
         source_type,
         target_type,
-        reason
+        reason,
+        { evidenceIds: evidence_ids }
       );
       res.json({ success: true, message: 'Entities merged successfully' });
     } catch (error) {
       logger.error({ error, userId, source_id, target_id }, 'Failed to merge entities');
-      res.status(500).json({ success: false, error: 'Failed to merge entities' });
+      const code = (error as { code?: string }).code;
+      res.status(code === 'ENTITY_MERGE_NOT_AUTHORIZED' ? 409 : 500).json({
+        success: false,
+        error: code === 'ENTITY_MERGE_NOT_AUTHORIZED' ? 'Entity merge blocked by identity-integrity policy' : 'Failed to merge entities',
+        code,
+      });
     }
   })
 );
@@ -370,5 +380,36 @@ router.post(
   })
 );
 
-export default router;
+/** Read-only, bounded, explicitly user-scoped identity integrity scan. */
+router.get('/integrity/scan', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const parsed = z.object({
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+    cursor: z.string().datetime().optional(),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'Invalid scan parameters' });
+  const result = await scanIdentityIntegrity(req.user!.id, parsed.data);
+  res.json({ success: true, data: result });
+}));
 
+router.get('/integrity/metrics', requireAuth, asyncHandler(async (_req: AuthenticatedRequest, res) => {
+  res.json({ success: true, metrics: getEntityResolutionMetrics() });
+}));
+
+/** Preview by default. Execution is limited to deterministic append-only corrections. */
+router.post('/integrity/repair', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const parsed = z.object({
+    finding_id: z.string().min(1).max(100),
+    execute: z.boolean().default(false),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'Invalid repair request' });
+  const userId = req.user!.id;
+  const scan = await scanIdentityIntegrity(userId, { limit: 500 });
+  const finding = scan.findings.find((item) => item.findingId === parsed.data.finding_id);
+  if (!finding) return res.status(404).json({ success: false, error: 'Finding not found in current user scope' });
+  const plan = parsed.data.execute
+    ? await executeIdentityIntegrityRepair(userId, finding)
+    : previewIdentityIntegrityRepair(userId, finding);
+  res.json({ success: true, plan });
+}));
+
+export default router;
