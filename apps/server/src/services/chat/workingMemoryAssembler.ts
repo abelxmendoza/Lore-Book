@@ -1,13 +1,13 @@
-import { supabaseAdmin } from '../supabaseClient';
-import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
+import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
+import { truthStateWeight } from '../provenance/epistemicWeights';
+import { supabaseAdmin } from '../supabaseClient';
 import {
   classifyTemporalQuery,
   occurredInWindow,
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
-import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
-import { truthStateWeight } from '../provenance/epistemicWeights';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -2079,6 +2079,10 @@ async function loadNarrativeAnchorCandidates(
             source: 'narrative_anchor',
             date: null,
             confidence: 0.85,
+            relevance: i === 0 ? 0.88 : 0.78,
+            importance: Math.min(0.95, anchor.gravityScore ?? 0.7),
+            significance: Math.min(0.95, anchor.gravityScore ?? 0.7),
+            relationshipDistance: 0.9,
             metadata: {
               anchorType: anchor.anchorType,
               gravityScore: anchor.gravityScore,

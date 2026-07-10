@@ -2,9 +2,10 @@
 // CHARACTER DETAIL MODAL TESTS
 // =====================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { CharacterDetailModal } from './CharacterDetailModal';
 import type { Character } from './CharacterProfileCard';
 
@@ -36,6 +37,23 @@ vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn().mockRejectedValue(new Error('Not found')),
 }));
 
+// The relationships tab mounts the family tree panel, which needs redux —
+// out of scope for these tests.
+vi.mock('../family/FamilyTreePanel', () => ({
+  FamilyTreePanel: () => <div data-testid="family-tree-panel" />,
+  CharacterAffiliationsPanel: () => <div data-testid="character-affiliations-panel" />,
+}));
+
+vi.mock('../family/useFamilyTreeEditing', () => ({
+  useFamilyTreeEditing: () => ({
+    editHandlers: {},
+    editorMember: null,
+    setEditorMember: vi.fn(),
+    saveRelationship: vi.fn(),
+    ToastContainer: () => null,
+  }),
+}));
+
 vi.mock('../../contexts/MockDataContext', () => ({
   useMockData: () => ({ useMockData: false }),
   getGlobalMockDataEnabled: () => false,
@@ -62,13 +80,12 @@ vi.mock('../../store/api/entitiesApi', () => ({
 const mockCharacter: Character = {
   id: 'char-1',
   name: 'John Doe',
-  user_id: 'user-1',
   alias: [],
-  pronouns: null,
-  archetype: null,
+  pronouns: undefined,
+  archetype: undefined,
   role: 'Friend',
   status: 'active',
-  first_appearance: null,
+  first_appearance: undefined,
   summary: 'A test character',
   tags: [],
   metadata: {},
@@ -400,6 +417,122 @@ describe('CharacterDetailModal', () => {
       );
 
       expect(screen.queryByText(/Rare in story, high impact on you/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('manual connections and memberships', () => {
+    // dummy- ids skip the profile bundle so the tab content renders with the
+    // character passed in (the default rejected fetch falls back to it).
+    const baseCharacter: Character = { ...mockCharacter, id: 'dummy-conn-char' };
+
+    it('adds an existing Character Book person as a connection', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === '/api/characters') {
+          return { characters: [{ ...mockCharacter, id: 'char-2', name: 'Shy La' }] } as never;
+        }
+        if (url === '/api/relationships/character-links' && init?.method === 'POST') {
+          return {
+            success: true,
+            relationship: { id: 'rel-9', character_id: 'char-2', character_name: 'Shy La', relationship_type: 'friend' },
+          } as never;
+        }
+        throw new Error('Not found');
+      });
+
+      render(
+        <CharacterDetailModal
+          character={{ ...baseCharacter, relationships: [] }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />
+      );
+
+      await userEvent.click(await screen.findByTestId('add-connection-toggle'));
+      const select = await screen.findByLabelText('Existing character');
+      await waitFor(() => expect(screen.getByRole('option', { name: 'Shy La' })).toBeInTheDocument());
+      await userEvent.selectOptions(select, 'char-2');
+      await userEvent.click(screen.getByTestId('add-connection-submit'));
+
+      expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+        '/api/relationships/character-links',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      await waitFor(() => expect(screen.getByText('Shy La')).toBeInTheDocument());
+    });
+
+    it('removes a connection via the trash button', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === '/api/relationships/character-links/rel-1' && init?.method === 'DELETE') {
+          return { success: true } as never;
+        }
+        throw new Error('Not found');
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(
+        <CharacterDetailModal
+          character={{
+            ...baseCharacter,
+            relationships: [
+              { id: 'rel-1', character_id: 'char-2', character_name: 'Shy La', relationship_type: 'friend' },
+            ],
+          }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />
+      );
+
+      await userEvent.click(await screen.findByLabelText('Remove connection with Shy La'));
+      await waitFor(() => expect(screen.queryByText('Shy La')).not.toBeInTheDocument());
+      expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+        '/api/relationships/character-links/rel-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    it('adds the character to an existing group from the Groups & Organizations book', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === '/api/organizations') {
+          return { success: true, organizations: [{ id: 'org-1', name: 'Ska Collective' }] } as never;
+        }
+        if (url === '/api/organizations/org-1/members' && init?.method === 'POST') {
+          return { success: true, member: { id: 'm-1' } } as never;
+        }
+        if (url.startsWith('/api/organizations/by-character')) {
+          return { success: true, organizations: [] } as never;
+        }
+        throw new Error('Not found');
+      });
+
+      render(
+        <CharacterDetailModal
+          character={baseCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />
+      );
+
+      await userEvent.click(await screen.findByTestId('add-membership-toggle'));
+      const select = await screen.findByLabelText('Existing group or organization');
+      await waitFor(() => expect(screen.getByRole('option', { name: 'Ska Collective' })).toBeInTheDocument());
+      await userEvent.selectOptions(select, 'org-1');
+      await userEvent.click(screen.getByTestId('add-membership-submit'));
+
+      await waitFor(() =>
+        expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+          '/api/organizations/org-1/members',
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
     });
   });
 });
