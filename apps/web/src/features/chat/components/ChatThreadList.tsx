@@ -281,6 +281,17 @@ function ThreadItem({
               'text-sm leading-snug truncate',
               isActive ? 'font-semibold' : 'font-medium'
             )}>
+              {typeof thread.threadNumber === 'number' && (
+                <span
+                  className={cn(
+                    'font-mono text-[10px] mr-1.5 align-middle',
+                    isActive ? 'text-primary/70' : 'text-white/30'
+                  )}
+                  data-testid="thread-ref"
+                >
+                  #{thread.threadNumber}
+                </span>
+              )}
               {displayTitle}
             </p>
             {thread.subtitle && (

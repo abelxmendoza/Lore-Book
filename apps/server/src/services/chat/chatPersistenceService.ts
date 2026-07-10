@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 import { config } from '../../config';
 import { logger } from '../../logger';
 import { openai } from '../../lib/openai';
@@ -10,52 +8,57 @@ import { omegaMemoryService } from '../omegaMemoryService';
 import { perspectiveService } from '../perspectiveService';
 import { supabaseAdmin } from '../supabaseClient';
 
+/** Reuse window for thread-less "quick chat" sessions before opening a new one. */
+const QUICK_CHAT_REUSE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Resolve a session for messages sent without a UI thread id.
+ *
+ * Sessions live in `conversation_sessions` — the canonical thread table — so
+ * the conversation is always visible in the thread list on every device.
+ * (This previously used the parallel `chat_sessions` table and fell back to a
+ * random UUID on error, which persisted messages under a session id that
+ * existed nowhere and made whole conversations disappear.)
+ *
+ * Recent thread-less messages reuse the same quick-chat session instead of
+ * piling into the user's most recent real thread or opening one session per
+ * message. Throws when no session can be created — failing the send is safer
+ * than persisting into the void.
+ */
 export async function getOrCreateChatSession(userId: string): Promise<string> {
-  try {
-    const { data: existingSession } = await supabaseAdmin
-      .from('chat_sessions')
-      .select('session_id')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single();
+  const { data: recent } = await supabaseAdmin
+    .from('conversation_sessions')
+    .select('id, updated_at')
+    .eq('user_id', userId)
+    .eq('metadata->>quick_chat', 'true')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-    const existing = existingSession as any;
-    if (existing?.session_id) {
-      await supabaseAdmin
-        .from('chat_sessions')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('session_id', existing.session_id);
-
-      if (!existing.session_id) {
-        throw new Error('Existing session has no session_id');
-      }
-      return existing.session_id as string;
-    }
-
-    const newSessionId = randomUUID();
-    const { data: newSession, error } = await supabaseAdmin
-      .from('chat_sessions')
-      .insert({ user_id: userId, session_id: newSessionId, metadata: {} })
-      .select('session_id')
-      .single();
-
-    if (error) {
-      logger.warn({ error, userId }, 'Failed to create chat session, using temporary ID');
-      return randomUUID();
-    }
-
-    const ns = newSession as any;
-    if (!ns?.session_id) {
-      logger.warn({ userId }, 'Created session but no session_id returned, using provided ID');
-      return newSessionId;
-    }
-
-    return ns.session_id as string;
-  } catch (error) {
-    logger.warn({ error, userId }, 'Error getting/creating chat session, using temporary ID');
-    return randomUUID();
+  const recentRow = recent as { id: string; updated_at: string } | null;
+  if (
+    recentRow?.id &&
+    Date.now() - new Date(recentRow.updated_at).getTime() < QUICK_CHAT_REUSE_MS
+  ) {
+    await supabaseAdmin
+      .from('conversation_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', recentRow.id)
+      .eq('user_id', userId);
+    return recentRow.id;
   }
+
+  const { data: created, error } = await supabaseAdmin
+    .from('conversation_sessions')
+    .insert({ user_id: userId, metadata: { quick_chat: true } })
+    .select('id')
+    .single();
+
+  if (error || !(created as { id?: string } | null)?.id) {
+    logger.error({ error, userId }, 'Failed to create conversation session for thread-less chat');
+    throw new Error('Failed to start a chat session. Please try again.');
+  }
+  return (created as { id: string }).id;
 }
 
 export async function detectMemorySuggestion(

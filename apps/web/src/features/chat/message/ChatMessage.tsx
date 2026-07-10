@@ -88,6 +88,12 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  /** 1-based conversational turn within the thread — the user prompt opens it. */
+  turnNumber?: number | null;
+  /** 0 for the user prompt, 1..n for assistant replies within the turn. */
+  replySeq?: number | null;
+  /** Full human-referencable id, e.g. "12.4" (prompt) or "12.4.1" (reply). */
+  ref?: string | null;
   connections?: string[];
   continuityWarnings?: string[];
   timelineUpdates?: string[];
@@ -524,6 +530,19 @@ export const ChatMessage = ({
               </div>
             )}
 
+            {message.ref && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(`#${message.ref}`).catch(() => {});
+                }}
+                className={`mt-1.5 block font-mono text-[10px] text-white/30 hover:text-white/60 transition-colors ${isUser ? 'ml-auto' : ''}`}
+                title="Permanent reference for this message — click to copy"
+                data-testid="message-ref"
+              >
+                #{message.ref}
+              </button>
+            )}
             {message.persistStatus === 'failed' && (
               <p
                 className="text-[10px] text-red-400/80 mt-1.5"

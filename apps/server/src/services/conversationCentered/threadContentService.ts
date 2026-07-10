@@ -6,7 +6,34 @@ export type ThreadMessageRow = {
   content: string;
   created_at: string;
   metadata?: Record<string, unknown> | null;
+  /** 1-based conversational turn — a user prompt opens a turn, its replies share it. */
+  turn_number?: number | null;
+  /** 0 for the user prompt, 1..n for the assistant replies within the turn. */
+  reply_seq?: number | null;
 };
+
+/**
+ * Assign turn/reply numbering across an ordered message list.
+ * Stored values (from the chat_messages numbering trigger) win; anything
+ * without one (legacy sources, pre-migration rows) is derived from position
+ * so every message always carries a stable, human-referencable number.
+ */
+export function assignMessageRefs(rows: ThreadMessageRow[]): ThreadMessageRow[] {
+  let lastTurn = 0;
+  const repliesInTurn = new Map<number, number>();
+  return rows.map((row) => {
+    if (row.role === 'user') {
+      const turn = row.turn_number ?? lastTurn + 1;
+      lastTurn = Math.max(lastTurn, turn);
+      return { ...row, turn_number: turn, reply_seq: row.reply_seq ?? 0 };
+    }
+    const turn = row.turn_number ?? Math.max(lastTurn, 1);
+    lastTurn = Math.max(lastTurn, turn);
+    const seq = row.reply_seq ?? (repliesInTurn.get(turn) ?? 0) + 1;
+    repliesInTurn.set(turn, Math.max(repliesInTurn.get(turn) ?? 0, seq));
+    return { ...row, turn_number: turn, reply_seq: seq };
+  });
+}
 
 function metadataMessages(meta: Record<string, unknown> | null | undefined): ThreadMessageRow[] {
   const raw = meta?.messages;
@@ -53,18 +80,33 @@ function mergeMessageSources(sources: ThreadMessageRow[][]): ThreadMessageRow[] 
   });
 }
 
+async function loadChatMessageRows(userId: string, sessionId: string) {
+  // turn_number/reply_seq may not exist until the reference-numbers migration runs.
+  const withRefs = await supabaseAdmin
+    .from('chat_messages')
+    .select('id, role, content, created_at, metadata, turn_number, reply_seq')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (!withRefs.error) return withRefs.data ?? [];
+  const legacy = await supabaseAdmin
+    .from('chat_messages')
+    .select('id, role, content, created_at, metadata')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  return (legacy.data ?? []) as Array<
+    Record<string, unknown> & { turn_number?: number | null; reply_seq?: number | null }
+  >;
+}
+
 /** Unified loader: chat_messages is canonical; legacy sources used only when chat is empty. */
 export async function loadThreadMessages(
   userId: string,
   sessionId: string
 ): Promise<ThreadMessageRow[]> {
-  const [{ data: chatMsgs }, { data: session }, { data: convMsgs }] = await Promise.all([
-    supabaseAdmin
-      .from('chat_messages')
-      .select('id, role, content, created_at, metadata')
-      .eq('session_id', sessionId)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
+  const [chatMsgs, { data: session }, { data: convMsgs }] = await Promise.all([
+    loadChatMessageRows(userId, sessionId),
     supabaseAdmin
       .from('conversation_sessions')
       .select('metadata')
@@ -79,12 +121,14 @@ export async function loadThreadMessages(
       .order('created_at', { ascending: true }),
   ]);
 
-  const fromChat = (chatMsgs ?? []).map((m) => ({
+  const fromChat = (chatMsgs ?? []).map((m: any) => ({
     id: m.id,
     role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
     content: String(m.content ?? ''),
     created_at: m.created_at,
     metadata: (m.metadata as Record<string, unknown>) ?? null,
+    turn_number: (m.turn_number as number | null) ?? null,
+    reply_seq: (m.reply_seq as number | null) ?? null,
   }));
 
   const fromConversation = (convMsgs ?? []).map((m) => ({
@@ -97,8 +141,10 @@ export async function loadThreadMessages(
   const fromMeta = metadataMessages(session?.metadata as Record<string, unknown> | null);
 
   // Always merge — chat_messages can be user-only while assistant lives in a fallback source.
-  return mergeMessageSources([fromChat, fromConversation, fromMeta]).filter(
-    (m) => m.content.trim().length > 0
+  return assignMessageRefs(
+    mergeMessageSources([fromChat, fromConversation, fromMeta]).filter(
+      (m) => m.content.trim().length > 0
+    )
   );
 }
 

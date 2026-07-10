@@ -176,6 +176,54 @@ router.post(
  * GET /api/conversation/threads
  * Paginated conversation threads — keyset on (updated_at, id) for stable infinite scroll.
  */
+const THREAD_LIST_COLUMNS = 'id, title, updated_at, metadata, thread_number';
+const THREAD_LIST_COLUMNS_LEGACY = 'id, title, updated_at, metadata';
+
+function isUndefinedColumnError(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === '42703' || /does not exist/i.test(error?.message ?? '');
+}
+
+type ThreadListRow = {
+  id: string;
+  title: string | null;
+  updated_at: string;
+  metadata: Record<string, unknown> | null;
+  thread_number?: number | null;
+};
+
+/** Messages stored on the legacy conversation_sessions.metadata.messages blob (pre-P2 dual-write). */
+function metadataMessageCount(metadata: Record<string, unknown> | null | undefined): number {
+  const msgs = metadata?.messages;
+  return Array.isArray(msgs) ? msgs.length : 0;
+}
+
+/** Message counts per session — chat_messages is canonical, conversation_messages covers legacy threads. */
+async function loadThreadMessageCounts(userId: string, sessionIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  await Promise.all(
+    sessionIds.map(async (id) => {
+      const { count } = await supabaseAdmin
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', id)
+        .eq('user_id', userId);
+      counts.set(id, count ?? 0);
+    })
+  );
+  const emptyIds = sessionIds.filter((id) => (counts.get(id) ?? 0) === 0);
+  await Promise.all(
+    emptyIds.map(async (id) => {
+      const { count } = await supabaseAdmin
+        .from('conversation_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', id)
+        .eq('user_id', userId);
+      if ((count ?? 0) > 0) counts.set(id, count ?? 0);
+    })
+  );
+  return counts;
+}
+
 router.get(
   '/threads',
   requireAuth,
@@ -189,34 +237,41 @@ router.get(
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    let query = supabaseAdmin
-      .from('conversation_sessions')
-      .select('id, title, updated_at, metadata')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit + 1);
+    const buildPageQuery = (columns: string) => {
+      let query = supabaseAdmin
+        .from('conversation_sessions')
+        .select(columns)
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(limit + 1);
 
-    if (cursorRaw) {
-      try {
-        const cursor = JSON.parse(Buffer.from(cursorRaw, 'base64url').toString('utf8')) as {
-          updatedAt: string;
-          id: string;
-        };
-        if (cursor.updatedAt && cursor.id) {
-          query = query.or(
-            `updated_at.lt.${cursor.updatedAt},and(updated_at.eq.${cursor.updatedAt},id.lt.${cursor.id})`
-          );
+      if (cursorRaw) {
+        try {
+          const cursor = JSON.parse(Buffer.from(cursorRaw, 'base64url').toString('utf8')) as {
+            updatedAt: string;
+            id: string;
+          };
+          if (cursor.updatedAt && cursor.id) {
+            query = query.or(
+              `updated_at.lt.${cursor.updatedAt},and(updated_at.eq.${cursor.updatedAt},id.lt.${cursor.id})`
+            );
+          }
+        } catch {
+          // ignore malformed cursor — return first page
         }
-      } catch {
-        // ignore malformed cursor — return first page
       }
-    }
+      return query;
+    };
 
-    const { data: pageRows, error } = await query;
+    // thread_number may not exist until the reference-numbers migration is applied.
+    let { data: pageRows, error } = await buildPageQuery(THREAD_LIST_COLUMNS);
+    if (error && isUndefinedColumnError(error)) {
+      ({ data: pageRows, error } = await buildPageQuery(THREAD_LIST_COLUMNS_LEGACY));
+    }
     if (error) throw error;
 
-    const rows = pageRows ?? [];
+    const rows = (pageRows ?? []) as unknown as ThreadListRow[];
     const hasMore = rows.length > limit;
     const threads = hasMore ? rows.slice(0, limit) : rows;
 
@@ -225,19 +280,29 @@ router.get(
     const existingIds = new Set(threads.map((t) => t.id));
     const missingLinked = linkedIds.filter((id) => !existingIds.has(id));
 
-    let extraRows: typeof threads = [];
+    let extraRows: ThreadListRow[] = [];
     if (!cursorRaw && missingLinked.length > 0) {
-      const { data: linkedThreads } = await supabaseAdmin
-        .from('conversation_sessions')
-        .select('id, title, updated_at, metadata')
-        .eq('user_id', userId)
-        .in('id', missingLinked.slice(0, 30));
-      extraRows = linkedThreads ?? [];
+      const selectLinked = (columns: string) =>
+        supabaseAdmin
+          .from('conversation_sessions')
+          .select(columns)
+          .eq('user_id', userId)
+          .in('id', missingLinked.slice(0, 30));
+      let { data: linkedThreads, error: linkedError }: { data: unknown; error: { code?: string; message?: string } | null } =
+        await selectLinked(THREAD_LIST_COLUMNS);
+      if (linkedError && isUndefinedColumnError(linkedError)) {
+        ({ data: linkedThreads } = await selectLinked(THREAD_LIST_COLUMNS_LEGACY));
+      }
+      extraRows = ((linkedThreads as ThreadListRow[] | null) ?? []);
     }
 
     const merged = [...threads, ...extraRows].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
+
+    // Message counts let the client distinguish real conversations from empty drafts
+    // without hydrating messages — a thread with messages must never be dedupe-dropped.
+    const messageCounts = await loadThreadMessageCounts(userId, merged.map((t) => t.id));
 
     const last = merged[merged.length - 1];
     const nextCursor =
@@ -256,6 +321,8 @@ router.get(
         subtitle: (t.metadata as Record<string, unknown>)?.subtitle as string | undefined,
         updatedAt: t.updated_at,
         metadata: t.metadata ?? {},
+        message_count: messageCounts.get(t.id) || metadataMessageCount(t.metadata),
+        thread_number: t.thread_number ?? null,
       })),
     });
   })
@@ -821,23 +888,29 @@ router.get(
       '../services/conversationCentered/threadContentService'
     );
 
-    let { data: thread } = await supabaseAdmin
-      .from('conversation_sessions')
-      .select('id, title, updated_at, metadata')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const selectThreadRow = async (): Promise<ThreadListRow | null> => {
+      const withRefs = await supabaseAdmin
+        .from('conversation_sessions')
+        .select(THREAD_LIST_COLUMNS)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!withRefs.error) return withRefs.data as unknown as ThreadListRow | null;
+      const legacy = await supabaseAdmin
+        .from('conversation_sessions')
+        .select(THREAD_LIST_COLUMNS_LEGACY)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      return legacy.data as unknown as ThreadListRow | null;
+    };
+
+    let thread = await selectThreadRow();
 
     if (!thread) {
       const recovered = await recoverOrphanSession(userId, id);
       if (recovered) {
-        const { data: recoveredThread } = await supabaseAdmin
-          .from('conversation_sessions')
-          .select('id, title, updated_at, metadata')
-          .eq('id', id)
-          .eq('user_id', userId)
-          .maybeSingle();
-        thread = recoveredThread;
+        thread = await selectThreadRow();
       }
     }
 
@@ -853,21 +926,32 @@ router.get(
 
     void threadIntelligenceService.syncFromStoredMessages(userId, id).catch(() => {});
 
+    const threadNumber = thread.thread_number ?? null;
     if (messages.length > 0) {
       res.json({
         success: true,
+        thread_number: threadNumber,
         messages: messages.map((m) => ({
           id: m.id,
           role: m.role,
           content: m.content,
           created_at: m.created_at,
           metadata: m.metadata ?? null,
+          turn_number: m.turn_number ?? null,
+          reply_seq: m.reply_seq ?? null,
+          // Human-referencable id: thread.turn for prompts, thread.turn.reply for responses.
+          ref:
+            threadNumber != null && m.turn_number != null
+              ? m.reply_seq
+                ? `${threadNumber}.${m.turn_number}.${m.reply_seq}`
+                : `${threadNumber}.${m.turn_number}`
+              : null,
         })),
       });
       return;
     }
 
-    res.json({ success: true, messages: [] });
+    res.json({ success: true, thread_number: threadNumber, messages: [] });
   })
 );
 

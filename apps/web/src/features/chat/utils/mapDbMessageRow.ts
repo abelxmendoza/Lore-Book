@@ -6,6 +6,9 @@ export type DbChatMessageRow = {
   content?: string | null;
   created_at?: string | null;
   metadata?: Record<string, unknown> | null;
+  turn_number?: number | null;
+  reply_seq?: number | null;
+  ref?: string | null;
 };
 
 /** Map a durable chat_messages row into the client Message shape. */
@@ -50,6 +53,9 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     content: row.content ?? '',
     timestamp: row.created_at ? new Date(row.created_at) : new Date(),
     persistStatus: 'saved',
+    ...(row.turn_number != null ? { turnNumber: row.turn_number } : {}),
+    ...(row.reply_seq != null ? { replySeq: row.reply_seq } : {}),
+    ...(row.ref ? { ref: row.ref } : {}),
     ...(metadata ? { metadata } : {}),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(mentionedEntities && mentionedEntities.length > 0 ? { mentionedEntities } : {}),

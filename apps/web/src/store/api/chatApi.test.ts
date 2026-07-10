@@ -112,7 +112,7 @@ describe('chatApi', () => {
     const store = makeStore();
     const result = await store.dispatch(chatApi.endpoints.getThreadMessages.initiate('t1'));
 
-    expect(result.data).toEqual({ success: true, messages: [{ id: 'm1' }] });
+    expect(result.data).toEqual({ success: true, thread_number: null, messages: [{ id: 'm1' }] });
   });
 
   it('generateThreadTitle POSTs messages to the title endpoint', async () => {

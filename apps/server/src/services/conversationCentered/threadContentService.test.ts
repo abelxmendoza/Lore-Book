@@ -287,4 +287,59 @@ describe('threadContentService', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toContain('Jerry');
   });
+
+  describe('assignMessageRefs', () => {
+    const row = (
+      id: string,
+      role: 'user' | 'assistant',
+      overrides: Partial<import('./threadContentService').ThreadMessageRow> = {}
+    ) => ({
+      id,
+      role,
+      content: `${role} ${id}`,
+      created_at: '2026-06-01T00:00:00Z',
+      ...overrides,
+    });
+
+    it('derives turn/reply numbering for legacy rows without stored refs', async () => {
+      const { assignMessageRefs } = await import('./threadContentService');
+      const out = assignMessageRefs([
+        row('1', 'user'),
+        row('2', 'assistant'),
+        row('3', 'user'),
+        row('4', 'assistant'),
+        row('5', 'assistant'),
+      ]);
+      expect(out.map((m) => [m.turn_number, m.reply_seq])).toEqual([
+        [1, 0],
+        [1, 1],
+        [2, 0],
+        [2, 1],
+        [2, 2],
+      ]);
+    });
+
+    it('keeps stored trigger-assigned refs untouched', async () => {
+      const { assignMessageRefs } = await import('./threadContentService');
+      const out = assignMessageRefs([
+        row('1', 'user', { turn_number: 7, reply_seq: 0 }),
+        row('2', 'assistant', { turn_number: 7, reply_seq: 1 }),
+        row('3', 'user'),
+      ]);
+      expect(out.map((m) => [m.turn_number, m.reply_seq])).toEqual([
+        [7, 0],
+        [7, 1],
+        [8, 0],
+      ]);
+    });
+
+    it('anchors an assistant-first thread to turn 1', async () => {
+      const { assignMessageRefs } = await import('./threadContentService');
+      const out = assignMessageRefs([row('1', 'assistant'), row('2', 'user')]);
+      expect(out.map((m) => [m.turn_number, m.reply_seq])).toEqual([
+        [1, 1],
+        [2, 0],
+      ]);
+    });
+  });
 });

@@ -7,6 +7,8 @@ export type DbThreadRow = {
   updated_at?: string;
   created_at?: string;
   message_count?: number;
+  /** Per-user sequential reference number (#N) — null until migration applied. */
+  thread_number?: number | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -20,6 +22,7 @@ export type ThreadsListResponse = {
 
 export type ThreadMessagesResponse = {
   success: boolean;
+  thread_number?: number | null;
   messages: Array<Record<string, unknown>>;
 };
 
@@ -79,6 +82,7 @@ export const chatApi = baseApi.injectEndpoints({
       query: (threadId) => ({ url: `/api/conversation/threads/${threadId}/messages` }),
       transformResponse: (res: Partial<ThreadMessagesResponse>) => ({
         success: res.success ?? true,
+        thread_number: res.thread_number ?? null,
         messages: res.messages ?? [],
       }),
       providesTags: (_result, _err, threadId) => [

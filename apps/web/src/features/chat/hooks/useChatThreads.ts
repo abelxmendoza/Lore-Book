@@ -47,6 +47,8 @@ export type ChatThread = {
   updatedAt: string;
   /** Server-side message count — used for sidebar filtering without hydrating messages */
   messageCount?: number;
+  /** Per-user sequential reference number (#N) for citing this conversation */
+  threadNumber?: number | null;
 };
 
 // ── Storage keys ─────────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ function messagesToJson(messages: Message[]) {
 
 function dbRowToThread(t: any): ChatThread {
   const messageCount = typeof t.message_count === 'number' ? t.message_count : undefined;
+  const threadNumber = typeof t.thread_number === 'number' ? t.thread_number : undefined;
   const thread: ChatThread = {
     id: t.id,
     title: t.title || DRAFT_THREAD_TITLE,
@@ -82,6 +85,7 @@ function dbRowToThread(t: any): ChatThread {
     messages: [],
     updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
     ...(messageCount !== undefined ? { messageCount } : {}),
+    ...(threadNumber !== undefined ? { threadNumber } : {}),
   };
   return normalizeThreadTitle(thread);
 }
@@ -424,6 +428,7 @@ export const useChatThreads = () => {
               dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
               messages: [],
               updatedAt: ensuredMeta.updatedAt ?? row?.updatedAt ?? existing?.updatedAt ?? new Date().toISOString(),
+              threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
             };
             const next = row
               ? prev.map((t) => (t.id === id ? { ...t, ...emptyThread! } : t))
@@ -449,6 +454,7 @@ export const useChatThreads = () => {
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
             updatedAt: row?.updatedAt && row.updatedAt > updatedAt ? row.updatedAt : updatedAt,
+            threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
           };
 
           const next = row

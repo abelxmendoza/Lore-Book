@@ -6,7 +6,14 @@ export type DedupeableThread = {
   title: string;
   messages: Message[];
   updatedAt: string;
+  /** Server-side message count — list rows arrive unhydrated (messages: []), so
+   *  this is the only signal that a thread holds a real conversation. */
+  messageCount?: number;
 };
+
+function hasAnyMessages(t: DedupeableThread): boolean {
+  return t.messages.length > 0 || (t.messageCount ?? 0) > 0;
+}
 
 function normalizeContent(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -24,8 +31,9 @@ export function conversationFingerprint(
 }
 
 function pickSurvivor(threads: DedupeableThread[]): DedupeableThread {
+  const size = (t: DedupeableThread) => Math.max(t.messages.length, t.messageCount ?? 0);
   return [...threads].sort((a, b) => {
-    if (b.messages.length !== a.messages.length) return b.messages.length - a.messages.length;
+    if (size(b) !== size(a)) return size(b) - size(a);
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   })[0];
 }
@@ -55,8 +63,12 @@ export function dedupeConversationThreads(threads: DedupeableThread[]): Dedupeab
     }
   }
 
+  // Only threads with NO messages anywhere (local or server) are collapsible
+  // drafts. Server list rows are unhydrated, so a real conversation with a
+  // still-generic title must never be dropped here — that made threads created
+  // on one device vanish from another.
   const emptyDrafts = unique.filter(
-    (t) => t.messages.length === 0 && isGenericThreadTitle(t.title)
+    (t) => !hasAnyMessages(t) && isGenericThreadTitle(t.title)
   );
   if (emptyDrafts.length > 1) {
     const keep = pickSurvivor(emptyDrafts);
@@ -124,5 +136,5 @@ export function ensureLocalUniqueTitle(
 }
 
 export function isEmptyDraftThread(t: DedupeableThread): boolean {
-  return t.messages.length === 0 && isGenericThreadTitle(t.title);
+  return !hasAnyMessages(t) && isGenericThreadTitle(t.title);
 }
