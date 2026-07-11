@@ -505,6 +505,31 @@ export const LocationDetailModal = ({
     }
   };
 
+  /** Persist the full alias list ("also referred to as") for this place. */
+  const saveAliases = async (nextAliases: string[]) => {
+    const cleaned = [...new Set(nextAliases.map((a) => a.trim()).filter(Boolean))];
+    if (isMockDataEnabled) {
+      const next = {
+        ...location,
+        metadata: { ...(location.metadata ?? {}), aliases: cleaned, aliases_source: 'user_confirmed' },
+      };
+      const saved = mockDataService.mutate.locations.update(location.id, next) ?? next;
+      setLocation(saved);
+      onLocationUpdated?.(saved);
+      return;
+    }
+    const r = await fetchJson<{ success: boolean; location: LocationProfile }>(
+      `/api/locations/${location.id}`,
+      { method: 'PATCH', body: JSON.stringify({ aliases: cleaned }) },
+    );
+    if (r.success && r.location) {
+      setLocation(r.location);
+      onLocationUpdated?.(r.location);
+      apiCache.deletePattern(/\/api\/(locations|knowledge|conversation|counts|books)/);
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id] } }));
+    }
+  };
+
   const identityFields = [
     { label: 'Place type', value: placeType ? formatPlaceType(placeType) : location.type ?? undefined },
     { label: 'Location', value: placeLine },
@@ -742,7 +767,7 @@ export const LocationDetailModal = ({
                     onSave={savePlaceProfile}
                     onCancel={() => setEditingProfile(false)}
                   />
-                ) : identityFields.length > 0 || aliases.length > 0 || mergeHistory.length > 0 || evidenceSources.length > 0 ? (
+                ) : true ? (
                   <div className="rounded-xl bg-white/4 border border-white/8 p-3">
                     <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <MapPin className="h-3 w-3" /> Identity
@@ -757,20 +782,41 @@ export const LocationDetailModal = ({
                         ))}
                       </div>
                     )}
-                    {(aliases.length > 0 || mergeHistory.length > 0 || evidenceSources.length > 0) && (
+                    {true && (
                       <div className="mt-3 space-y-3 border-t border-white/8 pt-3">
-                        {aliases.length > 0 && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Also known as</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {aliases.map(alias => (
-                                <span key={alias} className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-200">
-                                  {alias}
-                                </span>
-                              ))}
-                            </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Also known as</p>
+                          <div className="flex flex-wrap items-center gap-1.5" data-testid="location-alias-editor">
+                            {aliases.map(alias => (
+                              <span key={alias} className="flex items-center gap-1 text-xs pl-2.5 pr-1 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-200">
+                                {alias}
+                                <button
+                                  type="button"
+                                  aria-label={`Remove alias ${alias}`}
+                                  className="p-0.5 text-teal-200/40 hover:text-red-300"
+                                  onClick={() => void saveAliases(aliases.filter(a => a !== alias))}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                            <input
+                              type="text"
+                              placeholder="Add alias…"
+                              aria-label="Add location alias"
+                              className="w-28 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-xs text-white placeholder:text-white/25 focus:border-teal-400 focus:outline-none"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const value = e.currentTarget.value.trim();
+                                  if (value) {
+                                    void saveAliases([...aliases, value]);
+                                    e.currentTarget.value = '';
+                                  }
+                                }
+                              }}
+                            />
                           </div>
-                        )}
+                        </div>
                         {mergeHistory.length > 0 && (
                           <div>
                             <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Merge history</p>

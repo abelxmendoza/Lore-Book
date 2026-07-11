@@ -504,6 +504,7 @@ class LocationService {
       type?: string | null;
       place_tags?: string[];
       place_significance?: string[];
+      aliases?: string[];
       metadata?: Record<string, unknown>;
     },
   ): Promise<LocationProfile | null> {
@@ -527,6 +528,10 @@ class LocationService {
     }
     if (update.place_significance !== undefined) {
       metadata.place_significance = update.place_significance;
+    }
+    if (update.aliases !== undefined) {
+      metadata.aliases = [...new Set(update.aliases.map((a) => a.trim()).filter(Boolean))];
+      metadata.aliases_source = 'user_confirmed';
     }
 
     const patch: Record<string, unknown> = {

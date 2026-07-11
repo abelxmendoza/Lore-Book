@@ -356,6 +356,8 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     type: z.string().nullable().optional(),
     place_tags: z.array(z.string()).optional(),
     place_significance: z.array(z.string()).optional(),
+    /** "Also referred to as" — user-curated alias list for this place. */
+    aliases: z.array(z.string().trim().min(1).max(160)).max(30).optional(),
   });
 
   const parsed = schema.safeParse(req.body);

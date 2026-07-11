@@ -87,6 +87,11 @@ export class GroupCandidateService {
 
       await this.ingestDetectedGroups(userId, detected, sourceId);
       await organizationRelationshipInferenceService.processAfterChat(userId, rawText);
+
+      // Explicit "X is in <group>" statements connect known people to known
+      // groups automatically (conservative; never creates new entities).
+      const { membershipInferenceService } = await import('./membershipInferenceService');
+      await membershipInferenceService.processMessage(userId, rawText, messageId);
     } catch (error) {
       logger.error({ error, userId, messageId }, 'GroupCandidateService: failed to process message');
     }

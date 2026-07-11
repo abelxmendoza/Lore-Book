@@ -1916,6 +1916,21 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to update character' });
     }
 
+    // Rename propagation: organization_members snapshots character_name, so a
+    // rename must reflect in every group roster the person belongs to.
+    if (updateData.name !== undefined && updated.name && updated.name !== existing.name) {
+      supabaseAdmin
+        .from('organization_members')
+        .update({ character_name: updated.name })
+        .eq('user_id', userId)
+        .eq('character_id', updated.id)
+        .then(({ error: memberErr }) => {
+          if (memberErr) {
+            logger.debug({ err: memberErr, characterId: updated.id }, 'Failed to propagate rename to organization_members');
+          }
+        });
+    }
+
     // Standing override changes should reflect in social_standing right away
     if ('standing_override' in metadataPatch) {
       const { socialStandingService } = await import('../services/socialStandingService');

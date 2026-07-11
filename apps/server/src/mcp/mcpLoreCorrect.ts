@@ -139,11 +139,17 @@ export async function mcpCorrectLore(
         .eq('id', args.character_id!)
         .eq('user_id', userId);
       if (error) throw error;
+      // Keep group rosters consistent — they snapshot character_name.
+      await supabaseAdmin
+        .from('organization_members')
+        .update({ character_name: args.new_name!.trim() })
+        .eq('user_id', userId)
+        .eq('character_id', args.character_id!);
       await finish('ok');
       return {
         success: true,
         action: args.action,
-        detail: `Renamed "${oldName}" to "${args.new_name!.trim()}" — old name kept as alias.`,
+        detail: `Renamed "${oldName}" to "${args.new_name!.trim()}" — old name kept as alias; group rosters updated.`,
       };
     }
 
