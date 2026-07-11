@@ -4,17 +4,23 @@ export type WhatChangedSummary = {
   since: string;
   gapDays: number;
   newMemoryCount: number;
+  newChatMessageCount?: number;
   newCharacters: Array<{ id: string; name: string }>;
   newTimelineEventCount: number;
   strongestTheme: string | null;
   reinforcedEntities: Array<{ name: string; newMentionCount: number }>;
+  completedGoals?: string[];
+  abandonedGoals?: string[];
+  newMeaningLabels?: string[];
   hasChanges: boolean;
+  headline?: string | null;
 };
 
 export type WhatChangedResponse = {
   success: boolean;
   summary: WhatChangedSummary;
   lines: string[];
+  headline?: string | null;
 };
 
 /**

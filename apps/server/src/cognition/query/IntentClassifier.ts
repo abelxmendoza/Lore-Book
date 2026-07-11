@@ -56,8 +56,9 @@ function extractEntities(message: string): string[] {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return [];
   const rest = message.slice(m.index + m[0].length).trim();
+  // Bounded tokens only — avoid nested unbounded quantifiers (CodeQL js/polynomial-redos).
   const nameMatch = rest.match(
-    /^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)?\s*[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,8})/,
+    /^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|Tio|Tia|Tío|Tía)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}|\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,6})/,
   );
   const name = nameMatch?.[1]?.replace(/[?!.,]{1,8}$/, '').trim();
   return name ? [name] : [];

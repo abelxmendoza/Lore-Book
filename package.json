@@ -28,6 +28,7 @@
     "test:memory-quality": "node scripts/memory-quality.mjs",
     "test:continuity-quality": "node scripts/continuity-quality.mjs",
     "test:return-points": "node scripts/return-points.mjs",
+    "test:session-delta": "node scripts/session-delta.mjs",
     "test:environment-safety": "node scripts/environment-safety.mjs",
     "staging:preflight": "node scripts/staging-preflight.mjs",
     "staging:migrate": "node scripts/staging-migrate.mjs",
@@ -71,6 +72,6 @@
     "postgres": "^3.4.9"
   },
   "overrides": {
-    "esbuild": "^0.25.4"
+    "esbuild": "^0.28.1"
   }
 }

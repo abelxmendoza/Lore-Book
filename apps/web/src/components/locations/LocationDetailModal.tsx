@@ -7,6 +7,7 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
+import { safeHttpUrl } from '../../lib/safeUrl';
 import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
@@ -794,17 +795,22 @@ export const LocationDetailModal = ({
                     <Sparkles className="h-3 w-3" /> Photos
                   </p>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {mediaItems.map(item => (
+                    {mediaItems.map(item => {
+                      // Validate href/src as http(s) only (CodeQL js/xss + unvalidated-url-redirection)
+                      const safeSrc = safeHttpUrl(item.url);
+                      if (!safeSrc) return null;
+                      const safeHref = safeHttpUrl(item.sourceUrl) ?? safeSrc;
+                      return (
                       <a
-                        key={item.url}
-                        href={item.sourceUrl ?? item.url}
+                        key={safeSrc}
+                        href={safeHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="group relative block aspect-square overflow-hidden rounded-lg border border-white/8 bg-black/25"
                         title={item.alt ?? (item.source === 'x_post' ? 'From an X post' : undefined)}
                       >
                         <img
-                          src={item.url}
+                          src={safeSrc}
                           alt={item.alt ?? ''}
                           loading="lazy"
                           className="h-full w-full object-cover transition group-hover:scale-105"
@@ -815,7 +821,8 @@ export const LocationDetailModal = ({
                           </span>
                         )}
                       </a>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

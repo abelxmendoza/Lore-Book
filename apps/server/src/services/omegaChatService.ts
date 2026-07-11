@@ -2142,8 +2142,12 @@ When updating relationship analytics or emotional signals from this thread, weig
                 evaluation
               );
 
-              // Inject challenge into system prompt
-              systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
+              // CodeQL js/system-prompt-injection: fixed template only (no user/DB text).
+              systemPrompt +=
+                '\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n' +
+                `If natural, gently invite the user to revisit one older self-belief (internal ref ${String(perception.id).slice(0, 8)}). ` +
+                'Do not force it. Do not invent what the belief was; ask openly.\n' +
+                'Note: This is optional. Only bring this up if the conversation naturally allows for gentle exploration.';
 
               logger.debug(
                 { perceptionId: perception.id, style: challenge.style },
@@ -2944,8 +2948,14 @@ When updating relationship analytics or emotional signals from this thread, weig
                 evaluation
               );
 
-              // Inject challenge into system prompt
-              systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
+              // CodeQL js/system-prompt-injection: never interpolate user/DB-sourced
+              // perception text into the system role. Use a fixed template + id only;
+              // the model already has conversation history for content.
+              systemPrompt +=
+                '\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n' +
+                `If natural, gently invite the user to revisit one older self-belief (internal ref ${String(perception.id).slice(0, 8)}). ` +
+                'Do not force it. Do not invent what the belief was; ask openly.\n' +
+                'Note: This is optional. Only bring this up if the conversation naturally allows for gentle exploration.';
 
               logger.debug(
                 { perceptionId: perception.id, style: challenge.style },

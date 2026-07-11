@@ -79,10 +79,21 @@ function asPosts(response: XResponse): XPost[] {
 
 function normalizeText(post: XPost): string {
   const raw = post.note_tweet?.text ?? post.full_text ?? post.text ?? '';
-  return raw
-    .replace(/\s+/g, ' ')
-    .replace(/\s+([,.;:!?])/g, '$1')
-    .trim();
+  // Collapse whitespace without \s+ quantifier on untrusted input (CodeQL js/polynomial-redos).
+  let out = '';
+  let prevSpace = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    const isSpace = ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t';
+    if (isSpace) {
+      if (!prevSpace) out += ' ';
+      prevSpace = true;
+    } else {
+      out += ch;
+      prevSpace = false;
+    }
+  }
+  return out.replace(/ ([,.;:!?])/g, '$1').trim();
 }
 
 function urlForPost(post: XPost, includes?: XIncludes): string | undefined {

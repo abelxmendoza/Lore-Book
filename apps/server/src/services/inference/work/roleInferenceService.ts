@@ -4,13 +4,19 @@
  */
 import { inferenceBase } from '../inferenceAssociationTypes';
 
-const ROLE_RE = /\b(?:(?:working|currently working|now working)\s+(?:as|at)\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer|[Mm]anager|[Oo]perator))|my\s+role\s+is\s+([A-Za-z][\w\s&-]{3,60})|I['’]m\s+(?:a|an)?\s+([A-Za-z][\w\s&-]{3,60}?(?:[Tt]echnician|[Ee]ngineer)))\b/i;
+// Word-bounded role titles only (no nested \s* lazy quantifiers — CodeQL js/polynomial-redos).
+const ROLE_WORD = String.raw`[A-Za-z][A-Za-z0-9&'-]{0,24}`;
+const ROLE_PHRASE = String.raw`${ROLE_WORD}(?:\s+${ROLE_WORD}){0,5}`;
+const ROLE_RE = new RegExp(
+  String.raw`\b(?:(?:working|currently working|now working)\s+(?:as|at)\s+(?:a|an)\s+(${ROLE_PHRASE})|my\s+role\s+is\s+(${ROLE_PHRASE})|I['’]m\s+(?:a|an)\s+(${ROLE_PHRASE}))\b`,
+  'i',
+);
 
-// "worked at X as a robot tech with Gary" — the generic "as a <role>" capture
-// the hardened ROLE_RE above no longer covers (broken by the ReDoS pass).
-// Word-count bounded (no lazy quantifier spanning \s runs) so it stays safe.
-const AS_A_ROLE_RE =
-  /\bas\s+(?:a|an)\s+([a-z][a-z0-9&'-]*(?:\s+[a-z0-9&'-]+){0,7}?)(?=\s+(?:with|at|for|in|on)\b|\s*[,.;!?]|\s*$)/i;
+// "worked at X as a robot tech with Gary" — word-count bounded capture.
+const AS_A_ROLE_RE = new RegExp(
+  String.raw`\bas\s+(?:a|an)\s+(${ROLE_WORD}(?:\s+${ROLE_WORD}){0,5})(?=\s+(?:with|at|for|in|on)\b|[.,;!?]|\s*$)`,
+  'i',
+);
 
 export interface ExtractedRole {
   surface: string;

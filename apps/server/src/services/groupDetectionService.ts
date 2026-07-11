@@ -175,8 +175,9 @@ const SCHOOL_SUBGROUP_PATTERN =
 const STANDALONE_SUBGROUP_PATTERN =
   /\b(?:my|our|the)?\s*((?:coding|robotics|japanese|music|band|football|basketball|soccer|baseball)\s+(?:club|class|team|band))\b/gi;
 
+// Single-token org name segments only (bounded repeats — CodeQL js/polynomial-redos).
 const ORGANIZATION_NAME_PATTERN =
-  /\b(?:worked at|work at|works at|employee at|coworker at|team at|department at|for)\s+([A-Z][A-Za-zÀ-ÿ'’-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’-]+){0,4})(?:\s+(?:organization|company|team|department))?\b/gi;
+  /\b(?:worked at|work at|works at|employee at|coworker at|team at|department at|for)\s+([A-Z][A-Za-zÀ-ÿ0-9'’.-]{0,40}(?:\s+[A-Z][A-Za-zÀ-ÿ0-9'’.-]{0,40}){0,4})(?:\s+(?:organization|company|team|department))?\b/gi;
 
 const EXPLICIT_ORGANIZATION_PATTERN =
   /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,4})\s+(Organization|Company|Team|Department)\b/g;
@@ -676,7 +677,9 @@ export class GroupDetectionService {
   }
 
   private titleCaseSceneName(value: string): string {
-    return this.titleCaseGroupName(value).replace(/\bSka\b/g, 'Ska').replace(/\bGoth\b/g, 'Goth');
+    // titleCaseGroupName already yields correct casing; do not self-replace tokens
+    // (CodeQL js/identity-replacement).
+    return this.titleCaseGroupName(value);
   }
 
   private groupTypeForSubgroup(subgroup: string): GroupType {
@@ -703,7 +706,11 @@ export class GroupDetectionService {
     if (BARE_TITLE_GROUP_NAME.test(name)) return false;
     if (/^(?:Mom|Dad|Tio|Tia|Tía|Abuela|Abuelo|Brother|Sister)\s+Family$/i.test(name)) return false;
     if (members.some(member => normalizeNameKey(member) === normalizeNameKey(name))) return false;
-    if (/^(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:Group|Crew|Squad|Circle))$/i.test(name) && members.length < 3) {
+    // Two-word max person-like prefix + Group|Crew|… (no nested ambiguous quantifiers).
+    if (
+      members.length < 3 &&
+      /^(?:[A-Z][a-z]{1,30})(?:\s+[A-Z][a-z]{1,30})?\s+(?:Group|Crew|Squad|Circle)$/i.test(name)
+    ) {
       return false;
     }
     return true;

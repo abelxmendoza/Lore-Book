@@ -13,18 +13,17 @@ type Props = {
 };
 
 /**
- * The primary continuity-proof surface (Sprint H).
+ * Session delta surface — quiet "while you were away" strip.
  *
- * Fires once, quietly, when a user reopens a thread after a qualifying gap —
- * before they type anything. Shows exactly what LoreBook recorded while they
- * were away: factual, evidence-backed, concise. No interpretation, no warmth
- * performance — just proof that the system kept paying attention.
+ * Distinct from ReturnPointBanner (unfinished waits):
+ * this shows completed / new durable facts only (max 3 lines).
  *
- * This is the "I remembered. I learned. I know what's changed." moment,
- * made structural instead of left to chance.
+ * Fires once after a qualifying gap. Factual, evidence-backed, dismissible.
+ * Never blocks chat. Hidden when nothing meaningful changed.
  */
 export const WhatChangedSinceLastTime = ({ thread }: Props) => {
   const [lines, setLines] = useState<string[] | null>(null);
+  const [headline, setHeadline] = useState<string | null>(null);
   const [gapDays, setGapDays] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [seenThreadId, setSeenThreadId] = useState<string | null>(null);
@@ -39,18 +38,27 @@ export const WhatChangedSinceLastTime = ({ thread }: Props) => {
     setSeenThreadId(thread.id);
 
     fetchWhatChanged(thread.updatedAt)
-      .then(({ summary, lines: serverLines }) => {
-        if (!summary.hasChanges) return;
-        setLines(serverLines);
+      .then((body) => {
+        const { summary, lines: serverLines } = body;
+        if (!summary.hasChanges || !serverLines?.length) return;
+        // Cap client-side as well (server already caps at 3)
+        const capped = serverLines.slice(0, 3);
+        setLines(capped);
+        setHeadline(
+          (body as { headline?: string | null }).headline ??
+            (summary as { headline?: string | null }).headline ??
+            capped[0] ??
+            null,
+        );
         setGapDays(summary.gapDays);
         analytics.track('what_changed_shown', {
           threadId: thread.id,
           gapDays: Math.round(summary.gapDays),
-          lineCount: serverLines.length,
+          lineCount: capped.length,
         });
       })
       .catch(() => {
-        // Silent — this is a delight surface, never an error surface.
+        // Silent — delight surface, never error surface.
       });
   }, [thread, seenThreadId]);
 
@@ -67,23 +75,37 @@ export const WhatChangedSinceLastTime = ({ thread }: Props) => {
     analytics.track('what_changed_dismissed', { threadId: thread?.id });
   };
 
+  // Headline is the top line; remaining lines are optional detail bullets.
+  const primary = headline ?? lines[0] ?? null;
+  const detailLines =
+    primary && lines[0] === primary ? lines.slice(1) : lines.filter((l) => l !== primary);
+
   return (
-    <div className="mx-4 mb-2 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+    <div
+      className="mx-4 mb-2 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden"
+      role="status"
+      aria-label="What changed while you were away"
+    >
       <div className="flex items-start justify-between gap-2 px-3 py-2.5">
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-start gap-2.5 min-w-0">
           <Sparkles className="h-3.5 w-3.5 text-indigo-400/80 mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium text-white/70">
               While you were away {gapLabel}
             </p>
-            <ul className="mt-1.5 space-y-1">
-              {lines.map((line, i) => (
-                <li key={i} className="text-xs text-white/55 leading-snug flex items-start gap-1.5">
-                  <span className="text-white/25 mt-0.5">·</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
+            {primary && (
+              <p className="mt-1 text-xs text-white/80 leading-snug">{primary}</p>
+            )}
+            {detailLines.length > 0 && (
+              <ul className="mt-1.5 space-y-1">
+                {detailLines.map((line, i) => (
+                  <li key={i} className="text-xs text-white/55 leading-snug flex items-start gap-1.5">
+                    <span className="text-white/25 mt-0.5">·</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         <button

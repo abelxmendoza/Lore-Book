@@ -10,8 +10,17 @@ export interface OrgHierarchy {
   evidence: string;
 }
 
-const PARENT_RE = /\b([A-Z][A-Za-z\s&]+?)\s+(?:a sub(?:sidiary)?(?: company)? of|subsidiary of|parent (?:company|org)(?: is| of)|under)\s+([A-Z][A-Za-z\s&]+)\b/i;
-const TEAM_RE = /\b([A-Z][A-Za-z\s&]+? Team)\s+(?:at|of|in)\s+([A-Z][A-Za-z\s&]+)\b/i;
+// Cap org name length to avoid polynomial backtracking (CodeQL js/polynomial-redos).
+const ORG_TOKEN = String.raw`[A-Z][A-Za-z0-9&'.-]{0,30}`;
+const ORG_NAME = String.raw`${ORG_TOKEN}(?:\s+${ORG_TOKEN}){0,5}`;
+const PARENT_RE = new RegExp(
+  String.raw`\b(${ORG_NAME})\s+(?:a sub(?:sidiary)?(?: company)? of|subsidiary of|parent (?:company|org)(?: is| of)|under)\s+(${ORG_NAME})\b`,
+  'i',
+);
+const TEAM_RE = new RegExp(
+  String.raw`\b(${ORG_NAME}\s+Team)\s+(?:at|of|in)\s+(${ORG_NAME})\b`,
+  'i',
+);
 
 export function resolveOrganizationHierarchy(text: string): OrgHierarchy[] {
   const results: OrgHierarchy[] = [];

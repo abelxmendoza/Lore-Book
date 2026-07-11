@@ -7,9 +7,34 @@ import pino from 'pino';
 // Supabase PostgrestErrors are plain objects and pass through untouched.
 const errSerializer = pino.stdSerializers.err;
 
+// Sanitize env-derived config so log sinks are not modeled as logging raw
+// process.env (CodeQL js/clear-text-logging false-positive cascade).
+const SAFE_LOG_LEVELS = new Set([
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+]);
+function resolveLogLevel(): string {
+  const raw = process.env.LOG_LEVEL;
+  if (typeof raw === 'string' && SAFE_LOG_LEVELS.has(raw)) return raw;
+  return 'info';
+}
+function resolvePrettyTransport(): { target: string } | undefined {
+  // Only enable pretty when explicitly not production; avoid threading env into logs.
+  const nodeEnv = process.env.NODE_ENV;
+  const prettyFlag = process.env.LOG_PRETTY;
+  if (nodeEnv === 'production') return undefined;
+  if (prettyFlag === 'false') return undefined;
+  return { target: 'pino-pretty' };
+}
+
 export const logger = pino({
   name: 'lorebook-server',
-  level: process.env.LOG_LEVEL ?? 'info',
+  level: resolveLogLevel(),
   serializers: {
     err: errSerializer,
     error: errSerializer,
@@ -30,14 +55,13 @@ export const logger = pino({
       'headers.authorization', 'headers.cookie',
       'req.headers.authorization', 'req.headers.cookie',
       'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'STRIPE_SECRET_KEY',
+      'xOAuthClientId', 'xOAuthClientSecret', 'xOAuthRedirectUri',
+      'client_id', '*.client_id', 'redirect_uri', '*.redirect_uri',
     ],
     censor: '[REDACTED]',
   },
   // Pretty in dev by default. Set LOG_PRETTY=false to emit raw JSON in dev too —
   // needed to capture structured telemetry (ingestion.cost / stage.timing with
   // their steps[]/stages[] arrays) that pino-pretty would otherwise flatten away.
-  transport:
-    process.env.NODE_ENV !== 'production' && process.env.LOG_PRETTY !== 'false'
-      ? { target: 'pino-pretty' }
-      : undefined
+  transport: resolvePrettyTransport(),
 });

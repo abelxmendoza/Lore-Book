@@ -45,7 +45,20 @@ export type ThirdPartyRomance = {
 };
 
 function cleanName(raw: string): string {
-  return raw.replace(/\s+/g, ' ').replace(/[.,;:!?]+$/, '').trim();
+  // Avoid \s+ on untrusted input (CodeQL js/polynomial-redos); collapse spaces linearly.
+  let out = '';
+  let prevSpace = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (ch === ' ' || ch === '\n' || ch === '\t') {
+      if (!prevSpace) out += ' ';
+      prevSpace = true;
+    } else {
+      out += ch;
+      prevSpace = false;
+    }
+  }
+  return out.replace(/[.,;:!?]+$/, '').trim();
 }
 
 /** Nearest proper-noun person mentioned before `index`, used as the pronoun antecedent. */

@@ -4262,8 +4262,23 @@ router.get(
 
     return res.json({
       success: true,
-      summary,
-      lines, // pre-formatted, ready to render — keeps "no speculation" enforced server-side
+      summary: {
+        since: summary.since,
+        gapDays: summary.gapDays,
+        newMemoryCount: summary.newMemoryCount,
+        newChatMessageCount: summary.newChatMessageCount,
+        newCharacters: summary.newCharacters,
+        newTimelineEventCount: summary.newTimelineEventCount,
+        strongestTheme: summary.strongestTheme,
+        reinforcedEntities: summary.reinforcedEntities,
+        completedGoals: summary.completedGoals,
+        abandonedGoals: summary.abandonedGoals,
+        newMeaningLabels: summary.newMeaningLabels,
+        hasChanges: summary.hasChanges,
+        headline: summary.delta?.headline ?? lines[0] ?? null,
+      },
+      lines, // pre-formatted, max 3 — keeps "no speculation" enforced server-side
+      headline: summary.delta?.headline ?? lines[0] ?? null,
     });
   })
 );
