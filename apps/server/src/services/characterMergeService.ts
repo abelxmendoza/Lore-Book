@@ -246,6 +246,29 @@ class CharacterMergeService {
       throw error;
     }
 
+    // Org-roster distinctness: two concurrent co-members of the same lineup
+    // are curated as different people (band-lineup conflation guard). SYSTEM
+    // merges are blocked; USER merges proceed with the conflict on record.
+    try {
+      const { findConcurrentCoMemberships, OrgRosterDistinctnessError } = await import(
+        './entities/orgRosterDistinctnessGuard'
+      );
+      const coMemberships = await findConcurrentCoMemberships(userId, sourceId, targetId);
+      if (coMemberships.length > 0) {
+        if (actor === 'SYSTEM') {
+          incrementEntityResolutionMetric('merge_attempts_blocked');
+          throw new OrgRosterDistinctnessError(coMemberships);
+        }
+        logger.warn(
+          { userId, sourceId, targetId, coMemberships },
+          'USER merge proceeding despite concurrent org co-membership — recording conflict'
+        );
+      }
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ORG_ROSTER_DISTINCT') throw error;
+      logger.debug({ err: error, sourceId, targetId }, 'Org roster distinctness check unavailable');
+    }
+
     const targetIsSelf = target.metadata?.is_self === true || target.metadata?.is_user === true;
     const sourceIsSelf = source.metadata?.is_self === true || source.metadata?.is_user === true;
     if (sourceIsSelf && !targetIsSelf) {

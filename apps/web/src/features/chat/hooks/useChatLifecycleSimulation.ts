@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatThreadContext } from '../../../contexts/ChatThreadContext';
+import { useRuntimeIdentity } from '../../../hooks/useRuntimeIdentity';
 import type { DemoChatLoadingStage } from '../../../services/demoChatSimulation';
 import {
   CHAT_LIFECYCLE_SCENARIOS,
@@ -19,6 +20,7 @@ type UseChatLifecycleSimulationOptions = {
 
 export function useChatLifecycleSimulation(options: UseChatLifecycleSimulationOptions = {}) {
   const navigate = useNavigate();
+  const { is } = useRuntimeIdentity();
   const {
     createThread,
     setActiveThreadId,
@@ -121,7 +123,9 @@ export function useChatLifecycleSimulation(options: UseChatLifecycleSimulationOp
   );
 
   return {
-    enabled: isChatLifecycleSimulationEnabled(),
+    // The QA simulator mutates visible chat state. Never expose it in an
+    // authenticated runtime, even when a deployment flag is accidentally on.
+    enabled: (is.guest || is.demo) && isChatLifecycleSimulationEnabled(),
     scenarios: CHAT_LIFECYCLE_SCENARIOS,
     runState,
     runScenario,

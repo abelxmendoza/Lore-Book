@@ -37,6 +37,8 @@ export type DemoChatSendResult = {
   subtitle?: string;
   dominantEntities?: string[];
   loreUpdates?: GuestLoreUpdates;
+  creationOutcomes?: Message['creationOutcomes'];
+  creationOutcomeSummary?: Message['creationOutcomeSummary'];
 };
 
 export type ChatSimulationMode = 'demo' | 'guest';
@@ -240,10 +242,18 @@ function buildGenericDemoResponse(
   const lore = compileChatLoreContext(message, { fallbackEntities: fallbacks });
   const entities = lore.entities;
   const names = entities.map((e) => e.name);
+  const creationOutcomes: Message['creationOutcomes'] = entities.map((entity) => ({
+    mention: entity.name,
+    action: 'merge',
+    entityId: entity.id,
+    entityName: entity.name,
+    reason: `Type-aware ${getLoreEntity(loreKindForChip(entity)).shortLabel.toLowerCase()} match; available for correction before persistence.`,
+    authority: 'core',
+  }));
   const entityLine =
     names.length > 0
-      ? `I picked up **${names.join('**, **')}** via ontology-backed lexical intelligence (no LLM) and would link them to your books — each type has its own color in the legend below.`
-      : 'I\'m tracking themes and people as you talk — keep going and your timeline will fill in.';
+      ? `The people and places I’m holding in context are **${names.join('**, **')}**.`
+      : 'I’m listening for what happened, how it affected you, and what feels unresolved—not only the facts.';
 
   const ontologyLine =
     lore.ontologyHits.length > 0
@@ -262,31 +272,33 @@ function buildGenericDemoResponse(
   if (/remember|recall|what do you know|what did i/.test(lower)) {
     body =
       mode === 'guest'
-        ? "In this guest preview I'm simulating memory recall from your temporary session lore — nothing is sent to OpenAI.\n\n" +
+        ? "Here is the thread I’m hearing from what you shared—not just a list of facts, but the part that may still matter now.\n\n" +
           entityLine
-        : "In demo mode I'm simulating memory recall. I'd surface matching journal entries, characters, and timeline events tied to what you asked about.\n\n" +
+        : "Here is the thread I’m hearing from what you shared—not just a list of facts, but the part that may still matter now.\n\n" +
           entityLine;
   } else if (/villain|character|who is|tell me about/.test(lower)) {
     body =
-      "I'd extract that person into your **Characters** book with relationship context and let you confirm or refine the details.\n\n" +
-      entityLine;
+      entityLine +
+      '\n\nWhat feels most important about this person: what they did, how you feel around them, or the pattern they bring out in you?';
   } else if (/log this|save this|remember this|journal/.test(lower)) {
     body =
-      'Got it — this would land in your life log and ripple into timeline, characters, and any open quests that match.\n\n' +
-      entityLine;
+      'I’ve got the event. Before we move on, the part worth holding onto may be what it changed for you—or what you wish you had done differently.\n\n' +
+      entityLine +
+      '\n\nWhat meaning do you want your future self to remember with it?';
   } else if (/feel|felt|anxious|excited|overwhelmed|happy|sad|stress/.test(lower)) {
     body =
-      "I hear the emotional weight in what you're sharing. LoreBook tracks patterns like this over time — not just the event, but how it fits your longer arc.\n\n" +
-      entityLine;
+      "That feeling deserves more than a label. Sometimes the useful question is what the emotion was trying to protect, ask for, or warn you about.\n\n" +
+      entityLine +
+      '\n\nWhat happened just before the feeling became strongest?';
   } else {
     body =
       mode === 'guest'
-        ? "Thanks for sharing that. This guest preview simulates how LoreBook listens and updates your temporary story — no account and no AI API calls.\n\n" +
+        ? "There is probably more underneath that than the event itself—what you hoped would happen, what surprised you, or what you are still carrying now.\n\n" +
           entityLine +
-          '\n\nWhat feels most important to explore next?'
-        : "Thanks for sharing that. In demo mode this simulates how LoreBook reflects back, connects dots, and updates your story surfaces without calling the server.\n\n" +
+          '\n\nWhat part keeps replaying in your mind?'
+        : "There is probably more underneath that than the event itself—what you hoped would happen, what surprised you, or what you are still carrying now.\n\n" +
           entityLine +
-          '\n\nWhat feels most important to explore next?';
+          '\n\nWhat part keeps replaying in your mind?';
   }
 
   const timelineUpdates =
@@ -308,6 +320,11 @@ function buildGenericDemoResponse(
     subtitle: deriveDemoSubtitle(message),
     dominantEntities: names.slice(0, 3),
     loreUpdates,
+    creationOutcomes: creationOutcomes.length > 0 ? creationOutcomes : undefined,
+    creationOutcomeSummary:
+      creationOutcomes.length > 0
+        ? `${creationOutcomes.length} typed ${creationOutcomes.length === 1 ? 'entity' : 'entities'} resolved with correction controls.`
+        : undefined,
   };
 }
 
@@ -342,6 +359,15 @@ export function buildDemoChatResponse(
       subtitle: chatFocus.sourceLabel,
       dominantEntities: [chatFocus.entityName],
       loreUpdates: mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined,
+      creationOutcomes: [{
+        mention: chatFocus.entityName,
+        action: 'merge',
+        entityId: chatFocus.entityId,
+        entityName: chatFocus.entityName,
+        reason: `Linked from ${chatFocus.sourceLabel}; available for correction.`,
+        authority: 'core',
+      }],
+      creationOutcomeSummary: 'Focused entity linked with provenance and correction controls.',
     };
   }
   return buildGenericDemoResponse(message, conversationHistory, mode, guestId);
@@ -379,7 +405,8 @@ export async function simulateDemoChatSend(options: {
     mode,
     options.guestId,
   );
-  await streamDemoFocusReply(result.content, options.onChunk, { chunkSize: 12, delayMs: 22 });
+  // Keep the preview readable: it should feel conversational, not like a log dump.
+  await streamDemoFocusReply(result.content, options.onChunk, { chunkSize: 9, delayMs: 42 });
 
   const primaryEntity = result.mentionedEntities?.[0];
   if (primaryEntity) {

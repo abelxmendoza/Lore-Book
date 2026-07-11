@@ -1,6 +1,7 @@
 import { LogIn, Sparkles, Crown, X, User, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGuest } from '../../contexts/GuestContext';
+import { useRuntimeIdentity } from '../../hooks/useRuntimeIdentity';
 import { useGuestExperienceDismiss } from '../../hooks/useGuestExperienceDismiss';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
@@ -49,6 +50,7 @@ function GuestExperienceCompactBar({
   used,
   limit,
   remaining,
+  modeLabel,
   percentUsed,
   canDismiss,
   onDismiss,
@@ -59,6 +61,7 @@ function GuestExperienceCompactBar({
   used: number;
   limit: number;
   remaining: number;
+  modeLabel: string;
   percentUsed: number;
   canDismiss: boolean;
   onDismiss: () => void;
@@ -72,7 +75,7 @@ function GuestExperienceCompactBar({
         <div className="flex items-center gap-2 min-w-0">
           <MessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
           <span className="text-xs text-white/80 truncate">
-            Guest · {remaining}/{limit} messages left
+            {modeLabel} · {remaining}/{limit} messages left
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -117,9 +120,11 @@ export const GuestExperienceCard = ({
 }: GuestExperienceCardProps) => {
   const navigate = useNavigate();
   const { guestState, endGuestSession } = useGuest();
+  const { is } = useRuntimeIdentity();
   const { dismissed, dismiss } = useGuestExperienceDismiss();
   const { used, limit, remaining, limitReached, percentUsed } = getGuestUsage(guestState);
-  const canDismiss = dismissible ?? variant === 'compact';
+  const canDismiss = dismissible ?? (variant === 'compact' || variant === 'banner');
+  const modeLabel = is.demo ? 'Demo' : 'Guest';
 
   const handleEndSession = () => {
     if (onEndSession) onEndSession();
@@ -141,7 +146,7 @@ export const GuestExperienceCard = ({
               <p className="text-sm font-medium text-white">
                 {limitReached
                   ? 'Guest limit reached'
-                  : `Guest mode · ${remaining} chat ${remaining === 1 ? 'message' : 'messages'} left`}
+                  : `${modeLabel} mode · ${remaining} chat ${remaining === 1 ? 'message' : 'messages'} left`}
               </p>
               <p className="text-xs text-white/60">
                 {limitReached
@@ -190,6 +195,17 @@ export const GuestExperienceCard = ({
                 <X className="h-4 w-4" />
               </Button>
             )}
+            {canDismiss && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={dismiss}
+                className="text-white/40 hover:text-white"
+                aria-label="Dismiss preview notice"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -201,6 +217,7 @@ export const GuestExperienceCard = ({
       used={used}
       limit={limit}
       remaining={remaining}
+      modeLabel={modeLabel}
       percentUsed={percentUsed}
       canDismiss={canDismiss}
       onDismiss={dismiss}

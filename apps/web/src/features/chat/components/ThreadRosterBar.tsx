@@ -6,13 +6,15 @@
  * removes them from the chat's context ("that's a different Juan").
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Users, Pin, X, RotateCcw } from 'lucide-react';
+import { Users, Pin, X, RotateCcw, Search, Download } from 'lucide-react';
 import {
   fetchThreadRoster,
   updateThreadRosterEntry,
   rosterEntryKey,
   type RosterEntry,
 } from '../../../api/threadRoster';
+import { exportCastAsMarkdown } from '../../../utils/exportCastPage';
+import { downloadFile } from '../../../utils/exportConversation';
 import { useAuth } from '../../../lib/supabase';
 
 const ROLE_DOT: Record<RosterEntry['role'], string> = {
@@ -26,12 +28,18 @@ const VISIBLE_CAP = 10;
 export function ThreadRosterBar({
   threadId,
   messageCount,
+  threadTitle,
+  onFilterByEntity,
 }: {
   threadId: string | null;
   messageCount: number;
+  threadTitle?: string;
+  /** Roster chip → filter the thread list to this cast member's threads. */
+  onFilterByEntity?: (entityId: string, name: string) => void;
 }) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<RosterEntry[]>([]);
+  const [threadNumber, setThreadNumber] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [showExcluded, setShowExcluded] = useState(false);
 
@@ -43,6 +51,7 @@ export function ThreadRosterBar({
     try {
       const result = await fetchThreadRoster(threadId);
       setEntries(result.entries ?? []);
+      setThreadNumber(result.threadNumber ?? null);
     } catch {
       setEntries([]);
     }
@@ -100,6 +109,16 @@ export function ThreadRosterBar({
             {entry.name}
             {entry.pinned && <Pin className="h-2.5 w-2.5 text-primary/70" />}
             <span className="hidden group-hover:flex items-center">
+              {onFilterByEntity && entry.entityId && (
+                <button
+                  type="button"
+                  onClick={() => onFilterByEntity(entry.entityId!, entry.name)}
+                  className="p-0.5 text-white/40 hover:text-sky-300"
+                  title="Show all threads with this person"
+                >
+                  <Search className="h-3 w-3" />
+                </button>
+              )}
               {!entry.pinned && (
                 <button
                   type="button"
@@ -130,16 +149,32 @@ export function ThreadRosterBar({
             +{hiddenCount} more
           </button>
         )}
-        {excluded.length > 0 && (
+        <span className="ml-auto flex items-center gap-1">
+          {excluded.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowExcluded((v) => !v)}
+              className="text-[11px] text-white/25 hover:text-white/50 px-1"
+              title="Excluded from this story"
+            >
+              {excluded.length} excluded
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setShowExcluded((v) => !v)}
-            className="text-[11px] text-white/25 hover:text-white/50 px-1 ml-auto"
-            title="Excluded from this story"
+            onClick={() =>
+              downloadFile(
+                exportCastAsMarkdown(threadTitle || 'Conversation', threadNumber, entries),
+                `cast-${threadNumber != null ? `thread-${threadNumber}` : 'conversation'}.md`,
+                'text/markdown'
+              )
+            }
+            className="p-0.5 text-white/25 hover:text-white/60"
+            title="Export cast page (markdown)"
           >
-            {excluded.length} excluded
+            <Download className="h-3 w-3" />
           </button>
-        )}
+        </span>
       </div>
       {showExcluded && excluded.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap mt-1">

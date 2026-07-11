@@ -443,7 +443,7 @@ export const useChat = () => {
     };
 
     try {
-      if (isSimulatedChatRuntime()) {
+      if (!user && isSimulatedChatRuntime()) {
         const chatMode = shouldUseMockData() ? 'demo' as const : 'guest' as const;
         const demoResult = await simulateDemoChatSend({
           message: messageText.trim(),
@@ -488,6 +488,8 @@ export const useChat = () => {
             connections: demoResult.connections,
             timelineUpdates: demoResult.timelineUpdates,
             modeDecision: demoResult.modeDecision,
+            creationOutcomes: demoResult.creationOutcomes,
+            creationOutcomeSummary: demoResult.creationOutcomeSummary,
           },
           { touchActivity: true }
         );
@@ -677,7 +679,7 @@ export const useChat = () => {
           // In guest/mock-data mode, swap backend-unavailable errors for a demo response
           // so there is no console spam and no scary error text.
           const useDemoFallback =
-            isSimulatedChatRuntime() ||
+            (!user && isSimulatedChatRuntime()) ||
             (isGuest && (isBackendUnavailable(error) || isGuestStreamBlocked(error))) ||
             (getGlobalMockDataEnabled() && isBackendUnavailable(error));
           updateStreamMessage(assistantMessageId, {
@@ -720,7 +722,7 @@ export const useChat = () => {
 
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
       const useDemoFallback =
-        isSimulatedChatRuntime() ||
+        (!user && isSimulatedChatRuntime()) ||
         (isGuest && (isBackendUnavailable(errMsg) || isGuestStreamBlocked(errMsg))) ||
         (getGlobalMockDataEnabled() && isBackendUnavailable(errMsg));
 

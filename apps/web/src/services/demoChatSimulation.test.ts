@@ -75,10 +75,11 @@ describe('demoChatSimulation', () => {
     const result = buildDemoChatResponse(
       'My aunt Maribel and I started working at Summit Staffing while learning muay thai',
     );
-    expect(result.content).toContain('lexical intelligence');
+    expect(result.content).toContain('holding in context');
     expect(result.mentionedEntities?.some((e) => e.name === 'Maribel')).toBe(true);
     expect(result.mentionedEntities?.some((e) => e.type === 'organization')).toBe(true);
     expect(result.mentionedEntities?.some((e) => e.type === 'skill')).toBe(true);
+    expect(result.creationOutcomes?.length).toBeGreaterThan(0);
   });
 
   it('includes thread memory line when history carries prior entities', () => {

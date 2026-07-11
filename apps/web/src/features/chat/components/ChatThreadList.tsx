@@ -28,6 +28,9 @@ type ChatThreadListProps = {
   onLoadMoreThreads?: () => void;
   threadError?: string | null;
   onDismissThreadError?: () => void;
+  /** Roster-scoped filter: only show threads featuring this cast member. */
+  castFilter?: { entityId: string; name: string; threadIds: Set<string> } | null;
+  onClearCastFilter?: () => void;
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -408,6 +411,8 @@ export const ChatThreadList = ({
   onLoadMoreThreads,
   threadError = null,
   onDismissThreadError,
+  castFilter,
+  onClearCastFilter,
 }: ChatThreadListProps) => {
   const { backendUnavailable } = useMockData();
   const drawerSwipeStartX = useRef<number | null>(null);
@@ -520,7 +525,7 @@ export const ChatThreadList = ({
     }
   };
 
-  const displayThreads: ChatThread[] = exploreActive
+  const baseThreads: ChatThread[] = exploreActive
     ? exploreHits.map(hit => {
         const existing = threads.find(t => t.id === hit.threadId);
         return existing ?? {
@@ -535,6 +540,10 @@ export const ChatThreadList = ({
     : searchQuery.trim()
       ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
       : threads;
+
+  const displayThreads: ChatThread[] = castFilter
+    ? baseThreads.filter((t) => castFilter.threadIds.has(t.id))
+    : baseThreads;
 
   const groups = groupThreadsByDate(displayThreads);
   const titleLabels = useMemo(
@@ -591,6 +600,28 @@ export const ChatThreadList = ({
               onClick={onDismissThreadError}
               className="p-1 rounded text-red-300/60 hover:text-red-200 hover:bg-red-500/10 flex-shrink-0"
               aria-label="Dismiss thread error"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Cast filter banner — roster chip → only threads featuring this person */}
+      {!collapsed && castFilter && (
+        <div
+          className="flex items-center justify-between gap-2 px-3 py-1.5 bg-primary/10 border-b border-primary/20 text-xs text-white/80 flex-shrink-0"
+          data-testid="cast-filter-banner"
+        >
+          <span className="truncate">
+            Threads with <span className="font-medium text-primary">{castFilter.name}</span>
+          </span>
+          {onClearCastFilter && (
+            <button
+              type="button"
+              onClick={onClearCastFilter}
+              className="p-0.5 rounded text-white/50 hover:text-white hover:bg-white/10 flex-shrink-0"
+              aria-label="Clear cast filter"
             >
               <X className="h-3.5 w-3.5" />
             </button>

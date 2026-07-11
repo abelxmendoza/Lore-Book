@@ -116,7 +116,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { BackendUnavailableBanner } from './components/BackendUnavailableBanner';
 import { DatabaseOpsBanner } from './components/admin/DatabaseOpsBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
-import { MockDataIndicator } from './components/MockDataIndicator';
 import { DemoMutationEffects } from './components/DemoMutationEffects';
 import { CelebrationHost } from './components/celebrations/CelebrationHost';
 import { GuestProvider } from './contexts/GuestContext';
@@ -174,7 +173,6 @@ if (!rootElement) {
                     <DemoMutationEffects />
                     <CelebrationHost />
                     <Router />
-                    <MockDataIndicator />
                   </SoulProfileChatProvider>
                 </CurrentContextProvider>
               </EntityModalProvider>

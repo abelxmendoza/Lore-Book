@@ -32,6 +32,8 @@ import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
 import { LoreBookNoticeHost } from '../../../components/chat/LoreBookNoticeHost';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { ThreadRosterBar } from './ThreadRosterBar';
+import { CastTrendsNudge } from './CastTrendsNudge';
+import { fetchCastThreads } from '../../../api/threadRoster';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
@@ -467,6 +469,21 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     setSearchMessageId(messageId);
   };
 
+  // Roster chip → thread list filtered to that cast member's threads.
+  const [castFilter, setCastFilter] = useState<{
+    entityId: string;
+    name: string;
+    threadIds: Set<string>;
+  } | null>(null);
+  const handleFilterByEntity = useCallback(async (entityId: string, name: string) => {
+    try {
+      const result = await fetchCastThreads(entityId);
+      setCastFilter({ entityId, name, threadIds: new Set(result.threads.map((t) => t.id)) });
+    } catch {
+      setCastFilter(null);
+    }
+  }, []);
+
   const prefillComposer = (prompt: string) => {
     setInitialPrompt(prompt);
     const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement | null;
@@ -585,6 +602,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         mobileOpen={threadListMobileOpen}
         onMobileClose={() => setThreadListMobileOpen(false)}
         isMobile={isMobile}
+        castFilter={castFilter}
+        onClearCastFilter={() => setCastFilter(null)}
         hasMoreThreads={threadsHasMore}
         threadsTotal={threadsTotal}
         loadingMoreThreads={threadsLoadingMore}
@@ -807,7 +826,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {/* Cast of this conversation — server-derived roster with pin/exclude */}
         {user && (
-          <ThreadRosterBar threadId={activeThreadId} messageCount={messages.length} />
+          <ThreadRosterBar
+            threadId={activeThreadId}
+            messageCount={messages.length}
+            threadTitle={threads.find((t) => t.id === activeThreadId)?.title}
+            onFilterByEntity={handleFilterByEntity}
+          />
         )}
 
         {/* Messages Area */}
@@ -819,7 +843,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                   <ChatLoadingPulse stage="connecting" progress={35} />
                 </div>
               ) : (
-                <ChatEmptyState />
+                <>
+                  <ChatEmptyState />
+                  {user && <CastTrendsNudge onPrefillComposer={prefillComposer} />}
+                </>
               )}
             </div>
           ) : (

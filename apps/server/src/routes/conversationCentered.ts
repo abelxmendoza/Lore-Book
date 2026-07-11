@@ -1283,6 +1283,134 @@ async function resolveEntityNamesToDisplay(ids: string[], userId: string): Promi
 }
 
 /**
+ * GET /api/conversation/cast/trends
+ * How the user's cast changes over time — new faces, rising, dormant.
+ * Deterministic aggregates from entity_conversation_links; no LLM.
+ */
+router.get(
+  '/cast/trends',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { castTrendsService } = await import('../services/conversationCentered/castTrendsService');
+    const trends = await castTrendsService.getTrends(req.user!.id);
+    res.json({ success: true, ...trends });
+  })
+);
+
+/**
+ * GET /api/conversation/cast/:entityId/threads
+ * Threads featuring this cast member — powers the roster-chip thread filter.
+ */
+router.get(
+  '/cast/:entityId/threads',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const entityId = req.params.entityId as string;
+
+    const { data: links, error } = await supabaseAdmin
+      .from('entity_conversation_links')
+      .select('session_id, mention_count, last_linked_at')
+      .eq('user_id', userId)
+      .eq('entity_id', entityId)
+      .order('last_linked_at', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+
+    const sessionIds = [...new Set((links ?? []).map((l) => l.session_id).filter(Boolean))];
+    if (sessionIds.length === 0) return res.json({ success: true, threads: [] });
+
+    const { data: sessions } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id, title, updated_at')
+      .eq('user_id', userId)
+      .in('id', sessionIds.slice(0, 100));
+
+    const mentionsBySession = new Map(
+      (links ?? []).map((l) => [l.session_id, l.mention_count ?? 1]),
+    );
+    const threads = (sessions ?? [])
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        updatedAt: s.updated_at,
+        mentions: mentionsBySession.get(s.id) ?? 1,
+      }))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    res.json({ success: true, threads });
+  })
+);
+
+/**
+ * GET /api/conversation/events/:id/roster
+ * Who was there — attendance for one event. Uses the event's own people list
+ * when populated; otherwise derives from the source thread's cast (via
+ * metadata.thread_id) and says so. Never fabricates attendance.
+ */
+router.get(
+  '/events/:id/roster',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const eventId = req.params.id as string;
+
+    const { data: event, error } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, title, start_time, people, metadata')
+      .eq('id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error && isTableMissingError(error)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (error) throw error;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const recordedPeople = (Array.isArray(event.people) ? event.people : [])
+      .filter((p: unknown): p is string => typeof p === 'string' && p.trim().length > 0);
+
+    if (recordedPeople.length > 0) {
+      return res.json({
+        success: true,
+        eventId,
+        title: event.title,
+        startTime: event.start_time,
+        source: 'event_record',
+        attendees: recordedPeople.map((name: string) => ({ entityId: null, name, role: 'attendee' })),
+      });
+    }
+
+    const threadId = (event.metadata as Record<string, unknown> | null)?.thread_id;
+    if (typeof threadId === 'string' && threadId) {
+      const { threadRosterService } = await import('../services/conversationCentered/threadRosterService');
+      const roster = await threadRosterService.getRoster(userId, threadId);
+      const attendees = (roster?.entries ?? [])
+        .filter((e) => e.status === 'active' && e.kind === 'character')
+        .map((e) => ({ entityId: e.entityId, name: e.name, role: e.role, firstSeenRef: e.firstSeenRef }));
+      return res.json({
+        success: true,
+        eventId,
+        title: event.title,
+        startTime: event.start_time,
+        source: 'derived_from_thread_cast',
+        threadId,
+        attendees,
+      });
+    }
+
+    res.json({
+      success: true,
+      eventId,
+      title: event.title,
+      startTime: event.start_time,
+      source: 'unknown',
+      attendees: [],
+    });
+  })
+);
+
+/**
  * GET /api/conversation/events
  * Get all events for user, sorted by time
  */

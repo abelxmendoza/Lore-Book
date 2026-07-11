@@ -23,6 +23,10 @@ vi.mock('../../contexts/GuestContext', () => ({
   GUEST_CHAT_LIMIT: 5,
 }));
 
+vi.mock('../../hooks/useRuntimeIdentity', () => ({
+  useRuntimeIdentity: () => ({ is: { demo: false } }),
+}));
+
 function renderCompact() {
   return render(
     <MemoryRouter>

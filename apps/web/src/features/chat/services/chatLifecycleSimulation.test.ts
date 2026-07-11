@@ -79,6 +79,35 @@ function createMockAdapter(initialThreads: ChatThread[] = []): ChatLifecycleAdap
 }
 
 describe('chatLifecycleSimulation', () => {
+  it('includes multi-turn party, romance, and conflict showcase journeys', () => {
+    const showcaseIds = ['party-story', 'romantic-interest', 'conflict-repair'];
+
+    for (const id of showcaseIds) {
+      const scenario = CHAT_LIFECYCLE_SCENARIOS.find((candidate) => candidate.id === id);
+      expect(scenario, `${id} scenario`).toBeDefined();
+      expect(scenario?.steps.filter((step) => step.type === 'userMessage')).toHaveLength(3);
+      expect(scenario?.steps.filter((step) => step.type === 'assistantStream')).toHaveLength(3);
+    }
+  });
+
+  it('showcase replies cover structured chatbot capabilities', () => {
+    const showcaseSteps = CHAT_LIFECYCLE_SCENARIOS
+      .filter((scenario) => ['party-story', 'romantic-interest', 'conflict-repair'].includes(scenario.id))
+      .flatMap((scenario) => scenario.steps)
+      .filter((step) => step.type === 'assistantStream');
+    const results = showcaseSteps.map((step) => step.result ?? {});
+
+    expect(results.some((result) => result.mentionedEntities?.length)).toBe(true);
+    expect(results.some((result) => result.timelineUpdates?.length)).toBe(true);
+    expect(results.some((result) => result.creationOutcomes?.length)).toBe(true);
+    expect(results.some((result) => result.sources?.length || result.citations?.length)).toBe(true);
+    expect(results.some((result) => result.continuityWarnings?.length)).toBe(true);
+    expect(results.some((result) => result.staleProjectionHints?.length)).toBe(true);
+    expect(results.some((result) => result.suggestedActions?.length)).toBe(true);
+    expect(results.some((result) => result.strategicGuidance)).toBe(true);
+    expect(results.some((result) => result.response_mode === 'RECALL')).toBe(true);
+  });
+
   it('creates a thread and appends a user message', async () => {
     const adapter = createMockAdapter();
     const scenario = CHAT_LIFECYCLE_SCENARIOS.find((s) => s.id === 'live-reply')!;

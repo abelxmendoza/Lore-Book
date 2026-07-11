@@ -6,18 +6,15 @@
  * Click a badge to dismiss it for the current browser session.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
-import { useGuest } from '../contexts/GuestContext';
-import { useAppSelector } from '../store/hooks';
-import { selectEffectiveUseMockData } from '../store/selectors';
 
 const DEV_AUTH_BYPASS =
   typeof import.meta !== 'undefined' &&
   import.meta.env.DEV === true &&
   import.meta.env.VITE_DEV_DISABLE_AUTH === 'true';
 
-type BadgeId = 'guest' | 'mock-data' | 'dev-auth';
+type BadgeId = 'dev-auth';
 
 const DISMISS_STORAGE_PREFIX = 'lk_mode_badge_dismissed_';
 
@@ -41,27 +38,9 @@ interface Badge {
 }
 
 export const ModeBadge = () => {
-  const { isGuest } = useGuest();
-  const isMockData = useAppSelector(selectEffectiveUseMockData);
   const [dismissed, setDismissed] = useState<Record<BadgeId, boolean>>(() => ({
-    guest: readDismissed('guest'),
-    'mock-data': readDismissed('mock-data'),
     'dev-auth': readDismissed('dev-auth'),
   }));
-
-  useEffect(() => {
-    if (!isGuest && dismissed.guest) {
-      setDismissed(prev => ({ ...prev, guest: false }));
-      writeDismissed('guest', false);
-    }
-  }, [isGuest, dismissed.guest]);
-
-  useEffect(() => {
-    if (!isMockData && dismissed['mock-data']) {
-      setDismissed(prev => ({ ...prev, 'mock-data': false }));
-      writeDismissed('mock-data', false);
-    }
-  }, [isMockData, dismissed]);
 
   const dismissBadge = (id: BadgeId) => {
     setDismissed(prev => ({ ...prev, [id]: true }));
@@ -76,24 +55,6 @@ export const ModeBadge = () => {
       label: 'Dev Auth',
       color: 'bg-purple-900/80 text-purple-200 border-purple-700/60',
       title: 'Auth bypass active (VITE_DEV_DISABLE_AUTH=true). Click to dismiss.',
-    });
-  }
-
-  if (isGuest && !dismissed.guest) {
-    badges.push({
-      id: 'guest',
-      label: 'Guest',
-      color: 'bg-blue-900/80 text-blue-200 border-blue-700/60',
-      title: 'Guest session active. Click to dismiss this indicator.',
-    });
-  }
-
-  if (isMockData && !dismissed['mock-data']) {
-    badges.push({
-      id: 'mock-data',
-      label: 'Mock Data',
-      color: 'bg-amber-900/80 text-amber-200 border-amber-700/60',
-      title: 'Mock data mode active — UI data is synthetic. Click to dismiss.',
     });
   }
 

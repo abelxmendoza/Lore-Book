@@ -42,3 +42,32 @@ export async function updateThreadRosterEntry(
     body: JSON.stringify({ key, ...override }),
   });
 }
+
+export type CastMemberActivity = {
+  entityId: string;
+  name: string;
+  kind: string;
+  threadCount: number;
+  totalMentions: number;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+export type CastTrendsResponse = {
+  success: boolean;
+  newFaces: CastMemberActivity[];
+  rising: CastMemberActivity[];
+  dormant: CastMemberActivity[];
+};
+
+export async function fetchCastTrends(): Promise<CastTrendsResponse> {
+  return fetchJson<CastTrendsResponse>('/api/conversation/cast/trends');
+}
+
+export type CastThreadHit = { id: string; title: string | null; updatedAt: string; mentions: number };
+
+export async function fetchCastThreads(entityId: string): Promise<{ success: boolean; threads: CastThreadHit[] }> {
+  return fetchJson<{ success: boolean; threads: CastThreadHit[] }>(
+    `/api/conversation/cast/${entityId}/threads`,
+  );
+}
