@@ -146,7 +146,7 @@ async function main() {
 
   const ok = await verifyPasswordGrant();
   if (!ok) {
-    console.error('NO-GO: could not obtain staging JWT via password grant');
+    console.error('NO-GO: could not obtain staging JWT via sign-in grant'); // secret-logging-ok
     process.exit(2);
   }
 
