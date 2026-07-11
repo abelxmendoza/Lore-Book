@@ -1,59 +1,71 @@
 /**
- * URL helpers that satisfy CodeQL js/xss and js/client-side-unvalidated-url-redirection.
- * Only http(s) URLs are allowed; javascript:/data: etc. are rejected.
+ * URL helpers that act as CodeQL barriers for:
+ *   - js/xss
+ *   - js/client-side-unvalidated-url-redirection
+ *
+ * CodeQL recognizes protocol allow-lists via startsWith / protocol === checks.
  */
 
-const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+/**
+ * True only for absolute http(s) URLs (CodeQL barrier guard).
+ */
+export function isSafeHttpUrl(raw: string | null | undefined): raw is string {
+  if (typeof raw !== 'string') return false;
+  const s = raw.trim();
+  // Explicit startsWith checks are modeled as sanitizer guards by CodeQL.
+  if (!(s.startsWith('https://') || s.startsWith('http://'))) return false;
+  try {
+    const u = new URL(s);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && Boolean(u.hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
- * Returns a safe absolute http(s) URL string, or null if untrusted/invalid.
+ * Returns the URL only when isSafeHttpUrl passes; otherwise null.
  */
 export function safeHttpUrl(raw: string | null | undefined): string | null {
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (!ALLOWED_PROTOCOLS.has(url.protocol)) return null;
-    // Block userinfo tricks and empty host
-    if (!url.hostname) return null;
-    return url.href;
-  } catch {
-    return null;
-  }
+  if (!isSafeHttpUrl(raw)) return null;
+  return raw.trim();
 }
 
+const X_HOSTS = new Set([
+  'x.com',
+  'www.x.com',
+  'twitter.com',
+  'www.twitter.com',
+  'mobile.twitter.com',
+  'pbs.twimg.com',
+  'abs.twimg.com',
+  'video.twimg.com',
+]);
+
 /**
- * X / Twitter post URLs only (status pages or known CDN images).
+ * X / Twitter http(s) URLs only.
  */
-export function safeXPostUrl(raw: string | null | undefined): string | null {
-  const url = safeHttpUrl(raw);
-  if (!url) return null;
+export function isSafeXUrl(raw: string | null | undefined): raw is string {
+  if (!isSafeHttpUrl(raw)) return false;
   try {
-    const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    const okHost =
-      host === 'x.com' ||
-      host === 'www.x.com' ||
-      host === 'twitter.com' ||
-      host === 'www.twitter.com' ||
-      host === 'mobile.twitter.com' ||
-      host.endsWith('.twimg.com') ||
-      host === 'pbs.twimg.com' ||
-      host === 'abs.twimg.com';
-    if (!okHost) return null;
-    return u.href;
+    const host = new URL(raw.trim()).hostname.toLowerCase();
+    return X_HOSTS.has(host) || host.endsWith('.twimg.com');
   } catch {
-    return null;
+    return false;
   }
 }
 
+export function safeXPostUrl(raw: string | null | undefined): string | null {
+  if (!isSafeXUrl(raw)) return null;
+  return raw.trim();
+}
+
 /**
- * Build a status URL from a numeric/string status id only.
+ * Build status URL from snowflake id only — never uses user-provided full URL.
  */
 export function xStatusUrlFromId(sourceId: string | null | undefined): string | null {
-  if (!sourceId || typeof sourceId !== 'string') return null;
-  // Status ids are numeric snowflakes (or alphanumeric); reject path injection
-  if (!/^[A-Za-z0-9_]{1,64}$/.test(sourceId.trim())) return null;
-  return `https://x.com/i/web/status/${sourceId.trim()}`;
+  if (typeof sourceId !== 'string') return null;
+  const id = sourceId.trim();
+  // Numeric snowflakes only
+  if (!/^[0-9]{5,25}$/.test(id)) return null;
+  return `https://x.com/i/web/status/${id}`;
 }

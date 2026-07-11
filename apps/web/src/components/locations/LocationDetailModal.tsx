@@ -7,7 +7,7 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
-import { safeHttpUrl } from '../../lib/safeUrl';
+import { isSafeHttpUrl } from '../../lib/safeUrl';
 import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
@@ -795,32 +795,53 @@ export const LocationDetailModal = ({
                     <Sparkles className="h-3 w-3" /> Photos
                   </p>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {mediaItems.map(item => {
-                      // Validate href/src as http(s) only (CodeQL js/xss + unvalidated-url-redirection)
-                      const safeSrc = safeHttpUrl(item.url);
-                      if (!safeSrc) return null;
-                      const safeHref = safeHttpUrl(item.sourceUrl) ?? safeSrc;
+                    {mediaItems.map((item) => {
+                      // CodeQL js/xss + js/client-side-unvalidated-url-redirection:
+                      // only pass strings that pass startsWith('https://'|'http://')
+                      // at the sink (recognized sanitizer barrier).
+                      const candidateSrc =
+                        typeof item.url === 'string' ? item.url.trim() : '';
+                      const candidateHref =
+                        typeof item.sourceUrl === 'string' ? item.sourceUrl.trim() : '';
+
+                      const src =
+                        (candidateSrc.startsWith('https://') ||
+                          candidateSrc.startsWith('http://')) &&
+                        isSafeHttpUrl(candidateSrc)
+                          ? candidateSrc
+                          : null;
+                      if (!src) return null;
+
+                      const href =
+                        (candidateHref.startsWith('https://') ||
+                          candidateHref.startsWith('http://')) &&
+                        isSafeHttpUrl(candidateHref)
+                          ? candidateHref
+                          : src;
+
                       return (
-                      <a
-                        key={safeSrc}
-                        href={safeHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group relative block aspect-square overflow-hidden rounded-lg border border-white/8 bg-black/25"
-                        title={item.alt ?? (item.source === 'x_post' ? 'From an X post' : undefined)}
-                      >
-                        <img
-                          src={safeSrc}
-                          alt={item.alt ?? ''}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition group-hover:scale-105"
-                        />
-                        {item.source === 'x_post' && (
-                          <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-sky-300">
-                            X
-                          </span>
-                        )}
-                      </a>
+                        <a
+                          key={src}
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group relative block aspect-square overflow-hidden rounded-lg border border-white/8 bg-black/25"
+                          title={
+                            item.alt ?? (item.source === 'x_post' ? 'From an X post' : undefined)
+                          }
+                        >
+                          <img
+                            src={src}
+                            alt={item.alt ?? ''}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                          />
+                          {item.source === 'x_post' && (
+                            <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-sky-300">
+                              X
+                            </span>
+                          )}
+                        </a>
                       );
                     })}
                   </div>

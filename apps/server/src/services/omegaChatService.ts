@@ -2142,10 +2142,11 @@ When updating relationship analytics or emotional signals from this thread, weig
                 evaluation
               );
 
-              // CodeQL js/system-prompt-injection: fixed template only (no user/DB text).
+              // CodeQL js/system-prompt-injection: constant template only — never
+              // interpolate user/DB-sourced values (ids, content, aliases) into system role.
               systemPrompt +=
                 '\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n' +
-                `If natural, gently invite the user to revisit one older self-belief (internal ref ${String(perception.id).slice(0, 8)}). ` +
+                'If natural, gently invite the user to revisit one older self-belief. ' +
                 'Do not force it. Do not invent what the belief was; ask openly.\n' +
                 'Note: This is optional. Only bring this up if the conversation naturally allows for gentle exploration.';
 
@@ -2948,12 +2949,11 @@ When updating relationship analytics or emotional signals from this thread, weig
                 evaluation
               );
 
-              // CodeQL js/system-prompt-injection: never interpolate user/DB-sourced
-              // perception text into the system role. Use a fixed template + id only;
-              // the model already has conversation history for content.
+              // CodeQL js/system-prompt-injection: constant template only — never
+              // interpolate user/DB-sourced values into the system role.
               systemPrompt +=
                 '\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n' +
-                `If natural, gently invite the user to revisit one older self-belief (internal ref ${String(perception.id).slice(0, 8)}). ` +
+                'If natural, gently invite the user to revisit one older self-belief. ' +
                 'Do not force it. Do not invent what the belief was; ask openly.\n' +
                 'Note: This is optional. Only bring this up if the conversation naturally allows for gentle exploration.';
 

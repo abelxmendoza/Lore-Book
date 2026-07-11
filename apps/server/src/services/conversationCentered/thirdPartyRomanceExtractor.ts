@@ -58,7 +58,8 @@ function cleanName(raw: string): string {
       prevSpace = false;
     }
   }
-  return out.replace(/[.,;:!?]+$/, '').trim();
+  // Bound trailing-punctuation strip (CodeQL js/polynomial-redos).
+  return out.replace(/[.,;:!?]{1,8}$/, '').trim();
 }
 
 /** Nearest proper-noun person mentioned before `index`, used as the pronoun antecedent. */
