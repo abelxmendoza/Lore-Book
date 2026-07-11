@@ -22,6 +22,11 @@ import {
 
 export type SelfModelConcept =
   | 'product_identity'
+  | 'creator'
+  | 'inception'
+  | 'capabilities'
+  | 'priority'
+  | 'platform_status'
   | 'memory_lifecycle'
   | 'chat_flow'
   | 'surfaces'
@@ -56,6 +61,31 @@ export const FALLBACK_SELF_MODEL: Record<SelfModelConcept, SelfModelFact> = {
     concept: 'product_identity',
     description:
       'LoreBook is a personal memory operating system — not a generic chatbot. It accumulates people, moments, and patterns from your conversations into a persistent biographical record.',
+  },
+  creator: {
+    concept: 'creator',
+    description:
+      'LoreBook was created by Abel Mendoza, founder of LoreBook. He built it so people can keep a living record of their story — the people, places, and meaning that make a life.',
+  },
+  inception: {
+    concept: 'inception',
+    description:
+      'LoreBook began as a way to stop losing life’s continuity across chats and apps — to remember who matters, what happened, and how your story grows over time.',
+  },
+  capabilities: {
+    concept: 'capabilities',
+    description:
+      'LoreBook can chat, remember, and organize your lore: characters, places, relationships, timeline events, groups, skills, and foundation recall from structured knowledge before raw journal search.',
+  },
+  priority: {
+    concept: 'priority',
+    description:
+      'LoreBook’s main focus is your lore — your story, personality, identities, and the people and places in your life. Product self-talk stays short; you are the protagonist.',
+  },
+  platform_status: {
+    concept: 'platform_status',
+    description:
+      'When asked if LoreBook is working, answer from the latest admin core health snapshot when available; otherwise say you are online and ready to keep their story.',
   },
   memory_lifecycle: {
     concept: 'memory_lifecycle',
@@ -103,12 +133,42 @@ const META_QUERY_RULES: Array<{
   strength: MetaQueryStrength;
 }> = [
   {
-    concepts: ['product_identity'],
+    concepts: ['creator', 'inception', 'product_identity'],
+    pattern:
+      /\b(who (created|built|made|founded) (you|lore ?book)|who('s| is) (your|the) (creator|founder|maker)|who (is|was) abel( mendoza)?)\b/i,
+    strength: 'strong',
+  },
+  {
+    concepts: ['inception', 'creator', 'priority'],
+    pattern:
+      /\b(why (was|were) (you|lore ?book) (created|built|made)|what('s| is) (your|lore ?book('s)?) (origin|inception|story)|how did (lore ?book|you) (start|begin))\b/i,
+    strength: 'strong',
+  },
+  {
+    concepts: ['capabilities', 'priority', 'surfaces'],
+    pattern:
+      /\b(what can (you|lore ?book) do|what (are|is) (your|lore ?book('s)?) (capabilities|features|functions)|what (are you|is lore ?book) (able|good) (at|for))\b/i,
+    strength: 'strong',
+  },
+  {
+    concepts: ['platform_status', 'product_identity'],
+    pattern:
+      /\b(are you (working|ok|okay|healthy|online|up)|is (lore ?book|the app|everything) (working|ok|okay|healthy|up|down)|how (are you|is lore ?book) (doing|feeling)|system (status|health))\b/i,
+    strength: 'strong',
+  },
+  {
+    concepts: ['priority', 'user_is_narrator', 'product_identity'],
+    pattern:
+      /\b(what (is|are) (your|lore ?book('s)?) (focus|priority|main job)|what (should|do) you (care|focus) (about|on)|are you (about|for) (me|my story))\b/i,
+    strength: 'strong',
+  },
+  {
+    concepts: ['product_identity', 'priority'],
     pattern: /\b(what is lore ?book|what('s| is) lore ?book|tell me about lore ?book)\b/i,
     strength: 'strong',
   },
   {
-    concepts: ['product_identity', 'memory_lifecycle', 'surfaces'],
+    concepts: ['product_identity', 'memory_lifecycle', 'surfaces', 'capabilities'],
     pattern: /\b(how does (lore ?book|this( app)?|the app) work|how do you work as (an? )?(app|system))\b/i,
     strength: 'strong',
   },
@@ -135,7 +195,7 @@ const META_QUERY_RULES: Array<{
     strength: 'soft',
   },
   {
-    concepts: ['limitations', 'extraction_pipeline'],
+    concepts: ['limitations', 'extraction_pipeline', 'capabilities'],
     pattern: /\b(what are your limits|what can'?t you do|do you have access to everything)\b/i,
     strength: 'soft',
   },
@@ -242,17 +302,44 @@ export function formatSelfModelBlock(facts: SelfModelFact[]): string | null {
 
 function formatMetaProductAnswer(facts: SelfModelFact[], message: string): string {
   const lines = facts.map((f) => `• ${truncateDescription(f.description)}`);
-  const opener = /\bwhat is\b/i.test(message)
-    ? 'LoreBook is a continuity-aware autobiographical memory system.'
-    : 'Here is how LoreBook works:';
+  let opener = 'Here is how LoreBook works:';
+  if (/\bwho (created|built|made|founded)\b|\b(creator|founder)\b/i.test(message)) {
+    opener = 'LoreBook was created by Abel Mendoza.';
+  } else if (/\bwhat can (you|lore ?book) do\b|\bcapabilities\b|\bfeatures\b/i.test(message)) {
+    opener = "Here's what LoreBook can do — with your story at the center:";
+  } else if (/\bare you (working|ok|okay|healthy|online)\b|\bis (lore ?book|the app).*(working|ok|healthy)\b|\bsystem (status|health)\b/i.test(message)) {
+    opener = "Here's my current status:";
+  } else if (/\bwhat is\b/i.test(message)) {
+    opener = 'LoreBook is a continuity-aware autobiographical memory system.';
+  }
 
   return [
     opener,
     '',
     ...lines,
     '',
-    'Ask me anything about your story — or check Characters, Timeline, and Memory Review to inspect what has been captured.',
+    'Ask me anything about your story — people, places, relationships, or what happened recently. Characters, Timeline, and Memory Review show what has been captured.',
   ].join('\n');
+}
+
+async function enrichFactsWithLiveStatus(facts: SelfModelFact[]): Promise<SelfModelFact[]> {
+  if (!facts.some((f) => f.concept === 'platform_status')) return facts;
+  try {
+    const { getCoreSuiteSnapshot } = await import('../diagnostics/coreSuiteSnapshot');
+    const snap = getCoreSuiteSnapshot();
+    if (!snap) return facts;
+    const statusLine =
+      snap.status === 'PASS'
+        ? `Core health checks last passed at ${new Date(snap.completedAt).toLocaleString()} (${snap.summary.PASS} pass / ${snap.summary.FAIL} fail).`
+        : snap.status === 'FAIL'
+          ? `Core health checks last finished with failures at ${new Date(snap.completedAt).toLocaleString()} (${snap.summary.FAIL} fail). Admins can re-run System Health.`
+          : `Core health checks last finished as ${snap.status} at ${new Date(snap.completedAt).toLocaleString()}.`;
+    return facts.map((f) =>
+      f.concept === 'platform_status' ? { ...f, description: statusLine } : f
+    );
+  } catch {
+    return facts;
+  }
 }
 
 async function buildProductContextBlock(
@@ -281,7 +368,7 @@ export async function resolveMetaProductContext(
   const match = detectMetaQuery(message);
   if (!match) return { shortCircuit: null, promptBlock: null };
 
-  const facts = await loadSelfModel(match.concepts);
+  const facts = await enrichFactsWithLiveStatus(await loadSelfModel(match.concepts));
   if (facts.length === 0) return { shortCircuit: null, promptBlock: null };
 
   const promptBlock = await buildProductContextBlock(message, facts, userId);

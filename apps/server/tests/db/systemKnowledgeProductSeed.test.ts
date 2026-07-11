@@ -10,13 +10,21 @@ const MIGRATION_PATH = join(
   '../../../../supabase/migrations/20260618200000_system_knowledge_product_seed.sql'
 );
 
+const CREATOR_MIGRATION_PATH = join(
+  __dirname,
+  '../../../../supabase/migrations/20260711200000_system_knowledge_creator_capabilities.sql'
+);
+
 const AGENT_MIGRATION_PATH = join(
   __dirname,
   '../../../../supabase/migrations/20260618100000_lore_agents.sql'
 );
 
 describe('system_knowledge product seed migration', () => {
-  const sql = readFileSync(MIGRATION_PATH, 'utf8');
+  const sql = [
+    readFileSync(MIGRATION_PATH, 'utf8'),
+    readFileSync(CREATOR_MIGRATION_PATH, 'utf8'),
+  ].join('\n');
 
   it('migration file exists and is idempotent', () => {
     expect(sql).toContain('INSERT INTO system_knowledge');
@@ -33,6 +41,7 @@ describe('system_knowledge product seed migration', () => {
     expect(sql).toContain('personal memory operating system');
     expect(sql).toContain('Memory Review');
     expect(sql).toContain('main character');
+    expect(sql).toContain('Abel Mendoza');
   });
 
   it('defines system_knowledge table in lore agents migration', () => {

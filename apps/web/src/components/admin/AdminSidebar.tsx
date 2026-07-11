@@ -39,7 +39,7 @@ const MENU_GROUPS = [
       { id: 'logs' as AdminSection,          label: 'Logs',           icon: FileText },
       { id: 'ai-events' as AdminSection,     label: 'AI Events',      icon: Zap },
       { id: 'engine-health' as AdminSection, label: 'Engine Health',  icon: Activity },
-      { id: 'chat-diagnostics' as AdminSection, label: 'Chat Diagnostics', icon: ShieldCheck },
+      { id: 'chat-diagnostics' as AdminSection, label: 'System Health', icon: ShieldCheck },
       { id: 'integrations' as AdminSection,  label: 'Integrations',   icon: ExternalLink },
       { id: 'tools' as AdminSection,         label: 'Tools',          icon: Settings },
       { id: 'feature-flags' as AdminSection, label: 'Feature Flags',  icon: Flag },

@@ -121,7 +121,7 @@ function getSectionTitle(view: AdminView): string {
     case 'finance': return 'Finance';
     case 'cost': return 'AI Cost';
     case 'chronicle': return 'LoreBook Chronicle';
-    case 'chat-diagnostics': return 'Chat Diagnostics';
+    case 'chat-diagnostics': return 'System Health';
     default: return 'Admin Console';
   }
 }
@@ -884,7 +884,7 @@ export const AdminPage = () => {
                   <div className="p-4 rounded-lg border border-primary/30 bg-primary/10">
                     <h3 className="font-semibold text-white mb-1">Chat Reliability Diagnostics</h3>
                     <p className="text-sm text-white/50 mb-3">
-                      Run end-to-end chat reliability scenarios (same tool as CLI /api/diagnostics/chat).
+                      Run core must-pass checks (recall, self-knowledge, boot) and chat durability scenarios.
                     </p>
                     <button
                       type="button"

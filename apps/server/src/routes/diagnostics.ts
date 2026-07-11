@@ -10,6 +10,8 @@ import {
   getChatDiagnosticScenarios,
   runChatDiagnostics,
 } from '../services/diagnostics/chatReliability/runner';
+import { runCoreSuite } from '../services/diagnostics/coreSuite';
+import { getCoreSuiteSnapshot } from '../services/diagnostics/coreSuiteSnapshot';
 import { entityContinuityVerifier } from '../services/entityContinuityVerifier';
 import { ingestionQueue } from '../services/ingestion/ingestionQueue';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -120,6 +122,58 @@ router.post('/chat', requireAuth, requireDevAccess, async (req: Request, res: Re
     res.status(result.status === 'FAIL' ? 500 : 200).json(result);
   } catch (err) {
     res.status(500).json({ error: 'Chat diagnostics failed', detail: String(err) });
+  }
+});
+
+/**
+ * GET /api/diagnostics/core
+ * Last core System Health snapshot (or dry catalog of suite names).
+ */
+router.get('/core', requireAuth, requireDevAccess, async (_req: Request, res: Response) => {
+  try {
+    const snapshot = getCoreSuiteSnapshot();
+    if (snapshot) {
+      res.json({
+        hasRun: true,
+        snapshot: {
+          ...snapshot,
+          checks: snapshot.checks ?? [],
+          suites: snapshot.suites,
+        },
+      });
+      return;
+    }
+    res.json({
+      hasRun: false,
+      suites: [
+        { id: 'boot', name: 'Boot & config' },
+        { id: 'durability', name: 'Chat durability' },
+        { id: 'recall', name: 'Foundation recall' },
+        { id: 'self_model', name: 'LoreBook self-knowledge' },
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Core diagnostics snapshot failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/core
+ * Run must-pass System Health suite (boot, durability, recall routing, self-model).
+ */
+router.post('/core', requireAuth, requireDevAccess, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as {
+      includeChatLive?: boolean;
+      recallUserId?: string | null;
+    };
+    const result = await runCoreSuite({
+      includeChatLive: body.includeChatLive === true,
+      recallUserId: body.recallUserId ?? null,
+    });
+    res.status(result.status === 'FAIL' ? 500 : 200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Core diagnostics failed', detail: String(err) });
   }
 });
 

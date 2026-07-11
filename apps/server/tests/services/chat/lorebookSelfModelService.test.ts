@@ -30,6 +30,24 @@ describe('lorebookSelfModelService', () => {
       expect(match?.concepts).toContain('memory_lifecycle');
     });
 
+    it('detects creator identity queries', () => {
+      const match = detectMetaQuery('Who created LoreBook?');
+      expect(match?.strength).toBe('strong');
+      expect(match?.concepts).toContain('creator');
+    });
+
+    it('detects capabilities queries', () => {
+      const match = detectMetaQuery('What can you do?');
+      expect(match?.strength).toBe('strong');
+      expect(match?.concepts).toContain('capabilities');
+    });
+
+    it('detects platform status queries', () => {
+      const match = detectMetaQuery('Are you working?');
+      expect(match?.strength).toBe('strong');
+      expect(match?.concepts).toContain('platform_status');
+    });
+
     it('does not treat user biography recall as meta product', () => {
       expect(detectMetaQuery('What do you know about me?')).toBeNull();
       expect(detectMetaQuery('What do you know about my family?')).toBeNull();
@@ -65,6 +83,12 @@ describe('lorebookSelfModelService', () => {
   });
 
   describe('resolveMetaProductContext', () => {
+    it('short-circuits creator queries with Abel Mendoza', async () => {
+      const result = await resolveMetaProductContext('Who created you?');
+      expect(result.shortCircuit).not.toBeNull();
+      expect(result.shortCircuit?.content).toContain('Abel Mendoza');
+    });
+
     it('short-circuits strong meta queries', async () => {
       const result = await resolveMetaProductContext('What is LoreBook?');
       expect(result.shortCircuit).not.toBeNull();
@@ -96,8 +120,11 @@ describe('lorebookSelfModelService', () => {
 
     it('exports every fallback concept in PRODUCT_SELF_MODEL_CONCEPTS', async () => {
       const { PRODUCT_SELF_MODEL_CONCEPTS } = await import('../../../src/services/chat/lorebookSelfModelService');
-      expect(PRODUCT_SELF_MODEL_CONCEPTS).toHaveLength(8);
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toHaveLength(13);
       expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('product_identity');
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('creator');
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('capabilities');
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('priority');
       expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('extraction_pipeline');
     });
   });
