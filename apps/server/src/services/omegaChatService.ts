@@ -1072,6 +1072,27 @@ When updating relationship analytics or emotional signals from this thread, weig
     // ingestion all stay attached to the thread the user is actually in.
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
+    // Server-side roster: the thread's cast survives device switches (client
+    // threadEntities only reflect messages hydrated on THIS device) and honors
+    // user exclusions ("that's a different Juan" stays out of the scene).
+    if (sessionId) {
+      try {
+        const { threadRosterService } = await import('./conversationCentered/threadRosterService');
+        const { cast, excludedIds } = await threadRosterService.getChatRosterContext(userId, sessionId);
+        const seen = new Set<string>();
+        const merged: NonNullable<typeof threadEntities> = [];
+        for (const e of [...(threadEntities ?? []), ...cast] as NonNullable<typeof threadEntities>) {
+          if (excludedIds.has(e.id) || seen.has(e.id)) continue;
+          if (e.type !== 'character' && e.type !== 'location' && e.type !== 'organization') continue;
+          seen.add(e.id);
+          merged.push(e);
+        }
+        threadEntities = merged;
+      } catch (err) {
+        logger.debug({ err, sessionId }, 'Thread roster context unavailable, using client threadEntities');
+      }
+    }
+
     let entryId: string | undefined;
     let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
     try {

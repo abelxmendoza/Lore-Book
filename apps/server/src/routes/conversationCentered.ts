@@ -956,6 +956,50 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/threads/:id/roster
+ * The thread's cast — derived from durable mention metadata with provenance
+ * refs, user overrides applied. Never LLM-generated.
+ */
+router.get(
+  '/threads/:id/roster',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { threadRosterService } = await import('../services/conversationCentered/threadRosterService');
+    const roster = await threadRosterService.getRoster(req.user!.id, req.params.id as string);
+    if (!roster) return res.status(404).json({ error: 'Thread not found' });
+    res.json({ success: true, ...roster });
+  })
+);
+
+/**
+ * PATCH /api/conversation/threads/:id/roster
+ * User override for one roster entry: role, exclude/include, pin.
+ */
+router.patch(
+  '/threads/:id/roster',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const schema = z.object({
+      key: z.string().min(1).max(300),
+      role: z.enum(['main', 'supporting', 'mentioned']).optional(),
+      status: z.enum(['active', 'excluded']).optional(),
+      pinned: z.boolean().optional(),
+    }).refine((b) => b.role !== undefined || b.status !== undefined || b.pinned !== undefined, {
+      message: 'At least one of role/status/pinned is required',
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+    const { key, ...override } = parsed.data;
+    const { threadRosterService } = await import('../services/conversationCentered/threadRosterService');
+    const roster = await threadRosterService.setOverride(req.user!.id, req.params.id as string, key, override);
+    if (!roster) return res.status(404).json({ error: 'Thread not found' });
+    res.json({ success: true, ...roster });
+  })
+);
+
+/**
  * GET /api/conversation/threads/:id/units
  * Get all extracted units from a thread
  */

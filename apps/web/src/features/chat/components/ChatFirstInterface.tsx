@@ -31,6 +31,7 @@ import { ChatFocusChipBar } from './ChatFocusChipBar';
 import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
 import { LoreBookNoticeHost } from '../../../components/chat/LoreBookNoticeHost';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
+import { ThreadRosterBar } from './ThreadRosterBar';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
@@ -803,6 +804,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           isMobile={isMobile}
           onRecallInChat={user ? handleRecallPrompt : undefined}
         />
+
+        {/* Cast of this conversation — server-derived roster with pin/exclude */}
+        {user && (
+          <ThreadRosterBar threadId={activeThreadId} messageCount={messages.length} />
+        )}
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
