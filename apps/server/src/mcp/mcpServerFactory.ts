@@ -8,6 +8,7 @@ import {
   mcpSearchEntities,
   mcpSearchMemories,
 } from './mcpDomainService';
+import { correctLoreInputSchema, mcpCorrectLore } from './mcpLoreCorrect';
 import { ingestStoryInputSchema, mcpIngestStory } from './mcpLoreIngest';
 import type { McpAuthContext } from './types';
 import { MCP_SERVER_INSTRUCTIONS } from './types';
@@ -110,6 +111,17 @@ export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => jsonText(await mcpIngestStory(ctx, args))
+  );
+
+  server.registerTool(
+    'correct_lore',
+    {
+      description:
+        "Apply the user's explicit correction to their lore: rename a character (rename_character: character_id + new_name), fix a romantic classification (set_romantic_classification: relationship_id + relationship_type/status), remove a wrong Dating & Romance card (exclude_from_dating: relationship_id), or confirm a real one (confirm_romantic: relationship_id). Only use when the user explicitly states the correction; pass their words as note. Corrections are permanent user authority — ingestion never overwrites them.",
+      inputSchema: correctLoreInputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => jsonText(await mcpCorrectLore(ctx, args))
   );
 
   return server;
