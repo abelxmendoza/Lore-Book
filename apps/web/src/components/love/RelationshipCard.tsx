@@ -293,28 +293,28 @@ export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLin
 
         {/* Flags Summary */}
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-[10px] sm:gap-4 sm:text-xs">
-          {relationship.red_flags.length > 0 && (
+          {(relationship.red_flags?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1 text-red-300">
               <AlertTriangle className="w-3 h-3" />
-              <span>{relationship.red_flags.length}</span>
+              <span>{(relationship.red_flags?.length ?? 0)}</span>
             </div>
           )}
-          {relationship.green_flags.length > 0 && (
+          {(relationship.green_flags?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1 text-green-300">
               <CheckCircle className="w-3 h-3" />
-              <span>{relationship.green_flags.length}</span>
+              <span>{(relationship.green_flags?.length ?? 0)}</span>
             </div>
           )}
-          {relationship.pros.length > 0 && (
+          {(relationship.pros?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1 text-green-400">
               <span className="text-white/50">Pros:</span>
-              <span>{relationship.pros.length}</span>
+              <span>{(relationship.pros?.length ?? 0)}</span>
             </div>
           )}
-          {relationship.cons.length > 0 && (
+          {(relationship.cons?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1 text-red-400">
               <span className="text-white/50">Cons:</span>
-              <span>{relationship.cons.length}</span>
+              <span>{(relationship.cons?.length ?? 0)}</span>
             </div>
           )}
         </div>
