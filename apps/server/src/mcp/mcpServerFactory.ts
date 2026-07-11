@@ -8,6 +8,7 @@ import {
   mcpSearchEntities,
   mcpSearchMemories,
 } from './mcpDomainService';
+import { ingestStoryInputSchema, mcpIngestStory } from './mcpLoreIngest';
 import type { McpAuthContext } from './types';
 import { MCP_SERVER_INSTRUCTIONS } from './types';
 
@@ -98,6 +99,17 @@ export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     async (args) => jsonText(await mcpGetRelationships(ctx, args))
+  );
+
+  server.registerTool(
+    'ingest_story',
+    {
+      description:
+        "Store a piece of the user's life story into LoreBook's memory. Use when the user shares autobiographical narrative during a development session (people, events, places, relationships). Send ONLY the story text — never code, specs, or technical discussion. LoreBook extracts entities, deduplicates against known lore, and records provenance.",
+      inputSchema: ingestStoryInputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => jsonText(await mcpIngestStory(ctx, args))
   );
 
   return server;
