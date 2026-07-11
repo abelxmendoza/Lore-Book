@@ -884,7 +884,7 @@ export const AdminPage = () => {
                   <div className="p-4 rounded-lg border border-primary/30 bg-primary/10">
                     <h3 className="font-semibold text-white mb-1">Chat Reliability Diagnostics</h3>
                     <p className="text-sm text-white/50 mb-3">
-                      Run core must-pass checks (recall, self-knowledge, boot) and chat durability scenarios.
+                      Check that LoreBook can chat, remember the user’s story, and explain itself.
                     </p>
                     <button
                       type="button"

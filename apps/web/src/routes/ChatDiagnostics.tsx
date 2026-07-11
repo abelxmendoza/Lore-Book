@@ -73,6 +73,115 @@ const statusStyles: Record<DiagnosticStatus, string> = {
   SKIPPED: 'border-slate-500/40 bg-slate-500/10 text-slate-200',
 };
 
+const STATUS_LABEL: Record<DiagnosticStatus, string> = {
+  PASS: 'Healthy',
+  WARN: 'Needs attention',
+  FAIL: 'Broken',
+  SKIPPED: 'Skipped',
+};
+
+/** Plain-language guide for admins — keep short. */
+const SUITE_GUIDE: Record<string, { title: string; why: string; forUser: string }> = {
+  boot: {
+    title: 'App setup',
+    why: 'Confirms LoreBook can talk to its database and AI.',
+    forUser: 'Without this, chat and saving stories won’t work.',
+  },
+  durability: {
+    title: 'Chat reliability',
+    why: 'Checks that messages and threads save cleanly.',
+    forUser: 'Stops lost chats and “message disappeared” bugs.',
+  },
+  recall: {
+    title: 'Memory answers',
+    why: 'Makes sure LoreBook answers from your story graph, not random old snippets.',
+    forUser: 'Questions like “who’s in my story?” get real people, not junk search results.',
+  },
+  self_model: {
+    title: 'About LoreBook',
+    why: 'Checks LoreBook knows what it is, who built it, and that your story comes first.',
+    forUser: 'It can explain itself without taking over your life story.',
+  },
+};
+
+const CHECK_GUIDE: Record<string, { title: string; why: string }> = {
+  'boot-supabase': {
+    title: 'Database connected',
+    why: 'Your memories and characters live here.',
+  },
+  'boot-openai': {
+    title: 'AI replies available',
+    why: 'Needed for normal chat answers.',
+  },
+  'durability-chat-suite': {
+    title: 'Chat save & load',
+    why: 'Confirms threads and messages don’t get lost.',
+  },
+  'recall-route-character_roster': {
+    title: '“Who’s in my story?”',
+    why: 'Should list people, not dump old journal lines.',
+  },
+  'recall-route-family': {
+    title: '“Tell me about my family”',
+    why: 'Should use family links, not random search hits.',
+  },
+  'recall-route-conversation': {
+    title: '“What else did I say?”',
+    why: 'Should summarize this chat, not unrelated memories.',
+  },
+  'recall-route-entity': {
+    title: '“Who is …?”',
+    why: 'Should pull that person’s profile from your book.',
+  },
+  'recall-live-roster': {
+    title: 'Live character list',
+    why: 'Optional check against a real account’s character book.',
+  },
+  'self-what-is': {
+    title: '“What is LoreBook?”',
+    why: 'Can explain the product in plain language.',
+  },
+  'self-creator': {
+    title: '“Who created you?”',
+    why: 'Knows Abel Mendoza built LoreBook.',
+  },
+  'self-capabilities': {
+    title: '“What can you do?”',
+    why: 'Lists real features without inventing fake ones.',
+  },
+  'self-priority': {
+    title: 'Story comes first',
+    why: 'Your life story stays the main focus.',
+  },
+  'self-status': {
+    title: '“Are you working?”',
+    why: 'Can report basic health after an admin check.',
+  },
+  'self-focus-user-first': {
+    title: 'Doesn’t confuse product talk with your lore',
+    why: 'Family/character questions still go to your story, not the About LoreBook FAQ.',
+  },
+};
+
+function suiteGuide(id: string) {
+  return (
+    SUITE_GUIDE[id] ?? {
+      title: id,
+      why: 'Part of the health check.',
+      forUser: 'Helps keep LoreBook reliable.',
+    }
+  );
+}
+
+function checkGuide(check: { id: string; name: string }) {
+  return (
+    CHECK_GUIDE[check.id] ?? {
+      title: check.name.replace(/^Self-model:\s*/i, '').replace(/^Recall routing:\s*/i, ''),
+      why: 'Confirms this part of LoreBook still works for users.',
+    }
+  );
+}
+
 const statusPhaseClass: Record<DiagnosticStatus, string> = {
   PASS: 'diag-phase--pass',
   WARN: 'diag-phase--warn',
@@ -286,7 +395,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
             System Health
           </h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Must-pass checks for chat, foundation recall, and LoreBook self-knowledge — plus chat durability probes.
+            Quick checks that LoreBook can chat, remember, and stay focused on the user’s story.
           </p>
         </div>
       </header>
@@ -303,7 +412,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
               : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800'
           }`}
         >
-          Core suite
+          Everyday checks
         </button>
         <button
           type="button"
@@ -316,21 +425,21 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
               : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800'
           }`}
         >
-          Chat durability
+          Chat save tests
         </button>
       </div>
 
       {tab === 'core' && (
         <div className="flex flex-col gap-5" data-testid="diag-core-panel">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
+            <label className="flex max-w-md items-start gap-2 text-sm text-zinc-400">
               <input
                 type="checkbox"
                 checked={includeChatLive}
                 onChange={(e) => setIncludeChatLive(e.target.checked)}
-                className="rounded border-zinc-600"
+                className="mt-1 rounded border-zinc-600"
               />
-              Include live chat durability probes
+              <span>Also test live chat saving (slower; needs a test account)</span>
             </label>
             <button
               type="button"
@@ -342,7 +451,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
               }`}
             >
               {coreRunning ? <Loader2 className="h-4 w-4 diag-spinner" /> : <Play className="h-4 w-4" />}
-              {coreRunning ? 'Running core suite…' : 'Run all core checks'}
+              {coreRunning ? 'Checking…' : 'Check LoreBook'}
             </button>
           </div>
 
@@ -350,7 +459,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
             <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
               <div className="flex items-center gap-2 text-sm text-violet-200">
                 <Loader2 className="h-4 w-4 diag-spinner" />
-                <span>Boot → durability → recall routing → self-knowledge…</span>
+                <span>Checking setup, chat, memory answers, and About LoreBook…</span>
               </div>
               <div className="diag-progress-track">
                 <div className="diag-progress-bar" />
@@ -360,15 +469,15 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
 
           {coreError && (
             <div className="diag-banner-error rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <p className="font-medium">Core suite failed to run</p>
+              <p className="font-medium">Couldn’t finish the check</p>
               <p className="mt-1 text-red-200/80">{coreError}</p>
             </div>
           )}
 
           {!core && !coreRunning ? (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
-              No core suite run yet. Click <span className="text-zinc-200">Run all core checks</span> to
-              validate boot config, recall routing, and that LoreBook can answer who created it and what it can do.
+              No check yet. Press <span className="text-zinc-200">Check LoreBook</span> to see if chat,
+              memory, and “about itself” answers are healthy.
             </div>
           ) : core ? (
             <>
@@ -386,49 +495,53 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
                       {statusIcon(core.status, 'h-7 w-7')}
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-widest opacity-70">Core suite</p>
-                      <p className="mt-0.5 text-3xl font-bold tracking-tight">{core.status}</p>
+                      <p className="text-xs font-semibold uppercase tracking-widest opacity-70">Overall</p>
+                      <p className="mt-0.5 text-3xl font-bold tracking-tight">{STATUS_LABEL[core.status]}</p>
                       <p className="mt-1 text-sm opacity-80">
-                        {core.status === 'PASS' && 'Must-pass checks look healthy — LoreBook is ready for user lore.'}
-                        {core.status === 'FAIL' && 'One or more must-pass checks failed — expand red rows for fix hints.'}
-                        {core.status === 'WARN' && 'Finished with warnings — review yellow rows.'}
-                        {core.status === 'SKIPPED' && 'Checks were skipped — usually missing env or synthetic user.'}
+                        {core.status === 'PASS' && 'Looks good — users should be able to chat and recall their story.'}
+                        {core.status === 'FAIL' && 'Something important is broken — open the red items below.'}
+                        {core.status === 'WARN' && 'Mostly ok, but a few things need a look.'}
+                        {core.status === 'SKIPPED' && 'Some checks couldn’t run (often a missing test account).'}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs uppercase tracking-wide opacity-60">Pass rate</p>
+                    <p className="text-xs uppercase tracking-wide opacity-60">Passing</p>
                     <p className="diag-stat-num text-3xl font-bold tabular-nums">{corePassRate}%</p>
-                    <p className="text-xs opacity-60">{core.durationMs}ms</p>
                   </div>
                 </div>
               </section>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {core.suites.map((suite) => (
-                  <div
-                    key={suite.id}
-                    className={`rounded-xl border p-4 ${statusStyles[suite.status]}`}
-                    data-testid={`diag-core-suite-${suite.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">{suite.name}</p>
-                      {statusIcon(suite.status)}
+                {core.suites.map((suite) => {
+                  const guide = suiteGuide(suite.id);
+                  return (
+                    <div
+                      key={suite.id}
+                      className={`rounded-xl border p-4 ${statusStyles[suite.status]}`}
+                      data-testid={`diag-core-suite-${suite.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{guide.title}</p>
+                        {statusIcon(suite.status)}
+                      </div>
+                      <p className="mt-2 text-xs opacity-90">{guide.why}</p>
+                      <p className="mt-1 text-[11px] opacity-70">For users: {guide.forUser}</p>
+                      <p className="mt-3 text-[11px] font-medium opacity-80">
+                        {STATUS_LABEL[suite.status]} · {suite.passCount} ok
+                        {suite.failCount ? ` · ${suite.failCount} broken` : ''}
+                        {suite.warnCount ? ` · ${suite.warnCount} watch` : ''}
+                      </p>
                     </div>
-                    <p className="mt-2 text-xs opacity-80">
-                      {suite.passCount} pass · {suite.failCount} fail · {suite.warnCount} warn
-                    </p>
-                    {suite.detail ? (
-                      <p className="mt-2 text-[11px] opacity-70 line-clamp-2">{suite.detail}</p>
-                    ) : null}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <section className="space-y-2">
-                <h2 className="text-sm font-semibold text-zinc-200">Checks</h2>
+                <h2 className="text-sm font-semibold text-zinc-200">What we checked</h2>
                 {core.checks.map((check) => {
                   const open = expandedChecks[check.id];
+                  const guide = checkGuide(check);
                   return (
                     <div
                       key={check.id}
@@ -444,23 +557,26 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
                         <div className="flex items-center gap-2 min-w-0">
                           {statusIcon(check.status)}
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{check.name}</p>
-                            <p className="text-[11px] opacity-70">{check.suite} · {check.durationMs}ms</p>
+                            <p className="truncate text-sm font-medium">{guide.title}</p>
+                            <p className="text-[11px] opacity-70">{guide.why}</p>
                           </div>
                         </div>
-                        <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? 'rotate-180' : ''}`} />
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-[11px] font-medium opacity-80">{STATUS_LABEL[check.status]}</span>
+                          <ChevronDown className={`h-4 w-4 transition ${open ? 'rotate-180' : ''}`} />
+                        </div>
                       </button>
                       {open && (
                         <div className="space-y-2 border-t border-current/10 px-4 py-3 text-xs opacity-90">
                           <p>
-                            <span className="font-semibold">Expected:</span> {check.expected}
+                            <span className="font-semibold">What we looked for:</span> {check.expected}
                           </p>
                           <p>
-                            <span className="font-semibold">Actual:</span> {check.actual}
+                            <span className="font-semibold">What we found:</span> {check.actual}
                           </p>
                           {check.fixHint ? (
                             <p className="text-amber-100/90">
-                              <span className="font-semibold">Fix:</span> {check.fixHint}
+                              <span className="font-semibold">What to do:</span> {check.fixHint}
                             </p>
                           ) : null}
                         </div>
@@ -477,8 +593,9 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
       {tab === 'durability' && (
         <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-zinc-400">
-          Live synthetic-user probes for threads, messages, isolation, and cleanup.
+        <p className="max-w-xl text-sm text-zinc-400">
+          Deeper test that LoreBook can create chats, save messages, and clean up without losing data.
+          Use this when users report missing messages.
         </p>
         <div className="flex items-center gap-2">
           <button
@@ -505,7 +622,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
             ) : (
               <Play className="h-4 w-4" />
             )}
-            {running ? 'Running live probes…' : 'Run diagnostics'}
+            {running ? 'Testing chat saves…' : 'Test chat saving'}
           </button>
         </div>
       </div>
@@ -514,7 +631,7 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
         <div className="space-y-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4" data-testid="diag-running-banner">
           <div className="flex items-center gap-2 text-sm text-violet-200">
             <Loader2 className="h-4 w-4 diag-spinner" />
-            <span>Executing scenarios against synthetic diagnostic user…</span>
+            <span>Testing that chats save and clean up correctly…</span>
           </div>
           <div className="diag-progress-track">
             <div className="diag-progress-bar" />
@@ -575,22 +692,20 @@ export default function ChatDiagnostics({ embedded = false }: ChatDiagnosticsPro
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-widest opacity-70">Overall</p>
-                  <p className="mt-0.5 text-3xl font-bold tracking-tight">{run.status}</p>
+                  <p className="mt-0.5 text-3xl font-bold tracking-tight">{STATUS_LABEL[run.status]}</p>
                   <p className="mt-1 text-sm opacity-80">
-                    {run.status === 'PASS' && 'All scenarios passed — live probes completed cleanly.'}
-                    {run.status === 'FAIL' && 'One or more scenarios failed — expand red rows for details.'}
-                    {run.status === 'WARN' &&
-                      'Run finished with warnings or skips — check the notes below.'}
-                    {run.status === 'SKIPPED' && 'Scenarios were skipped (usually missing synthetic user).'}
+                    {run.status === 'PASS' && 'Chat saving looks solid.'}
+                    {run.status === 'FAIL' && 'Chat saving has a problem — open the red items.'}
+                    {run.status === 'WARN' && 'Finished with warnings — check yellow items.'}
+                    {run.status === 'SKIPPED' && 'Couldn’t run — a test account may be missing.'}
                   </p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-wide opacity-60">Pass rate</p>
+                <p className="text-xs uppercase tracking-wide opacity-60">Passing</p>
                 <p key={`rate-${revealKey}`} className="diag-stat-num text-3xl font-bold tabular-nums">
                   {passRate}%
                 </p>
-                <p className="text-xs opacity-60">{run.durationMs}ms total</p>
               </div>
             </div>
           </section>
