@@ -251,6 +251,13 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [members, setMembers] = useState<OrganizationMember[]>(resolvedOrganization.members || []);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMember, setNewMember] = useState({ character_name: '', role: '', status: 'active' as const });
+  /** Character Book picker — preferred path (creates official character_id link). */
+  const [characterBookOptions, setCharacterBookOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [characterBookLoading, setCharacterBookLoading] = useState(false);
+  const [selectedBookCharacterId, setSelectedBookCharacterId] = useState('');
+  const [memberAddError, setMemberAddError] = useState<string | null>(null);
+  const [memberSaving, setMemberSaving] = useState(false);
+  const [showNameOnlyAdd, setShowNameOnlyAdd] = useState(false);
 
   // Stories state
   const [stories, setStories] = useState<OrganizationStory[]>(resolvedOrganization.stories || []);
@@ -903,34 +910,174 @@ User's message: ${currentInput}`;
     }
   };
 
-  const handleAddMember = async () => {
-    if (!newMember.character_name.trim()) return;
-
-    const member: OrganizationMember = {
-      id: `member-${Date.now()}`,
-      character_name: newMember.character_name,
-      role: newMember.role || undefined,
-      status: newMember.status,
-    };
-
-    setMembers(prev => [...prev, member]);
+  const openAddMemberPanel = async () => {
+    const next = !showAddMember;
+    setShowAddMember(next);
+    setMemberAddError(null);
+    setShowNameOnlyAdd(false);
+    setSelectedBookCharacterId('');
     setNewMember({ character_name: '', role: '', status: 'active' });
-    setShowAddMember(false);
+    if (next && characterBookOptions.length === 0 && !characterBookLoading) {
+      setCharacterBookLoading(true);
+      try {
+        const res = await fetchJson<{ characters?: Character[]; success?: boolean } | Character[]>(
+          '/api/characters',
+        );
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as { characters?: Character[] }).characters)
+            ? (res as { characters: Character[] }).characters
+            : [];
+        setCharacterBookOptions(
+          list
+            .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
+            .map((c) => ({ id: c.id, name: c.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch {
+        setMemberAddError('Could not load your Character Book.');
+      } finally {
+        setCharacterBookLoading(false);
+      }
+    }
+  };
 
-    // TODO: Save to backend
+  const rosterCharacterIds = useMemo(
+    () => new Set(members.map((m) => m.character_id).filter((id): id is string => Boolean(id))),
+    [members],
+  );
+
+  const availableBookCharacters = useMemo(
+    () =>
+      characterBookOptions.filter((c) => {
+        if (rosterCharacterIds.has(c.id)) return false;
+        const alreadyByName = members.some(
+          (m) => !m.character_id && m.character_name.toLowerCase() === c.name.toLowerCase(),
+        );
+        return !alreadyByName;
+      }),
+    [characterBookOptions, members, rosterCharacterIds],
+  );
+
+  /** Add from Character Book — posts character_id for an official durable link. */
+  const handleAddExistingCharacter = async () => {
+    if (!selectedBookCharacterId || memberSaving) return;
+    const chosen = characterBookOptions.find((c) => c.id === selectedBookCharacterId);
+    if (!chosen) {
+      setMemberAddError('Choose a person from your Character Book.');
+      return;
+    }
+    if (isEphemeralEntityId(organization.id)) {
+      setMemberAddError('Save this group first before linking people.');
+      return;
+    }
+
+    setMemberSaving(true);
+    setMemberAddError(null);
     try {
-      await addOrganizationMember({ organizationId: organization.id, member }).unwrap();
+      const result = (await addOrganizationMember({
+        organizationId: organization.id,
+        member: {
+          character_id: chosen.id,
+          character_name: chosen.name,
+          role: newMember.role.trim() || undefined,
+          status: 'active',
+        },
+      }).unwrap()) as { success?: boolean; member?: OrganizationMember };
+
+      const saved = result?.member;
+      if (saved?.id) {
+        setMembers((prev) => {
+          const withoutDup = prev.filter(
+            (m) =>
+              m.id !== saved.id &&
+              m.character_id !== saved.character_id &&
+              m.character_name.toLowerCase() !== saved.character_name.toLowerCase(),
+          );
+          return [...withoutDup, saved];
+        });
+      } else {
+        setMembers((prev) => [
+          ...prev,
+          {
+            id: `member-${Date.now()}`,
+            character_id: chosen.id,
+            character_name: chosen.name,
+            role: newMember.role.trim() || undefined,
+            status: 'active',
+          },
+        ]);
+      }
+      setSelectedBookCharacterId('');
+      setNewMember({ character_name: '', role: '', status: 'active' });
+      setShowAddMember(false);
+      onUpdate?.();
+    } catch (error) {
+      console.error('Failed to add member from Character Book:', error);
+      setMemberAddError(
+        error instanceof Error ? error.message : 'Could not link this person to the group.',
+      );
+    } finally {
+      setMemberSaving(false);
+    }
+  };
+
+  /** Name-only fallback when the person is not in the Character Book yet. */
+  const handleAddMember = async () => {
+    if (!newMember.character_name.trim() || memberSaving) return;
+    if (isEphemeralEntityId(organization.id)) {
+      setMemberAddError('Save this group first before adding people.');
+      return;
+    }
+
+    setMemberSaving(true);
+    setMemberAddError(null);
+    try {
+      const result = (await addOrganizationMember({
+        organizationId: organization.id,
+        member: {
+          character_name: newMember.character_name.trim(),
+          role: newMember.role.trim() || undefined,
+          status: newMember.status,
+        },
+      }).unwrap()) as { success?: boolean; member?: OrganizationMember };
+
+      const saved = result?.member;
+      if (saved?.id) {
+        setMembers((prev) => [...prev.filter((m) => m.id !== saved.id), saved]);
+      } else {
+        setMembers((prev) => [
+          ...prev,
+          {
+            id: `member-${Date.now()}`,
+            character_name: newMember.character_name.trim(),
+            role: newMember.role.trim() || undefined,
+            status: newMember.status,
+          },
+        ]);
+      }
+      setNewMember({ character_name: '', role: '', status: 'active' });
+      setShowAddMember(false);
+      setShowNameOnlyAdd(false);
+      onUpdate?.();
     } catch (error) {
       console.error('Failed to add member:', error);
+      setMemberAddError(error instanceof Error ? error.message : 'Could not add member.');
+    } finally {
+      setMemberSaving(false);
     }
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    setMembers(prev => prev.filter(m => m.id !== memberId));
+    const previous = members;
+    setMembers((prev) => prev.filter((m) => m.id !== memberId));
     try {
       await removeOrganizationMember({ organizationId: organization.id, itemId: memberId }).unwrap();
+      onUpdate?.();
     } catch (error) {
       console.error('Failed to remove member:', error);
+      setMembers(previous);
+      setMemberAddError('Could not remove member. Try again.');
     }
   };
 
@@ -1423,36 +1570,116 @@ User's message: ${currentInput}`;
                   variant="outline"
                   size="sm"
                   className="shrink-0 h-8 px-2.5 text-xs"
-                  onClick={() => setShowAddMember(!showAddMember)}
+                  onClick={() => void openAddMemberPanel()}
+                  data-testid="org-add-member-toggle"
                 >
                   <Plus className="h-3.5 w-3.5 sm:mr-1.5" />
-                  <span className="hidden sm:inline">Add</span>
+                  <span className="hidden sm:inline">{showAddMember ? 'Close' : 'Add'}</span>
                 </Button>
               </div>
 
               {showAddMember && (
                 <Card className="bg-black/40 border-border/50">
                   <CardContent className="p-3 sm:pt-6 space-y-3">
-                    <Input
-                      placeholder="Member name"
-                      value={newMember.character_name}
-                      onChange={(e) => setNewMember(prev => ({ ...prev, character_name: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
-                    />
-                    <Input
-                      placeholder="Role (optional)"
-                      value={newMember.role}
-                      onChange={(e) => setNewMember(prev => ({ ...prev, role: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
-                    />
-                    <div className="flex gap-2">
-                      <Button onClick={handleAddMember} className="flex-1">
-                        Add
-                      </Button>
-                      <Button variant="outline" onClick={() => setShowAddMember(false)}>
-                        Cancel
+                    <p className="text-[11px] text-white/45">
+                      Link someone who already exists in your Character Book. This creates an official membership link both books can use.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                      <select
+                        value={selectedBookCharacterId}
+                        onChange={(e) => setSelectedBookCharacterId(e.target.value)}
+                        disabled={characterBookLoading || memberSaving}
+                        aria-label="Existing character from Character Book"
+                        data-testid="org-add-member-character-select"
+                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                      >
+                        <option value="">
+                          {characterBookLoading
+                            ? 'Loading Character Book…'
+                            : availableBookCharacters.length === 0
+                              ? 'No available characters'
+                              : 'Choose a person…'}
+                        </option>
+                        {availableBookCharacters.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        list="org-member-role-options"
+                        value={newMember.role}
+                        onChange={(e) => setNewMember((prev) => ({ ...prev, role: e.target.value }))}
+                        placeholder="Role (e.g. member)"
+                        aria-label="Membership role"
+                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                      />
+                      <datalist id="org-member-role-options">
+                        {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus', 'captain', 'coach'].map(
+                          (r) => (
+                            <option key={r} value={r} />
+                          ),
+                        )}
+                      </datalist>
+                      <Button
+                        size="sm"
+                        className="h-9 text-xs"
+                        disabled={!selectedBookCharacterId || memberSaving}
+                        onClick={() => void handleAddExistingCharacter()}
+                        data-testid="org-add-member-submit"
+                      >
+                        {memberSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Link'}
                       </Button>
                     </div>
+
+                    <button
+                      type="button"
+                      className="text-[11px] text-white/40 hover:text-white/70 underline-offset-2 hover:underline"
+                      onClick={() => setShowNameOnlyAdd((v) => !v)}
+                    >
+                      {showNameOnlyAdd ? 'Hide name-only add' : 'Person not in Character Book? Add by name'}
+                    </button>
+
+                    {showNameOnlyAdd && (
+                      <div className="space-y-2 rounded-lg border border-white/8 bg-black/30 p-3">
+                        <p className="text-[10px] text-white/35">
+                          Name-only rows are not linked to a Character Book card until you add that person and re-link them.
+                        </p>
+                        <Input
+                          placeholder="Member name"
+                          value={newMember.character_name}
+                          onChange={(e) =>
+                            setNewMember((prev) => ({ ...prev, character_name: e.target.value }))
+                          }
+                          className="bg-black/60 border-border/50 text-white"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => void handleAddMember()}
+                            className="flex-1"
+                            disabled={!newMember.character_name.trim() || memberSaving}
+                          >
+                            Add by name
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowAddMember(false);
+                              setShowNameOnlyAdd(false);
+                              setMemberAddError(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {memberAddError && (
+                      <p className="text-xs text-red-400" role="alert">
+                        {memberAddError}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -1461,7 +1688,7 @@ User's message: ${currentInput}`;
                 {members.length === 0 ? (
                   <Card className="bg-black/40 border-border/50">
                     <CardContent className="py-6 text-center text-sm text-white/60">
-                      No members yet. Add one to get started!
+                      No members yet. Link someone from your Character Book to get started.
                     </CardContent>
                   </Card>
                 ) : (
@@ -1517,6 +1744,24 @@ User's message: ${currentInput}`;
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
                                 {member.status}
                               </Badge>
+                              {member.character_id ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
+                                  title="Official link to Character Book"
+                                >
+                                  <Link2 className="h-2.5 w-2.5 mr-0.5 inline" />
+                                  Linked
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-amber-500/30 text-amber-200/80"
+                                  title="Name only — not linked to a Character Book card"
+                                >
+                                  Name only
+                                </Badge>
+                              )}
                             </div>
                             {member.character_id && memberAffiliations[member.character_id]?.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1.5" onClick={e => e.stopPropagation()}>

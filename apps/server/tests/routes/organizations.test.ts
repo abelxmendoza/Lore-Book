@@ -189,6 +189,35 @@ describe('Organizations Routes', () => {
         .send({})
         .expect(400);
     });
+
+    it('should accept character_id for an official Character Book link', async () => {
+      const { organizationService } = await import('../../src/services/organizationService');
+      const mockMember = {
+        id: 'member-2',
+        character_id: 'char-1',
+        character_name: 'Mina',
+        role: 'Captain',
+        status: 'active',
+      };
+      vi.mocked(organizationService.addMember).mockResolvedValue(mockMember as any);
+
+      const response = await request(app)
+        .post('/api/organizations/org-1/members')
+        .send({
+          character_id: 'char-1',
+          character_name: 'Mina',
+          role: 'Captain',
+        })
+        .expect(200);
+
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.member).toMatchObject({ character_id: 'char-1', character_name: 'Mina' });
+      expect(organizationService.addMember).toHaveBeenCalledWith(
+        'test-user-id',
+        'org-1',
+        expect.objectContaining({ character_id: 'char-1', character_name: 'Mina' })
+      );
+    });
   });
 
   describe('DELETE /api/organizations/:id/members/:memberId', () => {

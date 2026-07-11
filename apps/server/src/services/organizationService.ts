@@ -805,28 +805,85 @@ export class OrganizationService {
   }
 
   /**
-   * Add a member to an organization
+   * Add a member to an organization.
+   * When `character_id` is provided, resolves the Character Book name and stores a
+   * durable official person↔group link (unique on organization_id + character_id).
    */
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
     this.invalidateOrganizations(userId);
     try {
+      let characterId = member.character_id?.trim() || undefined;
+      let characterName = member.character_name?.trim() || '';
+
+      // Official link: prefer Character Book identity when character_id is set.
+      if (characterId) {
+        const { data: character, error: charErr } = await supabaseAdmin
+          .from('characters')
+          .select('id, name')
+          .eq('id', characterId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (charErr) throw charErr;
+        if (!character) {
+          const err = new Error('Character not found in your Character Book');
+          (err as Error & { statusCode?: number }).statusCode = 404;
+          throw err;
+        }
+        characterId = character.id;
+        characterName = character.name || characterName;
+      }
+
+      if (!characterName) {
+        const err = new Error('character_name is required when character_id is not provided');
+        (err as Error & { statusCode?: number }).statusCode = 400;
+        throw err;
+      }
+
+      // If this character is already on the roster, treat as idempotent update (role/status).
+      if (characterId) {
+        const { data: existing } = await supabaseAdmin
+          .from('organization_members')
+          .select(ORG_MEMBER_COLS)
+          .eq('user_id', userId)
+          .eq('organization_id', organizationId)
+          .eq('character_id', characterId)
+          .maybeSingle();
+        if (existing) {
+          const { data: updated, error: updErr } = await supabaseAdmin
+            .from('organization_members')
+            .update({
+              character_name: characterName,
+              role: member.role ?? existing.role,
+              joined_date: member.joined_date ?? existing.joined_date,
+              status: member.status || existing.status || 'active',
+              notes: member.notes ?? existing.notes,
+            })
+            .eq('id', existing.id)
+            .eq('user_id', userId)
+            .select(ORG_MEMBER_COLS)
+            .single();
+          if (updErr) throw updErr;
+          return updated as OrganizationMember;
+        }
+      }
+
       const { data, error } = await supabaseAdmin
         .from('organization_members')
         .insert({
           user_id: userId,
           organization_id: organizationId,
-          character_name: member.character_name,
-          character_id: member.character_id,
+          character_name: characterName,
+          character_id: characterId ?? null,
           role: member.role,
           joined_date: member.joined_date,
           status: member.status || 'active',
           notes: member.notes,
         })
-        .select()
+        .select(ORG_MEMBER_COLS)
         .single();
 
       if (error) throw error;
-      return data;
+      return data as OrganizationMember;
     } catch (error) {
       logger.error({ error, userId, organizationId, member }, 'Failed to add member');
       throw error;

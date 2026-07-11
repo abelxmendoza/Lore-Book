@@ -310,17 +310,23 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 // ── Members ──────────────────────────────────────────
 
 // POST /api/organizations/:id/members
+// Prefer character_id (official Character Book link). character_name alone is
+// allowed for people not yet in the book (name-only roster rows).
 router.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const organizationId = String(req.params.id);
-  const memberSchema = z.object({
-    character_name: z.string().min(1),
-    character_id: z.string().optional(),
-    role: z.string().optional(),
-    joined_date: z.string().optional(),
-    status: z.enum(['active', 'former', 'honorary']).default('active'),
-    notes: z.string().optional(),
-  });
+  const memberSchema = z
+    .object({
+      character_name: z.string().min(1).optional(),
+      character_id: z.string().min(1).optional(),
+      role: z.string().optional(),
+      joined_date: z.string().optional(),
+      status: z.enum(['active', 'former', 'honorary']).default('active'),
+      notes: z.string().optional(),
+    })
+    .refine((d) => Boolean(d.character_id?.trim()) || Boolean(d.character_name?.trim()), {
+      message: 'character_id or character_name is required',
+    });
   const parsed = memberSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ success: false, error: parsed.error.issues });
@@ -328,13 +334,21 @@ router.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res) 
   }
   try {
     const member = await organizationService.addMember(userId, organizationId, {
-      ...parsed.data,
+      character_name: parsed.data.character_name?.trim() || '',
+      character_id: parsed.data.character_id?.trim() || undefined,
+      role: parsed.data.role,
+      joined_date: parsed.data.joined_date,
+      notes: parsed.data.notes,
       status: parsed.data.status ?? 'active',
     });
     res.json({ success: true, member });
-  } catch (error) {
+  } catch (error: any) {
+    const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
     logger.error({ error, userId }, 'Failed to add member');
-    res.status(500).json({ success: false, error: 'Failed to add member' });
+    res.status(status).json({
+      success: false,
+      error: status === 404 || status === 400 ? error.message : 'Failed to add member',
+    });
   }
 });
 
