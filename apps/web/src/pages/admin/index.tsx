@@ -882,16 +882,16 @@ export const AdminPage = () => {
                 <h2 className="text-xl font-semibold mb-4">Admin Tools</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 rounded-lg border border-primary/30 bg-primary/10">
-                    <h3 className="font-semibold text-white mb-1">Chat Reliability Diagnostics</h3>
+                    <h3 className="font-semibold text-white mb-1">System Health</h3>
                     <p className="text-sm text-white/50 mb-3">
-                      Check that LoreBook can chat, remember the user’s story, and explain itself.
+                      See if LoreBook can chat, remember the user’s story, and explain itself.
                     </p>
                     <button
                       type="button"
                       onClick={() => setCurrentView('chat-diagnostics')}
                       className="px-4 py-2 rounded-lg border border-primary/40 bg-primary/15 text-sm hover:bg-primary/25 transition"
                     >
-                      Open diagnostics
+                      Open System Health
                     </button>
                   </div>
                   {[
