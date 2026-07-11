@@ -134,6 +134,39 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
+            onClick={() => handleSurfaceChange('family')}
+            aria-label="Open family view"
+            aria-current={activeSurface === 'family' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'family'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <TreePine className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Family</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('organizations')}
+            aria-label="Open groups view"
+            aria-current={activeSurface === 'organizations' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'organizations'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Building2 className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Groups</span>
+            {counts && counts.organizations > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.organizations}</span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => handleSurfaceChange('locations')}
             aria-label="Open locations view"
             aria-current={activeSurface === 'locations' ? 'page' : undefined}
@@ -181,39 +214,6 @@ const SidebarContent = ({
             <span className="flex-1 text-left">Life Log</span>
             {counts && counts.events > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSurfaceChange('family')}
-            aria-label="Open family view"
-            aria-current={activeSurface === 'family' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'family'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <TreePine className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Family</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSurfaceChange('organizations')}
-            aria-label="Open groups view"
-            aria-current={activeSurface === 'organizations' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'organizations'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Building2 className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Groups</span>
-            {counts && counts.organizations > 0 && (
-              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.organizations}</span>
             )}
           </button>
           <button
