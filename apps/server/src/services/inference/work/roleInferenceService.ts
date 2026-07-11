@@ -4,18 +4,18 @@
  */
 import { inferenceBase } from '../inferenceAssociationTypes';
 
-// Word-bounded role titles only (no nested \s* lazy quantifiers — CodeQL js/polynomial-redos).
+// Word-bounded role titles — single spaces only (no \s+; CodeQL js/polynomial-redos).
 // Exclude common stopwords so "as a robot tech with Gary" stops at "tech".
 const ROLE_WORD = String.raw`(?!(?:with|at|for|in|on|and|the|as|a|an|my|our|to|of|from)\b)[A-Za-z][A-Za-z0-9&'-]{0,24}`;
-const ROLE_PHRASE = String.raw`${ROLE_WORD}(?:\s+${ROLE_WORD}){0,4}`;
+const ROLE_PHRASE = String.raw`${ROLE_WORD}(?: ${ROLE_WORD}){0,4}`;
 const ROLE_RE = new RegExp(
-  String.raw`\b(?:(?:working|currently working|now working)\s+(?:as|at)\s+(?:a|an)\s+(${ROLE_PHRASE})|my\s+role\s+is\s+(${ROLE_PHRASE})|I['’]m\s+(?:a|an)\s+(${ROLE_PHRASE}))\b`,
+  String.raw`\b(?:(?:working|currently working|now working) (?:as|at) (?:a|an) (${ROLE_PHRASE})|my role is (${ROLE_PHRASE})|I['’]m (?:a|an) (${ROLE_PHRASE}))\b`,
   'i',
 );
 
 // "worked at X as a robot tech with Gary" — stopword-bounded, fixed word count.
 const AS_A_ROLE_RE = new RegExp(
-  String.raw`\bas\s+(?:a|an)\s+(${ROLE_PHRASE})(?=\s+(?:with|at|for|in|on|and)\b|[.,;!?]|\s*$)`,
+  String.raw`\bas (?:a|an) (${ROLE_PHRASE})(?= (?:with|at|for|in|on|and)\b|[.,;!?]|$)`,
   'i',
 );
 

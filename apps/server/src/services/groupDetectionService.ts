@@ -175,11 +175,11 @@ const SCHOOL_SUBGROUP_PATTERN =
 const STANDALONE_SUBGROUP_PATTERN =
   /\b(?:my|our|the)?\s*((?:coding|robotics|japanese|music|band|football|basketball|soccer|baseball)\s+(?:club|class|team|band))\b/gi;
 
-// Single-token org name segments only (bounded repeats — CodeQL js/polynomial-redos).
+// Single-token org name segments — single spaces only (no \s+; CodeQL js/polynomial-redos).
 // Case-sensitive [A-Z] after the verb — no /i (lowercase would join the capture).
 // No bare '.' in the token class so "Robotics." stops at sentence end.
 const ORGANIZATION_NAME_PATTERN =
-  /\b(?:[Ww]orked at|[Ww]orks? at|[Ee]mployee at|[Cc]oworker at|[Tt]eam at|[Dd]epartment at|[Ff]or)\s+([A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}(?:\s+[A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}){0,4})(?:\s+(?:[Oo]rganization|[Cc]ompany|[Tt]eam|[Dd]epartment))?\b/g;
+  /\b(?:[Ww]orked at|[Ww]orks? at|[Ee]mployee at|[Cc]oworker at|[Tt]eam at|[Dd]epartment at|[Ff]or) ([A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}(?: [A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}){0,4})(?: (?:[Oo]rganization|[Cc]ompany|[Tt]eam|[Dd]epartment))?\b/g;
 
 const EXPLICIT_ORGANIZATION_PATTERN =
   /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,4})\s+(Organization|Company|Team|Department)\b/g;
@@ -698,7 +698,7 @@ export class GroupDetectionService {
   private isLikelyOrganizationName(name: string): boolean {
     if (!name || MEMBER_STOPWORDS.has(name)) return false;
     if (/\b(?:my|our|the|at|in|for|team|department|employee|coworker)\b/i.test(name)) return false;
-    return /^[A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+(?:\s+[A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+){0,4}$/.test(name);
+    return /^[A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+(?: [A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'’.-]+){0,4}$/.test(name);
   }
 
   private isValidProposedGroupName(groupName: string, members: string[]): boolean {
@@ -708,10 +708,10 @@ export class GroupDetectionService {
     if (BARE_TITLE_GROUP_NAME.test(name)) return false;
     if (/^(?:Mom|Dad|Tio|Tia|Tía|Abuela|Abuelo|Brother|Sister)\s+Family$/i.test(name)) return false;
     if (members.some(member => normalizeNameKey(member) === normalizeNameKey(name))) return false;
-    // Two-word max person-like prefix + Group|Crew|… (no nested ambiguous quantifiers).
+    // Two-word max person-like prefix + Group|Crew|… (single spaces; fixed bounds).
     if (
       members.length < 3 &&
-      /^(?:[A-Z][a-z]{1,30})(?:\s+[A-Z][a-z]{1,30})?\s+(?:Group|Crew|Squad|Circle)$/i.test(name)
+      /^(?:[A-Z][a-z]{1,30})(?: [A-Z][a-z]{1,30})? (?:Group|Crew|Squad|Circle)$/i.test(name)
     ) {
       return false;
     }

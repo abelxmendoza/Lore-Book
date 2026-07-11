@@ -10,15 +10,15 @@ export interface OrgHierarchy {
   evidence: string;
 }
 
-// Cap org name length to avoid polynomial backtracking (CodeQL js/polynomial-redos).
+// Cap org name length; single spaces only (no \s+ — CodeQL js/polynomial-redos).
 const ORG_TOKEN = String.raw`[A-Z][A-Za-z0-9&'.-]{0,30}`;
-const ORG_NAME = String.raw`${ORG_TOKEN}(?:\s+${ORG_TOKEN}){0,5}`;
+const ORG_NAME = String.raw`${ORG_TOKEN}(?: ${ORG_TOKEN}){0,5}`;
 const PARENT_RE = new RegExp(
-  String.raw`\b(${ORG_NAME})\s+(?:a sub(?:sidiary)?(?: company)? of|subsidiary of|parent (?:company|org)(?: is| of)|under)\s+(${ORG_NAME})\b`,
+  String.raw`\b(${ORG_NAME}) (?:a sub(?:sidiary)?(?: company)? of|subsidiary of|parent (?:company|org)(?: is| of)|under) (${ORG_NAME})\b`,
   'i',
 );
 const TEAM_RE = new RegExp(
-  String.raw`\b(${ORG_NAME}\s+Team)\s+(?:at|of|in)\s+(${ORG_NAME})\b`,
+  String.raw`\b(${ORG_NAME} Team) (?:at|of|in) (${ORG_NAME})\b`,
   'i',
 );
 

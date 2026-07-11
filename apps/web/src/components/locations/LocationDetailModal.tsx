@@ -7,7 +7,6 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
-import { isSafeHttpUrl } from '../../lib/safeUrl';
 import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
@@ -41,6 +40,24 @@ import { Pencil } from 'lucide-react';
 import { EditableEntityName } from '../common/EditableEntityName';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+
+/**
+ * Same-file CodeQL barrier for js/xss + js/client-side-unvalidated-url-redirection.
+ * Only returns the string when it has an explicit http(s) prefix (recognized sanitizer).
+ */
+function asHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s.startsWith('https://') || s.startsWith('http://')) {
+    try {
+      const u = new URL(s);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return s;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 type LocationDetailModalProps = {
   location: LocationProfile;
@@ -796,28 +813,10 @@ export const LocationDetailModal = ({
                   </p>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {mediaItems.map((item) => {
-                      // CodeQL js/xss + js/client-side-unvalidated-url-redirection:
-                      // only pass strings that pass startsWith('https://'|'http://')
-                      // at the sink (recognized sanitizer barrier).
-                      const candidateSrc =
-                        typeof item.url === 'string' ? item.url.trim() : '';
-                      const candidateHref =
-                        typeof item.sourceUrl === 'string' ? item.sourceUrl.trim() : '';
-
-                      const src =
-                        (candidateSrc.startsWith('https://') ||
-                          candidateSrc.startsWith('http://')) &&
-                        isSafeHttpUrl(candidateSrc)
-                          ? candidateSrc
-                          : null;
+                      // Same-file startsWith barrier at the sink (CodeQL js/xss + redirect).
+                      const src = asHttpUrl(item.url);
                       if (!src) return null;
-
-                      const href =
-                        (candidateHref.startsWith('https://') ||
-                          candidateHref.startsWith('http://')) &&
-                        isSafeHttpUrl(candidateHref)
-                          ? candidateHref
-                          : src;
+                      const href = asHttpUrl(item.sourceUrl) ?? src;
 
                       return (
                         <a

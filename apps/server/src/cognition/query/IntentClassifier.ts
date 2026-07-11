@@ -56,11 +56,32 @@ function extractEntities(message: string): string[] {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return [];
   const rest = message.slice(m.index + m[0].length).trim();
-  // Bounded tokens only — avoid nested unbounded quantifiers (CodeQL js/polynomial-redos).
-  const nameMatch = rest.match(
-    /^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|Tio|Tia|Tío|Tía)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}|\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,6})/,
-  );
-  const name = nameMatch?.[1]?.replace(/[?!.,]{1,8}$/, '').trim();
+  // Linear token walk — no \s+ quantifiers (CodeQL js/polynomial-redos).
+  const tokens = rest.split(' ').filter(Boolean).slice(0, 12);
+  if (tokens.length === 0) return [];
+  const particles = new Set([
+    'de', 'del', 'la', 'los', 'las', 'y', 'van', 'von', 'di', 'da', 'le', 'el', 'the', 'a', 'an',
+    'tio', 'tia', 'tío', 'tía',
+  ]);
+  const parts: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!.replace(/[?!.,]{1,8}$/, '');
+    if (!t) break;
+    const isParticle = particles.has(t.toLowerCase());
+    const isName = /^[A-ZÁÉÍÓÚÑ][\w.'-]{0,40}$/.test(t);
+    if (i === 0) {
+      if (!isName) break;
+      parts.push(t);
+      continue;
+    }
+    if (isParticle || isName) {
+      parts.push(t);
+      if (parts.filter((p) => !particles.has(p.toLowerCase())).length >= 7) break;
+      continue;
+    }
+    break;
+  }
+  const name = parts.join(' ').replace(/[?!.,]{1,8}$/, '').trim();
   return name ? [name] : [];
 }
 

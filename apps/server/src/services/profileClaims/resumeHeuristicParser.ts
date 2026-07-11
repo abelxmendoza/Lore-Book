@@ -175,8 +175,24 @@ function extractLanguages(text: string): string[] {
   const after = line.split(/[:\u2014-]/).slice(1).join(':');
   return after
     .split(/[,|\u00b7;]/)
-    // Bounded paren strip — avoid nested open-ended groups (CodeQL js/polynomial-redos).
-    .map((s) => s.replace(/\([^()]{0,80}\)/g, '').trim())
+    // Linear paren strip — no regex on untrusted fragments (CodeQL js/polynomial-redos).
+    .map((s) => {
+      let out = '';
+      let depth = 0;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i]!;
+        if (ch === '(') {
+          depth++;
+          continue;
+        }
+        if (ch === ')') {
+          if (depth > 0) depth--;
+          continue;
+        }
+        if (depth === 0) out += ch;
+      }
+      return out.trim();
+    })
     .filter((s) => s.length > 1 && s.length < 40)
     .slice(0, 10);
 }
