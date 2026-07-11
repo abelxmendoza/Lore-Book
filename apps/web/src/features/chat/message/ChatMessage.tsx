@@ -352,13 +352,13 @@ export const ChatMessage = ({
       onMouseLeave={() => setShowActions(false)}
     >
       {!isUser && (
-        <div className={`flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1 ${isThinking ? 'chat-avatar-thinking' : ''}`}>
-          <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
+        <div className={`chat-assistant-avatar flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full flex items-center justify-center mt-1 ${isThinking ? 'chat-avatar-thinking' : ''}`}>
+          <Bot className="relative z-10 h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
       <div className={`min-w-0 w-full ${isUser ? 'flex flex-col items-end max-w-[92%] sm:max-w-[85%] md:max-w-[75%]' : 'flex-1 flex flex-col'}`}>
         <div
-          className={`relative w-full transition-shadow duration-300 ${
+          className={`chat-bubble-shell relative w-full transition-shadow duration-300 ${
             isUser
               ? 'inline-block max-w-full chat-bubble-user rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
               : `block w-full chat-bubble-assistant rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7 ${message.isStreaming ? 'chat-bubble-streaming' : ''}`
@@ -394,10 +394,22 @@ export const ChatMessage = ({
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="chat-response-stack space-y-3">
+          {!isUser && (
+            <div className="chat-response-identity" aria-label={message.isStreaming ? 'LoreBook is responding' : 'LoreBook response'}>
+              <span className="chat-response-identity-mark" aria-hidden="true" />
+              <span>LoreBook</span>
+              {message.isStreaming && (
+                <span className="chat-response-live">
+                  <span className="chat-response-live-dot" aria-hidden="true" />
+                  Responding
+                </span>
+              )}
+            </div>
+          )}
           {/* Strategic Guidance - More subtle */}
           {message.strategicGuidance && (
-            <div className="p-3 rounded-lg bg-white/5 border border-white/10 mb-3">
+            <div className="chat-guidance-card p-3 rounded-lg mb-3">
               <p className="text-xs text-white/80 whitespace-pre-wrap leading-relaxed">{message.strategicGuidance}</p>
             </div>
           )}
@@ -855,7 +867,7 @@ export const ChatMessage = ({
                     key={action.id}
                     type="button"
                     onClick={() => onSuggestedAction?.(action, message)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-white"
+                    className="chat-suggested-action inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 hover:border-primary/30 hover:bg-primary/10 hover:text-white"
                   >
                     <Icon className="h-3.5 w-3.5" />
                     <span>{action.label}</span>

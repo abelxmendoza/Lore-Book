@@ -90,22 +90,51 @@ describe('chatLifecycleSimulation', () => {
     }
   });
 
-  it('showcase replies cover structured chatbot capabilities', () => {
-    const showcaseSteps = CHAT_LIFECYCLE_SCENARIOS
-      .filter((scenario) => ['party-story', 'romantic-interest', 'conflict-repair'].includes(scenario.id))
-      .flatMap((scenario) => scenario.steps)
-      .filter((step) => step.type === 'assistantStream');
-    const results = showcaseSteps.map((step) => step.result ?? {});
+  it('uses synthetic showcase lore rather than founder-linked fixtures', () => {
+    const serializedShowcases = JSON.stringify(
+      CHAT_LIFECYCLE_SCENARIOS.filter((scenario) =>
+        ['party-story', 'romantic-interest', 'conflict-repair'].includes(scenario.id)
+      )
+    ).toLowerCase();
 
-    expect(results.some((result) => result.mentionedEntities?.length)).toBe(true);
-    expect(results.some((result) => result.timelineUpdates?.length)).toBe(true);
-    expect(results.some((result) => result.creationOutcomes?.length)).toBe(true);
-    expect(results.some((result) => result.sources?.length || result.citations?.length)).toBe(true);
-    expect(results.some((result) => result.continuityWarnings?.length)).toBe(true);
-    expect(results.some((result) => result.staleProjectionHints?.length)).toBe(true);
-    expect(results.some((result) => result.suggestedActions?.length)).toBe(true);
-    expect(results.some((result) => result.strategicGuidance)).toBe(true);
-    expect(results.some((result) => result.response_mode === 'RECALL')).toBe(true);
+    // Keep exact protected terms in the central privacy script only; these
+    // fragments make accidental reintroduction fail without duplicating lore.
+    const protectedFragments = [
+      ['ma', 'ya'].join(''),
+      ['anime', ' expo'].join(''),
+      ['catch', ' one'].join(''),
+    ];
+    for (const fragment of protectedFragments) {
+      expect(serializedShowcases).not.toContain(fragment);
+    }
+  });
+
+  it('gives every showcase journey the same core chatbot capabilities', () => {
+    const showcaseIds = ['party-story', 'romantic-interest', 'conflict-repair'];
+
+    for (const id of showcaseIds) {
+      const results = CHAT_LIFECYCLE_SCENARIOS
+        .find((scenario) => scenario.id === id)!
+        .steps.filter((step) => step.type === 'assistantStream')
+        .map((step) => step.result ?? {});
+
+      expect(results.some((result) => result.mentionedEntities?.length), `${id}: entities`).toBe(true);
+      expect(results.some((result) => result.connections?.length), `${id}: connections`).toBe(true);
+      expect(results.some((result) => result.timelineUpdates?.length), `${id}: timeline`).toBe(true);
+      expect(results.some((result) => result.creationOutcomes?.length), `${id}: creation outcomes`).toBe(true);
+      expect(results.some((result) => result.sources?.length || result.citations?.length), `${id}: sources`).toBe(true);
+      expect(results.some((result) => result.continuityWarnings?.length), `${id}: uncertainty`).toBe(true);
+      expect(results.some((result) => result.suggestedActions?.length), `${id}: actions`).toBe(true);
+      expect(results.some((result) => result.strategicGuidance), `${id}: guidance`).toBe(true);
+    }
+
+    const specializedResults = CHAT_LIFECYCLE_SCENARIOS
+      .filter((scenario) => showcaseIds.includes(scenario.id))
+      .flatMap((scenario) => scenario.steps)
+      .filter((step) => step.type === 'assistantStream')
+      .map((step) => step.result ?? {});
+    expect(specializedResults.some((result) => result.staleProjectionHints?.length)).toBe(true);
+    expect(specializedResults.some((result) => result.response_mode === 'RECALL')).toBe(true);
   });
 
   it('creates a thread and appends a user message', async () => {

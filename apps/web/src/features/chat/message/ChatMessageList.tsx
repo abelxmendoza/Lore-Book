@@ -104,7 +104,7 @@ export const ChatMessageList = ({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-y-auto chat-scrollbar"
+      className="chat-conversation-canvas flex-1 overflow-y-auto chat-scrollbar"
     >
       <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-6 lg:px-10 xl:px-12 py-4 sm:py-8 lg:py-12 xl:py-16 space-y-4 sm:space-y-8 lg:space-y-10 xl:space-y-12">
         {groupedMessages.map((group) => (
@@ -112,7 +112,7 @@ export const ChatMessageList = ({
             {/* Date Header - ChatGPT style */}
             <div className="sticky top-0 z-10 flex items-center gap-3 sm:gap-4 lg:gap-6 my-6 sm:my-8 lg:my-10 chat-date-header-enter">
               <div className="flex-1 border-t border-white/10" />
-              <span className="text-xs sm:text-sm text-white/40 font-medium px-3 sm:px-4 py-1 sm:py-1.5 bg-black/40 rounded-full border border-white/10">
+              <span className="chat-date-pill text-xs sm:text-sm text-white/40 font-medium px-3 sm:px-4 py-1 sm:py-1.5 rounded-full">
                 {group.dateLabel}
               </span>
               <div className="flex-1 border-t border-white/10" />

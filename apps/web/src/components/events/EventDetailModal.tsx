@@ -639,6 +639,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [linkedEvent, setLinkedEvent] = useState<LinkedEventStub | null>(null);
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
+  // Attendance derived from the source conversation's cast when the event
+  // record itself has no people — labeled as derived, never fabricated.
+  const [derivedAttendees, setDerivedAttendees] = useState<
+    Array<{ entityId: string | null; name: string; role: string; firstSeenRef?: string | null }>
+  >([]);
   const [chatInput, setChatInput] = useState('');
   const [sending, setSending] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -648,6 +653,28 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
   useEffect(() => { loadEvent(); }, [event.id]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+
+  useEffect(() => {
+    if (!event.id || eventData.people.length > 0) {
+      setDerivedAttendees([]);
+      return;
+    }
+    let cancelled = false;
+    fetchJson<{
+      success: boolean;
+      source: string;
+      attendees: Array<{ entityId: string | null; name: string; role: string; firstSeenRef?: string | null }>;
+    }>(`/api/conversation/events/${event.id}/roster`)
+      .then((res) => {
+        if (!cancelled && res.source === 'derived_from_thread_cast') {
+          setDerivedAttendees(res.attendees ?? []);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, eventData.people.length]);
 
   const primeChat = (ev: Event) => {
     setChatMessages(prev =>
@@ -1070,7 +1097,33 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               )}
 
               {/* ── Characters in this Story ── */}
-              {eventData.people.length === 0 && (
+              {eventData.people.length === 0 && derivedAttendees.length > 0 && (
+                <section data-testid="event-derived-attendance">
+                  <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <UserCircle2 className="w-3.5 h-3.5 text-blue-400/70" />
+                    Who was there
+                    <span className="text-[9px] font-normal text-white/25 normal-case tracking-normal">
+                      from the conversation this event came from
+                    </span>
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {derivedAttendees.map((a) => {
+                      const style = getAvatarStyle(a.name);
+                      return (
+                        <span
+                          key={a.entityId ?? a.name}
+                          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${style.bg} ${style.text} ${style.border}`}
+                          title={a.firstSeenRef ? `first seen #${a.firstSeenRef}` : undefined}
+                        >
+                          {a.name}
+                          {a.role === 'main' && <span className="text-[9px] opacity-70">main</span>}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {eventData.people.length === 0 && derivedAttendees.length === 0 && (
                 <section>
                   <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <UserCircle2 className="w-3.5 h-3.5 text-blue-400/70" />

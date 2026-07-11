@@ -18,6 +18,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const tier1Roots = ['apps/server/src', 'apps/server/scripts', 'apps/web/src', 'scripts'];
 const tier2Roots = ['scripts', 'apps/web/src/mocks'];
 const tier2TestRoots = ['apps/server', 'apps/web'];
+const publicSimulationRoots = ['apps/web/src/features/chat/services/chatLifecycleSimulation.ts'];
 
 const skipFiles = [/check-founder-privacy\.cjs$/, /check-demo-data-privacy\.cjs$/];
 
@@ -35,6 +36,14 @@ const blockedInLiterals = [
   'Bathroom Guardian',
   'Armstrong Robotics',
   'Armstrong',
+];
+
+// Founder-linked personal lore that may exist in private/admin or legacy mock
+// contexts but must never appear in the public guest/demo chat showcase.
+const blockedPublicSimulationLiterals = [
+  'Maya',
+  'Anime Expo',
+  'Catch One',
 ];
 
 const allowedLinePatterns = [
@@ -78,8 +87,11 @@ function scanLine(line, tier) {
   if (tier < 2) return null;
 
   const literals = [...line.matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2]);
+  const blockedTerms = tier >= 3
+    ? [...blockedInLiterals, ...blockedPublicSimulationLiterals]
+    : blockedInLiterals;
   for (const literal of literals) {
-    for (const term of blockedInLiterals) {
+    for (const term of blockedTerms) {
       if (new RegExp(escapeRegExp(term), 'i').test(literal)) return term;
     }
   }
@@ -105,7 +117,8 @@ const tier2 = scanRoots([
   ...tier2Roots.flatMap((d) => walk(d)),
   ...tier2TestRoots.flatMap((d) => walk(d, true)),
 ], 2);
-const violations = [...tier1, ...tier2];
+const publicSimulation = scanRoots(publicSimulationRoots.flatMap((d) => walk(d)), 3);
+const violations = [...tier1, ...tier2, ...publicSimulation];
 
 if (violations.length > 0) {
   console.error('Founder privacy check FAILED.\n');

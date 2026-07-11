@@ -8,6 +8,7 @@ import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCha
 import { MainCharacterDetailModal } from './MainCharacterDetailModal';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
+import { CastTrendsStrip } from './CastTrendsStrip';
 import { UserProfile } from './UserProfile';
 import { OnboardingReprompt } from '../onboarding/OnboardingReprompt';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -3375,6 +3376,19 @@ export const CharacterBook = () => {
             </select>
           </div>
         </div>
+
+        {/* How the cast is changing — new faces, rising, quiet lately */}
+        {!isMockDataEnabled && (
+          <CastTrendsStrip
+            onSelectEntity={(entityId, name) => {
+              const nameLc = name.toLowerCase();
+              const match = characters.find(
+                (c) => c.id === entityId || c.name.toLowerCase() === nameLc
+              );
+              if (match) setSelectedCharacter(match);
+            }}
+          />
+        )}
 
         {/* Navigation Tabs */}
         <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50">

@@ -10,6 +10,10 @@ Pre-commit and CI run `npm run check:founder-privacy`. **Never bypass with `--no
 **Tier 2** (tests, mocks, scripts — string literals only):
 - Personal lore: `Ashley De La Cruz`, `Club Metro`, `Building LoreBook`, `Bathroom Guardian`, `Armstrong Robotics`, `Armstrong`
 
+**Public simulation guard** (`chatLifecycleSimulation.ts`):
+- Blocks founder-linked names, venues, and events that must not appear in guest/demo conversations.
+- Keep those terms in the guard script or `.private/`; do not copy them into public fixtures or documentation.
+
 ## Use synthetic fixtures instead
 
 | Need | Use |

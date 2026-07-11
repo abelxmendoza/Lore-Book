@@ -87,12 +87,32 @@
 @keyframes bubbleStreamGlow {
   0%, 100% {
     border-color: rgba(var(--primary-rgb, 99 102 241) / 0.15);
-    box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 99 102 241) / 0);
   }
   50% {
     border-color: rgba(var(--primary-rgb, 99 102 241) / 0.35);
-    box-shadow: 0 0 20px -4px rgba(var(--primary-rgb, 99 102 241) / 0.2);
   }
+}
+
+@keyframes responseSectionReveal {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes streamingAuraDrift {
+  0% { transform: translate3d(-18%, -12%, 0) rotate(0deg); opacity: 0.3; }
+  50% { transform: translate3d(10%, 4%, 0) rotate(7deg); opacity: 0.55; }
+  100% { transform: translate3d(-18%, -12%, 0) rotate(0deg); opacity: 0.3; }
+}
+
+@keyframes liveDotPulse {
+  0%, 100% { transform: scale(0.82); opacity: 0.55; }
+  50% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 4px hsl(var(--primary) / 0.12); }
 }
 
 @keyframes avatarThinking {
@@ -177,34 +197,194 @@
   transition: transform 0.2s ease-out, opacity 0.2s ease-out;
 }
 
-.chat-message:hover {
-  transform: translateY(-1px);
-}
-
 .chat-bubble-user {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.06) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(135deg, hsl(var(--primary) / 0.2) 0%, rgba(255, 255, 255, 0.075) 62%, rgba(255, 255, 255, 0.045) 100%);
+  border: 1px solid hsl(var(--primary) / 0.22);
   box-shadow:
-    0 4px 24px -6px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
+    0 14px 38px -22px hsl(var(--primary) / 0.5),
+    0 8px 26px -16px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(14px) saturate(125%);
 }
 
 .chat-bubble-assistant {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.025) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.09), transparent 34%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.064) 0%, rgba(255, 255, 255, 0.024) 72%);
+  border: 1px solid rgba(255, 255, 255, 0.095);
   box-shadow:
-    0 4px 28px -8px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(6px);
+    0 18px 44px -28px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  backdrop-filter: blur(12px) saturate(115%);
+}
+
+.chat-bubble-shell {
+  isolation: isolate;
+  /* Keep overflow visible: message actions and desktop copy controls are
+     intentionally positioned just outside the bubble. */
+  overflow: visible;
+}
+
+.chat-bubble-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.chat-bubble-assistant::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, hsl(var(--primary) / 0.72), transparent);
+  opacity: 0.7;
+}
+
+.chat-assistant-avatar {
+  position: relative;
+  border: 1px solid hsl(var(--primary) / 0.25);
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.13), transparent 32%),
+    hsl(var(--primary) / 0.1);
+  box-shadow: 0 8px 24px -12px hsl(var(--primary) / 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.chat-assistant-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  z-index: 0;
+  border-radius: inherit;
+  border: 1px solid hsl(var(--primary) / 0.1);
 }
 
 .chat-bubble-streaming {
   animation: bubbleStreamGlow 2.4s ease-in-out infinite;
 }
 
+.chat-bubble-streaming::before {
+  content: '';
+  position: absolute;
+  inset: -45% -15%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse, hsl(var(--primary) / 0.11), transparent 62%);
+  animation: streamingAuraDrift 5.5s ease-in-out infinite;
+  clip-path: inset(30% 10% round 1rem);
+}
+
 .chat-avatar-thinking {
   animation: avatarThinking 1.8s ease-in-out infinite;
+}
+
+.chat-message-enter-assistant .chat-response-stack > * {
+  animation: responseSectionReveal 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Streaming updates can arrive dozens of times per second. Keep the existing
+   response subtree stable while text is changing; newly added result panels
+   still reveal after the stream completes. */
+.chat-message-enter-assistant .chat-bubble-streaming .chat-response-stack > * {
+  animation: none;
+}
+
+.chat-response-stack > :nth-child(2) { animation-delay: 45ms; }
+.chat-response-stack > :nth-child(3) { animation-delay: 90ms; }
+.chat-response-stack > :nth-child(4) { animation-delay: 135ms; }
+.chat-response-stack > :nth-child(n + 5) { animation-delay: 180ms; }
+
+.chat-response-identity {
+  display: flex;
+  min-height: 1.25rem;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+
+.chat-response-identity-mark {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 12px hsl(var(--primary) / 0.7);
+}
+
+.chat-response-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  color: hsl(var(--primary) / 0.85);
+  letter-spacing: 0.06em;
+}
+
+.chat-response-live-dot {
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  animation: liveDotPulse 1.5s ease-in-out infinite;
+}
+
+.chat-guidance-card {
+  border: 1px solid hsl(var(--primary) / 0.18);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.09), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 2px 0 0 hsl(var(--primary) / 0.45);
+}
+
+.chat-suggested-action {
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.chat-suggested-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -12px hsl(var(--primary) / 0.75);
+}
+
+.chat-suggested-action:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.chat-date-pill {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(5, 5, 9, 0.72);
+  box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+}
+
+.chat-conversation-canvas {
+  background:
+    radial-gradient(circle at 48% -8%, hsl(var(--primary) / 0.055), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.008), transparent 22%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-bubble-user:hover,
+  .chat-bubble-assistant:not(.chat-bubble-streaming):hover {
+    border-color: hsl(var(--primary) / 0.24);
+    box-shadow:
+      0 18px 44px -28px rgba(0, 0, 0, 0.95),
+      0 10px 30px -24px hsl(var(--primary) / 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-bubble-user,
+  .chat-bubble-assistant,
+  .chat-date-pill {
+    /* Large backdrop-filter regions cause visible scroll/streaming jank on
+       mobile GPUs. The layered backgrounds retain the same visual hierarchy. */
+    backdrop-filter: none;
+  }
+
+  .chat-bubble-streaming::before {
+    animation-duration: 7s;
+  }
 }
 
 /* Streaming text — subtle, not whole-bubble opacity flash */
@@ -326,7 +506,10 @@
   .chat-thread-bump,
   .chat-thread-active-bar,
   .chat-bubble-streaming,
+  .chat-bubble-streaming::before,
   .chat-avatar-thinking,
+  .chat-response-stack > *,
+  .chat-response-live-dot,
   .chat-loading-card-enter,
   .chat-loading-avatar-ring::before,
   .chat-loading-shimmer,
@@ -335,7 +518,8 @@
     animation: none !important;
   }
 
-  .chat-message:hover {
+  .chat-suggested-action:hover,
+  .chat-suggested-action:active {
     transform: none;
   }
 }

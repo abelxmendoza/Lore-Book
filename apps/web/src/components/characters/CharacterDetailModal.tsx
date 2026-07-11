@@ -3485,6 +3485,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         <div className="text-center py-8 text-white/40">
                           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>No connections tracked yet</p>
+                          {!isMockDataEnabled && !connectionAddOpen && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 h-8 text-xs"
+                              onClick={() => void toggleConnectionAdd()}
+                              data-testid="empty-add-connection"
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1" />
+                              Add a connection manually
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>
