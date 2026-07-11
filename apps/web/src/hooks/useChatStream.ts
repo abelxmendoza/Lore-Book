@@ -237,6 +237,27 @@ export const useChatStream = () => {
             return null;
           }
         };
+        const extractDurability = (body: Record<string, unknown> | null): ChatStreamDurability | undefined => {
+          if (!body) return undefined;
+          if (body.durability && typeof body.durability === 'object') {
+            return body.durability as ChatStreamDurability;
+          }
+          const notice = body.notice as { code?: string } | undefined;
+          const noticeSaved =
+            typeof notice?.code === 'string' && notice.code.startsWith('message_saved');
+          if (body.userMessage || body.ingestion || body.assistantResponse || noticeSaved) {
+            const userMessageRecord =
+              typeof body.userMessage === 'object' && body.userMessage
+                ? (body.userMessage as ChatStreamDurability['userMessage'])
+                : (body.userMessageRecord as ChatStreamDurability['userMessage']);
+            return {
+              userMessage: userMessageRecord ?? (noticeSaved ? { persisted: true } : undefined),
+              assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
+              ingestion: body.ingestion as ChatStreamDurability['ingestion'],
+            };
+          }
+          return undefined;
+        };
         if (response.status === 503) {
           const body = parseBody();
           if (body && (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables))) {
@@ -244,6 +265,7 @@ export const useChatStream = () => {
           } else {
             userMessage = `Service unavailable (503): ${(body?.error as string) || (body?.message as string) || errorText}`;
           }
+          durability = extractDurability(body);
         } else if (response.status === 405) {
           const isProdNoApi = config.env.isProduction && !config.api.url;
           userMessage = isProdNoApi
@@ -251,8 +273,14 @@ export const useChatStream = () => {
             : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
         } else if (response.status === 403) {
           const body = parseBody();
-          userMessage = (body?.userMessage as string) || (body?.message as string) || (body?.error as string) || errorText;
-          if (body?.durability) durability = body.durability as ChatStreamDurability;
+          const notice = body?.notice as { message?: string } | undefined;
+          userMessage =
+            (typeof notice?.message === 'string' && notice.message) ||
+            (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
+            (body?.message as string) ||
+            (body?.error as string) ||
+            errorText;
+          durability = extractDurability(body);
         } else if (response.status === 429 || response.status === 502) {
           const body = parseBody();
           const notice = body?.notice as { message?: string; code?: string } | undefined;
@@ -266,18 +294,7 @@ export const useChatStream = () => {
             (response.status === 429
               ? `OpenAI quota/rate limit error: ${errorText}`
               : errorText);
-          if (body?.durability) {
-            durability = body.durability as ChatStreamDurability;
-          } else if (body?.userMessage || body?.ingestion || body?.assistantResponse) {
-            durability = {
-              userMessage:
-                typeof body.userMessage === 'object'
-                  ? (body.userMessage as ChatStreamDurability['userMessage'])
-                  : (body.userMessageRecord as ChatStreamDurability['userMessage']),
-              assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
-              ingestion: body.ingestion as ChatStreamDurability['ingestion'],
-            };
-          }
+          durability = extractDurability(body);
         } else {
           const body = parseBody();
           const notice = body?.notice as { message?: string } | undefined;
@@ -285,7 +302,7 @@ export const useChatStream = () => {
             (typeof notice?.message === 'string' && notice.message) ||
             (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
             `HTTP error! status: ${response.status}, message: ${errorText}`;
-          if (body?.durability) durability = body.durability as ChatStreamDurability;
+          durability = extractDurability(body);
         }
         const err = new Error(userMessage) as Error & { durability?: ChatStreamDurability };
         err.durability = durability;

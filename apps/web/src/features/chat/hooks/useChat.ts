@@ -732,6 +732,12 @@ export const useChat = () => {
             ingestionStatus === 'RECEIVED' ||
             ingestionStatus === 'PERSISTED';
 
+          // Truthful recovery: restore composer text ONLY when the message was not
+          // durably accepted. A saved message must keep the sent bubble.
+          const frontendRecoveryDecision = userSaved
+            ? 'keep_sent_bubble_retry_response'
+            : 'restore_composer_unsaved';
+
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback
               ? buildDemoChatResponse(
@@ -749,6 +755,12 @@ export const useChat = () => {
             metadata: {
               durability,
               ingestionStatus,
+              frontendRecoveryDecision,
+              failedStage: userSaved
+                ? (durability?.assistantResponse?.status === 'failed'
+                    ? 'assistant_generation'
+                    : 'unknown_post_save')
+                : 'message_persistence',
             },
           });
 
@@ -762,10 +774,19 @@ export const useChat = () => {
                 ...(userMessage.metadata ?? {}),
                 durability,
                 ingestionStatus: ingestionStatus ?? (ingestionActive ? 'QUEUED' : undefined),
+                frontendRecoveryDecision,
               },
             });
+            clearStoryAttempt(safetyAttempt.id);
           } else {
-            updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+            updateStreamMessage(userMessage.id, {
+              persistStatus: 'failed',
+              metadata: {
+                ...(userMessage.metadata ?? {}),
+                durability,
+                frontendRecoveryDecision,
+              },
+            });
             threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
             requestStoryRecovery(safetyAttempt);
           }

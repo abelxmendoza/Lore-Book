@@ -7,6 +7,10 @@ const BELIEF_CUE_RE =
 const QUOTED_PRINCIPLE_RE =
   /["“]([^"”]{10,120})["”]/g;
 
+/** Humor / coincidence / speculation — must not become factual autobiographical knowledge. */
+const SPECULATIVE_HUMOR_RE =
+  /\b(feel like|hilarious|funny|joke|trolling|coincidence|accidentally|almost certainly just)\b/i;
+
 const KNOWN_PRINCIPLES: Array<{ pattern: RegExp; displayName: string; conceptType: ConceptCandidate['conceptType'] }> = [
   {
     pattern: /bad memory is worse than no memory/i,
@@ -14,6 +18,10 @@ const KNOWN_PRINCIPLES: Array<{ pattern: RegExp; displayName: string; conceptTyp
     conceptType: 'life_lesson',
   },
 ];
+
+export function isSpeculativeHumorClaim(phrase: string): boolean {
+  return /\bi feel like\b/i.test(phrase) && SPECULATIVE_HUMOR_RE.test(phrase);
+}
 
 export function inferBeliefs(text: string): ConceptCandidate[] {
   const out: ConceptCandidate[] = [];
@@ -46,6 +54,8 @@ export function inferBeliefs(text: string): ConceptCandidate[] {
   while ((match = beliefRe.exec(text)) !== null) {
     const phrase = match[0].trim();
     if (phrase.split(/\s+/).length < 5) continue;
+    // "I feel like Sam Altman is playing a joke" is humorous speculation, not a belief fact.
+    if (isSpeculativeHumorClaim(phrase)) continue;
     const displayName = extractBeliefTitle(phrase);
     const key = displayName.toLowerCase();
     if (seen.has(key)) continue;

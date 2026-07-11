@@ -343,21 +343,48 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         }
 
         if (isOpenAiBudgetExceededError(setupError)) {
-          const budgetErr = setupError as { userMessage?: string; budget?: unknown; durability?: ChatDurabilityPayload };
+          const budgetErr = setupError as {
+            userMessage?: string;
+            budget?: unknown;
+            durability?: ChatDurabilityPayload;
+          };
+          // Prefer truth-backed durability when persist already succeeded.
+          if (budgetErr.durability?.userMessage?.persisted) {
+            const contract = buildDurabilityApiResponse(budgetErr.durability, {
+              assistantFailed: true,
+              error: 'openai_budget_exceeded',
+              code: 'openai_budget_exceeded',
+              stage: 'response_generation',
+              errorCategory: 'quota_exhausted',
+            });
+            res.status(403).json({ ...contract, budget: budgetErr.budget });
+            return;
+          }
           res.status(403).json({
             error: 'openai_budget_exceeded',
             code: 'openai_budget_exceeded',
             stage: 'response_generation',
+            userMessage: { persisted: false },
+            assistantResponse: { status: 'failed', errorCategory: 'quota_exhausted' },
+            ingestion: { status: 'UNKNOWN' },
             notice: {
-              code: 'message_saved_assistant_failed',
+              code: 'unknown',
               message: budgetErr.userMessage ?? 'AI budget exceeded.',
             },
             budget: budgetErr.budget,
+            memory: {
+              user_message_saved: false,
+              ingestion_started: false,
+              entity_creation_started: false,
+              assistant_message_saved: false,
+            },
           });
           return;
         }
         if (isOpenAIQuotaError(setupError)) {
           // Without ChatDurabilityError we cannot prove save status — stay honest.
+          // Do NOT claim message_saved; do NOT force the UI into "unsaved restore"
+          // with a false persisted:false when the client may hydrate the thread.
           res.status(429).json({
             error: 'OpenAI quota exhausted',
             stage: 'response_generation',

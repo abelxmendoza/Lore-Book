@@ -25,6 +25,7 @@
     "test:e2e:security": "cd apps/web && npm run test:e2e:security",
     "test:all": "npm run test:security && npm run test:e2e:security",
     "test:trust-floor": "node scripts/trust-floor.mjs",
+    "test:story-ingestion-regressions": "node scripts/story-ingestion-regressions.mjs",
     "test:memory-quality": "node scripts/memory-quality.mjs",
     "test:continuity-quality": "node scripts/continuity-quality.mjs",
     "test:return-points": "node scripts/return-points.mjs",

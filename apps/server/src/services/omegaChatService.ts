@@ -28,10 +28,12 @@ import { ingestionQueue, type JobPriority } from './ingestion/ingestionQueue';
 import {
   buildDurabilityPayload,
   ChatDurabilityError,
+  isChatDurabilityError,
   incMetric,
   type ChatDurabilityPayload,
 } from './chat/chatDurability';
 import { classifyIngestionError } from './ingestion/ingestionJobStates';
+import { isOpenAiBudgetExceededError } from './openaiBudgetService';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
@@ -1308,6 +1310,11 @@ When updating relationship analytics or emotional signals from this thread, weig
       return payload;
     };
 
+    // Any failure after the user row is durable must carry ChatDurabilityError so
+    // the API/UI never claim the story was unsaved. Mode early-returns and the
+    // OpenAI stream setup path are included.
+    try {
+
     /** Attach durability to mode/early-return streams so clients never lose message ids. */
     const modeExtras = (): Partial<StreamingChatResponse['metadata']> => ({
       messageId: entryId,
@@ -2496,6 +2503,22 @@ When updating relationship analytics or emotional signals from this thread, weig
         }
       }
     };
+    } catch (postPersistErr) {
+      if (isChatDurabilityError(postPersistErr)) throw postPersistErr;
+      if (postPersistErr instanceof StorageBlockedError) throw postPersistErr;
+      if (!entryId) throw postPersistErr;
+      const classified = classifyIngestionError(postPersistErr);
+      incMetric('assistant_generation_failure');
+      throw new ChatDurabilityError({
+        message: postPersistErr instanceof Error ? postPersistErr.message : String(postPersistErr),
+        category: classified.category,
+        code: classified.code,
+        stage: 'response_generation',
+        durability: durabilityFor('failed', classified.category),
+        cause: postPersistErr,
+        httpStatus: isOpenAiBudgetExceededError(postPersistErr) ? 403 : undefined,
+      });
+    }
   }
 
   /**
