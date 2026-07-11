@@ -89,16 +89,16 @@ describe('media inference rules', () => {
     expect(result.accepted.some((c) => /bad dogg/i.test(c.displayName))).toBe(false);
   });
 
-  it('Hell Fairy known as character blocks media suggestion unless performance context', () => {
-    const blocked = infer('Hell Fairy texted me today.', {
-      knownCharacters: { 'hell fairy': 'character-id' },
+  it('Moth Queen known as character blocks media suggestion unless performance context', () => {
+    const blocked = infer('Moth Queen texted me today.', {
+      knownCharacters: { 'moth queen': 'character-id' },
     });
-    expect(blocked.accepted.some((c) => /hell fairy/i.test(c.displayName))).toBe(false);
+    expect(blocked.accepted.some((c) => /moth queen/i.test(c.displayName))).toBe(false);
 
-    const allowed = infer('Hell Fairy playing on stage at Gothicumbia.', {
-      knownCharacters: { 'hell fairy': 'character-id' },
+    const allowed = infer('Moth Queen playing on stage at Gothicumbia.', {
+      knownCharacters: { 'moth queen': 'character-id' },
     });
-    expect(allowed.accepted.some((c) => /hell fairy/i.test(c.displayName)) || hasPerformanceContext('Hell Fairy playing on stage')).toBe(true);
+    expect(allowed.accepted.some((c) => /moth queen/i.test(c.displayName)) || hasPerformanceContext('Moth Queen playing on stage')).toBe(true);
   });
 
   it('media references attach to preferences', () => {

@@ -14,10 +14,12 @@ export type MergeCandidatePair = {
   autoMerge: boolean;
 };
 
-/** Stage-name / alias overlap pairs (Ashley ↔ Hell Fairy). */
-const KNOWN_ALIAS_PAIRS: Array<[RegExp, RegExp]> = [
-  [/^(?:hell\s+fairy|ashley)$/i, /^(?:hell\s+fairy|ashley)$/i],
-];
+/**
+ * Stage-name / alias overlap pairs. INTENTIONALLY EMPTY: user-specific alias
+ * knowledge lives in confirmed alias records, never hardcoded in application
+ * code (privacy + multi-tenancy). Provenance overlap drives candidates.
+ */
+const KNOWN_ALIAS_PAIRS: Array<[RegExp, RegExp]> = [];
 
 function provenanceOverlap(a: string, b: string): number {
   if (!a.trim() || !b.trim()) return 0;
@@ -93,7 +95,10 @@ export function findMergeCandidatesForCharacter(
       ([a, b]) => a.test(targetKey) && b.test(otherKey),
     );
 
-    if (isKnownAliasPair && overlap >= 0.25) {
+    // Strong shared provenance alone (same events/places/people) surfaces a
+    // REVIEW candidate even for dissimilar names — this is how stage-name /
+    // given-name pairs are found without hardcoding any user's identities.
+    if ((isKnownAliasPair && overlap >= 0.25) || overlap >= 0.3) {
       candidates.push({
         characterId: other.id,
         currentTitle: other.name,

@@ -68,10 +68,10 @@ describe('dynamicCharacterTitleService', () => {
     expect(parts.givenName).toBe('Ralph');
   });
 
-  it('keeps Hell Fairy as stage/nickname title', () => {
-    const result = buildDisplayTitleFromName(id, 'Hell Fairy');
+  it('keeps Moth Queen as stage/nickname title', () => {
+    const result = buildDisplayTitleFromName(id, 'Moth Queen');
     expect(result.rejected).toBe(false);
-    expect(result.displayTitle.primaryTitle).toBe('Hell Fairy');
+    expect(result.displayTitle.primaryTitle).toBe('Moth Queen');
     expect(['nickname', 'legal_or_full_name', 'stage_name']).toContain(result.displayTitle.titleType);
   });
 

@@ -104,10 +104,10 @@ describe('contradiction rules', () => {
     expect(result.contradictions.length).toBe(0);
   });
 
-  it('Hell Fairy project suggestion rejected because known character', () => {
+  it('Moth Queen project suggestion rejected because known character', () => {
     const existing = bundle({
       id: 'e1',
-      claimText: 'Hell Fairy exists as a character in my lore',
+      claimText: 'Moth Queen exists as a character in my lore',
       claimType: 'entity',
       origin: 'explicit_user_statement',
       truthState: 'confirmed',
@@ -115,7 +115,7 @@ describe('contradiction rules', () => {
     });
     const incoming = bundle({
       id: 'n1',
-      claimText: 'Hell Fairy is a project',
+      claimText: 'Moth Queen is a project',
       claimType: 'entity',
       origin: 'system_inferred',
       confidence: 0.55,
@@ -125,7 +125,7 @@ describe('contradiction rules', () => {
     const result = detectContradictions({
       existingClaims: [existing],
       newClaim: incoming,
-      knownCanonDomains: { 'Hell Fairy': 'character' },
+      knownCanonDomains: { 'Moth Queen': 'character' },
     });
     expect(result.contradictions.some((c) => c.contradictionType === 'domain')).toBe(true);
     expect(result.rejectedWeakExtractions.some((r) => r.id === 'n1')).toBe(true);

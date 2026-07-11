@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     { name: 'public figures detected', ok: (pfChars?.length ?? 0) >= 1 },
     { name: 'protagonist exists', ok: !!protagonist },
     {
-      name: 'Hell Fairy not protagonist-tier',
+      name: 'Moth Queen not protagonist-tier',
       ok: !(pfChars ?? []).some(
         (c) =>
           /hell\s*fairy/i.test(c.name ?? '') &&

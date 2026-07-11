@@ -12,7 +12,7 @@ describe('characterNameMatching', () => {
     });
 
     it('matches accent variants of same titled person', () => {
-      const r = matchCharacterName('Tío Juan', 'Tio Juan');
+      const r = matchCharacterName('Tío Rafa', 'Tio Rafa');
       expect(r.matches).toBe(true);
       expect(r.confidence).toBeGreaterThanOrEqual(0.9);
     });
@@ -46,8 +46,8 @@ describe('characterNameMatching', () => {
 
   describe('parseCharacterName', () => {
     it('extracts core name after kinship title', () => {
-      const p = parseCharacterName('Tío Juan');
-      expect(p.coreName).toBe('juan');
+      const p = parseCharacterName('Tío Rafa');
+      expect(p.coreName).toBe('rafa');
     });
 
     it('handles step-parent with given name', () => {
@@ -60,7 +60,7 @@ describe('characterNameMatching', () => {
 
 describe('characterDeduplicationService', () => {
   const roster = [
-    { id: 'c1', name: 'Tío Juan', alias: ['Tio Juan'] },
+    { id: 'c1', name: 'Tío Rafa', alias: ['Tio Rafa'] },
     { id: 'c2', name: 'Mom', alias: ['Mother'] },
     { id: 'c3', name: 'Abuela', alias: ['Grandma'] },
     { id: 'c4', name: 'Maria Del Rio', alias: ['Maria'] },
@@ -69,8 +69,8 @@ describe('characterDeduplicationService', () => {
     { id: 'c7', name: 'Step Dad Ben', alias: ['Ben'] },
   ];
 
-  it('resolves Tio Juan alias to canonical Tío Juan', () => {
-    const hits = characterDeduplicationService.findCandidates('Tio Juan', roster);
+  it('resolves Tio Rafa alias to canonical Tío Rafa', () => {
+    const hits = characterDeduplicationService.findCandidates('Tio Rafa', roster);
     expect(hits[0]?.characterId).toBe('c1');
   });
 
@@ -107,10 +107,10 @@ describe('characterDeduplicationService', () => {
 
 describe('single canonical ID invariant', () => {
   it('all alias variants resolve to same character id in roster', () => {
-    const roster = [{ id: 'canonical-juan', name: 'Tío Juan', alias: ['Tio Juan', 'Uncle Juan'] }];
-    for (const variant of ['Tío Juan', 'Tio Juan', 'Uncle Juan']) {
+    const roster = [{ id: 'canonical-rafa', name: 'Tío Rafa', alias: ['Tio Rafa', 'Uncle Rafa'] }];
+    for (const variant of ['Tío Rafa', 'Tio Rafa', 'Uncle Rafa']) {
       const hits = characterDeduplicationService.findCandidates(variant, roster);
-      expect(hits[0]?.characterId).toBe('canonical-juan');
+      expect(hits[0]?.characterId).toBe('canonical-rafa');
     }
   });
 });

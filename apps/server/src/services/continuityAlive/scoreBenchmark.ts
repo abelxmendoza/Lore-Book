@@ -55,8 +55,8 @@ export function evaluateScenario(scenario: ContinuityScenario) {
       if (!matchesAny(blob, ['SpaceX', 'Tesla', 'robotics', 'work', 'aerospace'])) {
         issues.push('missed career continuity');
       }
-    } else if (scenario.id === 'B_behavioral_genni') {
-      if (!matchesAny(blob, ['boundar', 'Genni', 'lesson', 'respect'])) {
+    } else if (scenario.id === 'B_behavioral_jenna') {
+      if (!matchesAny(blob, ['boundar', 'Jenna', 'lesson', 'respect'])) {
         issues.push('missed behavioral continuity');
       }
     } else if (!allHit && !hit) {

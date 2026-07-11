@@ -14,11 +14,11 @@ describe('parseRelationshipFact', () => {
     });
   });
 
-  it('parses has uncle named Juan on Me', () => {
-    const p = parseRelationshipFact('Has an uncle named Juan');
+  it('parses has uncle named Rafa on Me', () => {
+    const p = parseRelationshipFact('Has an uncle named Rafa');
     expect(p?.relType).toBe('family');
     expect(p?.kinship).toBe('uncle');
-    expect(p?.targetName).toBe('Juan');
+    expect(p?.targetName).toBe('Rafa');
     expect(p?.protagonistToHolder).toBe(true);
   });
 
@@ -46,13 +46,13 @@ describe('parseRelationshipFact', () => {
 
 describe('resolveCharacterIdByName', () => {
   const chars = [
-    { id: '1', name: 'Tío Juan' },
+    { id: '1', name: 'Tío Rafa' },
     { id: '2', name: 'Daisy' },
     { id: '3', name: 'Me' },
   ];
 
   it('resolves exact and first-name', () => {
-    expect(resolveCharacterIdByName('Juan', chars)).toBe('1');
+    expect(resolveCharacterIdByName('Rafa', chars)).toBe('1');
     expect(resolveCharacterIdByName('Daisy', chars)).toBe('2');
   });
 });

@@ -8,8 +8,11 @@ import type { CharacterCandidate, CharacterTitleParts } from './characterInferen
 const FULL_NAME_RE =
   /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+)?)\b/g;
 
+// Generic stage/persona-name grammar — a stage-lexicon word combined with a
+// capitalized word. NEVER hardcode a real user's people here (privacy +
+// multi-tenancy); user-specific aliases live in the database.
 const NICKNAME_RE =
-  /\b((?:Hell Fairy|Goth Tio|Ducky|Oscuridad|Baby Bats)(?:\s+[A-Z][a-z]+)?)\b/g;
+  /\b((?:DJ|MC|Goth|Neon|Moth|Hell|Baby)\s+[A-Z][a-z]+|[A-Z][a-z]+\s+(?:Fairy|Queen|Goth|Moth|Dolls?|Bats?))\b/g;
 
 const HONORIFIC_PREFIX_RE =
   /^(?:Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?|Professor|Prof\.?|Pastor|Coach)\s+/i;
@@ -81,7 +84,8 @@ export function inferNamedPersons(text: string): CharacterCandidate[] {
 }
 
 function looksLikeStage(name: string): boolean {
-  return /fairy|goth|oscuridad|baby bats/i.test(name);
+  // Generic stage-persona lexicon — never hardcode real users' people here.
+  return /\b(fairy|goth|queen|moth|neon|doll|vex|bats?|dj)\b/i.test(name);
 }
 
 export function isLikelyFullName(name: string): boolean {

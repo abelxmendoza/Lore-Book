@@ -47,18 +47,18 @@ describe('orgRosterDistinctnessGuard', () => {
   describe('findCoMembershipsInRows', () => {
     it('flags two characters on the same roster as a conflict', () => {
       const conflicts = findCoMembershipsInRows(
-        [member('m1', 'band-exlover', 'char-a'), member('m2', 'band-exlover', 'char-b')],
+        [member('m1', 'band-heartbreak', 'char-a'), member('m2', 'band-heartbreak', 'char-b')],
         'char-a',
         'char-b',
       );
       expect(conflicts).toHaveLength(1);
-      expect(conflicts[0].organizationId).toBe('band-exlover');
+      expect(conflicts[0].organizationId).toBe('band-heartbreak');
       expect(conflicts[0].concurrent).toBe(true);
     });
 
     it('no conflict when memberships are in different orgs', () => {
       const conflicts = findCoMembershipsInRows(
-        [member('m1', 'band-exlover', 'char-a'), member('m2', 'band-vilevo', 'char-b')],
+        [member('m1', 'band-heartbreak', 'char-a'), member('m2', 'band-static', 'char-b')],
         'char-a',
         'char-b',
       );

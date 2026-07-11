@@ -50,8 +50,8 @@ describe('characterSuggestionService source filtering', () => {
           data: [
             {
               id: 'char-tio',
-              name: 'Tío Juan',
-              alias: ['Tio Juan'],
+              name: 'Tío Rafa',
+              alias: ['Tio Rafa'],
               metadata: { omega_entity_id: 'omega-tio' },
               status: 'active',
             },
@@ -64,7 +64,7 @@ describe('characterSuggestionService source filtering', () => {
           data: [
             {
               id: 'omega-tio',
-              primary_name: 'Tio Juan',
+              primary_name: 'Tio Rafa',
               mention_count: 4,
               mention_status: 'mentioned_only',
               metadata: {},
@@ -83,20 +83,20 @@ describe('characterSuggestionService source filtering', () => {
     });
 
     const suggestions = await characterSuggestionService.getSuggestions('u1');
-    expect(suggestions.some((s) => s.name === 'Tio Juan')).toBe(false);
+    expect(suggestions.some((s) => s.name === 'Tio Rafa')).toBe(false);
   });
 
   it('skips stale identity-index mentions that already match an active book entry', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'characters') {
         return chain({
-          data: [{ id: 'char-tio', name: 'Tío Juan', alias: [], metadata: {}, status: 'active' }],
+          data: [{ id: 'char-tio', name: 'Tío Rafa', alias: [], metadata: {}, status: 'active' }],
           error: null,
         });
       }
       if (table === 'character_identity_index') {
         return chain({
-          data: [{ mention: 'Tio Juan', character_id: 'orphan-id' }],
+          data: [{ mention: 'Tio Rafa', character_id: 'orphan-id' }],
           error: null,
         });
       }
@@ -104,6 +104,6 @@ describe('characterSuggestionService source filtering', () => {
     });
 
     const suggestions = await characterSuggestionService.getSuggestions('u1');
-    expect(suggestions.some((s) => s.name === 'Tio Juan')).toBe(false);
+    expect(suggestions.some((s) => s.name === 'Tio Rafa')).toBe(false);
   });
 });

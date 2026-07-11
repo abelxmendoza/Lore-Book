@@ -16,7 +16,7 @@ const path = require('node:path');
 const repoRoot = path.resolve(__dirname, '..');
 
 const tier1Roots = ['apps/server/src', 'apps/server/scripts', 'apps/web/src', 'scripts'];
-const tier2Roots = ['scripts', 'apps/web/src/mocks'];
+const tier2Roots = ['scripts', 'apps/web/src/mocks', 'apps/server/src/services/memoryQuality/fixtures', 'apps/server/src/services/continuityAlive'];
 const tier2TestRoots = ['apps/server', 'apps/web'];
 const publicSimulationRoots = ['apps/web/src/features/chat/services/chatLifecycleSimulation.ts'];
 
@@ -29,6 +29,16 @@ const blockedExact = [
 ];
 
 const blockedInLiterals = [
+  'Stimkybun',
+  'Dollyfied',
+  'Hell Fairy',
+  'Baby Bats',
+  'Oscuridad',
+  'Tío Juan',
+  'SonicBoomBox',
+  'Shyla',
+  'Vilevo',
+  'Genni',
   'Ashley De La Cruz',
   'De La Cruz',
   'Club Metro',

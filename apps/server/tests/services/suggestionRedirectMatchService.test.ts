@@ -22,10 +22,10 @@ describe('suggestionRedirectMatchService', () => {
   });
 
   it('buildRedirectMergeNotification explains exact match', () => {
-    const message = buildRedirectMergeNotification('Hell Fairy', 'characters', {
+    const message = buildRedirectMergeNotification('Moth Queen', 'characters', {
       disposition: 'auto_merged',
       matchedId: 'char-1',
-      matchedName: 'Hell Fairy',
+      matchedName: 'Moth Queen',
       confidence: 1,
       method: 'exact',
     });

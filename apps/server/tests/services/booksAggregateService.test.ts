@@ -77,18 +77,18 @@ describe('booksAggregateService.loadCharactersBook', () => {
           metadata: { storyContext: 'I was talking about the video game Cyberpunk 2077.' },
         },
         {
-          id: 'shyla-old',
+          id: 'shana-old',
           user_id: 'user-1',
-          name: 'Shyla',
+          name: 'Shana',
           importance_score: 5,
           updated_at: '2026-05-01T00:00:00.000Z',
           status: 'active',
           metadata: {},
         },
         {
-          id: 'shyla-new',
+          id: 'shana-new',
           user_id: 'user-1',
-          name: 'Shyla',
+          name: 'Shana',
           importance_score: 12,
           updated_at: '2026-06-02T00:00:00.000Z',
           status: 'active',
@@ -108,8 +108,8 @@ describe('booksAggregateService.loadCharactersBook', () => {
 
     const book = await loadCharactersBook('user-1');
 
-    expect(book.characters.map((c: any) => c.name)).toEqual(['Shyla', 'Renna']);
-    expect(book.characters.map((c: any) => c.id)).toEqual(['shyla-new', 'renna-1']);
+    expect(book.characters.map((c: any) => c.name)).toEqual(['Shana', 'Renna']);
+    expect(book.characters.map((c: any) => c.id)).toEqual(['shana-new', 'renna-1']);
     expect(book.counts.characters).toBe(2);
     expect(book.duplicate_groups).toEqual([]);
   });

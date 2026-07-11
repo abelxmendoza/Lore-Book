@@ -5,20 +5,20 @@ import { extractThirdPartyRomances } from './thirdPartyRomanceExtractor';
 describe('extractThirdPartyRomances', () => {
   it('recovers the real Daisy ↔ Juan case from "her boyfriend Juan"', () => {
     const text =
-      "Well I didn't try with Daisy aka Hell Fairy because I knew she was taken and her boyfriend Juan aka Oscuri.dad was there too";
+      "Well I didn't try with Daisy aka Moth Queen because I knew she was taken and her boyfriend Juan aka Oscuri.dad was there too";
     const found = extractThirdPartyRomances(text);
     expect(found.length).toBeGreaterThan(0);
     const r = found[0];
     expect(r.partnerName).toBe('Juan');
-    // anchor is the nearest prior named person (Daisy / Hell Fairy)
-    expect(['Daisy', 'Hell Fairy', 'Daisy aka Hell Fairy']).toContain(r.anchorName);
+    // anchor is the nearest prior named person (Daisy / Moth Queen)
+    expect(['Daisy', 'Moth Queen', 'Daisy aka Moth Queen']).toContain(r.anchorName);
     expect(r.partnerRole).toBe('boyfriend');
     expect(r.anchorRole).toBe('girlfriend');
   });
 
   it('handles the predicate form "<Name> is her boyfriend"', () => {
-    const found = extractThirdPartyRomances('Daisy was there and Oscuridad is her boyfriend, a cool dude.');
-    expect(found[0]).toMatchObject({ anchorName: 'Daisy', partnerName: 'Oscuridad', partnerRole: 'boyfriend' });
+    const found = extractThirdPartyRomances('Daisy was there and Obscurio is her boyfriend, a cool dude.');
+    expect(found[0]).toMatchObject({ anchorName: 'Daisy', partnerName: 'Obscurio', partnerRole: 'boyfriend' });
   });
 
   it('handles the possessive form "X\'s girlfriend Y"', () => {

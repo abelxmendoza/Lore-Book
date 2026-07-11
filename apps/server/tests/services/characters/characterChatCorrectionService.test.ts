@@ -9,7 +9,7 @@ vi.mock('../../../src/services/supabaseClient', () => ({
         data: {
           id: 'char-1',
           name: 'Daisy',
-          alias: ['Hell Fairy'],
+          alias: ['Moth Queen'],
           summary: 'DJ friend',
           role: 'friend',
           pronouns: 'she/her',
@@ -54,7 +54,7 @@ describe('applyCharacterChatKnowledgeUpdate', () => {
       maybeSingle: vi.fn().mockResolvedValue({
         data: {
           id: 'char-1',
-          name: 'Hell Fairy',
+          name: 'Moth Queen',
           alias: [],
           summary: null,
           role: null,

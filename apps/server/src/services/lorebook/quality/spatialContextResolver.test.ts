@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 
 import { classifySpatialReference, isSpatialPlace } from './spatialContextResolver';
 
-const PERSONS = ['Shyla', 'Renna', 'Ink', 'Ashley', 'Ruben'];
+const PERSONS = ['Shana', 'Renna', 'Ink', 'Ashley', 'Ruben'];
 
 describe('classifySpatialReference — boundary rules', () => {
-  it('Rule 2: "front of Shyla" → spatial relationship to a person, not a place', () => {
-    const r = classifySpatialReference('front of Shyla', { knownPersonNames: PERSONS });
+  it('Rule 2: "front of Shana" → spatial relationship to a person, not a place', () => {
+    const r = classifySpatialReference('front of Shana', { knownPersonNames: PERSONS });
     expect(r.referenceType).toBe('spatial_relationship');
-    expect(r.target).toBe('Shyla');
+    expect(r.target).toBe('Shana');
     expect(r.isPlace).toBe(false);
   });
 

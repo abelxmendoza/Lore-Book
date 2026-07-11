@@ -6,7 +6,7 @@ import {
 import { extractMemoryQualityBundle } from '../../../src/services/memoryQuality/memoryQualityIntegrationService';
 
 describe('meaning artifact idempotency model', () => {
-  const text = `The situation with Genni taught me that I need to respect people's boundaries. At the Catch One afterparty, one woman pulled away while we were dancing, so I stopped and gave her space.`;
+  const text = `The situation with Jenna taught me that I need to respect people's boundaries. At the Catch One afterparty, one woman pulled away while we were dancing, so I stopped and gave her space.`;
 
   it('bundle extraction is pure and stable across two runs', () => {
     const a = extractMemoryQualityBundle(text);

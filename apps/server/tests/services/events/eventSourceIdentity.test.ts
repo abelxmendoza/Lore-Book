@@ -13,12 +13,12 @@ describe('eventSourceIdentity', () => {
     const a = buildEventSourceFingerprint({
       userId,
       sourceMessageId: messageId,
-      subject: 'SonicBoomBox afterparty',
+      subject: 'BassRiot afterparty',
     });
     const b = buildEventSourceFingerprint({
       userId,
       sourceMessageId: messageId,
-      subject: 'SonicBoomBox afterparty',
+      subject: 'BassRiot afterparty',
     });
     expect(a).toBe(b);
     expect(a).toHaveLength(40);

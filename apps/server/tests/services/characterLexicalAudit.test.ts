@@ -18,6 +18,6 @@ describe('character lexical rules', () => {
   });
 
   it('flags role descriptors', () => {
-    expect(isRoleDescriptorPersonName("DJ for Hell Fairy's Show")).toBe(true);
+    expect(isRoleDescriptorPersonName("DJ for Moth Queen's Show")).toBe(true);
   });
 });

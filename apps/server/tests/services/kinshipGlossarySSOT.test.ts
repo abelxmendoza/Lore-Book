@@ -28,7 +28,7 @@ describe('kinship glossary SSOT', () => {
   });
 
   it('kinshipGlossary still derives role extraction from the glossary', () => {
-    expect(parseKinshipFromName('Tío Juan')?.role).toBe('UNCLE');
+    expect(parseKinshipFromName('Tío Rafa')?.role).toBe('UNCLE');
     expect(parseKinshipFromName('Abuela')?.role).toBe('GRANDMOTHER');
     expect(parseKinshipFromName('Auntie Grace')?.role).toBe('AUNT');
   });

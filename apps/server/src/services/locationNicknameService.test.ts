@@ -6,13 +6,13 @@ describe('validatePossessiveNickname', () => {
   const axMessage =
     'I went to the club last night after Anime Expo there was an afters at Catch One. ' +
     'The house was full of popular egirls with clout. ' +
-    'That situation with Genni taught me to respect boundaries no matter what. ' +
+    'That situation with Jenna taught me to respect boundaries no matter what. ' +
     "I even got to stop by and eat food at my tia's for a bit yesterday.";
 
   it('rejects possessive labels the source text never states', () => {
-    // Genni is mentioned in the message, but nothing says the house is hers.
-    expect(validatePossessiveNickname("Genni's House", axMessage)).toBeNull();
-    expect(validatePossessiveNickname("The Genni's House", axMessage)).toBeNull();
+    // Jenna is mentioned in the message, but nothing says the house is hers.
+    expect(validatePossessiveNickname("Jenna's House", axMessage)).toBeNull();
+    expect(validatePossessiveNickname("The Jenna's House", axMessage)).toBeNull();
   });
 
   it("keeps possessives the text actually uses ('my tia's')", () => {
@@ -21,7 +21,7 @@ describe('validatePossessiveNickname', () => {
 
   it('handles curly apostrophes in either the label or the source', () => {
     expect(validatePossessiveNickname('Tia’s Place', axMessage)).toBe('Tia’s Place');
-    expect(validatePossessiveNickname("Genni's Spot", 'we hung out at Genni’s spot')).toBe("Genni's Spot");
+    expect(validatePossessiveNickname("Jenna's Spot", 'we hung out at Jenna’s spot')).toBe("Jenna's Spot");
   });
 
   it('passes non-possessive labels through untouched', () => {

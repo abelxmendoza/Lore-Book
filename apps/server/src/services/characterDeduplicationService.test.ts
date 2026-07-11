@@ -27,12 +27,12 @@ describe('findDuplicateGroups — false-positive guards', () => {
   it('does NOT merge a stage-named person into a relative who shares a first name', async () => {
     ROWS = [
       {
-        id: 'oscuridad',
-        name: 'Oscuridad Juan',
+        id: 'obscurio',
+        name: 'Obscurio Juan',
         alias: ['Oscuri', 'Juan'],
-        metadata: { nameProfile: { nickname: 'Oscuridad', givenName: 'Juan', kind: 'stage_name' } },
+        metadata: { nameProfile: { nickname: 'Obscurio', givenName: 'Juan', kind: 'stage_name' } },
       },
-      { id: 'tio-juan', name: 'Tío Juan', alias: ['Juan'], metadata: {} },
+      { id: 'tio-juan', name: 'Tío Rafa', alias: ['Juan'], metadata: {} },
     ];
     const groups = await characterDeduplicationService.findDuplicateGroups('u1');
     expect(groups).toHaveLength(0);
@@ -40,8 +40,8 @@ describe('findDuplicateGroups — false-positive guards', () => {
 
   it('does NOT merge a relational placeholder into its anchor', async () => {
     ROWS = [
-      { id: 'shyla', name: 'Shyla', alias: null, metadata: {} },
-      { id: 'friend', name: 'friend of Shyla', alias: ['Shyla'], metadata: {} },
+      { id: 'shana', name: 'Shana', alias: null, metadata: {} },
+      { id: 'friend', name: 'friend of Shana', alias: ['Shana'], metadata: {} },
     ];
     const groups = await characterDeduplicationService.findDuplicateGroups('u1');
     expect(groups).toHaveLength(0);
@@ -68,8 +68,8 @@ describe('findDuplicateGroups — false-positive guards', () => {
 
   it('merges two cards for the same relational placeholder', async () => {
     ROWS = [
-      { id: 'a', name: 'friend of Shyla', alias: [], metadata: {} },
-      { id: 'b', name: "Shyla's friend", alias: [], metadata: {} },
+      { id: 'a', name: 'friend of Shana', alias: [], metadata: {} },
+      { id: 'b', name: "Shana's friend", alias: [], metadata: {} },
     ];
     const groups = await characterDeduplicationService.findDuplicateGroups('u1');
     expect(groups).toHaveLength(1);

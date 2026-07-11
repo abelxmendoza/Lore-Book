@@ -17,7 +17,7 @@ function baseTitle(overrides: Partial<CharacterDisplayTitle> = {}): CharacterDis
     primaryTitle: 'Mira Castellanos',
     titleParts: { givenName: 'Mira', familyName: 'Castellanos' },
     titleType: 'legal_or_full_name',
-    aliases: [{ id: 'a1', value: 'Hell Fairy', aliasType: 'stage_name', prominenceScore: 0, evidenceCount: 1 }],
+    aliases: [{ id: 'a1', value: 'Moth Queen', aliasType: 'stage_name', prominenceScore: 0, evidenceCount: 1 }],
     stability: 'stable',
     evidencePhrases: [],
     ...overrides,
@@ -25,23 +25,23 @@ function baseTitle(overrides: Partial<CharacterDisplayTitle> = {}): CharacterDis
 }
 
 describe('aliasProminenceService', () => {
-  it('suggests Hell Fairy promotion after repeated use', () => {
+  it('suggests Moth Queen promotion after repeated use', () => {
     const current = baseTitle();
-    let map = recordAliasUsage({}, 'Hell Fairy', 'stage_name');
+    let map = recordAliasUsage({}, 'Moth Queen', 'stage_name');
     for (let i = 0; i < 10; i++) {
-      map = recordAliasUsage(map, 'Hell Fairy', 'stage_name');
+      map = recordAliasUsage(map, 'Moth Queen', 'stage_name');
     }
     map = recordAliasUsage(map, 'Mira Castellanos', 'nickname');
 
     const suggestion = suggestAliasTitlePromotion(current, map);
     expect(suggestion).not.toBeNull();
-    expect(suggestion?.proposedPrimaryTitle).toBe('Hell Fairy');
+    expect(suggestion?.proposedPrimaryTitle).toBe('Moth Queen');
     expect(suggestion?.stability).toBe('suggested_update');
   });
 
   it('does not auto-promote without threshold', () => {
     const current = baseTitle();
-    const map = recordAliasUsage({}, 'Hell Fairy', 'stage_name');
+    const map = recordAliasUsage({}, 'Moth Queen', 'stage_name');
     expect(suggestAliasTitlePromotion(current, map)).toBeNull();
   });
 });
@@ -52,9 +52,9 @@ describe('characterTitleStabilityService', () => {
     const result = applyTitleUpdate({
       current,
       proposal: {
-        proposedPrimaryTitle: 'Hell Fairy',
+        proposedPrimaryTitle: 'Moth Queen',
         proposedTitleType: 'stage_name',
-        proposedParts: { stageName: 'Hell Fairy' },
+        proposedParts: { stageName: 'Moth Queen' },
         reason: 'inferred',
         stability: 'suggested_update',
         preservePreviousAsAlias: true,
@@ -117,9 +117,9 @@ describe('characterTitleStabilityService', () => {
     const result = applyTitleUpdate({
       current,
       proposal: {
-        proposedPrimaryTitle: 'Hell Fairy',
+        proposedPrimaryTitle: 'Moth Queen',
         proposedTitleType: 'stage_name',
-        proposedParts: { stageName: 'Hell Fairy' },
+        proposedParts: { stageName: 'Moth Queen' },
         reason: 'alias_prominence',
         stability: 'suggested_update',
         preservePreviousAsAlias: true,

@@ -116,21 +116,21 @@ describe('characterCardAudit guards', () => {
     expect(verdict.samePerson).toBe(false);
   });
 
-  it('flags Ashley/Hell Fairy as possible duplicate only with provenance overlap', () => {
+  it('flags Ashley/Moth Queen as possible duplicate only with provenance overlap', () => {
     const roster = [
-      row('1', 'Ashley', { metadata: { storyContext: 'Ska Prom with Baby Bats' } }),
-      row('2', 'Hell Fairy', { metadata: { storyContext: 'Opened Ska Prom show' } }),
+      row('1', 'Ashley', { metadata: { storyContext: 'Ska Prom with Neon Newts' } }),
+      row('2', 'Moth Queen', { metadata: { storyContext: 'Ska Prom with Neon Newts' } }),
     ];
     const map = new Map([
-      ['1', 'Ska Prom with Baby Bats'],
-      ['2', 'Opened Ska Prom show'],
+      ['1', 'Ska Prom with Neon Newts'],
+      ['2', 'Ska Prom with Neon Newts'],
     ]);
     const candidates = findMergeCandidatesForCharacter(roster[0], roster, map);
     expect(candidates.some((c) => c.characterId === '2')).toBe(true);
 
     const noOverlap = findMergeCandidatesForCharacter(
       row('3', 'Ashley'),
-      [row('3', 'Ashley'), row('4', 'Hell Fairy', { metadata: {} })],
+      [row('3', 'Ashley'), row('4', 'Moth Queen', { metadata: {} })],
       new Map([
         ['3', ''],
         ['4', 'Different city entirely'],

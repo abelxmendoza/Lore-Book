@@ -59,7 +59,7 @@ describe('characterRegistry', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
       if (table === 'characters') {
-        return chain([{ id: 'oscuridad', name: 'Juan / Neon Pulsedad', alias: ['Neon Pulsedad'], metadata: {} }]);
+        return chain([{ id: 'obscurio', name: 'Juan / Neon Pulsedad', alias: ['Neon Pulsedad'], metadata: {} }]);
       }
       return chain([]);
     });
@@ -68,7 +68,7 @@ describe('characterRegistry', () => {
 
     expect(decision).toMatchObject({
       action: 'merge',
-      characterId: 'oscuridad',
+      characterId: 'obscurio',
       cleanName: 'Neon Pulsedad',
     });
   });
@@ -77,14 +77,14 @@ describe('characterRegistry', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);
       if (table === 'characters') {
-        return chain([{ id: 'friend-card', name: 'friend of Shyla', alias: ['Shyla'], metadata: {} }]);
+        return chain([{ id: 'friend-card', name: 'friend of Shana', alias: ['Shana'], metadata: {} }]);
       }
       return chain([]);
     });
 
-    const decision = await characterRegistry.classifyForCreation('user-1', 'Shyla');
+    const decision = await characterRegistry.classifyForCreation('user-1', 'Shana');
 
-    expect(decision).toMatchObject({ action: 'create', cleanName: 'Shyla' });
+    expect(decision).toMatchObject({ action: 'create', cleanName: 'Shana' });
   });
 
   it('allows explicit omega person promotions to override stale non-person canon rows', async () => {

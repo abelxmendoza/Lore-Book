@@ -21,43 +21,43 @@ const person = (
 });
 
 // The conversation-level snippet that leaked onto everyone's card.
-const ASHLEY_SNIPPET = 'Ashley was a one-night stand.';
+const LEAKED_SNIPPET = 'Karina was a one-night stand.';
 
 describe('dating eligibility — reported regression entities', () => {
-  it('Tío Juan: family, never eligible, even with leaked evidence', () => {
+  it('Tío Rafa: family, never eligible, even with leaked evidence', () => {
     const r = evaluateDatingEligibility(
-      person('Tío Juan', { evidenceSnippets: [ASHLEY_SNIPPET] }),
+      person('Tío Rafa', { evidenceSnippets: [LEAKED_SNIPPET] }),
     );
     expect(r.isEligible).toBe(false);
     expect(r.eligibilityReason).toBe('ineligible_family');
     expect(r.visibleInDatingBook).toBe(false);
   });
 
-  it('Lorebook: software project, not eligible', () => {
+  it('Glimmerbyte: software project, not eligible', () => {
     const r = evaluateDatingEligibility(
-      person('Lorebook', { canonicalType: 'project', evidenceSnippets: [ASHLEY_SNIPPET] }),
+      person('Glimmerbyte', { canonicalType: 'project', evidenceSnippets: [LEAKED_SNIPPET] }),
     );
     expect(r.eligibilityReason).toBe('ineligible_non_person');
     expect(r.visibleInDatingBook).toBe(false);
   });
 
-  it('Prayers: band (org book), not eligible even if typed person', () => {
+  it('Static Petals: band (org book), not eligible even if typed person', () => {
     const r = evaluateDatingEligibility(
-      person('Prayers', { isKnownOrganization: true, evidenceSnippets: [ASHLEY_SNIPPET] }),
+      person('Static Petals', { isKnownOrganization: true, evidenceSnippets: [LEAKED_SNIPPET] }),
     );
     expect(r.eligibilityReason).toBe('ineligible_non_person');
   });
 
-  it('Mr. Chino: person but zero entity-specific romantic evidence — excluded', () => {
+  it('DJ Vex: person but zero entity-specific romantic evidence — excluded', () => {
     const r = evaluateDatingEligibility(
-      person('Mr. Chino', { evidenceSnippets: [ASHLEY_SNIPPET] }),
+      person('DJ Vex', { evidenceSnippets: [LEAKED_SNIPPET] }),
     );
     expect(r.isEligible).toBe(false);
     expect(r.eligibilityReason).toBe('ineligible_evidence_belongs_to_other_entity');
   });
 
-  it('Hell Fairy / Baby Bats / Oscuridad: no direct evidence — excluded', () => {
-    for (const name of ['Hell Fairy', 'Baby Bats', 'Oscuridad']) {
+  it('Moth Queen / Neon Newts / Umbra: no direct evidence — excluded', () => {
+    for (const name of ['Moth Queen', 'Neon Newts', 'Umbra']) {
       const r = evaluateDatingEligibility(
         person(name, { evidenceSnippets: ['We saw them at the show and danced all night'] }),
       );
@@ -65,19 +65,19 @@ describe('dating eligibility — reported regression entities', () => {
     }
   });
 
-  it('Ashley De La Cruz: her own one-night-stand statement makes her eligible', () => {
+  it('Karina Del Valle: her own one-night-stand statement makes her eligible', () => {
     const r = evaluateDatingEligibility(
-      person('Ashley De La Cruz', { evidenceSnippets: [ASHLEY_SNIPPET] }),
+      person('Karina Del Valle', { evidenceSnippets: [LEAKED_SNIPPET] }),
     );
     expect(r.isEligible).toBe(true);
     expect(r.eligibilityReason).toBe('eligible_explicit_sexual_evidence');
-    expect(r.romanticEvidence).toEqual([ASHLEY_SNIPPET]);
+    expect(r.romanticEvidence).toEqual([LEAKED_SNIPPET]);
   });
 
-  it('Sol: romantic history + blocked — eligible from her own evidence', () => {
+  it('Luz: romantic history + blocked — eligible from her own evidence', () => {
     const r = evaluateDatingEligibility(
-      person('Sol', {
-        evidenceSnippets: ['Sol and I were together for a while before we broke up and she blocked me'],
+      person('Luz', {
+        evidenceSnippets: ['Luz and I were together for a while before we broke up and she blocked me'],
       }),
     );
     expect(r.isEligible).toBe(true);
@@ -124,19 +124,19 @@ describe('dating eligibility — gates', () => {
     expect(confirmed.isEligible).toBe(true);
 
     const org = evaluateDatingEligibility(
-      person('Ex Lover', { isKnownOrganization: true, userConfirmedRomantic: true }),
+      person('Heartbreak Radio', { isKnownOrganization: true, userConfirmedRomantic: true }),
     );
     expect(org.isEligible).toBe(false);
   });
 
-  it('evidence attribution: Ashley snippets are foreign on every other entity', () => {
-    const assessment = assessRomanticEvidence([ASHLEY_SNIPPET], 'Hell Fairy');
-    expect(assessment.foreign).toEqual([ASHLEY_SNIPPET]);
+  it('evidence attribution: leaked snippets are foreign on every other entity', () => {
+    const assessment = assessRomanticEvidence([LEAKED_SNIPPET], 'Moth Queen');
+    expect(assessment.foreign).toEqual([LEAKED_SNIPPET]);
     expect(assessment.accepted).toEqual([]);
   });
 
   it('kinship titles across languages hard-block', () => {
-    for (const name of ['Tío Juan', 'Aunt May', 'Prima Lucia', 'Grandma Rose', 'Stepdad Rick']) {
+    for (const name of ['Tío Rafa', 'Aunt May', 'Prima Lucia', 'Grandma Rose', 'Stepdad Rick']) {
       expect(hasFamilySignal(name), name).toBe(true);
     }
     expect(hasFamilySignal('Juanita')).toBe(false);

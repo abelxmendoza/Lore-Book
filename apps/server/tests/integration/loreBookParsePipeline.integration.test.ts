@@ -33,11 +33,11 @@ describe('LoreBook Parse Pipeline — server integration', () => {
     const result = parseLoreBookText({
       userId: 'pipeline-user',
       text: FIXTURE_PERSON_VS_PROJECT_TEXT,
-      canonSeed: { characters: [{ name: 'Hell Fairy' }] },
+      canonSeed: { characters: [{ name: 'Moth Queen' }] },
     });
 
     const projectAdds = result.operations.filter(
-      (o) => o.kind === 'suggest_add' && o.domain === 'projects' && /Hell Fairy/i.test(o.name)
+      (o) => o.kind === 'suggest_add' && o.domain === 'projects' && /Moth Queen/i.test(o.name)
     );
     expect(projectAdds).toHaveLength(0);
   });

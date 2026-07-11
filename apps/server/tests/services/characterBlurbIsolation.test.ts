@@ -38,7 +38,7 @@ describe('character blurb isolation', () => {
       'uploaded resume for robotics role',
       'family tree material with Abuela and Tio Juan',
     ];
-    const tioJuan = parseCharacterName('Tío Juan');
+    const tioJuan = parseCharacterName('Tío Rafa');
 
     const hooks = extractHooks(globalResumeBlob, {
       isSelf: false,

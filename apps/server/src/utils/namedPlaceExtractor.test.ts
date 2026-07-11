@@ -13,7 +13,7 @@ describe('namedPlaceExtractor', () => {
     const text = [
       'Im at Grandma Roses house building LifeLedger on June 3rd 2026.',
       'I went to costco with Grandma Rose and it took 2 and a half hours',
-      'hi sitting on the couch and testing to see if you can save my tío Juan to the Character Book.',
+      'hi sitting on the couch and testing to see if you can save my tío Rafa to the Character Book.',
     ].join('\n');
 
     const places = extractNamedPlacesFromText(text);

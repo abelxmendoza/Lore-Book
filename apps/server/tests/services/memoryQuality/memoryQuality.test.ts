@@ -17,16 +17,16 @@ import {
 } from '../../../src/services/memoryQuality/meaningArtifactIdentity';
 
 const GENNI_FIXTURE = AUTOBIOGRAPHICAL_SAMPLES.find((s) => s.id === 'anime-expo-boundaries')!;
-const E2E_FIXTURE = AUTOBIOGRAPHICAL_SAMPLES.find((s) => s.id === 'e2e-genni-catch')!;
+const E2E_FIXTURE = AUTOBIOGRAPHICAL_SAMPLES.find((s) => s.id === 'e2e-jenna-catch')!;
 
 describe('autobiographical meaning (event quality)', () => {
-  it('extracts Genni → lesson → boundary behavior chain without inventing facts', () => {
+  it('extracts Jenna → lesson → boundary behavior chain without inventing facts', () => {
     const m = extractAutobiographicalMeaning(GENNI_FIXTURE.text);
     expect(m.lessons.length).toBeGreaterThan(0);
     const lessonBlob = m.lessons.map((l) => `${l.lesson} ${l.source ?? ''}`).join(' ');
     expect(/boundar/i.test(lessonBlob)).toBe(true);
-    expect(/Genni/i.test(lessonBlob)).toBe(true);
-    expect(m.nodes.some((n) => n.kind === 'past_event' && /Genni/i.test(n.label))).toBe(true);
+    expect(/Jenna/i.test(lessonBlob)).toBe(true);
+    expect(m.nodes.some((n) => n.kind === 'past_event' && /Jenna/i.test(n.label))).toBe(true);
     expect(m.chains.length).toBeGreaterThan(0);
     const blob = JSON.stringify(m);
     expect(blob.toLowerCase()).not.toContain('married');
@@ -174,7 +174,7 @@ describe('idempotency fingerprints', () => {
 });
 
 describe('Memory Quality benchmark gate', () => {
-  it('scores Genni fixture with high event/continuity quality', () => {
+  it('scores Jenna fixture with high event/continuity quality', () => {
     const s = scoreSample(
       GENNI_FIXTURE.id,
       GENNI_FIXTURE.text,
@@ -229,10 +229,10 @@ describe('Memory Quality benchmark gate', () => {
     expect(result.metrics.duplicateRate).toBe(0);
   });
 
-  it('baseline without meaning scores lower on event quality for Genni', () => {
+  it('baseline without meaning scores lower on event quality for Jenna', () => {
     const entityOnly = scoreSample(
       'baseline',
-      'Dollyfied Stimkybun Genni Catch One Anime Expo',
+      'Mothdoll Vexadoll Jenna Catch One Anime Expo',
       GENNI_FIXTURE.expected,
       GENNI_FIXTURE.entities,
     );

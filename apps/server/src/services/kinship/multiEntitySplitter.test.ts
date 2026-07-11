@@ -27,8 +27,8 @@ describe('expandEntityCandidates — bornConfirmed (recall-active) signal', () =
   });
 
   it('confirms honorific+name kinship mentions', () => {
-    const text = 'We visited Tío Juan for dinner.';
-    const out = expandEntityCandidates(text, [{ name: 'Tío Juan', type: PERSON }]);
-    expect(out.find((e) => e.name.includes('Juan'))?.bornConfirmed).toBe(true);
+    const text = 'We visited Tío Rafa for dinner.';
+    const out = expandEntityCandidates(text, [{ name: 'Tío Rafa', type: PERSON }]);
+    expect(out.find((e) => e.name.includes('Rafa'))?.bornConfirmed).toBe(true);
   });
 });

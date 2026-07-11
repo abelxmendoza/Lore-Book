@@ -15,7 +15,7 @@ describe('boundaryRegex', () => {
   });
 
   it('matches multi-word and punctuated names', () => {
-    expect(boundaryRegex('Baby Bats').test('we went as Baby Bats to the show')).toBe(true);
+    expect(boundaryRegex('Neon Newts').test('we went as Neon Newts to the show')).toBe(true);
     expect(boundaryRegex('Mr. Chino').test('then Mr. Chino showed up')).toBe(true);
     expect(boundaryRegex('Mr. Chino').test('a chino fabric')).toBe(false);
   });

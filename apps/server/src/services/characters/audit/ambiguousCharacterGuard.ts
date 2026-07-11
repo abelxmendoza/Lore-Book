@@ -55,7 +55,8 @@ export function isValidFamilyTitleName(name: string): boolean {
 /** Stage/nickname personas — short distinctive labels. */
 export function looksLikeStageOrNickname(name: string): boolean {
   const key = normalizePersonNameKey(name);
-  const stageHints = ['goth', 'fairy', 'baby bats', 'oscuridad', 'hell fairy'];
+  // Generic stage-persona hints — never hardcode a real user's people here.
+  const stageHints = ['goth', 'fairy', 'queen', 'moth', 'neon', 'doll', 'vex', 'bats'];
   if (stageHints.some((h) => key.includes(h))) return true;
   if (/^(?:dj|goth)\s+/i.test(name)) return true;
   return false;

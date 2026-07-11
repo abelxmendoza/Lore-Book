@@ -115,14 +115,14 @@ describe('entityResolutionBridge', () => {
     expect(result.entityFromCore?.id).toBe('e-tiojuan');
   });
 
-  it('Daisy resolves to Hell Fairy only when alias exists', () => {
+  it('Daisy resolves to Moth Queen only when alias exists', () => {
     const withAlias = resolveMention('Daisy', [
-      { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'], type: 'PERSON' },
+      { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Moth Queen'], type: 'PERSON' },
     ], {}, 'PERSON');
     expect(withAlias.resolvedId).toBe('e-hf');
 
     const withoutAlias = resolveMention('Daisy', [
-      { id: 'e-hf2', name: 'Velvet Hour', aliases: ['Hell Fairy'], type: 'PERSON' },
+      { id: 'e-hf2', name: 'Velvet Hour', aliases: ['Moth Queen'], type: 'PERSON' },
     ], {}, 'PERSON');
     expect(withoutAlias.resolvedId).toBeNull();
   });
@@ -140,23 +140,23 @@ describe('entityResolutionBridge', () => {
 describe('Entity variant battery (duplicate analysis fixtures)', () => {
   const pool: ResolutionCandidate[] = [
     { id: 'e-abuela', name: 'Grandma Rose', aliases: ['Abuela', 'Abuelita', 'grandma'], type: 'PERSON' },
-    { id: 'e-tiojuan', name: 'Uncle James', aliases: ['Juan', 'Tio Juan', 'Tío Juan'], relatedEntityIds: ['e-abuela'], type: 'PERSON' },
+    { id: 'e-tiojuan', name: 'Uncle James', aliases: ['Juan', 'Tio Juan', 'Tío Rafa'], relatedEntityIds: ['e-abuela'], type: 'PERSON' },
     { id: 'e-oscuri', name: 'Juan', aliases: [], relatedEntityIds: ['e-club'], type: 'PERSON' },
     { id: 'e-andrew', name: 'Andrew', aliases: ['Andy'], type: 'PERSON' },
     { id: 'e-ashley', name: 'Ashley', aliases: ['Ash'], type: 'PERSON' },
-    { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Hell Fairy'], type: 'PERSON' },
+    { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy', 'Moth Queen'], type: 'PERSON' },
   ];
 
   const variants: Array<{ label: string; mention: string; expectedId: string | null }> = [
     { label: 'Tio Juan', mention: 'Tio Juan', expectedId: 'e-tiojuan' },
-    { label: 'Tío Juan', mention: 'Tío Juan', expectedId: 'e-tiojuan' },
+    { label: 'Tío Rafa', mention: 'Tío Rafa', expectedId: 'e-tiojuan' },
     { label: 'Juan (ambiguous)', mention: 'Juan', expectedId: null },
     { label: 'Abuela', mention: 'Abuela', expectedId: 'e-abuela' },
     { label: 'grandma kinship', mention: 'grandma', expectedId: 'e-abuela' },
     { label: 'Andrew', mention: 'Andrew', expectedId: 'e-andrew' },
     { label: 'Andy alias', mention: 'Andy', expectedId: 'e-andrew' },
     { label: 'Ashley', mention: 'Ashley', expectedId: 'e-ashley' },
-    { label: 'Hell Fairy alias', mention: 'Hell Fairy', expectedId: 'e-hf' },
+    { label: 'Moth Queen alias', mention: 'Moth Queen', expectedId: 'e-hf' },
     { label: 'Daisy alias', mention: 'Daisy', expectedId: 'e-hf' },
   ];
 

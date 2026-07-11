@@ -31,13 +31,13 @@ describe('correctionTracker', () => {
 
     const result = await correctionTracker.recordCorrection('00000000-0000-4000-8000-000000000001', {
       correction_type: 'entity',
-      original_value: 'projects:Hell Fairy',
-      corrected_value: 'characters:Hell Fairy',
+      original_value: 'projects:Moth Queen',
+      corrected_value: 'characters:Moth Queen',
       context: 'redirect test',
     });
 
-    expect(result.original_value).toBe('projects:Hell Fairy');
-    expect(result.corrected_value).toBe('characters:Hell Fairy');
+    expect(result.original_value).toBe('projects:Moth Queen');
+    expect(result.corrected_value).toBe('characters:Moth Queen');
     expect(result.id).toMatch(/^local-correction:/);
   });
 });

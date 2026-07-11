@@ -25,7 +25,7 @@ describe('resolveMention — honor extractor-provided type (no-match branch)', (
 
   it('creates a self-classifiable mention regardless of provided type', () => {
     // A glossary/honorific-typable mention creates on its own merits.
-    const r = resolveMention('Tío Juan', []);
+    const r = resolveMention('Tío Rafa', []);
     expect(r.action).toBe('create');
   });
 });

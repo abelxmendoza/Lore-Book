@@ -41,7 +41,7 @@ describe('entityMentionClassifier', () => {
     expect(shouldDeferCharacterPromotion('Alex', 1)).toBe(true);
     expect(shouldDeferCharacterPromotion('Alex', 2)).toBe(false);
     expect(shouldDeferCharacterPromotion('Alex Morgan', 1)).toBe(false);
-    expect(shouldDeferCharacterPromotion('Tío Juan', 1)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Tío Rafa', 1)).toBe(false);
     expect(shouldDeferCharacterPromotion('Abuela', 1)).toBe(false);
   });
 });

@@ -30,16 +30,16 @@ describe('creationOutcomeService', () => {
 
   it('maps classify decisions to creation outcomes', async () => {
     vi.mocked(entityAmbiguityService.extractEntityMentions).mockReturnValue([
-      { text: 'Tío Juan', start_index: 0, end_index: 8, confidence: 0.6 },
+      { text: 'Tío Rafa', start_index: 0, end_index: 8, confidence: 0.6 },
     ]);
     vi.mocked(characterRegistry.classifyForCreation).mockResolvedValue({
       action: 'create',
-      cleanName: 'Tío Juan',
+      cleanName: 'Tío Rafa',
     });
 
-    const outcomes = await collectCreationOutcomesForMessage('user-1', 'Remember Tío Juan');
+    const outcomes = await collectCreationOutcomesForMessage('user-1', 'Remember Tío Rafa');
     expect(outcomes).toEqual([
-      expect.objectContaining({ mention: 'Tío Juan', action: 'create' }),
+      expect.objectContaining({ mention: 'Tío Rafa', action: 'create' }),
     ]);
   });
 

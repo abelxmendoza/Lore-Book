@@ -14,7 +14,7 @@ describe('parseBareKinshipResidence', () => {
 
   it('does not fire once a name is attached or for non-kinship owners', () => {
     expect(parseBareKinshipResidence("Tía Grace's House")).toBeNull();
-    expect(parseBareKinshipResidence("Shyla's House")).toBeNull();
+    expect(parseBareKinshipResidence("Shana's House")).toBeNull();
     expect(parseBareKinshipResidence('Catch One')).toBeNull();
   });
 });
@@ -52,7 +52,7 @@ describe('resolveKinshipOwner', () => {
   });
 
   it('returns unknown when no relative carries the title', async () => {
-    const r = await resolveKinshipOwner('u1', 'abuela', chars([{ name: 'Shyla' }]));
+    const r = await resolveKinshipOwner('u1', 'abuela', chars([{ name: 'Shana' }]));
     expect(r).toEqual({ status: 'unknown' });
   });
 

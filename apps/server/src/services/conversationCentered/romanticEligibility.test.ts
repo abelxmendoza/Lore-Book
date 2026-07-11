@@ -58,7 +58,7 @@ describe('assessRomanticPartnerEligibility', () => {
     it("does not romance a bandmate when the romantic cue is the band's name", () => {
       // "Ex Lover" is a band in the Orgs book → the ex-lover cue is really the band.
       const r = assessRomanticPartnerEligibility({
-        name: 'Oscuridad',
+        name: 'Obscurio',
         evidence: 'played a show with my ex lover bandmates',
         knownOrganizationNames: orgs,
       });
@@ -120,7 +120,7 @@ describe('ex-lover disambiguation: band vs real ex sexual partner', () => {
   it('still rejects band usage of the same phrase', () => {
     const r = assessRomanticPartnerEligibility({
       name: 'Mr. Chino',
-      evidence: 'Ex Lover played with Vilevo and Mr. Chino sounded great',
+      evidence: 'Ex Lover played with Voltra and Mr. Chino sounded great',
       knownOrganizationNames: orgs,
     });
     expect(r.eligible).toBe(false);

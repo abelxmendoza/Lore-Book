@@ -3,10 +3,10 @@ import { describe, it, expect } from 'vitest';
 import { assessNarrative } from './mcpLoreIngest';
 
 describe('assessNarrative — dev-session lore guard', () => {
-  it('accepts real autobiographical narrative (the AX club story)', () => {
+  it('accepts real autobiographical narrative (a club story)', () => {
     const story =
-      'I went to the club last night after Anime Expo, there was an afters at Catch One. ' +
-      'I got to dance with Dollyfied and Stimkybun and I was grabbing Stimkybun by the waist. ' +
+      'I went to the club last night after the comic con, there was an afters at the Warehouse. ' +
+      'I got to dance with Mothdoll and Vexadoll and I was grabbing Vexadoll by the waist. ' +
       'Later I stopped by my tia’s to eat before the afters.';
     expect(assessNarrative(story)).toEqual({ isNarrative: true, reason: 'narrative' });
   });

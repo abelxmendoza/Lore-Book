@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'crypto';
 
 const FIXTURE =
-  'I went to the club last night after Anime Expo. There was a SonicBoomBox afterparty at Catch One. I danced with Dollyfied and Stimkybun. One of their friends pulled away, so I backed off and respected her boundary. The situation with Genni taught me to respect boundaries. Earlier that day I visited Anime Expo and stopped by my tía’s house for food.';
+  'I went to the club last night after Anime Expo. There was a BassRiot afterparty at Catch One. I danced with Mothdoll and Vexadoll. One of their friends pulled away, so I backed off and respected her boundary. The situation with Jenna taught me to respect boundaries. Earlier that day I visited Anime Expo and stopped by my tía’s house for food.';
 
 /** Deterministic source key for replayable artifacts. */
 function artifactKey(parts: {
@@ -42,14 +42,14 @@ describe('artifact-level idempotency keys', () => {
       sourceMessageId: messageId,
       extractorVersion: v,
       artifactType: 'entity_mention',
-      subject: 'Dollyfied',
+      subject: 'Mothdoll',
     });
     const b = artifactKey({
       userId,
       sourceMessageId: messageId,
       extractorVersion: v,
       artifactType: 'entity_mention',
-      subject: 'Dollyfied',
+      subject: 'Mothdoll',
     });
     expect(a).toBe(b);
   });
@@ -60,20 +60,20 @@ describe('artifact-level idempotency keys', () => {
       sourceMessageId: messageId,
       extractorVersion: v,
       artifactType: 'entity_mention',
-      subject: 'Dollyfied',
+      subject: 'Mothdoll',
     });
     const b = artifactKey({
       userId,
       sourceMessageId: messageId,
       extractorVersion: v,
       artifactType: 'entity_mention',
-      subject: 'Stimkybun',
+      subject: 'Vexadoll',
     });
     expect(a).not.toBe(b);
   });
 
   it('fixture yields stable multi-entity key set', () => {
-    const people = ['Dollyfied', 'Stimkybun', 'Genni'];
+    const people = ['Mothdoll', 'Vexadoll', 'Jenna'];
     const places = ['Catch One', 'Anime Expo'];
     const keys = new Set<string>();
     for (const p of people) {
@@ -104,7 +104,7 @@ describe('artifact-level idempotency keys', () => {
         sourceMessageId: messageId,
         extractorVersion: v,
         artifactType: 'event',
-        subject: 'SonicBoomBox afterparty',
+        subject: 'BassRiot afterparty',
       }),
     );
     keys.add(
@@ -115,7 +115,7 @@ describe('artifact-level idempotency keys', () => {
         artifactType: 'claim',
         subject: 'respect boundaries',
         relation: 'learned_from',
-        object: 'Genni',
+        object: 'Jenna',
       }),
     );
     expect(keys.size).toBe(people.length + places.length + 2);

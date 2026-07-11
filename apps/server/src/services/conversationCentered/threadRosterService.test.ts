@@ -31,11 +31,11 @@ describe('threadRosterService — pure helpers', () => {
     it('folds mentions into entries with provenance refs from thread/turn numbers', () => {
       const entries = deriveRosterEntries(
         [
-          msg('m1', 1, 0, [{ id: 'c-daisy', name: 'Daisy', type: 'character' }]),
-          msg('m2', 1, 1, [{ id: 'c-daisy', name: 'Daisy', type: 'character' }]),
+          msg('m1', 1, 0, [{ id: 'c-daisy', name: 'Poppy', type: 'character' }]),
+          msg('m2', 1, 1, [{ id: 'c-daisy', name: 'Poppy', type: 'character' }]),
           msg('m3', 2, 0, [
-            { id: 'c-daisy', name: 'Daisy', type: 'character' },
-            { id: 'o-exlover', name: 'Ex Lover', type: 'organization' },
+            { id: 'c-daisy', name: 'Poppy', type: 'character' },
+            { id: 'o-heartbreak', name: 'Heartbreak Radio', type: 'organization' },
           ]),
         ],
         12,
@@ -47,7 +47,7 @@ describe('threadRosterService — pure helpers', () => {
       expect(daisy.lastSeenRef).toBe('12.2');
       expect(daisy.role).toBe('main');
 
-      const band = entries.find((e) => e.entityId === 'o-exlover')!;
+      const band = entries.find((e) => e.entityId === 'o-heartbreak')!;
       expect(band.kind).toBe('organization');
       expect(band.role).toBe('mentioned');
     });
@@ -69,24 +69,24 @@ describe('threadRosterService — pure helpers', () => {
 
     it('adds linked entities missing from message metadata and legacy name-only people', () => {
       const entries = deriveRosterEntries(
-        [msg('m1', 1, 0, [{ id: 'c1', name: 'Shyla', type: 'character' }])],
+        [msg('m1', 1, 0, [{ id: 'c1', name: 'Mariposa', type: 'character' }])],
         3,
         [
-          { entity_type: 'character', entity_id: 'c2', mention_count: 4, metadata: { entity_name: 'Oscuridad' } },
+          { entity_type: 'character', entity_id: 'c2', mention_count: 4, metadata: { entity_name: 'Umbra' } },
           { entity_type: 'character', entity_id: 'c-noname', mention_count: 2, metadata: {} },
         ],
-        ['Genni', 'Shyla'],
+        ['Nova', 'Mariposa'],
       );
 
       const oscuridad = entries.find((e) => e.entityId === 'c2')!;
       expect(oscuridad.mentions).toBe(4);
       expect(oscuridad.firstSeenRef).toBeNull();
 
-      // Nameless links are dropped; legacy "Shyla" dedupes against the linked Shyla.
+      // Nameless links are dropped; legacy "Mariposa" dedupes against the linked Mariposa.
       expect(entries.find((e) => e.entityId === 'c-noname')).toBeUndefined();
-      const genni = entries.find((e) => e.name === 'Genni')!;
+      const genni = entries.find((e) => e.name === 'Nova')!;
       expect(genni.entityId).toBeNull();
-      expect(entries.filter((e) => e.name === 'Shyla')).toHaveLength(1);
+      expect(entries.filter((e) => e.name === 'Mariposa')).toHaveLength(1);
     });
 
     it('ignores malformed mention metadata', () => {
@@ -111,7 +111,7 @@ describe('threadRosterService — pure helpers', () => {
       deriveRosterEntries(
         [
           msg('m1', 1, 0, [
-            { id: 'j1', name: 'Tío Juan', type: 'character' },
+            { id: 'j1', name: 'Tío Rafa', type: 'character' },
             { id: 'j2', name: 'Juan (work)', type: 'character' },
           ]),
         ],
@@ -135,9 +135,9 @@ describe('threadRosterService — pure helpers', () => {
     });
 
     it('name-only entries are addressable by name key', () => {
-      const derived = deriveRosterEntries([], 1, [], ['Genni']);
+      const derived = deriveRosterEntries([], 1, [], ['Nova']);
       const key = rosterKey(derived[0]);
-      expect(key).toBe('name:genni');
+      expect(key).toBe('name:nova');
       const entries = applyRosterOverrides(derived, { [key]: { status: 'excluded' } });
       expect(entries[0].status).toBe('excluded');
     });

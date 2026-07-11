@@ -36,7 +36,7 @@ describe('guestLoreStore', () => {
 
   it('exports snapshot for guest chat API', () => {
     applyGuestLoreUpdates(guestId, {
-      characters: [{ name: 'Daisy', alias: ['Hell Fairy'], role: 'DJ' }],
+      characters: [{ name: 'Daisy', alias: ['Moth Queen'], role: 'DJ' }],
       entries: [{ content: 'Daisy played an incredible set last night.' }],
       locations: [{ name: 'Neon Lounge', summary: 'Downtown venue' }],
     });

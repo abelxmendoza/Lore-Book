@@ -48,8 +48,8 @@ describe('titleOnlyEntityGuard', () => {
       'Mayor Bass',
       'Bryan Oconner',
       'Ducky',
-      'Hell Fairy',
-      'Baby Bats',
+      'Moth Queen',
+      'Neon Newts',
     ];
 
     it.each(validCases)('%s passes minimum person rule', (name) => {

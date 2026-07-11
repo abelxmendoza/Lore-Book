@@ -68,13 +68,13 @@ describe('familyGraphInferenceService (integration)', () => {
     wireCharacters([
       { id: 'me', name: 'Me', metadata: { is_self: true } },
       { id: 'abuela', name: 'Abuela', metadata: {} },
-      { id: 'juan', name: 'Tío Juan', metadata: {} },
+      { id: 'juan', name: 'Tío Rafa', metadata: {} },
       { id: 'ray', name: 'Tío Ray', metadata: {} },
     ]);
 
     const result = await familyGraphInferenceService.processMessage(
       USER,
-      'I visited Abuela with Tío Juan and Tío Ray',
+      'I visited Abuela with Tío Rafa and Tío Ray',
       MSG,
       []
     );
@@ -117,14 +117,14 @@ describe('familyGraphInferenceService (integration)', () => {
       [
         { id: 'me', name: 'Me', metadata: { is_self: true } },
         { id: 'abuela', name: 'Abuela', metadata: {} },
-        { id: 'juan', name: 'Tío Juan', metadata: {} },
+        { id: 'juan', name: 'Tío Rafa', metadata: {} },
       ],
       [{ id: 'existing-fam', name: 'Test Family', metadata: {} }]
     );
 
     const result = await familyGraphInferenceService.processMessage(
       USER,
-      'Dinner with Abuela and Tío Juan',
+      'Dinner with Abuela and Tío Rafa',
       MSG,
       []
     );

@@ -68,7 +68,7 @@ describe('kinshipGlossary extraction', () => {
     { name: 'mama', role: 'MOTHER' },
     { name: 'Dad', role: 'FATHER' },
     { name: 'padre', role: 'FATHER' },
-    { name: 'Tío Juan', role: 'UNCLE' },
+    { name: 'Tío Rafa', role: 'UNCLE' },
     { name: 'Auntie Grace', role: 'AUNT' },
     { name: 'Tía Rosa', role: 'AUNT' },
     { name: 'cousin Marco', role: 'COUSIN' },
@@ -79,12 +79,12 @@ describe('kinshipGlossary extraction', () => {
   });
 
   it('extracts multiple kin (incl. possessive) from one sentence', () => {
-    const text = "I went to Abuela's house with Tío Juan and Tío Ray";
+    const text = "I went to Abuela's house with Tío Rafa and Tío Ray";
     const mentions = extractKinshipMentions(text);
     const names = mentions.map((m) => m.sourcePhrase.toLowerCase());
     expect(mentions.length).toBeGreaterThanOrEqual(3);
     expect(names.some((n) => n.includes('abuela'))).toBe(true);
-    expect(names.some((n) => n.includes('juan'))).toBe(true);
+    expect(names.some((n) => n.includes('rafa'))).toBe(true);
     expect(names.some((n) => n.includes('ray'))).toBe(true);
   });
 
@@ -130,13 +130,13 @@ describe('entityResolutionCore kinship equivalence', () => {
 
   it('does NOT cross-match different kinship roles', () => {
     // "grandma" must not resolve to an uncle candidate.
-    const result = resolveMention('grandma', [{ id: 'u1', name: 'Tío Juan', aliases: [] }]);
+    const result = resolveMention('grandma', [{ id: 'u1', name: 'Tío Rafa', aliases: [] }]);
     expect(result.resolvedId).toBeNull();
   });
 
   it('disambiguates two same-role candidates without context', () => {
     const pool: ResolutionCandidate[] = [
-      { id: 'a1', name: 'Tío Juan', aliases: [] },
+      { id: 'a1', name: 'Tío Rafa', aliases: [] },
       { id: 'a2', name: 'Tío Ray', aliases: [] },
     ];
     // "uncle" matches both uncles by kinship → ambiguous.
@@ -147,7 +147,7 @@ describe('entityResolutionCore kinship equivalence', () => {
 
   it('uses thread context to pick the right same-role candidate', () => {
     const pool: ResolutionCandidate[] = [
-      { id: 'a1', name: 'Tío Juan', aliases: [] },
+      { id: 'a1', name: 'Tío Rafa', aliases: [] },
       { id: 'a2', name: 'Tío Ray', aliases: [] },
     ];
     const result = resolveMention('uncle', pool, { threadEntityIds: ['a2'] });

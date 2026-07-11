@@ -76,11 +76,11 @@ describe('LoreBook Semantic Analyzer — Phase 1.5 contract', () => {
     const analysis = analyzeSemantics({
       userId: 'u',
       text: FIXTURE_PERSON_VS_PROJECT_TEXT,
-      canonSeed: { characters: [{ name: 'Hell Fairy' }] },
+      canonSeed: { characters: [{ name: 'Moth Queen' }] },
     });
-    // Hell Fairy must not appear as a new project entity.
+    // Moth Queen must not appear as a new project entity.
     const projectEntity = analysis.entities.find(
-      (e) => e.domain === 'projects' && /hell fairy/i.test(e.name)
+      (e) => e.domain === 'projects' && /moth queen/i.test(e.name)
     );
     expect(projectEntity).toBeUndefined();
   });

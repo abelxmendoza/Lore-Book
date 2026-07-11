@@ -70,7 +70,7 @@ describe('castTrendsService — pure helpers', () => {
           mention_count: 3,
           first_linked_at: daysAgo(30),
           last_linked_at: daysAgo(20),
-          metadata: { entity_name: 'Genni' },
+          metadata: { entity_name: 'Nova' },
         },
         {
           entity_id: 'e1',
@@ -82,12 +82,12 @@ describe('castTrendsService — pure helpers', () => {
           metadata: null,
         },
       ]);
-      const genni = activity.get('e1')!;
-      expect(genni.threadCount).toBe(2);
-      expect(genni.totalMentions).toBe(5);
-      expect(genni.firstSeen).toBe(daysAgo(30));
-      expect(genni.lastSeen).toBe(daysAgo(5));
-      expect(genni.name).toBe('Genni');
+      const nova = activity.get('e1')!;
+      expect(nova.threadCount).toBe(2);
+      expect(nova.totalMentions).toBe(5);
+      expect(nova.firstSeen).toBe(daysAgo(30));
+      expect(nova.lastSeen).toBe(daysAgo(5));
+      expect(nova.name).toBe('Nova');
     });
 
     it('drops rows without timestamps', () => {

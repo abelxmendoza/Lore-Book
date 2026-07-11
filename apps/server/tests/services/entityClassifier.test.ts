@@ -93,7 +93,7 @@ describe('EntityClassifier — ship blocker sprint (real-world labels)', () => {
     expect(t('Sister')).toBe('UNKNOWN');
   });
   it('bare nicknames without context → UNKNOWN (never Person)', () => {
-    for (const name of ['Velvet Hour', 'Daisy', 'Baby Bats', 'Juan (Neon Pulse.dad)']) {
+    for (const name of ['Velvet Hour', 'Daisy', 'Neon Newts', 'Juan (Neon Pulse.dad)']) {
       expect(t(name)).toBe('UNKNOWN');
       expect(isCharacterEligible(classifyEntity(name).type)).toBe(false);
     }

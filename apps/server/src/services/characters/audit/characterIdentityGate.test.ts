@@ -119,7 +119,7 @@ describe('human-likeness gate', () => {
 
   it('person-name shape accepts distinctive names and rejects title phrases', () => {
     expect(hasPersonNameShape('Bill Skasby')).toBe(true);
-    expect(hasPersonNameShape('Shyla')).toBe(true);
+    expect(hasPersonNameShape('Shana')).toBe(true);
     expect(hasPersonNameShape('Tía Grace')).toBe(true);
     expect(hasPersonNameShape('Self Made')).toBe(false);
     expect(hasPersonNameShape('Background Check')).toBe(false);
@@ -149,11 +149,11 @@ describe('contextual people require contextual titles', () => {
     expect(withoutContext.status).not.toBe('valid_identity');
   });
 
-  it('"friend of Shyla" requires a contextual rename', () => {
-    const result = audit('friend of Shyla', 'Met a friend of Shyla at the ska prom.');
+  it('"friend of Shana" requires a contextual rename', () => {
+    const result = audit('friend of Shana', 'Met a friend of Shana at the ska prom.');
     expect(result.status).toBe('contextual_character_needs_context');
     expect(result.recommendedAction).toBe('rename_with_context');
-    expect(result.suggestedTitle).toContain("Shyla's Friend");
+    expect(result.suggestedTitle).toContain("Shana's Friend");
     expect(result.status).not.toBe('valid_identity');
   });
 });

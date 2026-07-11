@@ -104,8 +104,8 @@ describe('continuityAlive selection', () => {
         {
           memoryId: 'lesson',
           memoryType: 'lesson',
-          summary: 'The Genni situation taught me to respect boundaries.',
-          entities: ['Genni'],
+          summary: 'The Jenna situation taught me to respect boundaries.',
+          entities: ['Jenna'],
           confidence: 0.9,
           epistemicType: 'direct_statement',
           sensitivity: 'dating',
@@ -129,7 +129,7 @@ describe('continuityAlive selection', () => {
 describe('continuityAlive required scenarios A–E', () => {
   for (const id of [
     'A_workplace_khalil',
-    'B_behavioral_genni',
+    'B_behavioral_jenna',
     'C_career_rocketlab',
     'D_no_continuity_definition',
     'E_correction_prima',

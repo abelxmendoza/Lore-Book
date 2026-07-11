@@ -34,21 +34,21 @@ describe('LoreBook Parse Engine — Phase 0', () => {
     expect(result.debug?.canonMatches).toBeDefined();
   });
 
-  it('known character blocks project suggestion for Hell Fairy', () => {
+  it('known character blocks project suggestion for Moth Queen', () => {
     const result = runLoreBookParserFixture({
       id: 'inline_hell_fairy',
       text: FIXTURE_PERSON_VS_PROJECT_TEXT,
-      canonSeed: { characters: [{ name: 'Hell Fairy' }] },
+      canonSeed: { characters: [{ name: 'Moth Queen' }] },
       expected: [],
-      forbidden: [{ kind: 'suggest_add', domain: 'projects', nameMatch: /Hell Fairy/i }],
+      forbidden: [{ kind: 'suggest_add', domain: 'projects', nameMatch: /Moth Queen/i }],
     });
     assertLoreBookParserFixture(
       {
         id: 'inline_hell_fairy',
         text: FIXTURE_PERSON_VS_PROJECT_TEXT,
-        canonSeed: { characters: [{ name: 'Hell Fairy' }] },
+        canonSeed: { characters: [{ name: 'Moth Queen' }] },
         expected: [],
-        forbidden: [{ kind: 'suggest_add', domain: 'projects', nameMatch: /Hell Fairy/i }],
+        forbidden: [{ kind: 'suggest_add', domain: 'projects', nameMatch: /Moth Queen/i }],
       },
       result
     );

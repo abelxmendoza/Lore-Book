@@ -88,9 +88,9 @@ describe('character inference rules', () => {
     expect(result.accepted.some((c) => c.displayName.toLowerCase() === 'foo')).toBe(false);
   });
 
-  it('Hell Fairy is allowed with person context', () => {
-    const result = infer('Hell Fairy was at the show and she looked amazing.');
-    const fairy = findAccepted(result, 'Hell Fairy');
+  it('Moth Queen is allowed with person context', () => {
+    const result = infer('Moth Queen was at the show and she looked amazing.');
+    const fairy = findAccepted(result, 'Moth Queen');
     expect(fairy).toBeDefined();
     expect(fairy!.identityType).toMatch(/stage_name|nickname/);
   });

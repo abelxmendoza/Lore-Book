@@ -12,25 +12,25 @@ import {
 
 describe('projectCrossBookGuard', () => {
   const hellFairyIndex = createCrossBookIndex({
-    characters: ['Hell Fairy', 'Goth Tio', 'Baby Bats'],
+    characters: ['Moth Queen', 'Goth Tio', 'Neon Newts'],
   });
 
-  it('rejects Hell Fairy when known as character', () => {
-    const result = guardCrossBookEntity('Hell Fairy', 'I could have seen Hell Fairy', hellFairyIndex);
+  it('rejects Moth Queen when known as character', () => {
+    const result = guardCrossBookEntity('Moth Queen', 'I could have seen Moth Queen', hellFairyIndex);
     expect(result.allowed).toBe(false);
     expect(result.rejectionReason).toBe('known_as_person');
     expect(result.rejectedAs).toBe('PERSON');
   });
 
   it('rejects known stage names from project suggestions in full pipeline', () => {
-    const text = "I could've seen Goth Tio, Hell Fairy, Baby Bats, Oscuridad.";
+    const text = "I could've seen Goth Tio, Moth Queen, Neon Newts, Obscurio.";
     const weak = [
-      weakProjectCandidate('Hell Fairy', text, 0.8),
+      weakProjectCandidate('Moth Queen', text, 0.8),
       weakProjectCandidate('Goth Tio', text, 0.75),
-      weakProjectCandidate('Baby Bats', text, 0.75),
+      weakProjectCandidate('Neon Newts', text, 0.75),
     ];
     const rejected = processProjectSuggestions(text, { crossBook: hellFairyIndex }, weak).filter(
-      s => s.text === 'Hell Fairy' || s.text === 'Goth Tio' || s.text === 'Baby Bats'
+      s => s.text === 'Moth Queen' || s.text === 'Goth Tio' || s.text === 'Neon Newts'
     );
     expect(rejected.every(s => s.status === 'rejected')).toBe(true);
     expect(rejected.some(s => s.rejectionReason === 'known_as_person')).toBe(true);
@@ -47,10 +47,10 @@ describe('projectCrossBookGuard', () => {
   });
 
   it('cross-book known non-project beats lexical project guess', () => {
-    const text = 'working on Hell Fairy';
-    const weak = [weakProjectCandidate('Hell Fairy', text, 0.9)];
+    const text = 'working on Moth Queen';
+    const weak = [weakProjectCandidate('Moth Queen', text, 0.9)];
     const out = processProjectSuggestionsForOutput(text, { crossBook: hellFairyIndex }, weak);
-    expect(out.some(s => /hell fairy/i.test(s.text))).toBe(false);
+    expect(out.some(s => /moth queen/i.test(s.text))).toBe(false);
   });
 
   it('still accepts LoreBook as valid project', () => {

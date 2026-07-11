@@ -7,12 +7,12 @@ describe('looksLikeMusicAct', () => {
   });
 
   it('detects "<Name> ... band shows"', () => {
-    const r = looksLikeMusicAct('Ex Lover', 'I saw Daisy at the Ex Lover and Vilevo band shows with Mr. Chino');
+    const r = looksLikeMusicAct('Ex Lover', 'I saw Daisy at the Ex Lover and Voltra band shows with Mr. Chino');
     expect(r.isMusicAct).toBe(true);
   });
 
-  it('detects another act in the same "band shows" phrase (Vilevo)', () => {
-    expect(looksLikeMusicAct('Vilevo', 'the Ex Lover and Vilevo band shows').isMusicAct).toBe(true);
+  it('detects another act in the same "band shows" phrase (Voltra)', () => {
+    expect(looksLikeMusicAct('Voltra', 'the Ex Lover and Voltra band shows').isMusicAct).toBe(true);
   });
 
   it('detects "DJ for <Name>"', () => {
@@ -20,7 +20,7 @@ describe('looksLikeMusicAct', () => {
   });
 
   it('does NOT treat "DJ <Name>" as a band (a DJ is a person)', () => {
-    expect(looksLikeMusicAct('Hell Fairy', 'the DJs Hell Fairy and Mr. Chino are playing').isMusicAct).toBe(false);
+    expect(looksLikeMusicAct('Moth Queen', 'the DJs Moth Queen and Mr. Chino are playing').isMusicAct).toBe(false);
   });
 
   it('does not fire for a person in ordinary context', () => {

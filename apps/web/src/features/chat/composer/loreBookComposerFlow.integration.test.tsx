@@ -37,6 +37,7 @@ vi.mock('../../../lib/cache', () => ({
 }));
 
 vi.mock('../../../lib/supabase', () => ({
+  useAuth: () => ({ user: { id: 'test-user' }, loading: false }),
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({
