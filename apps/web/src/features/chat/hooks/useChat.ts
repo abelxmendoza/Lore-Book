@@ -124,15 +124,20 @@ function friendlyErrorMessage(errMsg: string): string {
     );
   }
   if (isOpenAIRateLimited(errMsg)) {
+    // Prefer server-provided truth-backed copy (already mentions save/queue state).
     if (
+      errMsg.includes('I saved your message') ||
+      errMsg.includes('Your message is saved') ||
+      errMsg.includes('Your original message is saved') ||
       errMsg.includes('Response generation failed') ||
       errMsg.includes('Response generation stopped') ||
       errMsg.includes('quota is exhausted') ||
-      errMsg.includes('exceeded your current quota')
+      errMsg.includes('exceeded your current quota') ||
+      errMsg.includes('queued it for autobiographical')
     ) {
       return errMsg;
     }
-    return "Response generation failed because the OpenAI quota/rate limit was hit. Memory ingestion and entity creation may not have completed for this send.";
+    return 'I couldn’t generate a reply right now because the AI service hit a rate limit. Your message may still have been saved — check the thread after refresh rather than assuming it was lost.';
   }
   if (isOpenAIError(errMsg)) {
     return "The AI service encountered an issue. Please try again shortly.";
@@ -271,6 +276,13 @@ export const useChat = () => {
       setActiveThreadId(threadId);
     }
 
+    // Client send-attempt key: reused only for this send's HTTP attempt (not a new user turn).
+    // Prevents duplicate chat_messages rows when the client retries the same failed request.
+    const clientIdempotencyKey =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     // Create user message
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -278,6 +290,18 @@ export const useChat = () => {
       content: resolvedText,
       timestamp: new Date(),
       persistStatus: 'pending',
+      metadata: {
+        clientIdempotencyKey,
+        ...(hasImages
+          ? {
+              attachments: options!.images!.map((img) => ({
+                kind: 'image' as const,
+                mimeType: img.mimeType,
+                detail: img.detail,
+              })),
+            }
+          : {}),
+      },
       ...(hasImages
         ? {
             attachments: options!.images!.map((img) => ({
@@ -285,13 +309,6 @@ export const useChat = () => {
               dataUrl: img.dataUrl,
               mimeType: img.mimeType,
             })),
-            metadata: {
-              attachments: options!.images!.map((img) => ({
-                kind: 'image' as const,
-                mimeType: img.mimeType,
-                detail: img.detail,
-              })),
-            },
           }
         : {}),
     };
@@ -669,7 +686,7 @@ export const useChat = () => {
             setTimeout(doRefresh, 11000);
           }
         },
-        (error) => {
+        (error, durability) => {
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -682,6 +699,20 @@ export const useChat = () => {
             (!user && isSimulatedChatRuntime()) ||
             (isGuest && (isBackendUnavailable(error) || isGuestStreamBlocked(error))) ||
             (getGlobalMockDataEnabled() && isBackendUnavailable(error));
+
+          const userSaved =
+            durability?.userMessage?.persisted === true ||
+            Boolean(durability?.userMessage?.id) ||
+            Boolean(persistedUserMessageId);
+          const ingestionStatus = durability?.ingestion?.status;
+          const ingestionActive =
+            ingestionStatus === 'QUEUED' ||
+            ingestionStatus === 'PROCESSING' ||
+            ingestionStatus === 'PARTIAL' ||
+            ingestionStatus === 'RETRYABLE_FAILED' ||
+            ingestionStatus === 'RECEIVED' ||
+            ingestionStatus === 'PERSISTED';
+
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback
               ? buildDemoChatResponse(
@@ -694,9 +725,35 @@ export const useChat = () => {
               : friendlyErrorMessage(String(error)),
             isStreaming: false,
             persistStatus: 'failed',
+            metadata: {
+              durability,
+              ingestionStatus,
+            },
           });
-          updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
-          threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
+
+          // Assistant failure must not imply the user message was lost.
+          if (userSaved) {
+            const savedId = durability?.userMessage?.id ?? persistedUserMessageId;
+            updateStreamMessage(userMessage.id, {
+              ...(savedId ? { id: savedId } : {}),
+              persistStatus: 'saved',
+              metadata: {
+                ...(userMessage.metadata ?? {}),
+                durability,
+                ingestionStatus: ingestionStatus ?? (ingestionActive ? 'QUEUED' : undefined),
+              },
+            });
+          } else {
+            updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+            threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
+          }
+
+          // Reconcile with server after timeout/error so refresh-ready state is correct.
+          if (!isGuest) {
+            setTimeout(() => {
+              void hydrateThreadMessages(streamThreadId).catch(() => {});
+            }, 800);
+          }
         },
         options?.entityContext,
         currentContext,
@@ -711,6 +768,7 @@ export const useChat = () => {
         options?.chatFocus,
         options?.previewCorrections,
         options?.images,
+        clientIdempotencyKey,
       );
     } catch (error) {
       if (progressIntervalRef.current) {

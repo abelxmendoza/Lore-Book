@@ -13,7 +13,8 @@ import type { StreamingChatResponse } from '../omegaChatService';
  */
 export function formatModeResponse(
   handlerResponse: ModeHandlerResponse,
-  mode: string
+  mode: string,
+  extras?: Partial<StreamingChatResponse['metadata']>,
 ): StreamingChatResponse {
   const content = handlerResponse.content;
 
@@ -30,6 +31,7 @@ export function formatModeResponse(
       mode,
       confidence: handlerResponse.confidence,
       ...handlerResponse.metadata,
+      ...extras,
     },
   };
 }

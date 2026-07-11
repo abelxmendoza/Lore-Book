@@ -175,6 +175,8 @@ const chatSchema = z
       .optional(),
     /** Inline vision attachments for this turn (max 4). Not re-sent on later turns. */
     images: z.array(chatImageSchema).max(4).optional(),
+    /** Client send-attempt key for idempotent user-message acceptance. */
+    clientIdempotencyKey: z.string().min(8).max(128).optional(),
   })
   .refine((data) => data.message.trim().length > 0 || (data.images?.length ?? 0) > 0, {
     message: 'Message text or an image is required',
@@ -194,6 +196,11 @@ function resolveThreadContext(
 }
 
 import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
+import {
+  durabilityUserMessage,
+  isChatDurabilityError,
+  type ChatDurabilityPayload,
+} from '../services/chat/chatDurability';
 import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
 import {
   detectFirstSessionCallback,
@@ -251,6 +258,7 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       composerEntities,
       previewCorrections,
       images,
+      clientIdempotencyKey,
     } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     if (shouldBlockAnonymousAiChat(req.user)) {
@@ -304,6 +312,7 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         chatFocus ?? undefined,
         previewCorrections,
         images,
+        clientIdempotencyKey,
       );
       const mc = getMessageCost();
       if (mc) mc.messageId = result.metadata.messageId;
@@ -317,8 +326,35 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         await streamFallbackResponse(res, msgForFallback, reason);
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
+
+        // Prefer structured durability error (message already saved + job queued).
+        if (isChatDurabilityError(setupError)) {
+          const d = setupError.durability;
+          const userFacing = durabilityUserMessage(d, true);
+          res.status(setupError.httpStatus).json({
+            error: setupError.code,
+            code: setupError.code,
+            stage: setupError.stage,
+            errorCategory: setupError.category,
+            userMessage: userFacing,
+            userMessageRecord: d.userMessage,
+            assistantResponse: d.assistantResponse,
+            ingestion: d.ingestion,
+            durability: d,
+            // Back-compat fields (truthful — not hard-coded false)
+            memory: {
+              user_message_saved: d.userMessage.persisted,
+              ingestion_started:
+                d.ingestion.status !== 'NOT_SCHEDULED' && d.ingestion.status !== 'UNKNOWN',
+              entity_creation_started: false,
+              assistant_message_saved: d.assistantResponse.status === 'completed',
+            },
+          });
+          return;
+        }
+
         if (isOpenAiBudgetExceededError(setupError)) {
-          const budgetErr = setupError as { userMessage?: string; budget?: unknown };
+          const budgetErr = setupError as { userMessage?: string; budget?: unknown; durability?: ChatDurabilityPayload };
           res.status(403).json({
             error: 'openai_budget_exceeded',
             code: 'openai_budget_exceeded',
@@ -329,6 +365,7 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           return;
         }
         if (isOpenAIQuotaError(setupError)) {
+          // Without ChatDurabilityError we cannot prove save status — stay honest.
           res.status(429).json({
             error: 'OpenAI quota exhausted',
             stage: 'response_generation',
@@ -339,7 +376,9 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
               assistant_message_saved: false,
             },
             userMessage:
-              'Response generation failed because the OpenAI quota is exhausted. This failed before server-side memory ingestion, so I did not create or update memories from this send.',
+              'Response generation failed because the OpenAI quota is exhausted. If your message was already accepted, it may still be processing — check the thread after refresh rather than resending.',
+            assistantResponse: { status: 'failed', errorCategory: 'quota_exhausted' },
+            ingestion: { status: 'UNKNOWN' },
           });
           return;
         }
@@ -355,6 +394,9 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
               assistant_message_saved: false,
             },
             userMessage: setupError.message,
+            userMessageRecord: { persisted: false },
+            assistantResponse: { status: 'failed' },
+            ingestion: { status: 'NOT_SCHEDULED' },
           });
           return;
         }
@@ -412,6 +454,19 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       user: userPersistResult(result.metadata.messageId),
       assistant: { saved: false, role: 'assistant' },
     });
+
+    // Structured durability on the success path (ingestion already queued independently).
+    if (result.metadata.durability) {
+      sseWrite({
+        type: 'metadata',
+        data: {
+          durability: result.metadata.durability,
+          userMessage: result.metadata.durability.userMessage,
+          assistantResponse: result.metadata.durability.assistantResponse,
+          ingestion: result.metadata.durability.ingestion,
+        },
+      });
+    }
 
     if (req.user?.id && persistSessionId) {
       const placeholder = await insertAssistantPlaceholder(req.user.id, persistSessionId);
@@ -544,10 +599,30 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
         writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
       } else {
         logger.error({ error: streamError }, 'Chat stream mid-stream error');
+        const durability = result.metadata.durability;
         const error = isOpenAIQuotaError(streamError)
-          ? 'Response generation stopped because the OpenAI quota is exhausted. Your user message may have been saved, but this assistant reply is incomplete.'
+          ? durability
+            ? durabilityUserMessage(
+                {
+                  ...durability,
+                  assistantResponse: { ...durability.assistantResponse, status: 'failed' },
+                },
+                true,
+              )
+            : 'I saved your message when possible. Response generation stopped because the OpenAI quota is exhausted — this assistant reply is incomplete.'
           : streamError instanceof Error ? streamError.message : 'Unknown stream error';
-        sseWrite({ type: 'error', error });
+        sseWrite({
+          type: 'error',
+          error,
+          ...(durability
+            ? {
+                durability: {
+                  ...durability,
+                  assistantResponse: { ...durability.assistantResponse, status: 'failed' as const },
+                },
+              }
+            : {}),
+        });
         if (!res.writableEnded) res.end();
       }
     }
@@ -827,6 +902,49 @@ router.get('/messages/:id/revisions', requireAuth, async (req: AuthenticatedRequ
   const messageId = req.params.id as string;
   const revisions = await messageCorrectionService.getRevisions(userId, messageId);
   return res.json({ revisions });
+});
+
+/**
+ * GET /api/chat/messages/:id/durability
+ * Was this message saved? Was ingestion scheduled? Which stages completed?
+ * Scoped to the authenticated user.
+ */
+router.get('/messages/:id/durability', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { ingestionRecoveryService } = await import('../services/ingestion/ingestionRecoveryService');
+    const snapshot = await ingestionRecoveryService.getMessageDurability(req.user!.id, req.params.id as string);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    return res.json(snapshot);
+  } catch (error) {
+    logger.error({ err: error }, 'Message durability lookup failed');
+    return res.status(500).json({ error: 'Failed to load durability status' });
+  }
+});
+
+/**
+ * POST /api/chat/messages/:id/retry-ingestion
+ * Retry autobiographical processing without resending the user message.
+ */
+router.post('/messages/:id/retry-ingestion', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { ingestionRecoveryService } = await import('../services/ingestion/ingestionRecoveryService');
+    const force = req.body?.force !== false;
+    const result = await ingestionRecoveryService.retryMessage(req.user!.id, req.params.id as string, force);
+    return res.json({
+      ok: true,
+      jobId: result.jobId,
+      status: result.status,
+      userMessage: { id: req.params.id, persisted: true },
+      ingestion: { jobId: result.jobId, status: result.status === 'QUEUED' ? 'QUEUED' : result.status },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Retry failed';
+    const status = msg.includes('not found') ? 404 : 400;
+    logger.warn({ err: error, messageId: req.params.id }, 'retry-ingestion failed');
+    return res.status(status).json({ error: msg });
+  }
 });
 
 export const chatRouter = router;

@@ -496,7 +496,38 @@
   animation: skeletonPulse 1.6s ease-in-out infinite;
 }
 
+/* "Noted." — LoreBook's signature acknowledgment. Glowing purple moment. */
+@keyframes notedSignatureGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.35), 0 0 28px rgba(168, 85, 247, 0.12);
+    border-color: rgba(192, 132, 252, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(168, 85, 247, 0.6), 0 0 44px rgba(168, 85, 247, 0.25);
+    border-color: rgba(216, 180, 254, 0.7);
+  }
+}
+
+.chat-bubble-noted {
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.4), rgba(59, 7, 100, 0.22));
+  animation: notedSignatureGlow 2.6s ease-in-out infinite;
+}
+
+.chat-noted-text {
+  background: linear-gradient(90deg, #e9d5ff, #c084fc, #e9d5ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.04em;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .chat-bubble-noted {
+    animation: none !important;
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+  }
+
   .chat-message-enter-user,
   .chat-message-enter-assistant,
   .chat-message-enter-system,

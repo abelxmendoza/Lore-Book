@@ -287,6 +287,34 @@ export const ChatMessage = ({
     );
   }
 
+  // "Noted." — LoreBook's occasional signature acknowledgment for log/deposit
+  // moments (notedSignature.ts). Rendered as a compact glowing purple moment.
+  const isNotedSignature =
+    !isUser &&
+    (message.metadata?.signature === 'noted' || message.content.trim() === 'Noted.');
+  if (isNotedSignature && !isThinking) {
+    return (
+      <div
+        data-testid="chat-message-noted"
+        className={`flex gap-3 sm:gap-4 lg:gap-6 items-start justify-start chat-message w-full mb-4 sm:mb-6 lg:mb-8 ${enterClass}`}
+      >
+        <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-purple-500/15 flex items-center justify-center mt-1">
+          <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-purple-300" />
+        </div>
+        <div className="flex flex-col items-start">
+          <div className="chat-bubble-noted inline-block rounded-2xl rounded-tl-sm px-5 py-2.5 sm:px-6 sm:py-3">
+            <span className="chat-noted-text text-base sm:text-lg font-semibold">Noted.</span>
+          </div>
+          {message.ref && (
+            <span className="mt-1.5 font-mono text-[10px] text-purple-300/40" data-testid="message-ref">
+              #{message.ref}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Memory Recall messages - check both response_mode and metadata
   const responseMode = message.response_mode || message.metadata?.response_mode;
   if (!isUser && (responseMode === 'SILENCE' || responseMode === 'RECALL')) {

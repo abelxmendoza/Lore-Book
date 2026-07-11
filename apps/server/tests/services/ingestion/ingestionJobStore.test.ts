@@ -71,11 +71,11 @@ describe('ingestionJobStore', () => {
     expect(rows[0].attempts).toBe(2);
   });
 
-  it('markCompleted issues a delete (keeps the table to unfinished work only)', async () => {
+  it('markCompleted marks COMPLETED (keeps row for diagnostics; delete only on update failure)', async () => {
     const c = chain({ data: null, error: null });
-    const deleteSpy = vi.spyOn(c, 'delete');
+    const updateSpy = vi.spyOn(c, 'update');
     fromMock.mockReturnValue(c);
     await ingestionJobStore.markCompleted('job-1');
-    expect(deleteSpy).toHaveBeenCalled();
+    expect(updateSpy).toHaveBeenCalled();
   });
 });

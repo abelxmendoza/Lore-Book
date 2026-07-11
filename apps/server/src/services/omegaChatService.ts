@@ -25,6 +25,13 @@ import {
 } from './characters/characterChatTargetResolver';
 import { applyCharacterChatKnowledgeUpdate } from './characters/characterChatCorrectionService';
 import { ingestionQueue, type JobPriority } from './ingestion/ingestionQueue';
+import {
+  buildDurabilityPayload,
+  ChatDurabilityError,
+  incMetric,
+  type ChatDurabilityPayload,
+} from './chat/chatDurability';
+import { classifyIngestionError } from './ingestion/ingestionJobStates';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
@@ -329,6 +336,9 @@ export type StreamingChatResponse = {
     activePersona?: string;
     sessionId?: string;
     messageId?: string;
+    assistantMessageId?: string;
+    /** Structured durability boundary (user save / assistant / ingestion). */
+    durability?: ChatDurabilityPayload;
     continuityAcknowledged?: {
       signals: string[];
       entityHints: string[];
@@ -844,11 +854,51 @@ When updating relationship analytics or emotional signals from this thread, weig
     entityContext?: { type: string; id: string },
     previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
-  ): Promise<{ messageId: string; interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> } | undefined> {
+    clientIdempotencyKey?: string,
+  ): Promise<{
+    messageId: string;
+    ingestionJobId?: string;
+    reused?: boolean;
+    interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined>;
+  } | undefined> {
     // Critical-path latency: this method runs BEFORE the assistant response is
     // set up (durable save + interpretation pipeline + enqueue). The interpretation
     // step is the prime candidate to push fully async — this timer quantifies it.
     const timer = new StageTimer('chat.persist_early', { userId, sessionId });
+    incMetric('messages_received');
+
+    // Idempotent acceptance: same client key → reuse existing user message + job.
+    if (clientIdempotencyKey) {
+      try {
+        const { data: existing } = await supabaseAdmin
+          .from('chat_messages')
+          .select('id, session_id')
+          .eq('user_id', userId)
+          .eq('client_idempotency_key', clientIdempotencyKey)
+          .eq('role', 'user')
+          .maybeSingle();
+        if (existing?.id) {
+          incMetric('duplicate_sends_prevented');
+          let ingestionJobId: string | undefined;
+          if (!entityContext) {
+            const enq = await ingestionQueue.enqueueDurable(
+              {
+                userId,
+                chatMessageId: existing.id,
+                sessionId: existing.session_id ?? sessionId,
+                conversationHistory,
+              },
+              'NORMAL',
+            );
+            ingestionJobId = enq.jobId || undefined;
+          }
+          timer.flush({ path: 'idempotent_reuse' });
+          return { messageId: existing.id, ingestionJobId, reused: true };
+        }
+      } catch (err) {
+        logger.debug({ err, clientIdempotencyKey }, 'Idempotency lookup failed — continuing with insert');
+      }
+    }
 
     // Durable upload into photos bucket (parallel); keep dataUrl for same-turn vision.
     type ImageWithStorage = ChatImageAttachment & { storagePath?: string; url?: string };
@@ -878,19 +928,34 @@ When updating relationship analytics or emotional signals from this thread, weig
     const hasImages = (attachmentMeta?.length ?? 0) > 0 || (images?.length ?? 0) > 0;
 
     if (isTrivialMessage(message) && !hasImages) {
+      const insertRow: Record<string, unknown> = {
+        user_id: userId,
+        session_id: sessionId,
+        role: 'user',
+        content: message,
+        metadata: { trivial: true },
+      };
+      if (clientIdempotencyKey) insertRow.client_idempotency_key = clientIdempotencyKey;
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
-        .insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'user',
-          content: message,
-          metadata: { trivial: true },
-        })
+        .insert(insertRow)
         .select('id')
         .single();
       timer.mark('save_trivial');
       if (saveError || !savedMessage?.id) {
+        // Unique violation on idempotency key → race; re-fetch.
+        if (clientIdempotencyKey && /duplicate|unique/i.test(saveError?.message ?? '')) {
+          const { data: raced } = await supabaseAdmin
+            .from('chat_messages')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('client_idempotency_key', clientIdempotencyKey)
+            .maybeSingle();
+          if (raced?.id) {
+            incMetric('duplicate_sends_prevented');
+            return { messageId: raced.id, reused: true };
+          }
+        }
         logger.warn({ error: saveError, userId, sessionId }, 'Failed to persist trivial user message');
         return undefined;
       }
@@ -899,6 +964,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         .update({ updated_at: new Date().toISOString() })
         .eq('id', sessionId)
         .eq('user_id', userId);
+      incMetric('messages_persisted');
       timer.flush({ path: 'trivial' });
       return savedMessage.id ? { messageId: savedMessage.id } : undefined;
     }
@@ -910,19 +976,42 @@ When updating relationship analytics or emotional signals from this thread, weig
       metadata.vision_pending = true;
     }
 
+    const insertRow: Record<string, unknown> = {
+      user_id: userId,
+      session_id: sessionId,
+      role: 'user',
+      content: message,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    };
+    if (clientIdempotencyKey) insertRow.client_idempotency_key = clientIdempotencyKey;
+
     const { data: savedMessage, error: saveError } = await supabaseAdmin
       .from('chat_messages')
-      .insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'user',
-        content: message,
-        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-      })
+      .insert(insertRow)
       .select('id')
       .single();
 
     if (saveError || !savedMessage?.id) {
+      if (clientIdempotencyKey && /duplicate|unique/i.test(saveError?.message ?? '')) {
+        const { data: raced } = await supabaseAdmin
+          .from('chat_messages')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('client_idempotency_key', clientIdempotencyKey)
+          .maybeSingle();
+        if (raced?.id) {
+          incMetric('duplicate_sends_prevented');
+          let ingestionJobId: string | undefined;
+          if (!entityContext) {
+            const enq = await ingestionQueue.enqueueDurable(
+              { userId, chatMessageId: raced.id, sessionId, conversationHistory },
+              'NORMAL',
+            );
+            ingestionJobId = enq.jobId || undefined;
+          }
+          return { messageId: raced.id, ingestionJobId, reused: true };
+        }
+      }
       if (saveError) {
         const classified = classifyPostgresError(saveError);
         if (classified.kind === 'read_only' || classified.kind === 'disk_full') {
@@ -936,6 +1025,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
     timer.mark('save');
     const messageId = savedMessage.id;
+    incMetric('messages_persisted');
 
     await supabaseAdmin
       .from('conversation_sessions')
@@ -964,13 +1054,24 @@ When updating relationship analytics or emotional signals from this thread, weig
       return { messageId };
     }
 
-    // Enqueue the heavy background ingestion job. Cheap in-memory push; explicitly
-    // NOT gated on interpretation so it starts regardless.
+    // Durable enqueue BEFORE optional assistant generation can fail. Awaited so
+    // the API can report truth-backed ingestion status under OpenAI 429/quota.
+    let ingestionJobId: string | undefined;
     if (!entityContext) {
-      ingestionQueue.enqueue(
-        { userId, chatMessageId: messageId, sessionId, conversationHistory },
-        'NORMAL'
-      );
+      try {
+        const enq = await ingestionQueue.enqueueDurable(
+          { userId, chatMessageId: messageId, sessionId, conversationHistory },
+          'NORMAL',
+        );
+        ingestionJobId = enq.jobId || undefined;
+      } catch (enqErr) {
+        // Last resort: fire-and-forget so we still try; message is already durable.
+        logger.warn({ err: enqErr, messageId }, 'enqueueDurable failed — falling back to enqueue');
+        ingestionJobId = ingestionQueue.enqueue(
+          { userId, chatMessageId: messageId, sessionId, conversationHistory },
+          'NORMAL',
+        ) || undefined;
+      }
     }
 
     // Interpretation pipeline + lore agents moved OFF the chat critical path.
@@ -1007,9 +1108,9 @@ When updating relationship analytics or emotional signals from this thread, weig
       });
 
     timer.mark('enqueue_dispatch');
-    timer.flush({ path: 'full', enqueuedIngestion: !entityContext });
+    timer.flush({ path: 'full', enqueuedIngestion: !entityContext, ingestionJobId });
 
-    return { messageId, interpretationPromise };
+    return { messageId, ingestionJobId, interpretationPromise };
   }
 
   /**
@@ -1048,6 +1149,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     chatFocus?: ChatFocusPayload,
     previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
+    clientIdempotencyKey?: string,
   ): Promise<StreamingChatResponse> {
     // Caption text for persistence/ingestion; placeholder when image-only.
     message = resolveUserMessageText(message, images);
@@ -1094,6 +1196,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     let entryId: string | undefined;
+    let ingestionJobId: string | undefined;
+    let messageReused = false;
     let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
     try {
       const earlyPersist = await this.persistUserMessageEarly(
@@ -1104,13 +1208,39 @@ When updating relationship analytics or emotional signals from this thread, weig
         entityContext,
         previewCorrections,
         images,
+        clientIdempotencyKey,
       );
       entryId = earlyPersist?.messageId;
+      ingestionJobId = earlyPersist?.ingestionJobId;
+      messageReused = earlyPersist?.reused === true;
       interpretationPromise = earlyPersist?.interpretationPromise;
     } catch (persistErr) {
       logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed');
       throw persistErr;
     }
+
+    const durabilityFor = (
+      assistantStatus: 'completed' | 'failed' | 'pending',
+      assistantErrorCategory?: ReturnType<typeof classifyIngestionError>['category'],
+    ): ChatDurabilityPayload =>
+      buildDurabilityPayload({
+        userMessageId: entryId,
+        sessionId,
+        idempotencyKey: clientIdempotencyKey,
+        reused: messageReused,
+        assistantStatus,
+        assistantErrorCategory,
+        ingestionJobId,
+        ingestionStatus: ingestionJobId ? 'QUEUED' : entryId && !entityContext ? 'QUEUED' : 'NOT_SCHEDULED',
+      });
+
+    /** Attach durability to mode/early-return streams so clients never lose message ids. */
+    const modeExtras = (): Partial<StreamingChatResponse['metadata']> => ({
+      messageId: entryId,
+      entryId,
+      sessionId,
+      durability: durabilityFor('pending'),
+    });
 
     if (focusedCharacter && entryId) {
       void applyCharacterChatKnowledgeUpdate(userId, focusedCharacter.characterId, message, {
@@ -1190,7 +1320,8 @@ When updating relationship analytics or emotional signals from this thread, weig
             confidence: akResult.confidence,
             metadata: { conversation_intelligence: true, ...akResult.metadata },
           },
-          'FOUNDATION_RECALL'
+          'FOUNDATION_RECALL',
+          modeExtras(),
         );
       }
     } catch (err) {
@@ -1221,7 +1352,8 @@ When updating relationship analytics or emotional signals from this thread, weig
             confidence: 0.95,
             metadata: { testing_mode: testingMode, entity_name: status.entityName },
           },
-          'FOUNDATION_RECALL'
+          'FOUNDATION_RECALL',
+          modeExtras(),
         );
       }
 
@@ -1238,7 +1370,8 @@ When updating relationship analytics or emotional signals from this thread, weig
               concepts: metaContext.shortCircuit.concepts,
             },
           },
-          'SYSTEM_COGNITION'
+          'SYSTEM_COGNITION',
+          modeExtras(),
         );
       }
       selfModelBlockStream = metaContext.promptBlock;
@@ -1255,7 +1388,8 @@ When updating relationship analytics or emotional signals from this thread, weig
             confidence: 0.9,
             metadata: { recall_failure_recovery: true },
           },
-          'FOUNDATION_RECALL'
+          'FOUNDATION_RECALL',
+          modeExtras(),
         );
       }
 
@@ -1272,7 +1406,8 @@ When updating relationship analytics or emotional signals from this thread, weig
               confidence: thread.confidence,
               metadata: { recall_intent: 'thread', thread_first: true },
             },
-            'FOUNDATION_RECALL'
+            'FOUNDATION_RECALL',
+            modeExtras(),
           );
         }
       }
@@ -1293,7 +1428,8 @@ When updating relationship analytics or emotional signals from this thread, weig
               confidence: recall.confidence,
               metadata: { testing_mode: testingMode, ...recall.metadata },
             },
-            'FOUNDATION_RECALL'
+            'FOUNDATION_RECALL',
+            modeExtras(),
           );
         }
       }
@@ -1337,7 +1473,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         );
 
         // Assistant persistence handled by chat.ts persistAssistant
-        return formatModeResponse(handlerResponse, routing.mode);
+        return formatModeResponse(handlerResponse, routing.mode, modeExtras());
       }
     } catch (error) {
       logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
@@ -1364,7 +1500,8 @@ When updating relationship analytics or emotional signals from this thread, weig
               confidence: foundation.confidence,
               metadata: foundation.metadata,
             },
-            'FOUNDATION_RECALL'
+            'FOUNDATION_RECALL',
+            modeExtras(),
           );
         }
       }
@@ -2031,16 +2168,32 @@ When updating relationship analytics or emotional signals from this thread, weig
         'Chat turn includes vision image attachment(s)',
       );
     }
-    const stream = await createOpenAIChatStream({
-      model: config.chatModel,
-      temperature: 0.7,
-      messages,
-      userId,
-      sessionId,
-      previousResponseId,
-      openAiConversationId,
-      vectorStoreId,
-    });
+    let stream: LorekeeperChatStream;
+    try {
+      stream = await createOpenAIChatStream({
+        model: config.chatModel,
+        temperature: 0.7,
+        messages,
+        userId,
+        sessionId,
+        previousResponseId,
+        openAiConversationId,
+        vectorStoreId,
+      });
+    } catch (streamSetupErr) {
+      // User message + ingestion job are already durable — never imply memory loss.
+      const classified = classifyIngestionError(streamSetupErr);
+      incMetric('assistant_generation_failure');
+      throw new ChatDurabilityError({
+        message: streamSetupErr instanceof Error ? streamSetupErr.message : String(streamSetupErr),
+        category: classified.category,
+        code: classified.code,
+        stage: 'response_generation',
+        durability: durabilityFor('failed', classified.category),
+        cause: streamSetupErr,
+      });
+    }
+    incMetric('assistant_generation_success');
 
     // User message already persisted at stream start (entryId)
     const timelineUpdates: string[] = [];
@@ -2248,6 +2401,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         suggestedActions,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
+        durability: durabilityFor('pending'),
         continuityAcknowledged: continuityIntent?.detected ? {
           signals: continuityIntent.signals,
           entityHints: continuityIntent.entityHints,

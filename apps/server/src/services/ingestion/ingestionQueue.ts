@@ -25,6 +25,11 @@ import { runWithMessageCost } from '../../lib/messageCostTracker';
 import { supabaseAdmin } from '../supabaseClient';
 import { pipelineRunService } from './pipelineRunService';
 import { ingestionJobStore } from './ingestionJobStore';
+import {
+  classifyIngestionError,
+  computeRetryDelayMs,
+} from './ingestionJobStates';
+import { incMetric } from '../chat/chatDurability';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -38,6 +43,13 @@ export interface IngestionJobPayload {
   /** Re-ingest even if this message was already ingested (used by corrections). */
   force?: boolean;
 }
+
+export type EnqueueResult = {
+  jobId: string;
+  /** False when an existing durable job already covered this message. */
+  isNew: boolean;
+  status: 'QUEUED' | 'DUPLICATE' | 'DROPPED';
+};
 
 interface IngestionJob extends IngestionJobPayload {
   id: string;
@@ -93,8 +105,8 @@ class IngestionQueue {
   private totalFailed = 0;
 
   /**
-   * Enqueue a new ingestion job.
-   * Safe to call from the chat request handler — returns immediately.
+   * Enqueue a new ingestion job (fire-and-forget). Prefer enqueueDurable when
+   * the caller needs a committed job row before optional AI work can fail.
    */
   enqueue(payload: IngestionJobPayload, priority: JobPriority = 'NORMAL'): string {
     const depth = this.depth();
@@ -106,28 +118,61 @@ class IngestionQueue {
       return '';
     }
 
-    const job: IngestionJob = {
+    const job = this.buildJob(payload, priority);
+    this.totalEnqueued++;
+    // Durably persist BEFORE in-memory processing so a crash/deploy can't drop
+    // the job. Non-blocking path for legacy callers.
+    void this.persistThenQueue(job);
+    return job.id;
+  }
+
+  /**
+   * Await write-ahead persist so the chat path can report truth-backed ingestion
+   * status even if assistant generation fails immediately after.
+   */
+  async enqueueDurable(
+    payload: IngestionJobPayload,
+    priority: JobPriority = 'NORMAL',
+  ): Promise<EnqueueResult> {
+    const depth = this.depth();
+    if (depth >= this.MAX_QUEUE_DEPTH) {
+      logger.warn(
+        { depth, userId: payload.userId },
+        'IngestionQueue: circuit breaker tripped — queue full, dropping job'
+      );
+      return { jobId: '', isNew: false, status: 'DROPPED' };
+    }
+
+    const job = this.buildJob(payload, priority);
+    this.totalEnqueued++;
+    const isNew = await this.persistThenQueue(job);
+    if (!isNew) {
+      const existing = await ingestionJobStore.findByIdempotencyKey(job.idempotencyKey);
+      return {
+        jobId: existing?.id ?? job.id,
+        isNew: false,
+        status: 'DUPLICATE',
+      };
+    }
+    return { jobId: job.id, isNew: true, status: 'QUEUED' };
+  }
+
+  private buildJob(payload: IngestionJobPayload, priority: JobPriority): IngestionJob {
+    return {
       ...payload,
-      id:           randomUUID(),
+      id: randomUUID(),
       idempotencyKey: payload.force
         ? `${payload.chatMessageId}:force:${Date.now()}`
         : payload.chatMessageId,
       priority,
-      attempts:     0,
-      maxAttempts:  3,
-      createdAt:    Date.now(),
+      attempts: 0,
+      maxAttempts: 5,
+      createdAt: Date.now(),
     };
-
-    this.totalEnqueued++;
-    // Durably persist BEFORE in-memory processing so a crash/deploy can't drop
-    // the job. Non-blocking — the chat path already calls enqueue fire-and-forget.
-    void this.persistThenQueue(job);
-
-    return job.id;
   }
 
   /** Write-ahead persist, then schedule in-memory. Dedupes via idempotency key. */
-  private async persistThenQueue(job: IngestionJob): Promise<void> {
+  private async persistThenQueue(job: IngestionJob): Promise<boolean> {
     const isNew = await ingestionJobStore.persist({
       id:             job.id,
       idempotencyKey: job.idempotencyKey,
@@ -136,15 +181,18 @@ class IngestionQueue {
       sessionId:      job.sessionId,
       priority:       job.priority,
       payload:        { conversationHistory: job.conversationHistory, force: job.force },
+      logicalStatus:  'QUEUED',
+      currentStage:   'RAW_MESSAGE_PERSISTED',
     });
     if (!isNew) {
       logger.debug(
         { chatMessageId: job.chatMessageId, userId: job.userId },
         'IngestionQueue: duplicate enqueue skipped (idempotent)'
       );
-      return;
+      return false;
     }
     this.enqueueInMemory(job);
+    return true;
   }
 
   /** Push an already-durable job into the in-memory scheduler. */
@@ -239,7 +287,7 @@ class IngestionQueue {
     job.attempts++;
     const attemptStart = Date.now();
     job.lastAttemptAt = attemptStart;
-    void ingestionJobStore.markProcessing(job.id, job.attempts);
+    void ingestionJobStore.markProcessing(job.id, job.attempts, `worker:${process.pid}`);
 
     // Open a pipeline run record so we can detect partial failures later
     const runId = await pipelineRunService.start({
@@ -270,8 +318,8 @@ class IngestionQueue {
       );
 
       this.totalCompleted++;
-      // Success — drop the durable row so the table holds only unfinished work.
-      void ingestionJobStore.markCompleted(job.id);
+      // Success — mark COMPLETED (row retained briefly for diagnostics).
+      void ingestionJobStore.markCompleted(job.id, 'COMPLETED');
 
       // Capture what this pipeline run produced. Non-blocking — errors are swallowed.
       // Queries by user_id + created_at > job start so we see only this run's outputs.
@@ -290,18 +338,34 @@ class IngestionQueue {
       );
     } catch (err) {
       job.lastError = String(err);
+      const classified = classifyIngestionError(err);
+      incMetric('ingestion_stage_failure');
 
-      if (job.attempts < job.maxAttempts) {
-        // Exponential backoff: attempt 1 → 1s, attempt 2 → 2s, attempt 3 → 4s
-        const delayMs = Math.pow(2, job.attempts - 1) * 1_000;
+      const canRetry =
+        classified.retryable && job.attempts < job.maxAttempts;
+
+      if (canRetry) {
+        const delayMs = computeRetryDelayMs(job.attempts, classified.category);
+        const nextRetryAt = new Date(Date.now() + delayMs);
         logger.warn(
-          { jobId: job.id, userId: job.userId, attempt: job.attempts, delayMs },
+          {
+            jobId: job.id,
+            userId: job.userId,
+            attempt: job.attempts,
+            delayMs,
+            category: classified.category,
+          },
           'IngestionQueue: job failed, will retry'
         );
         // Mark partial on retryable failures (run will be superseded by the next attempt's run)
         if (runId) await pipelineRunService.markPartial(runId, attemptStart, 'ingestFromChatMessage');
-        // Back to 'pending' durably so a crash during the backoff window still recovers it.
-        void ingestionJobStore.markRetrying(job.id, job.attempts, String(err));
+        // Back to retryable_failed durably so a crash during the backoff window still recovers it.
+        void ingestionJobStore.markRetrying(job.id, job.attempts, classified.message, {
+          category: classified.category,
+          code: classified.code,
+          failedStage: 'ingestFromChatMessage',
+          nextRetryAt,
+        });
         setTimeout(() => {
           this.queues[job.priority].push(job);
           this.drain();
@@ -309,13 +373,16 @@ class IngestionQueue {
       } else {
         this.totalFailed++;
         logger.error(
-          { jobId: job.id, userId: job.userId, attempts: job.attempts, err },
-          'IngestionQueue: job exhausted retries — sending to dead-letter'
+          { jobId: job.id, userId: job.userId, attempts: job.attempts, err, category: classified.category },
+          'IngestionQueue: job exhausted retries or permanent failure — dead-letter'
         );
         if (runId) await pipelineRunService.fail(runId, attemptStart, err, 'ingestFromChatMessage');
         await this.deadLetter(job, err);
-        // Exhausted retries — mark dead in the durable log (dead-letter row holds the payload).
-        void ingestionJobStore.markDead(job.id, String(err));
+        void ingestionJobStore.markDead(job.id, classified.message, {
+          category: classified.category,
+          code: classified.code,
+          failedStage: 'ingestFromChatMessage',
+        });
       }
     } finally {
       this.activeJobs--;

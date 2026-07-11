@@ -31,6 +31,7 @@ type StreamChunk = {
   content?: string;
   data?: any;
   error?: string;
+  durability?: ChatStreamDurability;
   responseCompiler?: { actionCandidates?: ResponseActionCandidate[] };
   continuityCallback?: ContinuityCallback;
 };
@@ -62,6 +63,19 @@ export type MemoryFeedbackEvent = {
   entitiesDetected: Array<{ name: string; type: string }>;
   temporalAnchor: { detected: boolean; precision?: string; confidence?: number };
   contradictionsDetected: Array<{ description: string }>;
+};
+
+/** Structured durability payload from chat API (assistant failure ≠ memory loss). */
+export type ChatStreamDurability = {
+  userMessage?: { id?: string; persisted?: boolean; sessionId?: string };
+  assistantResponse?: { status?: string; messageId?: string; errorCategory?: string };
+  ingestion?: {
+    jobId?: string;
+    status?: string;
+    currentStage?: string;
+    retryable?: boolean;
+    nextRetryAt?: string;
+  };
 };
 
 export const useChatStream = () => {
@@ -107,7 +121,7 @@ export const useChatStream = () => {
     onChunk: (content: string) => void,
     onMetadata: (metadata: any) => void,
     onComplete: (result?: ChatStreamResult) => void,
-    onError: (error: string) => void,
+    onError: (error: string, durability?: ChatStreamDurability) => void,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext | null,
@@ -119,6 +133,8 @@ export const useChatStream = () => {
     chatFocus?: ChatFocus,
     previewCorrections?: import('../lib/entityCorrectionTypes').CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
+    /** Stable send-attempt key — reuse on retry of the same send to avoid duplicate user rows. */
+    clientIdempotencyKey?: string,
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -158,6 +174,7 @@ export const useChatStream = () => {
                 message,
                 conversationHistory,
                 ...(threadId ? { threadId } : {}),
+                ...(clientIdempotencyKey ? { clientIdempotencyKey } : {}),
                 ...(threadEntities && threadEntities.length > 0 ? { threadEntities } : {}),
                 ...(composerEntities && composerEntities.length > 0
                   ? {
@@ -212,16 +229,20 @@ export const useChatStream = () => {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('[useChatStream] HTTP error:', response.status, errorText);
         let userMessage: string;
-        if (response.status === 503) {
+        let durability: ChatStreamDurability | undefined;
+        const parseBody = (): Record<string, unknown> | null => {
           try {
-            const body = JSON.parse(errorText);
-            if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
-              userMessage = body.message || 'Database schema incomplete. Run migrations: ./scripts/run-base-migrations.sh';
-            } else {
-              userMessage = `Service unavailable (503): ${body.error || body.message || errorText}`;
-            }
+            return JSON.parse(errorText) as Record<string, unknown>;
           } catch {
-            userMessage = `Service unavailable (503): ${errorText}`;
+            return null;
+          }
+        };
+        if (response.status === 503) {
+          const body = parseBody();
+          if (body && (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables))) {
+            userMessage = (body.message as string) || 'Database schema incomplete. Run migrations: ./scripts/run-base-migrations.sh';
+          } else {
+            userMessage = `Service unavailable (503): ${(body?.error as string) || (body?.message as string) || errorText}`;
           }
         } else if (response.status === 405) {
           const isProdNoApi = config.env.isProduction && !config.api.url;
@@ -229,23 +250,37 @@ export const useChatStream = () => {
             ? 'Method Not Allowed (405). The deployed app has no backend. Set VITE_API_URL in Vercel to your API URL (e.g. https://your-api.vercel.app), or run the app locally: npm run dev in apps/web and apps/server.'
             : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
         } else if (response.status === 403) {
-          try {
-            const body = JSON.parse(errorText);
-            userMessage = body.userMessage || body.message || body.error || errorText;
-          } catch {
-            userMessage = 'AI usage limit reached for this app.';
-          }
-        } else if (response.status === 429) {
-          try {
-            const body = JSON.parse(errorText);
-            userMessage = body.userMessage || body.message || body.error || errorText;
-          } catch {
-            userMessage = `OpenAI quota/rate limit error: ${errorText}`;
+          const body = parseBody();
+          userMessage = (body?.userMessage as string) || (body?.message as string) || (body?.error as string) || errorText;
+          if (body?.durability) durability = body.durability as ChatStreamDurability;
+        } else if (response.status === 429 || response.status === 502) {
+          const body = parseBody();
+          userMessage =
+            (body?.userMessage as string) ||
+            (body?.message as string) ||
+            (body?.error as string) ||
+            (response.status === 429
+              ? `OpenAI quota/rate limit error: ${errorText}`
+              : errorText);
+          if (body?.durability) {
+            durability = body.durability as ChatStreamDurability;
+          } else if (body?.userMessageRecord || body?.ingestion || body?.assistantResponse) {
+            durability = {
+              userMessage: body.userMessageRecord as ChatStreamDurability['userMessage'],
+              assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
+              ingestion: body.ingestion as ChatStreamDurability['ingestion'],
+            };
           }
         } else {
-          userMessage = `HTTP error! status: ${response.status}, message: ${errorText}`;
+          const body = parseBody();
+          userMessage =
+            (body?.userMessage as string) ||
+            `HTTP error! status: ${response.status}, message: ${errorText}`;
+          if (body?.durability) durability = body.durability as ChatStreamDurability;
         }
-        throw new Error(userMessage);
+        const err = new Error(userMessage) as Error & { durability?: ChatStreamDurability };
+        err.durability = durability;
+        throw err;
       }
 
       const reader = response.body?.getReader();
@@ -301,7 +336,11 @@ export const useChatStream = () => {
             }
             return;
           } else if (data.type === 'error') {
-            throw new Error(data.error || 'Stream error');
+            const streamErr = new Error(data.error || 'Stream error') as Error & {
+              durability?: ChatStreamDurability;
+            };
+            if (data.durability) streamErr.durability = data.durability;
+            throw streamErr;
           }
         }
       }
@@ -324,7 +363,11 @@ export const useChatStream = () => {
         return;
       }
       setIsStreaming(false);
-      onError(error instanceof Error ? error.message : 'Unknown error');
+      const durability =
+        error && typeof error === 'object' && 'durability' in error
+          ? (error as { durability?: ChatStreamDurability }).durability
+          : undefined;
+      onError(error instanceof Error ? error.message : 'Unknown error', durability);
     }
   }, [pollMemoryFeedback]);
 

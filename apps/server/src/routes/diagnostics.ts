@@ -170,6 +170,49 @@ router.post('/graph-recovery/run', requireAuth, async (req: Request, res: Respon
 });
 
 /**
+ * GET /api/diagnostics/chat-durability-metrics
+ * Process-local counters for message save / assistant / ingestion outcomes.
+ */
+router.get('/chat-durability-metrics', requireAuth, requireDevAccess, async (_req: Request, res: Response) => {
+  try {
+    const { getChatDurabilityMetrics } = await import('../services/chat/chatDurability');
+    const { ingestionQueue } = await import('../services/ingestion/ingestionQueue');
+    res.json({
+      metrics: getChatDurabilityMetrics(),
+      queue: ingestionQueue.stats(),
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load durability metrics', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/ingestion-recovery
+ * Scan (and optionally repair) stranded messages / stale jobs.
+ * dryRun defaults to true. User-scoped unless admin + explicit scope=all.
+ */
+router.post('/ingestion-recovery', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const dryRun = req.body?.dryRun !== false;
+    const limit = Math.min(Number(req.body?.limit ?? 50), 200);
+    const messageId = typeof req.body?.messageId === 'string' ? req.body.messageId : undefined;
+    const { ingestionRecoveryService } = await import('../services/ingestion/ingestionRecoveryService');
+    const result = await ingestionRecoveryService.scan({
+      userId,
+      dryRun,
+      limit,
+      messageId,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Ingestion recovery scan failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/thread-health
  * Conversation durability metrics for the authenticated user (Task 10).
  */
