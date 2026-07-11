@@ -255,8 +255,12 @@ export const useChatStream = () => {
           if (body?.durability) durability = body.durability as ChatStreamDurability;
         } else if (response.status === 429 || response.status === 502) {
           const body = parseBody();
+          const notice = body?.notice as { message?: string; code?: string } | undefined;
+          // Contract: userMessage is structured state; notice.message is display copy.
+          // Never treat userMessage object as the human-readable string.
           userMessage =
-            (body?.userMessage as string) ||
+            (typeof notice?.message === 'string' && notice.message) ||
+            (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
             (body?.message as string) ||
             (body?.error as string) ||
             (response.status === 429
@@ -264,17 +268,22 @@ export const useChatStream = () => {
               : errorText);
           if (body?.durability) {
             durability = body.durability as ChatStreamDurability;
-          } else if (body?.userMessageRecord || body?.ingestion || body?.assistantResponse) {
+          } else if (body?.userMessage || body?.ingestion || body?.assistantResponse) {
             durability = {
-              userMessage: body.userMessageRecord as ChatStreamDurability['userMessage'],
+              userMessage:
+                typeof body.userMessage === 'object'
+                  ? (body.userMessage as ChatStreamDurability['userMessage'])
+                  : (body.userMessageRecord as ChatStreamDurability['userMessage']),
               assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
               ingestion: body.ingestion as ChatStreamDurability['ingestion'],
             };
           }
         } else {
           const body = parseBody();
+          const notice = body?.notice as { message?: string } | undefined;
           userMessage =
-            (body?.userMessage as string) ||
+            (typeof notice?.message === 'string' && notice.message) ||
+            (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
             `HTTP error! status: ${response.status}, message: ${errorText}`;
           if (body?.durability) durability = body.durability as ChatStreamDurability;
         }

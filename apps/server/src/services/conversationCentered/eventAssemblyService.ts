@@ -212,6 +212,24 @@ export class EventAssemblyService {
     // Ingest text to extract entities and create event
     const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
 
+    // Replay-safe fingerprint from knowledge unit ids (stable across re-assembly).
+    const { buildAssemblyFingerprint, EVENT_EXTRACTOR_VERSION } = await import(
+      '../events/eventSourceIdentity'
+    );
+    const sourceFingerprint = buildAssemblyFingerprint({
+      userId,
+      unitIds: unitGroup.map((u) => u.id).filter(Boolean),
+    });
+    const { data: existingByFp } = await supabaseAdmin
+      .from('resolved_events')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('source_fingerprint', sourceFingerprint)
+      .maybeSingle();
+    if (existingByFp?.id) {
+      return existingByFp as typeof existingByFp;
+    }
+
     // Create resolved event
     const { data: event, error } = await supabaseAdmin
       .from('resolved_events')
@@ -229,6 +247,8 @@ export class EventAssemblyService {
           .map(e => e.id),
         activities: [], // Can be extracted from activities
         confidence: 0.8,
+        source_fingerprint: sourceFingerprint,
+        extractor_version: EVENT_EXTRACTOR_VERSION,
         metadata: {
           assembled_from_units: unitGroup.map(u => u.id),
           user_presence: userPresence,
@@ -253,6 +273,15 @@ export class EventAssemblyService {
       .single();
 
     if (error) {
+      if (/duplicate|unique/i.test(error.message ?? '')) {
+        const { data: raced } = await supabaseAdmin
+          .from('resolved_events')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('source_fingerprint', sourceFingerprint)
+          .maybeSingle();
+        if (raced?.id) return raced as typeof raced;
+      }
       throw error;
     }
 

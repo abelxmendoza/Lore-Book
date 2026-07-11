@@ -483,6 +483,41 @@ export async function buildRAGPacket(
     crystallizedKnowledge = await loadPromptClaims(userId);
   } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
 
+  // ── Continuity That Feels Alive (0–3 structured candidates) ──────────────
+  // Selective autobiographical continuity with explainable relevance + modes.
+  // Does not replace Working Memory; adds composition guidance for the LLM.
+  let continuityAliveBlock: string | null = null;
+  let continuityAliveTrace: unknown = null;
+  try {
+    const { selectContinuityForUser, CONTINUITY_COMPOSITION_RULES } = await import(
+      '../continuityAlive'
+    );
+    const claimMemories = crystallizedKnowledge.map((k, i) => ({
+      memoryId: `claim-${i}`,
+      memoryType: 'claim' as const,
+      summary: k.human_readable_claim,
+      confidence: k.confidence,
+      epistemicType: 'direct_statement',
+      correctionState: 'active' as const,
+      tags: [k.knowledge_type],
+      source: 'crystallized_knowledge',
+    }));
+    const selection = await selectContinuityForUser({
+      userId,
+      message,
+      extraMemories: claimMemories,
+    });
+    continuityAliveTrace = selection.trace;
+    if (selection.promptBlock) {
+      continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\n${selection.promptBlock}`;
+    } else if (selection.selected.length === 0) {
+      // Explicit none — helps the model avoid forcing callbacks on definitional Qs
+      continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\nCONTINUITY MODE: none\nNo continuity candidate selected for this message. Answer directly.`;
+    }
+  } catch (e) {
+    logger.debug({ e }, 'RAGBuilder: continuityAlive selection failed');
+  }
+
   // ── Entity dossier — verified facts + recurring moments for entities the
   //    user just mentioned. Grounding layer for accurate recall.
   let entityDossierBlock: string | null = null;
@@ -565,6 +600,8 @@ export async function buildRAGPacket(
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
+    continuityAliveBlock,
+    continuityAliveTrace,
     // Entity dossier: verified facts + recurring moments for mentioned entities
     entityDossierBlock,
     // Phase 2: entity arc narrative block (null when generic retrieval was used)

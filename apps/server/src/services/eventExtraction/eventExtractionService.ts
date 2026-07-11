@@ -253,6 +253,19 @@ Respond with JSON:
     sourceMessageId: string,
     isOpen: boolean = false
   ): Promise<string> {
+    // Replay-safe: one event_record per (user, source_message_id).
+    if (sourceMessageId) {
+      const { data: existing } = await supabaseAdmin
+        .from('event_records')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('source_message_id', sourceMessageId)
+        .maybeSingle();
+      if (existing?.id) {
+        return existing.id;
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('event_records')
       .insert({
@@ -270,6 +283,16 @@ Respond with JSON:
       .single();
 
     if (error) {
+      // Unique race: concurrent workers both missed the select — re-fetch.
+      if (sourceMessageId && /duplicate|unique/i.test(error.message ?? '')) {
+        const { data: raced } = await supabaseAdmin
+          .from('event_records')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source_message_id', sourceMessageId)
+          .maybeSingle();
+        if (raced?.id) return raced.id;
+      }
       throw error;
     }
 

@@ -2662,6 +2662,10 @@ export class ConversationIngestionPipeline {
           });
       }
 
+      // Step 12.18b removed from fire-and-forget path.
+      // Memory Quality runs as a durable, checkpointed stage in ingestionQueue
+      // after core ingest (see process() MEMORY_QUALITY stage).
+
       // Step 12.19: Media / content / fandom — taste/context signals, not always cards
       if (sender === 'USER' && rawText.trim().length >= 8) {
         void import('../media/mediaInferenceIntegrationService')

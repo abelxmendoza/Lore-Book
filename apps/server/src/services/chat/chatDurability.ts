@@ -37,6 +37,8 @@ export type ChatDurabilityPayload = {
     retryable?: boolean;
     nextRetryAt?: string;
     attemptCount?: number;
+    /** True when durable WAL write failed and recovery is required. */
+    recoveryRequired?: boolean;
   };
 };
 
@@ -99,7 +101,13 @@ export function buildDurabilityPayload(input: {
   if (!persisted) {
     ingestionStatus = 'NOT_SCHEDULED';
   } else if (input.ingestionStatus) {
-    ingestionStatus = normalizeJobStatus(input.ingestionStatus);
+    const raw = input.ingestionStatus.toUpperCase();
+    // Preserve RECOVERY_REQUIRED / PERSISTED_UNQUEUED without collapsing to QUEUED
+    if (raw === 'RECOVERY_REQUIRED' || raw === 'PERSISTED_UNQUEUED' || raw === 'NOT_SCHEDULED' || raw === 'UNKNOWN') {
+      ingestionStatus = raw as ChatDurabilityPayload['ingestion']['status'];
+    } else {
+      ingestionStatus = normalizeJobStatus(input.ingestionStatus);
+    }
   } else if (input.ingestionJobId) {
     ingestionStatus = 'QUEUED';
   } else {
@@ -126,6 +134,8 @@ export function buildDurabilityPayload(input: {
       retryable: input.retryable,
       nextRetryAt: input.nextRetryAt ?? undefined,
       attemptCount: input.attemptCount,
+      recoveryRequired:
+        ingestionStatus === 'RECOVERY_REQUIRED' || ingestionStatus === 'PERSISTED_UNQUEUED',
     },
   };
 }
@@ -140,6 +150,9 @@ export function durabilityUserMessage(payload: ChatDurabilityPayload, assistantF
   }
 
   if (assistantFailed) {
+    if (ing === 'RECOVERY_REQUIRED' || ing === 'PERSISTED_UNQUEUED') {
+      return 'Your message is saved, but Lorekeeper could not queue autobiographical processing yet. It is marked for recovery and can be processed without resending.';
+    }
     if (ing === 'QUEUED' || ing === 'RECEIVED' || ing === 'PERSISTED' || ing === 'PROCESSING' || ing === 'PARTIAL') {
       return 'I saved your message. I couldn’t generate a reply right now, but Lorekeeper has queued it for autobiographical processing.';
     }
@@ -179,6 +192,7 @@ export type ChatDurabilityMetrics = {
   ingestion_jobs_completed: number;
   ingestion_jobs_retrying: number;
   ingestion_jobs_permanent_failure: number;
+  ingestion_jobs_recovery_required: number;
   ingestion_stage_failure: number;
   stale_jobs_reclaimed: number;
   duplicate_sends_prevented: number;
@@ -194,6 +208,7 @@ const metrics: ChatDurabilityMetrics = {
   ingestion_jobs_completed: 0,
   ingestion_jobs_retrying: 0,
   ingestion_jobs_permanent_failure: 0,
+  ingestion_jobs_recovery_required: 0,
   ingestion_stage_failure: 0,
   stale_jobs_reclaimed: 0,
   duplicate_sends_prevented: 0,

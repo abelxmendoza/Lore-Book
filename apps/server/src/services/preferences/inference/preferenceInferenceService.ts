@@ -23,6 +23,7 @@ import {
   strengthFromMentionCount,
 } from './preferenceStrengthScorer';
 import { inferTasteProfiles } from './tasteProfileInference';
+import { extractPreferenceLifecycle } from '../../memoryQuality/preferenceStability';
 
 const LOREBOOK_PRODUCT_PATTERNS: Array<{ re: RegExp; displayName: string; preferenceType: PreferenceSignal['preferenceType'] }> = [
   { re: /\bI want mystical UI\b/i, displayName: 'mystical UI', preferenceType: 'style' },
@@ -55,6 +56,34 @@ function inferLoreBookProductPreferences(text: string): PreferenceSignal[] {
     });
   }
   return out;
+}
+
+/** Attach lifecycleKind from deterministic classifier when subjects match. */
+function attachLifecycleKinds(text: string, signals: PreferenceSignal[]): PreferenceSignal[] {
+  const lifecycle = extractPreferenceLifecycle(text);
+  if (lifecycle.length === 0) return signals;
+  return signals.map((s) => {
+    const hit = lifecycle.find(
+      (l) =>
+        s.displayName.toLowerCase().includes(l.subject.toLowerCase()) ||
+        l.subject.toLowerCase().includes(s.displayName.toLowerCase()) ||
+        s.evidencePhrases.some((e) => e.toLowerCase().includes(l.evidence.toLowerCase().slice(0, 20))),
+    );
+    if (!hit) return s;
+    // Identity-level strength when lifecycle is identity
+    const strength =
+      hit.lifecycleKind === 'identity'
+        ? 'identity_level'
+        : hit.lifecycleKind === 'temporary'
+          ? 'weak'
+          : s.strength;
+    return {
+      ...s,
+      lifecycleKind: hit.lifecycleKind,
+      strength,
+      confidence: Math.min(0.95, Math.max(s.confidence, hit.confidence * 0.95)),
+    };
+  });
 }
 
 function dedupePreferences(candidates: PreferenceSignal[]): PreferenceSignal[] {
@@ -178,7 +207,7 @@ export class PreferenceInferenceService {
       ...inferLoreBookProductPreferences(input.text),
     ];
 
-    const deduped = dedupePreferences(raw);
+    const deduped = attachLifecycleKinds(input.text, dedupePreferences(raw));
     const accepted: PreferenceSignal[] = [];
 
     for (const candidate of deduped) {

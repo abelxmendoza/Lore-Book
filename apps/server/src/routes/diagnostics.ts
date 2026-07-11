@@ -658,6 +658,76 @@ router.post('/working-memory', requireAuth, async (req: Request, res: Response) 
 });
 
 /**
+ * POST /api/diagnostics/return-points
+ * Thread-aware progressive continuity: candidates, selection, rejection reasons.
+ */
+router.post('/return-points', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const threadId = typeof req.body?.threadId === 'string' ? req.body.threadId : undefined;
+    const contextHint = typeof req.body?.context === 'string' ? req.body.context : 'chat';
+    const { getActiveReturnPoint } = await import('../services/returnPoints');
+    const selection = await getActiveReturnPoint({
+      userId,
+      threadId,
+      contextHint,
+      resumingSameThread: Boolean(threadId),
+    });
+    return res.json({
+      selectedReturnPoint: selection.selected,
+      rejectionReasons: selection.trace.rejectionReasons,
+      unresolvedEvidence: selection.trace.unresolvedEvidence,
+      resolutionEvidence: selection.trace.resolutionEvidence,
+      sensitivityDecision: selection.trace.sensitivityDecision,
+      repetitionPenalty: selection.trace.repetitionPenalty,
+      finalSurfaceDecision: selection.trace.finalSurfaceDecision,
+      candidates: selection.trace.candidates.map((c) => ({
+        id: c.id,
+        state: c.state,
+        title: c.title,
+        composite: c.relevanceBreakdown.composite,
+        recommendedSurface: c.recommendedSurface,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'return-points diagnostic failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/continuity-alive
+ *
+ * Structured continuity selection for a message: selected/rejected candidates,
+ * relevance breakdown, sensitivity, correction checks, composition guidance.
+ * Authorized diagnostics only (requireAuth).
+ */
+router.post('/continuity-alive', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+    const { selectContinuityForUser } = await import('../services/continuityAlive');
+    const selection = await selectContinuityForUser({ userId, message });
+    return res.json({
+      message,
+      selected: selection.selected,
+      rejected: selection.rejected.map((r) => ({
+        memoryId: r.memoryId,
+        summary: r.summary,
+        rejectReason: r.rejectReason,
+        composite: r.relevanceBreakdown.composite,
+      })),
+      trace: selection.trace,
+      promptBlock: selection.promptBlock,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Continuity alive diagnostic failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/memory-coverage
  *
  * Entity coverage audit: finds entities that exist but have no episodes,

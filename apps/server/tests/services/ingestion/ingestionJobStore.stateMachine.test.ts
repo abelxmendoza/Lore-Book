@@ -44,7 +44,8 @@ describe('ingestionJobStore state machine fields', () => {
       priority: 'NORMAL',
       payload: {},
     });
-    expect(ok).toBe(true);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.isNew).toBe(true);
     expect(upserted?.logical_status).toBe('QUEUED');
     expect(upserted?.current_stage).toBe('RAW_MESSAGE_PERSISTED');
     expect(upserted?.status).toBe('pending');

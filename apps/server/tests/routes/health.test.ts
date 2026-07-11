@@ -44,6 +44,11 @@ describe('buildHealthPayload', () => {
     expect(buildHealthPayload(0, {}).deploymentEnv).toBe('unknown');
     expect(buildHealthPayload(0, { NODE_ENV: 'production' }).deploymentEnv).toBe('production');
   });
+
+  it('surfaces API_ENV as environment (staging identity)', () => {
+    expect(buildHealthPayload(0, { API_ENV: 'staging' }).environment).toBe('staging');
+    expect(buildHealthPayload(0, { API_ENV: 'production' }).environment).toBe('production');
+  });
 });
 
 describe('resolveDbHealthStatus', () => {

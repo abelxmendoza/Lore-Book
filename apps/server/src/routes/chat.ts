@@ -201,6 +201,7 @@ import {
   isChatDurabilityError,
   type ChatDurabilityPayload,
 } from '../services/chat/chatDurability';
+import { buildDurabilityApiResponse } from '../services/chat/durabilityApiContract';
 import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
 import {
   detectFirstSessionCallback,
@@ -327,29 +328,17 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
 
-        // Prefer structured durability error (message already saved + job queued).
+        // Prefer structured durability error (message already saved; job may be queued or recovery-required).
         if (isChatDurabilityError(setupError)) {
           const d = setupError.durability;
-          const userFacing = durabilityUserMessage(d, true);
-          res.status(setupError.httpStatus).json({
+          const contract = buildDurabilityApiResponse(d, {
+            assistantFailed: true,
             error: setupError.code,
             code: setupError.code,
             stage: setupError.stage,
             errorCategory: setupError.category,
-            userMessage: userFacing,
-            userMessageRecord: d.userMessage,
-            assistantResponse: d.assistantResponse,
-            ingestion: d.ingestion,
-            durability: d,
-            // Back-compat fields (truthful — not hard-coded false)
-            memory: {
-              user_message_saved: d.userMessage.persisted,
-              ingestion_started:
-                d.ingestion.status !== 'NOT_SCHEDULED' && d.ingestion.status !== 'UNKNOWN',
-              entity_creation_started: false,
-              assistant_message_saved: d.assistantResponse.status === 'completed',
-            },
           });
+          res.status(setupError.httpStatus).json(contract);
           return;
         }
 
@@ -359,7 +348,10 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
             error: 'openai_budget_exceeded',
             code: 'openai_budget_exceeded',
             stage: 'response_generation',
-            userMessage: budgetErr.userMessage,
+            notice: {
+              code: 'message_saved_assistant_failed',
+              message: budgetErr.userMessage ?? 'AI budget exceeded.',
+            },
             budget: budgetErr.budget,
           });
           return;
@@ -369,16 +361,20 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           res.status(429).json({
             error: 'OpenAI quota exhausted',
             stage: 'response_generation',
+            userMessage: { persisted: false },
+            assistantResponse: { status: 'failed', errorCategory: 'quota_exhausted' },
+            ingestion: { status: 'UNKNOWN' },
+            notice: {
+              code: 'unknown',
+              message:
+                'Response generation failed because the OpenAI quota is exhausted. If your message was already accepted, it may still be processing — check the thread after refresh rather than resending.',
+            },
             memory: {
               user_message_saved: false,
               ingestion_started: false,
               entity_creation_started: false,
               assistant_message_saved: false,
             },
-            userMessage:
-              'Response generation failed because the OpenAI quota is exhausted. If your message was already accepted, it may still be processing — check the thread after refresh rather than resending.',
-            assistantResponse: { status: 'failed', errorCategory: 'quota_exhausted' },
-            ingestion: { status: 'UNKNOWN' },
           });
           return;
         }
@@ -387,16 +383,19 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
             error: setupError.message,
             code: setupError.apiCode,
             stage: 'message_persistence',
+            userMessage: { persisted: false },
+            assistantResponse: { status: 'failed' },
+            ingestion: { status: 'NOT_SCHEDULED' },
+            notice: {
+              code: 'message_not_saved',
+              message: setupError.message,
+            },
             memory: {
               user_message_saved: false,
               ingestion_started: false,
               entity_creation_started: false,
               assistant_message_saved: false,
             },
-            userMessage: setupError.message,
-            userMessageRecord: { persisted: false },
-            assistantResponse: { status: 'failed' },
-            ingestion: { status: 'NOT_SCHEDULED' },
           });
           return;
         }
@@ -455,15 +454,19 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       assistant: { saved: false, role: 'assistant' },
     });
 
-    // Structured durability on the success path (ingestion already queued independently).
+    // Structured durability on the success path (ingestion independent of stream).
     if (result.metadata.durability) {
+      const contract = buildDurabilityApiResponse(result.metadata.durability, {
+        assistantFailed: false,
+      });
       sseWrite({
         type: 'metadata',
         data: {
-          durability: result.metadata.durability,
-          userMessage: result.metadata.durability.userMessage,
-          assistantResponse: result.metadata.durability.assistantResponse,
-          ingestion: result.metadata.durability.ingestion,
+          durability: contract.durability,
+          userMessage: contract.userMessage,
+          assistantResponse: contract.assistantResponse,
+          ingestion: contract.ingestion,
+          notice: contract.notice,
         },
       });
     }
@@ -600,29 +603,35 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
       } else {
         logger.error({ error: streamError }, 'Chat stream mid-stream error');
         const durability = result.metadata.durability;
-        const error = isOpenAIQuotaError(streamError)
-          ? durability
-            ? durabilityUserMessage(
-                {
-                  ...durability,
-                  assistantResponse: { ...durability.assistantResponse, status: 'failed' },
-                },
-                true,
-              )
-            : 'I saved your message when possible. Response generation stopped because the OpenAI quota is exhausted — this assistant reply is incomplete.'
-          : streamError instanceof Error ? streamError.message : 'Unknown stream error';
-        sseWrite({
-          type: 'error',
-          error,
-          ...(durability
-            ? {
-                durability: {
-                  ...durability,
-                  assistantResponse: { ...durability.assistantResponse, status: 'failed' as const },
-                },
-              }
-            : {}),
-        });
+        if (durability) {
+          const failedPayload = {
+            ...durability,
+            assistantResponse: {
+              ...durability.assistantResponse,
+              status: 'failed' as const,
+            },
+          };
+          const contract = buildDurabilityApiResponse(failedPayload, {
+            assistantFailed: true,
+            error: isOpenAIQuotaError(streamError) ? 'quota_exhausted' : 'stream_error',
+          });
+          sseWrite({
+            type: 'error',
+            error: contract.notice.message,
+            notice: contract.notice,
+            userMessage: contract.userMessage,
+            assistantResponse: contract.assistantResponse,
+            ingestion: contract.ingestion,
+            durability: contract.durability,
+          });
+        } else {
+          const error = isOpenAIQuotaError(streamError)
+            ? 'I saved your message when possible. Response generation stopped because the OpenAI quota is exhausted — this assistant reply is incomplete.'
+            : streamError instanceof Error
+              ? streamError.message
+              : 'Unknown stream error';
+          sseWrite({ type: 'error', error });
+        }
         if (!res.writableEnded) res.end();
       }
     }
@@ -905,6 +914,85 @@ router.get('/messages/:id/revisions', requireAuth, async (req: AuthenticatedRequ
 });
 
 /**
+ * GET /api/chat/messages/:id/meaning
+ * Durable autobiographical meaning artifacts for a message (inspectable).
+ */
+router.get('/messages/:id/meaning', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const messageId = req.params.id as string;
+    // Ownership: only list for messages the user owns
+    const { supabaseAdmin } = await import('../services/supabaseClient');
+    const { data: msg } = await supabaseAdmin
+      .from('chat_messages')
+      .select('id')
+      .eq('id', messageId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    const { listMeaningForMessage } = await import('../services/memoryQuality/meaningArtifactStore');
+    const artifacts = await listMeaningForMessage(userId, messageId);
+    return res.json({
+      messageId,
+      artifacts: artifacts.map((a) => ({
+        id: a.id,
+        meaningType: a.meaning_type,
+        label: a.display_label,
+        confidence: a.confidence,
+        evidenceQuotes: a.evidence_quotes,
+        epistemicType: a.epistemic_type,
+        status: a.status,
+        sourceEventId: a.source_event_id,
+        extractorVersion: a.extractor_version,
+        fingerprint: a.source_fingerprint,
+      })),
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Message meaning lookup failed');
+    return res.status(500).json({ error: 'Failed to load meaning artifacts' });
+  }
+});
+
+/**
+ * POST /api/chat/meaning/:artifactId/correct
+ * User correction supersedes derived meaning (audit via cognition_mutations).
+ */
+router.post('/meaning/:artifactId/correct', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const artifactId = req.params.artifactId as string;
+    const action = req.body?.action as string;
+    const rationale = typeof req.body?.rationale === 'string' ? req.body.rationale : undefined;
+    const allowed = new Set([
+      'accurate',
+      'partially_accurate',
+      'not_what_i_meant',
+      'wrong_event',
+      'wrong_person',
+      'not_a_lasting_lesson',
+      'temporary_behavior_only',
+      'remove_inference',
+    ]);
+    if (!allowed.has(action)) {
+      return res.status(400).json({ error: 'Invalid correction action' });
+    }
+    const { applyMeaningCorrection } = await import('../services/memoryQuality/meaningCorrectionService');
+    const result = await applyMeaningCorrection({
+      userId,
+      artifactId,
+      action: action as import('../services/memoryQuality/meaningArtifactStore').CorrectionAction,
+      rationale,
+    });
+    if (!result.ok) return res.status(404).json({ error: 'Artifact not found' });
+    return res.json({ ok: true, artifactId: result.artifactId, action });
+  } catch (error) {
+    logger.error({ err: error }, 'Meaning correction failed');
+    return res.status(500).json({ error: 'Failed to apply correction' });
+  }
+});
+
+/**
  * GET /api/chat/messages/:id/durability
  * Was this message saved? Was ingestion scheduled? Which stages completed?
  * Scoped to the authenticated user.
@@ -926,24 +1014,140 @@ router.get('/messages/:id/durability', requireAuth, async (req: AuthenticatedReq
 /**
  * POST /api/chat/messages/:id/retry-ingestion
  * Retry autobiographical processing without resending the user message.
+ * Ownership is always derived from requireAuth — never from a caller-supplied userId.
+ * Bounded: at most 5 retries per message per hour (in-process; not a second queue).
  */
-router.post('/messages/:id/retry-ingestion', requireAuth, async (req: AuthenticatedRequest, res) => {
+const retryIngestionWindow = new Map<string, number[]>();
+router.post(
+  '/messages/:id/retry-ingestion',
+  requireAuth,
+  openAiHttpLimit,
+  async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user!.id;
+    const messageId = req.params.id as string;
+    const key = `${userId}:${messageId}`;
+    const now = Date.now();
+    const window = (retryIngestionWindow.get(key) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+    if (window.length >= 5) {
+      return res.status(429).json({
+        error: 'retry_rate_limited',
+        notice: {
+          code: 'message_saved_ingestion_retrying',
+          message: 'Too many ingestion retries for this message. Try again later.',
+        },
+      });
+    }
+    window.push(now);
+    retryIngestionWindow.set(key, window);
+
     const { ingestionRecoveryService } = await import('../services/ingestion/ingestionRecoveryService');
     const force = req.body?.force !== false;
-    const result = await ingestionRecoveryService.retryMessage(req.user!.id, req.params.id as string, force);
+    const result = await ingestionRecoveryService.retryMessage(userId, messageId, force);
     return res.json({
       ok: true,
       jobId: result.jobId,
       status: result.status,
-      userMessage: { id: req.params.id, persisted: true },
-      ingestion: { jobId: result.jobId, status: result.status === 'QUEUED' ? 'QUEUED' : result.status },
+      userMessage: { id: messageId, persisted: true },
+      assistantResponse: { status: 'pending' },
+      ingestion: {
+        jobId: result.jobId,
+        status: result.status === 'QUEUED' || result.status === 'DUPLICATE' ? 'QUEUED' : result.status,
+      },
+      notice: {
+        code: 'message_saved_ingestion_queued',
+        message: 'Ingestion retry scheduled for your saved message.',
+      },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Retry failed';
     const status = msg.includes('not found') ? 404 : 400;
     logger.warn({ err: error, messageId: req.params.id }, 'retry-ingestion failed');
     return res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * GET /api/chat/return-point
+ * Quiet "pick up where you left off" candidate (0 or 1).
+ */
+router.get('/return-point', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { getActiveReturnPoint } = await import('../services/returnPoints');
+    const threadId =
+      typeof req.query.threadId === 'string' ? req.query.threadId : undefined;
+    const contextHint =
+      typeof req.query.context === 'string' ? req.query.context : 'chat';
+    const selection = await getActiveReturnPoint({
+      userId: req.user!.id,
+      threadId,
+      contextHint,
+      resumingSameThread: Boolean(threadId),
+    });
+    // Record surface impression when we show a resume_prompt
+    if (selection.selected?.recommendedSurface === 'resume_prompt') {
+      const { actOnReturnPoint } = await import('../services/returnPoints');
+      await actOnReturnPoint({
+        userId: req.user!.id,
+        returnPointId: selection.selected.id,
+        action: 'surface',
+        threadId,
+        contextHint,
+      });
+    }
+    return res.json({
+      returnPoint: selection.selected
+        ? {
+            id: selection.selected.id,
+            title: selection.selected.title,
+            surfaceLine: selection.selected.surfaceLine,
+            state: selection.selected.state,
+            continuityMode: selection.selected.continuityMode,
+            involvedEntities: selection.selected.involvedEntities,
+            confidence: selection.selected.confidence,
+            recommendedSurface: selection.selected.recommendedSurface,
+          }
+        : null,
+    });
+  } catch (error) {
+    logger.warn({ err: error }, 'return-point fetch failed');
+    return res.json({ returnPoint: null });
+  }
+});
+
+/**
+ * POST /api/chat/return-point/:id/action
+ * body: { action: continue|dismiss|resolve|correct, correctionNote?, threadId? }
+ */
+router.post('/return-point/:id/action', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const action = String(req.body?.action ?? '');
+    if (!['continue', 'dismiss', 'resolve', 'correct'].includes(action)) {
+      return res.status(400).json({ error: 'invalid action' });
+    }
+    const { actOnReturnPoint } = await import('../services/returnPoints');
+    const result = await actOnReturnPoint({
+      userId: req.user!.id,
+      returnPointId: req.params.id as string,
+      action: action as 'continue' | 'dismiss' | 'resolve' | 'correct',
+      correctionNote:
+        typeof req.body?.correctionNote === 'string' ? req.body.correctionNote : undefined,
+      threadId: typeof req.body?.threadId === 'string' ? req.body.threadId : undefined,
+      contextHint: typeof req.body?.context === 'string' ? req.body.context : 'chat',
+    });
+    return res.json({
+      ok: result.ok,
+      continueContext: result.continueContext ?? null,
+      returnPoint: result.selection.selected
+        ? {
+            id: result.selection.selected.id,
+            surfaceLine: result.selection.selected.surfaceLine,
+          }
+        : null,
+    });
+  } catch (error) {
+    logger.warn({ err: error }, 'return-point action failed');
+    return res.status(500).json({ error: 'return-point action failed' });
   }
 });
 

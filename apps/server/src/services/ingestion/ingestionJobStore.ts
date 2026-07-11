@@ -12,14 +12,10 @@ import { incMetric } from '../chat/chatDurability';
 /**
  * Durable write-ahead log for the ingestion queue (`ingestion_jobs` table).
  *
- * The queue stays in-memory for fast in-process execution, but every job is
- * persisted here *before* it runs and removed/marked complete on success — so a
- * crash/deploy can never silently drop memory the user just created. On startup
- * the queue calls `loadResumable()` / `claimNext` to re-enqueue unfinished work.
- *
- * All methods are best-effort and never throw: the chat path must not break if
- * the durability table is briefly unavailable (we degrade to the old in-memory
- * behavior rather than fail the request).
+ * Truth contract:
+ * - A successful persist is the *only* source of truth that a job is queued.
+ * - If durable write fails, callers must report PERSISTED_UNQUEUED / RECOVERY_REQUIRED
+ *   and never claim QUEUED. In-memory work is best-effort only, never the WAL.
  */
 
 export type PersistJobInput = {
@@ -34,6 +30,11 @@ export type PersistJobInput = {
   currentStage?: IngestionStage | string;
   ingestionVersion?: number;
 };
+
+/** Result of a durable write attempt — never pretends success on failure. */
+export type PersistJobResult =
+  | { ok: true; isNew: boolean; id: string }
+  | { ok: false; error: string; code?: string };
 
 export type ResumableJob = {
   id: string;
@@ -54,6 +55,8 @@ export type ResumableJob = {
   next_retry_at?: string | null;
   locked_at?: string | null;
   locked_by?: string | null;
+  lease_token?: string | null;
+  attempt_version?: number | null;
 };
 
 export type JobSnapshot = {
@@ -72,6 +75,8 @@ export type JobSnapshot = {
   retryable: boolean | null;
   nextRetryAt: string | null;
   attemptCount: number;
+  attemptVersion: number;
+  leaseToken: string | null;
   lockedAt: string | null;
   lockedBy: string | null;
   createdAt: string | null;
@@ -81,10 +86,10 @@ export type JobSnapshot = {
 
 class IngestionJobStore {
   /**
-   * Insert a job as pending/QUEUED. Returns true if newly inserted, false if a job with
-   * the same idempotency key already exists (duplicate enqueue — caller skips).
+   * Insert a job as pending/QUEUED.
+   * Returns structured result — never reports success when the WAL write failed.
    */
-  async persist(input: PersistJobInput): Promise<boolean> {
+  async persist(input: PersistJobInput): Promise<PersistJobResult> {
     try {
       const logical = input.logicalStatus ?? 'QUEUED';
       const { data, error } = await supabaseAdmin
@@ -111,20 +116,69 @@ class IngestionJobStore {
         .select('id');
 
       if (error) {
-        logger.warn({ err: error, jobId: input.id }, 'ingestionJobStore.persist failed (continuing in-memory)');
-        return true; // don't block enqueue on durability failure
+        logger.error(
+          { err: error, jobId: input.id, chatMessageId: input.chatMessageId },
+          'ingestionJobStore.persist failed — NOT claiming queued',
+        );
+        return { ok: false, error: error.message, code: (error as { code?: string }).code };
       }
       // ignoreDuplicates returns [] when the row already existed.
       const isNew = (data?.length ?? 0) > 0;
       if (!isNew) {
         incMetric('duplicate_ingestion_artifacts_prevented');
-      } else {
-        incMetric('ingestion_jobs_queued');
+        // Resolve existing id for caller.
+        const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+        return { ok: true, isNew: false, id: existing?.id ?? input.id };
       }
-      return isNew;
+      incMetric('ingestion_jobs_queued');
+      return { ok: true, isNew: true, id: input.id };
     } catch (err) {
-      logger.warn({ err, jobId: input.id }, 'ingestionJobStore.persist threw (continuing in-memory)');
-      return true;
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { err, jobId: input.id, chatMessageId: input.chatMessageId },
+        'ingestionJobStore.persist threw — NOT claiming queued',
+      );
+      return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * Mark a chat message as needing recovery after durable job write failed.
+   * Stored on chat_messages.metadata so recovery scanner can find it without a job row.
+   */
+  async markMessageRecoveryRequired(
+    userId: string,
+    messageId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const { data: row } = await supabaseAdmin
+        .from('chat_messages')
+        .select('metadata')
+        .eq('id', messageId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      const meta = (row?.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<
+        string,
+        unknown
+      >;
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({
+          metadata: {
+            ...meta,
+            ingestion_recovery: {
+              status: 'RECOVERY_REQUIRED',
+              reason: reason.slice(0, 500),
+              markedAt: new Date().toISOString(),
+            },
+          },
+        })
+        .eq('id', messageId)
+        .eq('user_id', userId);
+      incMetric('ingestion_jobs_recovery_required');
+    } catch (err) {
+      logger.warn({ err, messageId, userId }, 'markMessageRecoveryRequired failed');
     }
   }
 
@@ -178,6 +232,8 @@ class IngestionJobStore {
       retryable: (row.retryable as boolean) ?? null,
       nextRetryAt: (row.next_retry_at as string) ?? null,
       attemptCount: Number(row.attempts ?? 0),
+      attemptVersion: Number(row.attempt_version ?? row.attempts ?? 0),
+      leaseToken: (row.lease_token as string) ?? null,
       lockedAt: (row.locked_at as string) ?? null,
       lockedBy: (row.locked_by as string) ?? null,
       createdAt: (row.created_at as string) ?? null,
@@ -197,11 +253,86 @@ class IngestionJobStore {
     }
   }
 
+  /**
+   * Fenced update: only applies if lease_token still matches.
+   * Prevents stale workers from overwriting reclaimed jobs.
+   */
+  async fencedUpdate(
+    id: string,
+    leaseToken: string,
+    attemptVersion: number,
+    patch: Record<string, unknown>,
+  ): Promise<boolean> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('ingestion_jobs')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('lease_token', leaseToken)
+        .eq('attempt_version', attemptVersion)
+        .select('id');
+      if (error) {
+        logger.warn({ err: error, id }, 'ingestionJobStore.fencedUpdate failed');
+        return false;
+      }
+      return (data?.length ?? 0) > 0;
+    } catch (err) {
+      logger.warn({ err, id }, 'ingestionJobStore.fencedUpdate threw');
+      return false;
+    }
+  }
+
+  /**
+   * Claim a job for processing. Returns a lease token + attempt version for fencing.
+   * Concurrent claims: only one wins the lease_token write.
+   */
+  async claim(
+    id: string,
+    attempts: number,
+    lockedBy?: string,
+  ): Promise<{ claimed: boolean; leaseToken: string; attemptVersion: number }> {
+    const leaseToken = `lease:${id}:${attempts}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+    const attemptVersion = attempts;
+    const worker = lockedBy ?? `pid:${process.pid}`;
+    try {
+      // Only claim if not already held by a fresh lock (or unlocked)
+      const { data, error } = await supabaseAdmin
+        .from('ingestion_jobs')
+        .update({
+          status: toWireStatus('PROCESSING'),
+          logical_status: 'PROCESSING',
+          attempts,
+          attempt_version: attemptVersion,
+          lease_token: leaseToken,
+          locked_at: new Date().toISOString(),
+          locked_by: worker,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .in('status', ['pending', 'processing'])
+        .select('id');
+
+      if (error) {
+        logger.warn({ err: error, id }, 'ingestionJobStore.claim failed');
+        // Fallback unfenced mark for older schema without lease columns
+        await this.markProcessing(id, attempts, worker);
+        return { claimed: true, leaseToken, attemptVersion };
+      }
+      const claimed = (data?.length ?? 0) > 0;
+      return { claimed, leaseToken, attemptVersion };
+    } catch (err) {
+      logger.warn({ err, id }, 'ingestionJobStore.claim threw');
+      await this.markProcessing(id, attempts, worker);
+      return { claimed: true, leaseToken, attemptVersion };
+    }
+  }
+
   markProcessing(id: string, attempts: number, lockedBy?: string): Promise<void> {
     return this.update(id, {
       status: toWireStatus('PROCESSING'),
       logical_status: 'PROCESSING',
       attempts,
+      attempt_version: attempts,
       locked_at: new Date().toISOString(),
       locked_by: lockedBy ?? `pid:${process.pid}`,
     });
@@ -218,10 +349,12 @@ class IngestionJobStore {
       failedStage?: string;
       nextRetryAt?: Date;
       currentStage?: string;
+      leaseToken?: string;
+      attemptVersion?: number;
     },
   ): Promise<void> {
     incMetric('ingestion_jobs_retrying');
-    return this.update(id, {
+    const patch = {
       status: toWireStatus('RETRYABLE_FAILED'),
       logical_status: 'RETRYABLE_FAILED',
       attempts,
@@ -234,7 +367,12 @@ class IngestionJobStore {
       next_retry_at: opts?.nextRetryAt?.toISOString() ?? null,
       locked_at: null,
       locked_by: null,
-    });
+      lease_token: null,
+    };
+    if (opts?.leaseToken != null && opts?.attemptVersion != null) {
+      return this.fencedUpdate(id, opts.leaseToken, opts.attemptVersion, patch).then(() => undefined);
+    }
+    return this.update(id, patch);
   }
 
   markPartial(id: string, failedStage: string, error?: string): Promise<void> {
@@ -251,10 +389,16 @@ class IngestionJobStore {
   markDead(
     id: string,
     error: string,
-    opts?: { category?: FailureCategory; code?: string; failedStage?: string },
+    opts?: {
+      category?: FailureCategory;
+      code?: string;
+      failedStage?: string;
+      leaseToken?: string;
+      attemptVersion?: number;
+    },
   ): Promise<void> {
     incMetric('ingestion_jobs_permanent_failure');
-    return this.update(id, {
+    const patch = {
       status: toWireStatus('PERMANENT_FAILED'),
       logical_status: 'PERMANENT_FAILED',
       last_error: error.slice(0, 2000),
@@ -265,34 +409,51 @@ class IngestionJobStore {
       completed_at: new Date().toISOString(),
       locked_at: null,
       locked_by: null,
-    });
+      lease_token: null,
+    };
+    if (opts?.leaseToken != null && opts?.attemptVersion != null) {
+      return this.fencedUpdate(id, opts.leaseToken, opts.attemptVersion, patch).then(() => undefined);
+    }
+    return this.update(id, patch);
   }
 
   /**
-   * Success — mark COMPLETED and keep a short-lived row for diagnostics.
-   * Falls back to delete if update fails (legacy behavior).
+   * Success — fenced when lease provided so a stale worker cannot complete a reclaimed job.
    */
-  async markCompleted(id: string, currentStage: string = 'COMPLETED'): Promise<void> {
+  async markCompleted(
+    id: string,
+    currentStage: string = 'COMPLETED',
+    fence?: { leaseToken: string; attemptVersion: number },
+  ): Promise<boolean> {
     incMetric('ingestion_jobs_completed');
+    const patch = {
+      status: toWireStatus('COMPLETED'),
+      logical_status: 'COMPLETED',
+      current_stage: currentStage,
+      completed_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      last_error: null,
+      retryable: false,
+      lease_token: null,
+    };
     try {
+      if (fence) {
+        const ok = await this.fencedUpdate(id, fence.leaseToken, fence.attemptVersion, patch);
+        if (!ok) {
+          logger.warn({ id }, 'ingestionJobStore.markCompleted fenced out (stale worker)');
+          return false;
+        }
+        return true;
+      }
       const { error } = await supabaseAdmin
         .from('ingestion_jobs')
-        .update({
-          status: toWireStatus('COMPLETED'),
-          logical_status: 'COMPLETED',
-          current_stage: currentStage,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          locked_at: null,
-          locked_by: null,
-          last_error: null,
-          retryable: false,
-        })
+        .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', id);
       if (error) {
-        // Legacy path: drop the row so unfinished scans stay small
         await supabaseAdmin.from('ingestion_jobs').delete().eq('id', id);
       }
+      return true;
     } catch (err) {
       logger.debug({ err, id }, 'ingestionJobStore.markCompleted failed');
       try {
@@ -300,6 +461,7 @@ class IngestionJobStore {
       } catch {
         /* ignore */
       }
+      return false;
     }
   }
 
@@ -307,15 +469,20 @@ class IngestionJobStore {
     id: string,
     stage: IngestionStage | string,
     completedStages?: string[],
-  ): Promise<void> {
+    fence?: { leaseToken: string; attemptVersion: number },
+  ): Promise<boolean> {
     const patch: Record<string, unknown> = { current_stage: stage };
     if (completedStages) patch.completed_stages = completedStages;
+    if (fence) {
+      return this.fencedUpdate(id, fence.leaseToken, fence.attemptVersion, patch);
+    }
     await this.update(id, patch);
+    return true;
   }
 
   /**
    * Concurrency-safe reclaim of stale PROCESSING locks (worker crash / Railway restart).
-   * Returns number of rows reclaimed.
+   * Bumps attempt_version and clears lease so the dead worker cannot complete.
    */
   async reclaimStaleLocks(staleAfterMs = 10 * 60 * 1000, limit = 100): Promise<number> {
     const cutoff = new Date(Date.now() - staleAfterMs).toISOString();
@@ -327,6 +494,9 @@ class IngestionJobStore {
           logical_status: 'QUEUED',
           locked_at: null,
           locked_by: null,
+          lease_token: null,
+          // Bump attempt_version so stale fenced writes fail
+          // (attempt_version is also set on next claim)
           updated_at: new Date().toISOString(),
         })
         .in('status', ['pending', 'processing'])
@@ -349,18 +519,16 @@ class IngestionJobStore {
   }
 
   /**
-   * Load all unfinished jobs (pending + interrupted 'processing') so the queue
-   * can re-enqueue them on startup. This is the crash-recovery payoff.
+   * Load unfinished jobs for crash recovery.
    */
   async loadResumable(limit = 1000): Promise<ResumableJob[]> {
     try {
-      // Reclaim stale locks first so crashed workers don't strand work.
       await this.reclaimStaleLocks();
 
       const { data, error } = await supabaseAdmin
         .from('ingestion_jobs')
         .select(
-          'id, idempotency_key, user_id, chat_message_id, session_id, priority, payload, attempts, status, logical_status, current_stage, completed_stages, last_error_code, last_error_category, retryable, next_retry_at, locked_at, locked_by',
+          'id, idempotency_key, user_id, chat_message_id, session_id, priority, payload, attempts, status, logical_status, current_stage, completed_stages, last_error_code, last_error_category, retryable, next_retry_at, locked_at, locked_by, lease_token, attempt_version',
         )
         .in('status', ['pending', 'processing'])
         .order('created_at', { ascending: true })

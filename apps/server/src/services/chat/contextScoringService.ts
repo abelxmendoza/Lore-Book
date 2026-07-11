@@ -673,6 +673,9 @@ export function scoreContext(
   filtered.entityArcNarrativeBlock = loreData.entityArcNarrativeBlock;
   filtered.knowledgeGapBlock = loreData.knowledgeGapBlock;
   filtered.crystallizedKnowledge = loreData.crystallizedKnowledge;
+  // Continuity That Feels Alive — already 0–3 bounded; never drop.
+  filtered.continuityAliveBlock = loreData.continuityAliveBlock;
+  filtered.continuityAliveTrace = loreData.continuityAliveTrace;
   filtered.confirmedSkills = loreData.confirmedSkills;
   filtered.romanticContext = loreData.romanticContext;
 

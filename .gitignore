@@ -19,6 +19,12 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.staging
+.env.staging.local
+apps/server/.env.staging
+apps/server/.env.staging.local
+apps/web/.env.staging
+apps/web/.env.staging.local
 
 # Founder-local maintenance data (never commit real personal lore)
 .private/
@@ -111,3 +117,8 @@ supabase/.temp/
 # OpenAI skill upload artifacts (manifest.json contains skill IDs — optional to commit)
 openai-skills/dist/
 lorekeeper-refine/
+
+.env.staging.local
+apps/server/.env.staging.local
+apps/web/.env.staging.local
+.private/staging-credentials.env

@@ -858,6 +858,9 @@ When updating relationship analytics or emotional signals from this thread, weig
   ): Promise<{
     messageId: string;
     ingestionJobId?: string;
+    /** True when durable job WAL write failed — must not report QUEUED. */
+    ingestionRecoveryRequired?: boolean;
+    ingestionStatus?: string;
     reused?: boolean;
     interpretationPromise?: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined>;
   } | undefined> {
@@ -880,6 +883,8 @@ When updating relationship analytics or emotional signals from this thread, weig
         if (existing?.id) {
           incMetric('duplicate_sends_prevented');
           let ingestionJobId: string | undefined;
+          let ingestionRecoveryRequired = false;
+          let ingestionStatus: string | undefined;
           if (!entityContext) {
             const enq = await ingestionQueue.enqueueDurable(
               {
@@ -891,9 +896,22 @@ When updating relationship analytics or emotional signals from this thread, weig
               'NORMAL',
             );
             ingestionJobId = enq.jobId || undefined;
+            if (enq.status === 'RECOVERY_REQUIRED' || enq.status === 'DROPPED') {
+              ingestionRecoveryRequired = true;
+              ingestionStatus = 'RECOVERY_REQUIRED';
+              incMetric('ingestion_jobs_recovery_required');
+            } else {
+              ingestionStatus = enq.status === 'DUPLICATE' ? 'QUEUED' : enq.status;
+            }
           }
           timer.flush({ path: 'idempotent_reuse' });
-          return { messageId: existing.id, ingestionJobId, reused: true };
+          return {
+            messageId: existing.id,
+            ingestionJobId,
+            ingestionRecoveryRequired,
+            ingestionStatus,
+            reused: true,
+          };
         }
       } catch (err) {
         logger.debug({ err, clientIdempotencyKey }, 'Idempotency lookup failed — continuing with insert');
@@ -1056,21 +1074,43 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     // Durable enqueue BEFORE optional assistant generation can fail. Awaited so
     // the API can report truth-backed ingestion status under OpenAI 429/quota.
+    // Never claim QUEUED if the WAL write failed.
     let ingestionJobId: string | undefined;
+    let ingestionRecoveryRequired = false;
+    let ingestionStatus: string | undefined;
     if (!entityContext) {
       try {
+        const { maybeInjectFault } = await import('./chat/durabilityFaultInjection');
+        await maybeInjectFault('before_durable_job_enqueue', { userId });
         const enq = await ingestionQueue.enqueueDurable(
           { userId, chatMessageId: messageId, sessionId, conversationHistory },
           'NORMAL',
         );
         ingestionJobId = enq.jobId || undefined;
+        if (enq.status === 'RECOVERY_REQUIRED' || enq.status === 'DROPPED') {
+          ingestionRecoveryRequired = true;
+          ingestionStatus = 'RECOVERY_REQUIRED';
+          incMetric('ingestion_jobs_recovery_required');
+        } else {
+          ingestionStatus = enq.status === 'DUPLICATE' ? 'QUEUED' : enq.status;
+        }
+        await maybeInjectFault('after_job_enqueue', { userId, jobId: ingestionJobId });
       } catch (enqErr) {
-        // Last resort: fire-and-forget so we still try; message is already durable.
-        logger.warn({ err: enqErr, messageId }, 'enqueueDurable failed — falling back to enqueue');
-        ingestionJobId = ingestionQueue.enqueue(
-          { userId, chatMessageId: messageId, sessionId, conversationHistory },
-          'NORMAL',
-        ) || undefined;
+        // Message is durable; job is NOT. Mark recovery — do not claim queued.
+        logger.error({ err: enqErr, messageId }, 'enqueueDurable threw — RECOVERY_REQUIRED');
+        ingestionRecoveryRequired = true;
+        ingestionStatus = 'RECOVERY_REQUIRED';
+        incMetric('ingestion_jobs_recovery_required');
+        try {
+          const { ingestionJobStore } = await import('./ingestion/ingestionJobStore');
+          await ingestionJobStore.markMessageRecoveryRequired(
+            userId,
+            messageId,
+            enqErr instanceof Error ? enqErr.message : 'enqueue_threw',
+          );
+        } catch {
+          /* best effort */
+        }
       }
     }
 
@@ -1108,9 +1148,20 @@ When updating relationship analytics or emotional signals from this thread, weig
       });
 
     timer.mark('enqueue_dispatch');
-    timer.flush({ path: 'full', enqueuedIngestion: !entityContext, ingestionJobId });
+    timer.flush({
+      path: 'full',
+      enqueuedIngestion: !entityContext && !ingestionRecoveryRequired,
+      ingestionJobId,
+      ingestionRecoveryRequired,
+    });
 
-    return { messageId, ingestionJobId, interpretationPromise };
+    return {
+      messageId,
+      ingestionJobId,
+      ingestionRecoveryRequired,
+      ingestionStatus,
+      interpretationPromise,
+    };
   }
 
   /**
@@ -1197,6 +1248,8 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     let entryId: string | undefined;
     let ingestionJobId: string | undefined;
+    let ingestionStatusFromPersist: string | undefined;
+    let ingestionRecoveryRequired = false;
     let messageReused = false;
     let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
     try {
@@ -1212,6 +1265,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       );
       entryId = earlyPersist?.messageId;
       ingestionJobId = earlyPersist?.ingestionJobId;
+      ingestionStatusFromPersist = earlyPersist?.ingestionStatus;
+      ingestionRecoveryRequired = earlyPersist?.ingestionRecoveryRequired === true;
       messageReused = earlyPersist?.reused === true;
       interpretationPromise = earlyPersist?.interpretationPromise;
     } catch (persistErr) {
@@ -1222,17 +1277,36 @@ When updating relationship analytics or emotional signals from this thread, weig
     const durabilityFor = (
       assistantStatus: 'completed' | 'failed' | 'pending',
       assistantErrorCategory?: ReturnType<typeof classifyIngestionError>['category'],
-    ): ChatDurabilityPayload =>
-      buildDurabilityPayload({
+    ): ChatDurabilityPayload => {
+      let ingestionStatus: string;
+      if (ingestionRecoveryRequired || ingestionStatusFromPersist === 'RECOVERY_REQUIRED') {
+        ingestionStatus = 'RECOVERY_REQUIRED';
+      } else if (ingestionStatusFromPersist) {
+        ingestionStatus = ingestionStatusFromPersist;
+      } else if (ingestionJobId) {
+        ingestionStatus = 'QUEUED';
+      } else if (entryId && !entityContext) {
+        // Do not invent QUEUED without a durable job id or explicit status
+        ingestionStatus = 'NOT_SCHEDULED';
+      } else {
+        ingestionStatus = 'NOT_SCHEDULED';
+      }
+      const payload = buildDurabilityPayload({
         userMessageId: entryId,
         sessionId,
         idempotencyKey: clientIdempotencyKey,
         reused: messageReused,
         assistantStatus,
         assistantErrorCategory,
-        ingestionJobId,
-        ingestionStatus: ingestionJobId ? 'QUEUED' : entryId && !entityContext ? 'QUEUED' : 'NOT_SCHEDULED',
+        ingestionJobId: ingestionRecoveryRequired ? undefined : ingestionJobId,
+        ingestionStatus,
+        retryable: ingestionRecoveryRequired ? true : undefined,
       });
+      if (ingestionRecoveryRequired) {
+        payload.ingestion.recoveryRequired = true;
+      }
+      return payload;
+    };
 
     /** Attach durability to mode/early-return streams so clients never lose message ids. */
     const modeExtras = (): Partial<StreamingChatResponse['metadata']> => ({
@@ -1904,6 +1978,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       episodicEvents: ragPacket.episodicEvents,
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
@@ -2742,6 +2818,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       episodicEvents: ragPacket.episodicEvents,
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,

@@ -4,6 +4,11 @@ import dotenv from 'dotenv';
 
 import { logger } from './logger';
 import { resolveServerPort } from './config/serverPort';
+import {
+  assertStagingIdentity,
+  formatSanitizedIdentityLog,
+  isStagingRuntime,
+} from './config/stagingIdentity';
 
 // Load .env from project root (skip on hosted platforms — env vars are injected directly)
 const currentDir = __dirname;
@@ -288,6 +293,26 @@ export const config: EnvConfig = {
 };
 
 export const assertConfig = () => {
+  // Staging identity: hard-fail if API_ENV/RAILWAY claims staging but targets production.
+  if (isStagingRuntime(process.env)) {
+    const identity = assertStagingIdentity(process.env);
+    if (!identity.ok) {
+      console.error('\n🚨 STAGING IDENTITY CHECK FAILED — refusing to start');
+      for (const reason of identity.reasons) {
+        console.error(`   - ${reason}`);
+      }
+      console.error(
+        '   Sanitized:',
+        formatSanitizedIdentityLog(identity.sanitized)
+      );
+      process.exit(1);
+    }
+    console.log(
+      '[staging-identity]',
+      formatSanitizedIdentityLog(identity.sanitized)
+    );
+  }
+
   const required: (keyof EnvConfig)[] = [
     'openAiKey',
     'supabaseUrl',
@@ -309,12 +334,17 @@ export const assertConfig = () => {
   });
   
   if (missing.length) {
+    if (isStagingRuntime(process.env)) {
+      // Staging must not boot half-configured — fail closed.
+      console.error(`\n🚨 Missing required staging variables: ${missing.join(', ')}`);
+      process.exit(1);
+    }
     console.error(`\n⚠️  Missing or placeholder environment variables: ${missing.join(', ')}`);
     console.error('⚠️  Backend will start but authentication and API features will not work.');
     console.error('\n📝 To fix:');
-    console.error('   1. Get your Supabase Service Role Key from: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/settings/api');
+    console.error('   1. Get your Supabase keys from the staging project dashboard (not production)');
     console.error('   2. Get your OpenAI API Key from: https://platform.openai.com/api-keys');
-    console.error('   3. Update your .env file with the real values\n');
+    console.error('   3. Update your staging env with the real values\n');
     // Don't throw - allow server to start for development
   }
 };

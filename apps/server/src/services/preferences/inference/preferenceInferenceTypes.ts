@@ -65,6 +65,15 @@ export type PreferencePromotionStatus =
   | 'suggested_profile_memory'
   | 'confirmed_profile_memory';
 
+/** Stable vs temporary vs goal vs identity — set by lifecycle classifier when known. */
+export type PreferenceLifecycleKind =
+  | 'temporary'
+  | 'stable'
+  | 'habit'
+  | 'goal'
+  | 'aspiration'
+  | 'identity';
+
 export type PreferenceSignal = {
   displayName: string;
   preferenceType: PreferenceType;
@@ -78,6 +87,8 @@ export type PreferenceSignal = {
   requiresReview: boolean;
   temporal: PreferenceTemporal;
   promotionStatus: PreferencePromotionStatus;
+  /** Evidence-backed lifecycle; omit when unknown rather than guessing. */
+  lifecycleKind?: PreferenceLifecycleKind;
 };
 
 export type PreferenceInferenceInput = {

@@ -8,6 +8,10 @@
 export const INGESTION_STATUSES = [
   'RECEIVED',
   'PERSISTED',
+  /** Message saved but durable job write failed — must not claim QUEUED. */
+  'PERSISTED_UNQUEUED',
+  /** Explicitly discoverable by recovery scanner (alias of recovery-needed states). */
+  'RECOVERY_REQUIRED',
   'QUEUED',
   'PROCESSING',
   'PARTIAL',
@@ -53,13 +57,15 @@ export type FailureCategory =
   | 'unknown';
 
 const VALID_TRANSITIONS: Record<IngestionJobStatus, readonly IngestionJobStatus[]> = {
-  RECEIVED: ['PERSISTED', 'QUEUED', 'PERMANENT_FAILED', 'CANCELLED'],
-  PERSISTED: ['QUEUED', 'PERMANENT_FAILED', 'CANCELLED'],
+  RECEIVED: ['PERSISTED', 'PERSISTED_UNQUEUED', 'RECOVERY_REQUIRED', 'QUEUED', 'PERMANENT_FAILED', 'CANCELLED'],
+  PERSISTED: ['QUEUED', 'PERSISTED_UNQUEUED', 'RECOVERY_REQUIRED', 'PERMANENT_FAILED', 'CANCELLED'],
+  PERSISTED_UNQUEUED: ['RECOVERY_REQUIRED', 'QUEUED', 'PERMANENT_FAILED', 'CANCELLED'],
+  RECOVERY_REQUIRED: ['QUEUED', 'PERMANENT_FAILED', 'CANCELLED'],
   QUEUED: ['PROCESSING', 'CANCELLED', 'RETRYABLE_FAILED'],
   PROCESSING: ['PARTIAL', 'COMPLETED', 'RETRYABLE_FAILED', 'PERMANENT_FAILED'],
   PARTIAL: ['QUEUED', 'PROCESSING', 'RETRYABLE_FAILED', 'PERMANENT_FAILED', 'COMPLETED'],
   COMPLETED: [], // terminal
-  RETRYABLE_FAILED: ['QUEUED', 'PROCESSING', 'PERMANENT_FAILED', 'CANCELLED'],
+  RETRYABLE_FAILED: ['QUEUED', 'PROCESSING', 'PERMANENT_FAILED', 'CANCELLED', 'RECOVERY_REQUIRED'],
   PERMANENT_FAILED: ['QUEUED'], // manual retry only
   CANCELLED: [], // terminal
 };
@@ -94,6 +100,9 @@ export function normalizeJobStatus(raw: string | null | undefined): IngestionJob
       return 'COMPLETED';
     case 'partial':
       return 'PARTIAL';
+    case 'recovery_required':
+    case 'persisted_unqueued':
+      return 'RECOVERY_REQUIRED';
     default:
       return 'QUEUED';
   }
@@ -106,6 +115,8 @@ export function toWireStatus(status: IngestionJobStatus): string {
     case 'PERSISTED':
     case 'QUEUED':
     case 'RETRYABLE_FAILED':
+    case 'PERSISTED_UNQUEUED':
+    case 'RECOVERY_REQUIRED':
       return 'pending';
     case 'PROCESSING':
     case 'PARTIAL':
@@ -118,6 +129,25 @@ export function toWireStatus(status: IngestionJobStatus): string {
     default:
       return 'pending';
   }
+}
+
+/** Statuses that must never be reported as successfully queued. */
+export function isUnqueuedRecoveryStatus(status: IngestionJobStatus | string): boolean {
+  const s = normalizeJobStatus(status);
+  return s === 'PERSISTED_UNQUEUED' || s === 'RECOVERY_REQUIRED' || s === 'PERSISTED';
+}
+
+export function isActiveStatus(status: IngestionJobStatus): boolean {
+  return (
+    status === 'QUEUED' ||
+    status === 'PROCESSING' ||
+    status === 'PARTIAL' ||
+    status === 'RETRYABLE_FAILED' ||
+    status === 'RECEIVED' ||
+    status === 'PERSISTED' ||
+    status === 'PERSISTED_UNQUEUED' ||
+    status === 'RECOVERY_REQUIRED'
+  );
 }
 
 export function classifyIngestionError(err: unknown): {
@@ -204,8 +234,4 @@ export function computeRetryDelayMs(
 
 export function isTerminalStatus(status: IngestionJobStatus): boolean {
   return status === 'COMPLETED' || status === 'PERMANENT_FAILED' || status === 'CANCELLED';
-}
-
-export function isActiveStatus(status: IngestionJobStatus): boolean {
-  return status === 'QUEUED' || status === 'PROCESSING' || status === 'PARTIAL' || status === 'RETRYABLE_FAILED' || status === 'RECEIVED' || status === 'PERSISTED';
 }

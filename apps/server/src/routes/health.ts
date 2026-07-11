@@ -35,6 +35,8 @@ export type HealthPayload = {
   timestamp: string;
   uptimeSeconds: number;
   deploymentEnv: string;
+  /** Explicit API environment: dev | staging | production */
+  environment: string;
   port: number | null;
   envPresent: Record<string, boolean>;
 };
@@ -58,11 +60,14 @@ export function buildHealthPayload(
   const uptimeSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
   const portRaw = env.PORT ? Number(env.PORT) : NaN;
 
+  const apiEnv = (env.API_ENV ?? env.RAILWAY_ENVIRONMENT ?? env.NODE_ENV ?? 'unknown').toLowerCase();
+
   return {
     status: 'ok',
     timestamp: new Date(now).toISOString(),
     uptimeSeconds,
     deploymentEnv: env.NODE_ENV ?? 'unknown',
+    environment: apiEnv,
     port: Number.isFinite(portRaw) ? portRaw : null,
     envPresent: {
       SUPABASE_URL: !!env.SUPABASE_URL,

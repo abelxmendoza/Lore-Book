@@ -26,6 +26,7 @@ import { MessageCorrectionModal } from '../message/MessageCorrectionModal';
 import { useMessageCorrection } from '../hooks/useMessageCorrection';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
+import { ReturnPointBanner, type ContinueContext } from './ReturnPointBanner';
 import { ThreadEntityChips } from './ThreadEntityChips';
 import { ChatFocusChipBar } from './ChatFocusChipBar';
 import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
@@ -915,6 +916,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               : ''
           }`}
         >
+          <ReturnPointBanner
+            threadId={activeThreadId ?? undefined}
+            onContinue={(ctx: ContinueContext, surfaceLine: string) => {
+              // Prefill a natural continue prompt; structured context rides in the message for the model.
+              const prompt = `${surfaceLine}\n\n[return_point:${ctx.returnPointId} mode=${ctx.recommendedContinuityMode} state=${ctx.unresolvedState}]`;
+              setInitialPrompt(prompt);
+            }}
+          />
           <ChatComposer
             onSubmit={handleSubmit}
             loading={isLoading}

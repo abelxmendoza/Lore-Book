@@ -239,7 +239,7 @@ class IngestionRecoveryService {
       // Recent user messages (bounded window)
       let q = supabaseAdmin
         .from('chat_messages')
-        .select('id, session_id, created_at, user_id')
+        .select('id, session_id, created_at, user_id, metadata')
         .eq('role', 'user')
         .order('created_at', { ascending: false })
         .limit(limit * 2);
@@ -251,15 +251,18 @@ class IngestionRecoveryService {
       const out: RecoveryScanResult['messagesWithoutJob'] = [];
       for (const m of messages) {
         if (out.length >= limit) break;
+        const meta = (m.metadata ?? {}) as { ingestion_recovery?: { status?: string } };
+        const markedRecovery = meta.ingestion_recovery?.status === 'RECOVERY_REQUIRED';
         const job = await ingestionJobStore.findByChatMessageId(m.id, m.user_id);
-        if (!job) {
+        if (!job || markedRecovery) {
+          if (job && !markedRecovery) continue;
           // Also check pipeline_runs as a secondary signal of prior ingestion
           const { count } = await supabaseAdmin
             .from('pipeline_runs')
             .select('*', { count: 'exact', head: true })
             .eq('chat_message_id', m.id)
             .eq('user_id', m.user_id);
-          if ((count ?? 0) === 0) {
+          if ((count ?? 0) === 0 || markedRecovery) {
             out.push({
               messageId: m.id,
               sessionId: m.session_id,

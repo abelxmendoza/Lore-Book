@@ -100,7 +100,54 @@ export function formatPromptBlock(claims: PromptReadyClaim[]): string | null {
 
 // ─── Combined helper for systemPromptBuilder ─────────────────────────────────
 
-export async function buildKnowledgePromptBlock(userId: string): Promise<string | null> {
+/**
+ * Selective autobiographical meaning for continuity (not a dump).
+ * Only high-confidence lessons / behavior / continuity with direct or multi-evidence epistemic type.
+ */
+export async function loadMeaningPromptLines(
+  userId: string,
+  opts?: { queryText?: string; limit?: number },
+): Promise<string[]> {
+  try {
+    // Continuity That Feels Alive: structured selection (0–3), not token dump.
+    const { selectContinuityForUser } = await import('../continuityAlive');
+    const selection = await selectContinuityForUser({
+      userId,
+      message: opts?.queryText ?? '',
+    });
+    const limit = opts?.limit ?? 3;
+    return selection.selected.slice(0, limit).map((c) => {
+      const text =
+        c.summary.length > MAX_CLAIM_CHARS
+          ? c.summary.substring(0, MAX_CLAIM_CHARS - 1) + '…'
+          : c.summary;
+      return `• [${c.continuityMode}/${c.recommendedUse}] ${text}`;
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function buildKnowledgePromptBlock(
+  userId: string,
+  opts?: { queryText?: string },
+): Promise<string | null> {
   const claims = await loadPromptClaims(userId);
-  return formatPromptBlock(claims);
+  const claimBlock = formatPromptBlock(claims);
+  const meaningLines = await loadMeaningPromptLines(userId, {
+    queryText: opts?.queryText,
+    limit: 3,
+  });
+
+  if (!claimBlock && meaningLines.length === 0) return null;
+
+  const parts: string[] = [];
+  if (claimBlock) parts.push(claimBlock);
+  if (meaningLines.length > 0) {
+    parts.push(
+      'AUTOBIOGRAPHICAL CONTINUITY (use only when relevant; do not overstate):',
+      ...meaningLines,
+    );
+  }
+  return parts.join('\n');
 }

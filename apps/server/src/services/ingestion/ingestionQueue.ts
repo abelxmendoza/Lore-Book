@@ -1,21 +1,8 @@
 // =====================================================
 // ASYNC INGESTION QUEUE
 //
-// Lightweight in-process priority queue for conversation ingestion jobs.
-// Moves the 12-step ingestion pipeline fully off the chat critical path.
-//
-// Design constraints:
-//   - Single-server, single-process (no Kafka/RabbitMQ/BullMQ)
-//   - Per-user FIFO ordering preserved within each priority tier
-//   - Bounded concurrency to prevent memory/API-rate exhaustion
-//   - Exponential backoff retry (1s → 2s → 4s)
-//   - Dead-letter persistence for jobs that exhaust retries
-//   - Zero dependencies beyond existing project infrastructure
-//
-// When to upgrade this to pg_notify-backed workers:
-//   - Multiple server instances required (horizontal scaling)
-//   - Process crash must not lose queued jobs
-//   - Queue depth routinely exceeds 500 items
+// Durable write-ahead log (ingestion_jobs) is the source of truth.
+// In-memory scheduling is best-effort execution only.
 // =====================================================
 
 import { randomUUID } from 'crypto';
@@ -46,14 +33,19 @@ export interface IngestionJobPayload {
 
 export type EnqueueResult = {
   jobId: string;
-  /** False when an existing durable job already covered this message. */
   isNew: boolean;
-  status: 'QUEUED' | 'DUPLICATE' | 'DROPPED';
+  /**
+   * QUEUED = durable WAL write succeeded.
+   * DUPLICATE = already had a durable job.
+   * DROPPED = circuit breaker.
+   * RECOVERY_REQUIRED = durable write failed — never claim queued.
+   */
+  status: 'QUEUED' | 'DUPLICATE' | 'DROPPED' | 'RECOVERY_REQUIRED';
+  error?: string;
 };
 
 interface IngestionJob extends IngestionJobPayload {
   id: string;
-  /** Durable dedup key — one ingestion per message (force adds a timestamp). */
   idempotencyKey: string;
   priority: JobPriority;
   attempts: number;
@@ -61,15 +53,10 @@ interface IngestionJob extends IngestionJobPayload {
   createdAt: number;
   lastAttemptAt?: number;
   lastError?: string;
+  leaseToken?: string;
+  attemptVersion?: number;
 }
 
-// ─── Queue ───────────────────────────────────────────────────────────────────
-
-/**
- * Index of the first job in `q` whose user is not already in flight, preserving
- * FIFO for that user. Returns -1 when every queued job belongs to a busy user.
- * Pure + exported for unit testing the per-user serialization invariant.
- */
 export function pickEligibleIndex(
   q: Array<{ userId: string }>,
   activeUsers: ReadonlySet<string>,
@@ -82,53 +69,55 @@ export function pickEligibleIndex(
 
 class IngestionQueue {
   private readonly queues: Record<JobPriority, IngestionJob[]> = {
-    HIGH:   [],
+    HIGH: [],
     NORMAL: [],
-    LOW:    [],
+    LOW: [],
   };
 
-  // Maximum parallel jobs running at once.
-  // Keep low: each job makes multiple DB + OpenAI calls.
   private readonly CONCURRENCY = 2;
-
-  // Circuit breaker: stop accepting new jobs when queue depth exceeds this.
   private readonly MAX_QUEUE_DEPTH = 1000;
 
   private activeJobs = 0;
-  // Users with a job currently in flight. Guarantees at most one ingestion per
-  // user at a time → per-user FIFO + no concurrent entity-create race (two of a
-  // user's messages can't both resolve "Tony" against a pre-insert snapshot and
-  // each mint a duplicate). Cross-user concurrency is unaffected.
   private readonly activeUsers = new Set<string>();
   private totalEnqueued = 0;
   private totalCompleted = 0;
   private totalFailed = 0;
 
   /**
-   * Enqueue a new ingestion job (fire-and-forget). Prefer enqueueDurable when
-   * the caller needs a committed job row before optional AI work can fail.
+   * Legacy fire-and-forget enqueue. Prefer enqueueDurable for chat path.
+   * If durable write fails, marks RECOVERY_REQUIRED and does not claim queued.
    */
   enqueue(payload: IngestionJobPayload, priority: JobPriority = 'NORMAL'): string {
     const depth = this.depth();
     if (depth >= this.MAX_QUEUE_DEPTH) {
       logger.warn(
         { depth, userId: payload.userId },
-        'IngestionQueue: circuit breaker tripped — queue full, dropping job'
+        'IngestionQueue: circuit breaker tripped — queue full, dropping job',
+      );
+      void ingestionJobStore.markMessageRecoveryRequired(
+        payload.userId,
+        payload.chatMessageId,
+        'queue_circuit_breaker_full',
       );
       return '';
     }
 
     const job = this.buildJob(payload, priority);
     this.totalEnqueued++;
-    // Durably persist BEFORE in-memory processing so a crash/deploy can't drop
-    // the job. Non-blocking path for legacy callers.
-    void this.persistThenQueue(job);
+    void this.persistThenQueue(job).then((result) => {
+      if (result === 'durable_failed') {
+        void ingestionJobStore.markMessageRecoveryRequired(
+          payload.userId,
+          payload.chatMessageId,
+          'ingestion_jobs_write_failed',
+        );
+      }
+    });
     return job.id;
   }
 
   /**
-   * Await write-ahead persist so the chat path can report truth-backed ingestion
-   * status even if assistant generation fails immediately after.
+   * Await write-ahead persist. Truthful status — never reports QUEUED on WAL failure.
    */
   async enqueueDurable(
     payload: IngestionJobPayload,
@@ -138,15 +127,41 @@ class IngestionQueue {
     if (depth >= this.MAX_QUEUE_DEPTH) {
       logger.warn(
         { depth, userId: payload.userId },
-        'IngestionQueue: circuit breaker tripped — queue full, dropping job'
+        'IngestionQueue: circuit breaker tripped — queue full',
       );
-      return { jobId: '', isNew: false, status: 'DROPPED' };
+      await ingestionJobStore.markMessageRecoveryRequired(
+        payload.userId,
+        payload.chatMessageId,
+        'queue_circuit_breaker_full',
+      );
+      return { jobId: '', isNew: false, status: 'DROPPED', error: 'queue_full' };
     }
 
     const job = this.buildJob(payload, priority);
     this.totalEnqueued++;
-    const isNew = await this.persistThenQueue(job);
-    if (!isNew) {
+    const result = await this.persistThenQueue(job);
+
+    if (result === 'durable_failed') {
+      await ingestionJobStore.markMessageRecoveryRequired(
+        payload.userId,
+        payload.chatMessageId,
+        'ingestion_jobs_write_failed',
+      );
+      // Best-effort in-memory only — NOT source of truth.
+      this.enqueueInMemory(job);
+      logger.error(
+        { chatMessageId: payload.chatMessageId, userId: payload.userId, jobId: job.id },
+        'IngestionQueue: durable write failed — RECOVERY_REQUIRED',
+      );
+      return {
+        jobId: job.id,
+        isNew: false,
+        status: 'RECOVERY_REQUIRED',
+        error: 'durable_write_failed',
+      };
+    }
+
+    if (result === 'duplicate') {
       const existing = await ingestionJobStore.findByIdempotencyKey(job.idempotencyKey);
       return {
         jobId: existing?.id ?? job.id,
@@ -154,6 +169,7 @@ class IngestionQueue {
         status: 'DUPLICATE',
       };
     }
+
     return { jobId: job.id, isNew: true, status: 'QUEUED' };
   }
 
@@ -171,40 +187,49 @@ class IngestionQueue {
     };
   }
 
-  /** Write-ahead persist, then schedule in-memory. Dedupes via idempotency key. */
-  private async persistThenQueue(job: IngestionJob): Promise<boolean> {
-    const isNew = await ingestionJobStore.persist({
-      id:             job.id,
+  private async persistThenQueue(
+    job: IngestionJob,
+  ): Promise<'new' | 'duplicate' | 'durable_failed'> {
+    const persistResult = await ingestionJobStore.persist({
+      id: job.id,
       idempotencyKey: job.idempotencyKey,
-      userId:         job.userId,
-      chatMessageId:  job.chatMessageId,
-      sessionId:      job.sessionId,
-      priority:       job.priority,
-      payload:        { conversationHistory: job.conversationHistory, force: job.force },
-      logicalStatus:  'QUEUED',
-      currentStage:   'RAW_MESSAGE_PERSISTED',
+      userId: job.userId,
+      chatMessageId: job.chatMessageId,
+      sessionId: job.sessionId,
+      priority: job.priority,
+      payload: {
+        conversationHistory: job.conversationHistory?.map((m) => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content.slice(0, 8000) : '',
+        })),
+        force: job.force,
+      },
+      logicalStatus: 'QUEUED',
+      currentStage: 'RAW_MESSAGE_PERSISTED',
     });
-    if (!isNew) {
+
+    if (!persistResult.ok) {
+      return 'durable_failed';
+    }
+    if (!persistResult.isNew) {
       logger.debug(
         { chatMessageId: job.chatMessageId, userId: job.userId },
-        'IngestionQueue: duplicate enqueue skipped (idempotent)'
+        'IngestionQueue: duplicate enqueue skipped (idempotent)',
       );
-      return false;
+      return 'duplicate';
+    }
+    if (persistResult.id && persistResult.id !== job.id) {
+      job.id = persistResult.id;
     }
     this.enqueueInMemory(job);
-    return true;
+    return 'new';
   }
 
-  /** Push an already-durable job into the in-memory scheduler. */
   private enqueueInMemory(job: IngestionJob): void {
     this.queues[job.priority].push(job);
     setImmediate(() => this.drain());
   }
 
-  /**
-   * Crash recovery: re-enqueue jobs the DB still shows as unfinished
-   * (pending or interrupted 'processing'). Call once on server startup.
-   */
   async recover(): Promise<number> {
     const rows = await ingestionJobStore.loadResumable();
     for (const r of rows) {
@@ -213,17 +238,17 @@ class IngestionQueue {
         force?: boolean;
       };
       this.enqueueInMemory({
-        id:             r.id,
+        id: r.id,
         idempotencyKey: r.idempotency_key,
-        userId:         r.user_id,
-        chatMessageId:  r.chat_message_id ?? '',
-        sessionId:      r.session_id ?? '',
+        userId: r.user_id,
+        chatMessageId: r.chat_message_id ?? '',
+        sessionId: r.session_id ?? '',
         conversationHistory: payload.conversationHistory,
-        force:          payload.force,
-        priority:       (r.priority as JobPriority) ?? 'NORMAL',
-        attempts:       r.attempts ?? 0,
-        maxAttempts:    3,
-        createdAt:      Date.now(),
+        force: payload.force,
+        priority: (r.priority as JobPriority) ?? 'NORMAL',
+        attempts: r.attempts ?? 0,
+        maxAttempts: 5,
+        createdAt: Date.now(),
       });
     }
     if (rows.length > 0) {
@@ -232,47 +257,37 @@ class IngestionQueue {
     return rows.length;
   }
 
-  /** Current total queue depth across all priorities. */
   depth(): number {
     return this.queues.HIGH.length + this.queues.NORMAL.length + this.queues.LOW.length;
   }
 
-  /** Snapshot of queue health for observability endpoint. */
   stats() {
     return {
-      depth:          this.depth(),
-      active:         this.activeJobs,
-      activeUsers:    this.activeUsers.size,
-      totalEnqueued:  this.totalEnqueued,
+      depth: this.depth(),
+      active: this.activeJobs,
+      activeUsers: this.activeUsers.size,
+      totalEnqueued: this.totalEnqueued,
       totalCompleted: this.totalCompleted,
-      totalFailed:    this.totalFailed,
+      totalFailed: this.totalFailed,
       byPriority: {
-        HIGH:   this.queues.HIGH.length,
+        HIGH: this.queues.HIGH.length,
         NORMAL: this.queues.NORMAL.length,
-        LOW:    this.queues.LOW.length,
+        LOW: this.queues.LOW.length,
       },
     };
   }
-
-  // ─── Internal ──────────────────────────────────────────────────────────────
 
   private drain(): void {
     while (this.activeJobs < this.CONCURRENCY) {
       const job = this.dequeue();
       if (!job) return;
       this.activeJobs++;
-      // Claim the user synchronously here (not in the async process()) so the
-      // loop can't dequeue a second job for the same user before this one starts.
       this.activeUsers.add(job.userId);
-      // Use setImmediate so the event loop can handle I/O between jobs
       setImmediate(() => this.process(job));
     }
   }
 
   private dequeue(): IngestionJob | null {
-    // Strict priority: drain HIGH before NORMAL before LOW. Within a tier, pick
-    // the first job whose user has no job in flight (per-user serialization),
-    // preserving FIFO order for that user.
     for (const priority of ['HIGH', 'NORMAL', 'LOW'] as JobPriority[]) {
       const q = this.queues[priority];
       const idx = pickEligibleIndex(q, this.activeUsers);
@@ -287,24 +302,60 @@ class IngestionQueue {
     job.attempts++;
     const attemptStart = Date.now();
     job.lastAttemptAt = attemptStart;
-    void ingestionJobStore.markProcessing(job.id, job.attempts, `worker:${process.pid}`);
 
-    // Open a pipeline run record so we can detect partial failures later
+    try {
+      const { maybeInjectFault } = await import('../chat/durabilityFaultInjection');
+      await maybeInjectFault('before_worker_claim', { jobId: job.id, userId: job.userId });
+    } catch {
+      /* optional module */
+    }
+
+    const claim = await ingestionJobStore.claim(job.id, job.attempts, `worker:${process.pid}`);
+    if (!claim.claimed) {
+      logger.warn({ jobId: job.id }, 'IngestionQueue: claim lost — another worker holds lease');
+      this.activeJobs--;
+      this.activeUsers.delete(job.userId);
+      this.drain();
+      return;
+    }
+    const fence = { leaseToken: claim.leaseToken, attemptVersion: claim.attemptVersion };
+    job.leaseToken = claim.leaseToken;
+    job.attemptVersion = claim.attemptVersion;
+
+    try {
+      const { maybeInjectFault } = await import('../chat/durabilityFaultInjection');
+      await maybeInjectFault('after_worker_claim', { jobId: job.id, userId: job.userId });
+    } catch {
+      /* optional */
+    }
+
     const runId = await pipelineRunService.start({
-      jobId:         job.id,
-      userId:        job.userId,
+      jobId: job.id,
+      userId: job.userId,
       chatMessageId: job.chatMessageId,
-      sessionId:     job.sessionId,
+      sessionId: job.sessionId,
     });
 
     try {
-      // Lazy import avoids a circular dependency at module load time
       const { conversationIngestionPipeline } = await import(
         '../conversationCentered/ingestionPipeline'
       );
 
-      // Attribute all LLM/embedding spend in this job to the `ingestion`
-      // operation so the cost dashboard separates ingestion from chat.
+      try {
+        const { getProviderPressure, shouldRunOptionalEnrichment } = await import(
+          '../chat/providerPressurePolicy'
+        );
+        const pressure = getProviderPressure();
+        if (!shouldRunOptionalEnrichment(pressure)) {
+          logger.info(
+            { jobId: job.id, pressure },
+            'IngestionQueue: provider pressure — core path only',
+          );
+        }
+      } catch {
+        /* optional */
+      }
+
       await runWithMessageCost(
         { label: 'ingestion', userId: job.userId, messageId: job.chatMessageId },
         () =>
@@ -313,36 +364,133 @@ class IngestionQueue {
             job.chatMessageId,
             job.sessionId,
             job.conversationHistory,
-            job.force
-          )
+            job.force,
+          ),
       );
 
-      this.totalCompleted++;
-      // Success — mark COMPLETED (row retained briefly for diagnostics).
-      void ingestionJobStore.markCompleted(job.id, 'COMPLETED');
+      // ── MEMORY_QUALITY stage (durable, observable, not fire-and-forget) ──
+      // Optional enrichment under provider pressure may SKIP but remains recorded.
+      let mqStatus: string = 'PENDING';
+      try {
+        await ingestionJobStore.recordStage(
+          job.id,
+          'MEMORY_QUALITY',
+          undefined,
+          fence,
+        );
 
-      // Capture what this pipeline run produced. Non-blocking — errors are swallowed.
-      // Queries by user_id + created_at > job start so we see only this run's outputs.
+        const pressureMod = await import('../chat/providerPressurePolicy').catch(() => null);
+        const getProviderPressure = pressureMod?.getProviderPressure ?? (() => 'normal' as const);
+        const shouldRunOptionalEnrichment = pressureMod?.shouldRunOptionalEnrichment ?? (() => true);
+
+        if (!shouldRunOptionalEnrichment(getProviderPressure())) {
+          mqStatus = 'SKIPPED';
+          logger.info(
+            { jobId: job.id, pressure: getProviderPressure() },
+            'Memory Quality skipped under provider pressure',
+          );
+        } else {
+          // Load message text for meaning extraction
+          const { data: msgRow } = await supabaseAdmin
+            .from('chat_messages')
+            .select('content, role')
+            .eq('id', job.chatMessageId)
+            .eq('user_id', job.userId)
+            .maybeSingle();
+
+          if (!msgRow?.content || msgRow.role !== 'user') {
+            mqStatus = 'SKIPPED';
+          } else {
+            const { runMemoryQualityForMessage } = await import(
+              '../memoryQuality/memoryQualityIntegrationService'
+            );
+            const mq = await runMemoryQualityForMessage(
+              job.userId,
+              msgRow.content,
+              job.chatMessageId,
+              { jobId: job.id },
+            );
+            mqStatus = mq.status;
+            if (runId) {
+              await pipelineRunService.recordStep(runId, {
+                step: 'MEMORY_QUALITY',
+                success: mq.status === 'COMPLETED' || mq.status === 'SKIPPED',
+                duration_ms: Date.now() - attemptStart,
+                row_count: mq.artifactIds.length,
+                metadata: {
+                  status: mq.status,
+                  created: mq.created,
+                  reused: mq.reused,
+                },
+              });
+            }
+            // Retryable MQ failure does not fail the whole job (raw message durable)
+            // but is recorded for recovery tooling.
+            if (mq.status === 'RETRYABLE_FAILED') {
+              logger.warn(
+                { jobId: job.id, err: mq.error },
+                'Memory Quality retryable failure — core ingestion still complete',
+              );
+            }
+          }
+        }
+      } catch (mqErr) {
+        mqStatus = 'RETRYABLE_FAILED';
+        logger.warn({ err: mqErr, jobId: job.id }, 'Memory Quality stage error (non-fatal to core)');
+      }
+      try {
+        await supabaseAdmin
+          .from('ingestion_jobs')
+          .update({
+            memory_quality_status: mqStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id);
+      } catch {
+        /* column may not exist pre-migration */
+      }
+
+      try {
+        const { maybeInjectFault } = await import('../chat/durabilityFaultInjection');
+        await maybeInjectFault('before_job_completion', { jobId: job.id, userId: job.userId });
+      } catch {
+        /* optional */
+      }
+
+      this.totalCompleted++;
+      const completed = await ingestionJobStore.markCompleted(job.id, 'COMPLETED', fence);
+      if (!completed) {
+        logger.warn(
+          { jobId: job.id },
+          'IngestionQueue: stale worker blocked from completing reclaimed job',
+        );
+        return;
+      }
+
       if (runId) {
         const sinceIso = new Date(attemptStart).toISOString();
         void this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart);
       }
-
       if (runId) await pipelineRunService.complete(runId, attemptStart);
       void import('../loreReadiness/loreReadinessService').then(({ loreReadinessService }) => {
         loreReadinessService.invalidateCache(job.userId);
       });
       logger.debug(
         { jobId: job.id, userId: job.userId, attempt: job.attempts },
-        'IngestionQueue: job completed'
+        'IngestionQueue: job completed',
       );
     } catch (err) {
       job.lastError = String(err);
       const classified = classifyIngestionError(err);
       incMetric('ingestion_stage_failure');
 
-      const canRetry =
-        classified.retryable && job.attempts < job.maxAttempts;
+      if (classified.category === 'rate_limit' || classified.category === 'quota_exhausted') {
+        void import('../chat/providerPressurePolicy')
+          .then(({ recordProviderFailure }) => recordProviderFailure(classified.category))
+          .catch(() => undefined);
+      }
+
+      const canRetry = classified.retryable && job.attempts < job.maxAttempts;
 
       if (canRetry) {
         const delayMs = computeRetryDelayMs(job.attempts, classified.category);
@@ -355,16 +503,16 @@ class IngestionQueue {
             delayMs,
             category: classified.category,
           },
-          'IngestionQueue: job failed, will retry'
+          'IngestionQueue: job failed, will retry',
         );
-        // Mark partial on retryable failures (run will be superseded by the next attempt's run)
         if (runId) await pipelineRunService.markPartial(runId, attemptStart, 'ingestFromChatMessage');
-        // Back to retryable_failed durably so a crash during the backoff window still recovers it.
         void ingestionJobStore.markRetrying(job.id, job.attempts, classified.message, {
           category: classified.category,
           code: classified.code,
           failedStage: 'ingestFromChatMessage',
           nextRetryAt,
+          leaseToken: fence.leaseToken,
+          attemptVersion: fence.attemptVersion,
         });
         setTimeout(() => {
           this.queues[job.priority].push(job);
@@ -373,8 +521,14 @@ class IngestionQueue {
       } else {
         this.totalFailed++;
         logger.error(
-          { jobId: job.id, userId: job.userId, attempts: job.attempts, err, category: classified.category },
-          'IngestionQueue: job exhausted retries or permanent failure — dead-letter'
+          {
+            jobId: job.id,
+            userId: job.userId,
+            attempts: job.attempts,
+            err,
+            category: classified.category,
+          },
+          'IngestionQueue: job exhausted retries — dead-letter',
         );
         if (runId) await pipelineRunService.fail(runId, attemptStart, err, 'ingestFromChatMessage');
         await this.deadLetter(job, err);
@@ -382,6 +536,8 @@ class IngestionQueue {
           category: classified.category,
           code: classified.code,
           failedStage: 'ingestFromChatMessage',
+          leaseToken: fence.leaseToken,
+          attemptVersion: fence.attemptVersion,
         });
       }
     } finally {
@@ -391,31 +547,46 @@ class IngestionQueue {
     }
   }
 
-  /**
-   * Query what this pipeline run actually produced and record it as a step.
-   * Called after successful ingestion — non-blocking, all errors swallowed.
-   * Uses created_at > sinceIso to isolate this run's outputs.
-   */
   private async captureProductionSummary(
     runId: string,
     userId: string,
     sinceIso: string,
-    startedAt: number
+    startedAt: number,
   ): Promise<void> {
     try {
       const [kuRes, evRes, charRes, candRes, kuRes2] = await Promise.allSettled([
-        supabaseAdmin.from('knowledge_units').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
-        supabaseAdmin.from('conversation_events').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
-        supabaseAdmin.from('characters').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
-        supabaseAdmin.from('event_candidates').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
-        supabaseAdmin.from('knowledge_units').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('updated_at', sinceIso),
+        supabaseAdmin
+          .from('knowledge_units')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('created_at', sinceIso),
+        supabaseAdmin
+          .from('conversation_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('created_at', sinceIso),
+        supabaseAdmin
+          .from('characters')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('created_at', sinceIso),
+        supabaseAdmin
+          .from('event_candidates')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('created_at', sinceIso),
+        supabaseAdmin
+          .from('knowledge_units')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('updated_at', sinceIso),
       ]);
 
-      const kuCount      = kuRes.status      === 'fulfilled' ? (kuRes.value.count      ?? 0) : -1;
-      const evCount      = evRes.status      === 'fulfilled' ? (evRes.value.count      ?? 0) : -1;
-      const charCount    = charRes.status    === 'fulfilled' ? (charRes.value.count    ?? 0) : -1;
-      const candCount    = candRes.status    === 'fulfilled' ? (candRes.value.count    ?? 0) : -1;
-      const kuTouched    = kuRes2.status     === 'fulfilled' ? (kuRes2.value.count     ?? 0) : -1;
+      const kuCount = kuRes.status === 'fulfilled' ? (kuRes.value.count ?? 0) : -1;
+      const evCount = evRes.status === 'fulfilled' ? (evRes.value.count ?? 0) : -1;
+      const charCount = charRes.status === 'fulfilled' ? (charRes.value.count ?? 0) : -1;
+      const candCount = candRes.status === 'fulfilled' ? (candRes.value.count ?? 0) : -1;
+      const kuTouched = kuRes2.status === 'fulfilled' ? (kuRes2.value.count ?? 0) : -1;
 
       await pipelineRunService.recordStep(runId, {
         step: 'production_summary',
@@ -423,39 +594,37 @@ class IngestionQueue {
         duration_ms: Date.now() - startedAt,
         row_count: kuCount,
         metadata: {
-          knowledge_units_created:   kuCount,
-          knowledge_units_touched:   kuTouched,
-          events_assembled:          evCount,
-          entities_created:          charCount,
-          event_candidates_created:  candCount,
+          knowledge_units_created: kuCount,
+          knowledge_units_touched: kuTouched,
+          events_assembled: evCount,
+          entities_created: charCount,
+          event_candidates_created: candCount,
         },
       });
     } catch {
-      // Non-critical — production summary is observability only
+      /* observability only */
     }
   }
 
   private async deadLetter(job: IngestionJob, err: unknown): Promise<void> {
     try {
       await supabaseAdmin.from('ingestion_dead_letter').insert({
-        job_id:          job.id,
-        user_id:         job.userId,
+        job_id: job.id,
+        user_id: job.userId,
         chat_message_id: job.chatMessageId,
-        attempts:        job.attempts,
-        last_error:      String(err),
+        attempts: job.attempts,
+        last_error: String(err).slice(0, 2000),
         payload: {
-          userId:      job.userId,
-          sessionId:   job.sessionId,
-          priority:    job.priority,
-          createdAt:   job.createdAt,
+          userId: job.userId,
+          sessionId: job.sessionId,
+          priority: job.priority,
+          createdAt: job.createdAt,
         },
       });
     } catch (dlErr) {
-      // Dead-letter write failure is logged but cannot be recovered here.
-      // The original job payload is logged below for manual recovery.
       logger.error(
         { dlErr, jobId: job.id, userId: job.userId, chatMessageId: job.chatMessageId },
-        'IngestionQueue: dead-letter write also failed — job is lost'
+        'IngestionQueue: dead-letter write also failed',
       );
     }
   }

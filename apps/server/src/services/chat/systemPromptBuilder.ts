@@ -36,6 +36,8 @@ export function buildSystemPrompt(
     episodicEvents?: any[];
     socialCommunities?: any[];
     crystallizedKnowledge?: Array<{ knowledge_type: string; human_readable_claim: string; confidence: number }>;
+    /** Continuity That Feels Alive — 0–3 structured candidates + composition rules */
+    continuityAliveBlock?: string | null;
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -778,6 +780,9 @@ ${loreData.crystallizedKnowledge.map((k: { knowledge_type: string; human_readabl
 ).join('\n')}
 
 These are durable knowledge claims earned from recurring behavioral evidence — not inferences or AI summaries. Treat them as established facts about this person when they are relevant to the conversation.
+
+` : ''}${loreData?.continuityAliveBlock ? `**CONTINUITY THAT FEELS ALIVE** (selected for this message only — 0–3 candidates; do not invent more):
+${loreData.continuityAliveBlock}
 
 ` : ''}
 
