@@ -30,6 +30,13 @@ import {
   MAX_CHAT_IMAGES_PER_TURN,
   type ChatImageAttachment,
 } from '../types/chatImageAttachment';
+import { useAuth } from '../../../lib/supabase';
+import {
+  latestRecoverableStory,
+  readComposerDraft,
+  saveComposerDraft,
+  subscribeStoryRecovery,
+} from '../services/storySafetyVault';
 
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
@@ -71,11 +78,15 @@ export const useChatComposer = (
   options: UseChatComposerOptions = {},
 ) => {
   const { submitOnEnter = true, threadId } = options;
+  const { user } = useAuth();
+  const draftOwnerId = user?.id ?? 'guest-or-anonymous';
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
   const includedSlots = useAppSelector(selectComposerIncludedSlots);
-  const [input, setInputState] = useState(initialValue || '');
+  const [input, setInputState] = useState(
+    () => initialValue || readComposerDraft(draftOwnerId, threadId) || latestRecoverableStory(draftOwnerId, threadId)?.text || ''
+  );
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [previewCorrections, setPreviewCorrections] = useState<CorrectedPreviewSpan[]>([]);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
@@ -93,10 +104,30 @@ export const useChatComposer = (
   const setInput = useCallback(
     (value: string) => {
       setInputState(value);
+      saveComposerDraft(draftOwnerId, threadId, value);
       dispatch(setComposerDraft(value));
     },
-    [dispatch]
+    [dispatch, draftOwnerId, threadId]
   );
+
+  // Restore a story immediately when the send path reports that the user's
+  // message was not durably persisted. Also recovers after a reload/crash.
+  useEffect(() => {
+    const recovered = readComposerDraft(draftOwnerId, threadId)
+      || latestRecoverableStory(draftOwnerId, threadId)?.text
+      || '';
+    if (recovered && !input) {
+      setInputState(recovered);
+      dispatch(setComposerDraft(recovered));
+    }
+    return subscribeStoryRecovery((attempt) => {
+      if (attempt.ownerId !== draftOwnerId || attempt.threadId !== threadId) return;
+      setInputState(attempt.text);
+      saveComposerDraft(draftOwnerId, threadId, attempt.text);
+      dispatch(setComposerDraft(attempt.text));
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    });
+  }, [dispatch, draftOwnerId, threadId]); // input intentionally checked only when the owner/thread changes
 
   // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
   useEffect(() => {

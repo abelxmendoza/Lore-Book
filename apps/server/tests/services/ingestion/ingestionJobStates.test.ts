@@ -137,7 +137,7 @@ describe('chat durability payload + messaging', () => {
 
 describe('Anime Expo fixture regression (status contract)', () => {
   const FIXTURE =
-    'I went to the club last night after Anime Expo. There was a SonicBoomBox afterparty at Catch One. I danced with Dollyfied and Stimkybun. One of their friends pulled away, so I backed off and respected her boundary. The situation with Genni taught me to respect boundaries. Earlier that day I visited Anime Expo and stopped by my tía’s house for food.';
+    'I went to the club last night after Anime Expo. There was a BassRiot afterparty at Catch One. I danced with Mothdoll and Vexadoll. One of their friends pulled away, so I backed off and respected her boundary. The situation with Jenna taught me to respect boundaries. Earlier that day I visited Anime Expo and stopped by my tía’s house for food.';
 
   it('429 after persist produces saved+queued durability (not unknown memory)', () => {
     expect(FIXTURE.length).toBeGreaterThan(100);

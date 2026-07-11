@@ -90,6 +90,10 @@ import { useChat } from '../useChat';
 import { createElement, type ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { makeStore } from '../../../../store';
+import {
+  latestRecoverableStory,
+  resetStorySafetyVaultForTests,
+} from '../../services/storySafetyVault';
 
 // useChat uses useAppDispatch, so it must render inside a Redux Provider.
 const wrapper = ({ children }: { children: ReactNode }) =>
@@ -98,6 +102,7 @@ const wrapper = ({ children }: { children: ReactNode }) =>
 describe('useChat — assistant bubble durability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStorySafetyVaultForTests();
     mockHydrateThreadMessages.mockResolvedValue({ id: 'thread-chat-1', messages: [] } as never);
     mockGetThread.mockReturnValue({ id: 'thread-chat-1', messages: [] });
     mockMutateThreadMessagesForThread.mockImplementation(
@@ -145,6 +150,7 @@ describe('useChat — assistant bubble durability', () => {
       },
       { timeout: 2000 }
     );
+    expect(latestRecoverableStory('user-chat-1', 'thread-chat-1')).toBeNull();
   });
 
   it('keeps assistant bubble on outer catch instead of removing it', async () => {
@@ -155,6 +161,8 @@ describe('useChat — assistant bubble durability', () => {
     await act(async () => {
       await result.current.sendMessage('This should not vanish');
     });
+
+    expect(latestRecoverableStory('user-chat-1', 'thread-chat-1')?.text).toBe('This should not vanish');
 
     expect(mockMutateThreadMessagesForThread).toHaveBeenCalled();
     const removeCalls = mockUpdateActiveMessages.mock.calls.filter((call) => {

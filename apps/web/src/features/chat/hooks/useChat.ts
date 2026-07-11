@@ -31,6 +31,12 @@ import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { ChatImageAttachment } from '../types/chatImageAttachment';
 import { IMAGE_ATTACHED_PLACEHOLDER } from '../types/chatImageAttachment';
 import type { ThreadEntity } from '../utils/collectThreadEntities';
+import {
+  clearStoryAttempt,
+  preserveStoryAttempt,
+  requestStoryRecovery,
+  type StorySafetyAttempt,
+} from '../services/storySafetyVault';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
@@ -283,6 +289,15 @@ export const useChat = () => {
         ? crypto.randomUUID()
         : `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+    const safetyAttempt: StorySafetyAttempt = {
+      id: clientIdempotencyKey,
+      ownerId: user?.id ?? guestState?.guestId ?? 'anonymous',
+      threadId,
+      text: resolvedText,
+      createdAt: new Date().toISOString(),
+    };
+    preserveStoryAttempt(safetyAttempt);
+
     // Create user message
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -437,6 +452,7 @@ export const useChat = () => {
       if (persistence.user) {
         if (persistence.user.saved && persistence.user.id) {
           persistedUserMessageId = persistence.user.id;
+          clearStoryAttempt(safetyAttempt.id);
           updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
         } else if (persistence.user.error) {
           updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
@@ -511,6 +527,7 @@ export const useChat = () => {
           { touchActivity: true }
         );
         updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+        clearStoryAttempt(safetyAttempt.id);
 
         if (demoResult.subtitle || demoResult.dominantEntities) {
           updateThread(streamThreadId, {
@@ -632,8 +649,10 @@ export const useChat = () => {
 
           if (isGuest) {
             updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+            clearStoryAttempt(safetyAttempt.id);
           } else if (persistedUserMessageId) {
             updateStreamMessage(userMessage.id, { id: persistedUserMessageId, persistStatus: 'saved' });
+            clearStoryAttempt(safetyAttempt.id);
           } else if (!metadata?.persistence?.user?.saved) {
             updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
             threadPersistenceTracker.markSyncFailed(streamThreadId, 'user_message_not_persisted');
@@ -722,7 +741,9 @@ export const useChat = () => {
                   shouldUseMockData() ? 'demo' : 'guest',
                   guestState?.guestId,
                 ).content
-              : friendlyErrorMessage(String(error)),
+              : userSaved
+                ? 'I couldn’t generate a reply, but your story was saved safely. You can retry the response without retelling it.'
+                : 'I couldn’t save or process that story. Your original words are safe and have been restored to the composer so you can retry without rewriting them.',
             isStreaming: false,
             persistStatus: 'failed',
             metadata: {
@@ -746,6 +767,7 @@ export const useChat = () => {
           } else {
             updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
             threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
+            requestStoryRecovery(safetyAttempt);
           }
 
           // Reconcile with server after timeout/error so refresh-ready state is correct.
@@ -783,6 +805,13 @@ export const useChat = () => {
         (!user && isSimulatedChatRuntime()) ||
         (isGuest && (isBackendUnavailable(errMsg) || isGuestStreamBlocked(errMsg))) ||
         (getGlobalMockDataEnabled() && isBackendUnavailable(errMsg));
+
+      if (persistedUserMessageId) {
+        clearStoryAttempt(safetyAttempt.id);
+      } else {
+        updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+        requestStoryRecovery(safetyAttempt);
+      }
 
       if (useDemoFallback) {
         updateStreamMessage(assistantMessageId, {
