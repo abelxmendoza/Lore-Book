@@ -235,7 +235,13 @@ export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLin
           </div>
         )}
 
-        {/* Quick Stats */}
+        {/* Quick Stats — no placeholder precision: scores render only when the
+            server marks them evidence-backed (non-null). */}
+        {relationship.compatibility_score == null && relationship.relationship_health == null ? (
+          <p className="mb-2 text-[11px] text-white/40 sm:mb-3" data-testid="scores-still-learning">
+            Still learning — not enough evidence for scores yet
+          </p>
+        ) : (
         <div className="mb-2 grid grid-cols-2 gap-2 sm:mb-3 sm:gap-3">
           <div>
             <p className="mb-0.5 text-[10px] text-white/50 sm:mb-1 sm:text-xs">Compatibility</p>
@@ -268,6 +274,7 @@ export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLin
             </div>
           </div>
         </div>
+        )}
         </>
         )}
 

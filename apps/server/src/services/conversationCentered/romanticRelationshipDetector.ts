@@ -173,7 +173,10 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
               relationshipType: rel.relationshipType as RomanticRelationshipType,
               status: (rel.status || 'active') as RelationshipStatus,
               confidence: rel.confidence || 0.7,
-              evidence: rel.evidence || message,
+              // NEVER fall back to the whole message — that is how one
+              // person's snippet ("Ashley was a one-night stand") leaked onto
+              // every co-mentioned entity's card. No snippet, no evidence.
+              evidence: rel.evidence || '',
               startDate: rel.startDate,
               isSituationship: rel.isSituationship || rel.relationshipType === 'situationship',
               exclusivityStatus: rel.exclusivityStatus,
@@ -225,6 +228,32 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
           logger.debug({ err, userId }, 'third-party romance persistence failed')
         );
       }
+      return;
+    }
+
+    // Trust floor (datingEligibilityService): the partner must be a real,
+    // non-family person and the evidence snippet must name THEM with a strong
+    // romantic/sexual signal. Anything else is never persisted as a romance.
+    const { evaluateDatingEligibility } = await import('./datingEligibilityService');
+    const partnerName = (relationship.partnerName ?? '').trim();
+    if (!partnerName) {
+      logger.info({ userId, personId: relationship.personId }, 'Dating trust floor: no partner name, skipping');
+      return;
+    }
+    const verdict = evaluateDatingEligibility({
+      entityId: relationship.personId,
+      name: partnerName,
+      canonicalType: relationship.personType === 'character' ? 'person' : null,
+      isKnownOrganization: knownOrganizationNames.some(
+        (org) => org.trim().toLowerCase() === partnerName.toLowerCase(),
+      ),
+      evidenceSnippets: relationship.evidence ? [relationship.evidence] : [],
+    });
+    if (!verdict.isEligible) {
+      logger.info(
+        { userId, personId: relationship.personId, reason: verdict.eligibilityReason },
+        'Dating trust floor blocked romantic relationship persistence'
+      );
       return;
     }
     try {

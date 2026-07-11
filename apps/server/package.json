@@ -12,6 +12,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:dating-integrity": "vitest run src/services/conversationCentered/datingEligibility.test.ts src/services/conversationCentered/romanticEligibility.test.ts src/services/conversationCentered/romanticRelationshipDedupeService.test.ts src/services/conversationCentered/thirdPartyRomanceExtractor.test.ts",
     "test:ingestion": "vitest run tests/services/extractionSignals.test.ts tests/utils/aiUncertainty.test.ts tests/services/ingestionPipeline.test.ts tests/integration/ingestionPipelineE2E.test.ts",
     "test:egress": "vitest run tests/architecture/egressProjection.test.ts tests/architecture/organizationProjection.test.ts tests/services/ingestionDedupCache.test.ts tests/services/semanticConversionReuse.test.ts tests/services/organizationServiceCache.test.ts",
     "test:scripts": "vitest run tests/scripts/migrationRunner.test.ts tests/scripts/migrate.test.ts tests/scripts/backfillScores.test.ts tests/scripts/cleanupLegacyEntities.test.ts",

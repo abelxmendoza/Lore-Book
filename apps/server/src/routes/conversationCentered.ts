@@ -2816,10 +2816,137 @@ router.get(
 
     const enriched = await enrichRomanticRelationshipsForUser(userId, relationships || []);
 
+    // Trust floor: only real, non-family people with entity-specific romantic
+    // evidence are visible. Everything else is filtered here regardless of how
+    // it got persisted (see datingEligibilityService for the failure history).
+    const { loadDatingEligibilityForRows } = await import(
+      '../services/conversationCentered/datingEligibilityService'
+    );
+    const eligibility = await loadDatingEligibilityForRows(userId, enriched as never);
+    const wantReview = req.query.view === 'review';
+    const visible = (enriched as Array<Record<string, unknown>>).filter((row) => {
+      const verdict = eligibility.get(row.id as string);
+      if (!verdict) return false;
+      return wantReview ? verdict.reviewRequired : verdict.visibleInDatingBook;
+    });
+
     res.json({
       success: true,
-      relationships: enriched,
+      relationships: visible.map((row) => {
+        const verdict = eligibility.get(row.id as string)!;
+        const meta = (row.metadata ?? {}) as Record<string, unknown>;
+        // Scores were formula defaults (the repeated 68%/41%) — only expose
+        // them when the row records evidence-backed scoring.
+        const scoresEvidenceBacked = typeof meta.score_evidence_count === 'number' && meta.score_evidence_count > 0;
+        return {
+          ...row,
+          ...(scoresEvidenceBacked
+            ? {}
+            : {
+                compatibility_score: null,
+                relationship_health: null,
+                pros: null,
+                cons: null,
+                strengths: null,
+                weaknesses: null,
+              }),
+          scores_evidence_backed: scoresEvidenceBacked,
+          eligibility: {
+            reason: verdict.eligibilityReason,
+            evidence: verdict.romanticEvidence,
+            evidenceStrength: verdict.romanticEvidenceStrength,
+            reviewRequired: verdict.reviewRequired,
+          },
+        };
+      }),
+      hiddenCount: (enriched as unknown[]).length - visible.length,
     });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/integrity-audit
+ * Dry-run trust-floor audit of every romantic row: verdict + proposed action.
+ * POST with { apply: true } marks ineligible rows excluded (non-destructive
+ * metadata flag; original row and evidence preserved).
+ */
+router.get(
+  '/romantic-relationships/integrity-audit',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { data: rows } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('*')
+      .eq('user_id', userId);
+    const { loadDatingEligibilityForRows } = await import(
+      '../services/conversationCentered/datingEligibilityService'
+    );
+    const eligibility = await loadDatingEligibilityForRows(userId, (rows ?? []) as never);
+    res.json({
+      success: true,
+      dryRun: true,
+      total: rows?.length ?? 0,
+      findings: (rows ?? []).map((row) => {
+        const v = eligibility.get(row.id);
+        return {
+          relationshipId: row.id,
+          name: v?.name,
+          storedType: row.relationship_type,
+          storedStatus: row.status,
+          verdict: v?.eligibilityReason,
+          visible: v?.visibleInDatingBook ?? false,
+          reviewRequired: v?.reviewRequired ?? false,
+          evidence: v?.romanticEvidence ?? [],
+          proposedAction: v?.visibleInDatingBook
+            ? 'keep'
+            : v?.reviewRequired
+              ? 'surface_for_review'
+              : 'exclude_from_dating_book',
+        };
+      }),
+    });
+  })
+);
+
+router.post(
+  '/romantic-relationships/integrity-audit',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    if (req.body?.apply !== true) {
+      return res.status(400).json({ error: 'Pass { "apply": true } to apply exclusions' });
+    }
+    const { data: rows } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('*')
+      .eq('user_id', userId);
+    const { loadDatingEligibilityForRows } = await import(
+      '../services/conversationCentered/datingEligibilityService'
+    );
+    const eligibility = await loadDatingEligibilityForRows(userId, (rows ?? []) as never);
+    let excluded = 0;
+    for (const row of rows ?? []) {
+      const v = eligibility.get(row.id);
+      if (!v || v.visibleInDatingBook) continue;
+      const { error } = await supabaseAdmin
+        .from('romantic_relationships')
+        .update({
+          metadata: {
+            ...(row.metadata ?? {}),
+            dating_integrity: {
+              excluded: true,
+              reason: v.eligibilityReason,
+              review_required: v.reviewRequired,
+              excluded_at: new Date().toISOString(),
+            },
+          },
+        })
+        .eq('id', row.id)
+        .eq('user_id', userId);
+      if (!error) excluded += 1;
+    }
+    res.json({ success: true, excluded, total: rows?.length ?? 0 });
   })
 );
 
