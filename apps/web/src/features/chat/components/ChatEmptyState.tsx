@@ -1,5 +1,20 @@
 import { useLocation } from 'react-router-dom';
-import { Bot, Heart, Paperclip, FileText, MessageSquare, Image as ImageIcon, Lock } from 'lucide-react';
+import {
+  Bot,
+  Heart,
+  Paperclip,
+  FileText,
+  MessageSquare,
+  Image as ImageIcon,
+  Lock,
+  Sparkles,
+  Link2,
+  BookOpen,
+  AlertTriangle,
+  Lightbulb,
+  Calendar,
+  Shield,
+} from 'lucide-react';
 import { LoreReadinessQuestChips } from './LoreReadinessQuestChips';
 
 const LOVE_STARTERS = [
@@ -11,53 +26,99 @@ const LOVE_STARTERS = [
   'I just got out of something and I need to think.',
 ];
 
+function fillComposer(text: string, placeholderHint?: string) {
+  const selector = placeholderHint
+    ? `textarea[placeholder*="${placeholderHint}"]`
+    : 'textarea[placeholder]';
+  const input = document.querySelector<HTMLTextAreaElement>(selector);
+  if (!input) return;
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    'value'
+  )?.set;
+  nativeInputValueSetter?.call(input, text);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+}
+
 const LoveEmptyState = () => (
-  <div className="text-center py-16 sm:py-20 text-white/60 px-4 sm:px-6 max-w-2xl mx-auto">
-    <Heart className="h-16 w-16 mx-auto mb-6 text-pink-400/50" />
-    <h2 className="text-2xl sm:text-3xl font-semibold mb-3 text-white">Your Relationship Advisor</h2>
-    <p className="text-sm sm:text-base text-pink-300/80 mb-2 max-w-md mx-auto">
-      I know your full love life — who you've been with, what happened, the patterns, the drift.
-    </p>
-    <p className="text-base sm:text-lg mb-10 text-white/60 leading-relaxed">
-      Tell me about a date. Decode a situation. Talk through what keeps happening.<br />
-      Everything you share is tracked quietly in the background.
-    </p>
-
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-10 text-left">
-      {LOVE_STARTERS.map(starter => (
-        <button
-          key={starter}
-          type="button"
-          onClick={() => {
-            const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder]');
-            if (input) {
-              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-              nativeInputValueSetter?.call(input, starter);
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.focus();
-            }
-          }}
-          className="px-4 py-3 rounded-lg border border-pink-500/20 bg-black/40 hover:bg-pink-950/20 hover:border-pink-500/40 transition-colors text-sm text-white/60 hover:text-white/80 text-left"
-        >
-          "{starter}"
-        </button>
-      ))}
-    </div>
-
-    <div className="flex items-center justify-center mb-8">
-      <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
-        <Lock className="h-4 w-4 text-green-400 flex-shrink-0" />
-        <p className="text-xs text-green-400">
-          <strong>Private:</strong> Your conversations are encrypted and never shared.
-        </p>
+  <div className="chat-empty-root chat-message-enter-system relative mx-auto max-w-2xl px-4 py-14 sm:px-6 sm:py-18">
+    <div className="chat-empty-glow" aria-hidden />
+    <div className="relative text-center">
+      <div className="chat-empty-hero-orb mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl">
+        <Heart className="h-8 w-8 text-pink-300" />
       </div>
-    </div>
+      <h2 className="mb-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+        Your Relationship Advisor
+      </h2>
+      <p className="mx-auto mb-2 max-w-md text-sm text-pink-300/85 sm:text-base">
+        I know your full love life — who you&apos;ve been with, what happened, the patterns, the drift.
+      </p>
+      <p className="mb-10 text-base leading-relaxed text-white/65 sm:text-lg">
+        Tell me about a date. Decode a situation. Talk through what keeps happening.
+        <br />
+        Everything you share is tracked quietly in the background.
+      </p>
 
-    <p className="text-xs text-white/30">
-      What you tell me automatically updates your relationship timeline, patterns, and history.
-    </p>
+      <div className="mb-10 grid grid-cols-1 gap-2 text-left sm:grid-cols-2">
+        {LOVE_STARTERS.map((starter) => (
+          <button
+            key={starter}
+            type="button"
+            onClick={() => fillComposer(starter)}
+            className="rounded-xl border border-pink-500/20 bg-black/40 px-4 py-3 text-left text-sm text-white/60 transition-all hover:border-pink-500/40 hover:bg-pink-950/25 hover:text-white/85"
+          >
+            &quot;{starter}&quot;
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-8 flex items-center justify-center">
+        <div className="chat-empty-privacy inline-flex items-center gap-2.5 rounded-full px-4 py-2.5">
+          <Lock className="h-4 w-4 shrink-0 text-emerald-400" />
+          <p className="text-xs text-emerald-300/90">
+            <strong className="font-semibold text-emerald-200">Private:</strong> Your conversations
+            are encrypted and never shared.
+          </p>
+        </div>
+      </div>
+
+      <p className="text-xs text-white/35">
+        What you tell me automatically updates your relationship timeline, patterns, and history.
+      </p>
+    </div>
   </div>
 );
+
+const CAPABILITIES = [
+  {
+    icon: Calendar,
+    text: "I'll track dates, times, and occurrences",
+    accent: 'text-violet-300',
+  },
+  {
+    icon: Link2,
+    text: "I'll make connections to your past entries",
+    accent: 'text-fuchsia-300',
+  },
+  {
+    icon: BookOpen,
+    text: "I'll update your timeline, memoir, and chapters",
+    accent: 'text-purple-300',
+  },
+  {
+    icon: AlertTriangle,
+    text: "I'll check for continuity and conflicts",
+    accent: 'text-amber-300',
+  },
+  {
+    icon: Lightbulb,
+    text: "I'll provide strategic guidance based on your patterns",
+    accent: 'text-cyan-300',
+  },
+] as const;
+
+const DOC_TYPES = ['Biographies', 'Autobiographies', 'Diaries', 'Journals'] as const;
 
 export const ChatEmptyState = () => {
   const location = useLocation();
@@ -66,131 +127,168 @@ export const ChatEmptyState = () => {
   if (isLoveSurface) return <LoveEmptyState />;
 
   return (
-    <div className="text-center py-16 sm:py-20 lg:py-24 text-white/60 px-4 sm:px-6 lg:px-8 max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto chat-message-enter-system">
-      <Bot className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 mx-auto mb-6 sm:mb-8 text-primary/50" />
-      <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold mb-2 sm:mb-3 text-white">AI Life Guidance Chat</h2>
-      <p className="text-sm sm:text-base text-primary/80 mb-4 sm:mb-5 max-w-xl mx-auto">
-        This is where your story is built. Timelines, characters, and quests fill in as you talk.
-      </p>
+    <div className="chat-empty-root chat-message-enter-system relative mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+      <div className="chat-empty-glow" aria-hidden />
 
-      <div className="mb-8 max-w-2xl mx-auto text-left">
+      {/* ── Hero ── */}
+      <header className="relative mb-8 text-center sm:mb-10">
+        <div className="chat-empty-hero-orb mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl sm:mb-6 sm:h-20 sm:w-20 sm:rounded-3xl">
+          <Bot className="h-8 w-8 text-primary sm:h-10 sm:w-10" />
+          <span className="chat-empty-hero-ring" aria-hidden />
+        </div>
+
+        <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.22em] text-primary/70 sm:text-[11px]">
+          Lore Book · Chat
+        </p>
+        <h2 className="mb-3 bg-gradient-to-b from-white via-white to-white/70 bg-clip-text text-2xl font-semibold tracking-tight text-transparent sm:mb-4 sm:text-3xl lg:text-4xl">
+          AI Life Guidance Chat
+        </h2>
+        <p className="mx-auto mb-4 max-w-xl text-sm leading-relaxed text-primary/85 sm:mb-5 sm:text-base">
+          This is where your story is built. Timelines, characters, and quests fill in as you talk.
+        </p>
+        <p className="mx-auto max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg sm:leading-relaxed">
+          Dump everything freely here. I&apos;ll reflect back, make connections,
+          and help you understand your story while automatically updating your timeline.
+        </p>
+      </header>
+
+      {/* ── Lore readiness ── */}
+      <div className="relative mb-8 max-w-2xl mx-auto sm:mb-10">
         <LoreReadinessQuestChips
           compact
-          className="rounded-xl overflow-hidden border border-violet-500/20"
-          onSelectPrompt={(prompt) => {
-            const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message Lore Book"]');
-            if (input) {
-              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-              nativeInputValueSetter?.call(input, prompt);
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.focus();
-            }
-          }}
+          className="chat-empty-panel overflow-hidden rounded-2xl border border-violet-500/25"
+          onSelectPrompt={(prompt) => fillComposer(prompt, 'Message Lore Book')}
         />
       </div>
 
-      <p className="text-base sm:text-lg lg:text-xl mb-8 sm:mb-10 text-white/70 leading-relaxed sm:leading-loose">
-        Dump everything freely here. I&apos;ll reflect back, make connections,<br />
-        and help you understand your story while automatically updating your timeline.
-      </p>
-      
-      {/* Privacy Reassurance */}
-      <div className="mb-8 sm:mb-10 lg:mb-12 flex items-center justify-center">
-        <div className="flex items-center gap-2 sm:gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
-          <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-green-400" />
-          <p className="text-sm sm:text-base lg:text-lg text-green-400">
-            <strong className="font-semibold">Private & Secure:</strong> Your conversations are encrypted and never shared. Only you can access your data.
+      {/* ── Privacy ── */}
+      <div className="relative mb-8 flex justify-center sm:mb-10">
+        <div className="chat-empty-privacy flex max-w-2xl items-start gap-3 rounded-2xl px-4 py-3.5 sm:items-center sm:px-5 sm:py-4">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30 sm:mt-0">
+            <Shield className="h-4 w-4 text-emerald-400" />
+          </span>
+          <p className="text-left text-sm leading-relaxed text-emerald-100/90 sm:text-base">
+            <strong className="font-semibold text-emerald-200">Private &amp; Secure:</strong>{' '}
+            Your conversations are encrypted and never shared. Only you can access your data.
           </p>
         </div>
       </div>
-      
-      {/* Document Upload Instructions */}
-      <div className="mb-10 sm:mb-12 lg:mb-16 space-y-5 sm:space-y-6 lg:space-y-8 max-w-2xl lg:max-w-3xl mx-auto">
-        <div className="p-5 sm:p-6 lg:p-8 bg-primary/10 border border-primary/30 rounded-lg">
-          <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <Paperclip className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
-            <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-white">Upload Other Documents</h3>
+
+      {/* ── Import / upload cards ── */}
+      <section className="relative mb-10 grid grid-cols-1 gap-3 sm:mb-12 sm:grid-cols-2 sm:gap-4 lg:gap-5">
+        {/* Documents — spans full width as primary */}
+        <article className="chat-empty-card chat-empty-card--primary sm:col-span-2">
+          <div className="mb-3 flex items-center gap-3">
+            <span className="chat-empty-card-icon bg-primary/15 text-primary ring-1 ring-primary/30">
+              <Paperclip className="h-5 w-5" />
+            </span>
+            <h3 className="text-base font-semibold text-white sm:text-lg">Upload Other Documents</h3>
           </div>
-          <p className="text-sm sm:text-base lg:text-lg text-white/70 mb-4 sm:mb-5">
-            You can also upload:
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-sm sm:text-base text-white/60">
-            <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              Biographies
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              Autobiographies
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              Diaries
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              Journals
-            </span>
+          <p className="mb-4 text-sm text-white/65 sm:text-base">You can also upload:</p>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {DOC_TYPES.map((label) => (
+              <span key={label} className="chat-empty-chip">
+                <FileText className="h-3 w-3 text-primary/80" />
+                {label}
+              </span>
+            ))}
           </div>
-          <p className="text-xs text-white/50 mt-3">
+          <p className="text-xs text-white/45 sm:text-sm">
             Supported formats: .txt, .md, .pdf, .doc, .docx, images
           </p>
-        </div>
+        </article>
 
-        <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <MessageSquare className="h-5 w-5 text-yellow-400" />
-            <h3 className="text-sm font-semibold text-white">Import ChatGPT Conversations</h3>
+        <article className="chat-empty-card">
+          <div className="mb-2.5 flex items-center gap-2.5">
+            <span className="chat-empty-card-icon bg-amber-500/12 text-amber-300 ring-1 ring-amber-400/25">
+              <MessageSquare className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-semibold text-white sm:text-base">
+              Import ChatGPT Conversations
+            </h3>
           </div>
-          <p className="text-xs text-white/70 mb-2">
-            Click the <MessageSquare className="h-3 w-3 inline text-yellow-400" /> message button below to paste ChatGPT conversations.
+          <p className="mb-3 text-xs leading-relaxed text-white/60 sm:text-sm">
+            Click the <MessageSquare className="inline h-3 w-3 text-amber-300" /> message button
+            below to paste ChatGPT conversations.
           </p>
-          <p className="text-xs text-yellow-200/80">
-            ✨ All information will be automatically fact-checked and verified against your existing memories. Contradictions will be flagged for review.
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-amber-100/75 sm:text-[13px]">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300/90" />
+            <span>
+              All information will be automatically fact-checked and verified against your existing
+              memories. Contradictions will be flagged for review.
+            </span>
           </p>
-        </div>
+        </article>
 
-        <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <FileText className="h-5 w-5 text-purple-400" />
-            <h3 className="text-sm font-semibold text-white">Upload Your Resume</h3>
+        <article className="chat-empty-card">
+          <div className="mb-2.5 flex items-center gap-2.5">
+            <span className="chat-empty-card-icon bg-violet-500/15 text-violet-300 ring-1 ring-violet-400/25">
+              <FileText className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-semibold text-white sm:text-base">Upload Your Resume</h3>
           </div>
-          <p className="text-xs text-white/70 mb-2">
-            Click the <Paperclip className="h-3 w-3 inline text-primary" /> paperclip button below to upload your resume (PDF, DOC, DOCX, or TXT).
+          <p className="mb-3 text-xs leading-relaxed text-white/60 sm:text-sm">
+            Click the <Paperclip className="inline h-3 w-3 text-primary" /> paperclip button below to
+            upload your resume (PDF, DOC, DOCX, or TXT).
           </p>
-          <p className="text-xs text-purple-200/80">
-            ✨ Automatically extracts skills, experience, and achievements to track your career growth.
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-violet-100/75 sm:text-[13px]">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300/90" />
+            <span>
+              Automatically extracts skills, experience, and achievements to track your career
+              growth.
+            </span>
           </p>
-        </div>
+        </article>
 
-        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <ImageIcon className="h-5 w-5 text-blue-400" />
-            <h3 className="text-sm font-semibold text-white">Upload Photos</h3>
+        <article className="chat-empty-card sm:col-span-2 lg:col-span-2">
+          <div className="mb-2.5 flex items-center gap-2.5">
+            <span className="chat-empty-card-icon bg-sky-500/12 text-sky-300 ring-1 ring-sky-400/25">
+              <ImageIcon className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-semibold text-white sm:text-base">Upload Photos</h3>
           </div>
-          <p className="text-xs text-white/70 mb-2">
-            Upload photos and the AI will analyze them to suggest where they belong in your lore book.
+          <p className="mb-3 text-xs leading-relaxed text-white/60 sm:text-sm">
+            Upload photos and the AI will analyze them to suggest where they belong in your lore
+            book.
           </p>
-          <p className="text-xs text-blue-200/80">
-            ✨ Photos of documents will extract text. Memory photos can be added to your lore book. Junk photos are automatically filtered.
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-sky-100/75 sm:text-[13px]">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300/90" />
+            <span>
+              Photos of documents will extract text. Memory photos can be added to your lore book.
+              Junk photos are automatically filtered.
+            </span>
           </p>
-        </div>
-      </div>
+        </article>
+      </section>
 
-      <div className="text-sm sm:text-base lg:text-lg text-white/40 space-y-2 sm:space-y-3 max-w-2xl mx-auto mb-8 sm:mb-10">
-        <p>✨ I'll track dates, times, and occurrences</p>
-        <p>🔗 I'll make connections to your past entries</p>
-        <p>📖 I'll update your timeline, memoir, and chapters</p>
-        <p>⚠️ I'll check for continuity and conflicts</p>
-        <p>💡 I'll provide strategic guidance based on your patterns</p>
-      </div>
-      <div className="mt-8 sm:mt-10 text-sm sm:text-base text-white/30">
-        <p>Try commands: <span className="font-mono text-primary/70">/recent</span>, <span className="font-mono text-primary/70">/search</span>, <span className="font-mono text-primary/70">/characters</span></p>
-      </div>
+      {/* ── What I'll do ── */}
+      <section className="relative mb-8 sm:mb-10">
+        <h3 className="mb-3 text-center text-[10px] font-mono uppercase tracking-[0.2em] text-white/35 sm:mb-4 sm:text-[11px]">
+          What happens as you talk
+        </h3>
+        <ul className="mx-auto grid max-w-3xl grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+          {CAPABILITIES.map(({ icon: Icon, text, accent }) => (
+            <li key={text} className="chat-empty-capability">
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ring-1 ring-white/10 ${accent}`}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-sm text-white/60 sm:text-[15px]">{text}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── Commands ── */}
+      <footer className="relative text-center">
+        <div className="chat-empty-commands inline-flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2.5 sm:gap-3 sm:px-5">
+          <span className="text-xs text-white/40 sm:text-sm">Try commands:</span>
+          {['/recent', '/search', '/characters'].map((cmd) => (
+            <code key={cmd} className="chat-empty-cmd">
+              {cmd}
+            </code>
+          ))}
+        </div>
+      </footer>
     </div>
   );
 };
-
