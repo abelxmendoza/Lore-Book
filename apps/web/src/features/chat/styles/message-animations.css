@@ -83,13 +83,65 @@
   }
 }
 
-/* Subtle streaming glow on assistant bubble border */
+/* Streaming border pulse — theme dark-purple neon */
 @keyframes bubbleStreamGlow {
   0%, 100% {
-    border-color: rgba(var(--primary-rgb, 99 102 241) / 0.15);
+    border-color: rgba(88, 28, 135, 0.45);
   }
   50% {
-    border-color: rgba(var(--primary-rgb, 99 102 241) / 0.35);
+    border-color: rgba(154, 77, 255, 0.7);
+  }
+}
+
+/*
+ * Assistant bubble outline — LoreBook dark-purple neon.
+ * Palette aligned with chat-theme (#a855f7 / --neon-purple #9a4dff)
+ * and the black → purple-950 app shell.
+ */
+@property --neon-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes neonBorderSpin {
+  to {
+    --neon-angle: 360deg;
+  }
+}
+
+/* Outer edge glow only — no inset wash into the bubble fill */
+@keyframes neonGlowPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 4px rgba(126, 34, 206, 0.55),
+      0 0 12px rgba(154, 77, 255, 0.28),
+      0 0 24px rgba(168, 85, 247, 0.12),
+      0 18px 44px -28px rgba(0, 0, 0, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  }
+  50% {
+    box-shadow:
+      0 0 6px rgba(154, 77, 255, 0.75),
+      0 0 16px rgba(168, 85, 247, 0.4),
+      0 0 32px rgba(168, 85, 247, 0.18),
+      0 18px 44px -28px rgba(0, 0, 0, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  }
+}
+
+@keyframes neonAccentSweep {
+  0% {
+    background-position: 0% 0%;
+    opacity: 0.5;
+  }
+  50% {
+    background-position: 0% 100%;
+    opacity: 0.95;
+  }
+  100% {
+    background-position: 0% 0%;
+    opacity: 0.5;
   }
 }
 
@@ -209,14 +261,38 @@
 }
 
 .chat-bubble-assistant {
+  --neon-angle: 0deg;
+  position: relative;
+  /*
+   * Neutral glass fill (padding-box) + neon only on the border (border-box).
+   * Interior stays quiet; glow lives on the outline.
+   */
+  border: 1.5px solid transparent;
   background:
-    radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.09), transparent 34%),
-    linear-gradient(155deg, rgba(255, 255, 255, 0.064) 0%, rgba(255, 255, 255, 0.024) 72%);
-  border: 1px solid rgba(255, 255, 255, 0.095);
+    radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.06), transparent 34%) padding-box,
+    linear-gradient(155deg, rgba(255, 255, 255, 0.064) 0%, rgba(255, 255, 255, 0.024) 72%) padding-box,
+    conic-gradient(
+      from var(--neon-angle),
+      #2e1065 0%,
+      #581c87 14%,
+      #7e22ce 28%,
+      #9a4dff 40%,
+      #a855f7 48%,
+      #6b21a8 58%,
+      #3b0764 72%,
+      #2e1065 86%,
+      #7e22ce 100%
+    ) border-box;
   box-shadow:
+    0 0 4px rgba(126, 34, 206, 0.55),
+    0 0 12px rgba(154, 77, 255, 0.28),
+    0 0 24px rgba(168, 85, 247, 0.12),
     0 18px 44px -28px rgba(0, 0, 0, 0.9),
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
   backdrop-filter: blur(12px) saturate(115%);
+  animation:
+    neonBorderSpin 4s linear infinite,
+    neonGlowPulse 3.2s ease-in-out infinite;
 }
 
 .chat-bubble-shell {
@@ -231,13 +307,27 @@
   z-index: 1;
 }
 
+/* Thin left edge accent only — not an interior fill */
 .chat-bubble-assistant::after {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
   width: 2px;
-  background: linear-gradient(180deg, transparent, hsl(var(--primary) / 0.72), transparent);
-  opacity: 0.7;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    #581c87 18%,
+    #9a4dff 50%,
+    #7e22ce 78%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  opacity: 0.85;
+  box-shadow: 0 0 6px rgba(154, 77, 255, 0.45);
+  animation: neonAccentSweep 3.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .chat-assistant-avatar {
@@ -258,19 +348,27 @@
   border: 1px solid hsl(var(--primary) / 0.1);
 }
 
+/* Streaming: faster border travel only — no interior purple flood */
 .chat-bubble-streaming {
-  animation: bubbleStreamGlow 2.4s ease-in-out infinite;
+  animation:
+    neonBorderSpin 2.4s linear infinite,
+    neonGlowPulse 1.8s ease-in-out infinite,
+    bubbleStreamGlow 2.4s ease-in-out infinite;
 }
 
+/* Soft outer aura kept outside the bubble body */
 .chat-bubble-streaming::before {
   content: '';
   position: absolute;
-  inset: -45% -15%;
+  inset: -8px;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse, hsl(var(--primary) / 0.11), transparent 62%);
+  border-radius: inherit;
+  background: transparent;
+  box-shadow:
+    0 0 18px rgba(126, 34, 206, 0.22),
+    0 0 36px rgba(154, 77, 255, 0.1);
   animation: streamingAuraDrift 5.5s ease-in-out infinite;
-  clip-path: inset(30% 10% round 1rem);
 }
 
 .chat-avatar-thinking {
@@ -363,12 +461,20 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chat-bubble-user:hover,
-  .chat-bubble-assistant:not(.chat-bubble-streaming):hover {
+  .chat-bubble-user:hover {
     border-color: hsl(var(--primary) / 0.24);
     box-shadow:
       0 18px 44px -28px rgba(0, 0, 0, 0.95),
       0 10px 30px -24px hsl(var(--primary) / 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+
+  .chat-bubble-assistant:not(.chat-bubble-streaming):hover {
+    box-shadow:
+      0 0 6px rgba(154, 77, 255, 0.8),
+      0 0 18px rgba(168, 85, 247, 0.4),
+      0 0 36px rgba(168, 85, 247, 0.16),
+      0 18px 44px -28px rgba(0, 0, 0, 0.95),
       inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
 }
@@ -384,6 +490,15 @@
 
   .chat-bubble-streaming::before {
     animation-duration: 7s;
+  }
+
+  /* Slightly slower neon spin on mobile for battery/GPU comfort */
+  .chat-bubble-assistant {
+    animation-duration: 4.8s, 3.4s;
+  }
+
+  .chat-bubble-streaming {
+    animation-duration: 3s, 2.2s, 2.8s;
   }
 }
 
@@ -526,6 +641,32 @@
   .chat-bubble-noted {
     animation: none !important;
     box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+  }
+
+  .chat-bubble-assistant {
+    animation: none !important;
+    --neon-angle: 200deg;
+    background:
+      radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.06), transparent 34%) padding-box,
+      linear-gradient(155deg, rgba(255, 255, 255, 0.064) 0%, rgba(255, 255, 255, 0.024) 72%) padding-box,
+      linear-gradient(
+        135deg,
+        #2e1065,
+        #581c87,
+        #9a4dff,
+        #7e22ce,
+        #2e1065
+      ) border-box;
+    box-shadow:
+      0 0 6px rgba(126, 34, 206, 0.6),
+      0 0 16px rgba(154, 77, 255, 0.3),
+      0 18px 44px -28px rgba(0, 0, 0, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  }
+
+  .chat-bubble-assistant::after {
+    animation: none !important;
+    opacity: 0.8;
   }
 
   .chat-message-enter-user,

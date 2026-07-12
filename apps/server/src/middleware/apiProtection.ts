@@ -7,11 +7,11 @@ import { createRateLimiter } from './rateLimit';
 const FIFTEEN_MIN = 15 * 60 * 1000;
 const ONE_MIN = 60 * 1000;
 
-/** User-facing chat + direct OpenAI HTTP routes — 30 / 15 min */
-export const openAiHttpLimit = createRateLimiter(30, FIFTEEN_MIN);
+/** User-facing chat + direct OpenAI HTTP routes — 60 / 15 min */
+export const openAiHttpLimit = createRateLimiter(60, FIFTEEN_MIN);
 
-/** Burst guard for OpenAI HTTP routes — 8 / minute per user or IP */
-export const openAiHttpBurstLimit = createRateLimiter(8, ONE_MIN);
+/** Burst guard for OpenAI HTTP routes — 15 / minute per user or IP */
+export const openAiHttpBurstLimit = createRateLimiter(15, ONE_MIN);
 
 /** Composer preview — debounced client-side but still CPU-heavy at scale */
 export const lexicalPreviewLimit = createRateLimiter(240, FIFTEEN_MIN);

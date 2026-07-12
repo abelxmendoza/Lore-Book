@@ -68,7 +68,7 @@ export const ChatLoadingPulse = ({ stage = 'analyzing', progress: externalProgre
       <div className="chat-loading-avatar-ring flex-shrink-0 w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/25">
         <BotIcon className="h-4 w-4 text-primary" />
       </div>
-      <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm chat-bubble-assistant border border-white/10 px-4 py-3.5 shadow-lg shadow-black/25">
+      <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm chat-bubble-assistant px-4 py-3.5">
         <div className="flex items-center gap-2.5 mb-3">
           <Icon className={`h-4 w-4 text-primary flex-shrink-0 ${stage === 'generating' ? 'animate-spin' : ''}`} />
           <div className="flex-1 min-w-0">

@@ -35,9 +35,10 @@ type TierRule = { tier: ApiRateTier; max: number; windowMs: number };
 /** Production limits per tier (per user id or IP). */
 const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
   read: { max: 1200, windowMs: FIFTEEN_MIN },
-  write: { max: 300, windowMs: FIFTEEN_MIN },
-  write_burst: { max: 90, windowMs: ONE_MIN },
-  ai: { max: 45, windowMs: FIFTEEN_MIN },
+  write: { max: 450, windowMs: FIFTEEN_MIN },
+  write_burst: { max: 120, windowMs: ONE_MIN },
+  // Real chat completions only (not composer preview). ~1 msg / 12s average.
+  ai: { max: 60, windowMs: FIFTEEN_MIN },
   compute: { max: 35, windowMs: FIFTEEN_MIN },
   auth_sensitive: { max: 12, windowMs: FIFTEEN_MIN },
   webhook: { max: 120, windowMs: FIFTEEN_MIN },
@@ -53,8 +54,10 @@ const SKIP_PATHS = [
   /^\/health\/?$/,
 ];
 
+// LLM / paid-model routes only. Do NOT include composer lexical preview —
+// it is local pattern matching and fires on a 280ms debounce while typing.
 const AI_PATH =
-  /\/api\/(chat(\/stream|\/?$)|lexical\/(preview|analyze|debug)|onboarding\/(analyze-user|detect-personas)|chapters\/extract-info|characters\/extract-from-chat)/i;
+  /\/api\/(chat(\/stream|\/?$)|lexical\/(analyze|debug)|onboarding\/(analyze-user|detect-personas)|chapters\/extract-info|characters\/extract-from-chat)/i;
 
 const COMPUTE_PATH =
   /\/api\/.*(rescan|rebuild|backfill|recompute|batch|sync-all|train\/|infer|lexical-rescan|classify-backfill|graph-recovery|run-now)/i;
@@ -65,6 +68,15 @@ const AUTH_SENSITIVE_PATH =
 const WEBHOOK_PATH = /\/api\/(subscription\/webhook|webhooks\/openai)/i;
 const GUEST_PATH = /\/api\/guest/i;
 const PUBLIC_PROBE_PATH = /\/api\/(diagnostics|runtime)\/?$/i;
+
+/**
+ * High-frequency composer helpers (debounced while typing). They already have
+ * per-route limiters (lexicalPreviewLimit / loreBookParseLimit ≈ 240/15m).
+ * Keep them on the general write budget but skip write_burst so a typing
+ * session cannot lock the user out of chat for the rest of the minute.
+ */
+const COMPOSER_HOT_PATH =
+  /\/api\/(lexical\/preview|conversation\/lorebook-parse)\/?$/i;
 
 function requestPath(req: Request): string {
   return (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0];
@@ -112,7 +124,11 @@ function resolveTierRules(req: Request): TierRule[] {
     rules.push({ tier: 'read', ...TIER_LIMITS.read });
   } else {
     rules.push({ tier: 'write', ...TIER_LIMITS.write });
-    rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
+    // Composer preview/parse already debounce client-side + have route caps.
+    // Applying write_burst here makes normal typing trip 429s on chat too.
+    if (!COMPOSER_HOT_PATH.test(path)) {
+      rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
+    }
   }
 
   return rules;
