@@ -195,10 +195,10 @@ export const ChatMessage = ({
         </div>
       )}
       <Card
-        className={`max-w-[92%] sm:max-w-[80%] relative ${
+        className={`chat-bubble-shell max-w-[92%] sm:max-w-[80%] relative overflow-visible ${
           isUser
-            ? 'bg-primary/10 border-primary/30'
-            : `bg-black/40 border-border/60 ${isComposing ? 'chat-bubble-streaming' : ''}`
+            ? 'chat-bubble-user border-transparent'
+            : `chat-bubble-assistant border-transparent ${isComposing ? 'chat-bubble-streaming' : ''}`
         }`}
       >
         {/* Message Actions Menu */}

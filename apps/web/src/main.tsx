@@ -100,6 +100,9 @@ setTimeout(() => {
 
 import './styles/tailwind.css';
 import './styles/timeline.css';
+/* Chat bubble neon outline + enter animations — global so demo/guest/sim paths always get them */
+import './features/chat/styles/chat-theme.css';
+import './features/chat/styles/message-animations.css';
 
 import { initSupabase } from './lib/supabase';
 

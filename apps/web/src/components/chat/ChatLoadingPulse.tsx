@@ -73,7 +73,7 @@ export const ChatLoadingPulse = ({ stage = 'analyzing', progress: externalProgre
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
         <Loader2 className="h-4 w-4 text-primary animate-spin" />
       </div>
-      <Card className="bg-black/40 border-border/60 flex-1">
+      <Card className="chat-bubble-assistant border-transparent flex-1 overflow-visible">
         <CardContent className="p-4">
           <div className="flex items-center gap-3 mb-2">
             <Icon className="h-4 w-4 text-primary animate-pulse" />
