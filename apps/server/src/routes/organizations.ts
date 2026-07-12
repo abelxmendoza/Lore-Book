@@ -246,20 +246,23 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const organizationId = String(req.params.id);
+  // Nullable everywhere the DB allows null: the modal round-trips whole rows,
+  // so `location: null` etc. must validate (z.optional() alone rejects null —
+  // that silently broke every identity save for rows with any null field).
   const updateSchema = z.object({
     name: z.string().min(1).optional(),
     aliases: z.array(z.string()).optional(),
-    type: z.enum(ORG_TYPES).optional(),
-    group_type: z.enum(CANONICAL_GROUP_TYPES).optional(),
-    membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
-    user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
-    is_public_entity: z.boolean().optional(),
-    founded_year: z.number().int().optional(),
-    dissolved_year: z.number().int().optional(),
-    description: z.string().optional(),
-    location: z.string().optional(),
-    founded_date: z.string().optional(),
-    status: z.enum(ORG_STATUSES).optional(),
+    type: z.enum(ORG_TYPES).nullish(),
+    group_type: z.enum(CANONICAL_GROUP_TYPES).nullish(),
+    membership_model: z.enum(MEMBERSHIP_MODELS).nullish(),
+    user_relationship: z.enum(USER_RELATIONSHIPS).nullish(),
+    is_public_entity: z.boolean().nullish(),
+    founded_year: z.number().int().nullish(),
+    dissolved_year: z.number().int().nullish(),
+    description: z.string().nullish(),
+    location: z.string().nullish(),
+    founded_date: z.string().nullish(),
+    status: z.enum(ORG_STATUSES).nullish(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   });
   const parsed = updateSchema.safeParse(req.body);

@@ -226,6 +226,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -684,6 +685,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     const name = nextName.trim();
     if (!name || name === editedOrg.name.trim()) return;
     setSaving(true);
+    setIdentityError(null);
     try {
       await applyOrgPatch({ name }, { markIdentityLocked: true });
       setMentionsLoaded(false);
@@ -794,6 +796,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       onUpdate?.();
     } catch (error) {
       console.error('Failed to save organization:', error);
+      setIdentityError(
+        error instanceof Error && error.message
+          ? `Save failed: ${error.message}`
+          : 'Save failed — your changes were not stored. Try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -1375,6 +1382,9 @@ User's message: ${currentInput}`;
                           >
                             Cancel
                           </Button>
+                          {identityError && (
+                            <p className="w-full text-xs text-red-400" data-testid="identity-save-error">{identityError}</p>
+                          )}
                           <Button size="sm" className="h-9" onClick={() => void handleSave()} disabled={saving}>
                             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                             <span className="ml-1.5">Save</span>
