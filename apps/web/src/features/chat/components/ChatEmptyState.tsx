@@ -133,19 +133,60 @@ export const ChatEmptyState = () => {
       {/* ── Hero ── */}
       <header className="relative mb-8 text-center sm:mb-10">
         <div className="chat-empty-hero-orb-wrap mx-auto mb-5 sm:mb-6">
-          {/* Purple soulflame outline — wispy animated aura */}
+          {/* Purple soulflame — rising wisps, no spinning rim */}
           <div className="chat-empty-soulflame" aria-hidden="true">
-            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--1" />
-            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--2" />
-            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--3" />
-            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--4" />
-            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--outer" />
-            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--mid" />
-            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--core" />
-            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--a" />
-            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--b" />
-            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--c" />
+            <svg className="chat-empty-soulflame__svg" width="0" height="0" aria-hidden="true">
+              <defs>
+                <filter id="soulflame-wisp" x="-40%" y="-40%" width="180%" height="180%">
+                  <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.04 0.09"
+                    numOctaves="3"
+                    seed="7"
+                    result="noise"
+                  >
+                    <animate
+                      attributeName="baseFrequency"
+                      values="0.04 0.09;0.055 0.12;0.035 0.07;0.04 0.09"
+                      dur="5s"
+                      repeatCount="indefinite"
+                    />
+                  </feTurbulence>
+                  <feDisplacementMap in="SourceGraphic" in2="noise" scale="14" xChannelSelector="R" yChannelSelector="G" />
+                </filter>
+                <filter id="soulflame-soft" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="3.5" result="blur" />
+                  <feColorMatrix
+                    in="blur"
+                    type="matrix"
+                    values="
+                      1.1 0 0 0 0.05
+                      0 0.4 0.6 0 0.02
+                      1.2 0 1.4 0 0.12
+                      0 0 0 1.1 0"
+                  />
+                </filter>
+              </defs>
+            </svg>
+
+            <span className="chat-empty-soulflame__glow" />
+            <span className="chat-empty-soulflame__envelope chat-empty-soulflame__envelope--back" />
+            <span className="chat-empty-soulflame__envelope chat-empty-soulflame__envelope--front" />
+
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--1" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--2" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--3" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--4" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--5" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--6" />
+            <span className="chat-empty-soulflame__wisp chat-empty-soulflame__wisp--7" />
+
+            <span className="chat-empty-soulflame__spark chat-empty-soulflame__spark--1" />
+            <span className="chat-empty-soulflame__spark chat-empty-soulflame__spark--2" />
+            <span className="chat-empty-soulflame__spark chat-empty-soulflame__spark--3" />
+            <span className="chat-empty-soulflame__spark chat-empty-soulflame__spark--4" />
           </div>
+
           <div className="chat-empty-hero-orb relative z-[2] flex h-16 w-16 items-center justify-center rounded-2xl sm:h-20 sm:w-20 sm:rounded-3xl">
             <Bot className="relative z-[1] h-8 w-8 text-primary sm:h-10 sm:w-10" />
           </div>
