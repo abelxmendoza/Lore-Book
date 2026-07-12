@@ -197,7 +197,7 @@ function resolveThreadContext(
 
 import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
 import {
-  durabilityUserMessage,
+  buildDurabilityPayload,
   isChatDurabilityError,
   type ChatDurabilityPayload,
 } from '../services/chat/chatDurability';
@@ -207,6 +207,8 @@ import {
   detectFirstSessionCallback,
   shouldRunFirstSessionCallback,
 } from '../services/chat/firstSessionContinuity';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { classifyIngestionError } from '../services/ingestion/ingestionJobStates';
 
 function isOpenAIQuotaError(error: unknown): boolean {
   if (isOpenAiBudgetExceededError(error)) return true;
@@ -217,6 +219,51 @@ function isOpenAIQuotaError(error: unknown): boolean {
     err?.code === 'openai_budget_exceeded' ||
     /429|insufficient_quota|quota exceeded|circuit breaker open|monthly openai budget/i.test(text)
   );
+}
+
+/**
+ * When chatStream throws a plain Error after early persist, the HTTP response
+ * historically lacked durability → client said "couldn't save" even though
+ * chat_messages already had the row. Recover truth from the client idempotency key.
+ */
+async function salvageDurabilityFromIdempotencyKey(opts: {
+  userId?: string;
+  clientIdempotencyKey?: string;
+  threadId?: string;
+}): Promise<ChatDurabilityPayload | null> {
+  const { userId, clientIdempotencyKey, threadId } = opts;
+  if (!userId || !clientIdempotencyKey) return null;
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('chat_messages')
+      .select('id, session_id')
+      .eq('user_id', userId)
+      .eq('client_idempotency_key', clientIdempotencyKey)
+      .eq('role', 'user')
+      .maybeSingle();
+    if (!row?.id) return null;
+
+    const { data: job } = await supabaseAdmin
+      .from('ingestion_jobs')
+      .select('id, status')
+      .eq('user_id', userId)
+      .eq('chat_message_id', row.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return buildDurabilityPayload({
+      userMessageId: row.id,
+      sessionId: row.session_id ?? threadId ?? undefined,
+      idempotencyKey: clientIdempotencyKey,
+      assistantStatus: 'failed',
+      ingestionJobId: job?.id ?? undefined,
+      ingestionStatus: job?.status ?? (job?.id ? 'QUEUED' : 'NOT_SCHEDULED'),
+    });
+  } catch (err) {
+    logger.warn({ err, clientIdempotencyKey }, 'Durability salvage lookup failed');
+    return null;
+  }
 }
 
 // Streaming endpoint
@@ -342,22 +389,68 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           return;
         }
 
+        // Salvage: early persist may have succeeded before a plain throw (e.g. extractor
+        // crash, unwrapped RAG error). Never tell the client the story was unsaved.
+        const salvaged = await salvageDurabilityFromIdempotencyKey({
+          userId: req.user?.id,
+          clientIdempotencyKey,
+          threadId,
+        });
+        if (salvaged) {
+          const classified = classifyIngestionError(setupError);
+          const contract = buildDurabilityApiResponse(salvaged, {
+            assistantFailed: true,
+            error: setupError instanceof Error ? setupError.message : String(setupError),
+            code: classified.code,
+            stage: 'response_generation',
+            errorCategory: classified.category,
+          });
+          logger.warn(
+            {
+              userId: req.user?.id,
+              messageId: salvaged.userMessage.id,
+              err: setupError instanceof Error ? setupError.message : String(setupError),
+            },
+            'Chat stream failed after user message was durable — returning salvaged durability',
+          );
+          res.status(502).json(contract);
+          return;
+        }
+
         if (isOpenAiBudgetExceededError(setupError)) {
           const budgetErr = setupError as { userMessage?: string; budget?: unknown; durability?: ChatDurabilityPayload };
+          const durabilityPart = budgetErr.durability
+            ? buildDurabilityApiResponse(budgetErr.durability, {
+                assistantFailed: true,
+                code: 'openai_budget_exceeded',
+                stage: 'response_generation',
+              })
+            : {
+                userMessage: { persisted: false as const },
+                assistantResponse: { status: 'failed' as const },
+                ingestion: { status: 'UNKNOWN' as const },
+                notice: {
+                  code: 'message_saved_assistant_failed' as const,
+                  message: budgetErr.userMessage ?? 'AI budget exceeded.',
+                },
+              };
           res.status(403).json({
             error: 'openai_budget_exceeded',
             code: 'openai_budget_exceeded',
             stage: 'response_generation',
+            budget: budgetErr.budget,
+            ...durabilityPart,
             notice: {
               code: 'message_saved_assistant_failed',
-              message: budgetErr.userMessage ?? 'AI budget exceeded.',
+              message:
+                (durabilityPart as { notice?: { message?: string } }).notice?.message ??
+                budgetErr.userMessage ??
+                'AI budget exceeded.',
             },
-            budget: budgetErr.budget,
           });
           return;
         }
         if (isOpenAIQuotaError(setupError)) {
-          // Without ChatDurabilityError we cannot prove save status — stay honest.
           res.status(429).json({
             error: 'OpenAI quota exhausted',
             stage: 'response_generation',
@@ -404,6 +497,14 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           error: 'Failed to process chat message',
           stage: 'response_generation',
           message: setupError instanceof Error ? setupError.message : 'Unknown error',
+          userMessage: { persisted: false },
+          assistantResponse: { status: 'failed' },
+          ingestion: { status: 'UNKNOWN' },
+          notice: {
+            code: 'unknown',
+            message:
+              'Something went wrong while processing your message. If it was already accepted, it may still appear in the thread after refresh — check before resending.',
+          },
         });
       }
       return;

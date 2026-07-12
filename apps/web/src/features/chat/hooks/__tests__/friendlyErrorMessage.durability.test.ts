@@ -27,4 +27,11 @@ describe('useChat friendlyErrorMessage durability copy', () => {
     expect(src).toMatch(/userSaved/);
     expect(src).toMatch(/durability\?\.userMessage\?\.persisted/);
   });
+
+  it('uses saved-safe copy when userSaved, not the restore-composer unsaved copy', () => {
+    expect(src).toContain('your story was saved safely');
+    expect(src).toContain('couldn’t save or process that story');
+    // Branching must prefer userSaved for the safe path
+    expect(src).toMatch(/userSaved\s*\n?\s*\?\s*\n?\s*'I couldn.t generate a reply/);
+  });
 });

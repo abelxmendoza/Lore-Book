@@ -8,7 +8,14 @@ import { cachedFetchJson } from './requestCache';
 
 export function isEphemeralEntityId(id: string | undefined): boolean {
   if (!id) return true;
-  return id.startsWith('dummy-') || id.startsWith('temp-') || id.startsWith('demo-');
+  // Preview/pending group candidates use `candidate-<uuid>` until accepted into organizations.
+  return (
+    id.startsWith('dummy-') ||
+    id.startsWith('temp-') ||
+    id.startsWith('demo-') ||
+    id.startsWith('candidate-') ||
+    id.startsWith('org-') // local-only optimistic org ids
+  );
 }
 
 export function locationStub(id: string, name?: string): LocationProfile {
@@ -57,6 +64,9 @@ export async function fetchSkillById(id: string): Promise<Skill> {
 }
 
 export async function fetchOrganizationById(id: string): Promise<Organization> {
+  if (isEphemeralEntityId(id)) {
+    throw new Error('Organization is not saved yet (preview/candidate only)');
+  }
   const res = await fetchJson<{ success: boolean; organization: Organization }>(
     `/api/organizations/${id}`
   );

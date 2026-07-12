@@ -390,13 +390,35 @@ export const useChatThreads = () => {
           };
         }
       } catch {
-        // Non-fatal — messages fetch may still succeed
+        // Non-fatal — messages fetch may still succeed (or 429 under load)
       }
 
+      // Retry message hydrate on 429 — mobile often opens the thread right after
+      // desktop wrote it, while rate-limit windows are still hot.
+      const loadMessages = async () => {
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            return await store
+              .dispatch(chatApi.endpoints.getThreadMessages.initiate(id, { forceRefetch: true }))
+              .unwrap();
+          } catch (err) {
+            lastErr = err;
+            const msg = err instanceof Error ? err.message : String(err);
+            const status =
+              typeof err === 'object' && err && 'status' in err
+                ? Number((err as { status?: number }).status)
+                : undefined;
+            const is429 = status === 429 || /429|rate limit|too many requests/i.test(msg);
+            if (!is429 || attempt === 2) throw err;
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1) ** 2));
+          }
+        }
+        throw lastErr;
+      };
+
       try {
-        const result = await store
-          .dispatch(chatApi.endpoints.getThreadMessages.initiate(id, { forceRefetch: true }))
-          .unwrap();
+        const result = await loadMessages();
         if (!result.success) return null;
 
         let messages = (result.messages || []).map(dbMessageToMessage);

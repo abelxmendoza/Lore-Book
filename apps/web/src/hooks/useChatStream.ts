@@ -249,43 +249,34 @@ export const useChatStream = () => {
           userMessage = isProdNoApi
             ? 'Method Not Allowed (405). The deployed app has no backend. Set VITE_API_URL in Vercel to your API URL (e.g. https://your-api.vercel.app), or run the app locally: npm run dev in apps/web and apps/server.'
             : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
-        } else if (response.status === 403) {
-          const body = parseBody();
-          userMessage = (body?.userMessage as string) || (body?.message as string) || (body?.error as string) || errorText;
-          if (body?.durability) durability = body.durability as ChatStreamDurability;
-        } else if (response.status === 429 || response.status === 502) {
+        } else {
+          // Prefer durability contract on every non-SSE error (403/429/500/502/…).
+          // userMessage may be a structured object { persisted, id } — never use as display copy.
           const body = parseBody();
           const notice = body?.notice as { message?: string; code?: string } | undefined;
-          // Contract: userMessage is structured state; notice.message is display copy.
-          // Never treat userMessage object as the human-readable string.
           userMessage =
             (typeof notice?.message === 'string' && notice.message) ||
             (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
-            (body?.message as string) ||
-            (body?.error as string) ||
+            (typeof body?.message === 'string' ? (body.message as string) : undefined) ||
+            (typeof body?.error === 'string' ? (body.error as string) : undefined) ||
             (response.status === 429
               ? `OpenAI quota/rate limit error: ${errorText}`
-              : errorText);
+              : response.status === 503
+                ? `Service unavailable (503): ${errorText}`
+                : `HTTP error! status: ${response.status}, message: ${errorText}`);
           if (body?.durability) {
             durability = body.durability as ChatStreamDurability;
-          } else if (body?.userMessage || body?.ingestion || body?.assistantResponse) {
+          } else if (
+            (body?.userMessage && typeof body.userMessage === 'object') ||
+            body?.ingestion ||
+            body?.assistantResponse
+          ) {
             durability = {
-              userMessage:
-                typeof body.userMessage === 'object'
-                  ? (body.userMessage as ChatStreamDurability['userMessage'])
-                  : (body.userMessageRecord as ChatStreamDurability['userMessage']),
+              userMessage: body.userMessage as ChatStreamDurability['userMessage'],
               assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
               ingestion: body.ingestion as ChatStreamDurability['ingestion'],
             };
           }
-        } else {
-          const body = parseBody();
-          const notice = body?.notice as { message?: string } | undefined;
-          userMessage =
-            (typeof notice?.message === 'string' && notice.message) ||
-            (typeof body?.userMessage === 'string' ? (body.userMessage as string) : undefined) ||
-            `HTTP error! status: ${response.status}, message: ${errorText}`;
-          if (body?.durability) durability = body.durability as ChatStreamDurability;
         }
         const err = new Error(userMessage) as Error & { durability?: ChatStreamDurability };
         err.durability = durability;

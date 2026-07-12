@@ -1,6 +1,7 @@
 import { Building2, MessageSquare, X } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { EditableEntityName } from '../common/EditableEntityName';
 import type { Organization } from './OrganizationProfileCard';
 import {
   formatRelationship,
@@ -31,9 +32,20 @@ type Props = {
   memberCount: number;
   onClose: () => void;
   onOpenChat: () => void;
+  /** Persist a new display name (inline pencil in the header). */
+  onRename?: (nextName: string) => Promise<void> | void;
+  /** Disable rename (e.g. ephemeral / unsaved demo cards). */
+  renameDisabled?: boolean;
 };
 
-export function OrganizationModalHeader({ organization, memberCount, onClose, onOpenChat }: Props) {
+export function OrganizationModalHeader({
+  organization,
+  memberCount,
+  onClose,
+  onOpenChat,
+  onRename,
+  renameDisabled = false,
+}: Props) {
   const theme = getOrgCategoryTheme(organization);
   const influence = computeInfluenceScore({
     analyticsInfluence: organization.analytics?.group_influence_on_user,
@@ -58,11 +70,27 @@ export function OrganizationModalHeader({ organization, memberCount, onClose, on
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h2 className="text-base sm:text-xl font-bold text-white leading-tight truncate pr-1">
-                {organization.name}
-              </h2>
-              <p className="text-[11px] sm:text-xs text-violet-200/70 italic truncate">
+            <div className="min-w-0 flex-1 pr-1">
+              {onRename ? (
+                <>
+                  <EditableEntityName
+                    name={organization.name}
+                    onSave={onRename}
+                    disabled={renameDisabled}
+                    label="group name"
+                    className="text-base sm:text-xl font-bold text-white leading-tight break-words"
+                    inputClassName="min-w-0 w-full max-w-full rounded-lg border border-primary/40 bg-black/70 px-2.5 py-1.5 text-base sm:text-xl font-bold text-white outline-none focus:border-primary/70 shadow-[0_0_0_3px_rgba(139,92,246,0.15)]"
+                  />
+                  {!renameDisabled && (
+                    <p className="mt-0.5 text-[10px] text-white/35">Click the name to rename</p>
+                  )}
+                </>
+              ) : (
+                <h2 className="text-base sm:text-xl font-bold text-white leading-tight break-words pr-1">
+                  {organization.name}
+                </h2>
+              )}
+              <p className="text-[11px] sm:text-xs text-violet-200/70 italic truncate mt-1">
                 "{world.archetype.nickname}" · {world.archetype.essence}
               </p>
             </div>

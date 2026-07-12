@@ -752,25 +752,37 @@ export class OrganizationService {
   ): Promise<Organization> {
     this.invalidateOrganizations(userId);
     try {
+      // Only patch fields that were actually provided so partial updates
+      // (e.g. aliases-only) cannot null out name or other columns.
+      const patch: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.name !== undefined) patch.name = updates.name.trim();
+      if (updates.aliases !== undefined) {
+        patch.aliases = [
+          ...new Set(
+            (updates.aliases ?? [])
+              .map((a) => String(a).trim())
+              .filter(Boolean),
+          ),
+        ];
+      }
+      if (updates.type !== undefined) patch.type = updates.type;
+      if (updates.group_type !== undefined) patch.group_type = updates.group_type;
+      if (updates.membership_model !== undefined) patch.membership_model = updates.membership_model;
+      if (updates.user_relationship !== undefined) patch.user_relationship = updates.user_relationship;
+      if (updates.is_public_entity !== undefined) patch.is_public_entity = updates.is_public_entity;
+      if (updates.founded_year !== undefined) patch.founded_year = updates.founded_year;
+      if (updates.dissolved_year !== undefined) patch.dissolved_year = updates.dissolved_year;
+      if (updates.description !== undefined) patch.description = updates.description;
+      if (updates.location !== undefined) patch.location = updates.location;
+      if (updates.founded_date !== undefined) patch.founded_date = updates.founded_date;
+      if (updates.status !== undefined) patch.status = updates.status;
+      if (updates.metadata !== undefined) patch.metadata = updates.metadata;
+
       const { data: org, error } = await supabaseAdmin
         .from('organizations')
-        .update({
-          name: updates.name,
-          aliases: updates.aliases,
-          type: updates.type,
-          group_type: updates.group_type,
-          membership_model: updates.membership_model,
-          user_relationship: updates.user_relationship,
-          is_public_entity: updates.is_public_entity,
-          founded_year: updates.founded_year,
-          dissolved_year: updates.dissolved_year,
-          description: updates.description,
-          location: updates.location,
-          founded_date: updates.founded_date,
-          status: updates.status,
-          metadata: updates.metadata,
-          updated_at: new Date().toISOString(),
-        })
+        .update(patch)
         .eq('id', organizationId)
         .eq('user_id', userId)
         .select()

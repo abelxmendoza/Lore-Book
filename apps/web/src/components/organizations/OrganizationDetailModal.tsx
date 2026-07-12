@@ -17,6 +17,7 @@ import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
 import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
+import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -612,6 +613,112 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  const applyOrgPatch = async (
+    values: Record<string, unknown>,
+    options?: { markIdentityLocked?: boolean },
+  ): Promise<void> => {
+    if (
+      (isEphemeralEntityId(organization.id) ||
+        Boolean(editedOrg.metadata?.preview_candidate) ||
+        Boolean(editedOrg.metadata?.group_candidate_id)) &&
+      !isMockDataEnabled
+    ) {
+      throw new Error('Accept this suggested group first — it is not a saved organization yet.');
+    }
+
+    const previousIdentity = {
+      name: editedOrg.name,
+      aliases: editedOrg.aliases ?? [],
+    };
+    const patch: Record<string, unknown> = { ...values };
+    if (options?.markIdentityLocked) {
+      patch.metadata = {
+        ...(editedOrg.metadata ?? {}),
+        identity_locked_by_user: true,
+        identity_last_corrected_at: new Date().toISOString(),
+        previous_identity: previousIdentity,
+        manual_identity_correction: {
+          ...previousIdentity,
+          ...values,
+        },
+      };
+    }
+
+    if (isMockDataEnabled) {
+      setEditedOrg((prev) => ({
+        ...prev,
+        ...patch,
+        aliases: Array.isArray(patch.aliases) ? (patch.aliases as string[]) : prev.aliases,
+        metadata: (patch.metadata as Organization['metadata']) ?? prev.metadata,
+      }));
+      return;
+    }
+
+    const result = (await updateOrganization({
+      id: organization.id,
+      values: patch,
+    }).unwrap()) as { success?: boolean; organization?: Organization } | Organization;
+
+    const next =
+      result && typeof result === 'object' && 'organization' in result && result.organization
+        ? result.organization
+        : result && typeof result === 'object' && 'id' in result && 'name' in result
+          ? (result as Organization)
+          : null;
+
+    if (next?.id) {
+      setEditedOrg((prev) => ({ ...prev, ...next }));
+    } else {
+      setEditedOrg((prev) => ({
+        ...prev,
+        ...patch,
+        aliases: Array.isArray(patch.aliases) ? (patch.aliases as string[]) : prev.aliases,
+      }));
+    }
+    apiCache.deletePattern(/\/api\/(organizations|books|counts)/);
+    onUpdate?.();
+  };
+
+  /** Inline header rename — same path as Character/Location modals. */
+  const handleRenameOrganization = async (nextName: string) => {
+    const name = nextName.trim();
+    if (!name || name === editedOrg.name.trim()) return;
+    setSaving(true);
+    try {
+      await applyOrgPatch({ name }, { markIdentityLocked: true });
+      setMentionsLoaded(false);
+    } catch (error) {
+      console.error('Failed to rename organization:', error);
+      throw error instanceof Error ? error : new Error('Failed to rename group');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Persist the full alias list ("also known as") for this group. */
+  const saveAliases = async (nextAliases: string[]) => {
+    const cleaned = [
+      ...new Set(
+        nextAliases
+          .map((a) => a.trim())
+          .filter(Boolean)
+          .filter((a) => a.toLowerCase() !== editedOrg.name.trim().toLowerCase()),
+      ),
+    ];
+    setSaving(true);
+    setMemberAddError(null);
+    try {
+      await applyOrgPatch({ aliases: cleaned }, { markIdentityLocked: true });
+      setMentionsLoaded(false);
+    } catch (error) {
+      console.error('Failed to save aliases:', error);
+      setMemberAddError(error instanceof Error ? error.message : 'Could not update aliases.');
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -646,8 +753,8 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         status: editedOrg.status,
       };
       const updates = {
-        name: editedOrg.name,
-        aliases: editedOrg.aliases,
+        name: editedOrg.name.trim(),
+        aliases: [...new Set((editedOrg.aliases ?? []).map((a) => a.trim()).filter(Boolean))],
         type: editedOrg.type,
         group_type: editedOrg.group_type,
         membership_model: editedOrg.membership_model,
@@ -670,7 +777,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       };
 
       if (isMockDataEnabled) {
-        setEditedOrg(prev => ({
+        setEditedOrg((prev) => ({
           ...prev,
           ...updates,
         }));
@@ -1205,6 +1312,13 @@ User's message: ${currentInput}`;
           organization={editedOrg}
           memberCount={members.length}
           onClose={onClose}
+          onRename={handleRenameOrganization}
+          renameDisabled={
+            (isEphemeralEntityId(organization.id) ||
+              Boolean(editedOrg.metadata?.preview_candidate) ||
+              Boolean(editedOrg.metadata?.group_candidate_id)) &&
+            !isMockDataEnabled
+          }
           onOpenChat={() => {
             setActiveTab('chat');
             openOrgMainChat();
@@ -1275,27 +1389,83 @@ User's message: ${currentInput}`;
                     </div>
                   </div>
 
+                  {/* Always-visible alias chips — add/remove without full identity form */}
+                  <div className="border-b border-white/8 px-3 py-3 sm:px-4">
+                    <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1.5">
+                      Also known as
+                    </p>
+                    <div
+                      className="flex flex-wrap items-center gap-1.5"
+                      data-testid="org-alias-editor"
+                    >
+                      {(editedOrg.aliases ?? []).length === 0 && (
+                        <span className="text-xs text-white/35">No aliases yet</span>
+                      )}
+                      {(editedOrg.aliases ?? []).map((alias) => (
+                        <span
+                          key={alias}
+                          className="flex items-center gap-1 text-xs pl-2.5 pr-1 py-1 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200"
+                        >
+                          {alias}
+                          <button
+                            type="button"
+                            aria-label={`Remove alias ${alias}`}
+                            className="p-0.5 text-violet-200/40 hover:text-red-300 disabled:opacity-40"
+                            disabled={saving || (isEphemeralEntityId(organization.id) && !isMockDataEnabled)}
+                            onClick={() =>
+                              void saveAliases((editedOrg.aliases ?? []).filter((a) => a !== alias))
+                            }
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                      <input
+                        type="text"
+                        placeholder="Add alias…"
+                        aria-label="Add group alias"
+                        data-testid="org-alias-add-input"
+                        disabled={saving || (isEphemeralEntityId(organization.id) && !isMockDataEnabled)}
+                        className="w-28 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-xs text-white placeholder:text-white/25 focus:border-primary/60 focus:outline-none disabled:opacity-40"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const input = e.currentTarget;
+                            const value = input.value.trim();
+                            if (!value) return;
+                            const existing = editedOrg.aliases ?? [];
+                            if (
+                              existing.some((a) => a.toLowerCase() === value.toLowerCase()) ||
+                              value.toLowerCase() === editedOrg.name.trim().toLowerCase()
+                            ) {
+                              input.value = '';
+                              return;
+                            }
+                            input.value = '';
+                            void saveAliases([...existing, value]);
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-white/30">
+                      Press Enter to add. Aliases help chat and detection recognize other names for this group.
+                    </p>
+                  </div>
+
                   {editingIdentity ? (
                     <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
-                      <label className="space-y-1.5">
+                      <label className="space-y-1.5 sm:col-span-2">
                         <span className={FIELD_LABEL}>Name</span>
                         <Input
                           value={editedOrg.name}
-                          onChange={e => setEditedOrg(prev => ({ ...prev, name: e.target.value }))}
+                          onChange={(e) => setEditedOrg((prev) => ({ ...prev, name: e.target.value }))}
                           className={FIELD_INPUT}
+                          aria-label="Group name"
+                          data-testid="org-identity-name-input"
                         />
-                      </label>
-                      <label className="space-y-1.5">
-                        <span className={FIELD_LABEL}>Aliases</span>
-                        <Input
-                          value={(editedOrg.aliases ?? []).join(', ')}
-                          onChange={e => setEditedOrg(prev => ({
-                            ...prev,
-                            aliases: e.target.value.split(',').map(v => v.trim()).filter(Boolean),
-                          }))}
-                          className={FIELD_INPUT}
-                          placeholder="Comma-separated names"
-                        />
+                        <p className="text-[10px] text-white/30">
+                          You can also rename from the pencil icon on the title above.
+                        </p>
                       </label>
                       <label className="space-y-1.5">
                         <span className={FIELD_LABEL}>Group type</span>
@@ -1564,34 +1734,44 @@ User's message: ${currentInput}`;
 
             {/* Members Tab */}
             <TabsContent value="members" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className={TAB_HEADING}>People ({members.length})</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 h-8 px-2.5 text-xs"
-                  onClick={() => void openAddMemberPanel()}
-                  data-testid="org-add-member-toggle"
-                >
-                  <Plus className="h-3.5 w-3.5 sm:mr-1.5" />
-                  <span className="hidden sm:inline">{showAddMember ? 'Close' : 'Add'}</span>
-                </Button>
-              </div>
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-violet-500/[0.07] via-black/40 to-black/50 overflow-hidden">
+                <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3.5 py-3 sm:px-4">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <Users className="h-4 w-4 text-violet-300 shrink-0" />
+                      People
+                      <span className="rounded-full border border-white/12 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium tabular-nums text-white/55">
+                        {members.length}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-white/40 mt-0.5 truncate">
+                      Roster for {editedOrg.name}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="shrink-0 h-9 px-3 text-xs bg-violet-500/20 border border-violet-400/30 text-violet-100 hover:bg-violet-500/30"
+                    onClick={() => void openAddMemberPanel()}
+                    data-testid="org-add-member-toggle"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    {showAddMember ? 'Close' : 'Add person'}
+                  </Button>
+                </div>
 
               {showAddMember && (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="p-3 sm:pt-6 space-y-3">
-                    <p className="text-[11px] text-white/45">
-                      Link someone who already exists in your Character Book. This creates an official membership link both books can use.
+                <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
+                    <p className="text-[12px] text-white/55 leading-relaxed">
+                      Pick someone from your Character Book to create an official membership link.
                     </p>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto]">
                       <select
                         value={selectedBookCharacterId}
                         onChange={(e) => setSelectedBookCharacterId(e.target.value)}
                         disabled={characterBookLoading || memberSaving}
                         aria-label="Existing character from Character Book"
                         data-testid="org-add-member-character-select"
-                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                        className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white focus:border-violet-400/50 focus:outline-none"
                       >
                         <option value="">
                           {characterBookLoading
@@ -1610,9 +1790,9 @@ User's message: ${currentInput}`;
                         list="org-member-role-options"
                         value={newMember.role}
                         onChange={(e) => setNewMember((prev) => ({ ...prev, role: e.target.value }))}
-                        placeholder="Role (e.g. member)"
+                        placeholder="Role (optional)"
                         aria-label="Membership role"
-                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                        className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white placeholder:text-white/30 focus:border-violet-400/50 focus:outline-none"
                       />
                       <datalist id="org-member-role-options">
                         {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus', 'captain', 'coach'].map(
@@ -1623,12 +1803,12 @@ User's message: ${currentInput}`;
                       </datalist>
                       <Button
                         size="sm"
-                        className="h-9 text-xs"
+                        className="h-10 px-4 text-sm"
                         disabled={!selectedBookCharacterId || memberSaving}
                         onClick={() => void handleAddExistingCharacter()}
                         data-testid="org-add-member-submit"
                       >
-                        {memberSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Link'}
+                        {memberSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
                       </Button>
                     </div>
 
@@ -1641,9 +1821,9 @@ User's message: ${currentInput}`;
                     </button>
 
                     {showNameOnlyAdd && (
-                      <div className="space-y-2 rounded-lg border border-white/8 bg-black/30 p-3">
-                        <p className="text-[10px] text-white/35">
-                          Name-only rows are not linked to a Character Book card until you add that person and re-link them.
+                      <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-3">
+                        <p className="text-[10px] text-white/40">
+                          Name-only rows stay unlinked until that person is added to the Character Book.
                         </p>
                         <Input
                           placeholder="Member name"
@@ -1651,18 +1831,19 @@ User's message: ${currentInput}`;
                           onChange={(e) =>
                             setNewMember((prev) => ({ ...prev, character_name: e.target.value }))
                           }
-                          className="bg-black/60 border-border/50 text-white"
+                          className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
                         />
                         <div className="flex gap-2">
                           <Button
                             onClick={() => void handleAddMember()}
-                            className="flex-1"
+                            className="flex-1 h-9"
                             disabled={!newMember.character_name.trim() || memberSaving}
                           >
                             Add by name
                           </Button>
                           <Button
                             variant="outline"
+                            className="h-9"
                             onClick={() => {
                               setShowAddMember(false);
                               setShowNameOnlyAdd(false);
@@ -1680,28 +1861,42 @@ User's message: ${currentInput}`;
                         {memberAddError}
                       </p>
                     )}
-                  </CardContent>
-                </Card>
+                </div>
               )}
 
-              <div className="space-y-2">
+              <div className="p-2 sm:p-2.5 space-y-1.5">
                 {members.length === 0 ? (
-                  <Card className="bg-black/40 border-border/50">
-                    <CardContent className="py-6 text-center text-sm text-white/60">
-                      No members yet. Link someone from your Character Book to get started.
-                    </CardContent>
-                  </Card>
+                  <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-4 py-10 text-center">
+                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-500/10">
+                      <Users className="h-5 w-5 text-violet-300/80" />
+                    </div>
+                    <p className="text-sm font-medium text-white/75">No people yet</p>
+                    <p className="mt-1 text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
+                      Add someone from your Character Book to build this group’s roster.
+                    </p>
+                    {!showAddMember && (
+                      <Button
+                        size="sm"
+                        className="mt-4 h-9"
+                        onClick={() => void openAddMemberPanel()}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1.5" />
+                        Add person
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   members.map((member) => (
-                    <Card 
-                      key={member.id} 
-                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all active:scale-[0.99]"
+                    <button
+                      type="button"
+                      key={member.id}
+                      className="group w-full text-left rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2.5 sm:px-3.5 transition hover:border-violet-400/30 hover:bg-violet-500/[0.08] active:scale-[0.995]"
                       onClick={async () => {
                         if (member.character_id) {
                           try {
                             const char = await fetchJson<Character>(`/api/characters/${member.character_id}`);
                             setSelectedCharacter(char);
-                          } catch (error) {
+                          } catch {
                             setSelectedCharacter({
                               id: member.character_id,
                               name: member.character_name,
@@ -1718,7 +1913,7 @@ User's message: ${currentInput}`;
                                 name: member.character_name,
                               } as Character);
                             }
-                          } catch (error) {
+                          } catch {
                             setSelectedCharacter({
                               id: `temp-${member.character_name}`,
                               name: member.character_name,
@@ -1727,54 +1922,56 @@ User's message: ${currentInput}`;
                         }
                       }}
                     >
-                      <CardContent className="p-3 sm:pt-4">
                         <div className="flex items-center gap-3">
-                          <div className="shrink-0 h-9 w-9 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-sm font-bold text-white/80">
-                            {member.character_name.charAt(0)}
+                          <div className="shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-violet-500/25 to-fuchsia-500/15 border border-violet-400/25 flex items-center justify-center text-sm font-bold text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                            {member.character_name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-white text-sm truncate">{member.character_name}</div>
-                            {member.role && (
-                              <div className="text-xs text-white/55 truncate">{member.role}</div>
-                            )}
-                            {member.notes && (
-                              <div className="text-[11px] text-white/40 mt-0.5 line-clamp-1">{member.notes}</div>
-                            )}
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
-                                {member.status}
-                              </Badge>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-white text-sm truncate">
+                                {member.character_name}
+                              </span>
                               {member.character_id ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
-                                  title="Official link to Character Book"
+                                <span
+                                  className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200"
+                                  title="Linked to Character Book"
                                 >
-                                  <Link2 className="h-2.5 w-2.5 mr-0.5 inline" />
+                                  <Link2 className="h-2.5 w-2.5" />
                                   Linked
-                                </Badge>
+                                </span>
                               ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-amber-500/30 text-amber-200/80"
-                                  title="Name only — not linked to a Character Book card"
+                                <span
+                                  className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-200/90"
+                                  title="Name only — not linked to Character Book"
                                 >
                                   Name only
-                                </Badge>
+                                </span>
                               )}
                             </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-white/45">
+                              {member.role ? (
+                                <span className="text-white/60">{member.role}</span>
+                              ) : (
+                                <span className="text-white/30">No role set</span>
+                              )}
+                              <span className="text-white/20">·</span>
+                              <span className="capitalize">{member.status}</span>
+                            </div>
+                            {member.notes && (
+                              <div className="text-[11px] text-white/35 mt-0.5 line-clamp-1">{member.notes}</div>
+                            )}
                             {member.character_id && memberAffiliations[member.character_id]?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
-                                {memberAffiliations[member.character_id].map(org => (
+                              <div className="flex flex-wrap gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                {memberAffiliations[member.character_id].map((org) => (
                                   <Badge
                                     key={org.id}
                                     variant="outline"
-                                    className="text-[10px] border-purple-500/35 bg-purple-500/10 text-purple-200 cursor-pointer hover:bg-purple-500/20"
+                                    className="text-[10px] border-purple-500/30 bg-purple-500/10 text-purple-200 cursor-pointer hover:bg-purple-500/20"
                                     onClick={() => {
                                       void fetchJson<{ success: boolean; organization: Organization }>(
-                                        `/api/organizations/${org.id}`
+                                        `/api/organizations/${org.id}`,
                                       )
-                                        .then(r => {
+                                        .then((r) => {
                                           if (r.success && r.organization) setSelectedLinkedOrg(r.organization);
                                         })
                                         .catch(() => {});
@@ -1789,22 +1986,22 @@ User's message: ${currentInput}`;
                               <p className="text-[10px] text-white/30 mt-1">Loading other groups…</p>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="shrink-0 h-8 w-8 p-0"
+                          <button
+                            type="button"
+                            aria-label={`Remove ${member.character_name}`}
+                            className="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center text-white/25 opacity-70 transition hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRemoveMember(member.id);
+                              void handleRemoveMember(member.id);
                             }}
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                          </Button>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                      </CardContent>
-                    </Card>
+                    </button>
                   ))
                 )}
+              </div>
               </div>
             </TabsContent>
 

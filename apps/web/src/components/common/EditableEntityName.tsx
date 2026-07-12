@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, X, Pencil, Loader2 } from 'lucide-react';
 
 type EditableEntityNameProps = {
@@ -21,9 +21,8 @@ type EditableEntityNameProps = {
 };
 
 /**
- * Inline, manually-editable entity name. Renders the name with a hover pencil;
- * clicking opens an input with save/cancel (Enter saves, Esc cancels). Reused
- * across every entity detail modal so names are editable everywhere.
+ * Click the name to rename. Enter saves, Esc cancels.
+ * Shared across group / character / location modals.
  */
 export function EditableEntityName({
   name,
@@ -39,7 +38,13 @@ export function EditableEntityName({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Keep display in sync when parent renames from elsewhere.
+  useEffect(() => {
+    if (!editing) setValue(name);
+  }, [name, editing]);
+
   const start = () => {
+    if (disabled) return;
     setValue(name);
     setError(null);
     setEditing(true);
@@ -48,6 +53,7 @@ export function EditableEntityName({
   const cancel = () => {
     setEditing(false);
     setError(null);
+    setValue(name);
   };
 
   const commit = async () => {
@@ -69,26 +75,36 @@ export function EditableEntityName({
   };
 
   if (!editing) {
+    if (disabled) {
+      return <span className={className}>{name}</span>;
+    }
+
     return (
-      <span className="group/edit inline-flex items-center gap-1.5 min-w-0">
-        <span className={className}>{name}</span>
-        {!disabled && (
-          <button
-            type="button"
-            onClick={start}
-            aria-label={`Edit ${label}`}
-            title={`Edit ${label}`}
-            className="shrink-0 rounded p-0.5 text-white/40 opacity-0 transition hover:bg-white/10 hover:text-white/80 focus:opacity-100 group-hover/edit:opacity-100"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          start();
+        }}
+        aria-label={`Edit ${label}`}
+        title="Click to rename"
+        className="group/edit inline-flex max-w-full cursor-text items-center gap-2 min-w-0 rounded-lg text-left transition-colors hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 px-1.5 -mx-1.5 py-1"
+      >
+        <span
+          className={`${className ?? ''} border-b border-dashed border-white/30 group-hover/edit:border-white/60`}
+        >
+          {name}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/50 group-hover/edit:border-white/25 group-hover/edit:text-white/80">
+          <Pencil className="h-3 w-3" aria-hidden />
+          Edit
+        </span>
+      </button>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 min-w-0">
+    <span className="inline-flex min-w-0 w-full max-w-full flex-wrap items-center gap-2">
       <input
         autoFocus
         value={value}
@@ -113,25 +129,33 @@ export function EditableEntityName({
       />
       <button
         type="button"
-        onClick={() => void commit()}
+        onClick={(e) => {
+          e.stopPropagation();
+          void commit();
+        }}
         disabled={saving}
         aria-label={`Save ${label}`}
         title="Save"
-        className="shrink-0 rounded p-1 text-emerald-400 hover:bg-emerald-500/15 disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
       >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+        Save
       </button>
       <button
         type="button"
-        onClick={cancel}
+        onClick={(e) => {
+          e.stopPropagation();
+          cancel();
+        }}
         disabled={saving}
         aria-label={`Cancel editing ${label}`}
         title="Cancel"
-        className="shrink-0 rounded p-1 text-white/50 hover:bg-white/10 hover:text-white/80 disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white/60 hover:bg-white/10 hover:text-white/85 disabled:opacity-50"
       >
-        <X className="h-4 w-4" />
+        <X className="h-3.5 w-3.5" />
+        Cancel
       </button>
-      {error && <span className="text-xs text-red-400">{error}</span>}
+      {error && <span className="w-full text-xs text-red-400">{error}</span>}
     </span>
   );
 }

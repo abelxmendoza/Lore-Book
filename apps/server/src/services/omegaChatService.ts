@@ -29,6 +29,7 @@ import {
   buildDurabilityPayload,
   ChatDurabilityError,
   incMetric,
+  isChatDurabilityError,
   type ChatDurabilityPayload,
 } from './chat/chatDurability';
 import { classifyIngestionError } from './ingestion/ingestionJobStates';
@@ -1308,6 +1309,42 @@ When updating relationship analytics or emotional signals from this thread, weig
       return payload;
     };
 
+    /**
+     * After early persist, any uncaught throw must become ChatDurabilityError so the
+     * client never reports "couldn't save" when chat_messages already has the row.
+     * Autobiographical slang/profanity must never look like a failed save.
+     */
+    const afterPersist = async <T>(work: () => Promise<T>): Promise<T> => {
+      try {
+        return await work();
+      } catch (err) {
+        if (isChatDurabilityError(err)) throw err;
+        if (err instanceof StorageBlockedError) throw err;
+        if (!entryId) throw err;
+        const classified = classifyIngestionError(err);
+        incMetric('assistant_generation_failure');
+        logger.error(
+          {
+            err,
+            userId,
+            sessionId,
+            entryId,
+            messagePreview: message.slice(0, 120),
+          },
+          'Post-persist chatStream failure — wrapping as ChatDurabilityError',
+        );
+        throw new ChatDurabilityError({
+          message: err instanceof Error ? err.message : String(err),
+          category: classified.category,
+          code: classified.code,
+          stage: 'response_generation',
+          durability: durabilityFor('failed', classified.category),
+          cause: err,
+        });
+      }
+    };
+
+    return afterPersist(async () => {
     /** Attach durability to mode/early-return streams so clients never lose message ids. */
     const modeExtras = (): Partial<StreamingChatResponse['metadata']> => ({
       messageId: entryId,
@@ -2496,6 +2533,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         }
       }
     };
+    }); // afterPersist — never report unsaved when entryId exists
   }
 
   /**

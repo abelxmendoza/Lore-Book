@@ -135,6 +135,52 @@ describe('chat durability payload + messaging', () => {
   });
 });
 
+describe('Catch One e-sluts slang fixture (autobiographical must not look unsaved)', () => {
+  /** Primary regression: informal sexual slang in first-person club story. */
+  // Generalized club/slang fixture (no real brand/personal identifiers).
+  const SLANG_FIXTURE =
+    'The venue is a club. I was there last weekend for a themed afterparty and I got to dance with a bunch of e-sluts for a holiday weekend. It was a blast.';
+
+  it('accepts the slang fixture as non-empty autobiographical text (no client reject)', () => {
+    expect(SLANG_FIXTURE.length).toBeGreaterThan(40);
+    expect(SLANG_FIXTURE).toMatch(/club/i);
+    expect(SLANG_FIXTURE).toMatch(/e-sluts/i);
+  });
+
+  it('post-persist assistant failure reports saved — never "could not save your message"', () => {
+    const d = buildDurabilityPayload({
+      userMessageId: 'slang-fixture-msg',
+      sessionId: 'slang-fixture-thread',
+      idempotencyKey: 'slang-client-key',
+      assistantStatus: 'failed',
+      assistantErrorCategory: 'provider_error',
+      ingestionJobId: 'job-slang-1',
+      ingestionStatus: 'QUEUED',
+    });
+    const text = durabilityUserMessage(d, true);
+    expect(d.userMessage.persisted).toBe(true);
+    expect(text.toLowerCase()).toMatch(/saved/);
+    expect(text.toLowerCase()).not.toContain('could not save your message');
+    expect(text.toLowerCase()).not.toContain("couldn't save or process");
+  });
+
+  it('ChatDurabilityError after slang-story persist carries persisted:true', () => {
+    const d = buildDurabilityPayload({
+      userMessageId: 'slang-fixture-msg-2',
+      assistantStatus: 'failed',
+      ingestionJobId: 'job-slang-2',
+      ingestionStatus: 'QUEUED',
+    });
+    const err = new ChatDurabilityError({
+      message: 'upstream generator failed',
+      durability: d,
+    });
+    expect(isChatDurabilityError(err)).toBe(true);
+    expect(err.durability.userMessage.persisted).toBe(true);
+    expect(err.durability.userMessage.id).toBe('slang-fixture-msg-2');
+  });
+});
+
 describe('Anime Expo fixture regression (status contract)', () => {
   const FIXTURE =
     'I went to the club last night after Anime Expo. There was a BassRiot afterparty at Catch One. I danced with Mothdoll and Vexadoll. One of their friends pulled away, so I backed off and respected her boundary. The situation with Jenna taught me to respect boundaries. Earlier that day I visited Anime Expo and stopped by my tía’s house for food.';
