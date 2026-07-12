@@ -1,0 +1,152 @@
+name: Vercel Preview Diagnose
+
+# Temporary diagnostic for lore-book-web preview failures on this PR.
+# Uses the same Vercel secrets as deploy.yml to print inspect logs.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: 'Vercel deployment id (dpl_...)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: vercel-diagnose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    name: Inspect lore-book-web failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check secrets
+        id: secrets
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing Vercel secrets"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@39.3.0
+
+      - name: Resolve deployment id
+        id: dpl
+        env:
+          INPUT_DPL: ${{ github.event.inputs.deployment_id }}
+        run: |
+          if [ -n "$INPUT_DPL" ]; then
+            echo "id=$INPUT_DPL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Prefer the failed lore-book-web deployment for this commit.
+          DPL=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&limit=20" \
+            | node -e '
+              const fs=require("fs");
+              const sha=process.env.GITHUB_SHA;
+              const body=JSON.parse(fs.readFileSync(0,"utf8"));
+              const deps=body.deployments||[];
+              const match=deps.find(d => d.meta?.githubCommitSha===sha)
+                || deps.find(d => (d.meta?.githubCommitRef||"").includes("story-ingestion"))
+                || deps[0];
+              if (!match) { console.error("No deployment found"); process.exit(1); }
+              console.log(match.uid||match.id);
+              console.error(JSON.stringify({uid: match.uid||match.id, state: match.state, ready: match.readyState, error: match.errorMessage, meta: match.meta}, null, 2));
+            ')
+          echo "id=$DPL" >> "$GITHUB_OUTPUT"
+          echo "Resolved deployment: $DPL"
+
+      - name: Inspect deployment JSON
+        run: |
+          curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/${{ steps.dpl.outputs.id }}" \
+            | node -e '
+              const fs=require("fs");
+              const d=JSON.parse(fs.readFileSync(0,"utf8"));
+              const pick={
+                id:d.id||d.uid,
+                name:d.name,
+                url:d.url,
+                state:d.status||d.readyState,
+                readyState:d.readyState,
+                errorCode:d.errorCode,
+                errorMessage:d.errorMessage,
+                errorMessageCode:d.errorMessageCode,
+                readySubstate:d.readySubstate,
+                buildingAt:d.buildingAt,
+                createdAt:d.createdAt,
+                ready:d.ready,
+                meta:d.meta,
+                aliasError:d.aliasError,
+                targets:d.targets,
+              };
+              console.log(JSON.stringify(pick,null,2));
+            '
+
+      - name: Stream deployment events / logs
+        run: |
+          set +e
+          echo "===== vercel inspect --logs ====="
+          vercel inspect "${{ steps.dpl.outputs.id }}" --logs --token "$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-inspect.log
+          echo "===== /v3/deployments/{id}/events ====="
+          curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v3/deployments/${{ steps.dpl.outputs.id }}/events?limit=100" \
+            | tee /tmp/vercel-events.json \
+            | node -e '
+              const fs=require("fs");
+              let raw=fs.readFileSync(0,"utf8");
+              try {
+                const data=JSON.parse(raw);
+                const events=Array.isArray(data)?data:(data.events||data);
+                for (const e of events) {
+                  const t=e.created?new Date(e.created).toISOString():"";
+                  const type=e.type||e.text||"";
+                  const payload=e.payload||e;
+                  const text=payload.text||payload.name||JSON.stringify(payload).slice(0,300);
+                  console.log(t, type, text);
+                }
+              } catch (err) {
+                console.log(raw.slice(0,5000));
+              }
+            '
+          echo "===== Reproduce preview build locally on runner ====="
+          cd apps/web
+          vercel pull --yes --environment=preview --token "$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-pull.log
+          vercel build --token "$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-build.log
+          echo "exit=$?"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-lore-book-web-diagnose
+          path: |
+            /tmp/vercel-inspect.log
+            /tmp/vercel-events.json
+            /tmp/vercel-pull.log
+            /tmp/vercel-build.log
+          if-no-files-found: warn
