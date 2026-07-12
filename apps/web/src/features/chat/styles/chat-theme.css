@@ -392,14 +392,17 @@
   background: transparent;
   color: rgb(255 255 255 / 0.92);
   font-size: 1rem;
-  line-height: 1.65;
+  line-height: 1.5;
   letter-spacing: 0.01em;
-  padding: 0.35rem 0.5rem 0.5rem;
-  min-height: 7.5rem;
-  max-height: min(42dvh, 28rem);
+  /* Single-line resting height; JS auto-grows with content (width unchanged). */
+  padding: 0.5rem 0.5rem;
+  min-height: 2.75rem !important; /* override base Textarea min-h-[80px] */
+  height: 2.75rem;
+  max-height: min(40dvh, 16rem);
   outline: none;
   box-shadow: none;
   -webkit-text-size-adjust: 100%;
+  field-sizing: content; /* progressive: Chrome/Edge grow without JS */
 }
 
 .journal-composer-field::placeholder {
@@ -407,18 +410,29 @@
 }
 
 .journal-composer-field--embedded {
-  min-height: 2.75rem;
+  min-height: 2.5rem !important;
+  height: 2.5rem;
   max-height: 10rem;
   font-size: 0.9375rem;
-  line-height: 1.55;
+  line-height: 1.45;
+  padding: 0.4rem 0.5rem;
 }
 
 @media (max-width: 639px) {
+  .journal-composer-field {
+    font-size: 1rem;
+    min-height: 2.625rem !important;
+    height: 2.625rem;
+    max-height: min(36dvh, 14rem);
+    padding: 0.45rem 0.45rem;
+  }
+
   .journal-composer-field--embedded {
-    min-height: 2.25rem;
+    min-height: 2.25rem !important;
+    height: 2.25rem;
     max-height: 5.5rem;
     font-size: 0.875rem;
-    padding: 0.25rem 0.5rem 0.35rem;
+    padding: 0.3rem 0.45rem;
   }
 
   .journal-composer-shell--embedded {
@@ -426,14 +440,15 @@
   }
 }
 
+/* Mobile: still single-line at rest; grow with typing (no tall empty box). */
 .journal-composer-shell--mobile .journal-composer-field:not(.journal-composer-field--embedded) {
-  min-height: 8.75rem;
-  max-height: min(48dvh, 32rem);
+  min-height: 2.625rem !important;
+  height: 2.625rem;
+  max-height: min(40dvh, 15rem);
 }
 
 .journal-composer-shell--mobile.journal-composer-shell--focused .journal-composer-field:not(.journal-composer-field--embedded) {
-  min-height: 10.5rem;
-  max-height: min(52dvh, 34rem);
+  max-height: min(44dvh, 16rem);
 }
 
 .journal-composer-meta {
@@ -750,13 +765,14 @@
 
 @media (min-width: 641px) {
   .journal-composer-field:not(.journal-composer-field--embedded) {
-    min-height: 5.5rem;
-    max-height: min(40vh, 32rem);
+    min-height: 2.75rem !important;
+    height: 2.75rem;
+    max-height: min(40vh, 16rem);
     font-size: 0.9375rem;
   }
 
   .journal-composer-shell--focused .journal-composer-field:not(.journal-composer-field--embedded) {
-    max-height: min(44vh, 34rem);
+    max-height: min(44vh, 18rem);
   }
 }
 

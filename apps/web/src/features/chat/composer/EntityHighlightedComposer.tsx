@@ -1,4 +1,10 @@
-import { useEffect, type CSSProperties, type KeyboardEvent, type RefObject } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  type CSSProperties,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react';
 import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
@@ -23,6 +29,26 @@ type EntityHighlightedComposerProps = {
   onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onPreviewCorrectionsChange?: (corrections: CorrectedPreviewSpan[]) => void;
 };
+
+/**
+ * Grow height with content (single-line rest → multi-line as needed).
+ * Skips the full-panel journal overlay field which fills its flex parent.
+ */
+function autoGrowTextarea(el: HTMLTextAreaElement | null) {
+  if (!el || el.classList.contains('journal-composer-overlay__field')) return;
+
+  // Reset so scrollHeight reflects content, not a previous tall height.
+  el.style.height = '0px';
+  const styles = window.getComputedStyle(el);
+  const minPx = parseFloat(styles.minHeight) || 0;
+  const maxRaw = styles.maxHeight;
+  const maxPx =
+    maxRaw && maxRaw !== 'none' && maxRaw !== '0px' ? parseFloat(maxRaw) : Number.POSITIVE_INFINITY;
+  const content = el.scrollHeight;
+  const next = Math.max(minPx, Number.isFinite(maxPx) ? Math.min(content, maxPx) : content);
+  el.style.height = `${next}px`;
+  el.style.overflowY = content > maxPx ? 'auto' : 'hidden';
+}
 
 /**
  * Composer field — plain textarea for reliable typing.
@@ -59,6 +85,16 @@ export const EntityHighlightedComposer = ({
     onPreviewCorrectionsChange?.(sendPayload);
   }, [sendPayload, onPreviewCorrectionsChange]);
 
+  useLayoutEffect(() => {
+    autoGrowTextarea(textareaRef.current);
+  }, [value, className, textareaRef]);
+
+  useEffect(() => {
+    const onResize = () => autoGrowTextarea(textareaRef.current);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [textareaRef]);
+
   return (
     <div className="journal-composer-highlight-host" data-testid="entity-highlighted-composer">
       {activeCorrectedSpan && (
@@ -75,9 +111,14 @@ export const EntityHighlightedComposer = ({
 
       <Textarea
         ref={textareaRef}
+        rows={1}
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          // Grow immediately on this frame (before paint if possible)
+          autoGrowTextarea(e.currentTarget);
+        }}
         disabled={disabled}
         onFocus={onFocus}
         onBlur={onBlur}
