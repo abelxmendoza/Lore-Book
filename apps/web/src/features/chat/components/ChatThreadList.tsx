@@ -284,19 +284,25 @@ function ThreadItem({
               'text-sm leading-snug truncate',
               isActive ? 'font-semibold' : 'font-medium'
             )}>
-              {typeof thread.threadNumber === 'number' && (
-                <span
-                  className={cn(
-                    'font-mono text-[10px] mr-1.5 align-middle',
-                    isActive ? 'text-primary/70' : 'text-white/30'
-                  )}
-                  data-testid="thread-ref"
-                >
-                  #{thread.threadNumber}
-                </span>
-              )}
               {displayTitle}
             </p>
+            {/*
+              thread_number is a permanent cite-id (#86.1), not list order.
+              List is sorted by recent activity — prefixing # made gaps/deletes
+              look like a broken sequence. Keep a quiet trailing ref instead.
+            */}
+            {typeof thread.threadNumber === 'number' && (thread.messages?.length ?? 0) + (thread.messageCount ?? 0) > 0 && (
+              <p
+                className={cn(
+                  'text-[9px] font-mono mt-0.5',
+                  isActive ? 'text-white/40' : 'text-white/25'
+                )}
+                data-testid="thread-ref"
+                title="Stable conversation reference for citing messages — not list order"
+              >
+                ref #{thread.threadNumber}
+              </p>
+            )}
             {thread.subtitle && (
               <p className={cn(
                 'text-[9px] truncate mt-px',

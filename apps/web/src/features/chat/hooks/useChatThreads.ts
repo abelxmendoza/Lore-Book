@@ -351,8 +351,13 @@ export const useChatThreads = () => {
       void store
         .dispatch(chatApi.endpoints.createThread.initiate({ id, title: DRAFT_THREAD_TITLE }))
         .unwrap()
-        .then(() => {
+        .then((res: { success?: boolean; id?: string; thread_number?: number | null }) => {
           threadPersistenceTracker.markPersisted(id);
+          if (typeof res?.thread_number === 'number') {
+            setThreads((prev) =>
+              prev.map((t) => (t.id === id ? { ...t, threadNumber: res.thread_number } : t)),
+            );
+          }
         })
         .catch((err: unknown) => {
           const errMsg = mutationErrorMessage(err);

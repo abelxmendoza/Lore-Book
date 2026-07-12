@@ -647,28 +647,43 @@ router.post(
 
     const { data: existing } = await supabaseAdmin
       .from('conversation_sessions')
-      .select('id')
+      .select('id, thread_number')
       .eq('id', sessionId)
       .eq('user_id', userId)
       .maybeSingle();
 
     if (existing?.id) {
-      res.json({ success: true, id: sessionId, existing: true });
+      res.json({
+        success: true,
+        id: sessionId,
+        existing: true,
+        thread_number: (existing as { thread_number?: number | null }).thread_number ?? null,
+      });
       return;
     }
 
-    const { error } = await supabaseAdmin.from('conversation_sessions').insert({
-      id: sessionId,
-      user_id: userId,
-      title: title ?? DRAFT_THREAD_TITLE,
-      started_at: now,
-      created_at: now,
-      updated_at: now,
-      metadata: {},
-    });
+    const { data: created, error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .insert({
+        id: sessionId,
+        user_id: userId,
+        title: title ?? DRAFT_THREAD_TITLE,
+        started_at: now,
+        created_at: now,
+        updated_at: now,
+        metadata: {},
+      })
+      .select('id, thread_number')
+      .single();
 
     if (error) throw error;
-    res.json({ success: true, id: sessionId });
+    // thread_number is deferred until first user message (see migration
+    // 20260712120000_defer_thread_number_until_first_message).
+    res.json({
+      success: true,
+      id: sessionId,
+      thread_number: created?.thread_number ?? null,
+    });
   })
 );
 

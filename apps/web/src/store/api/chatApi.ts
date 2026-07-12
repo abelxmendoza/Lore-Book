@@ -110,7 +110,10 @@ export const chatApi = baseApi.injectEndpoints({
       invalidatesTags: (_res, _err, threadId) => [{ type: 'ChatThread', id: threadId }],
     }),
 
-    createThread: build.mutation<{ success: boolean }, { id: string; title: string }>({
+    createThread: build.mutation<
+      { success: boolean; id?: string; thread_number?: number | null; existing?: boolean; reused?: boolean },
+      { id: string; title: string }
+    >({
       query: (body) => ({ url: '/api/conversation/threads', method: 'POST', body }),
       invalidatesTags: [{ type: 'ChatThread', id: 'LIST' }],
     }),
