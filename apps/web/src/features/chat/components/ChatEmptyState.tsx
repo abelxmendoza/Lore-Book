@@ -132,9 +132,23 @@ export const ChatEmptyState = () => {
 
       {/* ── Hero ── */}
       <header className="relative mb-8 text-center sm:mb-10">
-        <div className="chat-empty-hero-orb mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl sm:mb-6 sm:h-20 sm:w-20 sm:rounded-3xl">
-          <Bot className="h-8 w-8 text-primary sm:h-10 sm:w-10" />
-          <span className="chat-empty-hero-ring" aria-hidden />
+        <div className="chat-empty-hero-orb-wrap mx-auto mb-5 sm:mb-6">
+          {/* Purple soulflame outline — wispy animated aura */}
+          <div className="chat-empty-soulflame" aria-hidden="true">
+            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--1" />
+            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--2" />
+            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--3" />
+            <span className="chat-empty-soulflame__tongue chat-empty-soulflame__tongue--4" />
+            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--outer" />
+            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--mid" />
+            <span className="chat-empty-soulflame__halo chat-empty-soulflame__halo--core" />
+            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--a" />
+            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--b" />
+            <span className="chat-empty-soulflame__ember chat-empty-soulflame__ember--c" />
+          </div>
+          <div className="chat-empty-hero-orb relative z-[2] flex h-16 w-16 items-center justify-center rounded-2xl sm:h-20 sm:w-20 sm:rounded-3xl">
+            <Bot className="relative z-[1] h-8 w-8 text-primary sm:h-10 sm:w-10" />
+          </div>
         </div>
 
         <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.22em] text-primary/70 sm:text-[11px]">
