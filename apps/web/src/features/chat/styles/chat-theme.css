@@ -77,8 +77,8 @@
 /* Wrapper — extra room above for rising soulflame */
 .chat-empty-hero-orb-wrap {
   position: relative;
-  width: 5.5rem;
-  height: 6.25rem;
+  width: 6.5rem;
+  height: 7.25rem;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -87,8 +87,8 @@
 
 @media (min-width: 640px) {
   .chat-empty-hero-orb-wrap {
-    width: 6rem;
-    height: 6.75rem;
+    width: 7.25rem;
+    height: 8rem;
   }
 }
 
@@ -442,14 +442,66 @@
   90% { opacity: 0; transform: translate(calc(var(--willo-x, 0px) * 0.2), -42px) scale(0.4); }
 }
 
-/* The bot levitates gently inside the flame; rim light breathes with it. */
-.chat-empty-soulflame ~ .chat-empty-hero-orb,
-.chat-empty-hero-orb--aflame {
+/* Bare bot inside the flame — no container box, just presence. */
+.chat-empty-soulbot {
   animation: soulflameOrbFloat 4.6s ease-in-out infinite;
+}
+
+.chat-empty-soulbot__icon {
+  color: #e9d5ff;
+  filter:
+    drop-shadow(0 0 6px rgba(216, 180, 254, 0.9))
+    drop-shadow(0 0 16px rgba(168, 85, 247, 0.55))
+    drop-shadow(0 0 34px rgba(126, 34, 206, 0.35));
+  animation: soulbotBreathe 2.6s ease-in-out infinite;
+}
+
+@keyframes soulbotBreathe {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 6px rgba(216, 180, 254, 0.9))
+      drop-shadow(0 0 16px rgba(168, 85, 247, 0.55))
+      drop-shadow(0 0 34px rgba(126, 34, 206, 0.35));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 9px rgba(233, 213, 255, 1))
+      drop-shadow(0 0 24px rgba(168, 85, 247, 0.75))
+      drop-shadow(0 0 48px rgba(126, 34, 206, 0.5));
+  }
+}
+
+/* The soul orb — a translucent sphere the bot inhabits (hitodama body). */
+.chat-empty-soulflame__soulorb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4.9rem;
+  height: 4.9rem;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.28) 0%, transparent 32%),
+    radial-gradient(circle at 50% 55%, rgba(216, 180, 254, 0.34) 0%, rgba(168, 85, 247, 0.22) 42%, rgba(88, 28, 135, 0.12) 66%, transparent 76%);
   box-shadow:
-    0 0 18px rgba(168, 85, 247, 0.35),
-    0 0 44px rgba(126, 34, 206, 0.22),
-    inset 0 -6px 14px rgba(168, 85, 247, 0.25);
+    0 0 22px rgba(168, 85, 247, 0.4),
+    0 0 55px rgba(126, 34, 206, 0.25),
+    inset 0 0 22px rgba(192, 132, 252, 0.35),
+    inset 0 -10px 24px rgba(88, 28, 135, 0.4);
+  animation: soulorbBreathe 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .chat-empty-soulflame__soulorb {
+    width: 5.6rem;
+    height: 5.6rem;
+  }
+}
+
+@keyframes soulorbBreathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+  50% { transform: translate(-50%, -50%) scale(1.06); opacity: 1; }
 }
 
 @keyframes soulflameOrbFloat {
@@ -463,7 +515,9 @@
   .chat-empty-soulflame__wisp,
   .chat-empty-soulflame__core,
   .chat-empty-soulflame__willo,
-  .chat-empty-hero-orb--aflame,
+  .chat-empty-soulbot,
+  .chat-empty-soulbot__icon,
+  .chat-empty-soulflame__soulorb,
   .chat-empty-soulflame__spark {
     animation: none !important;
   }

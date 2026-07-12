@@ -191,8 +191,9 @@ export const ChatEmptyState = () => {
             <span className="chat-empty-soulflame__willo chat-empty-soulflame__willo--right" />
           </div>
 
-          <div className="chat-empty-hero-orb chat-empty-hero-orb--aflame relative z-[2] flex h-16 w-16 items-center justify-center rounded-2xl sm:h-20 sm:w-20 sm:rounded-3xl">
-            <Bot className="relative z-[1] h-8 w-8 text-primary sm:h-10 sm:w-10" />
+          <div className="chat-empty-soulbot relative z-[2] flex items-center justify-center">
+            <span className="chat-empty-soulflame__soulorb" aria-hidden />
+            <Bot className="chat-empty-soulbot__icon relative z-[1] h-12 w-12 sm:h-14 sm:w-14" />
           </div>
         </div>
 
