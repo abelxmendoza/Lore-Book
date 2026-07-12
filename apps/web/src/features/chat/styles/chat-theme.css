@@ -112,8 +112,8 @@
   /* Taller above the bot so flame reads as rising, not a disc */
   left: 50%;
   bottom: 0;
-  width: 7.5rem;
-  height: 7.75rem;
+  width: 9rem;
+  height: 9.5rem;
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 0;
@@ -345,20 +345,24 @@
 
 @keyframes soulflameWisp {
   0%, 100% {
-    transform: translateY(0) scaleY(1) scaleX(1) rotate(0deg);
-    opacity: 0.45;
+    transform: translate(0, 0) scaleY(1) scaleX(1) rotate(0deg) skewX(0deg);
+    opacity: 0.4;
   }
-  20% {
-    transform: translateY(-12%) scaleY(1.15) scaleX(0.85) rotate(calc(var(--wisp-sway, 0deg) * 0.5));
+  18% {
+    transform: translate(2px, -14%) scaleY(1.18) scaleX(0.82) rotate(calc(var(--wisp-sway, 0deg) * 0.5)) skewX(3deg);
     opacity: 0.85;
   }
-  45% {
-    transform: translateY(-28%) scaleY(1.35) scaleX(0.65) rotate(var(--wisp-sway, 0deg));
-    opacity: 0.7;
+  42% {
+    transform: translate(-3px, -32%) scaleY(1.4) scaleX(0.6) rotate(var(--wisp-sway, 0deg)) skewX(-4deg);
+    opacity: 0.72;
   }
-  70% {
-    transform: translateY(-18%) scaleY(1.1) scaleX(0.8) rotate(calc(var(--wisp-sway, 0deg) * -0.4));
-    opacity: 0.55;
+  64% {
+    transform: translate(2px, -44%) scaleY(1.5) scaleX(0.5) rotate(calc(var(--wisp-sway, 0deg) * -0.5)) skewX(3deg);
+    opacity: 0.4;
+  }
+  82% {
+    transform: translate(-1px, -22%) scaleY(1.12) scaleX(0.78) rotate(calc(var(--wisp-sway, 0deg) * -0.3)) skewX(-2deg);
+    opacity: 0.5;
   }
 }
 
@@ -376,13 +380,96 @@
   }
 }
 
+
+/* Hot core — the bright inner flame that makes it read as FIRE. */
+.chat-empty-soulflame__core {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  width: 34%;
+  height: 58%;
+  transform: translateX(-50%);
+  border-radius: 50% 50% 42% 58% / 20% 20% 80% 80%;
+  background:
+    radial-gradient(ellipse 60% 75% at 50% 82%, rgba(243, 232, 255, 0.95) 0%, rgba(216, 180, 254, 0.75) 34%, rgba(168, 85, 247, 0.35) 62%, transparent 80%);
+  mix-blend-mode: screen;
+  filter: url(#soulflame-wisp) blur(0.6px);
+  animation: soulflameCoreFlicker 1.15s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes soulflameCoreFlicker {
+  0%, 100% { transform: translateX(-50%) scale(1, 1); opacity: 0.9; }
+  25% { transform: translateX(-52%) scale(0.92, 1.1); opacity: 1; }
+  50% { transform: translateX(-49%) scale(1.05, 0.94); opacity: 0.82; }
+  75% { transform: translateX(-51%) scale(0.96, 1.06); opacity: 0.96; }
+}
+
+/* Will-o'-wisps — small soul flamelets drifting beside the orb (hitodama). */
+.chat-empty-soulflame__willo {
+  position: absolute;
+  bottom: 30%;
+  width: 0.8rem;
+  height: 1.5rem;
+  border-radius: 50% 50% 45% 55% / 25% 25% 75% 75%;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 75%, rgba(233, 213, 255, 0.9) 0%, rgba(168, 85, 247, 0.5) 55%, transparent 78%);
+  mix-blend-mode: screen;
+  filter: blur(1.4px);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.chat-empty-soulflame__willo--left {
+  left: 4%;
+  animation: soulflameWillo 5.2s ease-in-out infinite 0.6s;
+  --willo-x: -10px;
+}
+
+.chat-empty-soulflame__willo--right {
+  right: 4%;
+  width: 0.65rem;
+  height: 1.25rem;
+  animation: soulflameWillo 6s ease-in-out infinite 2.4s;
+  --willo-x: 12px;
+}
+
+@keyframes soulflameWillo {
+  0%, 100% { opacity: 0; transform: translate(0, 6px) scale(0.6); }
+  18% { opacity: 0.9; transform: translate(calc(var(--willo-x, 0px) * 0.4), -8px) scale(1); }
+  45% { opacity: 0.7; transform: translate(var(--willo-x, 0px), -22px) scale(0.85) rotate(6deg); }
+  72% { opacity: 0.35; transform: translate(calc(var(--willo-x, 0px) * 0.6), -34px) scale(0.6) rotate(-5deg); }
+  90% { opacity: 0; transform: translate(calc(var(--willo-x, 0px) * 0.2), -42px) scale(0.4); }
+}
+
+/* The bot levitates gently inside the flame; rim light breathes with it. */
+.chat-empty-soulflame ~ .chat-empty-hero-orb,
+.chat-empty-hero-orb--aflame {
+  animation: soulflameOrbFloat 4.6s ease-in-out infinite;
+  box-shadow:
+    0 0 18px rgba(168, 85, 247, 0.35),
+    0 0 44px rgba(126, 34, 206, 0.22),
+    inset 0 -6px 14px rgba(168, 85, 247, 0.25);
+}
+
+@keyframes soulflameOrbFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-empty-soulflame__glow,
   .chat-empty-soulflame__envelope,
   .chat-empty-soulflame__wisp,
+  .chat-empty-soulflame__core,
+  .chat-empty-soulflame__willo,
+  .chat-empty-hero-orb--aflame,
   .chat-empty-soulflame__spark {
     animation: none !important;
   }
+
+  .chat-empty-soulflame__core { opacity: 0.75; }
+  .chat-empty-soulflame__willo { opacity: 0; }
 
   .chat-empty-soulflame__envelope {
     filter: blur(4px);
