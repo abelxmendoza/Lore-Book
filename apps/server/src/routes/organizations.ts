@@ -179,9 +179,17 @@ router.post('/reconcile-relationships', requireAuth, async (req: AuthenticatedRe
 // GET /api/organizations/:id/mentions
 // Trace every known label for this organization back into chat messages,
 // legacy conversation messages, and extracted facts.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.get('/:id/mentions', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const organizationId = String(req.params.id);
+  // Suggested groups (candidate-<uuid>) have no organization row yet — empty
+  // trace instead of a uuid-cast 500.
+  if (!UUID_RE.test(organizationId)) {
+    res.json({ success: true, trace: [] });
+    return;
+  }
   const limit = req.query.limit ? Number(req.query.limit) : undefined;
   try {
     const trace = await organizationService.getMentionTrace(userId, organizationId, { limit });
@@ -271,7 +279,12 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
   try {
-    const organization = await organizationService.updateOrganization(userId, organizationId, parsed.data);
+    // Nulls arrive because the form round-trips whole rows; the columns are
+    // already null, so dropping them keeps updateOrganization's types exact.
+    const values = Object.fromEntries(
+      Object.entries(parsed.data).filter(([, v]) => v !== null),
+    ) as Parameters<typeof organizationService.updateOrganization>[2];
+    const organization = await organizationService.updateOrganization(userId, organizationId, values);
     if (parsed.data.metadata && parsed.data.metadata.manual_identity_correction) {
       const { correctionTracker } = await import('../services/activeLearning/correctionTracker');
       await correctionTracker.recordCorrection(userId, {

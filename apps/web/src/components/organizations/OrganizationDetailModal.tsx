@@ -614,17 +614,50 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  /**
+   * A suggested group (candidate-<uuid>) is not a saved organization; editing
+   * it promotes it: accept the candidate WITH the edits, then carry remaining
+   * fields (e.g. aliases) onto the newly created organization. Returns true
+   * when the candidate path handled the save.
+   */
+  const promoteCandidateWithEdits = async (values: Record<string, unknown>): Promise<boolean> => {
+    const candidateRef = editedOrg.metadata?.group_candidate_id
+      ? String(editedOrg.metadata.group_candidate_id)
+      : organization.id.startsWith('candidate-')
+        ? organization.id.replace(/^candidate-/, '')
+        : null;
+    if (!candidateRef || isMockDataEnabled) return false;
+
+    const accept = await fetchJson<{ success: boolean; organization_id?: string }>(
+      `/api/group-candidates/${candidateRef}/accept`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: String(values.name ?? editedOrg.name),
+          group_type: (values.group_type ?? editedOrg.group_type) || undefined,
+          user_relationship: (values.user_relationship ?? editedOrg.user_relationship) || undefined,
+          membership_model: (values.membership_model ?? editedOrg.membership_model) || undefined,
+          description: (values.description ?? editedOrg.description) || undefined,
+        }),
+      },
+    );
+    if (!accept.organization_id) {
+      throw new Error('Could not save this suggested group — accepting it failed.');
+    }
+    // Aliases and any other fields the accept endpoint does not take.
+    await updateOrganization({ id: accept.organization_id, values }).unwrap().catch(() => {});
+    apiCache.deletePattern(/\/api\/(organizations|books|counts|group-candidates)/);
+    onUpdate?.();
+    return true;
+  };
+
   const applyOrgPatch = async (
     values: Record<string, unknown>,
     options?: { markIdentityLocked?: boolean },
   ): Promise<void> => {
-    if (
-      (isEphemeralEntityId(organization.id) ||
-        Boolean(editedOrg.metadata?.preview_candidate) ||
-        Boolean(editedOrg.metadata?.group_candidate_id)) &&
-      !isMockDataEnabled
-    ) {
-      throw new Error('Accept this suggested group first — it is not a saved organization yet.');
+    if (await promoteCandidateWithEdits(values)) return;
+    if (isEphemeralEntityId(organization.id) && !isMockDataEnabled) {
+      throw new Error('This group has no saved record yet — try again after it finishes saving.');
     }
 
     const previousIdentity = {
@@ -723,6 +756,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
   const handleSave = async () => {
     setSaving(true);
+    setIdentityError(null);
     try {
       const previousIdentity = {
         name: organization.name,
@@ -789,6 +823,10 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         return;
       }
 
+      if (await promoteCandidateWithEdits(updates)) {
+        setEditingIdentity(false);
+        return;
+      }
       await updateOrganization({ id: organization.id, values: updates }).unwrap();
 
       setEditingIdentity(false);
