@@ -556,6 +556,22 @@ export class GroupCandidateService {
       }
     }
 
+    // Active learning: the user renaming a suggestion is a correction of our
+    // proposed name — record it so future group naming improves.
+    if (overrides.name && candidate.proposed_name && overrides.name.trim() !== candidate.proposed_name.trim()) {
+      const { correctionTracker } = await import('./activeLearning/correctionTracker');
+      await correctionTracker
+        .recordCorrection(userId, {
+          correction_type: 'entity',
+          original_value: candidate.proposed_name,
+          corrected_value: overrides.name.trim(),
+          context: `Group candidate renamed on accept (${candidate.detected_members?.join(', ') ?? ''})`,
+          source_unit_id: candidateId,
+          metadata: { entity_type: 'organization', entity_id: org.id, source: 'group_candidate_accept' },
+        })
+        .catch(() => {});
+    }
+
     // Mark candidate as accepted
     await supabaseAdmin
       .from('group_candidates')
