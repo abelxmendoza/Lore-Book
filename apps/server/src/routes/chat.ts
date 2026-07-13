@@ -314,6 +314,13 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
     }
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
+    // Keep the user's timezone fresh on their profile — ingestion workers
+    // resolve "yesterday"/"last night" in this frame later, without a request.
+    if (req.user?.id) {
+      const { resolveRequestTimezone } = await import('../services/temporal/userTimezoneService');
+      resolveRequestTimezone(req.user.id, req.headers['x-user-timezone']);
+    }
+
     let validatedComposerEntities = composerEntities;
     if (composerEntities?.length && req.user?.id) {
       try {

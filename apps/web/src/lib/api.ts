@@ -109,6 +109,9 @@ export const fetchJson = async <T>(
 
       const headers = addCsrfHeaders({
         'Content-Type': 'application/json',
+        // The user's IANA timezone rides every request so the server resolves
+        // "yesterday"/"last night" in THEIR day, not the UTC day.
+        'X-User-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         ...(init?.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       });

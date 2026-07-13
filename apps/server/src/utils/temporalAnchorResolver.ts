@@ -382,3 +382,71 @@ export function resolveAllTemporalAnchors(
 export function windowToISORange(w: TemporalWindow): { gte: string; lte: string } {
   return { gte: w.start.toISOString(), lte: w.end.toISOString() };
 }
+
+/**
+ * Timezone-aware wrapper: relative expressions ("yesterday", "last night")
+ * must resolve in the USER's day, not the server's UTC day. We shift the
+ * reference clock into the user's zone, run the zone-naive resolver there,
+ * and shift the resulting window back to real instants.
+ */
+export function resolveAllTemporalAnchorsInTimezone(
+  text: string,
+  now: Date,
+  timezone: string | null | undefined,
+  entityDates?: Map<string, { first: Date; last: Date }>,
+): TemporalWindow | null {
+  if (!timezone || timezone === 'UTC') {
+    return resolveAllTemporalAnchors(text, now, entityDates);
+  }
+  try {
+    const { toZonedTime, fromZonedTime } = require('date-fns-tz') as typeof import('date-fns-tz');
+    const zonedNow = toZonedTime(now, timezone);
+    const window = resolveAllTemporalAnchors(text, zonedNow, entityDates);
+    if (!window) return null;
+    return {
+      ...window,
+      start: fromZonedTime(window.start, timezone),
+      end: fromZonedTime(window.end, timezone),
+    };
+  } catch {
+    return resolveAllTemporalAnchors(text, now, entityDates);
+  }
+}
+
+/**
+ * Chrono-backed natural-language pass, resolved deterministically in the
+ * given IANA timezone. Returns the best window per expression; callers rank
+ * candidates by EVIDENCE CLASS of the matched text (a stated calendar date
+ * outranks "last night" regardless of scores).
+ */
+export function resolveChronoWindows(
+  text: string,
+  now: Date,
+  timezone: string | null | undefined,
+): Array<TemporalWindow & { certainDay: boolean }> {
+  try {
+    const chrono = require('chrono-node') as typeof import('chrono-node');
+    const reference = timezone && timezone !== 'UTC'
+      ? ({ instant: now, timezone } as unknown as Date)
+      : now;
+    const results = chrono.parse(text, reference as never);
+    return results
+      .filter((r) => r.start)
+      .map((r) => {
+        const start = r.start.date();
+        const end = r.end?.date() ?? new Date(start.getTime() + 24 * 3600 * 1000);
+        const certainHour = r.start.isCertain('hour');
+        const certainDay = r.start.isCertain('day');
+        return {
+          start,
+          end,
+          precision: (certainHour ? 'hour' : certainDay ? 'day' : 'month') as TemporalWindow['precision'],
+          label: r.text,
+          confidence: certainDay ? 0.9 : 0.6,
+          certainDay,
+        };
+      });
+  } catch {
+    return [];
+  }
+}

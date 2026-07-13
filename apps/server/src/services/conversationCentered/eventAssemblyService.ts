@@ -13,7 +13,16 @@ import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
 import { ruleBasedTitleGenerationService } from '../ruleBasedTitleGeneration';
 import { supabaseAdmin } from '../supabaseClient';
-import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import { resolveAllTemporalAnchors, resolveAllTemporalAnchorsInTimezone, resolveChronoWindows } from '../../utils/temporalAnchorResolver';
+import {
+  chooseTemporal,
+  classifyTemporalExpression,
+  evidenceClassRank,
+  statusFor,
+  type TemporalEvidence,
+  type TemporalPrecision,
+} from '../temporal/temporalEvidence';
+import { getUserTimezone } from '../temporal/userTimezoneService';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -194,7 +203,9 @@ export class EventAssemblyService {
     const who = this.extractWho(unitGroup);
     const what = this.extractWhat(unitGroup);
     const where = this.extractWhere(unitGroup);
-    const when = this.extractWhen(unitGroup);
+    const timezone = await getUserTimezone(userId);
+    const when = this.extractWhen(unitGroup, timezone);
+    const evidence = this.whenToEvidence(when, timezone);
     const userPresence = inferUserPresence(unitGroup);
 
     // Group units by knowledge type.
@@ -237,8 +248,16 @@ export class EventAssemblyService {
         user_id: userId,
         title,
         summary: what,
-        start_time: when?.start || new Date().toISOString(),
-        end_time: when?.end || null,
+        // Recording time never masquerades as event time: unanchored events
+        // keep start_time null; created_at holds when it was recorded.
+        start_time: evidence.start,
+        end_time: evidence.end,
+        timezone: evidence.timezone,
+        temporal_precision: evidence.precision,
+        temporal_source: evidence.source,
+        temporal_confidence: evidence.confidence,
+        temporal_expression: evidence.expression,
+        temporal_status: evidence.status,
         people: ingestionResult.entities
           .filter(e => e.type === 'PERSON')
           .map(e => e.id),
@@ -466,7 +485,8 @@ export class EventAssemblyService {
     const who = this.extractWho(validUnits);
     const what = this.extractWhat(validUnits);
     const where = this.extractWhere(validUnits);
-    const when = this.extractWhen(validUnits);
+    const timezone = await getUserTimezone(userId);
+    const when = this.extractWhen(validUnits, timezone);
     const userPresence = inferUserPresence(validUnits);
 
     // Re-ingest to get updated entities
@@ -494,7 +514,10 @@ export class EventAssemblyService {
       .update({
         title, // Update title
         summary: what || existingEvent.summary, // Update summary if available
-        start_time: when?.start || existingEvent.start_time,
+        // Precedence-aware: new evidence only replaces a LOWER class.
+        ...this.evidencePatch(
+          chooseTemporal(this.rowEvidence(existingEvent), this.whenToEvidence(when, timezone)),
+        ),
         end_time: when?.end || existingEvent.end_time,
         people: ingestionResult.entities
           .filter(e => e.type === 'PERSON')
@@ -680,7 +703,12 @@ export class EventAssemblyService {
         .update({
           title: updatedTitle,
           summary: updatedWhat || event.summary,
-          start_time: updatedWhen?.start || event.start_time,
+          ...this.evidencePatch(
+            chooseTemporal(
+              this.rowEvidence(event),
+              this.whenToEvidence(updatedWhen, await getUserTimezone(userId)),
+            ),
+          ),
           end_time: updatedWhen?.end || event.end_time,
           people: ingestionResult.entities
             .filter(e => e.type === 'PERSON')
@@ -860,10 +888,10 @@ export class EventAssemblyService {
   /**
    * Extract WHEN from unit group
    */
-  private extractWhen(units: ExtractedUnit[]): AssembledWhen | null {
+  private extractWhen(units: ExtractedUnit[], timezone: string = 'UTC'): AssembledWhen | null {
     const sourceText = units.map(u => u.content).join(' ');
     const referenceDate = this.getEarliestCreatedAt(units) || new Date();
-    const contentAnchor = resolveAllTemporalAnchors(sourceText, referenceDate);
+    const contentAnchor = resolveAllTemporalAnchorsInTimezone(sourceText, referenceDate, timezone);
 
     const contextWindows = units
       .map(unit => {
@@ -889,37 +917,128 @@ export class EventAssemblyService {
       .filter((window): window is NonNullable<typeof window> => Boolean(window))
       .sort((a, b) => a.start - b.start);
 
-    const bestContext = contextWindows.find(window => !window.isCurrentFallback) || contextWindows[0];
-    if (contentAnchor && (!bestContext || bestContext.isCurrentFallback || contentAnchor.confidence >= bestContext.confidence)) {
+    // Recording-derived windows (source 'current_time') are NOT evidence of
+    // when something happened — they never anchor an event on their own.
+    const bestContext = contextWindows.find(window => !window.isCurrentFallback) ?? null;
+
+    // Candidates from all resolvers, ranked by EVIDENCE CLASS of the wording
+    // (a stated calendar date outranks "last night" regardless of scores),
+    // confidence breaking ties only within a class.
+    type Cand = { start: string; end: string | null; label?: string; confidence: number; precision?: string; rank: number };
+    const rankOf = (label: string | undefined | null) => {
+      const cls = classifyTemporalExpression(label ?? '');
+      return evidenceClassRank({ start: 'x', source: cls.source, precision: cls.precision });
+    };
+    const candidates: Cand[] = [];
+    for (const w of resolveChronoWindows(sourceText, referenceDate, timezone)) {
+      candidates.push({
+        start: w.start.toISOString(), end: w.end.toISOString(),
+        label: w.label, confidence: w.confidence, precision: w.precision,
+        rank: rankOf(w.label),
+      });
+    }
+    if (contentAnchor) {
+      candidates.push({
+        start: contentAnchor.start.toISOString(), end: contentAnchor.end.toISOString(),
+        label: contentAnchor.label, confidence: contentAnchor.confidence, precision: contentAnchor.precision,
+        rank: rankOf(contentAnchor.label ?? sourceText),
+      });
+    }
+    if (bestContext) {
+      candidates.push({
+        start: new Date(bestContext.start).toISOString(),
+        end: bestContext.end && Number.isFinite(bestContext.end) ? new Date(bestContext.end).toISOString() : null,
+        label: typeof bestContext.label === 'string' ? bestContext.label : undefined,
+        confidence: bestContext.confidence,
+        precision: typeof bestContext.precision === 'string' ? bestContext.precision : undefined,
+        rank: rankOf(typeof bestContext.label === 'string' ? bestContext.label : ''),
+      });
+    }
+    candidates.sort((a, b) => b.rank - a.rank || b.confidence - a.confidence);
+    const bestCandidate = candidates[0];
+    if (bestCandidate) {
       return {
-        start: contentAnchor.start.toISOString(),
-        end: contentAnchor.end.toISOString(),
-        label: contentAnchor.label,
-        confidence: contentAnchor.confidence,
-        precision: contentAnchor.precision,
+        start: bestCandidate.start,
+        end: bestCandidate.end,
+        label: bestCandidate.label,
+        confidence: bestCandidate.confidence,
+        precision: bestCandidate.precision,
         source: 'content_inference',
       };
     }
 
-    if (bestContext) {
+    // No temporal evidence: the event stays UNANCHORED. Recording time must
+    // never masquerade as event time — created_at remains available separately.
+    return null;
+  }
+
+
+
+  /** Existing row → evidence (legacy rows read as recording_fallback). */
+  private rowEvidence(row: {
+    start_time?: string | null; end_time?: string | null; timezone?: string | null;
+    temporal_precision?: string | null; temporal_source?: string | null;
+    temporal_confidence?: number | null; temporal_expression?: string | null;
+    temporal_status?: string | null;
+  }): TemporalEvidence {
+    return {
+      start: row.start_time ?? null,
+      end: row.end_time ?? null,
+      timezone: row.timezone ?? null,
+      precision: (row.temporal_precision as TemporalEvidence['precision']) ?? 'unknown',
+      source: (row.temporal_source as TemporalEvidence['source']) ?? 'recording_fallback',
+      status: (row.temporal_status as TemporalEvidence['status']) ?? 'unanchored',
+      confidence: row.temporal_confidence ?? 0,
+      expression: row.temporal_expression ?? null,
+    };
+  }
+
+  private evidencePatch(e: TemporalEvidence) {
+    return {
+      start_time: e.start,
+      end_time: e.end,
+      timezone: e.timezone,
+      temporal_precision: e.precision,
+      temporal_source: e.source,
+      temporal_confidence: e.confidence,
+      temporal_expression: e.expression,
+      temporal_status: e.status,
+    };
+  }
+
+  /** Map resolver precision names to the canonical TemporalPrecision. */
+  private toTemporalPrecision(p: string | undefined): TemporalPrecision {
+    switch (p) {
+      case 'hour': case 'minute': return 'time_of_day';
+      case 'day': case 'week': return 'date';
+      case 'month': return 'month';
+      case 'season': return 'season';
+      case 'year': return 'year';
+      default: return 'unknown';
+    }
+  }
+
+  /** Canonical evidence record for an assembled when (or unanchored). */
+  private whenToEvidence(when: AssembledWhen | null, timezone: string): TemporalEvidence {
+    if (!when?.start) {
       return {
-        start: new Date(bestContext.start).toISOString(),
-        end: bestContext.end && Number.isFinite(bestContext.end) ? new Date(bestContext.end).toISOString() : null,
-        label: bestContext.label,
-        confidence: bestContext.confidence,
-        precision: bestContext.precision,
-        source: 'temporal_context',
+        start: null, end: null, timezone,
+        precision: 'unknown', source: 'recording_fallback', status: 'unanchored',
+        confidence: 0, expression: null,
       };
     }
-
-    const createdAt = referenceDate;
-    return {
-      start: createdAt.toISOString(),
-      end: null,
-      confidence: 0.45,
-      precision: 'minute',
-      source: 'created_at',
+    const cls = classifyTemporalExpression(when.label ?? null);
+    const precision = when.precision ? this.toTemporalPrecision(when.precision) : cls.precision;
+    const base = {
+      start: when.start,
+      end: when.end ?? null,
+      timezone,
+      precision,
+      source: cls.source,
+      confidence: typeof when.confidence === 'number' ? when.confidence : 0.5,
+      expression: when.label ?? null,
     };
+    return { ...base, status: statusFor(base) };
   }
 
   private getEarliestCreatedAt(units: ExtractedUnit[]): Date | null {

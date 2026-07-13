@@ -11,6 +11,7 @@ import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { UnknownField } from '../ui/UnknownField';
 import { fetchJson } from '../../lib/api';
+import { formatEventTime } from '../../lib/formatEventTime';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { EventConfidenceHistory } from './EventConfidenceHistory';
 import { EventActionsMenu } from './EventActionsMenu';
@@ -32,8 +33,12 @@ interface Event {
   title: string;
   summary: string | null;
   type: string | null;
-  start_time: string;
+  start_time: string | null;
   end_time: string | null;
+  timezone?: string | null;
+  temporal_precision?: string | null;
+  temporal_source?: string | null;
+  temporal_status?: string | null;
   confidence: number;
   people: string[];
   locations: string[];
@@ -811,7 +816,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
   // Event age
   let eventAge = '';
-  try { eventAge = formatDistanceToNow(parseISO(eventData.start_time), { addSuffix: true }); } catch { /* noop */ }
+  try { if (eventData.start_time) eventAge = formatDistanceToNow(parseISO(eventData.start_time), { addSuffix: true }); } catch { /* noop */ }
 
   // Header gradient — emotional tone first, event type as fallback
   const getTypeGradient = (type: string | null) => {
@@ -935,7 +940,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/45">
             <div className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-white/30" />
-              <span>{formatDate(eventData.start_time)}</span>
+              <span>{formatEventTime(eventData)}</span>
               {eventAge && (
                 <span className="text-white/30">·</span>
               )}
@@ -1264,7 +1269,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   <h3 className="text-xs font-bold text-white/55 uppercase tracking-widest mb-2.5 flex items-center gap-2">
                     <Clock className="w-3.5 h-3.5" /> When
                   </h3>
-                  <p className="text-sm text-white/85">{formatDate(eventData.start_time, true)}</p>
+                  <p className="text-sm text-white/85">{formatEventTime(eventData, { full: true })}</p>
                   {eventData.end_time && (
                     <p className="text-xs text-white/45 mt-1">until {formatDate(eventData.end_time)}</p>
                   )}

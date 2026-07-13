@@ -1440,7 +1440,7 @@ router.get(
       .from('resolved_events')
       .select('*')
       .eq('user_id', userId)
-      .order('start_time', { ascending: false });
+      .order('start_time', { ascending: false, nullsFirst: false });
 
     if (error) {
       if (isTableMissingError(error)) {
