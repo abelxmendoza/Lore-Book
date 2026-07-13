@@ -227,6 +227,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [saving, setSaving] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const [identitySaved, setIdentitySaved] = useState<string | null>(null);
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -647,7 +648,23 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     // Aliases and any other fields the accept endpoint does not take.
     await updateOrganization({ id: accept.organization_id, values }).unwrap().catch(() => {});
     apiCache.deletePattern(/\/api\/(organizations|books|counts|group-candidates)/);
-    onUpdate?.();
+
+    // Keep the modal open on the newly created organization and CONFIRM the
+    // save, instead of silently closing while the book reloads underneath.
+    const savedName = String(values.name ?? editedOrg.name);
+    try {
+      const fresh = await fetchJson<{ success: boolean; organization?: Organization }>(
+        `/api/organizations/${accept.organization_id}`,
+      );
+      if (fresh.organization && onSelectOrganization) {
+        onSelectOrganization(fresh.organization);
+      }
+    } catch {
+      /* book refresh below still shows the new group */
+    }
+    setIdentitySaved(
+      `Saved — "${savedName}" is now a real group. LoreBook recorded your correction and will use this name going forward.`,
+    );
     return true;
   };
 
@@ -823,11 +840,15 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         return;
       }
 
+      setIdentitySaved(null);
       if (await promoteCandidateWithEdits(updates)) {
         setEditingIdentity(false);
         return;
       }
       await updateOrganization({ id: organization.id, values: updates }).unwrap();
+      setIdentitySaved(
+        `Saved — "${String(updates.name ?? editedOrg.name)}" updated. LoreBook recorded your correction and will remember it.`,
+      );
 
       setEditingIdentity(false);
       setMentionsLoaded(false);
@@ -1423,16 +1444,24 @@ User's message: ${currentInput}`;
                           {identityError && (
                             <p className="w-full text-xs text-red-400" data-testid="identity-save-error">{identityError}</p>
                           )}
+                          {identitySaved && !identityError && (
+                            <p className="w-full text-xs text-emerald-400" data-testid="identity-save-success">✓ {identitySaved}</p>
+                          )}
                           <Button size="sm" className="h-9" onClick={() => void handleSave()} disabled={saving}>
                             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                             <span className="ml-1.5">Save</span>
                           </Button>
                         </div>
                       ) : (
+                        <>
+                        {identitySaved && (
+                          <p className="w-full text-xs text-emerald-400" data-testid="identity-saved-confirmation">✓ {identitySaved}</p>
+                        )}
                         <Button variant="outline" size="sm" className="h-9 w-full border-white/10 sm:w-auto" onClick={() => setEditingIdentity(true)}>
                           <Edit2 className="h-3.5 w-3.5 mr-1.5" />
                           Edit identity
                         </Button>
+                        </>
                       )}
                     </div>
                   </div>

@@ -96,7 +96,13 @@ type OrganizationRelationshipDeleteInput = {
 };
 
 async function invalidateOrganizationCaches(id: string, queryFulfilled: Promise<unknown>) {
-  await queryFulfilled;
+  try {
+    await queryFulfilled;
+  } catch {
+    // Mutation failure is surfaced by the caller's unwrap(); never leak an
+    // unhandled rejection from cache housekeeping.
+    return;
+  }
   invalidateCache(id);
   invalidateCache('/api/organizations');
 }
