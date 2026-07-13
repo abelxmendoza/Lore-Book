@@ -798,18 +798,51 @@ export class GroupCandidateService {
         .filter((id): id is string => Boolean(id))
     )];
 
-    if (ids.length === 0) return [];
-    const { data, error } = await supabaseAdmin
-      .from('characters')
-      .select('id, name')
-      .eq('user_id', userId)
-      .in('id', ids);
-    if (error) throw error;
+    const resolved: Array<{ character_id: string; character_name: string }> = [];
+    if (ids.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('characters')
+        .select('id, name')
+        .eq('user_id', userId)
+        .in('id', ids);
+      if (error) throw error;
+      const order = new Map(ids.map((id, index) => [id, index]));
+      resolved.push(
+        ...((data ?? []) as Array<{ id: string; name: string }>)
+          .sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0))
+          .map(row => ({ character_id: row.id, character_name: row.name })),
+      );
+    }
 
-    const order = new Map(ids.map((id, index) => [id, index]));
-    return ((data ?? []) as Array<{ id: string; name: string }>)
-      .sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0))
-      .map(row => ({ character_id: row.id, character_name: row.name }));
+    // Snapshot ids go stale when characters are merged or recreated after
+    // detection. Fall back to name/alias resolution for anything unresolved so
+    // an old candidate can still be accepted against the CURRENT character book.
+    const resolvedKeys = new Set(resolved.map(r => this.normalizeNameKey(r.character_name)));
+    const wantedNames = candidate.detected_members.filter(name =>
+      (requestedKeys.size === 0 || requestedKeys.has(this.normalizeNameKey(name))) &&
+      !resolvedKeys.has(this.normalizeNameKey(name)),
+    );
+    if (wantedNames.length > 0) {
+      const { data: allChars } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, alias')
+        .eq('user_id', userId)
+        .limit(1000);
+      const seenIds = new Set(resolved.map(r => r.character_id));
+      for (const wanted of wantedNames) {
+        const key = this.normalizeNameKey(wanted);
+        const hit = (allChars ?? []).find((c: { id: string; name: string; alias?: string[] | null }) =>
+          this.normalizeNameKey(c.name) === key ||
+          (Array.isArray(c.alias) && c.alias.some(a => this.normalizeNameKey(a) === key)),
+        );
+        if (hit && !seenIds.has(hit.id)) {
+          seenIds.add(hit.id);
+          resolved.push({ character_id: hit.id, character_name: hit.name });
+        }
+      }
+    }
+
+    return resolved;
   }
 
   private normalizeNameKey(name: string): string {
