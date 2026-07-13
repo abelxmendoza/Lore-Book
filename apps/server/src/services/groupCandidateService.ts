@@ -286,11 +286,27 @@ export class GroupCandidateService {
    * so the same cluster always gets the same name. An official name always wins
    * upstream — this only runs when none was given.
    */
+  /**
+   * Identity-safe short name for generated group titles: never strand a
+   * kinship/honorific title ("Tio Ralph" stays whole, not "Tio"), never split
+   * a stage name ("Hell Fairy" stays whole).
+   */
+  private titleSafeShortName(name: string): string {
+    const clean = (name ?? '').trim();
+    const tokens = clean.split(/\s+/);
+    if (tokens.length <= 1) return clean;
+    if (/\b(fairy|queen|goth|moth|neon|doll|bats?|dj|mc|baby|hell)\b/i.test(clean)) return clean;
+    const first = tokens[0].replace(/\.+$/, '').toLowerCase();
+    const TITLES = new Set(['mr','mrs','ms','miss','dr','prof','professor','coach','tio','tío','tia','tía','uncle','aunt','auntie','abuela','abuelo','don','doña','dona','sr','sra','primo','prima','cousin']);
+    if (TITLES.has(first)) return tokens.slice(0, 2).join(' ');
+    return tokens[0];
+  }
+
   private generateCreativeName(
     group: Awaited<ReturnType<typeof groupDetectionService.detectGroupsInMessage>>[number]
   ): string {
     const members = group.members ?? [];
-    const firsts = members.map(m => m.split(' ')[0]).filter(Boolean);
+    const firsts = members.map(m => this.titleSafeShortName(m)).filter(Boolean);
     const lasts = members.map(m => m.split(' ').slice(1).join(' ')).filter(Boolean);
 
     if (group.group_type === 'family') {
@@ -676,7 +692,7 @@ export class GroupCandidateService {
   private buildFallbackName(members: string[]): string {
     if (members.length === 0) return `New Group`;
     if (members.length === 1) return `${members[0]}'s Group`;
-    const first = members.slice(0, 2).map(m => m.split(' ')[0]);
+    const first = members.slice(0, 2).map(m => this.titleSafeShortName(m));
     return `${first.join(' & ')} Crew`;
   }
 

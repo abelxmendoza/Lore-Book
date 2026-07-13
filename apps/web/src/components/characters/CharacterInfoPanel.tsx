@@ -2,6 +2,7 @@
  * Character Info tab — priority-ordered profile overview.
  */
 
+import { shortDisplayName } from '../../lib/displayName';
 import {
   Clock,
   Heart,
@@ -1111,7 +1112,7 @@ export function CharacterInfoPanel({
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-white/45 italic">
-              LoreBook is still learning {editedCharacter.name.split(' ')[0]}&apos;s story.
+              LoreBook is still learning {shortDisplayName(editedCharacter.name)}&apos;s story.
             </p>
             <UnknownField
               label="Their story"
@@ -1374,7 +1375,7 @@ export function CharacterInfoPanel({
         profile={loreProfile ?? null}
         loading={loreProfileLoading}
         currentCharacterId={characterId}
-        characterFirstName={editedCharacter.name.split(' ')[0]}
+        characterFirstName={shortDisplayName(editedCharacter.name)}
         relationships={editedCharacter.relationships}
         onAskInChat={askInChat}
         onOpenCharacter={onOpenCharacterById}
@@ -1458,7 +1459,7 @@ export function CharacterInfoPanel({
               <h4 className="text-xs font-semibold text-rose-200/90 mb-2">Life impact</h4>
               <RelationshipLifeImpactPanel
                 influence={lifeImpact}
-                personName={editedCharacter.name.split(' ')[0]}
+                personName={shortDisplayName(editedCharacter.name)}
                 compact
               />
             </div>
@@ -1633,7 +1634,7 @@ export function CharacterInfoPanel({
           </p>
         ) : characterAttributes.length === 0 ? (
           <p className="text-xs text-white/35 py-1">
-            No attributes yet — keep journaling about {editedCharacter.name.split(' ')[0]}.
+            No attributes yet — keep journaling about {shortDisplayName(editedCharacter.name)}.
           </p>
         ) : (
           <div className="rounded-xl border border-white/10 divide-y divide-white/5 overflow-hidden">

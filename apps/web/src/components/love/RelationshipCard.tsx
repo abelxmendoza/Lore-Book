@@ -1,6 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import type { MouseEvent } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import { Heart, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Calendar, BookOpen, Link2 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -216,7 +217,7 @@ export const RelationshipCard = ({ relationship, onClick, onOpenCharacter, onLin
           <div className="mb-2 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-2.5 py-2 sm:mb-3 sm:px-3 sm:py-2.5">
             <p className="text-[11px] font-medium text-white/55 sm:text-xs">Still learning</p>
             <p className="mt-0.5 line-clamp-2 text-[10px] text-white/35 sm:text-[11px]">
-              Mention {relationship.person_name?.split(' ')[0] || 'them'} more in chat — scores sharpen as evidence grows.
+              Mention {shortDisplayName(relationship.person_name) || 'them'} more in chat — scores sharpen as evidence grows.
             </p>
           </div>
         ) : (

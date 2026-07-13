@@ -6,6 +6,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -134,7 +135,7 @@ const buildMessage = (c: GroupCandidate): string => {
 const displayGroupName = (c: GroupCandidate): string => {
   if (c.proposed_name?.trim()) return c.proposed_name.trim();
   if (c.detected_members.length >= 2) {
-    return `${c.detected_members.slice(0, 2).map(m => m.split(' ')[0]).join(' & ')} ${typeLabel(c.suggested_group_type)}`.trim();
+    return `${c.detected_members.slice(0, 2).map(m => shortDisplayName(m)).join(' & ')} ${typeLabel(c.suggested_group_type)}`.trim();
   }
   return `New ${typeLabel(c.suggested_group_type)}`;
 };
@@ -154,7 +155,7 @@ const candidateToOrganization = (c: GroupCandidate, id?: string): Organization =
     status: 'active',
   }));
   const fallbackName = c.detected_members.length
-    ? `${c.detected_members.slice(0, 2).map(m => m.split(' ')[0]).join(' & ')} ${typeLabel(c.suggested_group_type)}`.trim()
+    ? `${c.detected_members.slice(0, 2).map(m => shortDisplayName(m)).join(' & ')} ${typeLabel(c.suggested_group_type)}`.trim()
     : `New ${typeLabel(c.suggested_group_type)}`;
   const name = c.proposed_name ?? fallbackName;
   const profile = deriveOrganizationProfile({

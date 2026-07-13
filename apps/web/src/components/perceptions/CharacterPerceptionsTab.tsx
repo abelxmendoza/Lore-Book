@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import {
   Plus, MessageSquareHeart, CheckCircle2, AlertTriangle,
   Eye, EyeOff, MessageSquare, Link2, ChevronRight,
@@ -54,7 +55,7 @@ function timeAgo(iso: string) {
 // ── Mock data factory (character-specific) ────────────────────────────────────
 
 function mockPerceptionsFor(personName: string, personId: string): PerceptionEntry[] {
-  const first = personName.split(' ')[0];
+  const first = shortDisplayName(personName);
   const now = Date.now();
   const days = (n: number) => new Date(now - n * 86_400_000).toISOString();
 
@@ -256,7 +257,7 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
   const [editing, setEditing] = useState<PerceptionEntry | null>(null);
   const useMock = shouldUseMockData();
 
-  const firstName = personName.split(' ')[0];
+  const firstName = shortDisplayName(personName);
 
   const load = async () => {
     setLoading(true);

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import {
   Users,
   MapPin,
@@ -92,7 +93,7 @@ export function OrganizationModalOverview({
                 <div className="h-9 w-9 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-xs font-bold text-white/80">
                   {m.character_name.charAt(0)}
                 </div>
-                <span className="text-[9px] text-white/55 truncate w-full text-center">{m.character_name.split(' ')[0]}</span>
+                <span className="text-[9px] text-white/55 truncate w-full text-center">{shortDisplayName(m.character_name)}</span>
               </div>
             ))}
           </div>

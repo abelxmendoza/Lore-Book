@@ -1,4 +1,5 @@
 import { MapPin, Clock, Users, ChevronRight, TrendingUp, TrendingDown, Star } from 'lucide-react';
+import { shortDisplayName } from '../../lib/displayName';
 import { classifyLocation, KIND_META, locationHierarchy, countNestedPlaces, isHouseholdLocation } from '../../lib/locationTaxonomy';
 import { formatPlaceType, getPlaceTags, resolvePlaceType } from '../../lib/placeTypes';
 
@@ -256,7 +257,7 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
           <div className="flex items-center gap-1 min-w-0 pt-0.5 border-t border-white/5">
             <Users className="h-3 w-3 text-white/25 shrink-0" aria-hidden />
             <span className="text-[10px] text-white/45 truncate">
-              {verifiedPeople.slice(0, 2).map((p) => p.name.split(' ')[0]).join(', ')}
+              {verifiedPeople.slice(0, 2).map((p) => shortDisplayName(p.name)).join(', ')}
               {verifiedPeople.length > 2 && (
                 <span className="text-white/30"> +{verifiedPeople.length - 2}</span>
               )}

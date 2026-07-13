@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import {
   Brain,
   MessageSquare,
@@ -221,7 +222,7 @@ export function CharacterKnowledgeBase({
       });
   }, [active, loaded, mockMode, characterId, characterName, character]);
 
-  const firstName = characterName.split(' ')[0];
+  const firstName = shortDisplayName(characterName);
   const kb = data;
   const learningScore = kb?.intelligence.learningScore ?? 0;
   const headerTitle = isSelfProfile ? 'What Lore Knows About You' : 'Entity Knowledge Base';

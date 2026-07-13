@@ -5,6 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -177,7 +178,7 @@ const candidateToPreviewOrganization = (candidate: GroupCandidate): Organization
     status: 'active',
   }));
   const fallbackName = members.length >= 2
-    ? `${members.slice(0, 2).map(member => member.character_name.split(' ')[0]).join(' & ')} Group`
+    ? `${members.slice(0, 2).map(member => shortDisplayName(member.character_name)).join(' & ')} Group`
     : 'Detected Group';
 
   return normalizeOrganization({

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
@@ -2125,7 +2126,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   const removeOrgMembership = async (org: Organization) => {
-    const firstName = editedCharacter.name.split(' ')[0];
+    const firstName = shortDisplayName(editedCharacter.name);
     const member = (org.members ?? []).find(
       (m) =>
         m.character_id === editedCharacter.id ||
@@ -3333,7 +3334,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           scope="character"
                           entityId={editedCharacter.id}
                           refreshKey={familyRefreshKey}
-                          title={`No family tree for ${editedCharacter.name.split(' ')[0]} yet`}
+                          title={`No family tree for ${shortDisplayName(editedCharacter.name)} yet`}
                           hint="Share how they're related to you or others in chat — LoreBook infers positions and keeps updating."
                           {...familyEditing.editHandlers}
                           onMemberClick={(id, name) => {
@@ -3552,7 +3553,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           variant="ghost"
                           size="sm"
                           className="flex-shrink-0 h-6 w-6 p-0 mt-0.5 text-white/25 hover:text-red-400"
-                          aria-label={`Remove ${editedCharacter.name.split(' ')[0]} from ${org.name}`}
+                          aria-label={`Remove ${shortDisplayName(editedCharacter.name)} from ${org.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             void removeOrgMembership(org);
@@ -3585,7 +3586,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                       {orgAddOpen && !isMockDataEnabled && (
                         <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.035] p-3">
                           <p className="text-[10px] text-white/35 mb-2">
-                            Add {editedCharacter.name.split(' ')[0]} to a group that already exists in your Groups &amp; Organizations book.
+                            Add {shortDisplayName(editedCharacter.name)} to a group that already exists in your Groups &amp; Organizations book.
                           </p>
                           <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
                             <select
@@ -3648,7 +3649,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                       {theirs.length > 0 && (
                         <div>
                           <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">
-                            {editedCharacter.name.split(' ')[0]}&apos;s groups
+                            {shortDisplayName(editedCharacter.name)}&apos;s groups
                           </p>
                           <div className="space-y-2">
                             {theirs.map((org: any) => <OrgCard key={org.id} org={org} isShared={false} />)}
@@ -3737,13 +3738,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   <div className="text-center py-12 text-white/40">
                     <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-medium mb-1">No shared memories yet</p>
-                    <p className="text-xs">Memories appear here as you mention {editedCharacter.name.split(' ')[0]} in your journal entries</p>
+                    <p className="text-xs">Memories appear here as you mention {shortDisplayName(editedCharacter.name)} in your journal entries</p>
                   </div>
                 )}
 
                 {!loadingMemories && sharedMemoryCards.length > 0 && (() => {
                   const memories = [...sharedMemoryCards].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                  const firstName = editedCharacter.name.split(' ')[0];
+                  const firstName = shortDisplayName(editedCharacter.name);
 
                   // ── 6. Relationship arc header (uses dynamics if loaded) ────
                   const stageHistory: Array<{ stage: string; start_date: string }> = dynamics?.lifecycle?.stage_history ?? [];
@@ -4047,7 +4048,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               <div className="space-y-6">
                 {(() => {
                   const analytics = editedCharacter.analytics ?? (isMockDataEnabled ? generateMockAnalytics(editedCharacter) : deriveAnalyticsFromCharacter(editedCharacter));
-                  const firstName = editedCharacter.name.split(' ')[0];
+                  const firstName = shortDisplayName(editedCharacter.name);
 
                   // ── 1. Relationship Sentence ────────────────────────────────
                   const phaseLabel = (() => {
@@ -4208,7 +4209,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                             {/* Their influence on you */}
                             <div>
                               <div className="flex justify-between text-xs text-white/45 mb-1">
-                                <span>{editedCharacter.name.split(' ')[0]}&apos;s influence on you</span>
+                                <span>{shortDisplayName(editedCharacter.name)}&apos;s influence on you</span>
                                 <span className="font-semibold text-white/70">{analytics.character_influence_on_user}%</span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -4224,7 +4225,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                             {/* Your influence on them */}
                             <div>
                               <div className="flex justify-between text-xs text-white/45 mb-1">
-                                <span>Your influence on {editedCharacter.name.split(' ')[0]}</span>
+                                <span>Your influence on {shortDisplayName(editedCharacter.name)}</span>
                                 <span className="font-semibold text-white/70">{analytics.user_influence_over_character}%</span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -4240,9 +4241,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           </div>
                           <p className="text-[10px] text-white/25 leading-snug">
                             {analytics.character_influence_on_user > analytics.user_influence_over_character + 15
-                              ? `${editedCharacter.name.split(' ')[0]} has more influence over you than you have over them — this relationship shapes you significantly.`
+                              ? `${shortDisplayName(editedCharacter.name)} has more influence over you than you have over them — this relationship shapes you significantly.`
                               : analytics.user_influence_over_character > analytics.character_influence_on_user + 15
-                              ? `You have more influence in this relationship than ${editedCharacter.name.split(' ')[0]} does.`
+                              ? `You have more influence in this relationship than ${shortDisplayName(editedCharacter.name)} does.`
                               : 'Balanced influence — this relationship is roughly reciprocal.'}
                           </p>
                         </div>
@@ -4405,7 +4406,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     Relationship Intelligence
                   </h3>
                   <p className="text-xs text-white/45 mt-1">
-                    Why does {editedCharacter.name.split(' ')[0]} matter? How have they shaped you?
+                    Why does {shortDisplayName(editedCharacter.name)} matter? How have they shaped you?
                   </p>
                 </div>
 
@@ -4634,10 +4635,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                       <InsufficientData
                         icon={Zap}
                         accent="yellow"
-                        title={`Still learning about ${editedCharacter.name.split(' ')[0]}`}
-                        description={`LoreBook builds relationship intelligence — influence, health, and dynamics — from your entries over time. A few more mentions of ${editedCharacter.name.split(' ')[0]} will fill this in.`}
+                        title={`Still learning about ${shortDisplayName(editedCharacter.name)}`}
+                        description={`LoreBook builds relationship intelligence — influence, health, and dynamics — from your entries over time. A few more mentions of ${shortDisplayName(editedCharacter.name)} will fill this in.`}
                         action={{
-                          label: `Tell LoreBook about ${editedCharacter.name.split(' ')[0]}`,
+                          label: `Tell LoreBook about ${shortDisplayName(editedCharacter.name)}`,
                           icon: MessageSquare,
                           onClick: () => askInChat(`Here's what's going on with ${editedCharacter.name}: `),
                         }}

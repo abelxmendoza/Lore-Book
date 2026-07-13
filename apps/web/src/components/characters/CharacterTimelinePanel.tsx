@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { shortDisplayName } from '../../lib/displayName';
 import { Clock, List, RefreshCw, Loader2, Waves } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
@@ -69,7 +70,7 @@ export function CharacterTimelinePanel({
   active = true,
   isSelfProfile = false,
 }: Props) {
-  const firstName = characterName.split(' ')[0];
+  const firstName = shortDisplayName(characterName);
   const withLabel = isSelfProfile ? 'With others' : 'With you';
   const withoutLabel = isSelfProfile ? 'Your story' : 'Without you';
   const timelineTitle = isSelfProfile ? 'Your Timeline' : `${firstName}'s Timeline`;
