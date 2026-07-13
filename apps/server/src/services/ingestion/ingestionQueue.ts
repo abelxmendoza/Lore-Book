@@ -17,6 +17,11 @@ import {
   computeRetryDelayMs,
 } from './ingestionJobStates';
 import { incMetric } from '../chat/chatDurability';
+import {
+  gateConversationIngestionWrite,
+  gateIngestionPayloadForRead,
+  recordInvalidPayloadDeadLetter,
+} from './ingestionPayloadGate';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -190,6 +195,46 @@ class IngestionQueue {
   private async persistThenQueue(
     job: IngestionJob,
   ): Promise<'new' | 'duplicate' | 'durable_failed'> {
+    // Validate + version envelope before any WAL write.
+    const gated = gateConversationIngestionWrite({
+      userId: job.userId,
+      chatMessageId: job.chatMessageId,
+      sessionId: job.sessionId,
+      idempotencyKey: job.idempotencyKey,
+      conversationHistory: job.conversationHistory?.map((m) => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content.slice(0, 8000) : '',
+      })),
+      force: job.force,
+    });
+    if (!gated.ok) {
+      logger.error(
+        {
+          jobId: job.id,
+          userId: job.userId,
+          chatMessageId: job.chatMessageId,
+          reason: gated.reason,
+          diagnostics: gated.diagnostics,
+        },
+        'IngestionQueue: payload schema rejected at write — not queuing',
+      );
+      recordInvalidPayloadDeadLetter(gated.reason);
+      await this.deadLetter(
+        job,
+        new Error(`PAYLOAD_SCHEMA_INVALID:${gated.reason}:${gated.message}`),
+        {
+          schemaRejection: gated.reason,
+          diagnostics: gated.diagnostics,
+        },
+      );
+      void ingestionJobStore.markDead(job.id, gated.message, {
+        category: 'validation',
+        code: 'PAYLOAD_SCHEMA_INVALID',
+        failedStage: 'PAYLOAD_VALIDATE',
+      });
+      return 'durable_failed';
+    }
+
     const persistResult = await ingestionJobStore.persist({
       id: job.id,
       idempotencyKey: job.idempotencyKey,
@@ -197,15 +242,10 @@ class IngestionQueue {
       chatMessageId: job.chatMessageId,
       sessionId: job.sessionId,
       priority: job.priority,
-      payload: {
-        conversationHistory: job.conversationHistory?.map((m) => ({
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content.slice(0, 8000) : '',
-        })),
-        force: job.force,
-      },
+      payload: gated.durablePayload as unknown as Record<string, unknown>,
       logicalStatus: 'QUEUED',
       currentStage: 'RAW_MESSAGE_PERSISTED',
+      ingestionVersion: typeof gated.envelope.schemaVersion === 'number' ? gated.envelope.schemaVersion : 1,
     });
 
     if (!persistResult.ok) {
@@ -232,29 +272,75 @@ class IngestionQueue {
 
   async recover(): Promise<number> {
     const rows = await ingestionJobStore.loadResumable();
+    let recovered = 0;
+    let quarantined = 0;
     for (const r of rows) {
-      const payload = (r.payload ?? {}) as {
-        conversationHistory?: IngestionJobPayload['conversationHistory'];
-        force?: boolean;
-      };
+      const gated = gateIngestionPayloadForRead(r.payload ?? {}, {
+        userId: r.user_id,
+        sourceMessageId: r.chat_message_id ?? r.idempotency_key,
+        sourceThreadId: r.session_id,
+        idempotencyKey: r.idempotency_key,
+        jobId: r.id,
+      });
+      if (!gated.ok) {
+        quarantined++;
+        recordInvalidPayloadDeadLetter(gated.reason);
+        const stub: IngestionJob = {
+          id: r.id,
+          idempotencyKey: r.idempotency_key,
+          userId: r.user_id,
+          chatMessageId: r.chat_message_id ?? '',
+          sessionId: r.session_id ?? '',
+          priority: (r.priority as JobPriority) ?? 'NORMAL',
+          attempts: r.attempts ?? 0,
+          maxAttempts: 5,
+          createdAt: Date.now(),
+        };
+        await this.deadLetter(
+          stub,
+          new Error(`PAYLOAD_SCHEMA_INVALID:${gated.reason}:${gated.message}`),
+          { schemaRejection: gated.reason, diagnostics: gated.diagnostics },
+        );
+        void ingestionJobStore.markDead(r.id, gated.message, {
+          category: 'validation',
+          code: 'PAYLOAD_SCHEMA_INVALID',
+          failedStage: 'PAYLOAD_VALIDATE',
+        });
+        continue;
+      }
+
+      // Only conversation_ingestion is executed by this worker path today.
+      if (gated.envelope.jobType !== 'conversation_ingestion') {
+        logger.info(
+          { jobId: r.id, jobType: gated.envelope.jobType },
+          'IngestionQueue: non-conversation envelope recovered but not auto-executed by chat worker',
+        );
+        continue;
+      }
+
+      const conv = gated.envelope.payload;
       this.enqueueInMemory({
         id: r.id,
         idempotencyKey: r.idempotency_key,
         userId: r.user_id,
-        chatMessageId: r.chat_message_id ?? '',
-        sessionId: r.session_id ?? '',
-        conversationHistory: payload.conversationHistory,
-        force: payload.force,
+        chatMessageId: r.chat_message_id ?? gated.envelope.sourceMessageId,
+        sessionId: r.session_id ?? gated.envelope.sourceThreadId ?? '',
+        conversationHistory: conv.conversationHistory,
+        force: conv.force,
         priority: (r.priority as JobPriority) ?? 'NORMAL',
         attempts: r.attempts ?? 0,
         maxAttempts: 5,
         createdAt: Date.now(),
       });
+      recovered++;
     }
-    if (rows.length > 0) {
-      logger.info({ recovered: rows.length }, 'IngestionQueue: recovered durable jobs on startup');
+    if (recovered > 0 || quarantined > 0) {
+      logger.info(
+        { recovered, quarantined },
+        'IngestionQueue: recovered durable jobs on startup',
+      );
     }
-    return rows.length;
+    return recovered;
   }
 
   depth(): number {
@@ -262,6 +348,9 @@ class IngestionQueue {
   }
 
   stats() {
+    // Lazy import avoids circular init; metrics are module-level.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getIngestionPayloadMetrics } = require('./ingestionPayloadMetrics') as typeof import('./ingestionPayloadMetrics');
     return {
       depth: this.depth(),
       active: this.activeJobs,
@@ -274,6 +363,7 @@ class IngestionQueue {
         NORMAL: this.queues.NORMAL.length,
         LOW: this.queues.LOW.length,
       },
+      payloadValidation: getIngestionPayloadMetrics(),
     };
   }
 
@@ -302,6 +392,34 @@ class IngestionQueue {
     job.attempts++;
     const attemptStart = Date.now();
     job.lastAttemptAt = attemptStart;
+
+    // Re-validate worker-side envelope (conversation path synthesizes from job fields).
+    const readGate = gateConversationIngestionWrite({
+      userId: job.userId,
+      chatMessageId: job.chatMessageId,
+      sessionId: job.sessionId,
+      idempotencyKey: job.idempotencyKey,
+      conversationHistory: job.conversationHistory,
+      force: job.force,
+    });
+    if (!readGate.ok) {
+      recordInvalidPayloadDeadLetter(readGate.reason);
+      await this.deadLetter(
+        job,
+        new Error(`PAYLOAD_SCHEMA_INVALID:${readGate.reason}:${readGate.message}`),
+        { schemaRejection: readGate.reason, diagnostics: readGate.diagnostics },
+      );
+      void ingestionJobStore.markDead(job.id, readGate.message, {
+        category: 'validation',
+        code: 'PAYLOAD_SCHEMA_INVALID',
+        failedStage: 'PAYLOAD_VALIDATE',
+      });
+      this.totalFailed++;
+      this.activeJobs--;
+      this.activeUsers.delete(job.userId);
+      this.drain();
+      return;
+    }
 
     try {
       const { maybeInjectFault } = await import('../chat/durabilityFaultInjection');
@@ -475,6 +593,9 @@ class IngestionQueue {
       void import('../loreReadiness/loreReadinessService').then(({ loreReadinessService }) => {
         loreReadinessService.invalidateCache(job.userId);
       });
+      void import('../events/lifeLogCoverageRecoveryService').then(({ scheduleLifeLogCoverageRecovery }) => {
+        scheduleLifeLogCoverageRecovery(job.userId);
+      });
       logger.debug(
         { jobId: job.id, userId: job.userId, attempt: job.attempts },
         'IngestionQueue: job completed',
@@ -606,7 +727,11 @@ class IngestionQueue {
     }
   }
 
-  private async deadLetter(job: IngestionJob, err: unknown): Promise<void> {
+  private async deadLetter(
+    job: IngestionJob,
+    err: unknown,
+    extra?: { schemaRejection?: string; diagnostics?: Record<string, unknown> },
+  ): Promise<void> {
     try {
       await supabaseAdmin.from('ingestion_dead_letter').insert({
         job_id: job.id,
@@ -619,6 +744,8 @@ class IngestionQueue {
           sessionId: job.sessionId,
           priority: job.priority,
           createdAt: job.createdAt,
+          schemaRejection: extra?.schemaRejection,
+          diagnostics: extra?.diagnostics,
         },
       });
     } catch (dlErr) {

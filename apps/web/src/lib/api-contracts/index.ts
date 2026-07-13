@@ -1,4 +1,4 @@
-/* Vendored mirror of packages/api-contracts for Vercel (rootDirectory=apps/web). Keep in sync. */
+/* Vendored mirror of packages/api-contracts — DO NOT EDIT. Sync from packages/api-contracts/src. */
 export {
   apiSuccessEnvelopeSchema,
   apiErrorEnvelopeSchema,
@@ -28,3 +28,5 @@ export {
   type ChatStreamDoneEvent,
   type ChatStreamErrorEvent,
 } from './chat/streamEvents';
+
+export * from './ingestion';

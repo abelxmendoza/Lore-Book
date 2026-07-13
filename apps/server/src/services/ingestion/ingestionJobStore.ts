@@ -91,6 +91,23 @@ class IngestionJobStore {
    */
   async persist(input: PersistJobInput): Promise<PersistJobResult> {
     try {
+      // Defense-in-depth: callers should already gate; refuse bare unversioned blobs.
+      if (
+        input.payload &&
+        typeof input.payload === 'object' &&
+        !('schemaVersion' in input.payload)
+      ) {
+        logger.error(
+          { jobId: input.id, chatMessageId: input.chatMessageId },
+          'ingestionJobStore.persist refused unversioned payload',
+        );
+        return {
+          ok: false,
+          error: 'PAYLOAD_SCHEMA_INVALID: missing schemaVersion',
+          code: 'PAYLOAD_SCHEMA_INVALID',
+        };
+      }
+
       const logical = input.logicalStatus ?? 'QUEUED';
       const { data, error } = await supabaseAdmin
         .from('ingestion_jobs')

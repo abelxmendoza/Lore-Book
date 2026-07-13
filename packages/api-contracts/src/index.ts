@@ -27,3 +27,5 @@ export {
   type ChatStreamDoneEvent,
   type ChatStreamErrorEvent,
 } from './chat/streamEvents';
+
+export * from './ingestion';
