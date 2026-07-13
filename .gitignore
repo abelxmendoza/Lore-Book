@@ -122,3 +122,6 @@ lorekeeper-refine/
 apps/server/.env.staging.local
 apps/web/.env.staging.local
 .private/staging-credentials.env
+
+# Personal AI-agent configs (Codex, etc.) — never commit agent setups
+.codex/
