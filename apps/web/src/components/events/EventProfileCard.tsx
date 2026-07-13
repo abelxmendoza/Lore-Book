@@ -2,7 +2,8 @@ import { Clock, MapPin, Users, ChevronRight, Calendar, Briefcase, Plane, Heart, 
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { parseISO, formatDistanceToNow } from 'date-fns';
+import { formatEventTime } from '../../lib/formatEventTime';
 import { getDisplayTitle } from '../../utils/displayTitle';
 
 export type Event = {
@@ -10,7 +11,9 @@ export type Event = {
   title: string;
   summary: string | null;
   type: string | null;
-  start_time: string;
+  start_time: string | null;
+  temporal_precision?: string | null;
+  temporal_status?: string | null;
   end_time: string | null;
   confidence: number;
   people: string[];
@@ -130,16 +133,9 @@ const getImpactColor = (type: string): string => {
   }
 };
 
-const formatDate = (dateString: string) => {
-  try { return format(parseISO(dateString), 'MMM d, yyyy'); } catch { return dateString; }
-};
-
-const formatRelative = (dateString: string) => {
+const formatRelative = (dateString: string | null | undefined) => {
+  if (!dateString) return '';
   try { return formatDistanceToNow(parseISO(dateString), { addSuffix: true }); } catch { return ''; }
-};
-
-const formatFull = (dateString: string) => {
-  try { return format(parseISO(dateString), 'EEEE, MMMM d, yyyy · h:mm a'); } catch { return dateString; }
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -152,7 +148,7 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
   const showConfidence = event.confidence < 0.70;
   const showImpact = event.impact && event.impact.type !== 'observer';
   const TypeIcon = getTypeIcon(event.type);
-  const relative = formatRelative(event.start_time);
+  const relative = event.temporal_status === 'unanchored' || !event.start_time ? 'undated' : formatRelative(event.start_time);
   const sigScore = getSignificanceScore(event);
   const isMajor = sigScore >= 60;
   const isMinor = sigScore < 25;
@@ -216,7 +212,7 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
         {/* Relative time — top left (shown only when not major) */}
         {relative && !isMajor && (
           <div className="absolute top-2 left-2 z-10">
-            <Tooltip content={formatFull(event.start_time)} side="right">
+            <Tooltip content={formatEventTime(event, { full: true })} side="right">
               <span className="text-[9px] text-white/35 cursor-help leading-none">{relative}</span>
             </Tooltip>
           </div>
@@ -265,10 +261,10 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
 
         {/* Metadata — names + date */}
         <div className="hidden sm:flex flex-col gap-0.5 text-[10px] text-white/55">
-          <Tooltip content={`Date: ${formatFull(event.start_time)}`} side="top">
+          <Tooltip content={`Date: ${formatEventTime(event, { full: true })}`} side="top">
             <div className="flex items-center gap-1 cursor-help w-fit">
               <Clock className="h-2.5 w-2.5 flex-shrink-0 text-white/40" />
-              <span>{formatDate(event.start_time)}</span>
+              <span>{formatEventTime(event)}</span>
             </div>
           </Tooltip>
 

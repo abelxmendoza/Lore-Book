@@ -164,7 +164,7 @@ function eventText(event: Event): string {
 
 function eventMatchesCategory(event: Event, category: EventCategory): boolean {
   if (category === 'all') return true;
-  if (category === 'recent') return parseISO(event.start_time) >= subDays(new Date(), 30);
+  if (category === 'recent') return !!event.start_time && parseISO(event.start_time) >= subDays(new Date(), 30);
   if (category === 'with_people') return event.people.length > 0;
   if (category === 'with_locations') return event.locations.length > 0;
   const kw = CATEGORY_KEYWORDS[category];
@@ -647,7 +647,7 @@ export const EventsBook: React.FC = () => {
           break;
         default: return filtered;
       }
-      filtered = filtered.filter(e => isWithinInterval(parseISO(e.start_time), { start: startDate, end: endDate }));
+      filtered = filtered.filter(e => !!e.start_time && isWithinInterval(parseISO(e.start_time), { start: startDate, end: endDate }));
     }
 
     if (filters.types.length > 0) filtered = filtered.filter(e => e.type && filters.types.includes(e.type));
@@ -681,8 +681,8 @@ export const EventsBook: React.FC = () => {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'date_desc': return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-        case 'date_asc': return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+        case 'date_desc': return (b.start_time ? new Date(b.start_time).getTime() : -Infinity) - (a.start_time ? new Date(a.start_time).getTime() : -Infinity);
+        case 'date_asc': return (a.start_time ? new Date(a.start_time).getTime() : Infinity) - (b.start_time ? new Date(b.start_time).getTime() : Infinity);
         case 'confidence_desc': return b.confidence - a.confidence;
         case 'confidence_asc': return a.confidence - b.confidence;
         case 'title_asc': return a.title.localeCompare(b.title);
@@ -709,6 +709,12 @@ export const EventsBook: React.FC = () => {
     for (const event of events) {
       const start = safeDate(event.start_time);
       if (!start) continue;
+      // Calendar admission: a day cell asserts "this happened on this day."
+      // Month/season/year precision and unanchored events must not fake a day.
+      const precision = (event as { temporal_precision?: string | null }).temporal_precision;
+      const status = (event as { temporal_status?: string | null }).temporal_status;
+      if (status === 'unanchored') continue;
+      if (precision === 'month' || precision === 'season' || precision === 'year' || precision === 'unknown') continue;
       const end = safeDate(event.end_time) ?? start;
       const normalizedStart = startOfDay(start);
       const normalizedEnd = startOfDay(end);

@@ -31,12 +31,18 @@ export const correctLoreInputSchema = {
     'set_romantic_classification',
     'exclude_from_dating',
     'confirm_romantic',
+    'set_event_time',
   ]),
   /** rename_character */
   character_id: z.string().uuid().optional(),
   new_name: z.string().min(1).max(120).optional(),
   /** romantic actions */
   relationship_id: z.string().uuid().optional(),
+  /** set_event_time */
+  event_id: z.string().uuid().optional(),
+  /** ISO date or datetime the user stated ("2026-03-15" or full timestamp). */
+  event_time: z.string().optional(),
+  event_precision: z.enum(['exact', 'time_of_day', 'date', 'month', 'season', 'year']).optional(),
   relationship_type: z.enum(ROMANTIC_TYPES).optional(),
   status: z.enum(ROMANTIC_STATUSES).optional(),
   /** The user's own words for why — stored as provenance. */
@@ -46,7 +52,10 @@ export const correctLoreInputSchema = {
 };
 
 export type CorrectLoreArgs = {
-  action: 'rename_character' | 'set_romantic_classification' | 'exclude_from_dating' | 'confirm_romantic';
+  action: 'rename_character' | 'set_romantic_classification' | 'exclude_from_dating' | 'confirm_romantic' | 'set_event_time';
+  event_id?: string;
+  event_time?: string;
+  event_precision?: 'exact' | 'time_of_day' | 'date' | 'month' | 'season' | 'year';
   character_id?: string;
   new_name?: string;
   relationship_id?: string;
@@ -78,6 +87,15 @@ export function validateCorrection(args: CorrectLoreArgs): { ok: true } | { ok: 
         return { ok: false, error: `${args.action} requires relationship_id` };
       }
       return { ok: true };
+    case 'set_event_time': {
+      if (!args.event_id || !args.event_time) {
+        return { ok: false, error: 'set_event_time requires event_id and event_time' };
+      }
+      if (Number.isNaN(new Date(args.event_time).getTime())) {
+        return { ok: false, error: 'event_time must be an ISO date or datetime' };
+      }
+      return { ok: true };
+    }
     default:
       return { ok: false, error: 'Unknown action' };
   }
@@ -150,6 +168,39 @@ export async function mcpCorrectLore(
         success: true,
         action: args.action,
         detail: `Renamed "${oldName}" to "${args.new_name!.trim()}" — old name kept as alias; group rosters updated.`,
+      };
+    }
+
+    if (args.action === 'set_event_time') {
+      const { data: event } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, start_time, temporal_source')
+        .eq('id', args.event_id!)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!event) {
+        await finish('denied', 'not_found');
+        return { success: false, action: args.action, error: 'Event not found for your account' };
+      }
+      const precision = args.event_precision ?? (args.event_time!.length <= 10 ? 'date' : 'exact');
+      const { error } = await supabaseAdmin
+        .from('resolved_events')
+        .update({
+          start_time: new Date(args.event_time!).toISOString(),
+          temporal_precision: precision,
+          temporal_source: 'user_corrected',
+          temporal_status: 'corrected',
+          temporal_confidence: 1,
+          temporal_expression: args.note ?? args.event_time,
+        })
+        .eq('id', args.event_id!)
+        .eq('user_id', userId);
+      if (error) throw error;
+      await finish('ok');
+      return {
+        success: true,
+        action: args.action,
+        detail: `"${event.title}" is now dated ${args.event_time} (${precision}, user-corrected — this can never be overwritten by inference).`,
       };
     }
 

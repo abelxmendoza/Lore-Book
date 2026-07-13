@@ -2,6 +2,7 @@ import { normalizeNameKey } from '../../utils/nameNormalization';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { truthStateWeight } from '../provenance/epistemicWeights';
+import { formatTemporalLabel } from '../temporal/formatTemporalLabel';
 import { supabaseAdmin } from '../supabaseClient';
 import {
   classifyTemporalQuery,
@@ -44,6 +45,8 @@ export type WorkingMemoryEntity = {
 };
 
 export type WorkingMemoryItem = {
+  /** Precision-honest time label ("~July 2026", "date unknown"). */
+  dateLabel?: string;
   id: string;
   type:
     | 'episode'
@@ -461,7 +464,13 @@ function formatProvenanceCitation(item: WorkingMemoryItem): string {
 }
 
 function itemLine(item: WorkingMemoryItem): string {
-  const date = item.date ? ` | date=${item.date}` : '';
+  // Honest time: precision-aware label when available ("~July 2026",
+  // "date unknown") instead of a raw timestamp implying fake exactness.
+  const date = item.dateLabel
+    ? ` | when=${item.dateLabel}`
+    : item.date
+      ? ` | date=${item.date}`
+      : '';
   const reason = item.reasons.length ? ` | reason=${item.reasons.slice(0, 3).join('; ')}` : '';
   const provenance = formatProvenanceCitation(item);
   return `- ${item.title} [source=${item.source} | confidence=${item.confidence.toFixed(2)} | score=${item.score.toFixed(2)}${date}${provenance}${reason}]\n  ${item.content}`;
@@ -1363,7 +1372,7 @@ async function loadTextualCandidates(
       () => {
         const base = supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, type, start_time, confidence, tags, people, locations, metadata')
+          .select('id, title, summary, type, start_time, temporal_precision, temporal_status, confidence, tags, people, locations, metadata')
           .eq('user_id', userId);
         let scoped = wantsTarget && intent === 'EVENT_QUERY'
           ? base.or(
@@ -1485,6 +1494,7 @@ async function loadTextualCandidates(
       content: String(event.summary ?? event.title ?? ''),
       source: 'resolved_events',
       date: event.start_time,
+      dateLabel: formatTemporalLabel(event),
       confidence: Number(event.confidence ?? 0.75),
       relevance: includeByIntent(text) ? (intent === 'EVENT_QUERY' ? 0.97 : 0.78) : 0.6,
       importance: 0.68,
