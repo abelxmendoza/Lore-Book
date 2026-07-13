@@ -29,6 +29,7 @@ import {
   listMentionableEntities,
   sanitizeComposerEntities,
 } from '../services/entities/entityMentionIndexService';
+import { writeChatSseEvent } from '../utils/sseWrite';
 
 const personaRL = new ChatPersonaRL();
 
@@ -278,15 +279,13 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
   });
 
   // Safe write helper — no-ops if client disconnected or response already ended.
+  // Payload shape follows @lorebook/api-contracts chat SSE events.
+  const sseState = { clientGone: false };
   const sseWrite = (payload: object): boolean => {
-    if (clientGone || res.writableEnded) return false;
-    try {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-      return true;
-    } catch {
-      clientGone = true;
-      return false;
-    }
+    sseState.clientGone = clientGone;
+    const ok = writeChatSseEvent(res, payload as Record<string, unknown>, sseState);
+    if (sseState.clientGone) clientGone = true;
+    return ok;
   };
 
   try {

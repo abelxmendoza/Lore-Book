@@ -1,4 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
+import {
+  parseChatStreamEvent,
+  type ChatStreamDurability,
+  type ChatStreamDoneEvent,
+} from '@lorebook/api-contracts';
 import { supabase } from '../lib/supabase';
 import { config, log } from '../config/env';
 import { getGlobalIsGuest } from '../contexts/MockDataContext';
@@ -8,33 +13,17 @@ import type { ChatFocus } from '../types/chatFocus';
 import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import { pollLoreBookNotice, dispatchLoreBookNotice } from '../lib/loreBookNoticeClient';
 import type { ChatImageAttachment } from '../features/chat/types/chatImageAttachment';
+import { addCsrfHeaders, acquireCsrfToken, getCsrfToken } from '../lib/security';
+
+export type { ChatStreamDurability };
 
 /** A user-confirmation action chip emitted by the server's Response Compiler. */
-export type ResponseActionCandidate = {
-  type: string;
-  label: string;
-  confidence?: number;
-  requiresConfirmation?: boolean;
-  payload?: Record<string, unknown>;
-};
+export type ResponseActionCandidate = NonNullable<
+  NonNullable<ChatStreamDoneEvent['responseCompiler']>['actionCandidates']
+>[number];
 
 /** First-session "aha" callback: LoreBook recalled something said earlier. */
-export type ContinuityCallback = {
-  entity: string;
-  quote: string;
-  priorMessageIndex: number;
-  calloutText: string;
-};
-
-type StreamChunk = {
-  type: 'metadata' | 'chunk' | 'done' | 'error';
-  content?: string;
-  data?: any;
-  error?: string;
-  durability?: ChatStreamDurability;
-  responseCompiler?: { actionCandidates?: ResponseActionCandidate[] };
-  continuityCallback?: ContinuityCallback;
-};
+export type ContinuityCallback = NonNullable<ChatStreamDoneEvent['continuityCallback']>;
 
 /** Payload handed to onComplete when the stream finishes cleanly. */
 export type ChatStreamResult = {
@@ -63,19 +52,6 @@ export type MemoryFeedbackEvent = {
   entitiesDetected: Array<{ name: string; type: string }>;
   temporalAnchor: { detected: boolean; precision?: string; confidence?: number };
   contradictionsDetected: Array<{ description: string }>;
-};
-
-/** Structured durability payload from chat API (assistant failure ≠ memory loss). */
-export type ChatStreamDurability = {
-  userMessage?: { id?: string; persisted?: boolean; sessionId?: string };
-  assistantResponse?: { status?: string; messageId?: string; errorCategory?: string };
-  ingestion?: {
-    jobId?: string;
-    status?: string;
-    currentStage?: string;
-    retryable?: boolean;
-    nextRetryAt?: string;
-  };
 };
 
 export const useChatStream = () => {
@@ -154,12 +130,19 @@ export const useChatStream = () => {
         log.debug('[useChatStream] Calling:', url);
       }
 
+      // Align stream requests with fetchJson auth/CSRF/timezone headers.
+      if (token && !getCsrfToken()) {
+        await acquireCsrfToken(token, apiUrl).catch(() => {});
+      }
+      const headers = addCsrfHeaders({
+        'Content-Type': 'application/json',
+        'X-User-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      }) as Record<string, string>;
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
+        headers,
         credentials: 'omit',
         mode: 'cors',
         body: JSON.stringify(
@@ -308,19 +291,21 @@ export const useChatStream = () => {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
 
-          let data: StreamChunk;
-          try {
-            data = JSON.parse(line.slice(6));
-          } catch (parseError) {
-            console.error('Failed to parse SSE data:', parseError);
+          const data = parseChatStreamEvent(line.slice(6));
+          if (!data) {
+            // Unknown or malformed frame — skip (dev log only).
+            if (config.logging.logApiCalls) {
+              log.debug('[useChatStream] Skipped non-contract SSE frame');
+            }
             continue;
           }
 
           if (data.type === 'metadata') {
-            if (data.data?.messageId) capturedMessageId = data.data.messageId;
-            onMetadata(data.data);
-          } else if (data.type === 'chunk' && data.content) {
-            onChunk(data.content);
+            const meta = data.data ?? {};
+            if (typeof meta.messageId === 'string') capturedMessageId = meta.messageId;
+            onMetadata(meta);
+          } else if (data.type === 'chunk') {
+            if (data.content) onChunk(data.content);
           } else if (data.type === 'done') {
             streamCompleted = true;
             onComplete({

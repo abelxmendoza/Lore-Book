@@ -10,6 +10,11 @@ const webOntology = path.resolve(__dirname, './src/lib/ontology');
 import fs from 'fs';
 const ontologyRoot = fs.existsSync(serverOntology) ? serverOntology : webOntology;
 
+// Shared JSON contracts: monorepo package locally; vendored mirror on Vercel.
+const monorepoContracts = path.resolve(__dirname, '../../packages/api-contracts/src/index.ts');
+const webContracts = path.resolve(__dirname, './src/lib/api-contracts/index.ts');
+const contractsEntry = fs.existsSync(monorepoContracts) ? monorepoContracts : webContracts;
+
 // Validate environment variables at build time (production only)
 // Note: For frontend-only demo, Supabase vars are optional (mock data will be used)
 if (process.env.NODE_ENV === 'production') {
@@ -123,6 +128,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@lorekeeper/ontology': ontologyRoot,
+      '@lorebook/api-contracts': contractsEntry,
     },
   },
   server: {

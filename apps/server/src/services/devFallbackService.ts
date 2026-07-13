@@ -9,6 +9,7 @@
  */
 
 import type { Response } from 'express';
+import { formatSseDataLine } from '@lorebook/api-contracts';
 import { logger } from '../logger';
 
 const isDevelopment =
@@ -102,12 +103,15 @@ export async function streamFallbackResponse(
 
   // Metadata event — marks this as a fallback so the frontend and smoke tests can detect it
   res.write(
-    `data: ${JSON.stringify({ type: 'metadata', data: { response_mode: mode, fallback: true, fallback_reason: reason } })}\n\n`
+    formatSseDataLine({
+      type: 'metadata',
+      data: { response_mode: mode, fallback: true, fallback_reason: reason },
+    }),
   );
 
   // Single chunk — no artificial word-by-word delay; this is a dev tool, not a demo
-  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-  res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+  res.write(formatSseDataLine({ type: 'chunk', content }));
+  res.write(formatSseDataLine({ type: 'done' }));
   res.end();
 }
 
@@ -122,7 +126,7 @@ export function writeFallbackToOpenStream(
 ): void {
   logger.info(`[AI] DEV_AI_FALLBACK used (mid-stream) because: ${reason}`);
   const { content } = buildFallbackContent(message, reason);
-  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-  res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+  res.write(formatSseDataLine({ type: 'chunk', content }));
+  res.write(formatSseDataLine({ type: 'done' }));
   res.end();
 }
