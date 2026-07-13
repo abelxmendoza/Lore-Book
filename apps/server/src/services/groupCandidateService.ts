@@ -572,6 +572,10 @@ export class GroupCandidateService {
         .catch(() => {});
     }
 
+    // Family-group enrichment: title-linking, kinship roles, shared family edges.
+    const { familyGroupSyncService } = await import('./familyGroupSyncService');
+    await familyGroupSyncService.syncGroup(userId, org.id).catch(() => {});
+
     // Mark candidate as accepted
     await supabaseAdmin
       .from('group_candidates')

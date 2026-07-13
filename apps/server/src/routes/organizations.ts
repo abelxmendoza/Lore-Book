@@ -312,6 +312,10 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         logger.warn({ error, userId, organizationId }, 'Failed to record organization correction');
       });
     }
+    if (parsed.data.name || parsed.data.group_type) {
+      const { familyGroupSyncService } = await import('../services/familyGroupSyncService');
+      void familyGroupSyncService.syncGroup(userId, organizationId);
+    }
     res.json({ success: true, organization });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to update organization');
@@ -366,6 +370,11 @@ router.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res) 
       notes: parsed.data.notes,
       status: parsed.data.status ?? 'active',
     });
+    // New members of a family group get kinship roles + shared family edges.
+    {
+      const { familyGroupSyncService } = await import('../services/familyGroupSyncService');
+      void familyGroupSyncService.syncGroup(userId, organizationId);
+    }
     res.json({ success: true, member });
   } catch (error: any) {
     const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
