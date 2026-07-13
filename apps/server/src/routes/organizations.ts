@@ -187,7 +187,16 @@ router.get('/:id/mentions', requireAuth, async (req: AuthenticatedRequest, res) 
   // Suggested groups (candidate-<uuid>) have no organization row yet — empty
   // trace instead of a uuid-cast 500.
   if (!UUID_RE.test(organizationId)) {
-    res.json({ success: true, trace: [] });
+    res.json({
+      success: true,
+      trace: {
+        labels: [],
+        total_mentions: 0,
+        source_counts: { chat_messages: 0, conversation_messages: 0, entity_facts: 0 },
+        mentions: [],
+        facts: [],
+      },
+    });
     return;
   }
   const limit = req.query.limit ? Number(req.query.limit) : undefined;

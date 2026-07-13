@@ -2635,8 +2635,8 @@ User's message: ${currentInput}`;
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-100/60">Total</p>
                       <p className="mt-1 text-2xl font-bold leading-none text-white tabular-nums">{mentionTrace.total_mentions}</p>
                     </div>
-                    <SourceMetric label="Chat" value={mentionTrace.source_counts.chat_messages ?? 0} />
-                    <SourceMetric label="Older" value={mentionTrace.source_counts.conversation_messages ?? 0} />
+                    <SourceMetric label="Chat" value={mentionTrace.source_counts?.chat_messages ?? 0} />
+                    <SourceMetric label="Older" value={mentionTrace.source_counts?.conversation_messages ?? 0} />
                     <SourceMetric label="Facts" value={mentionTrace.facts.length} />
                   </div>
 
