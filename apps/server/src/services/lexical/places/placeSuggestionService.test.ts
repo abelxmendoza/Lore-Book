@@ -6,7 +6,7 @@ describe('placeSuggestionService', () => {
   it('keeps workplace/org/role/person/social spans out of Places', () => {
     const text = [
       'I was working at Ring as a Technician on the Failure Analysis and Prototypes Team.',
-      'Ring is a sub company of Amazon and my manager Kaustubh worked with Dan, Ryan, Xingpeng, Jimmy, Khalil, and Hassan.',
+      'Ring is a sub company of Amazon and my manager Kavi worked with Dorian, Rhys, Xola, Jules, Kelan, and Hark.',
       'Ring with',
       'At Ink Fest and Ska Prom, pit she still said no because of her presence.',
       'This other promoter named Ruben was there.',

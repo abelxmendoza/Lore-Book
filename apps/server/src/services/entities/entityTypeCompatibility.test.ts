@@ -93,11 +93,11 @@ describe('entity type compatibility trust floor', () => {
   });
 
   it('infers the reported regression types from full sentence context', () => {
-    const message = "I work with Kaustubh, Dan, Khalil, Hassan, Jimmy, Ryan, and Xingpeng. Khalil is a temp contractor and a good coder who made the internal chatbot tool Prima AI. Xingpeng is a hardware engineer with a master's in electrical engineering from USC and grew up in China.";
+    const message = "I work with Kavi, Dorian, Kelan, Hark, Jules, Rhys, and Xola. Kelan is a temp contractor and a good coder who made the internal chatbot tool Prima AI. Xola is a hardware engineer with a master's in electrical engineering from USC and grew up in China.";
     expect(classifyEntity('Prima AI', message).type).toBe('APP');
     expect(classifyEntity('China', message).type).toBe('PLACE');
     expect(classifyEntity('USC', message).type).toBe('ORGANIZATION');
-    expect(classifyEntity('Xingpeng', message).type).toBe('PERSON');
+    expect(classifyEntity('Xola', message).type).toBe('PERSON');
     expect(classifyEntity('Anime Expo', 'I attended Anime Expo.').type).toBe('EVENT');
     expect(classifyEntity('Ring', 'I work at Ring with Ryan.').type).toBe('ORGANIZATION');
     expect(classifyEntity('Ring', 'We tested Ring cameras.').type).toBe('PRODUCT');

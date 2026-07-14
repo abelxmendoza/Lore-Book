@@ -59,7 +59,7 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
     },
     characters: {
       data: [
-        { id: PROTAGONIST_ID, name: 'Abel Mendoza', alias: [], metadata: { mention_count: 20 } },
+        { id: PROTAGONIST_ID, name: 'Rene Alvarez', alias: [], metadata: { is_self: true, mention_count: 20 } },
         { id: SOL_ID, name: 'Sam Chen', alias: [], metadata: { mention_count: 5 } },
         { id: ABUELA_ID, name: 'Grandma Rose', alias: [], metadata: { mention_count: 5 } },
       ],

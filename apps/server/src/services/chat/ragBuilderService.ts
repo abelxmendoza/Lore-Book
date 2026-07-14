@@ -551,6 +551,11 @@ export async function buildRAGPacket(
       question: message,
       threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
     });
+    // Response scope gate: retrieval stays broad, but evidence from domains
+    // this question blocked (family in a work answer, romance in a family
+    // answer, diagnostics anywhere) never reaches the LLM.
+    const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
+    workingMemory = applyScopePlanToAssembly(workingMemory, planResponseScope(message));
     workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
     foundationRecallBlock = workingMemoryPacket.text;
     foundationRelationships = workingMemory.relationships;

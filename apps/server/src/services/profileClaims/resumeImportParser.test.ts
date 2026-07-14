@@ -160,7 +160,7 @@ describe('role titles are blocked from the Character Book', () => {
     expect(evaluateWrongDomain(title).wrongDomain).toBe(true);
   });
 
-  it.each(['Abel Mendoza', 'Kaustubh'])('allows real person name "%s"', (name) => {
+  it.each(['Rene Alvarez', 'Kavi'])('allows real person name "%s"', (name) => {
     expect(evaluateWrongDomain(name).wrongDomain).toBe(false);
   });
 

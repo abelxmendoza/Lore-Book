@@ -1412,6 +1412,35 @@ When updating relationship analytics or emotional signals from this thread, weig
     const workingMemoryPrimary = process.env.WORKING_MEMORY_PRIMARY !== 'false';
 
     // =====================================================
+    // RESPONSE SCOPE GATE — retrieve broadly, answer narrowly
+    // =====================================================
+    // One plan governs every answer path below: which memory domains may
+    // inform this answer, whether the user asked a chat question or for
+    // diagnostics, and whether this message corrects a previous answer.
+    const responseScope = await import('./responseScope');
+    const scopePlan = responseScope.planResponseScope(message);
+    const scopeGuard = (content: string): string => {
+      const guarded = responseScope.enforceChatScope(content, scopePlan);
+      if (guarded.violations.length > 0) {
+        responseScope.recordScopeAudit({
+          at: new Date().toISOString(),
+          userId,
+          message: message.slice(0, 200),
+          plan: {
+            intent: scopePlan.intent,
+            responseMode: scopePlan.responseMode,
+            allowedDomains: scopePlan.allowedDomains,
+            blockedDomains: scopePlan.blockedDomains,
+          },
+          acceptedCount: 0,
+          rejectedCount: 0,
+          overflowViolations: guarded.violations,
+        });
+      }
+      return guarded.content;
+    };
+
+    // =====================================================
     // SPRINT AK — Conversation intelligence (before AH gates)
     // =====================================================
     if (!workingMemoryPrimary) try {
@@ -1488,20 +1517,47 @@ When updating relationship analytics or emotional signals from this thread, weig
       selfModelBlockStream = metaContext.promptBlock;
 
       if (detectRecallFailure(message)) {
-        const diagnostic = await buildDiagnosticRecall(userId, message, {
-          conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
-          threadId: threadId ?? currentContext?.threadId,
-        });
-        return formatModeResponse(
-          {
-            content: diagnostic,
-            response_mode: 'DIAGNOSTIC',
-            confidence: 0.9,
-            metadata: { recall_failure_recovery: true },
-          },
-          'FOUNDATION_RECALL',
-          modeExtras(),
-        );
+        // "You forgot X" is a correction, not a request for system internals.
+        // The full diagnostic dump only renders when the user explicitly asks
+        // for retrieval internals; corrections update the answer instead.
+        if (scopePlan.isCorrection && scopePlan.intent === 'work' && scopePlan.correctionNames.length > 0) {
+          const work = await import('./work');
+          let workContext = await work.resolveWorkContext(userId);
+          workContext = work.applyRosterCorrection(workContext, scopePlan.correctionNames);
+          void work.persistRosterCorrection(userId, workContext.team?.id, scopePlan.correctionNames);
+          return formatModeResponse(
+            {
+              content: responseScope.composeWorkAnswer(workContext, scopePlan),
+              response_mode: 'FOCUSED_RECALL',
+              confidence: 0.9,
+              metadata: {
+                scope_intent: 'work',
+                corrections_applied: workContext.correctionsApplied,
+                roster_warnings: workContext.warnings,
+              },
+            },
+            'FOUNDATION_RECALL',
+            modeExtras(),
+          );
+        }
+        if (scopePlan.responseMode === 'debug_inspector') {
+          const diagnostic = await buildDiagnosticRecall(userId, message, {
+            conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+            threadId: threadId ?? currentContext?.threadId,
+          });
+          return formatModeResponse(
+            {
+              content: diagnostic,
+              response_mode: 'DIAGNOSTIC',
+              confidence: 0.9,
+              metadata: { recall_failure_recovery: true },
+            },
+            'FOUNDATION_RECALL',
+            modeExtras(),
+          );
+        }
+        // Non-work corrections fall through to normal chat so the model can
+        // acknowledge the correction conversationally with scoped context.
       }
 
       if (matchesThreadRecallQuery(message) && conversationHistory.length > 0) {
@@ -1512,7 +1568,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         if (thread.hasContent) {
           return formatModeResponse(
             {
-              content: thread.content,
+              content: scopeGuard(thread.content),
               response_mode: 'THREAD_RECALL',
               confidence: thread.confidence,
               metadata: { recall_intent: 'thread', thread_first: true },
@@ -1534,7 +1590,11 @@ When updating relationship analytics or emotional signals from this thread, weig
         if (recall.response_mode !== 'SILENCE') {
           return formatModeResponse(
             {
-              content: recall.content,
+              // Diagnostic language ("what do you know") may legitimately reach
+              // here, but chat-facing questions still get scope-pruned output.
+              content: responseScope.isChatFacingMode(scopePlan.responseMode)
+                ? scopeGuard(recall.content)
+                : recall.content,
               response_mode: 'DIAGNOSTIC',
               confidence: recall.confidence,
               metadata: { testing_mode: testingMode, ...recall.metadata },
@@ -1583,12 +1643,57 @@ When updating relationship analytics or emotional signals from this thread, weig
           }
         );
 
-        // Assistant persistence handled by chat.ts persistAssistant
+        // Assistant persistence handled by chat.ts persistAssistant.
+        // Chat-facing questions never render dump-shaped handler output.
+        if (
+          responseScope.isChatFacingMode(scopePlan.responseMode) &&
+          typeof handlerResponse.content === 'string'
+        ) {
+          handlerResponse.content = scopeGuard(handlerResponse.content);
+        }
         return formatModeResponse(handlerResponse, routing.mode, modeExtras());
       }
     } catch (error) {
       logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
       // Fall through to existing chat flow
+    }
+
+    // ---- FOCUSED WORK RECALL: team/role questions answer from WorkContext ----
+    // "Who's on my team?" gets the roster with role nuances — never the
+    // character book, family graph, or memory-layer status.
+    if (
+      scopePlan.intent === 'work' &&
+      (scopePlan.responseMode === 'focused_recall' || scopePlan.isCorrection)
+    ) try {
+      const work = await import('./work');
+      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+      let workContext = await work.resolveWorkContext(userId);
+      if (scopePlan.isCorrection && scopePlan.correctionNames.length > 0) {
+        workContext = work.applyRosterCorrection(workContext, scopePlan.correctionNames);
+        void work.persistRosterCorrection(userId, workContext.team?.id, scopePlan.correctionNames);
+      }
+      const hasWorkData =
+        workContext.currentRole ||
+        workContext.organization ||
+        workContext.managers.length + workContext.leads.length + workContext.coworkers.length > 0;
+      if (hasWorkData) {
+        return formatModeResponse(
+          {
+            content: responseScope.composeWorkAnswer(workContext, scopePlan),
+            response_mode: 'FOCUSED_RECALL',
+            confidence: 0.85,
+            metadata: {
+              scope_intent: 'work',
+              corrections_applied: workContext.correctionsApplied,
+              roster_warnings: workContext.warnings,
+            },
+          },
+          'FOUNDATION_RECALL',
+          modeExtras(),
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Focused work recall failed, continuing');
     }
 
     // ---- RECALL GATE: Foundation lore before journal vector search ----
@@ -1606,7 +1711,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         if (foundation.response_mode !== 'SILENCE') {
           return formatModeResponse(
             {
-              content: foundation.content,
+              content: scopeGuard(foundation.content),
               response_mode: foundation.response_mode,
               confidence: foundation.confidence,
               metadata: foundation.metadata,

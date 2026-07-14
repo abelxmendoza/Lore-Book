@@ -36,7 +36,7 @@ describe('validateReclassification', () => {
     });
 
     it('rejects person names', () => {
-      const r = validateReclassification('Kaustubh', '', 'location');
+      const r = validateReclassification('Kavi', '', 'location');
       expect(r.allowed).toBe(false);
       expect(r.reason).toMatch(/person/i);
     });

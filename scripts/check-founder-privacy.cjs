@@ -46,6 +46,12 @@ const blockedInLiterals = [
   'Bathroom Guardian',
   'Armstrong Robotics',
   'Armstrong',
+  // Founder coworkers (distinctive names only — common first names would
+  // false-positive across the codebase).
+  'Kaustubh',
+  'Wiriya',
+  'Xingpeng',
+  'Jimani',
 ];
 
 // Founder-linked personal lore that may exist in private/admin or legacy mock

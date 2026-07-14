@@ -121,7 +121,13 @@ class BiographyFoundationService {
       this.identifyLifePeriods(userId),
     ]);
 
-    if (!facts.identity.name && facts.keyEvents.length === 0) {
+    // Subject invariant: no canonical self → no biography. Generating one
+    // anyway is how a retrieved character can end up wearing the user's life.
+    if (!facts.identity.name) {
+      logger.warn({ userId }, 'Biography generation skipped — canonical self entity unresolved');
+      return null;
+    }
+    if (facts.keyEvents.length === 0 && facts.relationships.length === 0) {
       logger.warn({ userId }, 'Insufficient data for biography generation');
       return null;
     }
@@ -175,19 +181,21 @@ class BiographyFoundationService {
     const allContent = allEntries.map(e => e.content).join(' ').toLowerCase();
     const allTags = new Set(allEntries.flatMap(e => e.tags ?? []));
 
-    // ── Load characters (protagonist = highest mention_count) ────────────────
+    // ── Load characters. Subject invariant: the protagonist is the canonical
+    // self entity ONLY — never the most-mentioned character (that heuristic
+    // once made a third-party card the biography subject). ──────────────────
     const { data: chars } = await supabaseAdmin
       .from('characters')
       .select('id, name, alias, metadata')
       .eq('user_id', userId);
 
-    const protagonist = (chars ?? []).reduce<{ id: string; name: string; mentionCount: number } | null>(
-      (best, c) => {
-        const count = (c.metadata as any)?.mention_count ?? 0;
-        return !best || count > best.mentionCount ? { id: c.id, name: c.name, mentionCount: count } : best;
-      },
-      null
+    const { pickBiographySubject } = await import('./identity/biographySubjectInvariant');
+    const protagonist = pickBiographySubject(
+      (chars ?? []).map(c => ({ id: c.id, name: c.name, metadata: c.metadata as Record<string, unknown> | null })),
     );
+    if (!protagonist) {
+      logger.warn({ userId }, 'Biography subject invariant: canonical self unresolved — identity.name stays null');
+    }
 
     // ── Load people_places for location + education ──────────────────────────
     const { data: places } = await supabaseAdmin
