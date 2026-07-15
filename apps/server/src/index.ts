@@ -146,7 +146,7 @@ app.use(cors({
       },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID', 'X-User-Timezone'],
   exposedHeaders: ['X-CSRF-Token', 'X-Request-ID'],
   maxAge: isDevelopment ? 86400 : 3600 // 24h in dev, 1h in prod
 }));
