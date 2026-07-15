@@ -13,6 +13,11 @@ type SupabaseConfig = {
   key: string;
 };
 
+// PKCE keeps tokens out of the callback URL fragment, where browser
+// extensions and third-party iframes (e.g. Stripe's referrer param) can
+// read them; the callback carries only a one-time ?code= instead.
+const CLIENT_OPTIONS = { auth: { flowType: 'pkce' as const } };
+
 let resolvedUrl = '';
 let supabaseClient: SupabaseClient | null = null;
 let initPromise: Promise<SupabaseClient> | null = null;
@@ -80,10 +85,10 @@ async function createConfiguredClient(): Promise<SupabaseClient> {
   }
 
   if (!config) {
-    return createClient('https://placeholder.supabase.co', 'placeholder-key');
+    return createClient('https://placeholder.supabase.co', 'placeholder-key', CLIENT_OPTIONS);
   }
 
-  return createClient(config.url, config.key);
+  return createClient(config.url, config.key, CLIENT_OPTIONS);
 }
 
 export async function initSupabase(): Promise<SupabaseClient> {
@@ -103,8 +108,8 @@ function getSupabaseClientSync(): SupabaseClient {
   const url = resolvedUrl || (import.meta.env.VITE_SUPABASE_URL as string) || '';
   const { config } = validateConfig(url, key);
   return config
-    ? createClient(config.url, config.key)
-    : createClient('https://placeholder.supabase.co', 'placeholder-key');
+    ? createClient(config.url, config.key, CLIENT_OPTIONS)
+    : createClient('https://placeholder.supabase.co', 'placeholder-key', CLIENT_OPTIONS);
 }
 
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {

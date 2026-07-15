@@ -12,12 +12,14 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // Supabase OAuth returns tokens in the URL hash
-        // The Supabase client automatically processes the hash when we call getSession()
-        // But we should also check for errors in the hash first
+        // PKCE returns ?code= (or ?error=) in the query string; the client
+        // exchanges the code automatically on init. Legacy implicit-flow
+        // links may still carry params in the hash, so check both.
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const errorParam = hashParams.get('error');
-        const errorDescription = hashParams.get('error_description');
+        const queryParams = new URLSearchParams(window.location.search);
+        const errorParam = queryParams.get('error') ?? hashParams.get('error');
+        const errorDescription =
+          queryParams.get('error_description') ?? hashParams.get('error_description');
 
         if (errorParam) {
           console.error('[AuthCallback] OAuth error:', errorParam, errorDescription);
@@ -48,8 +50,8 @@ export default function AuthCallback() {
           // Redirect to dashboard
           navigate(consumeAuthReturnPath());
         } else {
-          // If no session, check if there's a hash (might still be processing)
-          if (window.location.hash) {
+          // If no session, check for a pending code/hash (might still be processing)
+          if (queryParams.has('code') || window.location.hash) {
             // Wait a bit more and try again
             setTimeout(async () => {
               const { data: { session: retrySession } } = await supabase.auth.getSession();
