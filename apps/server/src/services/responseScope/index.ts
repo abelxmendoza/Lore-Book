@@ -1,5 +1,11 @@
 export * from './responseScopeTypes';
-export { planResponseScope, detectScopeIntent, extractCandidateEntities, extractCorrectionNames } from './responseScopePlanner';
+export {
+  planResponseScope,
+  detectScopeIntent,
+  inferPreviousScopeIntent,
+  extractCandidateEntities,
+  extractCorrectionNames,
+} from './responseScopePlanner';
 export { domainPolicyFor, isDomainAllowed, NEVER_IN_CHAT } from './responseDomainPolicy';
 export { resolveResponseMode, isChatFacingMode, CORRECTION_RE } from './responseModeResolver';
 export { filterEvidence, classifyItemDomain } from './responseEvidenceFilter';

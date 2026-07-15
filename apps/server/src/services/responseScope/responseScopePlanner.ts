@@ -58,6 +58,33 @@ export function detectScopeIntent(message: string): ScopeIntent {
   return 'general';
 }
 
+/**
+ * Find the most recent explicit user intent that a context-free correction can
+ * inherit. General chatter and the correction itself are intentionally skipped.
+ */
+export function inferPreviousScopeIntent(
+  history: ReadonlyArray<{ role: string; content: string }>,
+): ScopeIntent | undefined {
+  let skippedTrailingCorrection = false;
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (entry.role !== 'user' || !entry.content.trim()) continue;
+
+    const intent = detectScopeIntent(entry.content);
+    // Some callers include the current user turn in history. Skip that one
+    // context-free correction, then inspect exactly the user turn it follows.
+    if (!skippedTrailingCorrection && intent === 'general' && CORRECTION_RE.test(entry.content)) {
+      skippedTrailingCorrection = true;
+      continue;
+    }
+
+    return intent === 'general' ? undefined : intent;
+  }
+
+  return undefined;
+}
+
 export function planResponseScope(
   message: string,
   opts: { previousIntent?: ScopeIntent } = {},

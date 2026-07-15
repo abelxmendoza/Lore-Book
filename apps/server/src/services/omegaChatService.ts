@@ -1418,7 +1418,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     // inform this answer, whether the user asked a chat question or for
     // diagnostics, and whether this message corrects a previous answer.
     const responseScope = await import('./responseScope');
-    const scopePlan = responseScope.planResponseScope(message);
+    const previousScopeIntent = responseScope.inferPreviousScopeIntent(conversationHistory);
+    const scopePlan = responseScope.planResponseScope(message, { previousIntent: previousScopeIntent });
     const scopeGuard = (content: string): string => {
       const guarded = responseScope.enforceChatScope(content, scopePlan);
       if (guarded.violations.length > 0) {

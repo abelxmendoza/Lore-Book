@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planResponseScope,
   detectScopeIntent,
+  inferPreviousScopeIntent,
   extractCorrectionNames,
 } from '../../../src/services/responseScope/responseScopePlanner';
 import { resolveResponseMode } from '../../../src/services/responseScope/responseModeResolver';
@@ -74,5 +75,25 @@ describe('correction parsing', () => {
     const plan = planResponseScope('you forgot Kavi and Joss', { previousIntent: 'work' });
     expect(plan.isCorrection).toBe(true);
     expect(plan.intent).toBe('work');
+  });
+
+  it('recovers the last explicit user intent from conversation history', () => {
+    const previousIntent = inferPreviousScopeIntent([
+      { role: 'user', content: "Who's on my team at Titanworks?" },
+      { role: 'assistant', content: 'You work with Kavi.' },
+      { role: 'user', content: 'You forgot Joss and Wren.' },
+    ]);
+
+    const plan = planResponseScope('You forgot Joss and Wren.', { previousIntent });
+    expect(previousIntent).toBe('work');
+    expect(plan.intent).toBe('work');
+  });
+
+  it('does not inherit a stale intent across intervening general chatter', () => {
+    expect(inferPreviousScopeIntent([
+      { role: 'user', content: "Who's on my team at Titanworks?" },
+      { role: 'assistant', content: 'You work with Kavi.' },
+      { role: 'user', content: 'Thanks, that helps.' },
+    ])).toBeUndefined();
   });
 });
