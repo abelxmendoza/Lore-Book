@@ -124,7 +124,9 @@ export default defineConfig({
     react(),
   ],
   resolve: {
-    dedupe: ['react', 'react-dom'],
+    // zod: the monorepo api-contracts source imports it, but on Vercel only
+    // apps/web/node_modules exists — dedupe resolves it from here.
+    dedupe: ['react', 'react-dom', 'zod'],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@lorekeeper/ontology': ontologyRoot,
