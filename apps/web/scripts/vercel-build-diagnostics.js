@@ -38,15 +38,15 @@ console.log('');
 
 // 1. Check Node version
 const nodeVersion = process.version;
-const requiredVersion = '20.x';
+const requiredVersion = '24.x';
 console.log(`📦 Node Version: ${nodeVersion}`);
-if (!nodeVersion.startsWith('v20.')) {
+if (!nodeVersion.startsWith('v24.')) {
   console.warn(`⚠️  WARNING: Node version should be ${requiredVersion}, got ${nodeVersion}`);
-  console.warn(`   Please set Node version to 20.x in Vercel Dashboard → Project Settings → General`);
+  console.warn(`   Set "engines": { "node": "24.x" } in package.json (Vercel reads it from there)`);
   console.warn(`   Continuing with current version, but this may cause issues...`);
   // Don't exit - allow build to proceed with warning
 }
-console.log(`✅ Node version check passed (with warning if not 20.x)`);
+console.log(`✅ Node version check passed (with warning if not ${requiredVersion})`);
 console.log('');
 
 // 2. Check current directory
