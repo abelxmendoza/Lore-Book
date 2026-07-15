@@ -42,8 +42,14 @@ function autoGrowTextarea(el: HTMLTextAreaElement | null) {
   const styles = window.getComputedStyle(el);
   const minPx = parseFloat(styles.minHeight) || 0;
   const maxRaw = styles.maxHeight;
-  const maxPx =
+  const cssMaxPx =
     maxRaw && maxRaw !== 'none' && maxRaw !== '0px' ? parseFloat(maxRaw) : Number.POSITIVE_INFINITY;
+  // The CSS cap uses dvh, which ignores the mobile on-screen keyboard. Cap
+  // by the visual viewport too — minus room for the toolbar below — so the
+  // Send button can never be pushed out of the reachable area.
+  const vv = window.visualViewport;
+  const visibleCap = vv ? Math.max(96, vv.height - 140) : Number.POSITIVE_INFINITY;
+  const maxPx = Math.min(cssMaxPx, visibleCap);
   const content = el.scrollHeight;
   const next = Math.max(minPx, Number.isFinite(maxPx) ? Math.min(content, maxPx) : content);
   el.style.height = `${next}px`;
@@ -92,7 +98,12 @@ export const EntityHighlightedComposer = ({
   useEffect(() => {
     const onResize = () => autoGrowTextarea(textareaRef.current);
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    // Keyboard open/close changes the visual viewport without a window resize.
+    window.visualViewport?.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+    };
   }, [textareaRef]);
 
   return (
