@@ -1,6 +1,8 @@
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
+# The file:vendor/api-contracts dependency must exist before npm install.
+COPY vendor ./vendor
 RUN npm install
 COPY . .
 # Google OAuth requires /api/legal/* — fail the image build if docs are missing.

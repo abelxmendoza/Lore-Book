@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/bootstrap.ts",
     "sync:legal": "mkdir -p legal && (cp -f ../../legal/TERMS.md ../../legal/PRIVACY.md legal/ 2>/dev/null || true) && test -f legal/TERMS.md && test -f legal/PRIVACY.md",
-    "prebuild": "npm run sync:legal",
+    "prebuild": "npm run build:api-contracts && npm run sync:legal",
+    "build:api-contracts": "tsc --project vendor/api-contracts/tsconfig.json",
     "build": "tsc --project tsconfig.json || true",
     "postbuild": "mkdir -p dist/legal && cp -f legal/TERMS.md legal/PRIVACY.md dist/legal/",
     "start": "node dist/bootstrap.js",
@@ -40,7 +41,7 @@
     "mcp:stdio": "tsx src/mcp/stdio.ts"
   },
   "dependencies": {
-    "@lorebook/api-contracts": "file:../../packages/api-contracts",
+    "@lorebook/api-contracts": "file:vendor/api-contracts",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.108.2",
     "chrono-node": "^2.9.1",
