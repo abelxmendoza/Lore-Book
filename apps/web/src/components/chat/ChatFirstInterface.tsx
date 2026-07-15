@@ -653,7 +653,7 @@ export const ChatFirstInterface = () => {
         {messages.length === 0 && (
           <div className="text-center py-12 text-white/60">
             <Bot className="h-12 w-12 mx-auto mb-4 text-primary/50" />
-            <h2 className="text-xl font-semibold mb-2">AI Life Guidance Chat</h2>
+            <h2 className="text-xl font-semibold mb-2">Continue Your Story.</h2>
             <p className="text-sm mb-4">
               Dump everything freely here. I'll reflect back, make connections,<br />
               and help you understand your story while automatically updating your timeline.

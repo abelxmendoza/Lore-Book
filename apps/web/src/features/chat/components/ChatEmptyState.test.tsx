@@ -14,9 +14,9 @@ describe('ChatEmptyState', () => {
     expect(screen.getByText(/Timelines, characters, and quests fill in as you talk/i)).toBeInTheDocument();
   });
 
-  it('renders AI Life Guidance Chat heading', () => {
+  it('renders Continue Your Story heading', () => {
     render(<ChatEmptyState />);
-    expect(screen.getByRole('heading', { name: /AI Life Guidance Chat/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Continue Your Story/i })).toBeInTheDocument();
   });
 
   it('renders main prompt about dumping freely and updating timeline', () => {

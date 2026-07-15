@@ -198,10 +198,10 @@ export const ChatEmptyState = () => {
         </div>
 
         <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.22em] text-primary/70 sm:text-[11px]">
-          Lore Book · Chat
+          LoreBook Chat
         </p>
         <h2 className="mb-3 bg-gradient-to-b from-white via-white to-white/70 bg-clip-text text-2xl font-semibold tracking-tight text-transparent sm:mb-4 sm:text-3xl lg:text-4xl">
-          AI Life Guidance Chat
+          Continue Your Story.
         </h2>
         <p className="mx-auto mb-4 max-w-xl text-sm leading-relaxed text-primary/85 sm:mb-5 sm:text-base">
           This is where your story is built. Timelines, characters, and quests fill in as you talk.
