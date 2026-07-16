@@ -99,7 +99,9 @@ const chatSchema = z
       .array(
         z.object({
           role: z.enum(['user', 'assistant']),
-          content: z.string().max(4000),
+          // History is model context only — truncate long past messages instead of
+          // rejecting the request, or one long assistant reply poisons the thread.
+          content: z.string().transform((s) => (s.length > 4000 ? s.slice(0, 4000) : s)),
         }),
       )
       .max(50)
@@ -291,7 +293,9 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid message format' });
+      const details = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+      logger.warn({ details }, 'Chat stream request failed validation');
+      return res.status(400).json({ error: 'Invalid message format', details });
     }
 
     const {
@@ -758,7 +762,9 @@ router.post('/', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, checkAiReq
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid message format' });
+      const details = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+      logger.warn({ details }, 'Chat request failed validation');
+      return res.status(400).json({ error: 'Invalid message format', details });
     }
 
     const { message, conversationHistory = [], stream, threadId, entityContext, soulProfileContext } = parsed.data;

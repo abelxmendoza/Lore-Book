@@ -36,7 +36,9 @@ const guestStreamSchema = z.object({
   message: z.string().min(1).max(5000),
   conversationHistory: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string().max(4000),
+    // History is model context only — truncate long past messages instead of
+    // rejecting the request, or one long assistant reply poisons the thread.
+    content: z.string().transform((s) => (s.length > 4000 ? s.slice(0, 4000) : s)),
   })).max(20).optional(),
   guestLore: guestLoreSchema.optional(),
 });
