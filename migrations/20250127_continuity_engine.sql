@@ -17,14 +17,43 @@ CREATE TABLE IF NOT EXISTS public.continuity_events (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250102000003 with a different shape
+-- (column `type` / TEXT severity instead of event_type / INT severity).
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS event_type TEXT;
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS source_components UUID[] DEFAULT '{}';
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'continuity_events' AND column_name = 'type'
+  ) THEN
+    UPDATE public.continuity_events
+    SET event_type = lower(type::text)
+    WHERE event_type IS NULL AND type IS NOT NULL;
+  END IF;
+END $$;
+
 -- ============================================
 -- INDEXES (Optimized for Performance)
 -- ============================================
 
-CREATE INDEX IF NOT EXISTS idx_continuity_events_user_type ON public.continuity_events(user_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_continuity_events_user_event_type ON public.continuity_events(user_id, event_type);
 CREATE INDEX IF NOT EXISTS idx_continuity_events_user_created ON public.continuity_events(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_continuity_events_type ON public.continuity_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_continuity_events_severity ON public.continuity_events(user_id, severity DESC) WHERE severity >= 5;
+CREATE INDEX IF NOT EXISTS idx_continuity_events_event_type ON public.continuity_events(event_type);
+-- Only when severity is numeric (IRE uses TEXT severity labels)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'continuity_events'
+      AND column_name = 'severity' AND data_type = 'integer'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_continuity_events_severity_int
+      ON public.continuity_events(user_id, severity DESC) WHERE severity >= 5;
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_continuity_events_components_gin ON public.continuity_events USING GIN(source_components);
 
 -- ============================================
@@ -32,6 +61,11 @@ CREATE INDEX IF NOT EXISTS idx_continuity_events_components_gin ON public.contin
 -- ============================================
 
 ALTER TABLE public.continuity_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS continuity_events_owner_select ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_insert ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_update ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_delete ON public.continuity_events;
 
 CREATE POLICY continuity_events_owner_select ON public.continuity_events
   FOR SELECT USING (auth.uid() = user_id);

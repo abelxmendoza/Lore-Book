@@ -6,8 +6,10 @@
 CREATE TABLE IF NOT EXISTS public.event_continuity_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  current_event_id UUID NOT NULL REFERENCES public.resolved_events(id) ON DELETE CASCADE,
-  past_event_id UUID NOT NULL REFERENCES public.resolved_events(id) ON DELETE CASCADE,
+  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
+  current_event_id UUID NOT NULL,
+  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
+  past_event_id UUID NOT NULL,
   continuity_type TEXT NOT NULL CHECK (continuity_type IN (
     'CONTINUATION',
     'CONTRAST',

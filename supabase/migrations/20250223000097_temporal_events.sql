@@ -3,7 +3,7 @@
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Resolved Events Table (unified WHO + WHERE + WHAT + WHEN)
 CREATE TABLE IF NOT EXISTS public.resolved_events (
@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS public.event_mentions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250223000080 without signal.
+ALTER TABLE public.event_mentions ADD COLUMN IF NOT EXISTS signal JSONB DEFAULT '{}'::jsonb;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_resolved_events_user ON public.resolved_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_resolved_events_start_time ON public.resolved_events(user_id, start_time DESC);
@@ -62,6 +65,14 @@ CREATE INDEX IF NOT EXISTS idx_resolved_events_activities_gin ON public.resolved
 -- RLS
 ALTER TABLE public.resolved_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_mentions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can insert own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can update own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can delete own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can view own event mentions" ON public.event_mentions;
+DROP POLICY IF EXISTS "Users can insert own event mentions" ON public.event_mentions;
+DROP POLICY IF EXISTS "Users can delete own event mentions" ON public.event_mentions;
 
 CREATE POLICY "Users can view own resolved events"
   ON public.resolved_events
@@ -116,3 +127,80 @@ CREATE POLICY "Users can delete own event mentions"
     )
   );
 
+
+-- Deferred FKs from earlier migrations that referenced this table before it existed.
+DO $$
+BEGIN
+  IF to_regclass('public.event_unit_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_unit_links_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_unit_links
+      ADD CONSTRAINT event_unit_links_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_confidence_snapshots') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_confidence_snapshots_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_confidence_snapshots
+      ADD CONSTRAINT event_confidence_snapshots_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_continuity_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_continuity_links_current_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_continuity_links
+      ADD CONSTRAINT event_continuity_links_current_event_id_fkey
+      FOREIGN KEY (current_event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_continuity_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_continuity_links_past_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_continuity_links
+      ADD CONSTRAINT event_continuity_links_past_event_id_fkey
+      FOREIGN KEY (past_event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_impacts') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_impacts_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_impacts
+      ADD CONSTRAINT event_impacts_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_causal_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_causal_links_cause_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_causal_links
+      ADD CONSTRAINT event_causal_links_cause_event_id_fkey
+      FOREIGN KEY (cause_event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.event_causal_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'event_causal_links_effect_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.event_causal_links
+      ADD CONSTRAINT event_causal_links_effect_event_id_fkey
+      FOREIGN KEY (effect_event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.character_timeline_events') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'character_timeline_events_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.character_timeline_events
+      ADD CONSTRAINT character_timeline_events_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.workout_events') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'workout_events_event_id_fkey'
+     ) THEN
+    ALTER TABLE public.workout_events
+      ADD CONSTRAINT workout_events_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
+  END IF;
+END $$;

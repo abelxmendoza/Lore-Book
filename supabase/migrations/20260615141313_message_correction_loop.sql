@@ -29,10 +29,15 @@ ALTER TABLE public.extracted_units
   ADD COLUMN IF NOT EXISTS superseded_reason TEXT;
 CREATE INDEX IF NOT EXISTS extracted_units_superseded_idx ON public.extracted_units(superseded_at);
 
-ALTER TABLE public.entity_facts
-  ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS superseded_reason TEXT;
-CREATE INDEX IF NOT EXISTS entity_facts_superseded_idx ON public.entity_facts(superseded_at);
+DO $$
+BEGIN
+  IF to_regclass('public.entity_facts') IS NOT NULL THEN
+    ALTER TABLE public.entity_facts
+      ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS superseded_reason TEXT;
+    CREATE INDEX IF NOT EXISTS entity_facts_superseded_idx ON public.entity_facts(superseded_at);
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS utterances_message_id_idx ON public.utterances(message_id);
 CREATE INDEX IF NOT EXISTS extracted_units_utterance_id_idx ON public.extracted_units(utterance_id);

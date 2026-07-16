@@ -16,7 +16,10 @@ import {
 } from '../../../services/demoChatSimulation';
 import { shouldSimulateChat, shouldUseMockData } from '../../../hooks/useShouldUseMockData';
 import { useAuth } from '../../../lib/supabase';
-import { chatSendCooldownRemainingSec } from '../../../lib/chatSendRateLimit';
+import {
+  chatSendCooldownNotice,
+  chatSendCooldownRemainingSec,
+} from '../../../lib/chatSendRateLimit';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
 import { friendlyPostgresErrorMessage } from '../../../lib/postgresError';
@@ -313,6 +316,21 @@ export const useChat = () => {
     const hasImages = (options?.images?.length ?? 0) > 0;
     const resolvedText = messageText.trim() || (hasImages ? IMAGE_ATTACHED_PLACEHOLDER : '');
     if ((!resolvedText && !hasImages) || loading) return;
+
+    // While a prior 429 window is open, do not create another failed cloud-sync
+    // attempt — that only re-arms the cooldown and leaves another Retry ghost.
+    const sendCooldownSec = chatSendCooldownRemainingSec();
+    if (sendCooldownSec > 0 && !options?.retry) {
+      addMessage({
+        id: `rate-limit-${Date.now()}`,
+        role: 'assistant',
+        content: chatSendCooldownNotice(sendCooldownSec),
+        timestamp: new Date(),
+        isSystemMessage: true,
+        isDeliveryNotice: true,
+      });
+      return;
+    }
 
     if (isGuest && !canSendChatMessage()) {
       addMessage({
@@ -1006,6 +1024,10 @@ export const useChat = () => {
             ? 'keep_sent_bubble_retry_response'
             : 'restore_composer_unsaved';
 
+          // useChatStream notes 429s before invoking onError — prefer that copy.
+          const rateLimitWaitSec = chatSendCooldownRemainingSec();
+          const rateLimited = rateLimitWaitSec > 0;
+
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback
               ? buildDemoChatResponse(
@@ -1015,9 +1037,11 @@ export const useChat = () => {
                   shouldUseMockData() ? 'demo' : 'guest',
                   guestState?.guestId,
                 ).content
-              : userSaved
-                ? 'Cloud save succeeded, but I couldn’t generate a reply. Retry the response without rewriting.'
-                : 'Cloud save and reply both failed. Your draft is on this device and restored to the composer — retry sync, don’t reload yet.',
+              : rateLimited
+                ? chatSendCooldownNotice(rateLimitWaitSec)
+                : userSaved
+                  ? 'Cloud save succeeded, but I couldn’t generate a reply. Retry the response without rewriting.'
+                  : 'Cloud save and reply both failed. Your draft is on this device and restored to the composer — retry sync, don’t reload yet.',
             isStreaming: false,
             persistStatus: 'failed',
             isDeliveryNotice: !useDemoFallback,
@@ -1280,7 +1304,7 @@ export const useChat = () => {
     (noticeMessageId: string): boolean => {
       const waitSec = chatSendCooldownRemainingSec();
       if (waitSec <= 0) return false;
-      const content = `Sending is rate-limited right now. Your words are safe on this device — try again in about ${Math.ceil(waitSec / 60)} minute${waitSec > 60 ? 's' : ''}.`;
+      const content = chatSendCooldownNotice(waitSec);
       if (urlThreadId) {
         mutateThreadMessagesForThread(urlThreadId, (prev) =>
           prev.map((m) => (m.id === noticeMessageId ? { ...m, content } : m)),

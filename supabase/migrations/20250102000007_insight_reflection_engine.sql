@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS insight_evidence (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     insight_id UUID NOT NULL REFERENCES insights(id) ON DELETE CASCADE,
-    claim_id UUID NOT NULL REFERENCES omega_claims(id) ON DELETE CASCADE,
+    -- FK added in 20250102000009_omega_memory_engine (omega_claims is created there).
+    claim_id UUID NOT NULL,
     explanation TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     metadata JSONB DEFAULT '{}'::jsonb
@@ -81,7 +82,7 @@ CREATE OR REPLACE FUNCTION get_insight_with_evidence(insight_id_param UUID)
 RETURNS JSONB AS $$
 DECLARE
     insight_record RECORD;
-    evidence_records RECORD[];
+    evidence_json JSONB;
     result JSONB;
 BEGIN
     SELECT * INTO insight_record
@@ -92,13 +93,13 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT ARRAY_AGG(row_to_json(e)) INTO evidence_records
+    SELECT COALESCE(jsonb_agg(to_jsonb(e)), '[]'::jsonb) INTO evidence_json
     FROM insight_evidence e
     WHERE e.insight_id = insight_id_param;
 
     result := jsonb_build_object(
-        'insight', row_to_json(insight_record),
-        'evidence', COALESCE(evidence_records, '[]'::jsonb),
+        'insight', to_jsonb(insight_record),
+        'evidence', evidence_json,
         'disclaimer', 'This is an observation, not a fact.'
     );
 

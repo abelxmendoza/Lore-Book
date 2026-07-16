@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS public.photo_skill_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   journal_entry_id UUID NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
-  skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+  -- FK added in 20250230000122_skills_achievements.sql (skills created there).
+  skill_id UUID NOT NULL,
   confidence FLOAT DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
   detection_reason TEXT,
   auto_detected BOOLEAN DEFAULT true,
@@ -17,7 +18,8 @@ CREATE TABLE IF NOT EXISTS public.photo_location_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   journal_entry_id UUID NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
-  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  -- FK added in 20250223000089_locations.sql (locations created there).
+  location_id UUID NOT NULL,
   confidence FLOAT DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
   detection_reason TEXT,
   auto_detected BOOLEAN DEFAULT true,

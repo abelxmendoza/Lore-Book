@@ -15,9 +15,9 @@ ALTER TABLE characters
 
 -- ─── Stale embedding index (used by nightly re-embedding job) ────────────────
 
+-- No now() in predicate (must be IMMUTABLE). Nightly job filters by age at query time.
 CREATE INDEX IF NOT EXISTS idx_characters_stale_embedding
-  ON characters (user_id, last_embedded_at)
-  WHERE embedding IS NULL OR last_embedded_at < now() - interval '7 days';
+  ON characters (user_id, last_embedded_at);
 
 CREATE INDEX IF NOT EXISTS idx_journal_entries_no_embedding
   ON journal_entries (user_id, created_at)

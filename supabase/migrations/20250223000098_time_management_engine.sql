@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS public.time_events (
 CREATE TABLE IF NOT EXISTS public.time_blocks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  start TIMESTAMPTZ NOT NULL,
-  end TIMESTAMPTZ NOT NULL,
+  "start" TIMESTAMPTZ NOT NULL,
+  "end" TIMESTAMPTZ NOT NULL,
   duration_minutes INT NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
     'work', 'coding', 'gym', 'bjj', 'muay_thai', 'robotics', 'learning',
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS public.time_insights (
 CREATE INDEX IF NOT EXISTS idx_time_events_user_category ON public.time_events(user_id, category);
 CREATE INDEX IF NOT EXISTS idx_time_events_user_timestamp ON public.time_events(user_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_time_blocks_user_category ON public.time_blocks(user_id, category);
-CREATE INDEX IF NOT EXISTS idx_time_blocks_user_start ON public.time_blocks(user_id, start DESC);
+CREATE INDEX IF NOT EXISTS idx_time_blocks_user_start ON public.time_blocks(user_id, "start" DESC);
 CREATE INDEX IF NOT EXISTS idx_procrastination_signals_user_type ON public.procrastination_signals(user_id, type);
 CREATE INDEX IF NOT EXISTS idx_procrastination_signals_timestamp ON public.procrastination_signals(user_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_energy_curve_user_hour ON public.energy_curve_points(user_id, hour);

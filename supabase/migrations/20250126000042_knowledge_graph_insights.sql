@@ -3,7 +3,7 @@
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Graph Edges Table
 -- Stores relationships between memory components (knowledge graph)
@@ -20,12 +20,15 @@ CREATE TABLE IF NOT EXISTS public.graph_edges (
 );
 
 -- Insights Table
--- Stores automatically generated insights from memory analysis
+-- Stores automatically generated insights from memory analysis.
+-- NOTE: public.insights may already exist from 20250102000007 (IRE) with a different
+-- shape (column `type` instead of `insight_type`). CREATE TABLE IF NOT EXISTS is a
+-- no-op in that case — add missing columns before indexing.
 CREATE TABLE IF NOT EXISTS public.insights (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  insight_type TEXT NOT NULL CHECK (insight_type IN ('pattern', 'correlation', 'cyclic_behavior', 'identity_shift', 'motif', 'prediction', 'trend', 'relationship', 'emotional', 'behavioral')),
-  text TEXT NOT NULL,
+  insight_type TEXT CHECK (insight_type IN ('pattern', 'correlation', 'cyclic_behavior', 'identity_shift', 'motif', 'prediction', 'trend', 'relationship', 'emotional', 'behavioral')),
+  text TEXT,
   confidence FLOAT DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
   source_component_ids UUID[] DEFAULT '{}',
   source_entry_ids UUID[] DEFAULT '{}',
@@ -35,11 +38,51 @@ CREATE TABLE IF NOT EXISTS public.insights (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS insight_type TEXT;
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS text TEXT;
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS confidence FLOAT DEFAULT 0.5;
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS source_component_ids UUID[] DEFAULT '{}';
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS source_entry_ids UUID[] DEFAULT '{}';
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Backfill from IRE columns when present (`type`, `generated_at`)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'insights' AND column_name = 'type'
+  ) THEN
+    UPDATE public.insights
+    SET insight_type = lower(type::text)
+    WHERE insight_type IS NULL AND type IS NOT NULL;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'insights' AND column_name = 'generated_at'
+  ) THEN
+    UPDATE public.insights
+    SET created_at = generated_at
+    WHERE created_at IS NULL AND generated_at IS NOT NULL;
+  END IF;
+END $$;
+
 -- Enhance conversation_sessions table
 -- Add embeddings and topics columns
-ALTER TABLE public.conversation_sessions
-  ADD COLUMN IF NOT EXISTS embeddings VECTOR(1536),
-  ADD COLUMN IF NOT EXISTS topics TEXT[] DEFAULT '{}';
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'conversation_sessions'
+  ) THEN
+    ALTER TABLE public.conversation_sessions
+      ADD COLUMN IF NOT EXISTS embeddings VECTOR(1536),
+      ADD COLUMN IF NOT EXISTS topics TEXT[] DEFAULT '{}';
+  END IF;
+END $$;
 
 -- ============================================
 -- INDEXES (Optimized for Performance)
@@ -52,20 +95,33 @@ CREATE INDEX IF NOT EXISTS idx_graph_edges_type ON public.graph_edges(relationsh
 CREATE INDEX IF NOT EXISTS idx_graph_edges_source_type ON public.graph_edges(source_component_id, relationship_type);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_weight ON public.graph_edges(weight DESC) WHERE weight >= 0.5;
 
--- Insights Indexes
-CREATE INDEX IF NOT EXISTS idx_insights_user_type ON public.insights(user_id, insight_type);
+-- Insights Indexes (KG columns; IRE already has idx_insights_type on `type`)
+CREATE INDEX IF NOT EXISTS idx_insights_user_insight_type ON public.insights(user_id, insight_type);
 CREATE INDEX IF NOT EXISTS idx_insights_user_created ON public.insights(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_insights_confidence ON public.insights(user_id, confidence DESC) WHERE confidence >= 0.7;
-CREATE INDEX IF NOT EXISTS idx_insights_type ON public.insights(insight_type);
+CREATE INDEX IF NOT EXISTS idx_insights_kg_confidence ON public.insights(user_id, confidence DESC) WHERE confidence >= 0.7;
+CREATE INDEX IF NOT EXISTS idx_insights_insight_type ON public.insights(insight_type);
 CREATE INDEX IF NOT EXISTS idx_insights_tags_gin ON public.insights USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_insights_component_ids_gin ON public.insights USING GIN(source_component_ids);
 CREATE INDEX IF NOT EXISTS idx_insights_entry_ids_gin ON public.insights USING GIN(source_entry_ids);
 
 -- Conversation Sessions Enhancement Indexes
-CREATE INDEX IF NOT EXISTS idx_sessions_embeddings ON public.conversation_sessions 
-  USING ivfflat (embeddings vector_cosine_ops) WITH (lists = 100)
-  WHERE embeddings IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_sessions_topics_gin ON public.conversation_sessions USING GIN(topics);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'conversation_sessions' AND column_name = 'embeddings'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_sessions_embeddings ON public.conversation_sessions
+      USING ivfflat (embeddings vector_cosine_ops) WITH (lists = 100)
+      WHERE embeddings IS NOT NULL;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'conversation_sessions' AND column_name = 'topics'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_sessions_topics_gin ON public.conversation_sessions USING GIN(topics);
+  END IF;
+END $$;
 
 -- ============================================
 -- ROW LEVEL SECURITY (RLS)
@@ -126,7 +182,11 @@ CREATE POLICY graph_edges_owner_delete ON public.graph_edges
     )
   );
 
--- Insights RLS Policies
+-- Insights RLS Policies (IRE may already have differently named policies)
+DROP POLICY IF EXISTS insights_owner_select ON public.insights;
+DROP POLICY IF EXISTS insights_owner_insert ON public.insights;
+DROP POLICY IF EXISTS insights_owner_update ON public.insights;
+DROP POLICY IF EXISTS insights_owner_delete ON public.insights;
 CREATE POLICY insights_owner_select ON public.insights
   FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY insights_owner_insert ON public.insights
@@ -141,12 +201,14 @@ CREATE POLICY insights_owner_delete ON public.insights
 -- ============================================
 
 -- Update updated_at timestamp for graph_edges
+DROP TRIGGER IF EXISTS update_graph_edges_updated_at ON public.graph_edges;
 CREATE TRIGGER update_graph_edges_updated_at
   BEFORE UPDATE ON public.graph_edges
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- Update updated_at timestamp for insights
+DROP TRIGGER IF EXISTS update_insights_updated_at ON public.insights;
 CREATE TRIGGER update_insights_updated_at
   BEFORE UPDATE ON public.insights
   FOR EACH ROW

@@ -139,8 +139,8 @@ CREATE OR REPLACE FUNCTION get_goal_with_alignment(goal_id_param UUID)
 RETURNS JSONB AS $$
 DECLARE
     goal_record RECORD;
-    signals_records RECORD[];
-    snapshots_records RECORD[];
+    signals_json JSONB;
+    snapshots_json JSONB;
     result JSONB;
 BEGIN
     SELECT * INTO goal_record
@@ -151,22 +151,28 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT ARRAY_AGG(row_to_json(s)) INTO signals_records
-    FROM goal_signals s
-    WHERE s.goal_id = goal_id_param
-    ORDER BY s.recorded_at DESC
-    LIMIT 20;
+    SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY s.recorded_at DESC), '[]'::jsonb)
+    INTO signals_json
+    FROM (
+      SELECT * FROM goal_signals s
+      WHERE s.goal_id = goal_id_param
+      ORDER BY s.recorded_at DESC
+      LIMIT 20
+    ) s;
 
-    SELECT ARRAY_AGG(row_to_json(s)) INTO snapshots_records
-    FROM alignment_snapshots s
-    WHERE s.goal_id = goal_id_param
-    ORDER BY s.generated_at DESC
-    LIMIT 10;
+    SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY s.generated_at DESC), '[]'::jsonb)
+    INTO snapshots_json
+    FROM (
+      SELECT * FROM alignment_snapshots s
+      WHERE s.goal_id = goal_id_param
+      ORDER BY s.generated_at DESC
+      LIMIT 10
+    ) s;
 
     result := jsonb_build_object(
-        'goal', row_to_json(goal_record),
-        'signals', COALESCE(signals_records, '[]'::jsonb),
-        'snapshots', COALESCE(snapshots_records, '[]'::jsonb)
+        'goal', to_jsonb(goal_record),
+        'signals', signals_json,
+        'snapshots', snapshots_json
     );
 
     RETURN result;

@@ -45,26 +45,19 @@ CREATE TABLE IF NOT EXISTS public.perception_entries (
 );
 
 COMMENT ON TABLE public.perception_entries IS 'HARD RULE: Stores YOUR perception at a point in time, NOT objective truth about others. This is parallel to journal_entries, not inside it.';
-COMMENT ON COLUMN public.perception_entries.subject_alias IS 'Name/alias of person this perception is about (REQUIRED - no nulls, even if anonymized)';
+COMMENT ON COLUMN public.perception_entries.subject_person_name IS 'Fallback display name if character row does not exist yet';
 COMMENT ON COLUMN public.perception_entries.content IS 'The perception content - MUST be framed as YOUR belief (e.g., "I believed X did Y", not "X did Y")';
 COMMENT ON COLUMN public.perception_entries.source IS 'How you learned this: overheard, told_by, rumor, social_media, intuition, assumption (strict enum)';
-COMMENT ON COLUMN public.perception_entries.confidence_level IS 'Confidence level 0.0-1.0 (defaults to 0.3 = low). Never auto-raised.';
-COMMENT ON COLUMN public.perception_entries.impact_on_me IS 'REQUIRED: How did believing this affect my actions, emotions, or decisions? Key insight lever - shifts focus away from others.';
-COMMENT ON COLUMN public.perception_entries.status IS 'Status: unverified (default), confirmed, disproven, retracted. Can evolve over time.';
+COMMENT ON COLUMN public.perception_entries.confidence_level IS 'Legacy TEXT confidence band; canonical NUMERIC lives in 20260604000001';
 COMMENT ON COLUMN public.perception_entries.retracted IS 'Whether you have retracted this perception. Retractions are explicit, not deletes.';
-COMMENT ON COLUMN public.perception_entries.resolution_note IS 'Notes on resolution/retraction - tracks evolution of belief over time';
-COMMENT ON COLUMN public.perception_entries.original_content IS 'Preserve original text for belief evolution tracking - prevents rewriting history';
-COMMENT ON COLUMN public.perception_entries.evolution_notes IS 'Array of notes tracking how belief changed over time (e.g., "2024-01-15: Confirmed false", "2024-03-20: Realized this was projection")';
-COMMENT ON COLUMN public.perception_entries.created_in_high_emotion IS 'Flag for entries created in high-emotion mode - triggers cool-down review reminders';
-COMMENT ON COLUMN public.perception_entries.review_reminder_at IS 'When to remind user to review this entry (for high-emotion entries, typically 7-30 days later)';
 COMMENT ON COLUMN public.perception_entries.metadata IS 'Metadata for future AI pattern detection: repeated subjects, low confidence patterns, emotional tone, etc.';
+-- Columns added later (subject_alias, status, impact_on_me, etc.) are documented in
+-- 20260604000001_perception_entries_canonical.sql once those columns exist.
 
--- Indexes
+-- Indexes (only columns that exist in this CREATE TABLE)
 CREATE INDEX IF NOT EXISTS perception_entries_user_id_idx ON public.perception_entries(user_id);
 CREATE INDEX IF NOT EXISTS perception_entries_subject_person_id_idx ON public.perception_entries(subject_person_id);
-CREATE INDEX IF NOT EXISTS perception_entries_subject_alias_idx ON public.perception_entries(user_id, subject_alias);
 CREATE INDEX IF NOT EXISTS perception_entries_timestamp_heard_idx ON public.perception_entries(timestamp_heard DESC);
-CREATE INDEX IF NOT EXISTS perception_entries_status_idx ON public.perception_entries(user_id, status);
 CREATE INDEX IF NOT EXISTS perception_entries_retracted_idx ON public.perception_entries(user_id, retracted);
 CREATE INDEX IF NOT EXISTS perception_entries_related_memory_id_idx ON public.perception_entries(related_memory_id);
 CREATE INDEX IF NOT EXISTS perception_entries_source_idx ON public.perception_entries(user_id, source);

@@ -100,6 +100,21 @@ CREATE TABLE IF NOT EXISTS public.graph_edges (
   CONSTRAINT graph_edges_no_self_loop CHECK (from_node_id <> to_node_id)
 );
 
+-- Table may already exist from 20250126000042 (component graph) with a different shape.
+-- Add cognition-substrate columns for the IF NOT EXISTS no-op case; do not drop/replace.
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS from_node_id UUID REFERENCES public.graph_nodes(id) ON DELETE CASCADE;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS to_node_id UUID REFERENCES public.graph_nodes(id) ON DELETE CASCADE;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS relation_kind TEXT;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS confidence FLOAT DEFAULT 0.7;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS epistemic_state TEXT DEFAULT 'UNKNOWN';
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS valid_from TIMESTAMPTZ;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS valid_to TIMESTAMPTZ;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS observed_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS asserted_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS extraction_method TEXT;
+ALTER TABLE public.graph_edges ADD COLUMN IF NOT EXISTS meta JSONB DEFAULT '{}'::jsonb;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_graph_edges_unique_active
   ON public.graph_edges (user_id, from_node_id, to_node_id, relation_kind)
   WHERE valid_to IS NULL;
@@ -184,6 +199,13 @@ ALTER TABLE public.entity_aliases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.entity_merge_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assertion_evidence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.salience_scores ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS graph_nodes_user ON public.graph_nodes;
+DROP POLICY IF EXISTS graph_edges_user ON public.graph_edges;
+DROP POLICY IF EXISTS entity_aliases_user ON public.entity_aliases;
+DROP POLICY IF EXISTS entity_merge_log_user ON public.entity_merge_log;
+DROP POLICY IF EXISTS assertion_evidence_user ON public.assertion_evidence;
+DROP POLICY IF EXISTS salience_scores_user ON public.salience_scores;
 
 CREATE POLICY graph_nodes_user ON public.graph_nodes FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 CREATE POLICY graph_edges_user ON public.graph_edges FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());

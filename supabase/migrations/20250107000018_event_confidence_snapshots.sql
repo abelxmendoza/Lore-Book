@@ -5,7 +5,8 @@
 
 CREATE TABLE IF NOT EXISTS public.event_confidence_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_id UUID NOT NULL REFERENCES public.resolved_events(id) ON DELETE CASCADE,
+  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
+  event_id UUID NOT NULL,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   confidence FLOAT NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),
   reason TEXT NOT NULL,

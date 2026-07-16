@@ -81,9 +81,14 @@ alter table public.characters
 alter table public.locations
   add column if not exists identity_strength_score real,
   add column if not exists identity_strength jsonb;
-alter table public.organizations
-  add column if not exists identity_strength_score real,
-  add column if not exists identity_strength jsonb;
+do $$
+begin
+  if to_regclass('public.organizations') is not null then
+    alter table public.organizations
+      add column if not exists identity_strength_score real,
+      add column if not exists identity_strength jsonb;
+  end if;
+end $$;
 
 comment on column public.characters.identity_strength_score is
   'Identity Strength Engine score (0..100): a richer identity-health signal, separate from confidence. See identity_strength for the breakdown.';

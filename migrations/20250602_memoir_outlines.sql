@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS memoir_outlines (
   UNIQUE(user_id)
 );
 
+-- Table may already exist from 20240101000001 without sections/auto_update.
+ALTER TABLE memoir_outlines ADD COLUMN IF NOT EXISTS sections JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE memoir_outlines ADD COLUMN IF NOT EXISTS auto_update BOOLEAN DEFAULT true;
+
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_memoir_outlines_user_id ON memoir_outlines(user_id);
 
@@ -17,6 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_memoir_outlines_user_id ON memoir_outlines(user_i
 ALTER TABLE memoir_outlines ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
+DROP POLICY IF EXISTS "Users can view their own memoir outlines" ON memoir_outlines;
+DROP POLICY IF EXISTS "Users can insert their own memoir outlines" ON memoir_outlines;
+DROP POLICY IF EXISTS "Users can update their own memoir outlines" ON memoir_outlines;
+DROP POLICY IF EXISTS "Users can delete their own memoir outlines" ON memoir_outlines;
+
 CREATE POLICY "Users can view their own memoir outlines"
   ON memoir_outlines FOR SELECT
   USING (auth.uid() = user_id);
@@ -43,6 +52,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS memoir_outlines_updated_at ON memoir_outlines;
 CREATE TRIGGER memoir_outlines_updated_at
   BEFORE UPDATE ON memoir_outlines
   FOR EACH ROW

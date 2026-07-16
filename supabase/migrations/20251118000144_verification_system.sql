@@ -85,3 +85,11 @@ CREATE INDEX IF NOT EXISTS fact_verifications_user_id_idx ON public.fact_verific
 CREATE INDEX IF NOT EXISTS fact_verifications_fact_claim_id_idx ON public.fact_verifications(fact_claim_id);
 CREATE INDEX IF NOT EXISTS fact_verifications_status_idx ON public.fact_verifications(user_id, verification_status);
 
+
+-- Indexes originally in 20251118000143 (runs before this file on fresh replay)
+CREATE INDEX IF NOT EXISTS fact_claims_user_entry_idx ON public.fact_claims(user_id, entry_id);
+CREATE INDEX IF NOT EXISTS fact_claims_lookup_idx ON public.fact_claims(user_id, subject, attribute, value);
+CREATE INDEX IF NOT EXISTS entry_verifications_status_idx ON public.entry_verifications(user_id, verification_status, resolved);
+CREATE INDEX IF NOT EXISTS entry_verifications_entry_idx ON public.entry_verifications(entry_id);
+CREATE INDEX IF NOT EXISTS entry_verifications_contradictions_idx ON public.entry_verifications(user_id, verification_status)
+  WHERE verification_status IN ('contradicted', 'ambiguous') AND resolved = false;

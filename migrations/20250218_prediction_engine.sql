@@ -29,6 +29,19 @@ CREATE TABLE IF NOT EXISTS public.predictions (
   expires_at TIMESTAMPTZ
 );
 
+-- Table may already exist from 20250102000013 with a different shape.
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS type TEXT;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS predicted_value TEXT;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS predicted_date TIMESTAMPTZ;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS predicted_date_range JSONB;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS confidence_score FLOAT DEFAULT 0.5;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS source_patterns TEXT[] DEFAULT '{}';
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS source_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.predictions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
 -- ============================================
 -- INDEXES (Optimized for Performance)
 -- ============================================
@@ -45,6 +58,11 @@ CREATE INDEX IF NOT EXISTS idx_predictions_user_created ON public.predictions(us
 -- ============================================
 
 ALTER TABLE public.predictions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own predictions" ON public.predictions;
+DROP POLICY IF EXISTS "Users can insert own predictions" ON public.predictions;
+DROP POLICY IF EXISTS "Users can update own predictions" ON public.predictions;
+DROP POLICY IF EXISTS "Users can delete own predictions" ON public.predictions;
 
 -- Users can only see their own predictions
 CREATE POLICY "Users can view own predictions"

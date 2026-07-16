@@ -9,6 +9,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Add columns to existing social_communities if needed
 DO $$
 BEGIN
+  -- social_communities is created later; skip enhance-on-fresh-preview until then.
+  IF to_regclass('public.social_communities') IS NULL THEN
+    RETURN;
+  END IF;
+
   -- Add group attributes if they don't exist
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
@@ -22,16 +27,20 @@ BEGIN
     ADD COLUMN founded_date TIMESTAMPTZ,
     ADD COLUMN status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'dissolved', 'merged')),
     ADD COLUMN hierarchy_level INT DEFAULT 0,
-    ADD COLUMN parent_group_id UUID REFERENCES public.social_communities(id);
+    ADD COLUMN parent_group_id UUID; -- FK deferred: added with social_communities migration
   END IF;
+EXCEPTION WHEN undefined_table THEN
+  NULL;
 END $$;
 
 -- Group Relationships Table
 CREATE TABLE IF NOT EXISTS public.group_relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  from_group_id UUID NOT NULL REFERENCES public.social_communities(id) ON DELETE CASCADE,
-  to_group_id UUID NOT NULL REFERENCES public.social_communities(id) ON DELETE CASCADE,
+  -- FK added in 20250223000095_social_network_engine.sql (social_communities created there).
+  from_group_id UUID NOT NULL,
+  -- FK added in 20250223000095_social_network_engine.sql (social_communities created there).
+  to_group_id UUID NOT NULL,
   relationship_type TEXT NOT NULL CHECK (relationship_type IN (
     'parent_group_of',      -- Group A contains Group B
     'subgroup_of',          -- Group B is part of Group A
@@ -65,7 +74,8 @@ CREATE TABLE IF NOT EXISTS public.group_relationships (
 CREATE TABLE IF NOT EXISTS public.group_evolution (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  group_id UUID NOT NULL REFERENCES public.social_communities(id) ON DELETE CASCADE,
+  -- FK added in 20250223000095_social_network_engine.sql (social_communities created there).
+  group_id UUID NOT NULL,
   event_type TEXT NOT NULL CHECK (event_type IN (
     'formed', 'merged', 'split', 'dissolved', 'renamed', 'purpose_changed', 
     'location_changed', 'member_added', 'member_removed', 'status_changed'

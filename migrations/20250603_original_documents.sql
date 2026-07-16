@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS original_documents (
   UNIQUE(user_id, file_name)
 );
 
+-- Table may already exist from 20240101000001 without language_style/uploaded_at.
+ALTER TABLE original_documents ADD COLUMN IF NOT EXISTS language_style TEXT;
+ALTER TABLE original_documents ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ DEFAULT NOW();
+
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_original_documents_user_id ON original_documents(user_id);
 
@@ -17,6 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_original_documents_user_id ON original_documents(
 ALTER TABLE original_documents ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
+DROP POLICY IF EXISTS "Users can view their own original documents" ON original_documents;
+DROP POLICY IF EXISTS "Users can insert their own original documents" ON original_documents;
+DROP POLICY IF EXISTS "Users can update their own original documents" ON original_documents;
+DROP POLICY IF EXISTS "Users can delete their own original documents" ON original_documents;
+
 CREATE POLICY "Users can view their own original documents"
   ON original_documents FOR SELECT
   USING (auth.uid() = user_id);
@@ -43,6 +52,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS original_documents_updated_at ON original_documents;
 CREATE TRIGGER original_documents_updated_at
   BEFORE UPDATE ON original_documents
   FOR EACH ROW
