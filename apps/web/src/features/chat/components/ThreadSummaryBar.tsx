@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, RefreshCw, Sparkles } from 'lucide-react';
 import { useThreadSummary } from '../hooks/useThreadSummary';
 import type { ThreadSummaryPayload } from '../../../api/threadSummary';
+import { SystemNotice } from './SystemNotice';
 
 type ThreadSummaryBarProps = {
   threadId: string | null;
@@ -62,12 +63,35 @@ export function ThreadSummaryBar({
 }: ThreadSummaryBarProps) {
   const { data, loading, refreshing, error, refresh } = useThreadSummary(threadId, messageCount);
   const [expanded, setExpanded] = useState(!isMobile);
+  const [summaryErrorDismissed, setSummaryErrorDismissed] = useState(false);
 
   if (!threadId || messageCount === 0) return null;
 
   const summaryLine = getDisplaySummary(data?.summary, loading);
+  const showSummaryError = Boolean(error) && !summaryErrorDismissed;
 
-  if (!summaryLine && !error) return null;
+  if (!summaryLine && !showSummaryError) return null;
+
+  if (showSummaryError && !summaryLine) {
+    return (
+      <div data-testid="thread-summary-bar" className="flex-shrink-0 border-b border-white/10 px-3 py-2 sm:px-4">
+        <SystemNotice
+          severity="info"
+          title="Summary unavailable"
+          message="Your messages are unaffected."
+          actions={[{
+            label: refreshing ? 'Retrying' : 'Retry',
+            onClick: () => void refresh(),
+            testId: 'thread-summary-retry',
+            loading: refreshing,
+            disabled: refreshing,
+          }]}
+          onDismiss={() => setSummaryErrorDismissed(true)}
+          testId="thread-summary-error-notice"
+        />
+      </div>
+    );
+  }
 
   const recallText = data?.recallText?.trim();
   const hasContext =
@@ -91,8 +115,8 @@ export function ThreadSummaryBar({
             disabled={!canExpand}
             aria-expanded={expanded}
           >
-            <p className="line-clamp-3 text-xs leading-relaxed text-white/78 sm:line-clamp-2 sm:text-sm">
-              {error ? 'Summary unavailable — your messages are still saved.' : summaryLine}
+            <p className="line-clamp-2 text-xs leading-relaxed text-white/78 sm:text-sm">
+              {summaryLine}
             </p>
           </button>
         </div>

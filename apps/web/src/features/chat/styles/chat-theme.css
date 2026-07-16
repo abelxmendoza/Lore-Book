@@ -881,11 +881,21 @@
 .journal-composer-shell--mobile .journal-composer-field:not(.journal-composer-field--embedded) {
   min-height: 2.625rem !important;
   height: 2.625rem;
-  max-height: min(40dvh, 15rem);
+  /* Keep conversation visible; keyboard + chrome already consume most of the viewport. */
+  max-height: min(28dvh, 9rem);
 }
 
 .journal-composer-shell--mobile.journal-composer-shell--focused .journal-composer-field:not(.journal-composer-field--embedded) {
-  max-height: min(44dvh, 16rem);
+  max-height: min(32dvh, 10.5rem);
+}
+
+/* Keyboard-open: keep field + send; shrink chrome so conversation stays visible. */
+.journal-composer-root--keyboard .journal-composer-shell--mobile .journal-composer-field:not(.journal-composer-field--embedded) {
+  max-height: min(22dvh, 7.5rem);
+}
+
+.journal-composer-root--keyboard .journal-composer-meta {
+  display: none;
 }
 
 .journal-composer-meta {

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen, AlertTriangle } from 'lucide-react';
+import { SystemNotice } from '../components/SystemNotice';
+import { describeMessageLifecycle } from '../types/messageLifecycle';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ComposingIndicator } from '../components/ComposingIndicator';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -102,8 +104,12 @@ export type Message = {
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   isStreaming?: boolean;
-  /** Whether this bubble has been confirmed in chat_messages. */
+  /** Legacy coarse flag — prefer `lifecycle` when present. */
   persistStatus?: 'pending' | 'saved' | 'failed';
+  /** Explicit local / cloud / processing axes (see messageLifecycle.ts). */
+  lifecycle?: import('../types/messageLifecycle').MessageLifecycleState;
+  /** System/delivery notice — render without assistant avatar glow. */
+  isDeliveryNotice?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
   /** Inline vision attachments for this turn (preview + metadata). */
@@ -210,6 +216,11 @@ type ChatMessageProps = {
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   onPrefillComposer?: (prompt: string) => void;
   threadEntityMentions?: EntityMentionRef[];
+  onRetryCloudSync?: (messageId: string) => void;
+  onRetryAssistantResponse?: (messageId: string) => void;
+  onCopyOriginalMessage?: (messageId: string) => void;
+  onDismissDeliveryNotice?: (messageId: string) => void;
+  retryInFlight?: boolean;
 };
 
 export const ChatMessage = ({
@@ -221,6 +232,11 @@ export const ChatMessage = ({
   onSuggestedAction,
   onPrefillComposer,
   threadEntityMentions = [],
+  onRetryCloudSync,
+  onRetryAssistantResponse,
+  onCopyOriginalMessage,
+  onDismissDeliveryNotice,
+  retryInFlight = false,
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -257,6 +273,7 @@ export const ChatMessage = ({
   };
 
   const isUser = message.role === 'user';
+  const isDeliveryNotice = Boolean(message.isDeliveryNotice) || Boolean(message.lifecycle?.lastError);
   const relationshipGroups = extractRelationshipGroups(message.metadata);
   const lexicalSignals = extractLexicalSignals(message.metadata as Record<string, unknown> | undefined);
   const isSystem = message.isSystemMessage;
@@ -342,6 +359,49 @@ export const ChatMessage = ({
         </div>
       );
     }
+  }
+
+  // Delivery / sync notices — compact system chrome, never assistant glow/avatar.
+  if (!isUser && isDeliveryNotice && message.lifecycle) {
+    const desc = describeMessageLifecycle(message.lifecycle);
+    const actions: import('../components/SystemNotice').SystemNoticeAction[] = [];
+    if (desc.primaryAction === 'retry_sync' && onRetryCloudSync) {
+      actions.push({
+        label: 'Retry sync',
+        onClick: () => onRetryCloudSync(message.id),
+        testId: 'delivery-retry-sync',
+        loading: retryInFlight,
+        disabled: retryInFlight,
+      });
+    }
+    if (desc.primaryAction === 'retry_send' && onRetryAssistantResponse) {
+      actions.push({
+        label: 'Retry response',
+        onClick: () => onRetryAssistantResponse(message.id),
+        testId: 'delivery-retry-response',
+        loading: retryInFlight,
+        disabled: retryInFlight,
+      });
+    }
+    if (onCopyOriginalMessage) {
+      actions.push({
+        label: 'Copy original',
+        onClick: () => onCopyOriginalMessage(message.id),
+        testId: 'delivery-copy-original',
+        disabled: retryInFlight,
+      });
+    }
+    return (
+      <div className="mb-3 w-full px-1 sm:mb-4" data-testid="chat-message-delivery-notice">
+        <SystemNotice
+          severity={desc.tone === 'error' ? 'error' : desc.tone === 'warn' ? 'warning' : 'info'}
+          title={desc.title}
+          message={desc.detail}
+          actions={actions}
+          onDismiss={onDismissDeliveryNotice ? () => onDismissDeliveryNotice(message.id) : undefined}
+        />
+      </div>
+    );
   }
 
   // Memory Recall messages
@@ -583,18 +643,46 @@ export const ChatMessage = ({
                 #{message.ref}
               </button>
             )}
-            {message.persistStatus === 'failed' && (
-              <p
-                className="text-[10px] text-red-400/80 mt-1.5"
-                data-testid="message-persist-failed"
-              >
-                Not backed up to cloud — kept in this session. Try sending again or reload.
-              </p>
-            )}
-            {message.persistStatus === 'pending' && !message.isStreaming && (
-              <p className="text-[10px] text-white/35 mt-1" data-testid="message-persist-pending">
-                Saving…
-              </p>
+            {message.lifecycle ? (
+              (() => {
+                const desc = describeMessageLifecycle(message.lifecycle);
+                if (desc.tone === 'ok' && message.lifecycle.processing === 'completed') return null;
+                if (
+                  message.lifecycle.cloudPersistence === 'saved' &&
+                  message.lifecycle.processing !== 'failed' &&
+                  !message.isStreaming
+                ) {
+                  return null;
+                }
+                const toneClass =
+                  desc.tone === 'error'
+                    ? 'text-red-300/90'
+                    : desc.tone === 'warn'
+                      ? 'text-amber-300/85'
+                      : 'text-white/40';
+                return (
+                  <div className="mt-1.5 space-y-0.5" data-testid="message-lifecycle-status">
+                    <p className={`text-[10px] font-medium ${toneClass}`}>{desc.title}</p>
+                    <p className="text-[10px] text-white/40 leading-snug">{desc.detail}</p>
+                  </div>
+                );
+              })()
+            ) : (
+              <>
+                {message.persistStatus === 'failed' && (
+                  <p
+                    className="text-[10px] text-red-400/80 mt-1.5"
+                    data-testid="message-persist-failed"
+                  >
+                    Cloud sync failed. Draft may only be on this device — retry sync, do not reload yet.
+                  </p>
+                )}
+                {message.persistStatus === 'pending' && !message.isStreaming && (
+                  <p className="text-[10px] text-white/35 mt-1" data-testid="message-persist-pending">
+                    Saving…
+                  </p>
+                )}
+              </>
             )}
 
             {isUser && showCognitiveTrace && (

@@ -35,6 +35,11 @@ type ChatMessageListProps = {
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   onPrefillComposer?: (prompt: string) => void;
   registerMessageRef?: (messageId: string, element: HTMLDivElement | null) => void;
+  onRetryCloudSync?: (messageId: string) => void;
+  onRetryAssistantResponse?: (messageId: string) => void;
+  onCopyOriginalMessage?: (messageId: string) => void;
+  onDismissDeliveryNotice?: (messageId: string) => void;
+  retryingKeys?: Set<string>;
 };
 
 export const ChatMessageList = ({
@@ -52,7 +57,12 @@ export const ChatMessageList = ({
   onFork,
   onSuggestedAction,
   onPrefillComposer,
-  registerMessageRef
+  registerMessageRef,
+  onRetryCloudSync,
+  onRetryAssistantResponse,
+  onCopyOriginalMessage,
+  onDismissDeliveryNotice,
+  retryingKeys,
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
@@ -147,6 +157,14 @@ export const ChatMessageList = ({
                   onFeedback={onFeedback}
                   onSuggestedAction={onSuggestedAction}
                   onPrefillComposer={onPrefillComposer}
+                  onRetryCloudSync={onRetryCloudSync}
+                  onRetryAssistantResponse={onRetryAssistantResponse}
+                  onCopyOriginalMessage={onCopyOriginalMessage}
+                  onDismissDeliveryNotice={onDismissDeliveryNotice}
+                  retryInFlight={
+                    typeof message.metadata?.clientIdempotencyKey === 'string' &&
+                    Boolean(retryingKeys?.has(message.metadata.clientIdempotencyKey))
+                  }
                 />
               </div>
             ))}

@@ -26,17 +26,33 @@ describe('storySafetyVault', () => {
   });
 
   it('retains an attempted story until durable persistence is confirmed', () => {
-    preserveStoryAttempt({
+    const result = preserveStoryAttempt({
       id: 'attempt-1',
       ownerId: 'user-1',
       threadId: 'thread-1',
       text: 'The original words',
       createdAt: '2026-07-11T00:00:00.000Z',
     });
+    expect(result.ok).toBe(true);
     expect(latestRecoverableStory('user-1', 'thread-1')?.text).toBe('The original words');
 
     clearStoryAttempt('attempt-1');
     expect(latestRecoverableStory('user-1', 'thread-1')).toBeNull();
+  });
+
+  it('reports ok:false when localStorage write fails', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    const result = preserveStoryAttempt({
+      id: 'attempt-quota',
+      ownerId: 'user-1',
+      threadId: 'thread-1',
+      text: 'Cannot persist locally',
+      createdAt: '2026-07-11T00:00:00.000Z',
+    });
+    expect(result.ok).toBe(false);
+    setItem.mockRestore();
   });
 
   it('notifies the mounted composer when a failed story needs recovery', () => {

@@ -33,10 +33,15 @@ import { IMAGE_ATTACHED_PLACEHOLDER } from '../types/chatImageAttachment';
 import type { ThreadEntity } from '../utils/collectThreadEntities';
 import {
   clearStoryAttempt,
+  latestRecoverableStory,
   preserveStoryAttempt,
   requestStoryRecovery,
   type StorySafetyAttempt,
 } from '../services/storySafetyVault';
+import {
+  createPendingLifecycle,
+  withLifecyclePatch,
+} from '../types/messageLifecycle';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
@@ -46,6 +51,8 @@ import {
   toComposerThreadEntity,
   type CertifiedEntityMatch,
 } from '../../../lib/certifiedEntityMatch';
+
+export type ChatRetryMode = 'cloud_sync' | 'assistant_response';
 
 export type ChatSendOptions = {
   entityContext?: {
@@ -58,6 +65,17 @@ export type ChatSendOptions = {
   chatFocus?: ChatFocus;
   /** Vision attachments for this turn only (not re-sent as history). */
   images?: ChatImageAttachment[];
+  /**
+   * Retry an existing send attempt. Reuses clientIdempotencyKey / client message id
+   * and does not append another user bubble.
+   */
+  retry?: {
+    mode: ChatRetryMode;
+    clientIdempotencyKey: string;
+    existingUserMessageId: string;
+    /** Delivery-notice bubble to stream into (avoids a second assistant row). */
+    noticeMessageId?: string;
+  };
 };
 
 // Guest sessions have no auth token — treat auth failures like an unavailable backend.
@@ -189,10 +207,79 @@ export const useChat = () => {
   const [sources, setSources] = useState<ChatSource[]>([]);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
+  /** Idempotency keys with an in-flight retry — blocks duplicate button clicks. */
+  const retryInFlightRef = useRef<Set<string>>(new Set());
+  const [retryingKeys, setRetryingKeys] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     streamingMessageIdRef.current = streamingMessageId;
   }, [streamingMessageId]);
+
+  // After refresh/restart: restore pending vault attempts into the thread so Retry sync
+  // can reuse the same clientIdempotencyKey without creating a duplicate user bubble.
+  useEffect(() => {
+    const ownerId = user?.id ?? guestState?.guestId;
+    const threadId = urlThreadId;
+    if (!ownerId || !threadId) return;
+    const attempt = latestRecoverableStory(ownerId, threadId);
+    if (!attempt?.text) return;
+
+    mutateThreadMessagesForThread(threadId, (prev) => {
+      const alreadyPresent = prev.some(
+        (m) =>
+          m.metadata?.clientIdempotencyKey === attempt.id ||
+          (m.role === 'user' && m.content === attempt.text && m.persistStatus === 'failed'),
+      );
+      if (alreadyPresent) return prev;
+
+      const userId = `user-recovered-${attempt.id}`;
+      const noticeId = `notice-recovered-${attempt.id}`;
+      const recoveredUser: Message = {
+        id: userId,
+        role: 'user',
+        content: attempt.text,
+        timestamp: new Date(attempt.createdAt),
+        persistStatus: 'failed',
+        lifecycle: withLifecyclePatch(createPendingLifecycle(attempt.createdAt), {
+          localPersistence: 'saved',
+          cloudPersistence: 'failed',
+          processing: 'failed',
+          lastError: {
+            stage: 'cloud',
+            message: 'Restored pending send after reload',
+            retryable: true,
+            occurredAt: new Date().toISOString(),
+          },
+        }),
+        metadata: { clientIdempotencyKey: attempt.id },
+      };
+      const notice: Message = {
+        id: noticeId,
+        role: 'assistant',
+        content: 'Cloud sync failed. Draft is on this device — Retry sync without rewriting.',
+        timestamp: new Date(),
+        isDeliveryNotice: true,
+        persistStatus: 'failed',
+        lifecycle: withLifecyclePatch(createPendingLifecycle(), {
+          localPersistence: 'saved',
+          cloudPersistence: 'failed',
+          processing: 'failed',
+          lastError: {
+            stage: 'cloud',
+            message: 'Restored pending send after reload',
+            retryable: true,
+            occurredAt: new Date().toISOString(),
+          },
+        }),
+        metadata: {
+          clientIdempotencyKey: attempt.id,
+          relatedUserMessageId: userId,
+          originalUserText: attempt.text,
+        },
+      };
+      return [...prev, recoveredUser, notice];
+    });
+  }, [user?.id, guestState?.guestId, urlThreadId, mutateThreadMessagesForThread]);
 
   // Finalize in-flight assistant bubbles when the tab backgrounds or closes.
   useEffect(() => {
@@ -282,57 +369,37 @@ export const useChat = () => {
       setActiveThreadId(threadId);
     }
 
-    // Client send-attempt key: reused only for this send's HTTP attempt (not a new user turn).
-    // Prevents duplicate chat_messages rows when the client retries the same failed request.
+    const retry = options?.retry;
+    const ownerId = user?.id ?? guestState?.guestId ?? 'anonymous';
+    const recovered = latestRecoverableStory(ownerId, threadId);
+
+    // Client send-attempt key: reused on retry / exact vault recovery to avoid duplicate user rows.
     const clientIdempotencyKey =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      retry?.clientIdempotencyKey ??
+      (recovered && recovered.text === resolvedText && recovered.threadId === threadId
+        ? recovered.id
+        : typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `send-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+    if (retryInFlightRef.current.has(clientIdempotencyKey)) return;
+    retryInFlightRef.current.add(clientIdempotencyKey);
+    setRetryingKeys((prev) => new Set(prev).add(clientIdempotencyKey));
 
     const safetyAttempt: StorySafetyAttempt = {
       id: clientIdempotencyKey,
-      ownerId: user?.id ?? guestState?.guestId ?? 'anonymous',
+      ownerId,
       threadId,
       text: resolvedText,
-      createdAt: new Date().toISOString(),
+      createdAt: recovered?.id === clientIdempotencyKey ? recovered.createdAt : new Date().toISOString(),
     };
-    preserveStoryAttempt(safetyAttempt);
-
-    // Create user message
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: resolvedText,
-      timestamp: new Date(),
-      persistStatus: 'pending',
-      metadata: {
-        clientIdempotencyKey,
-        ...(hasImages
-          ? {
-              attachments: options!.images!.map((img) => ({
-                kind: 'image' as const,
-                mimeType: img.mimeType,
-                detail: img.detail,
-              })),
-            }
-          : {}),
-      },
-      ...(hasImages
-        ? {
-            attachments: options!.images!.map((img) => ({
-              kind: 'image' as const,
-              dataUrl: img.dataUrl,
-              mimeType: img.mimeType,
-            })),
-          }
-        : {}),
-    };
+    const vaultWrite = preserveStoryAttempt(safetyAttempt);
+    const localOk = vaultWrite.ok;
 
     // Pin all writes for this send to the thread that initiated it — never the
     // (possibly lagging) active-thread adapter, which could append to whatever
     // thread is active by the time React commits and merge conversations.
     const streamThreadId = threadId;
-    mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, userMessage], { touchActivity: true });
     const updateStreamMessage = (messageId: string, updates: Partial<Message>, opts?: { touchActivity?: boolean }) => {
       mutateThreadMessagesForThread(
         streamThreadId,
@@ -340,6 +407,92 @@ export const useChat = () => {
         opts
       );
     };
+
+    let userMessage: Message;
+    if (retry) {
+      const existing =
+        getThread(threadId)?.messages.find((m) => m.id === retry.existingUserMessageId) ??
+        messages.find((m) => m.id === retry.existingUserMessageId);
+      if (!existing || existing.role !== 'user') {
+        retryInFlightRef.current.delete(clientIdempotencyKey);
+        setRetryingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(clientIdempotencyKey);
+          return next;
+        });
+        return;
+      }
+      const nextRetryCount = (existing.lifecycle?.retryCount ?? 0) + 1;
+      userMessage = {
+        ...existing,
+        content: resolvedText || existing.content,
+        persistStatus: 'pending',
+        lifecycle: withLifecyclePatch(existing.lifecycle, {
+          localPersistence: localOk ? 'saved' : 'failed',
+          cloudPersistence: retry.mode === 'assistant_response' ? 'saved' : 'syncing',
+          processing: 'queued',
+          retryCount: nextRetryCount,
+          lastError: null,
+        }),
+        metadata: {
+          ...(existing.metadata ?? {}),
+          clientIdempotencyKey,
+        },
+      };
+      updateStreamMessage(userMessage.id, {
+        persistStatus: userMessage.persistStatus,
+        lifecycle: userMessage.lifecycle,
+        metadata: userMessage.metadata,
+      });
+    } else {
+      const initialLifecycle = withLifecyclePatch(createPendingLifecycle(), {
+        localPersistence: localOk ? 'saved' : 'failed',
+        cloudPersistence: 'queued',
+        processing: 'queued',
+        ...(localOk
+          ? {}
+          : {
+              lastError: {
+                stage: 'local' as const,
+                message: 'Could not write a durable device copy (storage full or blocked).',
+                retryable: true,
+                occurredAt: new Date().toISOString(),
+              },
+            }),
+      });
+
+      userMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: resolvedText,
+        timestamp: new Date(),
+        persistStatus: 'pending',
+        lifecycle: initialLifecycle,
+        metadata: {
+          clientIdempotencyKey,
+          ...(hasImages
+            ? {
+                attachments: options!.images!.map((img) => ({
+                  kind: 'image' as const,
+                  mimeType: img.mimeType,
+                  detail: img.detail,
+                })),
+              }
+            : {}),
+        },
+        ...(hasImages
+          ? {
+              attachments: options!.images!.map((img) => ({
+                kind: 'image' as const,
+                dataUrl: img.dataUrl,
+                mimeType: img.mimeType,
+              })),
+            }
+          : {}),
+      };
+
+      mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, userMessage], { touchActivity: true });
+    }
 
     if (!urlThreadId) {
       navigate(`/chat/${threadId}`, { replace: true });
@@ -349,7 +502,7 @@ export const useChat = () => {
     setLoadingStage('analyzing');
     setLoadingProgress(0);
     
-    if (isGuest) {
+    if (isGuest && !retry) {
       const limitReached = incrementChatMessage();
       if (limitReached) {
         analytics.track('guest_chat_limit_reached', {
@@ -358,12 +511,14 @@ export const useChat = () => {
       }
     }
     
-    analytics.track('chat_message_sent', { 
+    analytics.track(retry ? 'chat_message_retry' : 'chat_message_sent', { 
       messageLength: resolvedText.length,
       hasSlashCommand: resolvedText.startsWith('/'),
       isGuest: isGuest,
       chatFocusSurface: options?.chatFocus?.sourceSurface,
       hasImage: hasImages,
+      retryMode: retry?.mode,
+      retryCount: userMessage.lifecycle?.retryCount ?? 0,
     });
 
     if (options?.chatFocus) {
@@ -379,22 +534,46 @@ export const useChat = () => {
         content: msg.content
       }));
 
-    // Create placeholder for streaming message
-    const assistantMessageId = `assistant-${Date.now()}`;
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true,
-      persistStatus: 'pending',
-      metadata: {
-        intent: 'conversation',
-        why: 'Checking relevant context before drafting the response.',
-      },
-    };
-
-    mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, assistantMessage]);
+    // Create placeholder for streaming message — reuse delivery notice on retry.
+    const assistantMessageId = retry?.noticeMessageId ?? `assistant-${Date.now()}`;
+    if (retry?.noticeMessageId) {
+      updateStreamMessage(assistantMessageId, {
+        content: '',
+        isStreaming: true,
+        isDeliveryNotice: false,
+        persistStatus: 'pending',
+        lifecycle: withLifecyclePatch(undefined, {
+          localPersistence: localOk ? 'saved' : 'failed',
+          cloudPersistence: retry.mode === 'assistant_response' ? 'saved' : 'syncing',
+          processing: 'processing',
+          lastError: null,
+        }),
+        metadata: {
+          intent: 'conversation',
+          why: 'Retrying — checking relevant context before drafting the response.',
+          clientIdempotencyKey,
+          relatedUserMessageId: userMessage.id,
+          originalUserText: userMessage.content,
+        },
+      });
+    } else {
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true,
+        persistStatus: 'pending',
+        metadata: {
+          intent: 'conversation',
+          why: 'Checking relevant context before drafting the response.',
+          clientIdempotencyKey,
+          relatedUserMessageId: userMessage.id,
+          originalUserText: userMessage.content,
+        },
+      };
+      mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, assistantMessage]);
+    }
     setStreamingMessageId(assistantMessageId);
     
     // Enhanced loading stages with progress
@@ -453,9 +632,29 @@ export const useChat = () => {
         if (persistence.user.saved && persistence.user.id) {
           persistedUserMessageId = persistence.user.id;
           clearStoryAttempt(safetyAttempt.id);
-          updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+          updateStreamMessage(userMessage.id, {
+            persistStatus: 'saved',
+            lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+              localPersistence: 'saved',
+              cloudPersistence: 'saved',
+              processing: 'processing',
+              lastError: null,
+            }),
+          });
         } else if (persistence.user.error) {
-          updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+          updateStreamMessage(userMessage.id, {
+            persistStatus: 'failed',
+            lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+              localPersistence: 'saved',
+              cloudPersistence: 'failed',
+              lastError: {
+                stage: 'cloud',
+                message: persistence.user.error,
+                retryable: true,
+                occurredAt: new Date().toISOString(),
+              },
+            }),
+          });
           threadPersistenceTracker.markSyncFailed(streamThreadId, persistence.user.error);
         }
       }
@@ -463,13 +662,35 @@ export const useChat = () => {
         if (persistence.assistant.saved) {
           const id = persistence.assistant.id ?? persistedAssistantMessageId ?? assistantMessageId;
           persistedAssistantMessageId = id;
-          updateStreamMessage(assistantMessageId, { persistStatus: 'saved' });
+          updateStreamMessage(assistantMessageId, {
+            persistStatus: 'saved',
+            lifecycle: withLifecyclePatch(undefined, {
+              localPersistence: 'saved',
+              cloudPersistence: 'saved',
+              processing: 'completed',
+              lastError: null,
+            }),
+          });
           threadPersistenceTracker.markPersisted(streamThreadId);
         } else if (
           persistence.assistant.error &&
           persistence.assistant.error !== 'empty_content'
         ) {
-          updateStreamMessage(assistantMessageId, { persistStatus: 'failed' });
+          updateStreamMessage(assistantMessageId, {
+            persistStatus: 'failed',
+            isDeliveryNotice: true,
+            lifecycle: withLifecyclePatch(undefined, {
+              localPersistence: 'saved',
+              cloudPersistence: 'failed',
+              processing: 'failed',
+              lastError: {
+                stage: 'cloud',
+                message: persistence.assistant.error,
+                retryable: true,
+                occurredAt: new Date().toISOString(),
+              },
+            }),
+          });
           threadPersistenceTracker.markSyncFailed(streamThreadId, persistence.assistant.error);
         }
       }
@@ -606,6 +827,9 @@ export const useChat = () => {
           setLoadingStage('generating');
           setLoadingProgress(100);
 
+          const assistantCloudSaved = Boolean(
+            persistedAssistantMessageId || metadata?.persistence?.assistant?.saved,
+          );
           updateStreamMessage(
             assistantMessageId,
             {
@@ -614,7 +838,20 @@ export const useChat = () => {
               id: persistedAssistantMessageId ?? assistantMessageId,
               content: accumulatedContent,
               isStreaming: false,
-              persistStatus: persistedAssistantMessageId ? 'saved' : metadata?.persistence?.assistant?.saved === false ? 'failed' : 'pending',
+              persistStatus: assistantCloudSaved ? 'saved' : metadata?.persistence?.assistant?.saved === false ? 'failed' : 'pending',
+              lifecycle: withLifecyclePatch(undefined, {
+                localPersistence: 'saved',
+                cloudPersistence: assistantCloudSaved ? 'saved' : 'failed',
+                processing: 'completed',
+                lastError: assistantCloudSaved
+                  ? null
+                  : {
+                      stage: 'cloud',
+                      message: 'Assistant reply not confirmed in cloud',
+                      retryable: true,
+                      occurredAt: new Date().toISOString(),
+                    },
+              }),
               ...metadata,
             sources: metadata?.sources,
             connections: metadata?.connections,
@@ -648,13 +885,43 @@ export const useChat = () => {
           );
 
           if (isGuest) {
-            updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+            updateStreamMessage(userMessage.id, {
+              persistStatus: 'saved',
+              lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+                localPersistence: 'saved',
+                cloudPersistence: 'saved',
+                processing: 'completed',
+                lastError: null,
+              }),
+            });
             clearStoryAttempt(safetyAttempt.id);
           } else if (persistedUserMessageId) {
-            updateStreamMessage(userMessage.id, { id: persistedUserMessageId, persistStatus: 'saved' });
+            updateStreamMessage(userMessage.id, {
+              id: persistedUserMessageId,
+              persistStatus: 'saved',
+              lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+                localPersistence: 'saved',
+                cloudPersistence: 'saved',
+                processing: 'completed',
+                lastError: null,
+              }),
+            });
             clearStoryAttempt(safetyAttempt.id);
           } else if (!metadata?.persistence?.user?.saved) {
-            updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+            updateStreamMessage(userMessage.id, {
+              persistStatus: 'failed',
+              lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+                localPersistence: 'saved',
+                cloudPersistence: 'failed',
+                processing: 'failed',
+                lastError: {
+                  stage: 'cloud',
+                  message: 'user_message_not_persisted',
+                  retryable: true,
+                  occurredAt: new Date().toISOString(),
+                },
+              }),
+            });
             threadPersistenceTracker.markSyncFailed(streamThreadId, 'user_message_not_persisted');
           }
 
@@ -742,13 +1009,28 @@ export const useChat = () => {
                   guestState?.guestId,
                 ).content
               : userSaved
-                ? 'I couldn’t generate a reply, but your story was saved safely. You can retry the response without retelling it.'
-                : 'I couldn’t save or process that story. Your original words are safe and have been restored to the composer so you can retry without rewriting them.',
+                ? 'Cloud save succeeded, but I couldn’t generate a reply. Retry the response without rewriting.'
+                : 'Cloud save and reply both failed. Your draft is on this device and restored to the composer — retry sync, don’t reload yet.',
             isStreaming: false,
             persistStatus: 'failed',
+            isDeliveryNotice: !useDemoFallback,
+            lifecycle: withLifecyclePatch(undefined, {
+              localPersistence: localOk ? 'saved' : 'failed',
+              cloudPersistence: userSaved ? 'saved' : 'failed',
+              processing: 'failed',
+              lastError: {
+                stage: userSaved ? 'generation' : 'cloud',
+                message: String(error),
+                retryable: true,
+                occurredAt: new Date().toISOString(),
+              },
+            }),
             metadata: {
               durability,
               ingestionStatus,
+              clientIdempotencyKey,
+              relatedUserMessageId: userMessage.id,
+              originalUserText: userMessage.content,
             },
           });
 
@@ -758,6 +1040,17 @@ export const useChat = () => {
             updateStreamMessage(userMessage.id, {
               ...(savedId ? { id: savedId } : {}),
               persistStatus: 'saved',
+              lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+                localPersistence: 'saved',
+                cloudPersistence: 'saved',
+                processing: ingestionActive ? 'processing' : 'failed',
+                lastError: {
+                  stage: 'generation',
+                  message: String(error),
+                  retryable: true,
+                  occurredAt: new Date().toISOString(),
+                },
+              }),
               metadata: {
                 ...(userMessage.metadata ?? {}),
                 durability,
@@ -765,7 +1058,20 @@ export const useChat = () => {
               },
             });
           } else {
-            updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+            updateStreamMessage(userMessage.id, {
+              persistStatus: 'failed',
+              lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+                localPersistence: 'saved',
+                cloudPersistence: 'failed',
+                processing: 'failed',
+                lastError: {
+                  stage: 'cloud',
+                  message: String(error),
+                  retryable: true,
+                  occurredAt: new Date().toISOString(),
+                },
+              }),
+            });
             threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
             requestStoryRecovery(safetyAttempt);
           }
@@ -808,8 +1114,35 @@ export const useChat = () => {
 
       if (persistedUserMessageId) {
         clearStoryAttempt(safetyAttempt.id);
+        updateStreamMessage(userMessage.id, {
+          persistStatus: 'saved',
+          lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+            localPersistence: 'saved',
+            cloudPersistence: 'saved',
+            processing: 'failed',
+            lastError: {
+              stage: 'generation',
+              message: errMsg,
+              retryable: true,
+              occurredAt: new Date().toISOString(),
+            },
+          }),
+        });
       } else {
-        updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+        updateStreamMessage(userMessage.id, {
+          persistStatus: 'failed',
+          lifecycle: withLifecyclePatch(userMessage.lifecycle, {
+            localPersistence: 'saved',
+            cloudPersistence: 'failed',
+            processing: 'failed',
+            lastError: {
+              stage: 'cloud',
+              message: errMsg,
+              retryable: true,
+              occurredAt: new Date().toISOString(),
+            },
+          }),
+        });
         requestStoryRecovery(safetyAttempt);
       }
 
@@ -830,10 +1163,154 @@ export const useChat = () => {
             ? accumulatedContent
             : friendlyErrorMessage(errMsg),
           isStreaming: false,
+          persistStatus: 'failed',
+          isDeliveryNotice: true,
+          lifecycle: withLifecyclePatch(undefined, {
+            localPersistence: localOk ? 'saved' : 'failed',
+            cloudPersistence: persistedUserMessageId ? 'saved' : 'failed',
+            processing: 'failed',
+            lastError: {
+              stage: persistedUserMessageId ? 'generation' : 'cloud',
+              message: errMsg,
+              retryable: true,
+              occurredAt: new Date().toISOString(),
+            },
+          }),
+          metadata: {
+            clientIdempotencyKey,
+            relatedUserMessageId: userMessage.id,
+            originalUserText: userMessage.content,
+          },
         });
       }
+    } finally {
+      retryInFlightRef.current.delete(clientIdempotencyKey);
+      setRetryingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(clientIdempotencyKey);
+        return next;
+      });
     }
   }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, updateThread, navigate, mutateThreadMessagesForThread, hydrateThreadMessages, dispatch]);
+
+  const resolveRetryTarget = useCallback(
+    (messageId: string) => {
+      const threadMsgs = (urlThreadId ? getThread(urlThreadId)?.messages : null) ?? messages;
+      const clicked = threadMsgs.find((m) => m.id === messageId);
+      if (!clicked) return null;
+
+      if (clicked.role === 'user') {
+        const key = typeof clicked.metadata?.clientIdempotencyKey === 'string'
+          ? clicked.metadata.clientIdempotencyKey
+          : null;
+        if (!key) return null;
+        const notice = threadMsgs.find(
+          (m) =>
+            m.role === 'assistant' &&
+            m.isDeliveryNotice &&
+            (m.metadata?.relatedUserMessageId === clicked.id ||
+              m.metadata?.clientIdempotencyKey === key),
+        );
+        return {
+          userMessage: clicked,
+          noticeMessageId: notice?.id,
+          clientIdempotencyKey: key,
+          originalText: clicked.content,
+        };
+      }
+
+      const relatedId =
+        typeof clicked.metadata?.relatedUserMessageId === 'string'
+          ? clicked.metadata.relatedUserMessageId
+          : null;
+      const key =
+        typeof clicked.metadata?.clientIdempotencyKey === 'string'
+          ? clicked.metadata.clientIdempotencyKey
+          : null;
+      const userMessage =
+        (relatedId ? threadMsgs.find((m) => m.id === relatedId) : null) ??
+        (key
+          ? threadMsgs.find(
+              (m) => m.role === 'user' && m.metadata?.clientIdempotencyKey === key,
+            )
+          : null) ??
+        (() => {
+          const idx = threadMsgs.findIndex((m) => m.id === messageId);
+          return idx > 0 && threadMsgs[idx - 1]?.role === 'user' ? threadMsgs[idx - 1] : null;
+        })();
+      if (!userMessage || !key) return null;
+      return {
+        userMessage,
+        noticeMessageId: clicked.isDeliveryNotice ? clicked.id : messageId,
+        clientIdempotencyKey: key,
+        originalText:
+          (typeof clicked.metadata?.originalUserText === 'string'
+            ? clicked.metadata.originalUserText
+            : null) ?? userMessage.content,
+      };
+    },
+    [getThread, messages, urlThreadId],
+  );
+
+  const retryCloudSync = useCallback(
+    async (messageId: string) => {
+      const target = resolveRetryTarget(messageId);
+      if (!target) return;
+      await sendMessage(target.originalText, {
+        retry: {
+          mode: 'cloud_sync',
+          clientIdempotencyKey: target.clientIdempotencyKey,
+          existingUserMessageId: target.userMessage.id,
+          noticeMessageId: target.noticeMessageId,
+        },
+      });
+    },
+    [resolveRetryTarget, sendMessage],
+  );
+
+  const retryAssistantResponse = useCallback(
+    async (messageId: string) => {
+      const target = resolveRetryTarget(messageId);
+      if (!target) return;
+      await sendMessage(target.originalText, {
+        retry: {
+          mode: 'assistant_response',
+          clientIdempotencyKey: target.clientIdempotencyKey,
+          existingUserMessageId: target.userMessage.id,
+          noticeMessageId: target.noticeMessageId,
+        },
+      });
+    },
+    [resolveRetryTarget, sendMessage],
+  );
+
+  const copyOriginalMessage = useCallback(
+    async (messageId: string) => {
+      const target = resolveRetryTarget(messageId);
+      const text = target?.originalText;
+      if (!text) return false;
+      try {
+        await navigator.clipboard.writeText(text);
+        analytics.track('chat_original_message_copied', { messageId });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [resolveRetryTarget],
+  );
+
+  const dismissDeliveryNotice = useCallback(
+    (messageId: string) => {
+      const threadId = urlThreadId;
+      if (!threadId) {
+        removeMessage(messageId);
+        return;
+      }
+      mutateThreadMessagesForThread(threadId, (prev) => prev.filter((m) => m.id !== messageId));
+    },
+    [mutateThreadMessagesForThread, removeMessage, urlThreadId],
+  );
 
   const clearConversation = useCallback(() => {
     clearConversationStore();
@@ -844,6 +1321,11 @@ export const useChat = () => {
     messages,
     setMessages,
     sendMessage,
+    retryCloudSync,
+    retryAssistantResponse,
+    copyOriginalMessage,
+    dismissDeliveryNotice,
+    retryingKeys,
     isLoading: loading || isStreaming,
     loadingStage,
     loadingProgress,

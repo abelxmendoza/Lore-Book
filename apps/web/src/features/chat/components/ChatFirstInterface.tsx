@@ -95,6 +95,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     messages,
     setMessages,
     sendMessage,
+    retryCloudSync,
+    retryAssistantResponse,
+    copyOriginalMessage,
+    dismissDeliveryNotice,
+    retryingKeys,
     isLoading,
     loadingStage,
     loadingProgress,
@@ -394,16 +399,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   };
 
   const handleRegenerate = async (messageId: string) => {
-    const messageIndex = messages.findIndex((m) => m.id === messageId);
-    if (messageIndex === -1) return;
-    const userMessage = messages[messageIndex - 1];
-    if (!userMessage || userMessage.role !== 'user') return;
     analytics.track('chat_message_regenerated', { messageId });
-    const index = messages.findIndex((m) => m.id === messageId);
-    if (index >= 0) {
-      setMessages(messages.slice(0, index));
-      setTimeout(() => { sendMessage(userMessage.content, chatSendOptions); }, 100);
-    }
+    // Reuse the same clientIdempotencyKey — never append another user message.
+    await retryAssistantResponse(messageId);
   };
 
   const handleEdit = (messageId: string) => {
@@ -867,6 +865,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               onSuggestedAction={handleSuggestedAction}
               onPrefillComposer={prefillComposer}
               registerMessageRef={registerMessageRef}
+              onRetryCloudSync={(id) => void retryCloudSync(id)}
+              onRetryAssistantResponse={(id) => void retryAssistantResponse(id)}
+              onCopyOriginalMessage={(id) => void copyOriginalMessage(id)}
+              onDismissDeliveryNotice={dismissDeliveryNotice}
+              retryingKeys={retryingKeys}
             />
           )}
 

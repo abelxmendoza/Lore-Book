@@ -31,12 +31,16 @@ function isStorySafetyAttempt(value: unknown): value is StorySafetyAttempt {
   return Boolean(row.id && row.ownerId && row.threadId && typeof row.text === 'string' && row.createdAt);
 }
 
-function writeAttempts(attempts: StorySafetyAttempt[]): void {
-  if (!storageAvailable()) return;
+function writeAttempts(attempts: StorySafetyAttempt[]): boolean {
+  if (!storageAvailable()) return false;
   try {
-    window.localStorage.setItem(VAULT_KEY, JSON.stringify(attempts.slice(-MAX_ATTEMPTS)));
+    const payload = JSON.stringify(attempts.slice(-MAX_ATTEMPTS));
+    window.localStorage.setItem(VAULT_KEY, payload);
+    // Read-back confirms quota/write succeeded (setItem can no-op in private mode).
+    return window.localStorage.getItem(VAULT_KEY) === payload;
   } catch {
     // The canonical send path still runs when storage is unavailable/full.
+    return false;
   }
 }
 
@@ -64,14 +68,15 @@ export function readComposerDraft(ownerId: string, threadId?: string): string {
   }
 }
 
-export function preserveStoryAttempt(attempt: StorySafetyAttempt): void {
+/** Persist a pending send. Returns false when localStorage write fails (quota/private mode). */
+export function preserveStoryAttempt(attempt: StorySafetyAttempt): { ok: boolean } {
   const attempts = readAttempts().filter(
     (row) =>
       row.id !== attempt.id &&
       !(row.ownerId === attempt.ownerId && row.threadId === attempt.threadId && row.text === attempt.text)
   );
   attempts.push(attempt);
-  writeAttempts(attempts);
+  return { ok: writeAttempts(attempts) };
 }
 
 export function clearStoryAttempt(id: string): void {
@@ -82,7 +87,7 @@ export function latestRecoverableStory(ownerId: string, threadId?: string): Stor
   const matches = readAttempts().filter(
     (attempt) => attempt.ownerId === ownerId && (!threadId || attempt.threadId === threadId)
   );
-  return matches.at(-1) ?? null;
+  return matches.length > 0 ? matches[matches.length - 1]! : null;
 }
 
 export function requestStoryRecovery(attempt: StorySafetyAttempt): void {
