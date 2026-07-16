@@ -7,6 +7,7 @@ import type {
   ReadinessGap,
   ReadinessDimensionScores,
   EntityReadinessCandidate,
+  FocusCandidate,
 } from './types';
 
 export type LedgerRow = {
@@ -21,6 +22,8 @@ export type LedgerRow = {
   atom_type_counts: Record<string, number>;
   gaps: ReadinessGap[];
   entity_candidates?: EntityReadinessCandidate[];
+  focus_candidates?: FocusCandidate[];
+  signal_summary?: string;
   dimension_scores?: ReadinessDimensionScores;
   total_atoms_snapshot: number;
   updated_at: string;
@@ -66,6 +69,8 @@ function ledgerRowFromTopic(topic: LoreTopicReadiness, snapshot: number): Omit<L
     atom_type_counts: {},
     gaps: topic.gaps ?? [],
     entity_candidates: topic.entityCandidates,
+    focus_candidates: topic.focusCandidates,
+    signal_summary: topic.signalSummary,
     dimension_scores: topic.dimensionScores,
     total_atoms_snapshot: snapshot,
   };
@@ -134,6 +139,8 @@ function topicFromLedgerRow(
     canGenerate: row.can_generate,
     gaps: row.gaps ?? [],
     dimensionScores: row.dimension_scores,
+    focusCandidates: row.focus_candidates,
+    signalSummary: row.signal_summary,
     entityCandidates: row.entity_candidates,
   };
 }

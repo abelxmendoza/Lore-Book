@@ -296,7 +296,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       characters: 'Characters',
       locations: 'Locations',
       memoir: 'LoreBook Editor',
-      lorebook: 'Lorebooks',
+      lorebook: 'LoreBooks',
       photos: 'Photo Album',
       perceptions: 'Perceptions',
       events: 'Life Log',

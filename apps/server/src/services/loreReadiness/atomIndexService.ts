@@ -11,6 +11,8 @@ export type AtomFilterSpec = Partial<BiographySpec> & {
   locationIds?: string[];
   eventIds?: string[];
   skillIds?: string[];
+  organizationIds?: string[];
+  organizationNames?: string[];
   topicDomain?: string;
 };
 
@@ -105,6 +107,18 @@ export function filterAtoms(atoms: NarrativeAtom[], spec: AtomFilterSpec): Narra
     filtered = filtered.filter((atom) => {
       const ids = atom.metadata?.skillIds as string[] | undefined;
       return ids && ids.some((id) => skillIds.includes(id));
+    });
+  }
+
+  const organizationIds = spec.organizationIds ?? [];
+  const organizationNames = (spec.organizationNames ?? []).map((n) => n.toLowerCase());
+  if (organizationIds.length > 0 || organizationNames.length > 0) {
+    filtered = filtered.filter((atom) => {
+      const ids = atom.metadata?.organizationIds as string[] | undefined;
+      if (ids && organizationIds.some((id) => ids.includes(id))) return true;
+      if (organizationNames.length === 0) return false;
+      const hay = `${atom.content} ${(atom.tags || []).join(' ')}`.toLowerCase();
+      return organizationNames.some((n) => n.length >= 3 && hay.includes(n));
     });
   }
 

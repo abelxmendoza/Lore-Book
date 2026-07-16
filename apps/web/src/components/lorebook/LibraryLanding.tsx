@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
+import { LorebookEvidenceReview } from './LorebookEvidenceReview';
 
 interface BookCategory {
   id: string;
@@ -61,7 +62,18 @@ function libraryBookPresentation(book: CompiledLorebook, index: number) {
 
 interface LibraryLandingProps {
   onGenerate: (query: string, options?: { force?: boolean }) => void;
-  onGenerateTopic?: (topicId: string) => void;
+  onGenerateTopic?: (
+    topicId: string,
+    options?: {
+      characterId?: string;
+      locationId?: string;
+      organizationId?: string;
+      skillId?: string;
+      threadId?: string;
+      timeRange?: { start: string; end: string };
+      themes?: string[];
+    },
+  ) => void;
   onReadBook?: (bookId: string) => void;
   onEditBook?: (bookId: string) => void;
   generating?: boolean;
@@ -83,12 +95,14 @@ export const LibraryLanding = ({
   const inShell = useLorebookShell();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [showEvidenceReview, setShowEvidenceReview] = useState(false);
   const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
   const { evaluation: queryEvaluation, loading: queryEvaluating } = useQueryReadiness(query);
 
   const handleCategoryClick = (cat: BookCategory) => {
     setActiveCategory(cat.id);
     setQuery(cat.prompt);
+    setShowEvidenceReview(false);
     // Focus the input after selecting a category
     setTimeout(() => {
       const input = document.getElementById('library-search-input');
@@ -99,21 +113,14 @@ export const LibraryLanding = ({
     }, 50);
   };
 
-  const handleSubmit = (force = false) => {
+  const handleSubmit = () => {
     if (!query.trim() || generating) return;
+    // Evidence review before prose — product workflow step 2.
+    setShowEvidenceReview(true);
+  };
 
-    if (!force && queryEvaluation && !queryEvaluation.canGenerate) {
-      if (queryEvaluation.progress >= 0.45) {
-        const proceed = window.confirm(
-          `This book is ${Math.round(queryEvaluation.progress * 100)}% ready — compile a thinner version anyway?`
-        );
-        if (!proceed) return;
-        onGenerate(query.trim(), { force: true });
-        return;
-      }
-      return;
-    }
-
+  const handleConfirmCompile = (force = false) => {
+    if (!query.trim() || generating) return;
     onGenerate(query.trim(), force ? { force: true } : undefined);
   };
 
@@ -128,7 +135,7 @@ export const LibraryLanding = ({
 
       <div className={`relative z-10 mx-auto flex w-full min-w-0 max-w-5xl flex-1 flex-col px-4 py-6 sm:px-8 sm:py-12 lg:px-16 ${inShell ? 'pb-4' : ''}`}>
 
-        <LorebookLibraryHero subtitle="Generate a book from your life, or open one you've made." />
+        <LorebookLibraryHero subtitle="Compile a book from your living memory — review the evidence first, then write." />
 
         {/* Generation search bar */}
         <div className="mb-6 sm:mb-8">
@@ -140,7 +147,10 @@ export const LibraryLanding = ({
                 id="library-search-input"
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowEvidenceReview(false);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                 placeholder="e.g. 'my 2020 story', 'Sarah', 'my music journey'…"
                 className="w-full h-14 pl-12 pr-4 rounded-2xl bg-white/5 border border-white/10 text-white text-base placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-all"
@@ -149,7 +159,7 @@ export const LibraryLanding = ({
             </div>
             <Button
               onClick={() => handleSubmit()}
-              disabled={!query.trim() || generating || (queryEvaluation != null && !queryEvaluation.canGenerate && queryEvaluation.progress < 0.45)}
+              disabled={!query.trim() || generating}
               className="h-14 w-14 sm:w-auto sm:px-6 rounded-2xl bg-primary hover:bg-primary/90 text-white font-semibold shrink-0 disabled:opacity-40"
             >
               {generating ? (
@@ -157,12 +167,12 @@ export const LibraryLanding = ({
               ) : (
                 <>
                   <Sparkles className="h-5 w-5 sm:mr-2 shrink-0" />
-                  <span className="hidden sm:inline">Generate</span>
+                  <span className="hidden sm:inline">Review</span>
                 </>
               )}
             </Button>
           </div>
-          {query.trim().length >= 3 && (
+          {query.trim().length >= 3 && !showEvidenceReview && (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               {queryEvaluating ? (
                 <span className="inline-flex items-center gap-1.5 text-white/40">
@@ -177,11 +187,41 @@ export const LibraryLanding = ({
                   <span className="text-white/35 font-mono">
                     {queryEvaluation.atomCount} atoms · ~{queryEvaluation.estimatedPages} pages
                   </span>
-                  {!queryEvaluation.canGenerate && queryEvaluation.suggestions[0] && (
-                    <span className="text-amber-400/75">{queryEvaluation.suggestions[0]}</span>
-                  )}
                 </>
               ) : null}
+            </div>
+          )}
+          {showEvidenceReview && queryEvaluation && (
+            <div className="mt-4">
+              <LorebookEvidenceReview
+                evaluation={queryEvaluation}
+                query={query.trim()}
+                loading={queryEvaluating}
+                compiling={generating}
+                onConfirmCompile={handleConfirmCompile}
+                onCancel={() => setShowEvidenceReview(false)}
+              />
+            </div>
+          )}
+          {showEvidenceReview && !queryEvaluation && !queryEvaluating && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
+              Could not evaluate evidence for this query. You can still try compiling, or chat more first.
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmCompile(true)}
+                  className="rounded-lg bg-primary/20 border border-primary/30 text-primary text-xs font-medium px-3 py-2"
+                >
+                  Compile anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEvidenceReview(false)}
+                  className="rounded-lg text-xs text-white/45 px-3 py-2"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -224,7 +264,13 @@ export const LibraryLanding = ({
               compiledBooks={compiledBooks}
               loading={readinessLoading}
               variant="compact"
-              onGenerateTopic={(topicId) => onGenerateTopic?.(topicId) ?? handleSubmit()}
+              onGenerateTopic={(topicId, options) => {
+                if (onGenerateTopic) {
+                  onGenerateTopic(topicId, options);
+                  return;
+                }
+                handleSubmit();
+              }}
               onGoToChat={() => navigate('/chat')}
             />
           </div>

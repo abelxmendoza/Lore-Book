@@ -61,7 +61,7 @@ vi.mock('../utils/routeMapping', () => ({
     love: '/love',
     quests: '/quests',
     memoir: '/memoir',
-    lorebook: '/lorebook',
+    lorebook: '/lorebook/library',
     photos: '/photos',
     entities: '/entities',
     organizations: '/organizations',

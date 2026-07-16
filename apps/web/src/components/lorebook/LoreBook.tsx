@@ -27,8 +27,10 @@ import { isDemoBookId, lorebookEditUrl, lorebookEditorUrlForCompiledBooks, loreb
 import {
   compileLorebookFromQuery,
   compileLorebookFromSpec,
+  compileLorebookFromTopic,
   formatCompileBlockMessage,
   shouldConfirmForceCompile,
+  type CompileTopicOptions,
 } from '../../lib/lorebookCompile';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { useLorebookShell } from './LorebookShell';
@@ -283,7 +285,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
 
     let resizeObserver: ResizeObserver | null = null;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     // Wait for container to have a proper size
     const calculatePages = () => {
@@ -693,19 +695,23 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         );
         if (proceed) {
           result = await compileLorebookFromQuery(query, true);
-        } else {
-          setGenerationError(formatCompileBlockMessage(result.conflict));
-          return;
         }
-      } else if (!result.ok) {
+      }
+      if (!result.ok) {
         setGenerationError(formatCompileBlockMessage(result.conflict));
         return;
       }
 
       if (result.data.biography) {
-        handleLoadBiography(result.data.biography as Biography);
+        const bio = result.data.biography as Biography;
+        const bookId = result.data.biographyId || bio.id;
+        if (!bookId || result.data.persisted === false) {
+          setGenerationError('The book was drafted but not saved to your library. Try compiling again.');
+          return;
+        }
+        handleLoadBiography({ ...bio, id: bookId });
         setIsCoverVisible(true);
-        navigate(lorebookReadUrl((result.data.biography as Biography).id), { replace: true });
+        navigate(lorebookReadUrl(bookId), { replace: true });
       }
       if (result.warning) {
         setGenerationError(result.warning);
@@ -716,7 +722,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       setGenerationError(
         raw.includes('No atoms found')
           ? "There isn't enough material yet for that specific book."
-          : "That book couldn't be compiled right now."
+          : raw.includes('Failed to save')
+            ? 'Compile finished but saving to your library failed. Try again.'
+            : "That book couldn't be compiled right now."
       );
     } finally {
       await ensureMinGeneratingDuration(startedAt);
@@ -725,8 +733,62 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   };
 
-  const handleGenerateFromTopic = async (topicId: string) => {
-    await runDemoCompile({ topicId: topicId as LoreTopicId }, null);
+  const handleGenerateFromTopic = async (topicId: string, options?: CompileTopicOptions) => {
+    if (shouldUseMock || isSimulated) {
+      await runDemoCompile({ topicId: topicId as LoreTopicId }, null);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setGenerating(true);
+    setGeneratingQuery(topicId);
+    setShowLibrary(false);
+    setGenerationError(null);
+    try {
+      let result = await compileLorebookFromTopic(topicId, options);
+
+      if (!result.ok && shouldConfirmForceCompile(result.conflict)) {
+        const proceed = window.confirm(
+          `${result.conflict.message}\n\nCompile a thinner book anyway?`
+        );
+        if (proceed) {
+          result = await compileLorebookFromTopic(topicId, { ...options, force: true });
+        }
+      }
+      if (!result.ok) {
+        setGenerationError(formatCompileBlockMessage(result.conflict));
+        return;
+      }
+
+      if (result.data.biography) {
+        const bio = result.data.biography as Biography;
+        const bookId = result.data.biographyId || bio.id;
+        if (!bookId || result.data.persisted === false) {
+          setGenerationError('The book was drafted but not saved to your library. Try compiling again.');
+          return;
+        }
+        handleLoadBiography({ ...bio, id: bookId });
+        setIsCoverVisible(true);
+        navigate(lorebookReadUrl(bookId), { replace: true });
+      }
+      if (result.warning) {
+        setGenerationError(result.warning);
+      }
+    } catch (error) {
+      console.error('Failed to generate biography from topic:', error);
+      const raw = error instanceof Error ? error.message : String(error);
+      setGenerationError(
+        raw.includes('No atoms found')
+          ? "There isn't enough material yet for that specific book."
+          : raw.includes('Failed to save')
+            ? 'Compile finished but saving to your library failed. Try again.'
+            : "That book couldn't be compiled right now."
+      );
+    } finally {
+      await ensureMinGeneratingDuration(startedAt);
+      setGenerating(false);
+      setGeneratingQuery(null);
+    }
   };
 
   const handleGenerateFromSpec = async (spec: any, _type?: string, options?: { force?: boolean }) => {
@@ -750,19 +812,23 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         );
         if (proceed) {
           result = await compileLorebookFromSpec(spec, true);
-        } else {
-          setGenerationError(formatCompileBlockMessage(result.conflict));
-          return;
         }
-      } else if (!result.ok) {
+      }
+      if (!result.ok) {
         setGenerationError(formatCompileBlockMessage(result.conflict));
         return;
       }
 
       if (result.data.biography) {
-        handleLoadBiography(result.data.biography as Biography);
+        const bio = result.data.biography as Biography;
+        const bookId = result.data.biographyId || bio.id;
+        if (!bookId || result.data.persisted === false) {
+          setGenerationError('The book was drafted but not saved to your library. Try compiling again.');
+          return;
+        }
+        handleLoadBiography({ ...bio, id: bookId });
         setIsCoverVisible(true);
-        navigate(lorebookReadUrl((result.data.biography as Biography).id), { replace: true });
+        navigate(lorebookReadUrl(bookId), { replace: true });
       }
       if (result.warning) {
         setGenerationError(result.warning);
@@ -773,7 +839,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       setGenerationError(
         raw.includes('No atoms found')
           ? "There isn't enough material yet for that specific book."
-          : "That book couldn't be compiled right now."
+          : raw.includes('Failed to save')
+            ? 'Compile finished but saving to your library failed. Try again.'
+            : "That book couldn't be compiled right now."
       );
     } finally {
       await ensureMinGeneratingDuration(startedAt);
@@ -835,12 +903,8 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         onGenerate={(query, options) => {
           void handleGenerateFromQuery(query, options);
         }}
-        onGenerateTopic={(topicId) => {
-          if (shouldUseMock || isSimulated) {
-            void handleGenerateFromTopic(topicId);
-          } else {
-            void handleGenerateFromQuery(topicId);
-          }
+        onGenerateTopic={(topicId, options) => {
+          void handleGenerateFromTopic(topicId, options);
         }}
         onReadBook={(bookId) => {
           if (resolveDemoLorebookById(bookId) && (shouldUseMock || isSimulated)) {

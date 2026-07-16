@@ -374,8 +374,12 @@ const SidebarContent = ({
           {/* 5. Your content */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Your content</p>
           <button
-            onClick={() => handleSurfaceChange('lorebook')}
-            aria-label="Open lore book"
+            onClick={() => {
+              navigate('/lorebook/library');
+              onSurfaceChange?.('lorebook');
+              onMobileDrawerClose?.();
+            }}
+            aria-label="Open LoreBooks library"
             aria-current={activeSurface === 'lorebook' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition",
@@ -388,8 +392,25 @@ const SidebarContent = ({
             LoreBooks
           </button>
           <button
+            onClick={() => {
+              navigate('/lorebook');
+              onSurfaceChange?.('lorebook');
+              onMobileDrawerClose?.();
+            }}
+            aria-label="Create a new lorebook"
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
+              location.pathname === '/lorebook' && !location.search.includes('book=')
+                ? 'border-primary/40 bg-primary/10 text-white'
+                : 'border-transparent text-white/50 hover:border-primary/30 hover:text-white/80 hover:bg-primary/5'
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
+            Create
+          </button>
+          <button
             onClick={() => handleSurfaceChange('memoir')}
-            aria-label="Open lore editor"
+            aria-label="Open lorebook editor"
             aria-current={activeSurface === 'memoir' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
@@ -399,7 +420,7 @@ const SidebarContent = ({
             )}
           >
             <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
-            Edit Lore
+            Editor
           </button>
           <button
             onClick={() => handleSurfaceChange('photos')}

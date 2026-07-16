@@ -261,6 +261,78 @@ describe('Biography Routes', () => {
         })
         .expect(500);
     });
+
+    it('should generate from topicId with domain-scoped spec', async () => {
+      const { biographyGenerationEngine } = await import('../../src/services/biographyGeneration');
+      const mockBiography = {
+        id: 'bio-topic-1',
+        title: 'Career Lorebook',
+        chapters: [],
+      };
+      vi.mocked(biographyGenerationEngine.generateBiography).mockResolvedValue(mockBiography as any);
+
+      const response = await request(app)
+        .post('/api/biography/generate')
+        .send({ topicId: 'professional', force: true })
+        .expect(200);
+
+      expect(response.body.biographyId).toBe('bio-topic-1');
+      expect(response.body.persisted).toBe(true);
+      expect(biographyGenerationEngine.generateBiography).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({
+          scope: 'domain',
+          domain: 'professional',
+        }),
+      );
+    });
+
+    it('should generate character topic with characterId', async () => {
+      const { biographyGenerationEngine } = await import('../../src/services/biographyGeneration');
+      const characterId = '11111111-1111-4111-8111-111111111111';
+      vi.mocked(biographyGenerationEngine.generateBiography).mockResolvedValue({
+        id: 'bio-person-1',
+        title: 'Person Lorebook',
+        chapters: [],
+      } as any);
+
+      await request(app)
+        .post('/api/biography/generate')
+        .send({ topicId: 'character_book', characterId, force: true })
+        .expect(200);
+
+      expect(biographyGenerationEngine.generateBiography).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({
+          scope: 'thematic',
+          characterIds: [characterId],
+        }),
+      );
+    });
+
+    it('should generate career topic with organizationId', async () => {
+      const { biographyGenerationEngine } = await import('../../src/services/biographyGeneration');
+      const organizationId = '55555555-5555-4555-8555-555555555555';
+      vi.mocked(biographyGenerationEngine.generateBiography).mockResolvedValue({
+        id: 'bio-career-1',
+        title: 'Career Lorebook',
+        chapters: [],
+      } as any);
+
+      await request(app)
+        .post('/api/biography/generate')
+        .send({ topicId: 'professional', organizationId, force: true })
+        .expect(200);
+
+      expect(biographyGenerationEngine.generateBiography).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({
+          scope: 'domain',
+          domain: 'professional',
+          organizationIds: [organizationId],
+        }),
+      );
+    });
   });
 
   describe('PATCH /api/biography/section', () => {

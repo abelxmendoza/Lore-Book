@@ -37,7 +37,20 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
 }));
 
 vi.mock('../../hooks/useQueryReadiness', () => ({
-  useQueryReadiness: () => ({ evaluation: null, loading: false }),
+  useQueryReadiness: () => ({
+    evaluation: {
+      canGenerate: true,
+      progress: 0.8,
+      level: 'ready',
+      atomCount: 12,
+      entryCount: 8,
+      wordCount: 2400,
+      estimatedPages: 6,
+      gaps: [],
+      suggestions: [],
+    },
+    loading: false,
+  }),
 }));
 
 vi.mock('../../features/chat/components/LoreReadinessQuestChips', () => ({
@@ -81,14 +94,16 @@ describe('LibraryLanding', () => {
     expect(input).toBeInTheDocument();
   });
 
-  it('calls onGenerate with the typed query when Generate is clicked', async () => {
+  it('opens evidence review then compiles on confirm', async () => {
     render(<LibraryLanding onGenerate={mockOnGenerate} />);
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'my journey with music' } });
 
-    const generateBtn = screen.getByRole('button', { name: /generate/i });
-    fireEvent.click(generateBtn);
+    fireEvent.click(screen.getByRole('button', { name: /review/i }));
+    expect(screen.getByTestId('lorebook-evidence-review')).toBeInTheDocument();
+    expect(mockOnGenerate).not.toHaveBeenCalled();
 
+    fireEvent.click(screen.getByRole('button', { name: /compile this book/i }));
     expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music', undefined);
   });
 
@@ -103,20 +118,26 @@ describe('LibraryLanding', () => {
     });
   });
 
-  it('calls onGenerate via Enter key on input', () => {
+  it('opens evidence review via Enter, then compiles on confirm', () => {
     render(<LibraryLanding onGenerate={mockOnGenerate} />);
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'the story of my first job' } });
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
 
+    expect(mockOnGenerate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('lorebook-evidence-review')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /compile this book/i }));
     expect(mockOnGenerate).toHaveBeenCalledWith('the story of my first job', undefined);
   });
 
-  it('does not call onGenerate when query is empty', () => {
+  it('does not open review when query is empty', () => {
     render(<LibraryLanding onGenerate={mockOnGenerate} />);
-    const generateBtn = screen.getByRole('button', { name: /generate/i });
-    fireEvent.click(generateBtn);
+    const reviewBtn = screen.getByRole('button', { name: /review/i });
+    expect(reviewBtn).toBeDisabled();
+    fireEvent.click(reviewBtn);
     expect(mockOnGenerate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('lorebook-evidence-review')).not.toBeInTheDocument();
   });
 
   it('renders compiled books when onReadBook is provided', () => {

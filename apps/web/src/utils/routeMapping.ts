@@ -86,7 +86,8 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   characters: '/characters',
   locations: '/locations',
   memoir: '/memoir',
-  lorebook: '/lorebook',
+  /** Library-first: compiled books are the product home; create from Generate tab. */
+  lorebook: '/lorebook/library',
   photos: '/photos',
   perceptions: '/perceptions',
   events: '/events',

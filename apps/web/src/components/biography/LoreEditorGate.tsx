@@ -22,7 +22,7 @@ export const LoreEditorGate = ({ bookLoadFailed, bookTitle }: LoreEditorGateProp
       <div className="flex items-center gap-3 border-b border-border/50 px-4 py-3 bg-black/60 shrink-0">
         <button
           type="button"
-          onClick={() => navigate('/lorebook')}
+          onClick={() => navigate('/lorebook/library')}
           className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors font-mono"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
@@ -31,8 +31,8 @@ export const LoreEditorGate = ({ bookLoadFailed, bookTitle }: LoreEditorGateProp
         <div className="w-px h-3.5 bg-white/10" />
         <BookMarked className="h-4 w-4 text-primary/70" />
         <h1 className="text-sm font-semibold text-white">LoreBook Editor</h1>
-        <span className="ml-auto text-[10px] font-mono uppercase tracking-wide text-amber-400/80 border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 rounded-full">
-          Preview UI
+        <span className="ml-auto text-[10px] font-mono uppercase tracking-wide text-white/45 border border-white/10 bg-white/5 px-2 py-0.5 rounded-full">
+          Edit compiled books
         </span>
       </div>
 
@@ -40,8 +40,8 @@ export const LoreEditorGate = ({ bookLoadFailed, bookTitle }: LoreEditorGateProp
         {bookLoadFailed && (
           <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90">
             {bookTitle
-              ? `"${bookTitle}" isn't compiled yet or couldn't be loaded. Generate it from the library first.`
-              : 'This lorebook is not compiled yet. Generate it from the library first.'}
+              ? `"${bookTitle}" isn't compiled yet or couldn't be loaded. Generate it from Create or the library first.`
+              : 'This lorebook is not compiled yet. Generate it from Create first.'}
           </div>
         )}
 

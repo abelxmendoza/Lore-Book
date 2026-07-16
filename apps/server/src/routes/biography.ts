@@ -16,7 +16,12 @@ import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { recompileCoreLorebook } from '../services/biographyGeneration/recompileCoreLorebook';
 import { omegaChatService } from '../services/omegaChatService';
-import { loreReadinessService, checkCompileGate, getQuestPrompts } from '../services/loreReadiness';
+import {
+  loreReadinessService,
+  checkCompileGate,
+  getQuestPrompts,
+  resolveCompileTarget,
+} from '../services/loreReadiness';
 import type { LoreTopicId } from '../services/loreReadiness';
 
 const router = Router();
@@ -272,25 +277,68 @@ router.post('/section/chat', requireAuth, async (req: AuthenticatedRequest, res)
 
 /**
  * POST /api/biography/generate
- * Generate a new biography from NarrativeAtoms
+ * Generate a new biography from NarrativeAtoms.
+ * Accepts a full BiographySpec, or topicId (+ optional characterId/locationId).
  */
-const generateBiographySchema = z.object({
-  scope: z.enum(['full_life', 'domain', 'time_range', 'thematic']),
-  domain: z.enum(['fighting', 'robotics', 'relationships', 'creative', 'professional', 'personal', 'health', 'education', 'family', 'friendship', 'romance']).optional(),
-  timeRange: z.object({
-    start: z.string(),
-    end: z.string()
-  }).optional(),
-  themes: z.array(z.string()).optional(),
-  tone: z.enum(['neutral', 'dramatic', 'reflective', 'mythic', 'professional']).default('neutral'),
-  depth: z.enum(['summary', 'detailed', 'epic']).default('detailed'),
-  audience: z.enum(['self', 'public', 'professional']).default('self'),
-  version: z.enum(['main', 'safe', 'explicit', 'private']).default('main'), // Build flag
-  includeIntrospection: z.boolean().optional(), // Derived from version
-  force: z.boolean().optional(),
-  characterIds: z.array(z.string().uuid()).optional(),
-  locationIds: z.array(z.string().uuid()).optional(),
-});
+const generateBiographySchema = z
+  .object({
+    topicId: z.string().optional(),
+    characterId: z.string().uuid().optional(),
+    locationId: z.string().uuid().optional(),
+    organizationId: z.string().uuid().optional(),
+    skillId: z.string().uuid().optional(),
+    threadId: z.string().uuid().optional(),
+    scope: z.enum(['full_life', 'domain', 'time_range', 'thematic']).optional(),
+    domain: z
+      .enum([
+        'fighting',
+        'robotics',
+        'relationships',
+        'creative',
+        'professional',
+        'personal',
+        'health',
+        'education',
+        'family',
+        'friendship',
+        'romance',
+      ])
+      .optional(),
+    timeRange: z
+      .object({
+        start: z.string(),
+        end: z.string(),
+      })
+      .optional(),
+    themes: z.array(z.string()).optional(),
+    tone: z.enum(['neutral', 'dramatic', 'reflective', 'mythic', 'professional']).default('neutral'),
+    depth: z.enum(['summary', 'detailed', 'epic']).default('detailed'),
+    audience: z.enum(['self', 'public', 'professional']).default('self'),
+    version: z.enum(['main', 'safe', 'explicit', 'private']).default('main'),
+    includeIntrospection: z.boolean().optional(),
+    force: z.boolean().optional(),
+    characterIds: z.array(z.string().uuid()).optional(),
+    locationIds: z.array(z.string().uuid()).optional(),
+    skillIds: z.array(z.string().uuid()).optional(),
+    organizationIds: z.array(z.string().uuid()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      !data.topicId &&
+      !data.scope &&
+      !data.characterId &&
+      !data.locationId &&
+      !data.organizationId &&
+      !data.skillId &&
+      !data.threadId
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide topicId, scope, or a focus id',
+        path: ['scope'],
+      });
+    }
+  });
 
 router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -299,14 +347,105 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const { force, characterIds, locationIds, ...specFields } = parsed.data;
-    const spec: BiographySpec & { characterIds?: string[]; locationIds?: string[] } = {
-      ...specFields,
+    const {
+      force,
+      topicId,
+      characterId,
+      locationId,
+      organizationId,
+      skillId,
+      threadId,
       characterIds,
       locationIds,
-    };
+      skillIds,
+      organizationIds,
+      scope,
+      domain,
+      timeRange,
+      themes,
+      tone,
+      depth,
+      audience,
+      version,
+      includeIntrospection,
+    } = parsed.data;
 
-    const gate = await checkCompileGate(req.user!.id, { spec, depth: spec.depth }, { force });
+    let spec: BiographySpec & {
+      characterIds?: string[];
+      locationIds?: string[];
+      skillIds?: string[];
+      organizationIds?: string[];
+    };
+    let gateRequest: Parameters<typeof checkCompileGate>[1];
+
+    const hasFocus =
+      Boolean(characterId || locationId || organizationId || skillId || threadId || timeRange);
+
+    if (topicId || (!scope && hasFocus)) {
+      const target = await resolveCompileTarget(req.user!.id, {
+        topicId: topicId as LoreTopicId | undefined,
+        characterId,
+        locationId,
+        organizationId,
+        skillId,
+        threadId,
+        timeRange,
+        themes,
+        depth,
+      });
+      spec = {
+        ...target.spec,
+        characterIds: characterIds ?? target.spec.characterIds,
+        locationIds: locationIds ?? target.spec.locationIds,
+        skillIds: skillIds ?? target.spec.skillIds,
+        organizationIds: organizationIds ?? target.spec.organizationIds,
+      };
+      if (characterId && !spec.characterIds?.length) {
+        spec.characterIds = [characterId];
+      }
+      if (locationId && !spec.locationIds?.length) {
+        spec.locationIds = [locationId];
+      }
+      if (skillId && !spec.skillIds?.length) {
+        spec.skillIds = [skillId];
+      }
+      if (organizationId && !spec.organizationIds?.length) {
+        spec.organizationIds = [organizationId];
+      }
+      gateRequest = {
+        topicId: topicId as LoreTopicId | undefined,
+        characterId: characterId ?? spec.characterIds?.[0],
+        locationId: locationId ?? spec.locationIds?.[0],
+        organizationId: organizationId ?? spec.organizationIds?.[0],
+        skillId: skillId ?? spec.skillIds?.[0],
+        threadId,
+        timeRange: spec.timeRange,
+        themes: spec.themes,
+        depth: spec.depth,
+      };
+    } else {
+      if (!scope) {
+        return res.status(400).json({ error: 'Invalid request', message: 'scope is required without topicId' });
+      }
+      spec = {
+        scope,
+        domain,
+        timeRange,
+        themes,
+        tone,
+        depth,
+        audience,
+        version,
+        includeIntrospection,
+        characterIds,
+        locationIds,
+        skillIds,
+        organizationIds,
+      };
+      gateRequest = { spec, depth: spec.depth };
+    }
+
+    const gate = await checkCompileGate(req.user!.id, gateRequest, { force });
     if (!gate.allowed) {
       return res.status(409).json({
         error: 'Not ready to compile',
@@ -321,6 +460,8 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
 
     res.json({
       biography,
+      biographyId: biography.id,
+      persisted: Boolean(biography.id),
       readiness: {
         mode: gate.mode,
         warning: gate.warning,
@@ -329,9 +470,9 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
     });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to generate biography');
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to generate biography',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -504,7 +645,12 @@ const evaluateReadinessSchema = z.object({
   topicId: z.string().optional(),
   characterId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
+  organizationId: z.string().uuid().optional(),
+  skillId: z.string().uuid().optional(),
+  threadId: z.string().uuid().optional(),
   depth: z.enum(['summary', 'detailed', 'epic']).optional(),
+  timeRange: z.object({ start: z.string(), end: z.string() }).optional(),
+  themes: z.array(z.string()).optional(),
   spec: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -520,14 +666,28 @@ router.post('/readiness/evaluate', requireAuth, async (req: AuthenticatedRequest
     }
 
     const body = parsed.data;
-    if (!body.query && !body.topicId && !body.characterId && !body.locationId && !body.spec) {
-      return res.status(400).json({ error: 'Provide query, topicId, characterId, locationId, or spec' });
+    if (
+      !body.query &&
+      !body.topicId &&
+      !body.characterId &&
+      !body.locationId &&
+      !body.organizationId &&
+      !body.skillId &&
+      !body.threadId &&
+      !body.spec
+    ) {
+      return res.status(400).json({ error: 'Provide query, topicId, focus id, or spec' });
     }
 
     const evaluation = await loreReadinessService.evaluate(req.user!.id, {
       query: body.query,
       topicId: body.topicId as LoreTopicId | undefined,
       characterId: body.characterId,
+      organizationId: body.organizationId,
+      skillId: body.skillId,
+      threadId: body.threadId,
+      timeRange: body.timeRange,
+      themes: body.themes,
       locationId: body.locationId,
       depth: body.depth,
       spec: body.spec as any,
@@ -703,6 +863,8 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     res.json({
       biography,
+      biographyId: biography.id,
+      persisted: Boolean(biography.id),
       parsedQuery,
       readiness: {
         mode: gate.mode,

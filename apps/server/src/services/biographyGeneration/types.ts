@@ -98,6 +98,8 @@ export interface BiographySpec {
   locationIds?: string[]; // Location-based lorebooks
   eventIds?: string[]; // Event-based lorebooks
   skillIds?: string[]; // Skill-based lorebooks
+  organizationIds?: string[]; // Workplace / org-focused lorebooks
+  threadId?: string; // Recurring life-thread focus
 }
 
 /**

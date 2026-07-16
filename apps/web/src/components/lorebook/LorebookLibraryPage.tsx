@@ -73,7 +73,10 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [savingCoreId, setSavingCoreId] = useState<string | null>(null);
+  const [recompilingId, setRecompilingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'core' | 'recent'>('all');
+  const [actionError, setActionError] = useState<string | null>(null);
   const compiledBooksKey = useMemo(
     () => compiledBooks.map((book) => book.id).join(','),
     [compiledBooks],
@@ -169,6 +172,48 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     return books;
   }, [books, filter]);
 
+  const handleSaveAsCore = async (book: LibraryBook) => {
+    if (savingCoreId || shouldUseMock) return;
+    const name = window.prompt('Name this core edition (e.g. "My Full Life Story")', book.lorebook_name || book.title);
+    if (!name?.trim()) return;
+    setSavingCoreId(book.id);
+    setActionError(null);
+    try {
+      await fetchJson(`/api/biography/${book.id}/save-as-core`, {
+        method: 'POST',
+        body: JSON.stringify({ lorebookName: name.trim() }),
+      });
+      await loadBooks();
+    } catch (error) {
+      console.error('Failed to save as core:', error);
+      setActionError('Could not save as a core edition. Try again.');
+    } finally {
+      setSavingCoreId(null);
+    }
+  };
+
+  const handleRecompileCore = async (book: LibraryBook) => {
+    if (recompilingId || shouldUseMock || !book.lorebook_name) return;
+    const ok = window.confirm(
+      `Recompile “${book.lorebook_name}” from your latest memory? This creates a new version — the previous edition stays in your library.`,
+    );
+    if (!ok) return;
+    setRecompilingId(book.id);
+    setActionError(null);
+    try {
+      await fetchJson('/api/biography/recompile-core', {
+        method: 'POST',
+        body: JSON.stringify({ lorebookName: book.lorebook_name }),
+      });
+      await loadBooks();
+    } catch (error) {
+      console.error('Failed to recompile core:', error);
+      setActionError('Recompile failed. Chat more, then try again.');
+    } finally {
+      setRecompilingId(null);
+    }
+  };
+
   const handleDownload = async (book: LibraryBook) => {
     if (downloadingId) return;
     setDownloadingId(book.id);
@@ -244,9 +289,15 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
         <LorebookLibraryHero
           variant="emerald"
-          subtitle="Every compiled lorebook in one place — read, refine, or download as PDF."
+          subtitle="Compiled editions of your life — read, edit, promote to core, or download as PDF."
           className="mb-6 sm:mb-8"
         />
+
+        {actionError && (
+          <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100/90">
+            {actionError}
+          </div>
+        )}
 
         {!shouldUseMock && books.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2 mb-6 sm:mb-8">
@@ -343,35 +394,70 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                     <span>{book.period || formatDate(book.created_at)}</span>
                   </div>
 
-                  <div className="mt-auto grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate(lorebookReadUrl(book.id))}
-                      className="rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium py-2.5 transition-colors"
-                    >
-                      Read
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate(lorebookEditUrl(book.id))}
-                      className="rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/75 hover:text-white text-xs font-medium py-2.5 transition-colors inline-flex items-center justify-center gap-1"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDownload(book)}
-                      disabled={downloadingId === book.id}
-                      className="rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-300 text-xs font-medium py-2.5 transition-colors inline-flex items-center justify-center gap-1 disabled:opacity-50"
-                    >
-                      {downloadingId === book.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Download className="h-3 w-3" />
-                      )}
-                      PDF
-                    </button>
+                  <div className="mt-auto space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate(lorebookReadUrl(book.id))}
+                        className="rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium py-2.5 transition-colors"
+                      >
+                        Read
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(lorebookEditUrl(book.id))}
+                        className="rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/75 hover:text-white text-xs font-medium py-2.5 transition-colors inline-flex items-center justify-center gap-1"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownload(book)}
+                        disabled={downloadingId === book.id}
+                        className="rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-300 text-xs font-medium py-2.5 transition-colors inline-flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {downloadingId === book.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Download className="h-3 w-3" />
+                        )}
+                        PDF
+                      </button>
+                    </div>
+                    {!shouldUseMock && (
+                      <div className="grid grid-cols-1 gap-2">
+                        {book.is_core_lorebook && book.lorebook_name ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRecompileCore(book)}
+                            disabled={recompilingId === book.id}
+                            className="rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-100/85 text-[11px] font-medium py-2 transition-colors hover:bg-amber-500/15 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                          >
+                            {recompilingId === book.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            Recompile from latest memory
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveAsCore(book)}
+                            disabled={savingCoreId === book.id}
+                            className="rounded-lg border border-white/10 bg-white/[0.03] text-white/55 text-[11px] font-medium py-2 transition-colors hover:bg-white/[0.06] hover:text-white/75 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                          >
+                            {savingCoreId === book.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Star className="h-3 w-3" />
+                            )}
+                            Save as core edition
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </article>

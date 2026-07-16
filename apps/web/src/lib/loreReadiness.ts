@@ -33,6 +33,48 @@ export type EntityReadinessCandidate = {
   canGenerate: boolean;
 };
 
+export type FocusKind =
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'event'
+  | 'era'
+  | 'thread'
+  | 'domain_slice';
+
+export type FocusCompileRef = {
+  characterId?: string;
+  locationId?: string;
+  organizationId?: string;
+  skillId?: string;
+  eventId?: string;
+  threadId?: string;
+  timeRange?: { start: string; end: string };
+  themes?: string[];
+};
+
+export type FocusSignals = {
+  atomCount: number;
+  wordCount: number;
+  entryCount: number;
+  meaningClusters: number;
+  threadLinks: number;
+  evidenceFacts: number;
+};
+
+export type FocusCandidate = {
+  id: string;
+  kind: FocusKind;
+  label: string;
+  topicId: LoreTopicId;
+  score: number;
+  canCompile: boolean;
+  reasons: string[];
+  signals: FocusSignals;
+  compileRef: FocusCompileRef;
+};
+
 export type LoreReadinessEvaluation = {
   label: string;
   level: LoreReadinessLevel;
@@ -195,6 +237,8 @@ export type LoreTopicReadiness = {
   canGenerate: boolean;
   gaps?: ReadinessGap[];
   dimensionScores?: ReadinessDimensionScores;
+  focusCandidates?: FocusCandidate[];
+  signalSummary?: string;
   entityCandidates?: EntityReadinessCandidate[];
 };
 

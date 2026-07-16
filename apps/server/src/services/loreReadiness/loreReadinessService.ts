@@ -4,13 +4,24 @@ import { supabaseAdmin } from '../supabaseClient';
 import {
   buildDomainCoverage,
   filterAtoms,
-  getEntityAtomCounts,
-  getLocationAtomCounts,
   invalidateAtomCache,
   loadAllAtoms,
   sliceMetrics,
 } from './atomIndexService';
 import { aggregateDomainCoverage } from './domainMapping';
+import {
+  bestFocusScore,
+  buildCharacterFocusCandidates,
+  buildEraFocusCandidates,
+  buildLocationFocusCandidates,
+  buildOrganizationFocusCandidates,
+  buildSkillFocusCandidates,
+  buildThreadFocusCandidates,
+  filterAtomsForFocus,
+  focusToEntityCandidate,
+  formatSignalLine,
+  summarizeFocusSignals,
+} from './focusCandidates';
 import { readinessCache } from './readinessCache';
 import { invalidateLedger, loadLedgerSummary, syncTopicLedger } from './ledgerService';
 import {
@@ -26,7 +37,7 @@ import { resolveCompileTarget } from './topicResolver';
 import { DYNAMIC_COMPILE_PROFILE, LORE_TOPICS, MIN_ATOMS_ANY_BOOK, getTopicById } from './topics';
 import type {
   ContentStatsSnapshot,
-  EntityReadinessCandidate,
+  FocusCandidate,
   LoreReadinessEvaluateRequest,
   LoreReadinessEvaluation,
   LoreReadinessSummary,
@@ -97,6 +108,7 @@ export class LoreReadinessService {
     const filtered = filterAtoms(atoms, {
       ...target.spec,
       topicDomain: target.topicDomain,
+      organizationNames: target.organizationNames,
     });
     const metrics = sliceMetrics(filtered);
     const evidenceScore = await this.computeEvidenceScore(userId, target.spec);
@@ -203,6 +215,85 @@ export class LoreReadinessService {
     };
   }
 
+  private async buildFocusCandidatesForTopic(
+    userId: string,
+    topic: (typeof LORE_TOPICS)[number],
+    atoms: Awaited<ReturnType<typeof loadAllAtoms>>
+  ): Promise<FocusCandidate[]> {
+    const mins = { atoms: topic.minAtoms, entries: topic.minEntries };
+
+    switch (topic.id) {
+      case 'character_book':
+        return buildCharacterFocusCandidates(userId, atoms, topic.id, mins);
+      case 'place_book':
+        return buildLocationFocusCandidates(userId, atoms, topic.id, mins);
+      case 'professional': {
+        const [orgs, threads] = await Promise.all([
+          buildOrganizationFocusCandidates(userId, atoms, topic.id, mins),
+          buildThreadFocusCandidates(userId, atoms, topic.id, mins, 'career', 'professional'),
+        ]);
+        return [...orgs, ...threads]
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+      }
+      case 'relationships': {
+        const [threads, people] = await Promise.all([
+          buildThreadFocusCandidates(userId, atoms, topic.id, mins, 'relationship', 'relationships'),
+          buildCharacterFocusCandidates(userId, atoms, topic.id, mins, {
+            domainHint: 'relationships',
+          }),
+        ]);
+        return [...threads, ...people].sort((a, b) => b.score - a.score).slice(0, 5);
+      }
+      case 'family': {
+        const [threads, people] = await Promise.all([
+          buildThreadFocusCandidates(userId, atoms, topic.id, mins, 'custom', 'family'),
+          buildCharacterFocusCandidates(userId, atoms, topic.id, mins, { domainHint: 'family' }),
+        ]);
+        // Also try category null family-named threads via domain people primarily
+        return [...people, ...threads].sort((a, b) => b.score - a.score).slice(0, 5);
+      }
+      case 'creative': {
+        const [skills, threads] = await Promise.all([
+          buildSkillFocusCandidates(userId, atoms, topic.id, mins, 'creative'),
+          buildThreadFocusCandidates(userId, atoms, topic.id, mins, 'project', 'creative'),
+        ]);
+        return [...skills, ...threads].sort((a, b) => b.score - a.score).slice(0, 5);
+      }
+      case 'health':
+        return buildThreadFocusCandidates(userId, atoms, topic.id, mins, 'health', 'health');
+      case 'education': {
+        const [skills, eras] = await Promise.all([
+          buildSkillFocusCandidates(userId, atoms, topic.id, mins, 'education'),
+          buildEraFocusCandidates(filterAtoms(atoms, { topicDomain: 'education' }), topic.id, mins),
+        ]);
+        return [...skills, ...eras].sort((a, b) => b.score - a.score).slice(0, 5);
+      }
+      case 'personal': {
+        const eras = await buildEraFocusCandidates(
+          filterAtoms(atoms, { topicDomain: 'personal' }),
+          topic.id,
+          mins
+        );
+        const threads = await buildThreadFocusCandidates(
+          userId,
+          atoms,
+          topic.id,
+          mins,
+          undefined,
+          'personal'
+        );
+        return [...eras, ...threads].sort((a, b) => b.score - a.score).slice(0, 5);
+      }
+      case 'full_life': {
+        // Self is implicit; optional era slices only
+        return buildEraFocusCandidates(atoms, topic.id, mins);
+      }
+      default:
+        return [];
+    }
+  }
+
   private async scoreTopic(
     userId: string,
     topic: (typeof LORE_TOPICS)[number],
@@ -213,34 +304,34 @@ export class LoreReadinessService {
     const profile = topicToProfile(topic);
     let filtered = atoms;
     let evidenceScore = 100;
-    let entityCandidates: EntityReadinessCandidate[] | undefined;
+    const focusCandidates = await this.buildFocusCandidatesForTopic(userId, topic, atoms);
+    const entityCandidates = focusCandidates.map(focusToEntityCandidate);
 
     if (topic.id === 'full_life') {
       filtered = atoms;
+    } else if (topic.id === 'character_book' || topic.id === 'place_book') {
+      const best = focusCandidates[0];
+      if (best) {
+        filtered = filterAtomsForFocus(atoms, best);
+        if (best.compileRef.characterId) {
+          evidenceScore = await this.computeEntityEvidenceScore(
+            userId,
+            'character',
+            best.compileRef.characterId
+          );
+        } else if (best.compileRef.locationId) {
+          evidenceScore = await this.computeEntityEvidenceScore(
+            userId,
+            'location',
+            best.compileRef.locationId
+          );
+        }
+      } else {
+        filtered = [];
+        evidenceScore = 0;
+      }
     } else if (topic.domain) {
       filtered = filterAtoms(atoms, { topicDomain: topic.domain });
-    } else if (topic.id === 'character_book') {
-      const counts = await getEntityAtomCounts(userId, atoms);
-      entityCandidates = this.buildEntityCandidates(counts, profile);
-      const best = entityCandidates[0];
-      if (best) {
-        filtered = filterAtoms(atoms, { characterIds: [best.id] });
-        evidenceScore = await this.computeEntityEvidenceScore(userId, 'character', best.id);
-      } else {
-        filtered = [];
-        evidenceScore = 0;
-      }
-    } else if (topic.id === 'place_book') {
-      const counts = await getLocationAtomCounts(userId, atoms);
-      entityCandidates = this.buildEntityCandidates(counts, profile);
-      const best = entityCandidates[0];
-      if (best) {
-        filtered = filterAtoms(atoms, { locationIds: [best.id] });
-        evidenceScore = await this.computeEntityEvidenceScore(userId, 'location', best.id);
-      } else {
-        filtered = [];
-        evidenceScore = 0;
-      }
     }
 
     const metrics = sliceMetrics(filtered);
@@ -252,17 +343,35 @@ export class LoreReadinessService {
     }
 
     if (topic.minEntities) {
-      if (topic.minEntities.characters && metrics.entityIds.characters.length === 0 && stats.entityCounts.characters > 0) {
-        // Template readiness: at least one tracked character exists in the graph
+      if (
+        topic.minEntities.characters &&
+        metrics.entityIds.characters.length === 0 &&
+        stats.entityCounts.characters > 0
+      ) {
         metrics.entityIds.characters = ['__any__'];
       }
-      if (topic.minEntities.locations && metrics.entityIds.locations.length === 0 && stats.entityCounts.locations > 0) {
+      if (
+        topic.minEntities.locations &&
+        metrics.entityIds.locations.length === 0 &&
+        stats.entityCounts.locations > 0
+      ) {
         metrics.entityIds.locations = ['__any__'];
       }
     }
 
     const dimensions = scoreDimensions(metrics, profile, evidenceScore);
-    const progress = weightedProgress(dimensions);
+    let progress = weightedProgress(dimensions);
+
+    // When focus options exist, lift progress toward the best focus score (optioned topics)
+    if (focusCandidates.length > 0 && topic.id !== 'full_life') {
+      const focusBest = bestFocusScore(focusCandidates);
+      progress = Math.max(progress, focusBest * 0.95);
+      // Ready if any focus can compile OR domain aggregate is ready
+      if (focusCandidates.some((c) => c.canCompile)) {
+        progress = Math.max(progress, 1);
+      }
+    }
+
     const gaps = buildGaps(metrics, profile, evidenceScore, topic.label);
 
     const entryCount =
@@ -270,42 +379,37 @@ export class LoreReadinessService {
         ? stats.totalJournalEntries + Math.floor(stats.totalChatMessages / 4)
         : metrics.entryCount;
 
+    const focusSignals = summarizeFocusSignals(focusCandidates);
+    const domainSignals = {
+      atomCount: metrics.atomCount,
+      wordCount: metrics.wordCount,
+      entryCount,
+      meaningClusters: 0,
+      threadLinks: focusCandidates.length,
+      evidenceFacts: 0,
+    };
+    const signalSummary = formatSignalLine(focusSignals ?? domainSignals);
+
+    const canGenerate =
+      progress >= 1 ||
+      (focusCandidates.some((c) => c.canCompile) && metrics.atomCount >= Math.min(4, topic.minAtoms));
+
     return {
       topic,
-      level: levelFromProgress(progress),
-      progress,
+      level: levelFromProgress(Math.min(1, progress)),
+      progress: Math.min(1, progress),
       atomCount: metrics.atomCount,
       entryCount,
       wordCount: metrics.wordCount,
       atomsNeeded: Math.max(0, profile.minAtoms - metrics.atomCount),
       entriesNeeded: Math.max(0, profile.minEntries - metrics.entryCount),
-      canGenerate: progress >= 1,
+      canGenerate,
       gaps,
       dimensionScores: dimensions,
-      entityCandidates,
+      focusCandidates: focusCandidates.length > 0 ? focusCandidates : undefined,
+      signalSummary,
+      entityCandidates: entityCandidates.length > 0 ? entityCandidates : undefined,
     };
-  }
-
-  private buildEntityCandidates(
-    counts: Map<string, { atomCount: number; entryCount: number; name: string }>,
-    profile: ReadinessProfile
-  ): EntityReadinessCandidate[] {
-    return [...counts.entries()]
-      .map(([id, row]) => {
-        const atomProgress = profile.minAtoms > 0 ? row.atomCount / profile.minAtoms : 1;
-        const entryProgress = profile.minEntries > 0 ? row.entryCount / profile.minEntries : 1;
-        const progress = Math.min(1, Math.min(atomProgress, entryProgress));
-        return {
-          id,
-          name: row.name,
-          atomCount: row.atomCount,
-          entryCount: row.entryCount,
-          progress,
-          canGenerate: progress >= 1,
-        };
-      })
-      .sort((a, b) => b.progress - a.progress || b.atomCount - a.atomCount)
-      .slice(0, 5);
   }
 
   private async loadEntityCounts(userId: string): Promise<ContentStatsSnapshot['entityCounts']> {
@@ -343,9 +447,7 @@ export class LoreReadinessService {
   }
 }
 
-function dynamicProfileForSpec(
-  spec: LoreReadinessEvaluation['spec']
-): ReadinessProfile {
+function dynamicProfileForSpec(spec: LoreReadinessEvaluation['spec']): ReadinessProfile {
   if (spec.scope === 'full_life') {
     const fullLife = getTopicById('full_life')!;
     return topicToProfile(fullLife);

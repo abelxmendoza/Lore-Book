@@ -421,35 +421,45 @@ export class BiographyGenerationEngine {
       });
     }
 
-    // Filter by people
-    if (spec.peopleIds && spec.peopleIds.length > 0) {
-      atoms = atoms.filter(a => 
-        a.peopleIds && a.peopleIds.some(pid => spec.peopleIds!.includes(pid))
+    // Filter by people (peopleIds and characterIds — narrator is always self)
+    const peopleFilter = [...(spec.peopleIds ?? []), ...(spec.characterIds ?? [])];
+    if (peopleFilter.length > 0) {
+      atoms = atoms.filter(a =>
+        a.peopleIds && a.peopleIds.some(pid => peopleFilter.includes(pid))
       );
     }
 
     // Filter by locations (from metadata)
-    if ((spec as any).locationIds && (spec as any).locationIds.length > 0) {
+    if (spec.locationIds && spec.locationIds.length > 0) {
       atoms = atoms.filter(a => {
         const locationIds = a.metadata?.locationIds as string[] | undefined;
-        return locationIds && locationIds.some(lid => (spec as any).locationIds.includes(lid));
+        return locationIds && locationIds.some(lid => spec.locationIds!.includes(lid));
       });
     }
 
     // Filter by events (from metadata)
-    if ((spec as any).eventIds && (spec as any).eventIds.length > 0) {
+    if (spec.eventIds && spec.eventIds.length > 0) {
       atoms = atoms.filter(a => {
         const eventIds = a.metadata?.eventIds as string[] | undefined;
-        return eventIds && eventIds.some(eid => (spec as any).eventIds.includes(eid));
+        return eventIds && eventIds.some(eid => spec.eventIds!.includes(eid));
       });
     }
 
     // Filter by skills (from metadata)
-    if ((spec as any).skillIds && (spec as any).skillIds.length > 0) {
+    if (spec.skillIds && spec.skillIds.length > 0) {
       atoms = atoms.filter(a => {
         const skillIds = a.metadata?.skillIds as string[] | undefined;
-        return skillIds && skillIds.some(sid => (spec as any).skillIds.includes(sid));
+        return skillIds && skillIds.some(sid => spec.skillIds!.includes(sid));
       });
+    }
+
+    // Filter by organizations (prefer metadata; name match already applied via themes)
+    if (spec.organizationIds && spec.organizationIds.length > 0) {
+      const withMeta = atoms.filter((a) => {
+        const orgIds = a.metadata?.organizationIds as string[] | undefined;
+        return orgIds && orgIds.some((oid) => spec.organizationIds!.includes(oid));
+      });
+      if (withMeta.length > 0) atoms = withMeta;
     }
 
     // Rank by significance * emotionalWeight
@@ -1924,43 +1934,62 @@ The title should reflect the specific lorebook, timeline period, and key themes/
   }
 
   /**
-   * Save biography
+   * Persist a compiled biography. Throws when the row is not written —
+   * callers must not report success without a durable id.
    */
-  private async saveBiography(userId: string, biography: Biography): Promise<void> {
-    try {
-      // Generate atom snapshot hash if atoms are available
-      let atomSnapshotHash: string | null = null;
-      if (biography.metadata.atomHashes && biography.metadata.atomHashes.length > 0) {
-        try {
-          const { bookVersionManager } = await import('./bookVersionManager');
-          atomSnapshotHash = bookVersionManager.generateAtomSnapshotHash(
-            biography.metadata.atomHashes.map(hash => ({ id: hash }))
-          );
-        } catch (error) {
-          logger.debug({ error }, 'Failed to generate atom snapshot hash');
-        }
+  private async saveBiography(userId: string, biography: Biography): Promise<string> {
+    let atomSnapshotHash: string | null = null;
+    if (biography.metadata.atomHashes && biography.metadata.atomHashes.length > 0) {
+      try {
+        const { bookVersionManager } = await import('./bookVersionManager');
+        atomSnapshotHash = bookVersionManager.generateAtomSnapshotHash(
+          biography.metadata.atomHashes.map((hash) => ({ id: hash })),
+        );
+      } catch (error) {
+        logger.debug({ error }, 'Failed to generate atom snapshot hash');
       }
-
-      await supabaseAdmin
-        .from('biographies')
-        .insert({
-          user_id: userId,
-          biography_data: biography,
-          title: biography.title,
-          subtitle: biography.subtitle,
-          domain: biography.metadata.domain,
-          version: biography.version, // Build flag
-          is_core_lorebook: biography.metadata.isCoreLorebook || false,
-          lorebook_name: biography.metadata.lorebookName,
-          lorebook_version: biography.metadata.lorebookVersion || 1,
-          memory_snapshot_at: biography.metadata.memorySnapshotAt || new Date().toISOString(),
-          atom_snapshot_hash: atomSnapshotHash,
-          created_at: new Date().toISOString()
-        });
-    } catch (error) {
-      logger.error({ error, userId }, 'Failed to save biography');
-      // Don't throw - biography is still generated
     }
+
+    const memorySnapshotAt = biography.metadata.memorySnapshotAt || new Date().toISOString();
+    biography.metadata.memorySnapshotAt = memorySnapshotAt;
+
+    const { data, error } = await supabaseAdmin
+      .from('biographies')
+      .insert({
+        user_id: userId,
+        biography_data: biography,
+        title: biography.title,
+        subtitle: biography.subtitle,
+        domain: biography.metadata.domain,
+        version: biography.version,
+        is_core_lorebook: biography.metadata.isCoreLorebook || false,
+        lorebook_name: biography.metadata.lorebookName,
+        lorebook_version: biography.metadata.lorebookVersion || 1,
+        memory_snapshot_at: memorySnapshotAt,
+        atom_snapshot_hash: atomSnapshotHash,
+        created_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (error || !data?.id) {
+      logger.error({ error, userId }, 'Failed to save biography');
+      throw new Error(
+        error?.message
+          ? `Failed to save lorebook: ${error.message}`
+          : 'Failed to save lorebook to the library',
+      );
+    }
+
+    biography.id = data.id;
+    // Keep biography_data.id in sync for subsequent reads.
+    await supabaseAdmin
+      .from('biographies')
+      .update({ biography_data: biography })
+      .eq('id', data.id)
+      .eq('user_id', userId);
+
+    return data.id;
   }
 }
 

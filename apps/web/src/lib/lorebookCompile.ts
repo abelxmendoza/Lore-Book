@@ -60,15 +60,45 @@ async function postCompile<T>(path: string, body: Record<string, unknown>): Prom
 export async function compileLorebookFromQuery(
   query: string,
   force = false
-): Promise<CompileResult<{ biography: unknown; parsedQuery?: unknown }>> {
+): Promise<CompileResult<{ biography: unknown; biographyId?: string; persisted?: boolean; parsedQuery?: unknown }>> {
   return postCompile('/api/biography/search', { query, force });
 }
 
 export async function compileLorebookFromSpec(
   spec: Record<string, unknown>,
   force = false
-): Promise<CompileResult<{ biography: unknown }>> {
+): Promise<CompileResult<{ biography: unknown; biographyId?: string; persisted?: boolean }>> {
   return postCompile('/api/biography/generate', { ...spec, force });
+}
+
+export type CompileTopicOptions = {
+  force?: boolean;
+  characterId?: string;
+  locationId?: string;
+  organizationId?: string;
+  skillId?: string;
+  threadId?: string;
+  timeRange?: { start: string; end: string };
+  themes?: string[];
+};
+
+/** Topic-scoped compile — never sends topic ids through NL /search. */
+export async function compileLorebookFromTopic(
+  topicId: string,
+  options: CompileTopicOptions = {}
+): Promise<CompileResult<{ biography: unknown; biographyId?: string; persisted?: boolean }>> {
+  const body: Record<string, unknown> = {
+    topicId,
+    force: options.force ?? false,
+  };
+  if (options.characterId) body.characterId = options.characterId;
+  if (options.locationId) body.locationId = options.locationId;
+  if (options.organizationId) body.organizationId = options.organizationId;
+  if (options.skillId) body.skillId = options.skillId;
+  if (options.threadId) body.threadId = options.threadId;
+  if (options.timeRange) body.timeRange = options.timeRange;
+  if (options.themes?.length) body.themes = options.themes;
+  return postCompile('/api/biography/generate', body);
 }
 
 export function shouldConfirmForceCompile(conflict: CompileConflict): boolean {

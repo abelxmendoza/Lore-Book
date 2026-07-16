@@ -33,6 +33,7 @@ export type ReadinessDimensionScores = {
   evidence: number;
 };
 
+/** @deprecated Prefer FocusCandidate — kept for ledger / older clients. */
 export type EntityReadinessCandidate = {
   id: string;
   name: string;
@@ -40,6 +41,49 @@ export type EntityReadinessCandidate = {
   entryCount: number;
   progress: number;
   canGenerate: boolean;
+};
+
+export type FocusKind =
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'event'
+  | 'era'
+  | 'thread'
+  | 'domain_slice';
+
+export type FocusCompileRef = {
+  characterId?: string;
+  locationId?: string;
+  organizationId?: string;
+  skillId?: string;
+  eventId?: string;
+  threadId?: string;
+  timeRange?: { start: string; end: string };
+  themes?: string[];
+};
+
+export type FocusSignals = {
+  atomCount: number;
+  wordCount: number;
+  entryCount: number;
+  meaningClusters: number;
+  threadLinks: number;
+  evidenceFacts: number;
+};
+
+/** Topic-scoped compile focus — spoke around the user's self prime node. */
+export type FocusCandidate = {
+  id: string;
+  kind: FocusKind;
+  label: string;
+  topicId: LoreTopicId;
+  score: number;
+  canCompile: boolean;
+  reasons: string[];
+  signals: FocusSignals;
+  compileRef: FocusCompileRef;
 };
 
 export type LoreTopicDefinition = {
@@ -83,6 +127,11 @@ export type LoreTopicReadiness = {
   canGenerate: boolean;
   gaps: ReadinessGap[];
   dimensionScores: ReadinessDimensionScores;
+  /** Preferred: multi-kind focus options for this topic. */
+  focusCandidates?: FocusCandidate[];
+  /** Human signal line e.g. "~2.4k words · 12 episodes". */
+  signalSummary?: string;
+  /** @deprecated Use focusCandidates. */
   entityCandidates?: EntityReadinessCandidate[];
 };
 
@@ -104,11 +153,17 @@ export type LoreReadinessEvaluateRequest = {
     locationIds?: string[];
     eventIds?: string[];
     skillIds?: string[];
+    organizationIds?: string[];
   };
   characterId?: string;
   locationId?: string;
+  organizationId?: string;
+  skillId?: string;
+  threadId?: string;
   topicId?: LoreTopicId;
   depth?: 'summary' | 'detailed' | 'epic';
+  timeRange?: { start: string; end: string };
+  themes?: string[];
 };
 
 export type LoreReadinessEvaluation = {
