@@ -13,13 +13,13 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.tables
-    WHERE table_schema = ''public'' AND table_name = ''location_mentions''
+    WHERE table_schema = 'public' AND table_name = 'location_mentions'
   ) AND EXISTS (
     SELECT 1 FROM information_schema.tables
-    WHERE table_schema = ''public'' AND table_name = ''event_mentions''
+    WHERE table_schema = 'public' AND table_name = 'event_mentions'
   ) THEN
-    RAISE NOTICE ''erd_helper_views: dependencies present; views applied by later migration 20260731130000'';
+    RAISE NOTICE 'erd_helper_views: dependencies present; views applied by later migration 20260731130000';
   ELSE
-    RAISE NOTICE ''erd_helper_views: skipping early apply (dependencies not ready)'';
+    RAISE NOTICE 'erd_helper_views: skipping early apply (dependencies not ready)';
   END IF;
 END $$;
