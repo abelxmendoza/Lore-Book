@@ -100,8 +100,8 @@ RETURNS SETOF resolved_events
 LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT DISTINCT re.*
   FROM resolved_events re
-  JOIN event_mentions em ON em.resolved_event_id = re.id
-  JOIN journal_entries je ON je.id = em.journal_entry_id
+  JOIN event_mentions em ON em.event_id = re.id
+  JOIN journal_entries je ON je.id = em.memory_id
   WHERE re.user_id = p_user_id
     AND (
       re.title ILIKE ANY(SELECT '%' || k || '%' FROM unnest(p_keywords) k)
