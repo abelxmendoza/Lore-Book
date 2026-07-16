@@ -49,6 +49,24 @@ describe('collectThreadEntities', () => {
     const entities = collectThreadEntities([assistant('a1', [acme])]);
     expect(entities).toEqual([acme]);
   });
+
+  it('recentMessageWindow drops stale early-thread entities (e.g. Ink after topic change)', () => {
+    const ink = { id: 'c-ink', name: 'Ink', type: 'character' as const };
+    const jesse = { id: 'c-jesse', name: 'Jesse', type: 'character' as const };
+    const messages = [
+      assistant('a1', [ink]),
+      assistant('a2', [ink]),
+      assistant('a3', [jesse]),
+      assistant('a4', [jesse]),
+      assistant('a5', [jesse]),
+    ];
+    // Window of last 3 messages: only Jesse remains in active context.
+    const recent = collectThreadEntities(messages, { recentMessageWindow: 3 });
+    expect(recent.map((e) => e.name)).toEqual(['Jesse']);
+    // Full thread still sees both.
+    const all = collectThreadEntities(messages);
+    expect(all.map((e) => e.name).sort()).toEqual(['Ink', 'Jesse']);
+  });
 });
 
 describe('toEntityContext', () => {
