@@ -4,6 +4,7 @@ import {
   type ChatStreamDurability,
   type ChatStreamDoneEvent,
 } from '@lorebook/api-contracts';
+import { noteChatSendRateLimit } from '../lib/chatSendRateLimit';
 import { supabase } from '../lib/supabase';
 import { config, log } from '../config/env';
 import { getGlobalIsGuest } from '../contexts/MockDataContext';
@@ -289,8 +290,15 @@ export const useChatStream = () => {
             };
           }
         }
-        const err = new Error(userMessage) as Error & { durability?: ChatStreamDurability };
+        const err = new Error(userMessage) as Error & {
+          durability?: ChatStreamDurability;
+          status?: number;
+          retryAfter?: number;
+        };
         err.durability = durability;
+        err.status = response.status;
+        const retryAfterRaw = parseBody()?.retryAfter;
+        if (typeof retryAfterRaw === 'number') err.retryAfter = retryAfterRaw;
         throw err;
       }
 
@@ -376,6 +384,7 @@ export const useChatStream = () => {
         return;
       }
       setIsStreaming(false);
+      noteChatSendRateLimit(error);
       const durability =
         error && typeof error === 'object' && 'durability' in error
           ? (error as { durability?: ChatStreamDurability }).durability

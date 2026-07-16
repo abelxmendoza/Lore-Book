@@ -16,6 +16,7 @@ import {
 } from '../../../services/demoChatSimulation';
 import { shouldSimulateChat, shouldUseMockData } from '../../../hooks/useShouldUseMockData';
 import { useAuth } from '../../../lib/supabase';
+import { chatSendCooldownRemainingSec } from '../../../lib/chatSendRateLimit';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
 import { friendlyPostgresErrorMessage } from '../../../lib/postgresError';
@@ -1271,8 +1272,28 @@ export const useChat = () => {
     [getThread, messages, urlThreadId],
   );
 
+  /**
+   * While the server's send rate limit is open, retrying only extends the
+   * drought — surface the wait on the notice instead of firing the request.
+   */
+  const blockRetryDuringCooldown = useCallback(
+    (noticeMessageId: string): boolean => {
+      const waitSec = chatSendCooldownRemainingSec();
+      if (waitSec <= 0) return false;
+      const content = `Sending is rate-limited right now. Your words are safe on this device — try again in about ${Math.ceil(waitSec / 60)} minute${waitSec > 60 ? 's' : ''}.`;
+      if (urlThreadId) {
+        mutateThreadMessagesForThread(urlThreadId, (prev) =>
+          prev.map((m) => (m.id === noticeMessageId ? { ...m, content } : m)),
+        );
+      }
+      return true;
+    },
+    [mutateThreadMessagesForThread, urlThreadId],
+  );
+
   const retryCloudSync = useCallback(
     async (messageId: string) => {
+      if (blockRetryDuringCooldown(messageId)) return;
       const target = resolveRetryTarget(messageId);
       if (!target) return;
       await sendMessage(target.originalText, {
@@ -1284,11 +1305,12 @@ export const useChat = () => {
         },
       });
     },
-    [resolveRetryTarget, sendMessage],
+    [blockRetryDuringCooldown, resolveRetryTarget, sendMessage],
   );
 
   const retryAssistantResponse = useCallback(
     async (messageId: string) => {
+      if (blockRetryDuringCooldown(messageId)) return;
       const target = resolveRetryTarget(messageId);
       if (!target) return;
       await sendMessage(target.originalText, {
@@ -1300,7 +1322,7 @@ export const useChat = () => {
         },
       });
     },
-    [resolveRetryTarget, sendMessage],
+    [blockRetryDuringCooldown, resolveRetryTarget, sendMessage],
   );
 
   const copyOriginalMessage = useCallback(

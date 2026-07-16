@@ -13,11 +13,16 @@ export const openAiHttpLimit = createRateLimiter(60, FIFTEEN_MIN);
 /** Burst guard for OpenAI HTTP routes — 15 / minute per user or IP */
 export const openAiHttpBurstLimit = createRateLimiter(15, ONE_MIN);
 
-/** Composer preview — debounced client-side but still CPU-heavy at scale */
-export const lexicalPreviewLimit = createRateLimiter(240, FIFTEEN_MIN);
+/**
+ * Composer preview — debounced 280ms client-side, so sustained typing fires
+ * up to ~3/s in bursts. 240/15m drained in ~2 min of active journaling and
+ * the 429s cascaded into chat sends; per-user keyed (auth runs first) so a
+ * higher cap is safe.
+ */
+export const lexicalPreviewLimit = createRateLimiter(900, FIFTEEN_MIN);
 
 /** Composer LoreBook parse — same cadence as lexical preview. */
-export const loreBookParseLimit = createRateLimiter(240, FIFTEEN_MIN);
+export const loreBookParseLimit = createRateLimiter(900, FIFTEEN_MIN);
 
 /** Full lexical analyze / pipeline */
 export const lexicalAnalyzeLimit = createRateLimiter(60, FIFTEEN_MIN);
