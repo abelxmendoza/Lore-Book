@@ -1,6 +1,6 @@
 import type { Character } from '../components/characters/CharacterProfileCard';
 
-const SELF_NAMES = new Set(['me', 'myself', 'self', 'you', 'i']);
+const SELF_NAMES = new Set(['me', 'myself', 'self', 'you', 'i', 'my', 'mine']);
 const SELF_BLEED_RE =
   /^(?:also|and|but|so|then|well|just|or|plus|however|anyway)\s+you$/i;
 

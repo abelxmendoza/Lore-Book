@@ -9,6 +9,11 @@ import {
   occurredInWindow,
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
+import {
+  classifyComposerIntentFast,
+  composerIntentToWorkingMemoryIntent,
+  type IntentSource,
+} from './composerIntentFastPath';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -76,6 +81,10 @@ export type WorkingMemoryItem = {
 
 export type WorkingMemoryAssembly = {
   intent: WorkingMemoryIntent;
+  /** Whether intent came from deterministic self/identity fast path or rule/model classifier. */
+  intentSource?: 'deterministic_fast_path' | 'model_or_rule_classifier';
+  /** Set when intent is about the authenticated user (not a third party). */
+  subject?: 'current_user';
   entities: WorkingMemoryEntity[];
   episodes: WorkingMemoryItem[];
   events: WorkingMemoryItem[];
@@ -319,13 +328,45 @@ const TARGET_PATTERNS = [
   /\b(?:what happened during|tell me about)\s{1,40}(.{1,120}?)[?.!]?$/i,
 ];
 
-function classifyIntent(question: string): WorkingMemoryIntent {
+type ClassifiedIntent = {
+  intent: WorkingMemoryIntent;
+  intentSource: IntentSource;
+  subject?: 'current_user';
+};
+
+function classifyIntent(question: string): ClassifiedIntent {
   const temporal = classifyTemporalQuery(question);
-  if (temporal.intent) return temporal.intent as WorkingMemoryIntent;
-  for (const rule of INTENT_RULES) {
-    if (rule.pattern.test(question)) return rule.intent;
+  if (temporal.intent) {
+    return {
+      intent: temporal.intent as WorkingMemoryIntent,
+      intentSource: 'model_or_rule_classifier',
+    };
   }
-  return 'LIFE_REVIEW';
+
+  // High-confidence self/identity fast path → longitudinal planner intents.
+  const fast = classifyComposerIntentFast(question);
+  if (fast) {
+    return {
+      intent: composerIntentToWorkingMemoryIntent(fast.intent),
+      intentSource: 'deterministic_fast_path',
+      subject: 'current_user',
+    };
+  }
+
+  for (const rule of INTENT_RULES) {
+    if (rule.pattern.test(question)) {
+      const selfSubject =
+        rule.intent === 'IDENTITY_QUERY' ||
+        rule.intent === 'LIFE_REVIEW' ||
+        rule.intent === 'ARC_QUERY';
+      return {
+        intent: rule.intent,
+        intentSource: 'model_or_rule_classifier',
+        ...(selfSubject ? { subject: 'current_user' as const } : {}),
+      };
+    }
+  }
+  return { intent: 'LIFE_REVIEW', intentSource: 'model_or_rule_classifier', subject: 'current_user' };
 }
 
 function isTemporalIntent(intent: WorkingMemoryIntent): boolean {
@@ -2051,6 +2092,10 @@ function assemblyConfidence(intent: WorkingMemoryIntent, entities: WorkingMemory
 }
 
 export function classifyIntentForAudit(question: string): WorkingMemoryIntent {
+  return classifyIntent(question).intent;
+}
+
+export function classifyIntentWithSource(question: string): ClassifiedIntent {
   return classifyIntent(question);
 }
 
@@ -2119,8 +2164,11 @@ export async function assembleWorkingMemory(
 
   const entityStarted = Date.now();
   const temporalResolved: ResolvedTemporalQuery = classifyTemporalQuery(input.question);
-  const intent = classifyIntent(input.question);
-  const target = extractQuestionTarget(input.question);
+  const classified = classifyIntentWithSource(input.question);
+  const intent = classified.intent;
+  // Self/identity questions never treat a third-party name as the retrieval subject.
+  const target =
+    classified.subject === 'current_user' ? null : extractQuestionTarget(input.question);
   const temporalQuery = isTemporalIntent(intent);
   const entities = await resolveTargetEntities(scope, input.userId, target);
   const entityResolutionMs = Date.now() - entityStarted;
@@ -2221,6 +2269,8 @@ export async function assembleWorkingMemory(
 
   return {
     intent,
+    intentSource: classified.intentSource,
+    ...(classified.subject ? { subject: classified.subject } : {}),
     entities,
     ...distributed,
     confidence: assemblyConfidence(intent, entities, selected),

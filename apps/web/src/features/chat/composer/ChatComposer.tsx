@@ -1,4 +1,4 @@
-import { Send, Loader2, Paperclip, MessageSquare, Maximize2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
+import { Send, Loader2, Paperclip, MessageSquare, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
 import { useChatComposer } from '../hooks/useChatComposer';
 import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
@@ -45,6 +45,9 @@ type ChatComposerProps = {
 
 const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
 const EMBEDDED_PLACEHOLDER = 'Message Lore Book…';
+
+/** Mobile composer density — desktop always behaves as expanded. */
+export type ComposerMode = 'compact' | 'expanded' | 'keyboard';
 
 export const ChatComposer = ({
   onSubmit,
@@ -102,6 +105,15 @@ export const ChatComposer = ({
   const [mobileCollapsed, setMobileCollapsed] = useState(
     () => isMobile && !embedded && defaultCollapsed
   );
+  const keyboardOpen = isMobile && !embedded && keyboardInset > 48;
+  const composerMode: ComposerMode = !isMobile || embedded
+    ? 'expanded'
+    : keyboardOpen
+      ? 'keyboard'
+      : mobileCollapsed
+        ? 'compact'
+        : 'expanded';
+  const hideNonessentialTools = composerMode === 'keyboard' || composerMode === 'compact';
 
   useEffect(() => {
     if (!isMobile || embedded) return;
@@ -179,11 +191,13 @@ export const ChatComposer = ({
   return (
     <div
       data-testid="chat-composer"
+      data-composer-mode={composerMode}
       className={cn(
         'flex-shrink-0 safe-area-bottom journal-composer-root',
         embedded
           ? 'bg-black/95 backdrop-blur-md'
           : 'border-t border-white/10 bg-gradient-to-t from-black/80 via-black/50 to-black/30 backdrop-blur-md chat-composer',
+        composerMode === 'keyboard' && 'journal-composer-root--keyboard',
       )}
       style={{ paddingBottom: keyboardInset > 0 && !journalModeOpen ? keyboardInset : undefined }}
     >
@@ -332,6 +346,8 @@ export const ChatComposer = ({
             includedSlots={includedSlots}
             onToggleIncluded={toggleIncluded}
             scanning={entityIndexer.loading}
+            collapseByDefault={isMobile && !embedded}
+            forceCollapsed={composerMode === 'keyboard'}
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
             onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
@@ -411,7 +427,10 @@ export const ChatComposer = ({
           </div>
 
           {showStats && (
-            <div className="journal-composer-meta" aria-live="polite">
+            <div
+              className={cn('journal-composer-meta', hideNonessentialTools && 'hidden')}
+              aria-live="polite"
+            >
               <span>{stats.words} {stats.words === 1 ? 'word' : 'words'}</span>
               <span aria-hidden>·</span>
               <span>{stats.chars} chars</span>
@@ -462,12 +481,13 @@ export const ChatComposer = ({
               </button>
             {!embedded && (
               <>
+                {/* Heavy import tools stay desktop-first — mobile keeps attach + send. */}
                 <button
                   type="button"
                   onClick={handleUploadClick}
                   disabled={loading || disabled}
                   className={cn(
-                    'journal-composer-tool',
+                    'journal-composer-tool hidden sm:inline-flex',
                     showUpload && 'journal-composer-tool--active',
                   )}
                   aria-label="Upload documents, photos, resumes"
@@ -479,14 +499,14 @@ export const ChatComposer = ({
                   onClick={handleChatGPTImportClick}
                   disabled={loading || disabled}
                   className={cn(
-                    'journal-composer-tool',
+                    'journal-composer-tool hidden sm:inline-flex',
                     showChatGPTImport && 'journal-composer-tool--active',
                   )}
                   aria-label="Import ChatGPT conversation"
                 >
                   <MessageSquare className="h-4 w-4" />
                 </button>
-                {isMobile && (
+                {isMobile && !hideNonessentialTools && (
                   <button
                     type="button"
                     onClick={collapseComposer}
@@ -496,18 +516,6 @@ export const ChatComposer = ({
                     data-testid="journal-composer-collapse"
                   >
                     <ChevronDown className="h-4 w-4" />
-                  </button>
-                )}
-                {isMobile && (
-                  <button
-                    type="button"
-                    onClick={openJournalMode}
-                    disabled={loading || disabled}
-                    className="journal-composer-tool journal-composer-tool--expand sm:hidden"
-                    aria-label="Expand writing space"
-                    data-testid="journal-composer-expand"
-                  >
-                    <Maximize2 className="h-4 w-4" />
                   </button>
                 )}
               </>

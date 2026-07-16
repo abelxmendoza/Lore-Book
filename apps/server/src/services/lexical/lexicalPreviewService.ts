@@ -18,6 +18,10 @@ import {
   intelligenceSpanToPreview,
 } from './intelligence/lexicalIntelligenceService';
 import { classifyEntity } from '../entities/entityClassifier';
+import {
+  classifyComposerIntentFast,
+  type ComposerQueryIntent as FastPathIntent,
+} from '../chat/composerIntentFastPath';
 
 export type LexicalPreviewSpan = {
   text: string;
@@ -51,10 +55,46 @@ export type LexicalPreviewResult = {
 };
 
 
+/** Pronouns, interrogatives, commands, and truncated fragments must never become entity chips. */
+export function isLexicalNoiseToken(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (/\.\.\.|…/.test(t)) return true;
+  if (/^(?:I|we|you|he|she|they|it|me|him|her|us|them|my|our|your|mine|yours|myself|yourself)$/i.test(t)) {
+    return true;
+  }
+  if (/^(?:who|what|when|where|why|how|which|whose|whom)$/i.test(t)) return true;
+  if (
+    /^(?:tell|show|explain|give|list|remember|describe|summarize|recall|say|ask|find|get|make|let|please|help)$/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:a|an|the|this|that|these|those|and|or|but|so|if|to|of|in|on|at|for|with|from|about)$/i.test(t)) {
+    return true;
+  }
+  // Bare temporal adverbs — planner signals, not entity chips.
+  if (/^(?:today|tonight|tomorrow|yesterday|now|later|soon|recently)$/i.test(t)) {
+    return true;
+  }
+  // Truncated mid-phrase fragments ("Up My Degr...")
+  if (/^[A-Z][\w']*\s+(?:My|Our|Your|The|A|An)\s+[A-Z][\w']{0,4}$/.test(t)) return true;
+  return false;
+}
+
+export type ComposerQueryIntent = FastPathIntent | null;
+
+/** Surface intent for composer (never shown as entity chips). */
+export function classifyComposerIntent(text: string): ComposerQueryIntent {
+  return classifyComposerIntentFast(text)?.intent ?? null;
+}
+
 function filterNoiseSpans(spans: LexicalPreviewSpan[]): LexicalPreviewSpan[] {
-  const pronouns = /^(?:I|we|you|he|she|they|it|me|him|her|us|them|my|our|your)$/i;
   const filtered = spans.filter((s) => {
-    if (pronouns.test(s.text.trim())) return false;
+    // Classified time spans stay colored in the preview; bare temporal adverbs
+    // are only noise when they failed to classify as time.
+    if (s.colorKey !== 'time' && isLexicalNoiseToken(s.text)) return false;
     if (s.colorKey === 'uncertain' && s.text.trim().length <= 3) return false;
     return true;
   });

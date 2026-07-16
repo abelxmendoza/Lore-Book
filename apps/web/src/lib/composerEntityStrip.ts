@@ -5,6 +5,9 @@ import type { CertifiedEntityType } from '../types/certifiedEntity';
 import type { CertifiedEntityMatch } from './certifiedEntityMatch';
 import type { EntityColorKey } from './entityColorMap';
 import { findEntityHighlightRanges } from './entityHighlightRanges';
+import { isVisibleEntityCandidate } from './lexicalCandidateKinds';
+import { isLexicalNoiseToken } from './lexicalNoiseTokens';
+import { isSelfBleedLabel } from './selfChipLabel';
 
 function normalizeKey(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -55,13 +58,15 @@ export function filterPreviewSpansForStrip(
 ): LexicalPreviewSpan[] {
   const chipCertified = dedupeCertifiedForStrip(certified);
   if (spans.length === 0) return spans;
-  if (chipCertified.length === 0) return dedupePreviewSpans(spans);
+
+  const entityOnly = spans.filter((span) => isVisibleEntityCandidate(span.text));
+  if (chipCertified.length === 0) return dedupePreviewSpans(entityOnly);
 
   const ranges = findEntityHighlightRanges(text, chipCertified);
   const certifiedNames = new Set(chipCertified.flatMap(nameKeysForMatch));
 
   return dedupePreviewSpans(
-    spans.filter((span) => {
+    entityOnly.filter((span) => {
       const overlaps = ranges.some((r) => span.start < r.end && span.end > r.start);
       if (overlaps) return false;
       const spanKey = normalizeKey(span.text);
@@ -75,7 +80,13 @@ export function filterPreviewSpansForStrip(
 
 /** Remove duplicate certified chips (same normalized name or overlapping id). */
 export function dedupeCertifiedForStrip(certified: CertifiedEntityMatch[]): CertifiedEntityMatch[] {
-  const chipCertified = certified.filter((e) => e.matchKind !== 'prefix');
+  const chipCertified = certified.filter((e) => {
+    if (e.matchKind === 'prefix') return false;
+    const label = e.matchedLabel ?? e.name;
+    // Bare self pronouns / bleed stay off the strip — resolved as You internally.
+    if (isSelfBleedLabel(label) || isLexicalNoiseToken(label)) return false;
+    return true;
+  });
   const seenNames = new Set<string>();
   const seenIds = new Set<string>();
   const out: CertifiedEntityMatch[] = [];

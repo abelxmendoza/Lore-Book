@@ -49,8 +49,15 @@ export function classifyTemporalQuery(question: string, now = new Date()): Resol
     }
   }
 
+  // Bare anchors like "today" inside declarative journal text (e.g. "…with Grok today")
+  // must not force TIME_RANGE_QUERY — that path is for temporal *questions/recalls*.
+  const looksLikeTemporalQuery =
+    /[?]|(?:^|\b)(?:what|when|where|who|how|which|show me|tell me|list|did i|have i|was i|were there|what happened)\b/i.test(
+      trimmed,
+    );
+
   const window = resolveAllTemporalAnchors(trimmed, now);
-  if (window && window.confidence >= 0.6) {
+  if (window && window.confidence >= 0.6 && looksLikeTemporalQuery) {
     return {
       intent: 'TIME_RANGE_QUERY',
       window,

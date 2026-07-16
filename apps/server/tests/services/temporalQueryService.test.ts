@@ -28,4 +28,11 @@ describe('temporalQueryService', () => {
     expect(occurredInWindow('2026-06-17T10:00:00.000Z', r.window)).toBe(true);
     expect(occurredInWindow('2026-06-10T10:00:00.000Z', r.window)).toBe(false);
   });
+
+  it('does not treat declarative journal text with bare today as TIME_RANGE_QUERY', () => {
+    const journal =
+      "I finished eating at Northwind Cafe now and I'm so full. I skipped band practice just to build MemoVault with Marcus and Jamie today.";
+    const r = classifyTemporalQuery(journal, now);
+    expect(r.intent).toBeNull();
+  });
 });

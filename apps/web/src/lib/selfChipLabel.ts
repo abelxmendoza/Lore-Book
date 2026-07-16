@@ -6,7 +6,7 @@
  * they are the user, shown as "You" or "You (Firstname)".
  */
 
-const EXACT_SELF_KEYS = new Set(['me', 'myself', 'self', 'you', 'i']);
+const EXACT_SELF_KEYS = new Set(['me', 'myself', 'self', 'you', 'i', 'my', 'mine']);
 
 /** "and" / "also" / … + "you" — classic sentence bleed from assistant copy. */
 const SELF_BLEED_RE =

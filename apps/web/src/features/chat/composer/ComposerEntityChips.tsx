@@ -1,4 +1,5 @@
-import { X } from 'lucide-react';
+import { useState } from 'react';
+import { Sparkles, X } from 'lucide-react';
 
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -32,6 +33,10 @@ type ComposerEntityChipsProps = {
   max?: number;
   includedSlots?: string[];
   onToggleIncluded?: (slot: string) => void;
+  /** When true, chips start collapsed behind a single toggle (mobile keyboard mode). */
+  collapseByDefault?: boolean;
+  /** Force collapsed tray (e.g. keyboard-open mode). */
+  forceCollapsed?: boolean;
 };
 
 const PREVIEW_COLOR_TO_KIND: Partial<Record<string, LoreEntityKind>> = {
@@ -85,7 +90,7 @@ function chipDisplayName(entity: CertifiedEntityMatch): string {
 function certifiedChipTitle(entity: CertifiedEntityMatch): string {
   const def = getLoreEntity(loreKindForChip(entity));
   if (entity.lifecycleStatus === 'archived') {
-    return `${chipDisplayName(entity)} · ${def.label} · archived — tap ✓ to restore`;
+    return `${chipDisplayName(entity)} · ${def.label} · ignored — tap ✓ to restore`;
   }
   const status =
     entity.composerChipKind === 'growing_entity'
@@ -152,7 +157,11 @@ export const ComposerEntityChips = ({
   max = 6,
   includedSlots = [],
   onToggleIncluded,
+  collapseByDefault = false,
+  forceCollapsed = false,
 }: ComposerEntityChipsProps) => {
+  const [expanded, setExpanded] = useState(!collapseByDefault);
+  const showExpanded = !forceCollapsed && expanded;
   const correctedByKey = new Map(correctedRecords.map((c) => [`${c.start}:${c.end}`, c]));
 
   // Only surface people/characters, places/locations, organizations, and groups.
@@ -174,17 +183,17 @@ export const ComposerEntityChips = ({
   const needsConfirm =
     chipEntities.some(isConfirmable) ||
     previewItems.some(({ span, corrected }) => isPreviewConfirmable(span, corrected) && onConfirmPreviewSpan);
-  const hasArchived = chipEntities.some((e) => e.lifecycleStatus === 'archived');
+  const archivedCount = chipEntities.filter((e) => e.lifecycleStatus === 'archived').length;
   const hasGrowing = chipEntities.some((e) => e.composerChipKind === 'growing_entity' || e.promotionStage === 'growing');
   const stripLabel = scanning
     ? 'Scanning…'
-    : hasArchived
-      ? 'Tap ✓ to restore archived'
+    : archivedCount > 0
+      ? `${archivedCount} ignored · ✓ restores`
       : needsConfirm
-        ? 'Tap chip or ✓ to include'
+        ? 'Suggested · ✓ confirms'
         : hasGrowing
           ? 'Growing context'
-          : 'In message';
+          : 'Detected';
 
   const totalCount = chipEntities.length + previewItems.length;
   const certifiedVisible = chipEntities.slice(0, max);
@@ -329,10 +338,42 @@ export const ComposerEntityChips = ({
     </CompactChipStrip>
   );
 
+  const collapsedToggle = (collapseByDefault || forceCollapsed) && !showExpanded ? (
+    <button
+      type="button"
+      data-testid="composer-entity-chips-expand"
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/55 hover:bg-white/10 hover:text-white/80 touch-manipulation"
+      onClick={() => setExpanded(true)}
+      aria-expanded={false}
+      disabled={forceCollapsed}
+    >
+      <Sparkles className="h-3 w-3 text-primary/70" aria-hidden />
+      Analysis
+      <span className="text-white/35">· {totalCount}</span>
+    </button>
+  ) : null;
+
+  const body = collapsedToggle ?? (
+    <div className="space-y-1">
+      {(collapseByDefault || forceCollapsed) && (
+        <button
+          type="button"
+          data-testid="composer-entity-chips-collapse"
+          className="text-[10px] text-white/40 hover:text-white/70 touch-manipulation"
+          onClick={() => setExpanded(false)}
+          aria-expanded
+        >
+          Hide analysis
+        </button>
+      )}
+      {strip}
+    </div>
+  );
+
   if (variant === 'inline') {
     return (
       <div data-testid="composer-entity-chips" className="composer-entity-chips-inline">
-        {strip}
+        {body}
       </div>
     );
   }
@@ -343,7 +384,7 @@ export const ComposerEntityChips = ({
       className="border-b border-white/[0.04] bg-black/25 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
     >
       <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
-        {strip}
+        {body}
       </div>
     </div>
   );
