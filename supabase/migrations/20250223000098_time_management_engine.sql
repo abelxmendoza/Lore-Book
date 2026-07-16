@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS public.time_events (
 CREATE TABLE IF NOT EXISTS public.time_blocks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  start TIMESTAMPTZ NOT NULL,
-  end TIMESTAMPTZ NOT NULL,
+  "start" TIMESTAMPTZ NOT NULL,
+  "end" TIMESTAMPTZ NOT NULL,
   duration_minutes INT NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
     'work', 'coding', 'gym', 'bjj', 'muay_thai', 'robotics', 'learning',
