@@ -146,9 +146,9 @@ CREATE OR REPLACE FUNCTION get_decision_summary(decision_id_param UUID)
 RETURNS JSONB AS $$
 DECLARE
     decision_record RECORD;
-    options_records RECORD[];
+    options_json JSONB;
     rationale_record RECORD;
-    outcomes_records RECORD[];
+    outcomes_json JSONB;
     result JSONB;
 BEGIN
     SELECT * INTO decision_record
@@ -159,7 +159,7 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT ARRAY_AGG(row_to_json(o)) INTO options_records
+    SELECT COALESCE(jsonb_agg(to_jsonb(o)), '[]'::jsonb) INTO options_json
     FROM decision_options o
     WHERE o.decision_id = decision_id_param;
 
@@ -167,16 +167,16 @@ BEGIN
     FROM decision_rationales
     WHERE decision_id = decision_id_param;
 
-    SELECT ARRAY_AGG(row_to_json(o)) INTO outcomes_records
+    SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.recorded_at DESC), '[]'::jsonb)
+    INTO outcomes_json
     FROM decision_outcomes o
-    WHERE o.decision_id = decision_id_param
-    ORDER BY o.recorded_at DESC;
+    WHERE o.decision_id = decision_id_param;
 
     result := jsonb_build_object(
-        'decision', row_to_json(decision_record),
-        'options', COALESCE(options_records, '[]'::jsonb),
-        'rationale', COALESCE(row_to_json(rationale_record), 'null'::jsonb),
-        'outcomes', COALESCE(outcomes_records, '[]'::jsonb)
+        'decision', to_jsonb(decision_record),
+        'options', options_json,
+        'rationale', COALESCE(to_jsonb(rationale_record), 'null'::jsonb),
+        'outcomes', outcomes_json
     );
 
     RETURN result;

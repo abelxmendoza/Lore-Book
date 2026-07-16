@@ -91,7 +91,7 @@ CREATE OR REPLACE FUNCTION get_prediction_with_evidence(prediction_id_param UUID
 RETURNS JSONB AS $$
 DECLARE
     prediction_record RECORD;
-    evidence_records RECORD[];
+    evidence_json JSONB;
     result JSONB;
 BEGIN
     SELECT * INTO prediction_record
@@ -102,14 +102,14 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT ARRAY_AGG(row_to_json(e)) INTO evidence_records
+    SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.created_at ASC), '[]'::jsonb)
+    INTO evidence_json
     FROM prediction_evidence e
-    WHERE e.prediction_id = prediction_id_param
-    ORDER BY e.created_at ASC;
+    WHERE e.prediction_id = prediction_id_param;
 
     result := jsonb_build_object(
-        'prediction', row_to_json(prediction_record),
-        'evidence', COALESCE(evidence_records, '[]'::jsonb)
+        'prediction', to_jsonb(prediction_record),
+        'evidence', evidence_json
     );
 
     RETURN result;

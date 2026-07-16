@@ -82,7 +82,7 @@ CREATE OR REPLACE FUNCTION get_insight_with_evidence(insight_id_param UUID)
 RETURNS JSONB AS $$
 DECLARE
     insight_record RECORD;
-    evidence_records RECORD[];
+    evidence_json JSONB;
     result JSONB;
 BEGIN
     SELECT * INTO insight_record
@@ -93,13 +93,13 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT ARRAY_AGG(row_to_json(e)) INTO evidence_records
+    SELECT COALESCE(jsonb_agg(to_jsonb(e)), '[]'::jsonb) INTO evidence_json
     FROM insight_evidence e
     WHERE e.insight_id = insight_id_param;
 
     result := jsonb_build_object(
-        'insight', row_to_json(insight_record),
-        'evidence', COALESCE(evidence_records, '[]'::jsonb),
+        'insight', to_jsonb(insight_record),
+        'evidence', evidence_json,
         'disclaimer', 'This is an observation, not a fact.'
     );
 
