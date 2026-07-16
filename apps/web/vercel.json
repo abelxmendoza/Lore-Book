@@ -3,17 +3,7 @@
   "buildCommand": "rm -rf dist && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi",
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "stable": true,
-      "*": false
-    }
-  },
-  "github": {
-    "silent": true
-  },
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ] || [ \"$VERCEL_GIT_COMMIT_REF\" = \"stable\" ]; then exit 1; else exit 0; fi",
   "rewrites": [
     {
       "source": "/api/(.*)",
