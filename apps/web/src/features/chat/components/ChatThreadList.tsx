@@ -255,7 +255,7 @@ function ThreadItem({
         className={cn(
           'group flex items-center gap-1 rounded-lg cursor-pointer transition-all duration-200 min-h-[44px] sm:min-h-0',
           isActive
-            ? 'chat-thread-active-shell text-white shadow-sm shadow-primary/5'
+            ? 'chat-thread-active-shell text-white'
             : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90 hover:translate-x-0.5'
         )}
       >
