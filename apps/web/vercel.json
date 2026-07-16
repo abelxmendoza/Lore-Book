@@ -4,6 +4,9 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi",
+  "github": {
+    "silent": true
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
