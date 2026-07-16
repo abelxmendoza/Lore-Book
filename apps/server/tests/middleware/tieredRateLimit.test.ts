@@ -41,11 +41,27 @@ describe('tieredRateLimit', () => {
     expect(rules.map((r) => r.tier)).toEqual(['guest']);
   });
 
-  it('classifies AI chat with write + burst + ai tiers', () => {
+  it('classifies AI chat with ai tier only (not shared write budget)', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/chat/stream', 'POST', 'user-1') as Request
     );
-    expect(rules.map((r) => r.tier)).toEqual(['ai', 'write', 'write_burst']);
+    expect(rules.map((r) => r.tier)).toEqual(['ai']);
+    expect(rules.map((r) => r.tier)).not.toContain('write');
+    expect(rules.map((r) => r.tier)).not.toContain('write_burst');
+  });
+
+  it('classifies non-stream chat POST with ai tier only', () => {
+    const rules = resolveApiRateTierRulesForTests(
+      mockReq('/api/chat', 'POST', 'user-1') as Request
+    );
+    expect(rules.map((r) => r.tier)).toEqual(['ai']);
+  });
+
+  it('keeps ordinary writes on write + write_burst', () => {
+    const rules = resolveApiRateTierRulesForTests(
+      mockReq('/api/journal/autosave', 'POST', 'user-1') as Request
+    );
+    expect(rules.map((r) => r.tier)).toEqual(['write', 'write_burst']);
   });
 
   it('excludes composer lexical preview from global tiers (route limiter only)', () => {

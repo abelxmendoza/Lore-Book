@@ -83,6 +83,18 @@ const PUBLIC_PROBE_PATH = /\/api\/(diagnostics|runtime)\/?$/i;
 const COMPOSER_HOT_PATH =
   /\/api\/(lexical\/preview|conversation\/lorebook-parse)\/?$/i;
 
+/**
+ * Real chat sends already have dedicated caps:
+ *   - tiered `ai` (60/15m)
+ *   - openAiHttpLimit (60/15m) + openAiHttpBurstLimit (15/1m)
+ *
+ * Do NOT also charge the shared write / write_burst buckets. Postgres-backed
+ * write windows persist across deploys; once a typing session (or any other
+ * write traffic) fills `write`, chat stays 429'd for up to 15 minutes even
+ * after composer hot paths are excluded.
+ */
+const CHAT_SEND_PATH = /\/api\/chat(\/stream)?\/?$/i;
+
 function requestPath(req: Request): string {
   return (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0];
 }
@@ -130,7 +142,8 @@ function resolveTierRules(req: Request): TierRule[] {
   const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   if (isRead) {
     rules.push({ tier: 'read', ...TIER_LIMITS.read });
-  } else {
+  } else if (!CHAT_SEND_PATH.test(path)) {
+    // Chat sends: ai tier only (plus route openAi* limiters). See CHAT_SEND_PATH.
     rules.push({ tier: 'write', ...TIER_LIMITS.write });
     rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
   }

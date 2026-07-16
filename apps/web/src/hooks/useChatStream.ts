@@ -297,8 +297,16 @@ export const useChatStream = () => {
         };
         err.durability = durability;
         err.status = response.status;
-        const retryAfterRaw = parseBody()?.retryAfter;
-        if (typeof retryAfterRaw === 'number') err.retryAfter = retryAfterRaw;
+        const body = parseBody();
+        const retryAfterRaw = body?.retryAfter;
+        if (typeof retryAfterRaw === 'number' && retryAfterRaw > 0) {
+          err.retryAfter = retryAfterRaw;
+        } else {
+          // Fall back to the standard header when the JSON body omits retryAfter.
+          const headerRaw = response.headers.get('Retry-After');
+          const headerSec = headerRaw ? Number.parseInt(headerRaw, 10) : NaN;
+          if (Number.isFinite(headerSec) && headerSec > 0) err.retryAfter = headerSec;
+        }
         throw err;
       }
 
