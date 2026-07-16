@@ -51,12 +51,18 @@ function makeAuthState(opts: { userId?: string; loading?: boolean } = {}) {
   };
 }
 
-function makeDbThread(id: string, title = 'Test thread', messages: any[] = []) {
+function makeDbThread(
+  id: string,
+  title = 'Test thread',
+  messages: any[] = [],
+  updatedAt = new Date().toISOString()
+) {
   return {
     id,
     title,
-    updated_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
+    updated_at: updatedAt,
+    updatedAt,
+    created_at: updatedAt,
     metadata: { messages },
   };
 }
@@ -155,8 +161,8 @@ describe('useChatThreads', () => {
   it('loads threads from backend when authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([
-      makeDbThread('thread-a', 'Thread A'),
-      makeDbThread('thread-b', 'Thread B'),
+      makeDbThread('thread-a', 'Thread A', [], '2026-01-01T00:00:00.000Z'),
+      makeDbThread('thread-b', 'Thread B', [], '2026-06-01T00:00:00.000Z'),
     ]);
 
     const { result } = renderUseChatThreads();
@@ -164,7 +170,7 @@ describe('useChatThreads', () => {
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
 
     expect(result.current.threads).toHaveLength(2);
-    expect(result.current.threads[0].id).toBe('thread-a');
+    expect(result.current.threads.map((t) => t.id)).toEqual(['thread-b', 'thread-a']);
     expect(result.current.threadsReady).toBe(true);
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith('backend_load_start');
     expect(runtimeDiagnostics.recordTimed).toHaveBeenCalledWith(

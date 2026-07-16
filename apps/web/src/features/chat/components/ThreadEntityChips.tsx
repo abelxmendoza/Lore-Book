@@ -15,18 +15,30 @@ interface ThreadEntityChipsProps {
 /**
  * Thread-level entity strip above the composer — compact chips for established context.
  */
+/** Composer strip only keeps recent thread context — not the whole history. */
+const COMPOSER_ENTITY_WINDOW = 8;
+const COMPOSER_ENTITY_MAX = 6;
+
 export const ThreadEntityChips = ({
   messages,
   variant = 'inline',
   selectedEntityId = null,
   onSelectEntity,
 }: ThreadEntityChipsProps) => {
-  const entities = useMemo(() => collectThreadEntities(messages), [messages]);
+  const isComposer = variant === 'composer';
+  const entities = useMemo(
+    () =>
+      collectThreadEntities(
+        messages,
+        isComposer
+          ? { recentMessageWindow: COMPOSER_ENTITY_WINDOW, max: COMPOSER_ENTITY_MAX }
+          : undefined,
+      ),
+    [messages, isComposer],
+  );
   const relationshipGroups = useMemo(() => collectThreadRelationshipGroups(messages), [messages]);
 
   if (entities.length === 0 && relationshipGroups.length === 0) return null;
-
-  const isComposer = variant === 'composer';
 
   return (
     <div

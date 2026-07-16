@@ -11,9 +11,12 @@ function thread(
 }
 
 describe('mergeLoadedThreadsWithHydrated', () => {
-  it('returns loaded threads when there is no prior cache', () => {
-    const loaded = [thread('a'), thread('b')];
-    expect(mergeLoadedThreadsWithHydrated(loaded, [])).toEqual(loaded);
+  it('returns loaded threads sorted newest-first when there is no prior cache', () => {
+    const loaded = [
+      thread('a', [], '2026-01-01T00:00:00Z'),
+      thread('b', [], '2026-06-01T00:00:00Z'),
+    ];
+    expect(mergeLoadedThreadsWithHydrated(loaded, []).map((t) => t.id)).toEqual(['b', 'a']);
   });
 
   it('preserves hydrated messages when the server list arrives', () => {
@@ -31,5 +34,25 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     expect(merged[0].messageCount).toBe(2);
     expect(merged[0].title).toBe('Last chat');
     expect(merged[0].updatedAt).toBe('2026-06-02T00:00:00Z');
+  });
+
+  it('keeps recent pending local-only threads not yet on the server', () => {
+    const loaded = [thread('server-a', [], '2026-06-01T00:00:00Z')];
+    const pending = thread('local-draft', [], new Date().toISOString());
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [pending]);
+
+    expect(merged.map((t) => t.id)).toContain('local-draft');
+    expect(merged.map((t) => t.id)).toContain('server-a');
+    expect(merged[0].id).toBe('local-draft');
+  });
+
+  it('drops stale empty pending local drafts older than the TTL', () => {
+    const loaded = [thread('server-a', [], '2026-06-01T00:00:00Z')];
+    const stalePending = thread('stale-draft', [], '2020-01-01T00:00:00Z');
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [stalePending]);
+
+    expect(merged.map((t) => t.id)).toEqual(['server-a']);
   });
 });
