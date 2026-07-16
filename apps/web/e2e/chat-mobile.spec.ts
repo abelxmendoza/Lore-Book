@@ -35,6 +35,35 @@ test.describe('Chat mobile layout', () => {
 
   test('long drafts keep the Send button inside the visible mobile viewport', async ({ page, context }) => {
     await context.addInitScript(() => {
+      // Model the viewport iOS/Android expose while the software keyboard is
+      // open. The layout viewport remains 844px tall, but only the first 430px
+      // are reachable above the keyboard.
+      const listeners = new Map<string, Set<EventListener>>();
+      const visualViewport = {
+        height: 430,
+        width: 390,
+        offsetTop: 0,
+        offsetLeft: 0,
+        pageTop: 0,
+        pageLeft: 0,
+        scale: 1,
+        addEventListener(type: string, listener: EventListener) {
+          const bucket = listeners.get(type) ?? new Set<EventListener>();
+          bucket.add(listener);
+          listeners.set(type, bucket);
+        },
+        removeEventListener(type: string, listener: EventListener) {
+          listeners.get(type)?.delete(listener);
+        },
+        dispatchEvent(event: Event) {
+          for (const listener of listeners.get(event.type) ?? []) listener(event);
+          return true;
+        },
+      };
+      Object.defineProperty(window, 'visualViewport', {
+        configurable: true,
+        value: visualViewport,
+      });
       window.localStorage.setItem('lorekeeper_guest_state', JSON.stringify({
         isGuest: true,
         guestId: 'mobile-layout-guest',
@@ -57,7 +86,7 @@ test.describe('Chat mobile layout', () => {
     const send = composer.getByRole('button', { name: 'Send message' }).last();
 
     await expect(textarea).toBeVisible({ timeout: 15_000 });
-    await textarea.fill(Array.from({ length: 80 }, (_, index) => `Story line ${index + 1}`).join('\n'));
+    await textarea.fill(Array.from({ length: 500 }, (_, index) => `A very long story line ${index + 1} with enough detail to keep writing.`).join('\n'));
 
     // The field must contain the draft instead of growing the composer beyond
     // the mobile viewport. Keyboard-height behavior is driven by
@@ -65,14 +94,17 @@ test.describe('Chat mobile layout', () => {
     // keeps that viewport at the device height when setViewportSize is called.
     await expect(send).toBeVisible();
 
-    const viewport = page.viewportSize();
-    expect(viewport).toBeTruthy();
-    if (viewport) {
-      await expect.poll(async () => {
-        const box = await send.boundingBox();
-        return box ? box.y + box.height : Number.POSITIVE_INFINITY;
-      }).toBeLessThanOrEqual(viewport.height + 2);
-    }
+    const visibleBottom = await page.evaluate(() => (
+      (window.visualViewport?.offsetTop ?? 0) +
+      (window.visualViewport?.height ?? window.innerHeight)
+    ));
+    await expect.poll(async () => {
+      const box = await send.boundingBox();
+      return box ? box.y + box.height : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(visibleBottom + 2);
+    // Trial click performs Playwright's real actionability and hit-target
+    // checks without submitting the story.
+    await send.click({ trial: true });
   });
 
   test('guest thread shows user and assistant bubbles after reload', async ({ page, context }) => {

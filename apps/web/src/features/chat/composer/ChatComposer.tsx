@@ -157,7 +157,14 @@ export const ChatComposer = ({
   const stats = getComposerStats(input);
   const showStats = input.length > 0 || isFocused;
   const composerStyle: CSSProperties & { '--composer-visual-height'?: string } = {
-    paddingBottom: keyboardInset > 0 && !journalModeOpen ? keyboardInset : undefined,
+    // The composer sits at the bottom of the layout viewport. Mobile keyboards
+    // shrink the visual viewport without consistently moving that layout
+    // bottom, so padding only makes the composer taller while Send remains
+    // hidden. Translate the entire composer to the reachable visual bottom.
+    transform:
+      keyboardInset > 0 && !journalModeOpen
+        ? `translate3d(0, -${keyboardInset}px, 0)`
+        : undefined,
     // `dvh` is still the layout viewport on some iOS versions while the
     // software keyboard is open. Expose the actual visible height to CSS so
     // a long draft scrolls inside the textarea instead of pushing Send below
