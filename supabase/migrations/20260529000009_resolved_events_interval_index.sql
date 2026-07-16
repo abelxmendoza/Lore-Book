@@ -5,6 +5,9 @@
 --
 -- NOTE: timestamptz + interval is not IMMUTABLE, so we cannot use GENERATED ALWAYS.
 -- Maintain time_range via trigger instead.
+-- Composite GiST (uuid, tstzrange) requires btree_gist for the uuid opclass.
+
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 DO $$
 BEGIN
