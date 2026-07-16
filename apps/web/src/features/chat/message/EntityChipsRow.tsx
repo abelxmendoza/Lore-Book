@@ -6,6 +6,7 @@ import {
   routeForLoreKind,
   type LoreEntityKind,
 } from '../../../lib/loreEntities';
+import { displayChipName } from '../../../lib/selfChipLabel';
 import { CompactEntityChip, CompactChipStrip } from '../components/CompactEntityChip';
 
 export interface EntityChip {
@@ -35,13 +36,19 @@ const PROVENANCE_LABEL: Record<NonNullable<EntityChip['provenance']>, string> = 
   omega_entity: 'Detected (omega)',
 };
 
+function entityChipLabel(entity: EntityChip): string {
+  // Sentence-bleed self labels ("And You") → "You (Firstname)" / "You".
+  return displayChipName(entity.name);
+}
+
 function chipTitle(entity: EntityChip, mode: EntityChipsRowProps['mode'], selected: boolean): string {
+  const label = entityChipLabel(entity);
   if (mode === 'focus') {
-    return selected ? `Clear focus on ${entity.name}` : `Focus next message on ${entity.name}`;
+    return selected ? `Clear focus on ${label}` : `Focus next message on ${label}`;
   }
   const kind = loreKindForChip(entity);
   const def = getLoreEntity(kind);
-  const parts = [`${entity.name} (${def.label})`];
+  const parts = [`${label} (${def.label})`];
   if (entity.provenance) parts.push(`source: ${PROVENANCE_LABEL[entity.provenance]}`);
   if (entity.confidence != null) parts.push(`confidence: ${Math.round(entity.confidence * 100)}%`);
   if (entity.mentionStatus === 'mentioned_only') parts.push('status: detected, not yet confirmed');
@@ -100,7 +107,7 @@ export const EntityChipsRow = ({
             onClick={route || mode === 'focus' ? () => handleClick(entity) : undefined}
           >
             <Icon className="h-2.5 w-2.5 flex-shrink-0" />
-            <span className="truncate">{entity.name}</span>
+            <span className="truncate">{entityChipLabel(entity)}</span>
             {tentative && <span className="text-[8px] opacity-60">?</span>}
           </CompactEntityChip>
         );

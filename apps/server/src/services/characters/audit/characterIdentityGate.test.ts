@@ -33,6 +33,13 @@ describe('sentence bleed / pronoun fragments', () => {
     expect(result.recommendedAction).toBe('delete');
   });
 
+  it('rejects "And You" as sentence bleed (composer chip source)', () => {
+    const result = audit('And You', '…and you should know that.');
+    expect(result.status).toBe('sentence_bleed');
+    expect(result.recommendedAction).toBe('delete');
+    expect(evaluateSentenceBleed('And You').rejected).toBe(true);
+  });
+
   it('rejects a bare pronoun as pronoun fragment', () => {
     const result = audit('You');
     expect(result.status).toBe('pronoun_fragment');

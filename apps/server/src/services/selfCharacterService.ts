@@ -97,7 +97,9 @@ function nameMatchesUserIdentity(name: string, identityNames: string[]): boolean
 }
 
 function isReservedSelfName(name: string): boolean {
-  return /^(me|myself|self|you)$/i.test(name.trim());
+  // Include connective+you bleed ("And You", "Also You") — never treat as a third person.
+  return /^(me|myself|self|you|i)$/i.test(name.trim())
+    || /^(also|and|but|so|then|well|just|or|plus|however|anyway)\s+you$/i.test(name.trim());
 }
 
 function scoreSelfCandidate(character: CharacterRow, identityNames: string[]): number {

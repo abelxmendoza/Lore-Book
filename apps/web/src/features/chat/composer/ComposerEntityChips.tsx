@@ -12,6 +12,7 @@ import {
   loreKindForChip,
   type LoreEntityKind,
 } from '../../../lib/loreEntities';
+import { displayChipName } from '../../../lib/selfChipLabel';
 import { composerMatchSlot } from '../../../store/slices/composerSlice';
 import { CompactEntityChip, CompactChipStrip, SplitEntityChip } from '../components/CompactEntityChip';
 
@@ -73,7 +74,12 @@ function isConfirmable(entity: CertifiedEntityMatch): boolean {
 
 function chipDisplayName(entity: CertifiedEntityMatch): string {
   if (entity.actionLabel) return entity.actionLabel;
-  return entity.matchedLabel ?? entity.name;
+  const raw = entity.matchedLabel ?? entity.name;
+  // "And You" / "Also You" sentence bleed → "You (Firstname)" (or "You").
+  return displayChipName(raw, {
+    name: entity.name,
+    metadata: (entity as { metadata?: Record<string, unknown> }).metadata,
+  });
 }
 
 function certifiedChipTitle(entity: CertifiedEntityMatch): string {
