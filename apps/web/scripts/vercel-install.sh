@@ -3,10 +3,13 @@
 set -euo pipefail
 
 prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
+
 case "$prod_url" in
-  lorebookai.com|www.lorebookai.com|*lorebookai.com)
+  *lore-keeper*)
+    ;;
+  lorebookai.com|www.lorebookai.com|*lorebookai.com*|*lore-book*)
     if [ "${VERCEL_ENV:-}" != "production" ]; then
-      echo "Skipping install for lore-book-web ${VERCEL_ENV:-unknown} deploy"
+      echo "Skipping install for lore-book-web ${VERCEL_ENV:-unknown} deploy (prod_url=${prod_url})"
       exit 0
     fi
     ;;

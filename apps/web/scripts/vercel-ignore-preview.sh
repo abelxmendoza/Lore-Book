@@ -6,17 +6,17 @@ set -euo pipefail
 
 prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
 
-is_prod_web=0
 case "$prod_url" in
-  lorebookai.com|www.lorebookai.com|*lorebookai.com) is_prod_web=1 ;;
+  *lore-keeper*)
+    exit 1
+    ;;
+  lorebookai.com|www.lorebookai.com|*lorebookai.com*|*lore-book*)
+    case "${VERCEL_GIT_COMMIT_REF:-}" in
+      main|stable) exit 1 ;;
+      *) exit 0 ;;
+    esac
+    ;;
 esac
 
-if [ "$is_prod_web" -eq 1 ]; then
-  case "${VERCEL_GIT_COMMIT_REF:-}" in
-    main|stable) exit 1 ;;
-    *) exit 0 ;;
-  esac
-fi
-
-# lore-keeper / other projects: always build
+# Unknown project: build (do not break other Vercel projects)
 exit 1

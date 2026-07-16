@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS public.entry_ir (
   -- Compiler metadata
   compiler_flags JSONB DEFAULT '{"is_dirty": true, "is_deprecated": false, "compilation_version": 1}'::jsonb,
 
+  -- Canon boundary (also added earlier when entry_ir already existed)
+  canon_status TEXT DEFAULT 'CANON'
+    CHECK (canon_status IN ('CANON', 'ROLEPLAY', 'HYPOTHETICAL', 'FICTIONAL', 'THOUGHT_EXPERIMENT', 'META')),
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
