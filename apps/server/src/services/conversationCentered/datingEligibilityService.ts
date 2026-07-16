@@ -54,6 +54,7 @@ export function hasFamilySignal(name: string, relationLabels: string[] = []): bo
 const NON_PERSON_TYPES = new Set([
   'organization', 'org', 'band', 'group', 'company', 'brand',
   'project', 'product', 'app', 'software_tool', 'software', 'tool',
+  'ai_model', 'model', 'llm',
   'location', 'place', 'venue', 'event', 'school', 'pet', 'media',
   'vehicle', 'food_drink', 'skill', 'concept',
 ]);
@@ -77,7 +78,8 @@ export function classifyPersonType(
 
 const STRONG_ROMANTIC_RE = [
   /\b(dated|dating|was seeing|been seeing|went on a date with|going on a date with)\b/i,
-  /\bmy (girlfriend|boyfriend|partner|wife|husband|fianc[ée]e?|ex|ex-(girlfriend|boyfriend|wife|husband))\b/i,
+  /\bmy (girlfriend|boyfriend|partner|wife|husband|fianc[ée]e?|ex|ex-(girlfriend|boyfriend|wife|husband)|lovers?)\b/i,
+  /\bone of my (most recent |recent )?(lovers?|exes?|girlfriends?|boyfriends?)\b/i,
   /\bis my (girlfriend|boyfriend|partner|wife|husband|ex)\b/i,
   /\b(we|i) (were|was|are|am) (together|a couple|an item|in a relationship)\b/i,
   /\bbroke up\b/i,
@@ -97,21 +99,127 @@ const STRONG_SEXUAL_RE = [
 const WEAK_SIGNAL_RE =
   /\b(attractive|cute|hot|beautiful|danced|dancing|at (a|the) (club|show|party)|follow(ed|ing)? (them|her|him)? ?on(line)?|instagram)\b/i;
 
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Name-coincidence framing — "same name as my lover" is not romantic evidence for the first entity. */
+const COINCIDENCE_FORWARD_RE = /\bsame name as\b|\bnamed after\b/i;
+
+const SOFTWARE_RELEASE_CUE_RE =
+  /\b(release of|version|model|ai model|llm|software|tool|app|composer|codex|claude|opus|gpt|chatgpt)\b/i;
+
+function isVersionedOrProductLabel(name: string): boolean {
+  return (
+    /^\d+(\.\d+)+\b/.test(name.trim()) ||
+    /\b\d+\.\d+\b/.test(name) ||
+    /\b(claude|opus|codex|composer|gpt|chatgpt)\b/i.test(name)
+  );
+}
+
 function nameTokens(name: string): string[] {
   return name
     .toLowerCase()
     .split(/\s+/)
-    .filter((t) => t.length >= 3);
+    .filter((t) => t.length >= 3 && !/^\d+(\.\d+)?$/.test(t));
+}
+
+/** Find mention spans for a name/aliases inside text (case-insensitive). */
+export function findEntityMentionSpans(
+  text: string,
+  name: string,
+  aliases: string[] = [],
+): Array<{ start: number; end: number; matched: string }> {
+  const spans: Array<{ start: number; end: number; matched: string }> = [];
+  const labels = [name, ...aliases]
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  // Also allow distinctive tokens for multi-word person names ("Karina Del Valle" → "Karina").
+  const tokenLabels = nameTokens(name).filter((t) => t.length >= 4 || labels.some((l) => l.toLowerCase() === t));
+  const allLabels = [...labels, ...tokenLabels.filter((t) => !labels.some((l) => l.toLowerCase() === t))];
+  const occupied = new Array(text.length).fill(false);
+
+  for (const label of allLabels) {
+    const re = new RegExp(`\\b${escapeRe(label)}\\b`, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = start + m[0].length;
+      let overlaps = false;
+      for (let i = start; i < end; i++) {
+        if (occupied[i]) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) continue;
+      for (let i = start; i < end; i++) occupied[i] = true;
+      spans.push({ start, end, matched: m[0] });
+    }
+  }
+  return spans.sort((a, b) => a.start - b.start);
+}
+
+function localWindow(text: string, start: number, end: number, radius = 90): string {
+  // Never cross sentence boundaries — co-mentioned names in the next sentence
+  // must not inherit romantic/sexual evidence.
+  let sentenceStart = 0;
+  let sentenceEnd = text.length;
+  for (let i = start; i >= 0; i--) {
+    if (/[.!?]/.test(text[i]) && i < start) {
+      sentenceStart = i + 1;
+      break;
+    }
+  }
+  for (let i = end; i < text.length; i++) {
+    if (/[.!?]/.test(text[i])) {
+      sentenceEnd = i + 1;
+      break;
+    }
+  }
+  const from = Math.max(sentenceStart, start - radius);
+  const to = Math.min(sentenceEnd, end + radius);
+  return text.slice(from, to);
 }
 
 /** Does this snippet actually talk about THIS entity (not a co-mentioned one)? */
 export function evidenceMentionsEntity(snippet: string, name: string, aliases: string[] = []): boolean {
-  const text = snippet.toLowerCase();
-  const candidates = [name, ...aliases];
-  return candidates.some((n) => {
-    const tokens = nameTokens(n);
-    return tokens.length > 0 && tokens.some((t) => text.includes(t));
-  });
+  return findEntityMentionSpans(snippet, name, aliases).length > 0;
+}
+
+/**
+ * Romantic/sexual signal must sit in a local window around THIS entity's mention.
+ * Co-mentioned names in a long run-on sentence do not inherit romance.
+ * Name-coincidence framing ("same name as my lover") does not romanticize the first entity.
+ */
+export function evidenceAttachesToEntity(
+  snippet: string,
+  name: string,
+  aliases: string[] = [],
+  signalTest: (window: string) => boolean,
+): boolean {
+  const spans = findEntityMentionSpans(snippet, name, aliases);
+  if (spans.length === 0) return false;
+
+  for (const span of spans) {
+    const window = localWindow(snippet, span.start, span.end);
+    if (!signalTest(window)) continue;
+
+    // Only forward coincidence clauses negate: "X which is the same name as my lover"
+    // must not romanticize X. The lover mention later still attaches normally.
+    const forward = snippet.slice(span.start, Math.min(snippet.length, span.end + 120));
+    if (COINCIDENCE_FORWARD_RE.test(forward)) continue;
+
+    // Versioned/product labels near release/model cues are never romantic partners.
+    const before = snippet.slice(Math.max(0, span.start - 40), span.start);
+    if (isVersionedOrProductLabel(name) && SOFTWARE_RELEASE_CUE_RE.test(before + window)) continue;
+    if (SOFTWARE_RELEASE_CUE_RE.test(before) && /\blovers?\b/i.test(forward)) continue;
+
+    return true;
+  }
+  return false;
 }
 
 export type EvidenceAssessment = {
@@ -142,14 +250,21 @@ export function assessRomanticEvidence(
       foreign.push(snippet);
       continue;
     }
-    const sexual = STRONG_SEXUAL_RE.some((re) => re.test(snippet));
-    const romantic = STRONG_ROMANTIC_RE.some((re) => re.test(snippet));
+    const sexual = evidenceAttachesToEntity(snippet, name, aliases, (w) =>
+      STRONG_SEXUAL_RE.some((re) => re.test(w)),
+    );
+    const romantic = evidenceAttachesToEntity(snippet, name, aliases, (w) =>
+      STRONG_ROMANTIC_RE.some((re) => re.test(w)),
+    );
     if (sexual || romantic) {
       accepted.push(snippet);
       kind = kind ?? (sexual ? 'sexual' : 'romantic');
-    } else if (WEAK_SIGNAL_RE.test(snippet)) {
+    } else if (
+      evidenceAttachesToEntity(snippet, name, aliases, (w) => WEAK_SIGNAL_RE.test(w))
+    ) {
       weak.push(snippet);
     } else {
+      // Named in the snippet but without romantic/sexual attachment in-window.
       weak.push(snippet);
     }
   }

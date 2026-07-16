@@ -13,10 +13,11 @@ const OCCUPATION_WORD =
 const SOFTWARE_OR_MEDIA =
   /^(?:chatgpt|openai|react|typescript|python|ios|android|instagram|tiktok|youtube|spotify|discord|slack|notion|figma|claude(?:\s+code)?|one piece|lorebook|lore book)$/i;
 const PLACE_WORD =
-  /^(?:home|work|office|school|gym|church|park|beach|downtown|here|there|catch one)$/i;
+  /^(?:home|work|office|school|gym|church|park|beach|downtown|here|there)$/i;
 const PROCESS_OR_AUDIT =
   /^(?:background check|reclassification|cleanup|debug|chat bubbles?|styling|ui|user interface)$/i;
-const BAND_OR_ORG_HINT = /^(?:ex lover|ex-lover)$/i;
+// Generic relationship descriptors typed as a person name are pollution, not people.
+const RELATIONSHIP_PHRASE = /^(?:ex[- ]?lover|my ex|ex[- ]?girlfriend|ex[- ]?boyfriend)$/i;
 const GENERIC_REL =
   /^(?:user|person|they|someone|somebody)\s+(?:has|uses|mentioned)\s+(?:a|an|one)?\s*(?:romantic partner relationship|coworker relationship|relationship)\.?$/i;
 const INCOMPLETE_REL =
@@ -45,7 +46,7 @@ const PERSON_FORBIDDEN_IF_MATCHES = [
   SOFTWARE_OR_MEDIA,
   PLACE_WORD,
   PROCESS_OR_AUDIT,
-  BAND_OR_ORG_HINT,
+  RELATIONSHIP_PHRASE,
 ];
 
 /** Suggest a better entity type when PERSON would be wrong. */
@@ -54,7 +55,7 @@ export function suggestEntityTypeForName(name: string): AllowedEntityType | null
   if (TEMPORAL_ONLY.test(n)) return null;
   if (SOFTWARE_OR_MEDIA.test(n) || /\b(?:app|code|api)\b/i.test(n)) return 'OTHER';
   if (PLACE_WORD.test(n) || /\b(?:club|venue|house|cafe|bar)\b/i.test(n)) return 'LOCATION';
-  if (BAND_OR_ORG_HINT.test(n) || /\b(?:band|company|agency|corp)\b/i.test(n)) return 'ORGANIZATION';
+  if (/\b(?:band|company|agency|corp)\b/i.test(n)) return 'ORGANIZATION';
   if (OCCUPATION_WORD.test(n) || /\btechnician|engineer|manager\b/i.test(n)) return null;
   if (PROCESS_OR_AUDIT.test(n)) return null;
   return null;

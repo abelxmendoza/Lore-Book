@@ -461,6 +461,9 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
           return;
         }
         if (isOpenAIQuotaError(setupError)) {
+          // Without ChatDurabilityError we cannot prove save status — stay honest.
+          // Do NOT claim message_saved; do NOT force the UI into "unsaved restore"
+          // with a false persisted:false when the client may hydrate the thread.
           res.status(429).json({
             error: 'OpenAI quota exhausted',
             stage: 'response_generation',

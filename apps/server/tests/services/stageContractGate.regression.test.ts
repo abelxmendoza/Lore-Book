@@ -42,31 +42,25 @@ describe('stageContractGate regressions (real failure fixtures)', () => {
     it('rejects chat bubble styling as PERSON', () => rejectPerson('chat bubbles'));
     it('rejects testing chatter as PERSON', () => rejectPerson('testing the new chat'));
 
-    it('retypes Catch One toward LOCATION', () => {
+    it('retypes bare place word Downtown toward LOCATION', () => {
       const r = validateEntityCandidateBeforePersist({
-        name: 'Catch One',
+        name: 'Downtown',
         type: 'PERSON',
         evidenceIds: ['fixture'],
       });
-      // may reject or retype to LOCATION
+      expect(r.accepted).toBe(true);
       if (r.accepted) {
         expect(r.value.retyped === 'LOCATION' || r.value.type === 'LOCATION').toBe(true);
-      } else {
-        expect(r.accepted).toBe(false);
       }
     });
 
-    it('retypes Ex Lover toward ORGANIZATION', () => {
+    it('rejects relationship phrase Ex Lover as PERSON', () => {
       const r = validateEntityCandidateBeforePersist({
         name: 'Ex Lover',
         type: 'PERSON',
         evidenceIds: ['fixture'],
       });
-      if (r.accepted) {
-        expect(r.value.retyped === 'ORGANIZATION' || r.value.type === 'ORGANIZATION').toBe(true);
-      } else {
-        expect(r.accepted).toBe(false);
-      }
+      expect(r.accepted).toBe(false);
     });
 
     it('accepts a real person name', () => {

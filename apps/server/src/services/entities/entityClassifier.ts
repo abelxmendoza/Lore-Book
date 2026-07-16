@@ -134,8 +134,40 @@ export function classifyEntity(name: string, context?: string): Classification {
     const productContext = new RegExp(`${escaped}\\s+(?:camera|cameras|device|devices|product|products)\\b`, 'i');
     if (productContext.test(context)) return result('PRODUCT', 0.92, 'product noun-phrase context');
 
+    const projectContext = new RegExp(
+      `\\b(?:working on|building|developing|shipping)\\s+(?:[\\w'-]+\\s+){0,4}${escaped}\\b`,
+      'i',
+    );
+    if (projectContext.test(context)) return result('PRODUCT', 0.9, 'working-on project/product context');
+
     const organizationContext = new RegExp(`(?:work|worked|working)\\s+(?:at|for)\\s+${escaped}\\b`, 'i');
     if (organizationContext.test(context)) return result('ORGANIZATION', 0.9, 'employment organization context');
+
+    // Romantic / interpersonal person cues (consensual adult language is ordinary evidence).
+    // Checked before release cues so a bare person name is not swallowed by a versioned model label
+    // appearing elsewhere in the same message.
+    const romanticNearName = new RegExp(
+      `(?:lovers?|girlfriend|boyfriend|partner|wife|husband|ex|girl|guy|woman).{0,40}${escaped}(?:['’]s)?\\b|\\b(?:was|been|were)\\s+(?:fucking|seeing|dating)\\s+${escaped}\\b`,
+      'i',
+    );
+    const versionedHost = new RegExp(`\\d+(?:\\.\\d+)+\\s+${escaped}\\b`, 'i');
+    if (romanticNearName.test(context) && !/^\d+(\.\d+)/.test(raw)) {
+      return result('PERSON', 0.9, 'romantic/interpersonal person context');
+    }
+
+    // AI / coding model release cues — versioned labels and "release of X".
+    if (/^\d+(\.\d+)+\s+\S+/i.test(raw) || /\b\S+\s+\d+\.\d+\b/.test(raw)) {
+      return result('APP', 0.94, 'versioned software/model label');
+    }
+    const releaseContext = new RegExp(
+      `(?:release of|version|model|llm|composer|codex|claude|opus|gpt|chatgpt).{0,60}${escaped}\\b|\\b${escaped}\\s+(?:model|llm|release)\\b`,
+      'i',
+    );
+    // Bare trailing tokens of a versioned label should not classify the bare name as APP when
+    // the versioned form is the actual release subject.
+    if (releaseContext.test(context) && !(versionedHost.test(context) && !/^\d+(\.\d+)/.test(raw))) {
+      return result('APP', 0.93, 'ai/model release context');
+    }
   }
 
   const APPS = glossaryAppsLexicon();

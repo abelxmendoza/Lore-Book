@@ -22,6 +22,7 @@ const serverTests = [
   'tests/services/ingestion/ingestionQueueSerialization.test.ts',
   'tests/services/chat/durabilityApiContract.test.ts',
   'tests/services/chat/chatDurability.integration.test.ts',
+  'tests/services/chat/storyIngestionSolHomonym.regression.test.ts',
   'tests/services/chat/providerPressurePolicy.test.ts',
   'tests/services/chat/faultInjection.productionGuard.test.ts',
   'tests/services/events/eventSourceIdentity.test.ts',
@@ -34,6 +35,7 @@ const serverTests = [
 const webTests = [
   'src/features/chat/hooks/__tests__/friendlyErrorMessage.durability.test.ts',
   'src/features/chat/hooks/__tests__/useChat.durability.test.tsx',
+  'src/features/chat/hooks/__tests__/useChat.solHomonymRecovery.test.tsx',
 ].join(' ');
 
 function run(cwd, cmd) {

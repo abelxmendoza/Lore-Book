@@ -28,11 +28,12 @@ import { ingestionQueue, type JobPriority } from './ingestion/ingestionQueue';
 import {
   buildDurabilityPayload,
   ChatDurabilityError,
-  incMetric,
   isChatDurabilityError,
+  incMetric,
   type ChatDurabilityPayload,
 } from './chat/chatDurability';
 import { classifyIngestionError } from './ingestion/ingestionJobStates';
+import { isOpenAiBudgetExceededError } from './openaiBudgetService';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
@@ -1345,6 +1346,7 @@ When updating relationship analytics or emotional signals from this thread, weig
           stage: 'response_generation',
           durability: durabilityFor('failed', classified.category),
           cause: err,
+          httpStatus: isOpenAiBudgetExceededError(err) ? 403 : undefined,
         });
       }
     };

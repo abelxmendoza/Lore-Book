@@ -226,6 +226,27 @@ export const useChatStream = () => {
             return null;
           }
         };
+        const extractDurability = (body: Record<string, unknown> | null): ChatStreamDurability | undefined => {
+          if (!body) return undefined;
+          if (body.durability && typeof body.durability === 'object') {
+            return body.durability as ChatStreamDurability;
+          }
+          const notice = body.notice as { code?: string } | undefined;
+          const noticeSaved =
+            typeof notice?.code === 'string' && notice.code.startsWith('message_saved');
+          if (body.userMessage || body.ingestion || body.assistantResponse || noticeSaved) {
+            const userMessageRecord =
+              typeof body.userMessage === 'object' && body.userMessage
+                ? (body.userMessage as ChatStreamDurability['userMessage'])
+                : (body.userMessageRecord as ChatStreamDurability['userMessage']);
+            return {
+              userMessage: userMessageRecord ?? (noticeSaved ? { persisted: true } : undefined),
+              assistantResponse: body.assistantResponse as ChatStreamDurability['assistantResponse'],
+              ingestion: body.ingestion as ChatStreamDurability['ingestion'],
+            };
+          }
+          return undefined;
+        };
         if (response.status === 503) {
           const body = parseBody();
           if (body && (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables))) {
@@ -233,6 +254,7 @@ export const useChatStream = () => {
           } else {
             userMessage = `Service unavailable (503): ${(body?.error as string) || (body?.message as string) || errorText}`;
           }
+          durability = extractDurability(body);
         } else if (response.status === 405) {
           const isProdNoApi = config.env.isProduction && !config.api.url;
           userMessage = isProdNoApi
