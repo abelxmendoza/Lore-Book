@@ -159,13 +159,15 @@ export default defineConfig({
               }
             }
           });
-          // When /api/health returns 2xx, backend is up again — clear flag so other /api routes are proxied
-          proxy.on('proxyRes', (proxyRes: { statusCode?: number }, req: { url?: string }) => {
-            const url = req?.url ?? '';
-            const isHealth = url === '/api/health' || url.startsWith('/api/health?');
-            const ok = proxyRes?.statusCode != null && proxyRes.statusCode >= 200 && proxyRes.statusCode < 300;
-            if (isHealth && ok) {
+          // Any successful proxied response means the backend is reachable again.
+          // (Previously only /api/health cleared the flag — so after the server
+          // restarted, concurrent /api calls stayed throttled to one-at-a-time
+          // with the rest short-circuited as 503 until the next health probe.)
+          proxy.on('proxyRes', (proxyRes: { statusCode?: number }) => {
+            const ok = proxyRes?.statusCode != null && proxyRes.statusCode >= 200 && proxyRes.statusCode < 500;
+            if (ok) {
               backendUnreachable.current = false;
+              apiProbeInFlight = false;
             }
           });
         },
