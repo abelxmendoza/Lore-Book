@@ -12,6 +12,7 @@ export type NarrativeAnchorType =
   | 'family_period'
   | 'project_arc'
   | 'travel_period'
+  | 'pivotal_event'
   | 'recurring_activity';
 
 export type AnchorMemberKind = 'entity' | 'event' | 'group' | 'place' | 'activity';
@@ -100,6 +101,9 @@ export type AnchorBuildRelationship = {
   targetId: string;
   type: string;
   strength?: number;
+  /** Evidence that directly names both endpoints (or one endpoint plus the narrator). */
+  evidence?: AnchorEvidence[];
+  directEvidence?: boolean;
 };
 
 export type AnchorBuildOrganization = {
@@ -114,6 +118,10 @@ export type AnchorBuildEvent = {
   title: string;
   entityIds: string[];
   startDate?: string;
+  summary?: string;
+  significanceScore?: number;
+  significanceLevel?: string;
+  evidence?: AnchorEvidence[];
 };
 
 export type AnchorBuildRecurringPattern = {
@@ -157,5 +165,6 @@ export const NARRATIVE_ANCHOR_TYPES: NarrativeAnchorType[] = [
   'family_period',
   'project_arc',
   'travel_period',
+  'pivotal_event',
   'recurring_activity',
 ];

@@ -882,11 +882,11 @@
   min-height: 2.625rem !important;
   height: 2.625rem;
   /* Keep conversation visible; keyboard + chrome already consume most of the viewport. */
-  max-height: min(28dvh, 9rem);
+  max-height: min(28dvh, 9rem, calc(var(--composer-visual-height, 100dvh) - 9rem));
 }
 
 .journal-composer-shell--mobile.journal-composer-shell--focused .journal-composer-field:not(.journal-composer-field--embedded) {
-  max-height: min(32dvh, 10.5rem);
+  max-height: min(32dvh, 10.5rem, calc(var(--composer-visual-height, 100dvh) - 9rem));
 }
 
 /* Keyboard-open: keep field + send; shrink chrome so conversation stays visible. */
@@ -896,6 +896,26 @@
 
 .journal-composer-root--keyboard .journal-composer-meta {
   display: none;
+}
+
+/* Keep the action row inside the actually visible mobile viewport. Long
+   drafts scroll in the field; they never grow the composer past Send. */
+.journal-composer-shell--mobile {
+  max-height: calc(var(--composer-visual-height, 100dvh) - 1rem);
+  overflow: hidden;
+}
+
+.journal-composer-shell--mobile .journal-composer-input-wrap,
+.journal-composer-shell--mobile .journal-composer-highlight-host {
+  min-height: 0;
+}
+
+.journal-composer-shell--mobile .journal-composer-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgb(8 6 14 / 0), rgb(8 6 14 / 0.96) 32%);
 }
 
 .journal-composer-meta {

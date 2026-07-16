@@ -57,6 +57,9 @@ import { metaControlService } from '../services/metaControlService';
 import { narrativeContinuityService } from '../services/narrativeContinuityService';
 import { omegaChatService } from '../services/omegaChatService';
 import { selfAwarenessService } from '../services/selfAwarenessService';
+import { evaluateLifeLogEligibility, isPublishableLifeLogTitle } from '../services/events/lifeLogEligibilityPolicy';
+import { maintainLifeLogForUser } from '../services/events/lifeLogMaintenanceService';
+import { scheduleLifeLogCoverageRecovery } from '../services/events/lifeLogCoverageRecoveryService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { asyncHandler } from '../utils/asyncHandler';
 
@@ -1435,6 +1438,13 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
 
+    // Opening Life Log also advances bounded legacy repair, so users who do
+    // not send another chat still converge without developer intervention.
+    void maintainLifeLogForUser(userId).catch(error => {
+      logger.warn({ error, userId }, 'Life Log maintenance failed while loading events');
+    });
+    scheduleLifeLogCoverageRecovery(userId);
+
     // Get all events, then filter by overrides
     const { data: events, error } = await supabaseAdmin
       .from('resolved_events')
@@ -1451,8 +1461,19 @@ router.get(
     }
 
     // Filter out archived and not-important events
-    const filteredEvents = [];
+    const filteredEvents: any[] = [];
     for (const event of events || []) {
+      const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+      const storedLifeLog = (metadata.life_log ?? {}) as Record<string, unknown>;
+      const eligibility = evaluateLifeLogEligibility({
+        text: [event.summary, event.title].filter(Boolean).join(' '),
+        title: event.title,
+        type: event.type,
+        metadata,
+      });
+      if (storedLifeLog.publication_status === 'quarantined' || !eligibility.eligible || !isPublishableLifeLogTitle(event.title)) {
+        continue;
+      }
       const isArchived = await metaControlService.hasOverride(
         userId,
         event.id,
@@ -1529,6 +1550,43 @@ router.get(
   })
 );
 
+/** Dry-run classification for safe legacy cleanup; never mutates user data. */
+router.get(
+  '/events/eligibility-audit',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { data: events, error } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, title, summary, type, start_time, source_message_id, source_fingerprint, metadata, confidence')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const items = (events ?? []).map(event => {
+      const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+      const decision = evaluateLifeLogEligibility({
+        text: [event.summary, event.title].filter(Boolean).join(' '),
+        title: event.title,
+        type: event.type,
+        metadata,
+      });
+      const titleValid = isPublishableLifeLogTitle(event.title);
+      return {
+        eventId: event.id,
+        currentTitle: event.title,
+        action: decision.eligible && titleValid ? 'keep' : decision.reason === 'rejected_audit_record' ? 'audit_only' : 'quarantine',
+        reason: titleValid ? decision.reason : 'rejected_failed_extraction',
+        confidence: decision.confidence,
+        sourceIds: [event.source_message_id, ...(((metadata.assembled_from_units as string[] | undefined) ?? []))].filter(Boolean),
+        sourceFingerprint: event.source_fingerprint,
+        occurredAt: event.start_time,
+      };
+    });
+    res.json({ success: true, dryRun: true, items });
+  }),
+);
+
 /**
  * GET /api/conversation/events/:id
  * Get a specific event with source messages, linked decisions, and insights
@@ -1549,6 +1607,16 @@ router.get(
       .single();
 
     if (eventError || !event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const eventMetadata = (event.metadata ?? {}) as Record<string, unknown>;
+    const eventEligibility = evaluateLifeLogEligibility({
+      text: [event.summary, event.title].filter(Boolean).join(' '),
+      title: event.title,
+      type: event.type,
+      metadata: eventMetadata,
+    });
+    if (!eventEligibility.eligible || !isPublishableLifeLogTitle(event.title)) {
       return res.status(404).json({ error: 'Event not found' });
     }
 

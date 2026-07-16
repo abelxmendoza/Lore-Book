@@ -173,13 +173,18 @@ class BiographyFoundationService {
     // ── Load all journal entries ─────────────────────────────────────────────
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('id, content, mood, tags, emotional_intensity')
+      .select('id, content, mood, tags, emotional_intensity, date')
       .eq('user_id', userId)
       .order('date', { ascending: true });
 
     const allEntries = entries ?? [];
     const allContent = allEntries.map(e => e.content).join(' ').toLowerCase();
-    const allTags = new Set(allEntries.flatMap(e => e.tags ?? []));
+    const recentCutoff = Date.now() - 90 * 86_400_000;
+    const recentEntries = allEntries.filter(e => e.date && new Date(e.date).getTime() >= recentCutoff);
+    const recentContent = (recentEntries.length ? recentEntries : allEntries)
+      .map(e => e.content)
+      .join(' ')
+      .toLowerCase();
 
     // ── Load characters. Subject invariant: the protagonist is the canonical
     // self entity ONLY — never the most-mentioned character (that heuristic
@@ -208,15 +213,16 @@ class BiographyFoundationService {
     const topLocation = (places ?? [])[0]?.name ?? null;
 
     // ── Identity fact extraction (rule-based from content) ───────────────────
+    // Prefer recent journals so old status (e.g. unemployment) does not stick forever.
     let education: string | null = null;
     let employment: string | null = null;
 
     if (/bachelor|cs degree|computer science|graduated/i.test(allContent)) {
       education = 'Computer Science bachelor';
     }
-    if (/unemployed/i.test(allContent)) {
+    if (/\bunemployed\b|job search|looking for work/i.test(recentContent)) {
       employment = 'unemployed';
-    } else if (/employed|working at|started at|new job/i.test(allContent)) {
+    } else if (/\bemployed\b|working at|started at|new job|joined |hired/i.test(recentContent)) {
       employment = 'employed';
     }
 
@@ -279,11 +285,39 @@ class BiographyFoundationService {
       ? livingSituationEntry.content.slice(0, 200)
       : null;
 
-    // ── Upcoming events ──────────────────────────────────────────────────────
+    // ── Current focus (live structured sources — never hardcoded company names)
+    // Active quests and future-dated timeline events stay current as the user moves on.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const [{ data: activeQuests }, { data: futureEvents }] = await Promise.all([
+      supabaseAdmin
+        .from('quests')
+        .select('title, updated_at')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false })
+        .limit(5),
+      supabaseAdmin
+        .from('character_timeline_events')
+        .select('event_title, event_date')
+        .eq('user_id', userId)
+        .gte('event_date', todayIso)
+        .order('event_date', { ascending: true })
+        .limit(5),
+    ]);
+
     const upcomingEvents: string[] = [];
-    if (/interview|epirus/i.test(allContent)) {
-      upcomingEvents.push('Job interview with Epirus (position TBD)');
-    }
+    const seenFocus = new Set<string>();
+    const pushFocus = (label: string | null | undefined) => {
+      const trimmed = label?.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (seenFocus.has(key)) return;
+      seenFocus.add(key);
+      upcomingEvents.push(trimmed);
+    };
+
+    for (const quest of activeQuests ?? []) pushFocus(quest.title);
+    for (const event of futureEvents ?? []) pushFocus(event.event_title);
 
     return {
       identity: {
@@ -346,27 +380,34 @@ class BiographyFoundationService {
   async extractThemes(userId: string): Promise<BiographyTheme[]> {
     const { data: entries } = await supabaseAdmin
       .from('journal_entries')
-      .select('id, tags, mood, content')
+      .select('id, tags, mood, content, date')
       .eq('user_id', userId);
 
-    // Count tag frequency
-    const tagFreq = new Map<string, string[]>(); // tag → entry IDs
+    const recentCutoff = Date.now() - 90 * 86_400_000;
+
+    // Count tag frequency with recency weight so old chapters don't dominate forever
+    const tagFreq = new Map<string, { ids: string[]; weight: number }>();
     for (const entry of entries ?? []) {
+      const isRecent = entry.date ? new Date(entry.date).getTime() >= recentCutoff : false;
+      const weight = isRecent ? 3 : 1;
       for (const tag of entry.tags ?? []) {
         const lower = tag.toLowerCase();
         if (['conversation', 'chat', 'memory'].includes(lower)) continue; // skip meta-tags
-        if (!tagFreq.has(lower)) tagFreq.set(lower, []);
-        tagFreq.get(lower)!.push(entry.id);
+        const bucket = tagFreq.get(lower) ?? { ids: [], weight: 0 };
+        bucket.ids.push(entry.id);
+        bucket.weight += weight;
+        tagFreq.set(lower, bucket);
       }
     }
 
-    // Group tags into themes
+    // Group tags into themes — generic vocabulary, not one-off personal keywords
     const THEME_MAP: [string, string[]][] = [
-      ['Career rebuilding',    ['unemployed', 'interview', 'career', 'setbacks', 'rejections']],
-      ['Romantic heartbreak',  ['heartbreak', 'romance', 'no contact', 'romantic', 'relationships', 'self-respect']],
-      ['Family & home',        ['family', 'living situation', 'abuela', 'abuelas house']],
-      ['Entrepreneurship',     ['app development', 'lorebook', 'technology']],
-      ['Financial awareness',  ['spending', 'costco', 'finances']],
+      ['Career & work',        ['unemployed', 'interview', 'career', 'setbacks', 'rejections', 'job', 'work']],
+      ['Relationships',        ['heartbreak', 'romance', 'romantic', 'relationships', 'friendship', 'dating']],
+      ['Family & home',        ['family', 'living situation', 'home', 'household']],
+      ['Building & creating',  ['app development', 'product', 'technology', 'building', 'creative']],
+      ['Money & stability',    ['spending', 'finances', 'budget', 'bills']],
+      ['Health & wellbeing',   ['health', 'fitness', 'mental health', 'self-care']],
     ];
 
     const themes: BiographyTheme[] = [];
@@ -374,10 +415,10 @@ class BiographyFoundationService {
       const evidence: string[] = [];
       let freq = 0;
       for (const tag of relatedTags) {
-        const ids = tagFreq.get(tag) ?? [];
-        if (ids.length > 0) {
+        const bucket = tagFreq.get(tag);
+        if (bucket && bucket.ids.length > 0) {
           evidence.push(tag);
-          freq += ids.length;
+          freq += bucket.weight;
         }
       }
       if (freq > 0) {
@@ -426,9 +467,11 @@ class BiographyFoundationService {
       const PERIOD_LABELS: Record<string, string> = {
         relationship_separation: 'Relationship ending',
         career_event:            'Career transition',
-        activity:                'Active family period',
+        activity:                'Everyday life',
         life_context:            'Personal reflection',
         living_situation:        'Home & family',
+        milestone:               'Milestone chapter',
+        health:                  'Health chapter',
       };
 
       periods.push({

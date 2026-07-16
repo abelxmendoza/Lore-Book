@@ -88,28 +88,134 @@ async function detectMentionedEntityName(
   return null;
 }
 
-async function fetchBiographyContext(userId: string): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from('narrative_accounts')
-    .select('narrative_text, metadata, recorded_at')
-    .eq('user_id', userId)
-    .eq('account_type', 'biography_snapshot')
-    .single();
+type BiographySnapshotRow = {
+  narrative_text?: string | null;
+  metadata?: Record<string, unknown> | null;
+  recorded_at?: string | null;
+};
 
-  if (!data) return '';
+type FullLifeChapter = {
+  title?: string | null;
+  text?: string | null;
+  timeSpan?: { start?: string | null; end?: string | null } | null;
+  themes?: string[] | null;
+};
 
-  const meta = data.metadata as Record<string, unknown>;
-  const themes: string[] = ((meta.themes as Array<{ theme: string }>) ?? []).map((t) => t.theme);
-  const period = ((meta.periods as Array<{ label: string }>) ?? [])[0]?.label ?? null;
+type FullLifeBiographyRow = {
+  title?: string | null;
+  subtitle?: string | null;
+  biography_data?: {
+    chapters?: FullLifeChapter[] | null;
+  } | null;
+  updated_at?: string | null;
+};
 
+function cleanBiographyText(value: string | null | undefined): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function formatIdentityFacts(snapshot: BiographySnapshotRow | null): string {
+  const metadata = snapshot?.metadata ?? {};
+  const facts = metadata.facts as Record<string, unknown> | undefined;
+  const identity = facts?.identity as Record<string, unknown> | undefined;
+  const lines: string[] = [];
+
+  const push = (label: string, value: unknown) => {
+    if (typeof value === 'string' && value.trim()) lines.push(`- ${label}: ${value.trim()}`);
+  };
+
+  push('Name', identity?.name);
+  push('Background', identity?.background);
+  push('Hometown', identity?.hometown);
+  push('Location', identity?.location);
+  push('Education', identity?.education);
+  push('Career', identity?.career ?? identity?.employment);
+  push('Languages', identity?.languages);
+
+  return lines.length ? ['## CORE IDENTITY', ...lines].join('\n') : '';
+}
+
+function formatLifeChapters(fullLife: FullLifeBiographyRow | null): string {
+  const chapters = fullLife?.biography_data?.chapters;
+  if (!Array.isArray(chapters) || chapters.length === 0) return '';
+
+  const ordered = [...chapters].sort((a, b) => {
+    const aTime = Date.parse(a.timeSpan?.start ?? '');
+    const bTime = Date.parse(b.timeSpan?.start ?? '');
+    if (!Number.isFinite(aTime)) return 1;
+    if (!Number.isFinite(bTime)) return -1;
+    return aTime - bTime;
+  });
+
+  const rendered = ordered
+    .map((chapter) => {
+      const text = cleanBiographyText(chapter.text);
+      if (!text) return '';
+      const title = cleanBiographyText(chapter.title) || 'Life chapter';
+      const start = chapter.timeSpan?.start?.slice(0, 10);
+      const end = chapter.timeSpan?.end?.slice(0, 10);
+      const dates = start ? ` (${start}${end && end !== start ? ` to ${end}` : ''})` : '';
+      return `### ${title}${dates}\n${text}`;
+    })
+    .filter(Boolean);
+
+  if (rendered.length === 0) return '';
   return [
-    '## BIOGRAPHY',
-    data.narrative_text,
-    themes.length ? `\n**Current themes:** ${themes.join(', ')}` : '',
-    period ? `**Current life period:** ${period}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+    '## LIFE STORY — CHRONOLOGICAL',
+    fullLife?.subtitle ? cleanBiographyText(fullLife.subtitle) : '',
+    ...rendered,
+  ].filter(Boolean).join('\n\n');
+}
+
+/**
+ * "Who am I?" is a longitudinal identity request, not a recent-memory query.
+ * Lead with stable identity, then the full chronological life story, and keep
+ * the rolling snapshot in a clearly subordinate current-context section.
+ */
+export function formatLongitudinalBiographyContext(
+  snapshot: BiographySnapshotRow | null,
+  fullLife: FullLifeBiographyRow | null,
+): string {
+  const identity = formatIdentityFacts(snapshot);
+  const lifeChapters = formatLifeChapters(fullLife);
+  const currentSnapshot = cleanBiographyText(snapshot?.narrative_text);
+  const meta = snapshot?.metadata ?? {};
+  const themes = ((meta.themes as Array<{ theme?: string }> | undefined) ?? [])
+    .map((theme) => cleanBiographyText(theme.theme))
+    .filter(Boolean);
+
+  const body = [
+    identity,
+    lifeChapters,
+    currentSnapshot ? `## CURRENT CHAPTER\n${currentSnapshot}` : '',
+    themes.length ? `**Current themes:** ${themes.join(', ')}` : '',
+  ].filter(Boolean);
+
+  return body.length ? ['## BIOGRAPHY', ...body].join('\n\n') : '';
+}
+
+async function fetchBiographyContext(userId: string): Promise<string> {
+  const [snapshotResult, fullLifeResult] = await Promise.all([
+    supabaseAdmin
+      .from('narrative_accounts')
+      .select('narrative_text, metadata, recorded_at')
+      .eq('user_id', userId)
+      .eq('account_type', 'biography_snapshot')
+      .maybeSingle(),
+    supabaseAdmin
+      .from('biographies')
+      .select('title, subtitle, biography_data, updated_at')
+      .eq('user_id', userId)
+      .eq('is_core_lorebook', true)
+      .eq('lorebook_name', 'My Full Life Story')
+      .order('lorebook_version', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const snapshot = snapshotResult.data as BiographySnapshotRow | null;
+  const fullLife = fullLifeResult.data as FullLifeBiographyRow | null;
+  return formatLongitudinalBiographyContext(snapshot, fullLife);
 }
 
 async function fetchEntityContext(
@@ -279,15 +385,8 @@ export async function routeRecallQuery(
   }
 
   if (BIOGRAPHY_RE.test(message)) {
-    const [bioBlock, roster] = await Promise.all([
-      fetchBiographyContext(userId),
-      fetchCharacterRoster(userId),
-    ]);
-    const relSummary =
-      roster.length > 0
-        ? `\n\n**People in your story (${roster.length}):** ${roster.map((r) => r.name).join(', ')}`
-        : '';
-    const block = (bioBlock || 'No biography snapshot yet.') + relSummary;
+    const bioBlock = await fetchBiographyContext(userId);
+    const block = bioBlock || 'No biography snapshot yet.';
     return {
       intent: 'biography',
       entityName: null,

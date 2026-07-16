@@ -128,7 +128,7 @@ describe('MemoryReviewQueueService', () => {
         confidence: 0.5, // Low confidence so it checks affectsIdentity
       }, 'user-123');
 
-      expect(mockLibCreate).toHaveBeenCalled();
+      expect(mockLibCreate).not.toHaveBeenCalled();
       expect(risk).toBe('HIGH');
     });
   });
@@ -212,7 +212,7 @@ describe('MemoryReviewQueueService', () => {
         'Source text'
       );
 
-      expect(result.auto_approved).toBe(true);
+      expect(result.auto_approved).toBe(false);
       expect(result.proposal).toBeDefined();
     });
   });
@@ -271,6 +271,61 @@ describe('MemoryReviewQueueService', () => {
 
       expect(result).toBeDefined();
       expect(result.decision).toBe('APPROVE');
+    });
+
+    it('supersedes the exact DJ claim without storing a contradictory negative claim', async () => {
+      const retraction = {
+        id: 'proposal-dj', user_id: 'user-123', entity_id: 'wrong-object-entity',
+        claim_text: 'Abel is not a DJ.', confidence: 0.95, temporal_context: {},
+        risk_level: 'HIGH' as const, status: 'PENDING' as const,
+        created_at: new Date().toISOString(), affected_claim_ids: ['claim-dj'],
+        metadata: {
+          proposal_kind: 'retraction',
+          normalized_summary: 'Abel is not a DJ.',
+          proposal_integrity: { valid: true },
+        },
+      };
+      const decision = { id: 'decision-dj', proposal_id: retraction.id, decision: 'APPROVE' };
+      vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(retraction);
+      const commit = vi.spyOn(memoryReviewQueueService as any, 'commitClaim').mockResolvedValue(undefined);
+      const ingest = vi.spyOn(memoryReviewQueueService as any, 'comprehensiveIngestion').mockResolvedValue(undefined);
+      vi.spyOn(memoryReviewQueueService as any, 'finalizeProposal').mockResolvedValue(undefined);
+
+      const inClaims = vi.fn().mockResolvedValue({ error: null });
+      const claimEq = vi.fn().mockReturnValue({ in: inClaims });
+      const updateClaims = vi.fn().mockReturnValue({ eq: claimEq });
+      const insertDecision = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: decision, error: null }),
+        }),
+      });
+      vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce({ update: updateClaims } as any)
+        .mockReturnValueOnce({ insert: insertDecision } as any);
+
+      await memoryReviewQueueService.approveProposal('user-123', retraction.id);
+
+      expect(supabaseAdmin.from).toHaveBeenNthCalledWith(1, 'omega_claims');
+      expect(updateClaims).toHaveBeenCalledWith({
+        is_active: false,
+        metadata: { superseded_by_proposal_id: retraction.id },
+      });
+      expect(inClaims).toHaveBeenCalledWith('id', ['claim-dj']);
+      expect(commit).not.toHaveBeenCalled();
+      expect(ingest).not.toHaveBeenCalled();
+      expect(supabaseAdmin.from).not.toHaveBeenCalledWith('omega_evidence');
+    });
+
+    it('rejects a correction with no exact affected claim', async () => {
+      vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue({
+        id: 'proposal-orphan', user_id: 'user-123', entity_id: 'entity-1',
+        claim_text: 'Abel is not a DJ.', confidence: 0.9, risk_level: 'HIGH',
+        status: 'PENDING', created_at: new Date().toISOString(), affected_claim_ids: [],
+        metadata: { proposal_kind: 'retraction', proposal_integrity: { valid: true } },
+      });
+      await expect(memoryReviewQueueService.approveProposal('user-123', 'proposal-orphan'))
+        .rejects.toThrow('Correction has no specific conflicting claim to supersede');
+      expect(supabaseAdmin.from).not.toHaveBeenCalled();
     });
   });
 
@@ -340,6 +395,28 @@ describe('MemoryReviewQueueService', () => {
       expect(result.decision).toBe('REJECT');
       expect(result.decided_by).toBe('USER');
     });
+
+    it('leaves existing truth and evidence untouched when a correction is rejected', async () => {
+      const correction = {
+        id: 'proposal-dj-reject', user_id: 'user-123', entity_id: 'entity-1',
+        claim_text: 'Abel is not a DJ.', confidence: 0.9, risk_level: 'HIGH' as const,
+        status: 'PENDING' as const, created_at: new Date().toISOString(),
+        affected_claim_ids: ['claim-dj'], metadata: { proposal_kind: 'retraction' },
+      };
+      vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(correction);
+      vi.spyOn(memoryReviewQueueService as any, 'finalizeProposal').mockResolvedValue(undefined);
+      const insertDecision = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: { decision: 'REJECT' }, error: null }),
+        }),
+      });
+      vi.mocked(supabaseAdmin.from).mockReturnValue({ insert: insertDecision } as any);
+
+      await memoryReviewQueueService.rejectProposal('user-123', correction.id, 'Still true');
+
+      expect(supabaseAdmin.from).not.toHaveBeenCalledWith('omega_claims');
+      expect(supabaseAdmin.from).not.toHaveBeenCalledWith('omega_evidence');
+    });
   });
 
   describe('getPendingMRQ', () => {
@@ -347,17 +424,32 @@ describe('MemoryReviewQueueService', () => {
       const mockItems = [
         {
           id: 'proposal-1',
+          user_id: 'user-123',
           entity_id: 'entity-1',
-          claim_text: 'Test claim',
+          claim_text: 'Catch One is a club',
+          confidence: 0.8,
+          affected_claim_ids: [],
           risk_level: 'HIGH',
+          status: 'PENDING',
+          metadata: {},
           created_at: new Date().toISOString(),
         }
       ];
 
-      vi.mocked(supabaseAdmin.rpc).mockResolvedValue({
-        data: mockItems,
-        error: null
-      } as any);
+      const limit = vi.fn().mockResolvedValue({ data: mockItems, error: null });
+      const order = vi.fn().mockReturnValue({ limit });
+      const statusEq = vi.fn().mockReturnValue({ order });
+      const userEq = vi.fn().mockReturnValue({ eq: statusEq });
+      const select = vi.fn().mockReturnValue({ eq: userEq });
+      vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce({ select } as any)
+        .mockReturnValueOnce({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [{ id: 'entity-1', primary_name: 'Test Entity' }], error: null }),
+            }),
+          }),
+        } as any);
 
       const result = await memoryReviewQueueService.getPendingMRQ('user-123');
 
@@ -366,4 +458,3 @@ describe('MemoryReviewQueueService', () => {
     });
   });
 });
-

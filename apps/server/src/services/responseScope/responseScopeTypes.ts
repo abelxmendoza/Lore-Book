@@ -51,9 +51,26 @@ export type EntityRef = {
   name: string;
 };
 
+/** Where the plan's intent came from — its own message, or the active context. */
+export type ScopeSource = 'message' | 'inherited_correction' | 'inherited_follow_up';
+
+/**
+ * What the conversation is currently "about": the last explicit intent and the
+ * entities in play since it was established. Derived from history every turn
+ * (stateless), so context-free follow-ups stay anchored to the live topic.
+ */
+export type ActiveConversationContext = {
+  intent: ScopeIntent;
+  /** Entities named since the anchor question, including the answer's names. */
+  entities: EntityRef[];
+  /** General user turns since the anchor — staleness measure. */
+  userTurnsSinceAnchor: number;
+};
+
 export type ResponseScopePlan = {
   intent: ScopeIntent;
   responseMode: ResponseMode;
+  scopeSource: ScopeSource;
 
   allowedDomains: LoreBookDomain[];
   blockedDomains: LoreBookDomain[];
@@ -95,7 +112,7 @@ export type ResponseScopeAuditRecord = {
   at: string;
   userId: string;
   message: string;
-  plan: Pick<ResponseScopePlan, 'intent' | 'responseMode' | 'allowedDomains' | 'blockedDomains'>;
+  plan: Pick<ResponseScopePlan, 'intent' | 'responseMode' | 'scopeSource' | 'allowedDomains' | 'blockedDomains'>;
   acceptedCount: number;
   rejectedCount: number;
   overflowViolations: string[];

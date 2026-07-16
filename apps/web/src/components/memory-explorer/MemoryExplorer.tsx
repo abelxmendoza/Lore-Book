@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Sparkles, RefreshCw, ChevronLeft, ChevronRight, BookOpen, LayoutGrid, Calendar, Tag, Heart, FileText, Clock, CheckCircle2, XCircle, AlertTriangle, Info, ChevronDown, ChevronUp, ClipboardCheck } from 'lucide-react';
+import { Search, Sparkles, RefreshCw, ChevronLeft, ChevronRight, BookOpen, LayoutGrid, Tag, Heart, FileText, Clock, ClipboardCheck } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from './MemoryCard';
 import { MemoryDetailModal } from './MemoryDetailModal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Card, CardContent } from '../ui/card';
+import { Card } from '../ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard, type MemorySearchResult } from '../../types/memory';
@@ -13,169 +13,11 @@ import type { HQIResult } from '../hqi/HQIResultCard';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { mockDataService } from '../../services/mockDataService';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { useMemoryReviewQueue, type MemoryProposal } from '../../hooks/useMemoryReviewQueue';
 import { MOCK_MEMORY_PROPOSALS } from '../../mocks/memoryProposals';
+import { MemoryReviewQueuePanel } from '../discovery/MemoryReviewQueuePanel';
 
 const DEBOUNCE_DELAY = 300;
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
-
-// ProposalCard component for Memory Review Queue
-const RiskBadge = ({ riskLevel }: { riskLevel: string }) => {
-  const colors = {
-    LOW: 'bg-green-500/20 text-green-400 border-green-500/50',
-    MEDIUM: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-    HIGH: 'bg-red-500/20 text-red-400 border-red-500/50',
-  };
-
-  return (
-    <span className={`px-2 py-1 rounded text-xs font-medium border ${colors[riskLevel as keyof typeof colors] || colors.MEDIUM}`}>
-      {riskLevel} Risk
-    </span>
-  );
-};
-
-const ConfidenceBar = ({ confidence }: { confidence: number }) => {
-  const percentage = Math.round(confidence * 100);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-primary transition-all"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-white/60 w-12 text-right">{percentage}%</span>
-    </div>
-  );
-};
-
-interface ProposalCardProps {
-  proposal: MemoryProposal;
-  onAction: () => void;
-  onApprove: (id: string) => Promise<void>;
-  onReject: (id: string, reason?: string) => Promise<void>;
-}
-
-const ProposalCard = ({ proposal, onAction, onApprove, onReject }: ProposalCardProps) => {
-  const [expanded, setExpanded] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  const handleApprove = async () => {
-    setActionLoading('approve');
-    try {
-      await onApprove(proposal.id);
-      onAction();
-    } catch (error) {
-      console.error('Failed to approve:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleReject = async () => {
-    const reason = prompt('Why are you rejecting this? (This helps the system learn your preferences)');
-    setActionLoading('reject');
-    try {
-      await onReject(proposal.id, reason || undefined);
-      onAction();
-    } catch (error) {
-      console.error('Failed to reject:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  return (
-    <div className="border border-border/60 rounded-lg bg-black/40 p-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <RiskBadge riskLevel={proposal.risk_level} />
-            <ConfidenceBar confidence={proposal.confidence} />
-          </div>
-          <p className="text-white text-sm leading-relaxed">
-            {proposal.claim_text}
-          </p>
-        </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded hover:bg-white/10 transition-colors"
-          aria-label={expanded ? 'Collapse' : 'Expand'}
-        >
-          {expanded ? (
-            <ChevronUp className="h-5 w-5 text-white/70" />
-          ) : (
-            <ChevronDown className="h-5 w-5 text-white/70" />
-          )}
-        </button>
-      </div>
-
-      {/* Expanded Details */}
-      {expanded && (
-        <div className="space-y-3 pt-3 border-t border-white/10">
-          {proposal.reasoning && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Info className="h-4 w-4 text-white/60" />
-                <span className="text-xs font-medium text-white/60">Why this was suggested</span>
-              </div>
-              <p className="text-sm text-white/80 ml-6">{proposal.reasoning}</p>
-            </div>
-          )}
-
-          {proposal.source_excerpt && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Info className="h-4 w-4 text-white/60" />
-                <span className="text-xs font-medium text-white/60">Source excerpt</span>
-              </div>
-              <p className="text-sm text-white/80 ml-6 italic">"{proposal.source_excerpt}"</p>
-            </div>
-          )}
-
-          {proposal.affected_claim_ids && proposal.affected_claim_ids.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 text-yellow-400" />
-                <span className="text-xs font-medium text-white/60">
-                  Affects {proposal.affected_claim_ids.length} existing {proposal.affected_claim_ids.length === 1 ? 'claim' : 'claims'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-2 border-t border-white/10">
-        <button
-          onClick={handleApprove}
-          disabled={actionLoading !== null}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/50 rounded-lg hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          {actionLoading === 'approve' ? 'Approving...' : 'Approve'}
-        </button>
-        <button
-          onClick={handleReject}
-          disabled={actionLoading !== null}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-        >
-          <XCircle className="h-4 w-4" />
-          {actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}
-        </button>
-      </div>
-      
-      {/* Learning Indicator */}
-      <div className="pt-2 border-t border-white/5">
-        <p className="text-xs text-white/40 italic">
-          💡 Your decisions help the system learn your preferences and improve future suggestions
-        </p>
-      </div>
-    </div>
-  );
-};
 
 // Comprehensive mock memory data showcasing all app capabilities
 // Export for use in mock data service
@@ -638,7 +480,6 @@ export const MemoryExplorer = () => {
   const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
 
   // Memory Review Queue hook
-  const { proposals, loading: proposalsLoading, error: proposalsError, refetch: refetchProposals, approveProposal, rejectProposal } = useMemoryReviewQueue();
 
   // Register mock data with service on mount
   useEffect(() => {
@@ -1085,146 +926,13 @@ export const MemoryExplorer = () => {
                 </TabsTrigger>
                 <TabsTrigger value="pending-review" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
                   <ClipboardCheck className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Pending Review</span><span className="sm:hidden">Review</span>
-                  {proposals.length > 0 && (
-                    <span className="ml-1 px-1 sm:px-1.5 py-0.5 text-[10px] sm:text-xs bg-red-500/20 text-red-400 rounded-full border border-red-500/50">
-                      {proposals.length}
-                    </span>
-                  )}
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value={selectedTab} className="mt-4">
                 {selectedTab === 'pending-review' ? (
                   // Memory Review Queue Tab
-                  <div className="space-y-6">
-                    {/* Header Info */}
-                    <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-                      <div className="flex items-start gap-3">
-                        <Info className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                        <div>
-                          <h3 className="text-sm font-semibold text-white mb-1">Memory Review Queue</h3>
-                          <p className="text-sm text-white/70">
-                            These are memory proposals that need your review. Low-risk items are auto-approved, 
-                            but medium and high-risk items require your decision. Your choices help the system learn your preferences and improve over time.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {proposalsLoading ? (
-                      <div className="text-center py-12">
-                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        <p className="mt-4 text-white/60">Loading memory proposals...</p>
-                      </div>
-                    ) : proposalsError ? (
-                      <div className="text-center py-12">
-                        <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-400" />
-                        <p className="text-red-400 mb-2">Failed to load proposals</p>
-                        <p className="text-sm text-white/60 mb-4">{proposalsError}</p>
-                        <button
-                          onClick={() => void refetchProposals()}
-                          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    ) : proposals.length === 0 ? (
-                      <div className="text-center py-12 border border-border/60 rounded-lg bg-black/20">
-                        <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-400" />
-                        <p className="text-white/60 mb-2">No pending proposals</p>
-                        <p className="text-sm text-white/40">
-                          All memory proposals have been reviewed, or no new proposals have been generated yet.
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                            <div className="text-2xl font-bold text-red-400">
-                              {proposals.filter(p => p.risk_level === 'HIGH').length}
-                            </div>
-                            <div className="text-xs text-white/60">High Risk</div>
-                          </div>
-                          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-                            <div className="text-2xl font-bold text-yellow-400">
-                              {proposals.filter(p => p.risk_level === 'MEDIUM').length}
-                            </div>
-                            <div className="text-xs text-white/60">Medium Risk</div>
-                          </div>
-                          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-                            <div className="text-2xl font-bold text-green-400">
-                              {proposals.filter(p => p.risk_level === 'LOW').length}
-                            </div>
-                            <div className="text-xs text-white/60">Low Risk</div>
-                          </div>
-                        </div>
-
-                        {/* Proposals List - Ordered by Risk */}
-                        <div className="space-y-4">
-                          {proposals.filter(p => p.risk_level === 'HIGH').length > 0 && (
-                            <div>
-                              <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5 text-red-400" />
-                                High Risk ({proposals.filter(p => p.risk_level === 'HIGH').length})
-                              </h3>
-                              <div className="space-y-3">
-                                {proposals.filter(p => p.risk_level === 'HIGH').map(proposal => (
-                                  <ProposalCard 
-                                    key={proposal.id} 
-                                    proposal={proposal} 
-                                    onAction={refetchProposals}
-                                    onApprove={approveProposal}
-                                    onReject={rejectProposal}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {proposals.filter(p => p.risk_level === 'MEDIUM').length > 0 && (
-                            <div>
-                              <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                                Medium Risk ({proposals.filter(p => p.risk_level === 'MEDIUM').length})
-                              </h3>
-                              <div className="space-y-3">
-                                {proposals.filter(p => p.risk_level === 'MEDIUM').map(proposal => (
-                                  <ProposalCard 
-                                    key={proposal.id} 
-                                    proposal={proposal} 
-                                    onAction={refetchProposals}
-                                    onApprove={approveProposal}
-                                    onReject={rejectProposal}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {proposals.filter(p => p.risk_level === 'LOW').length > 0 && (
-                            <div>
-                              <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                <Info className="h-5 w-5 text-green-400" />
-                                Low Risk ({proposals.filter(p => p.risk_level === 'LOW').length})
-                              </h3>
-                              <div className="space-y-3">
-                                {proposals.filter(p => p.risk_level === 'LOW').map(proposal => (
-                                  <ProposalCard 
-                                    key={proposal.id} 
-                                    proposal={proposal} 
-                                    onAction={refetchProposals}
-                                    onApprove={approveProposal}
-                                    onReject={rejectProposal}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <MemoryReviewQueuePanel />
                 ) : (
                   // Regular Memory Display Tabs
                   <>
@@ -1412,4 +1120,3 @@ export const MemoryExplorer = () => {
     </div>
   );
 };
-

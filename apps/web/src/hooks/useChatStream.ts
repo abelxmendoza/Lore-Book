@@ -116,6 +116,12 @@ export const useChatStream = () => {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
+    // Server caps history entries at 4000 chars — truncate here so one long past
+    // reply doesn't 400 every subsequent send in the thread.
+    conversationHistory = conversationHistory.map((m) =>
+      m.content.length > 4000 ? { ...m, content: m.content.slice(0, 4000) } : m,
+    );
+
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;

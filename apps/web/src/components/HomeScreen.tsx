@@ -49,6 +49,7 @@ const HOME_CACHE_PATTERNS = [
   /\/api\/books\/skills(?:\?|:|$)/,
   /\/api\/skills(?:\?|:|$)/,
   /\/api\/quests\/board(?:\?|:|$)/,
+  /\/api\/biography\/living(?:\?|:|$)/,
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -204,13 +205,13 @@ const CharacterRow = ({ char, onClick }: { char: Character; onClick: () => void 
     <button
       type="button"
       onClick={onClick}
-      className="group w-full flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 hover:border-pink-500/30 hover:bg-pink-500/5 px-3 py-2.5 text-left transition-all duration-200"
+      className="group w-full flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 hover:border-rose-500/30 hover:bg-rose-500/5 px-3 py-2.5 text-left transition-all duration-200"
     >
-      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500/30 to-purple-500/30 border border-white/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-white/70">
+      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-rose-500/30 to-violet-500/30 border border-white/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-white/70">
         {char.name.charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate group-hover:text-pink-200 transition-colors">
+        <p className="text-sm font-medium text-white truncate group-hover:text-rose-100 transition-colors">
           {char.name}
         </p>
         {char.role && (
@@ -219,11 +220,11 @@ const CharacterRow = ({ char, onClick }: { char: Character; onClick: () => void 
       </div>
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {score > 0 && (
-          <span className="text-[10px] text-pink-400/70">{Math.round(score)}%</span>
+          <span className="text-[10px] text-rose-300/70">{Math.round(score)}%</span>
         )}
         {trend === 'deepening' && <TrendingUp className="h-3 w-3 text-green-400" />}
         {trend === 'weakening' && <TrendingUp className="h-3 w-3 text-red-400 rotate-180" />}
-        <ChevronRight className="h-3.5 w-3.5 text-white/20 group-hover:text-pink-400 transition-colors" />
+        <ChevronRight className="h-3.5 w-3.5 text-white/20 group-hover:text-rose-400 transition-colors" />
       </div>
     </button>
   );
@@ -387,29 +388,38 @@ export const HomeScreen = () => {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10 space-y-6">
 
         {/* ── 1. Compact greeting header ──────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-white truncate">
-              {getGreeting()},{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-                {displayName}
-              </span>
-            </h1>
-            <p className="text-sm text-white/35 mt-0.5">
-              {new Date().toLocaleDateString(undefined, {
-                weekday: 'long', month: 'long', day: 'numeric',
-              })}
-            </p>
+        <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-gradient-to-br from-white/[0.04] via-black/20 to-cyan-500/[0.06] px-4 py-5 sm:px-5">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-70"
+            style={{
+              background:
+                'radial-gradient(ellipse 70% 80% at 0% 50%, rgba(34,211,238,0.08), transparent 55%)',
+            }}
+          />
+          <div className="relative flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-white truncate tracking-tight">
+                {getGreeting()},{' '}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 to-violet-200">
+                  {displayName}
+                </span>
+              </h1>
+              <p className="text-sm text-white/40 mt-1">
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: 'long', month: 'long', day: 'numeric',
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/chat')}
+              aria-label="New chat"
+              className="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:border-cyan-400/50 hover:bg-cyan-500/15 px-3 py-2 sm:px-4 text-sm font-medium text-cyan-200 transition-all touch-manipulation"
+            >
+              <MessageSquareText className="h-4 w-4" />
+              <span className="hidden sm:inline">New chat</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/chat')}
-            aria-label="New chat"
-            className="flex shrink-0 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:border-purple-500/60 hover:bg-purple-500/20 px-3 py-2 sm:px-4 text-sm font-medium text-purple-300 transition-all touch-manipulation"
-          >
-            <MessageSquareText className="h-4 w-4" />
-            <span className="hidden sm:inline">New chat</span>
-          </button>
         </div>
 
         {/* ── 2. What Changed Since Last Time ─────────────────────────────── */}
@@ -430,12 +440,12 @@ export const HomeScreen = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           {/* ── Who Matters Most ──────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-white/8 bg-black/30 p-4">
+          <div className="rounded-2xl border border-white/8 bg-gradient-to-b from-white/[0.03] to-black/30 p-4">
             <SectionHeader
               icon={Users}
               label="Who matters most"
               route="/characters"
-              iconCls="text-pink-400"
+              iconCls="text-rose-400"
             />
             <div className="space-y-2">
               {hasChars ? (
@@ -453,7 +463,7 @@ export const HomeScreen = () => {
           </div>
 
           {/* ── Working Toward ────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-white/8 bg-black/30 p-4">
+          <div className="rounded-2xl border border-white/8 bg-gradient-to-b from-white/[0.03] to-black/30 p-4">
             <SectionHeader
               icon={Target}
               label="Working toward"
@@ -476,7 +486,7 @@ export const HomeScreen = () => {
           </div>
 
           {/* ── How You're Growing ────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-white/8 bg-black/30 p-4">
+          <div className="rounded-2xl border border-white/8 bg-gradient-to-b from-white/[0.03] to-black/30 p-4">
             <SectionHeader
               icon={Zap}
               label="How you're growing"
@@ -503,7 +513,7 @@ export const HomeScreen = () => {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1.5">
-              <BookOpen className="h-3.5 w-3.5 text-purple-400/70" />
+              <BookOpen className="h-3.5 w-3.5 text-cyan-400/70" />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
                 Recent conversations
               </span>
@@ -523,9 +533,9 @@ export const HomeScreen = () => {
                 key={thread.id}
                 type="button"
                 onClick={() => navigate(`/chat/${thread.id}`)}
-                className="group flex-1 rounded-xl border border-white/5 bg-black/20 hover:border-purple-500/30 hover:bg-purple-500/5 px-3 py-2.5 text-left transition-all duration-200"
+                className="group flex-1 rounded-xl border border-white/5 bg-black/20 hover:border-cyan-500/30 hover:bg-cyan-500/5 px-3 py-2.5 text-left transition-all duration-200"
               >
-                <p className="text-sm font-medium text-white truncate group-hover:text-purple-200 transition-colors">
+                <p className="text-sm font-medium text-white truncate group-hover:text-cyan-100 transition-colors">
                   {thread.title}
                 </p>
                 <div className="flex items-center gap-1 mt-1">
@@ -543,9 +553,9 @@ export const HomeScreen = () => {
             <button
               type="button"
               onClick={() => navigate('/chat')}
-              className="sm:w-40 rounded-xl border border-dashed border-purple-500/25 bg-purple-500/5 hover:border-purple-500/50 hover:bg-purple-500/10 px-3 py-2.5 text-center transition-all group"
+              className="sm:w-40 rounded-xl border border-dashed border-cyan-500/25 bg-cyan-500/5 hover:border-cyan-500/50 hover:bg-cyan-500/10 px-3 py-2.5 text-center transition-all group"
             >
-              <span className="text-sm text-purple-400/70 group-hover:text-purple-300 transition-colors flex items-center justify-center gap-1.5">
+              <span className="text-sm text-cyan-400/70 group-hover:text-cyan-300 transition-colors flex items-center justify-center gap-1.5">
                 <MessageSquareText className="h-3.5 w-3.5" />
                 New chat
               </span>

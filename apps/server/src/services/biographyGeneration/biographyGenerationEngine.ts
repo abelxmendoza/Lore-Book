@@ -1297,7 +1297,7 @@ Examples: "Forged in Backyard Fights", "Learning to Build Instead of Break", "Wh
         const years = Math.floor(durationDays / 365);
 
         // Generate void-aware narrative with retry and fallback
-        let text = await fallbackGenerator.callWithFallback(
+        const text = await fallbackGenerator.callWithFallback(
           async () => {
             const completion = await openai.chat.completions.create({
               model: config.defaultModel || 'gpt-5.4-mini',
@@ -1507,6 +1507,8 @@ ${introspection}
 7. **Chronological flow**: Events should flow naturally through time, but not feel like a list. Group related events together.
 8. **First person voice**: Write in first person ("I", "my", "me") as if the subject is telling their own story.
 9. **Biographical style**: This should read like a memoir or autobiography, not a journal entry or timeline.
+10. **Explain development when evidence supports it**: Connect earlier work, interests, disciplines, relationships, or setbacks to later choices when the raw events establish that connection. This is how the chapter explains why the person changed direction instead of merely cataloguing what happened.
+11. **Never invent causality**: Use "this led to" or psychological interpretation only when the supplied evidence supports it. Otherwise describe the recurring trajectory as an observation and attribute it to the record.
 
 **What to AVOID:**
 - Don't start every sentence with a date or timestamp

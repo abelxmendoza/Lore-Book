@@ -511,11 +511,26 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         if (bridged.useCore && bridged.productionDecision === 'skip') {
           continue;
         }
-        match = await this.createEntity(userId, candidate.name, candidate.type, [], {
-          bornConfirmed: candidate.bornConfirmed,
-        });
-        pool.push(match);
-        typeEntities.set(candidate.type, pool);
+        try {
+          match = await this.createEntity(userId, candidate.name, candidate.type, [], {
+            bornConfirmed: candidate.bornConfirmed,
+          });
+        } catch (createErr) {
+          const msg = createErr instanceof Error ? createErr.message : String(createErr);
+          if (msg.startsWith('ENTITY_CANDIDATE_REJECTED:')) {
+            logger.info(
+              { userId, name: candidate.name, type: candidate.type, msg },
+              'resolveEntities: skipped rejected entity candidate',
+            );
+            continue;
+          }
+          throw createErr;
+        }
+        // Retype may change pool key
+        const poolType = match.type as EntityType;
+        const retypedPool = typeEntities.get(poolType) ?? pool;
+        retypedPool.push(match);
+        typeEntities.set(poolType, retypedPool);
       }
 
       resolved.push(match);
@@ -629,6 +644,31 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
     aliases: string[] = [],
     options: { bornConfirmed?: boolean } = {}
   ): Promise<Entity> {
+    // Stage contract: reject / retype invalid PERSON (and other) candidates before insert.
+    const { validateEntityCandidateBeforePersist, recordPersisted } = await import(
+      './ingestion/stageContractGate'
+    );
+    const gated = validateEntityCandidateBeforePersist({
+      name,
+      type,
+      evidenceIds: ['createEntity'],
+      confidence: 0.7,
+    });
+    if (!gated.accepted) {
+      logger.info(
+        { userId, name, type, reason: gated.reason },
+        'createEntity: stage contract rejected entity candidate',
+      );
+      throw new Error(`ENTITY_CANDIDATE_REJECTED:${gated.reason}`);
+    }
+    if (gated.value.retyped) {
+      type = gated.value.type as EntityType;
+      logger.info(
+        { userId, name, retyped: gated.value.retyped },
+        'createEntity: retyped entity from PERSON pollution',
+      );
+    }
+
     // A new entity is born 'mentioned_only' (a suggestion-queue candidate that
     // chat recall ignores) unless the extracting mention carried positive PERSON
     // evidence — see expandEntityCandidates. Born-confirmed entities are
@@ -693,6 +733,7 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       throw error;
     }
 
+    recordPersisted('entity_candidate');
     return data;
   }
 

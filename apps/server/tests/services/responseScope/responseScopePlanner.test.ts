@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planResponseScope,
   detectScopeIntent,
+  inferPreviousScopeIntent,
   extractCorrectionNames,
 } from '../../../src/services/responseScope/responseScopePlanner';
 import { resolveResponseMode } from '../../../src/services/responseScope/responseModeResolver';
@@ -70,9 +71,37 @@ describe('correction parsing', () => {
     expect(names).toEqual(expect.arrayContaining(['Kavi', 'Joss', 'Wren']));
   });
 
+  it('preserves the final coordinated name in a correction clause', () => {
+    const names = extractCorrectionNames(
+      'You forgot Chris — he has been here a long time, and so is Ordell.',
+    );
+    expect(names).toEqual(expect.arrayContaining(['Chris', 'Ordell']));
+    expect(names).not.toContain('Also You');
+  });
+
   it('a correction inherits the previous intent when its own is general', () => {
     const plan = planResponseScope('you forgot Kavi and Joss', { previousIntent: 'work' });
     expect(plan.isCorrection).toBe(true);
     expect(plan.intent).toBe('work');
+  });
+
+  it('recovers the last explicit user intent from conversation history', () => {
+    const previousIntent = inferPreviousScopeIntent([
+      { role: 'user', content: "Who's on my team at Titanworks?" },
+      { role: 'assistant', content: 'You work with Kavi.' },
+      { role: 'user', content: 'You forgot Joss and Wren.' },
+    ]);
+
+    const plan = planResponseScope('You forgot Joss and Wren.', { previousIntent });
+    expect(previousIntent).toBe('work');
+    expect(plan.intent).toBe('work');
+  });
+
+  it('does not inherit a stale intent across intervening general chatter', () => {
+    expect(inferPreviousScopeIntent([
+      { role: 'user', content: "Who's on my team at Titanworks?" },
+      { role: 'assistant', content: 'You work with Kavi.' },
+      { role: 'user', content: 'Thanks, that helps.' },
+    ])).toBeUndefined();
   });
 });

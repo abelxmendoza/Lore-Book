@@ -18,6 +18,7 @@ import { locationSuggestionService } from '../locationSuggestionService';
 import { organizationService } from '../organizationService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { skillService } from '../skills/skillService';
+import { evaluateLifeLogEligibility, isPublishableLifeLogTitle } from '../events/lifeLogEligibilityPolicy';
 
 import { isJunkTestData } from './audit/wrongDomainCharacterGuard';
 
@@ -183,19 +184,30 @@ class ReclassifyCharacterService {
       return { target, targetId: skill.id ?? null, targetName: name, mergedIntoExisting: false };
     }
 
-    // target === 'event' — the Events book (/api/conversation/events) reads
-    // `resolved_events`. `event_candidates` is a continuity-pattern table and
-    // `events` does not exist in the live schema.
+    // target === 'event'. The correction action is provenance, not an event.
+    // Only the underlying occurrence may enter resolved_events.
+    const eligibility = evaluateLifeLogEligibility({ text: summary ?? name, title: name });
+    if (!eligibility.eligible || !isPublishableLifeLogTitle(name)) {
+      throw new Error(`Could not create a Life Log event: ${eligibility.reason.replace(/^rejected_/, '').replace(/_/g, ' ')}.`);
+    }
     const { data: event, error } = await supabaseAdmin
       .from('resolved_events')
       .insert({
         user_id: userId,
         title: name,
-        summary: summary ?? `Reclassified from character: ${name}`,
-        type: 'reclassified',
-        start_time: new Date().toISOString(),
+        summary: summary ?? name,
+        type: eligibility.reason,
+        start_time: null,
         confidence: 1.0,
-        metadata: { ...provenance },
+        metadata: {
+          ...provenance,
+          life_log: {
+            publication_status: 'published',
+            eligibility_reason: eligibility.reason,
+            eligibility_confidence: eligibility.confidence,
+            policy_version: 'v2',
+          },
+        },
       })
       .select('id, title')
       .single();

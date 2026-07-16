@@ -157,7 +157,7 @@ export class ConversationIngestionPipeline {
         conversationHistory,
         undefined,
         undefined,
-        { chatMessageId }
+        { chatMessageId, sourceCreatedAt: chatMessage.created_at }
       );
 
       // Link conversation message back to chat message via metadata
@@ -525,7 +525,7 @@ export class ConversationIngestionPipeline {
       type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP';
       id: string;
     },
-    ingestOptions?: { chatMessageId?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -582,7 +582,8 @@ export class ConversationIngestionPipeline {
   private async extractTemporalReferences(
     userId: string,
     normalizedText: string,
-    originalText: string
+    originalText: string,
+    referenceDate: Date = new Date(),
   ): Promise<Array<{
     timestamp: Date;
     endTimestamp?: Date;
@@ -593,7 +594,7 @@ export class ConversationIngestionPipeline {
   }>> {
     const { resolveUserTimezone, clampOccurrenceDate } = await import('../../utils/temporalOccurrence');
     await resolveUserTimezone(userId);
-    const now = new Date();
+    const now = Number.isFinite(referenceDate.getTime()) ? referenceDate : new Date();
     // Per-user birth-year anchor (cached) so "when I was 19" / "in high school"
     // resolve to absolute years instead of defaulting to ingest-time.
     const anchorProfile = await temporalAnchorProfileService.getProfile(userId);
@@ -679,9 +680,8 @@ export class ConversationIngestionPipeline {
    *  - Historical-but-undated ("used to", "back then") → DO NOT stamp ingest-time as
    *    the occurrence. Leave start_time absent (consumers like eventAssemblyService
    *    already fall back to created_at = recorded date) and flag occurrence_unknown.
-   *  - Otherwise (recent/real-time chat) → ingest-time is a fair occurrence estimate.
-   * This kills the created_at-as-occurrence conflation for life-story narration while
-   * preserving the sensible default for "had coffee with Maria"-style recent entries.
+   *  - Otherwise leave occurrence unknown. created_at is the reference clock for
+   *    relative parsing, never evidence that the event occurred at ingestion time.
    */
   private async buildUnresolvedTemporalContext(
     userId: string,
@@ -723,14 +723,13 @@ export class ConversationIngestionPipeline {
       };
     }
 
-    // 3. Recent/real-time chat → ingest-time is a fair occurrence estimate.
+    // 3. No temporal expression: preserve an honest unanchored occurrence.
     return {
       ...base,
-      start_time: new Date().toISOString(),
-      precision: 'minute',
-      confidence: 0.7,
-      inferred: true,
-      source: 'current_time',
+      precision: 'unknown',
+      confidence: 0.1,
+      occurrence_unknown: true,
+      source: 'unresolved',
     };
   }
 
@@ -1061,7 +1060,7 @@ export class ConversationIngestionPipeline {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
-    ingestOptions?: { chatMessageId?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -1518,7 +1517,8 @@ export class ConversationIngestionPipeline {
               const temporalRefs = await this.extractTemporalReferences(
                 userId,
                 normalized.normalized_text,
-                utteranceTexts[i]
+                utteranceTexts[i],
+                ingestOptions?.sourceCreatedAt ? new Date(ingestOptions.sourceCreatedAt) : new Date(),
               );
               
               if (temporalRefs.length > 0) {
@@ -1595,7 +1595,8 @@ export class ConversationIngestionPipeline {
               const temporalRefs = await this.extractTemporalReferences(
                 userId,
                 normalized.normalized_text,
-                utteranceTexts[i]
+                utteranceTexts[i],
+                ingestOptions?.sourceCreatedAt ? new Date(ingestOptions.sourceCreatedAt) : new Date(),
               );
               
               if (temporalRefs.length > 0) {

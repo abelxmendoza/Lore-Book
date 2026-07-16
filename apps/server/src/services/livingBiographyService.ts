@@ -4,10 +4,12 @@
  * Turns the Sprint F biography snapshot (a backend artifact in
  * narrative_accounts) into a product-facing identity surface.
  *
- * This is a PROJECTION layer only:
+ * This is primarily a PROJECTION layer:
  *   - no new tables
- *   - no new extraction
- *   - no new memory/entity/timeline systems
+ *   - card fields reshape the existing snapshot
+ *   - current focus is overlaid from live structured sources (quests /
+ *     future timeline events) so the home card stays current without
+ *     waiting for a full biography regenerate
  *
  * It reads biographyFoundationService.getBiography() — facts, themes,
  * periods, relationships, key events — and reshapes them into:
@@ -66,6 +68,9 @@ const MAX_PEOPLE = 4;
 const MAX_FOCUS = 3;
 const MAX_DEVELOPMENTS = 3;
 
+/** Legacy snapshot strings that should never surface as "current focus". */
+const STALE_FOCUS_RE = /\bepirus\b/i;
+
 // ── Card projection ───────────────────────────────────────────────────────────
 
 /**
@@ -89,8 +94,14 @@ export async function getLivingBiographyCard(userId: string): Promise<LivingBiog
     };
   }
 
+  const [currentFocus, recentDevelopments] = await Promise.all([
+    deriveCurrentFocus(userId, bio),
+    Promise.resolve(deriveRecentDevelopments(bio)),
+  ]);
+
   // Background refresh — never blocks the response. Serves the current
-  // snapshot immediately; regenerates quietly if enough new evidence exists.
+  // snapshot immediately; regenerates quietly if enough new evidence exists
+  // or the stored snapshot still carries known-stale focus copy.
   maybeRefreshInBackground(userId, bio);
 
   return {
@@ -98,8 +109,8 @@ export async function getLivingBiographyCard(userId: string): Promise<LivingBiog
     currentChapter: deriveCurrentChapter(bio),
     topThemes: bio.themes.slice(0, MAX_THEMES).map(t => t.theme),
     keyPeople: deriveKeyPeople(bio),
-    currentFocus: bio.facts.upcomingEvents.slice(0, MAX_FOCUS),
-    recentDevelopments: deriveRecentDevelopments(bio),
+    currentFocus,
+    recentDevelopments,
     lastUpdated: bio.generatedAt,
     hasEnoughData: true,
   };
@@ -137,9 +148,60 @@ function deriveKeyPeople(bio: BiographyOutput): LivingBiographyPerson[] {
 }
 
 /**
+ * Current focus prefers live structured sources so the home card updates as
+ * soon as quests / future timeline events change — without waiting for a
+ * biography snapshot regenerate.
+ */
+export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): Promise<string[]> {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const focus: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (label: string | null | undefined) => {
+    const trimmed = label?.trim();
+    if (!trimmed || STALE_FOCUS_RE.test(trimmed)) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    focus.push(trimmed);
+  };
+
+  const [{ data: quests }, { data: futureEvents }] = await Promise.all([
+    supabaseAdmin
+      .from('quests')
+      .select('title')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(MAX_FOCUS),
+    supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_title')
+      .eq('user_id', userId)
+      .gte('event_date', todayIso)
+      .order('event_date', { ascending: true })
+      .limit(MAX_FOCUS),
+  ]);
+
+  for (const quest of quests ?? []) push(quest.title);
+  for (const event of futureEvents ?? []) push(event.event_title);
+
+  // Snapshot upcoming events only when live sources produced nothing —
+  // never pad live focus with potentially stale snapshot strings.
+  if (focus.length === 0) {
+    for (const event of bio.facts.upcomingEvents) {
+      push(event);
+      if (focus.length >= MAX_FOCUS) break;
+    }
+  }
+
+  return focus.slice(0, MAX_FOCUS);
+}
+
+/**
  * Recent developments = the most recent timeline-derived key events,
  * newest first. These are things that already happened — distinct from
- * "current focus" (forward-looking, from facts.upcomingEvents).
+ * "current focus" (forward-looking, from live quests / upcoming events).
  */
 function deriveRecentDevelopments(bio: BiographyOutput): string[] {
   return [...bio.facts.keyEvents]
@@ -202,27 +264,33 @@ function toChapterLabel(base: string): string {
 // new evidence to justify it, not on a clock that burns LLM calls on inactive
 // users. A minimum cooldown prevents thrashing on bursty days.
 
-const REFRESH_MIN_HOURS_BETWEEN = 24;
-const REFRESH_MIN_NEW_ENTRIES   = 5;
-const REFRESH_MIN_NEW_EVENTS    = 3;
+const REFRESH_MIN_HOURS_BETWEEN = 6;
+const REFRESH_MIN_NEW_ENTRIES   = 2;
+const REFRESH_MIN_NEW_EVENTS    = 1;
 
-let refreshInFlight = new Set<string>();
+const refreshInFlight = new Set<string>();
 
 /**
  * Fire-and-forget: regenerate the snapshot in the background if enough new
- * evidence has accumulated since it was last generated. Never blocks the
- * card response — the user always sees the current snapshot immediately,
- * and the next visit reflects the refreshed one.
+ * evidence has accumulated since it was last generated, or if the stored
+ * snapshot still contains known-stale focus copy. Never blocks the card
+ * response — the user always sees the current projection immediately.
  */
 function maybeRefreshInBackground(userId: string, bio: BiographyOutput): void {
   if (refreshInFlight.has(userId)) return;
 
-  shouldRefreshBiography(userId, bio.generatedAt)
+  const hasStaleFocus = bio.facts.upcomingEvents.some(e => STALE_FOCUS_RE.test(e));
+
+  const decide = hasStaleFocus
+    ? Promise.resolve(true)
+    : shouldRefreshBiography(userId, bio.generatedAt);
+
+  decide
     .then(should => {
       if (!should) return;
       refreshInFlight.add(userId);
       return biographyFoundationService.generateBiography(userId)
-        .then(() => logger.info({ userId }, 'LivingBiography: background refresh complete'))
+        .then(() => logger.info({ userId, hasStaleFocus }, 'LivingBiography: background refresh complete'))
         .catch(err => logger.error({ err, userId }, 'LivingBiography: background refresh failed'))
         .finally(() => refreshInFlight.delete(userId));
     })

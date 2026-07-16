@@ -65,4 +65,16 @@ describe('entityGravityService', () => {
     expect(high.gravityScore).toBeGreaterThan(mid.gravityScore);
     expect(high.components.mentionCount).toBe(1);
   });
+
+  it('converts invalid legacy metrics to safe zero values', () => {
+    const score = computeEntityGravity(baseInput({
+      mentionCount: Number.NaN,
+      emotionalWeight: Number.NaN,
+      narrativeImportance: Number.NaN,
+    }));
+
+    expect(Number.isFinite(score.gravityScore)).toBe(true);
+    expect(score.components.mentionCount).toBe(0);
+    expect(score.components.emotionalWeight).toBe(0);
+  });
 });

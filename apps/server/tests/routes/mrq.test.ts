@@ -13,6 +13,11 @@ vi.mock('../../src/middleware/auth', () => ({
 vi.mock('../../src/services/memoryReviewQueueService', () => ({
   memoryReviewQueueService: {
     getPendingMRQ: vi.fn().mockResolvedValue([]),
+    auditPendingMRQ: vi.fn().mockResolvedValue({
+      dryRun: true,
+      summary: { keep: 0, merge_into: 0, auto_reject: 0, correction: 0, requires_review: 0 },
+      items: [],
+    }),
     getProposal: vi.fn().mockResolvedValue({ id: 'p1', text: 'prop' }),
     approveProposal: vi.fn().mockResolvedValue({ id: 'd1' }),
     rejectProposal: vi.fn().mockResolvedValue({ id: 'd1' }),
@@ -32,6 +37,11 @@ describe('MRQ API Routes', () => {
   it('GET /pending returns items', async () => {
     const res = await request(app).get('/api/mrq/pending').expect(200);
     expect(res.body).toHaveProperty('items');
+  });
+
+  it('GET /audit returns a read-only cleanup plan', async () => {
+    const res = await request(app).get('/api/mrq/audit').expect(200);
+    expect(res.body).toMatchObject({ dryRun: true, items: [] });
   });
 
   it('GET /proposals/:id returns proposal', async () => {

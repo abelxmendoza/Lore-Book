@@ -1,6 +1,8 @@
 /**
  * Anchor cluster builder — discover narrative clusters from co-mention evidence.
  */
+import { createHash } from 'node:crypto';
+
 import type {
   AnchorBuildContext,
   AnchorEvidence,
@@ -14,63 +16,30 @@ import { buildRecurringActivityAnchors } from './recurringPatternAnchorService';
 import { rankAnchors, scoreAnchor } from './anchorScoringService';
 
 const MIN_CLUSTER_SIZE = 2;
-const MIN_CO_MENTION = 1;
+const MIN_CO_MENTION = 3;
 const UNRELATED_THRESHOLD = 0.15;
-
-class UnionFind {
-  private parent = new Map<string, string>();
-
-  find(x: string): string {
-    if (!this.parent.has(x)) this.parent.set(x, x);
-    if (this.parent.get(x) !== x) this.parent.set(x, this.find(this.parent.get(x)!));
-    return this.parent.get(x)!;
-  }
-
-  union(a: string, b: string): void {
-    const ra = this.find(a);
-    const rb = this.find(b);
-    if (ra !== rb) this.parent.set(ra, rb);
-  }
-
-  clusters(): Map<string, string[]> {
-    const groups = new Map<string, string[]>();
-    for (const id of this.parent.keys()) {
-      const root = this.find(id);
-      const list = groups.get(root) ?? [];
-      list.push(id);
-      groups.set(root, list);
-    }
-    return groups;
-  }
-}
+const MAX_PUBLISHED_ANCHORS = 18;
 
 function buildCoMentionClusters(ctx: AnchorBuildContext): string[][] {
-  const uf = new UnionFind();
-
-  for (const e of ctx.entities) uf.find(e.entityId);
-
-  for (const pair of ctx.coMentionPairs) {
-    if (pair.count < MIN_CO_MENTION) continue;
-    uf.union(pair.a, pair.b);
-  }
-
-  for (const rel of ctx.relationships) {
-    uf.union(rel.sourceId, rel.targetId);
-  }
-
-  for (const org of ctx.organizations) {
-    for (let i = 1; i < org.memberIds.length; i++) {
-      uf.union(org.memberIds[0], org.memberIds[i]);
-    }
-  }
-
-  for (const ev of ctx.events) {
-    for (let i = 1; i < ev.entityIds.length; i++) {
-      uf.union(ev.entityIds[0], ev.entityIds[i]);
-    }
-  }
-
-  return [...uf.clusters().values()].filter((c) => c.length >= MIN_CLUSTER_SIZE);
+  // Never transitively union co-mentions: A appearing with B and B with C is
+  // not evidence that A and C share a chapter. Keep each provenance-bearing
+  // candidate isolated and let era detection demand semantic support.
+  const candidates: string[][] = [
+    ...ctx.organizations.map((org) => org.memberIds),
+    ...ctx.coMentionPairs
+      .filter((pair) => pair.count >= MIN_CO_MENTION)
+      .map((pair) => [pair.a, pair.b]),
+  ];
+  const seen = new Set<string>();
+  return candidates
+    .map((ids) => [...new Set(ids)].filter((id) => ctx.entities.some((entity) => entity.entityId === id)))
+    .filter((ids) => ids.length >= MIN_CLUSTER_SIZE)
+    .filter((ids) => {
+      const key = [...ids].sort().join(':');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function memberFromEntity(
@@ -92,18 +61,19 @@ function memberFromEntity(
 }
 
 function buildRelationshipArcAnchor(
-  rel: { sourceId: string; targetId: string; type: string },
+  rel: AnchorBuildContext['relationships'][number],
   ctx: AnchorBuildContext,
   gravity: Map<string, { gravityScore: number; name: string }>,
 ): NarrativeAnchor | null {
   const source = ctx.entities.find((e) => e.entityId === rel.sourceId);
   const target = ctx.entities.find((e) => e.entityId === rel.targetId);
-  if (!source || !target) return null;
+  if (!source || !target || !rel.directEvidence || !rel.evidence?.length) return null;
 
-  const phases = ctx.facts
-    .filter((f) => f.entityId === rel.sourceId || f.entityId === rel.targetId)
-    .map((f) => f.text)
-    .filter((t) => /\b(met|dating|birthday|distancing|ghosting|blocking|reappearance|friend|bandmate)\b/i.test(t));
+  // A relationship edge is not automatically a narrative arc. Require either
+  // multiple directly sourced moments or language showing change over time.
+  const hasMovement = rel.evidence.length >= 2 || rel.evidence.some((item) =>
+    /\b(became|started|began|grew|changed|ended|broke up|drifted|reconnected|conflict|falling out)\b/i.test(item.label));
+  if (!hasMovement) return null;
 
   const builtAt = new Date().toISOString();
   const title = `${source.name} — ${rel.type.replace(/_/g, ' ')}`;
@@ -111,28 +81,20 @@ function buildRelationshipArcAnchor(
 
   const entities: AnchorMember[] = [
     memberFromEntity(rel.sourceId, ctx, gravity, [
-      { id: 'rel-src', label: rel.type, source: 'relationship', confidence: 0.85 },
+      ...rel.evidence,
     ])!,
     memberFromEntity(rel.targetId, ctx, gravity, [
-      { id: 'rel-tgt', label: rel.type, source: 'relationship', confidence: 0.85 },
+      ...rel.evidence,
     ])!,
   ].filter(Boolean);
 
-  const evidence: AnchorEvidence[] = [
-    { id: 'rel-ev', label: `${rel.type} relationship`, source: 'relationship', confidence: 0.9 },
-    ...phases.map((p, i) => ({
-      id: `phase-${i}`,
-      label: p,
-      source: 'fact' as const,
-      confidence: 0.75,
-    })),
-  ];
+  const evidence: AnchorEvidence[] = rel.evidence;
 
   const anchor: NarrativeAnchor = {
     id: consolidationKey,
     title,
     anchorType: 'relationship_arc',
-    confidence: 0.75,
+    confidence: Math.min(0.95, 0.72 + Math.min(3, evidence.length) * 0.06),
     gravityScore: 0,
     entities,
     events: [],
@@ -141,7 +103,7 @@ function buildRelationshipArcAnchor(
     evidence,
     provenance: {
       builtAt,
-      signals: ['relationship_arc', rel.type, ...phases.slice(0, 3)],
+      signals: ['relationship_arc', rel.type, 'direct_pair_evidence'],
       consolidationKey,
     },
   };
@@ -151,14 +113,14 @@ function buildRelationshipArcAnchor(
 }
 
 function buildEventAnchor(
-  event: { id: string; title: string; entityIds: string[]; startDate?: string },
+  event: AnchorBuildContext['events'][number],
   ctx: AnchorBuildContext,
   gravity: Map<string, { gravityScore: number }>,
 ): NarrativeAnchor | null {
   if (event.entityIds.length === 0) return null;
-
-  const isFamily = /\b(family|graduation|party|tio|aunt|uncle)\b/i.test(event.title);
-  const anchorType = isFamily ? 'family_period' : 'life_era';
+  const significant = (event.significanceScore ?? 0) >= 60 ||
+    ['major', 'legendary'].includes((event.significanceLevel ?? '').toLowerCase());
+  if (!significant || !event.evidence?.length) return null;
 
   const entities = event.entityIds
     .map((id) =>
@@ -174,8 +136,8 @@ function buildEventAnchor(
   const anchor: NarrativeAnchor = {
     id: consolidationKey,
     title: event.title,
-    anchorType,
-    confidence: 0.7,
+    anchorType: 'pivotal_event',
+    confidence: Math.min(0.95, 0.65 + (event.significanceScore ?? 60) / 300),
     gravityScore: 0,
     startDate: event.startDate,
     entities,
@@ -184,17 +146,15 @@ function buildEventAnchor(
         id: event.id,
         kind: 'event',
         name: event.title,
-        evidence: [{ id: `ev-anchor-${event.id}`, label: event.title, source: 'event', confidence: 0.85 }],
+        evidence: event.evidence,
       },
     ],
     groups: [],
     places: [],
-    evidence: [
-      { id: `ev-intro-${event.id}`, label: `Event introduced ${entities.length} entities`, source: 'event', confidence: 0.8 },
-    ],
+    evidence: event.evidence,
     provenance: {
       builtAt,
-      signals: ['event_anchor'],
+      signals: ['pivotal_event', `significance:${event.significanceLevel ?? event.significanceScore}`],
       consolidationKey,
     },
   };
@@ -232,7 +192,8 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
     const era = detectEraForCluster(entityIds, ctx);
     if (!era) continue;
 
-    const consolidationKey = `cluster:${era.anchorType}:${entityIds.sort().join(',')}`;
+    const entityKey = createHash('sha256').update([...entityIds].sort().join(',')).digest('hex').slice(0, 24);
+    const consolidationKey = `cluster:${era.anchorType}:${entityKey}`;
     if (seenKeys.has(consolidationKey)) continue;
     seenKeys.add(consolidationKey);
 
@@ -261,6 +222,9 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
       }));
 
     const relatedEvents = ctx.events.filter((ev) => ev.entityIds.some((id) => entityIds.includes(id)));
+    const relatedOrganizations = ctx.organizations.filter((organization) =>
+      organization.memberIds.some((id) => entityIds.includes(id)),
+    );
 
     const anchor: NarrativeAnchor = {
       id: consolidationKey,
@@ -268,6 +232,15 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
       anchorType: era.anchorType,
       confidence: era.confidence,
       gravityScore: 0,
+      startDate: relatedEvents
+        .map((event) => event.startDate)
+        .filter((date): date is string => Boolean(date))
+        .sort()[0],
+      endDate: relatedEvents
+        .map((event) => event.startDate)
+        .filter((date): date is string => Boolean(date))
+        .sort()
+        .at(-1),
       entities: entities.filter((e) => !places.some((p) => p.id === e.id)),
       events: relatedEvents.map((ev) => ({
         id: ev.id,
@@ -275,7 +248,18 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
         name: ev.title,
         evidence: [{ id: `ev-${ev.id}`, label: ev.title, source: 'event', confidence: 0.75 }],
       })),
-      groups: [],
+      groups: relatedOrganizations.map((organization) => ({
+        id: organization.id,
+        kind: 'group' as const,
+        name: organization.name,
+        role: organization.type,
+        evidence: [{
+          id: `org-${organization.id}`,
+          label: `${organization.name}${organization.type ? ` (${organization.type})` : ''}`,
+          source: 'organization' as const,
+          confidence: 0.85,
+        }],
+      })),
       places,
       evidence: era.matchedSignals.map((s, i) => ({
         id: `sig-${i}`,
@@ -325,5 +309,8 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
     anchors.push(a);
   }
 
-  return rankAnchors(anchors, ctx).filter((a) => a.gravityScore >= UNRELATED_THRESHOLD || a.entities.length >= 2);
+  return rankAnchors(anchors, ctx).filter((anchor) => {
+    const memberCount = anchor.entities.length + anchor.events.length + anchor.groups.length + anchor.places.length;
+    return memberCount > 0 && (anchor.gravityScore >= UNRELATED_THRESHOLD || anchor.entities.length >= 2);
+  }).slice(0, MAX_PUBLISHED_ANCHORS);
 }

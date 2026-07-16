@@ -21,6 +21,7 @@ function makeChain(result: TableResult) {
     in: () => chain,
     not: () => chain,
     gt: () => chain,
+    gte: () => chain,
     order: () => chain,
     limit: () => chain,
     single: () => Promise.resolve(result),
@@ -53,7 +54,7 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
         // cross-contamination scenario that produced the false "ended" claims
         { id: 'e1', content: 'Summer of Setbacks and Heartbreak — no contact with Sam Chen since the breakup, ended things for good. Living with Grandma Rose has been steady through it all.', mood: 'sad', tags: ['heartbreak', 'family'], emotional_intensity: 0.8 },
         { id: 'e2', content: 'Grandma Rose and I went to Costco today, family time as always.', mood: 'content', tags: ['family'], emotional_intensity: 0.3 },
-        { id: 'e3', content: 'Still unemployed, prepping for the Epirus interview next week.', mood: 'anxious', tags: ['career'], emotional_intensity: 0.5 },
+        { id: 'e3', content: 'Still unemployed, prepping for the Northwind Labs interview next week.', mood: 'anxious', tags: ['career'], emotional_intensity: 0.5 },
       ],
       error: null,
     },
@@ -91,6 +92,7 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
       error: null,
     },
     character_timeline_events: { data: [], error: null },
+    quests: { data: [], error: null },
     ...overrides,
   };
 }

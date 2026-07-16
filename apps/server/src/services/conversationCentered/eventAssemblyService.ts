@@ -11,7 +11,6 @@ import { confidenceTrackingService } from '../confidenceTrackingService';
 import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
-import { ruleBasedTitleGenerationService } from '../ruleBasedTitleGeneration';
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveAllTemporalAnchors, resolveAllTemporalAnchorsInTimezone, resolveChronoWindows } from '../../utils/temporalAnchorResolver';
 import {
@@ -23,6 +22,12 @@ import {
   type TemporalPrecision,
 } from '../temporal/temporalEvidence';
 import { getUserTimezone } from '../temporal/userTimezoneService';
+import {
+  autobiographicalClause,
+  evaluateLifeLogEligibility,
+  isPublishableLifeLogTitle,
+} from '../events/lifeLogEligibilityPolicy';
+import { maintainLifeLogForUser } from '../events/lifeLogMaintenanceService';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -59,6 +64,12 @@ function inferUserPresence(unitGroup: ExtractedUnit[]): UserPresence {
   return 'unknown';
 }
 
+function canonicalEventKey(title: string, reason: string, when: AssembledWhen | null, threadId?: string): string {
+  const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const temporalBucket = when?.start ? when.start.slice(0, 10) : `thread:${threadId ?? 'unknown'}`;
+  return `${reason}:${normalizedTitle}:${temporalBucket}`;
+}
+
 /**
  * Assembles structured events from EXPERIENCE units
  */
@@ -81,7 +92,8 @@ export class EventAssemblyService {
         .eq('user_id', userId)
         .eq('type', 'EXPERIENCE')
         .gte('created_at', windowStart)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(1000);
 
       if (error) {
         throw error;
@@ -93,6 +105,7 @@ export class EventAssemblyService {
         unit =>
           !unit.metadata?.deprecated &&
           !unit.metadata?.pruned &&
+          !unit.superseded_at &&
           unit.metadata?.source !== 'ai_interpretation' &&
           unit.confidence > 0.2 // Also filter very low confidence units
       );
@@ -111,9 +124,34 @@ export class EventAssemblyService {
       // Create or update events
       const results: EventAssemblyResult[] = [];
       for (const group of eventGroups) {
-        const event = await this.createOrUpdateEvent(userId, group, threadId);
+        const sourceText = group.map(unit => unit.content).join(' ');
+        const eligibility = evaluateLifeLogEligibility({ text: sourceText });
+        if (!eligibility.eligible) {
+          logger.info({ userId, reason: eligibility.reason, unitIds: group.map(unit => unit.id) }, 'Life Log candidate rejected');
+          continue;
+        }
+        // Commands such as "Remember that I visited…" may carry a valid event.
+        // Assemble only the autobiographical payload, while the original unit
+        // remains untouched as provenance.
+        const eligibleGroup = group.map(unit => ({
+          ...unit,
+          content: autobiographicalClause(unit.content) || unit.content,
+        }));
+        const candidateTitle = this.extractEventTitle(eligibleGroup);
+        if (!isPublishableLifeLogTitle(candidateTitle)) {
+          logger.info({ userId, reason: 'rejected_failed_extraction', candidateTitle, unitIds: group.map(unit => unit.id) }, 'Life Log candidate rejected');
+          continue;
+        }
+        const event = await this.createOrUpdateEvent(userId, eligibleGroup, threadId);
+        if ((event as { rejected?: boolean }).rejected) continue;
         results.push(event);
       }
+
+      // Self-heal legacy derived rows as part of normal processing. This is
+      // bounded and deterministic and never touches raw user evidence.
+      void maintainLifeLogForUser(userId).catch(error => {
+        logger.warn({ error, userId }, 'Life Log maintenance failed (non-blocking)');
+      });
 
       return results;
     } catch (error) {
@@ -219,6 +257,110 @@ export class EventAssemblyService {
     const sourceText = (experienceUnits.length > 0 ? experienceUnits : unitGroup)
       .map(u => u.content)
       .join(' ');
+    const eligibility = evaluateLifeLogEligibility({ text: sourceText, title });
+    const publishable = isPublishableLifeLogTitle(title);
+    // Stage contract: structural event_candidate + life-log eligibility before any insert.
+    const { validateEventBeforePersist, recordPersisted } = await import(
+      '../ingestion/stageContractGate'
+    );
+    const eventGate = validateEventBeforePersist({
+      title,
+      occurredAt: when?.start ?? null,
+      recordedAt: new Date().toISOString(),
+      temporalPrecision: when?.precision,
+      temporalSource:
+        when?.source === 'temporal_context'
+          ? 'explicit_in_text'
+          : when?.source === 'content_inference'
+            ? 'inferred_from_context'
+            : when?.source === 'created_at'
+              ? 'message_timestamp'
+              : 'unknown',
+      eligibilityEligible: eligibility.eligible,
+      eligibilityReason: eligibility.reason,
+      confidence: eligibility.confidence,
+      evidenceIds: unitGroup.map((u) => u.id).filter(Boolean),
+      publishableTitle: publishable,
+    });
+    if (!eventGate.accepted) {
+      logger.info(
+        { userId, title, reason: eventGate.reason, eligibility: eligibility.reason },
+        'eventAssembly: stage contract rejected event — not writing Captured Conversation fallback',
+      );
+      return {
+        event_id: '',
+        title,
+        who: [],
+        what,
+        where: null,
+        when: when ? { start: when.start, end: when.end } : null,
+        source_unit_ids: unitGroup.map((u) => u.id),
+        rejected: true,
+        rejection_reason: eventGate.reason,
+      } as EventAssemblyResult & { rejected?: boolean; rejection_reason?: string };
+    }
+    const eventKey = canonicalEventKey(
+      title,
+      eligibility.reason,
+      when,
+      threadId ?? unitGroup[0]?.created_at?.slice(0, 10),
+    );
+
+    // Canonical identity is independent of extractor replay identity: multiple
+    // source messages can support one event while retaining every unit link.
+    const { data: canonicalMatch } = await supabaseAdmin
+      .from('resolved_events')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('metadata->>canonical_event_key', eventKey)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (canonicalMatch?.id) {
+      const priorMetadata = (canonicalMatch.metadata ?? {}) as Record<string, unknown>;
+      const priorUnits = (priorMetadata.assembled_from_units as string[] | undefined) ?? [];
+      const { data: priorUnitRows } = priorUnits.length > 0
+        ? await supabaseAdmin
+            .from('extracted_units')
+            .select('id, superseded_at, metadata')
+            .eq('user_id', userId)
+            .in('id', priorUnits)
+        : { data: [] as Array<{ id: string; superseded_at: string | null; metadata: Record<string, unknown> | null }> };
+      const activePriorUnits = (priorUnitRows ?? [])
+        .filter(unit => !unit.superseded_at && !unit.metadata?.deprecated && !unit.metadata?.pruned)
+        .map(unit => unit.id as string);
+      const allUnitIds = [...new Set([...activePriorUnits, ...unitGroup.map(unit => unit.id)])];
+      await supabaseAdmin.from('resolved_events').update({
+        title,
+        summary: what,
+        metadata: {
+          ...priorMetadata,
+          assembled_from_units: allUnitIds,
+          life_log: {
+            publication_status: 'published',
+            eligibility_reason: eligibility.reason,
+            eligibility_confidence: eligibility.confidence,
+            policy_version: 'v2',
+          },
+        },
+        updated_at: new Date().toISOString(),
+      }).eq('id', canonicalMatch.id).eq('user_id', userId);
+      for (const unit of unitGroup) {
+        await supabaseAdmin.from('event_unit_links').upsert(
+          { event_id: canonicalMatch.id, unit_id: unit.id },
+          { onConflict: 'event_id,unit_id', ignoreDuplicates: true },
+        );
+      }
+      return {
+        event_id: canonicalMatch.id,
+        title,
+        who: canonicalMatch.people ?? [],
+        what,
+        where: canonicalMatch.locations?.[0] ?? null,
+        when: canonicalMatch.start_time ? { start: canonicalMatch.start_time, end: canonicalMatch.end_time } : null,
+        source_unit_ids: allUnitIds,
+      };
+    }
 
     // Ingest text to extract entities and create event
     const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
@@ -270,7 +412,18 @@ export class EventAssemblyService {
         extractor_version: EVENT_EXTRACTOR_VERSION,
         metadata: {
           assembled_from_units: unitGroup.map(u => u.id),
+          canonical_event_key: eventKey,
           user_presence: userPresence,
+          life_log: {
+            publication_status: 'published',
+            eligibility_reason: eligibility.reason,
+            eligibility_confidence: eligibility.confidence,
+            policy_version: 'v2',
+          },
+          stage_contract: {
+            validated: true,
+            eligibility_reason: eligibility.reason,
+          },
           ...(threadId ? { thread_id: threadId } : {}),
           knowledge_types: {
             experiences: experienceUnits.length,
@@ -303,6 +456,7 @@ export class EventAssemblyService {
       }
       throw error;
     }
+    recordPersisted('event_candidate');
 
     // Link knowledge units to event by role
     for (const unit of experienceUnits) {
@@ -491,6 +645,7 @@ export class EventAssemblyService {
 
     // Re-ingest to get updated entities
     const sourceText = validUnits.map(u => u.content).join(' ');
+    const eligibility = evaluateLifeLogEligibility({ text: sourceText, title });
     const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
 
     // Update event (merge with existing, but prefer new information if confidence is higher)
@@ -531,6 +686,12 @@ export class EventAssemblyService {
           ...(existingEvent.metadata || {}),
           assembled_from_units: validUnits.map(u => u.id),
           user_presence: userPresence,
+          life_log: {
+            publication_status: eligibility.eligible && isPublishableLifeLogTitle(title) ? 'published' : 'quarantined',
+            eligibility_reason: eligibility.reason,
+            eligibility_confidence: eligibility.confidence,
+            policy_version: 'v2',
+          },
           last_refined_at: new Date().toISOString(),
           temporal: when
             ? {
@@ -645,7 +806,7 @@ export class EventAssemblyService {
         .not('metadata->>deprecated', 'eq', 'true');
 
       const validUnits = (allUnits || []).filter(
-        unit => !unit.metadata?.deprecated && !unit.metadata?.pruned && unit.confidence > 0.2
+        unit => !unit.metadata?.deprecated && !unit.metadata?.pruned && !unit.superseded_at && unit.confidence > 0.2
       );
 
       if (validUnits.length === 0) {
@@ -659,6 +820,10 @@ export class EventAssemblyService {
       const updatedWhat = this.extractWhat(validUnits);
       const updatedWhere = this.extractWhere(validUnits);
       const updatedWhen = this.extractWhen(validUnits);
+      const eligibility = evaluateLifeLogEligibility({
+        text: validUnits.map(unit => unit.content).join(' '),
+        title: updatedTitle,
+      });
 
       // Check if materially different
       const isMateriallyDifferent =
@@ -721,6 +886,12 @@ export class EventAssemblyService {
           metadata: {
             ...(event.metadata || {}),
             assembled_from_units: validUnits.map(u => u.id),
+            life_log: {
+              publication_status: eligibility.eligible && isPublishableLifeLogTitle(updatedTitle) ? 'published' : 'quarantined',
+              eligibility_reason: eligibility.reason,
+              eligibility_confidence: eligibility.confidence,
+              policy_version: 'v2',
+            },
             last_reconciled_at: new Date().toISOString(),
             temporal: updatedWhen
               ? {
@@ -767,22 +938,46 @@ export class EventAssemblyService {
       const eventSpecificTitle = this.inferEventTitleFromContent(source);
       if (eventSpecificTitle) return eventSpecificTitle;
 
-      const generated = ruleBasedTitleGenerationService.generateTitle(source);
-      if (generated && generated.length >= 8 && !this.isWeakEventTitle(generated)) return generated;
-      const sentences = this.cleanEventSourceText(source).split(/[.!?]+/).filter(s => s.trim().length > 0);
-      const firstSentence = sentences.find(sentence => !this.isWeakEventTitle(sentence))?.trim().substring(0, 100);
-      if (firstSentence) return firstSentence;
+      // No raw-sentence or first-N-words fallback. If validated structure cannot
+      // produce a meaningful title, the caller quarantines the candidate.
     }
-    return 'Captured Conversation';
+    return '';
   }
 
   private inferEventTitleFromContent(source: string): string | null {
     const text = source.replace(/\s+/g, ' ').trim();
     const lower = text.toLowerCase();
 
-    if (/\bex lover(?:\s+show)?\b/.test(lower)) return 'Ex Lover Show';
-    if (/\b(testing|tested|trying|tried)\s+lore\s*book\b/.test(lower)) return 'Testing LoreBook';
-    if (/\b(testing|tested|trying|tried)\s+lorebook\b/.test(lower)) return 'Testing LoreBook';
+    if (/\bska prom\b/.test(lower) && /\b(?:saw|attended|went|show|prom)\b/.test(lower)) return 'Ska Prom';
+    if (/\banime expo\b/.test(lower) && /\b(?:afters?|catch one|sonic\s*boombox|club|party)\b/.test(lower)) {
+      return /\bcatch one\b/.test(lower) ? 'Anime Expo Afters at Catch One' : 'Anime Expo Fourth of July Weekend';
+    }
+    if (/\bmemorial day\b/.test(lower) && /\btia\s+grace(?:'s|s)?\s+(?:house|home|place)\b/.test(lower)) {
+      return "Memorial Day Weekend at Tia Grace's House";
+    }
+    if (/\b(?:amazon\s+ring|ring)\b/.test(lower) && /\b(?:onboarding|started|began|hired|working)\b/.test(lower)) {
+      return 'Amazon Ring Onboarding';
+    }
+    if (/\bkforce\b/.test(lower) && /\b(?:onboarding|started|began|hired|recruiter|training)\b/.test(lower)) {
+      return 'Kforce Onboarding';
+    }
+    const conflictMatch = text.match(/\b(situation|conflict|argument|fight|falling out)\s+with\s+([A-Z][\w'.-]*(?:\s+(?:and|&|with)\s+[A-Z][\w'.-]*){0,3})\b/);
+    if (conflictMatch?.[2]) return `${conflictMatch[1][0].toUpperCase()}${conflictMatch[1].slice(1)} with ${conflictMatch[2].trim()}`;
+    const romanticEncounter = text.match(/\b(?:I|We|i|we)\s+(?:hooked up|slept with|had sex|kissed)\s+(?:with\s+)?([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})\b/);
+    if (romanticEncounter?.[1]) return `Night with ${romanticEncounter[1].trim()}`;
+    if (/\b(?:spam(?:med)?|unexpected|ran out of)\b[^.!?]{0,80}\b(?:api )?tokens?\b/.test(lower)) return 'Unexpected Token Usage';
+    if (/\b(?:worked|built|created|designed|developed|fixed|finished|completed|implemented|launched|released|improved|updated)\b[^.!?]{0,120}\blore\s*book\b/.test(lower)) {
+      if (/\bui\b|user interface/.test(lower) && /\bgeneration\b|generator|flow/.test(lower)) return 'LoreBook UI and Generation Progress';
+      if (/\bui\b|user interface/.test(lower)) return 'LoreBook UI Progress';
+      return 'LoreBook Development Progress';
+    }
+    if (/\bex lover\b/.test(lower) && /\b(?:listened|listening|sounded|on the way)\b/.test(lower)) return 'Listening to Ex Lover Before the Show';
+    if (/\bex lover(?:\s+show)?\b/.test(lower) && /\b(?:saw|attended|went|show)\b/.test(lower)) return 'Ex Lover Show';
+
+    const currentHouse = text.match(/\b(?:i(?:'m| am)|we(?:'re| are))\s+(?:here\s+)?at\s+(?:my\s+)?([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})'?s?\s+(?:house|home|place)\b/i);
+    if (currentHouse?.[1]) return `Visiting ${currentHouse[1].trim()}'s House`;
+    const shoppingTrip = text.match(/\b(?:went|drove|stopped|shopped)\s+(?:at|to)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})\b[^.!?]{0,100}\b(?:grocer|groceries|shopping|supplies)\b/i);
+    if (shoppingTrip?.[1]) return `Grocery Trip to ${shoppingTrip[1].trim()}`;
 
     const interviewNames = this.extractNamesAfterConnector(text, /\binterviews?\s+(?:with\s+)?/i);
     if (interviewNames.length > 0) return `Interview with ${this.joinNames(interviewNames)}`;
@@ -799,6 +994,33 @@ export class EventAssemblyService {
     const showMatch = text.match(/\b(?:went\s+to|attended|saw|played|performed\s+at)\s+(?:the\s+)?(?:\"([^\"]{3,80})\"|'([^']{3,80})'|([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,5}))\s+(?:show|concert|gig|festival)\b/);
     const showName = showMatch?.[1] || showMatch?.[2] || showMatch?.[3];
     if (showName) return `${showName.trim()} Show`;
+
+    const skippedShow = text.match(/\b(?:skipped|missed|did not attend|didn't attend|decided not to go to)\s+(?:the\s+)?([^.!?]{3,80}?)(?:\s+(?:show|concert|festival))?\b(?:because|since|$)/i);
+    if (skippedShow?.[1]) return `Skipped ${skippedShow[1].trim()} Show`;
+
+    // General deterministic event structures. These intentionally capture a
+    // bounded object phrase instead of truncating the original sentence.
+    const structuredPatterns: Array<{ pattern: RegExp; title: (value: string) => string }> = [
+      { pattern: /\b(?:i|we)\s+visited\s+([^,.!?]{2,60})/i, title: value => `Visit to ${value}` },
+      { pattern: /\b(?:i|we)\s+(?:went|traveled|moved)\s+to\s+([^,.!?]{2,60})/i, title: value => `Trip to ${value}` },
+      { pattern: /\b(?:i|we)\s+met\s+(?:with\s+)?([^,.!?]{2,60})/i, title: value => `Meeting ${value}` },
+      { pattern: /\b(?:i|we)\s+(?:finished|completed)\s+([^,.!?]{2,60})/i, title: value => `Completed ${value}` },
+      { pattern: /\b(?:i|we)\s+(?:started|began)\s+([^,.!?]{2,60})/i, title: value => `Started ${value}` },
+      { pattern: /\b(?:i|we)\s+(?:attended|saw)\s+([^,.!?]{2,60})/i, title: value => `Attended ${value}` },
+      { pattern: /\b(?:i|we)\s+worked\s+on\s+([^,.!?]{2,60})/i, title: value => `Progress on ${value}` },
+    ];
+    for (const candidate of structuredPatterns) {
+      const match = text.match(candidate.pattern);
+      if (!match?.[1]) continue;
+      const object = match[1]
+        .replace(/\b(?:today|yesterday|last (?:night|week|month|year)|this (?:morning|afternoon|evening))\b.*$/i, '')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 7)
+        .join(' ');
+      const structuredTitle = candidate.title(object);
+      if (isPublishableLifeLogTitle(structuredTitle)) return structuredTitle;
+    }
 
     return null;
   }
@@ -822,7 +1044,7 @@ export class EventAssemblyService {
 
   private chooseBetterEventTitle(existingTitle: string | null | undefined, candidateTitle: string): string {
     if (this.isWeakEventTitle(candidateTitle)) {
-      return existingTitle && !this.isWeakEventTitle(existingTitle) ? existingTitle : 'Captured Conversation';
+      return existingTitle && !this.isWeakEventTitle(existingTitle) ? existingTitle : '';
     }
 
     if (existingTitle && !this.isWeakEventTitle(existingTitle)) {
@@ -842,6 +1064,7 @@ export class EventAssemblyService {
       /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/i,
       /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?$/i,
       /^(chat|conversation|journal entry|entry|memory|event|moment)$/i,
+      /^captured conversation$/i,
       /^(chat|conversation|journal entry|entry|memory|event|moment)\s*(from|on|for)?\s*[:\-–—]?\s*(\d|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)/i,
     ].some(pattern => pattern.test(value));
   }

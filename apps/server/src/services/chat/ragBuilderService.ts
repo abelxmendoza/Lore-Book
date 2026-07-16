@@ -51,7 +51,8 @@ export async function buildRAGPacket(
   userId: string,
   message: string,
   currentContext?: CurrentContext,
-  extractDatesAndTimes?: (msg: string) => Promise<Array<{ date: string; context: string; precision: string; confidence: number }>>
+  extractDatesAndTimes?: (msg: string) => Promise<Array<{ date: string; context: string; precision: string; confidence: number }>>,
+  scopePlan?: import('../responseScope').ResponseScopePlan,
 ) {
   // Full-packet cache hit — skip everything
   const cached = ragPacketCacheService.getCachedPacket(userId, message);
@@ -386,7 +387,7 @@ export async function buildRAGPacket(
   }
 
   // ── Sources array ────────────────────────────────────────────────────────
-  const sources: ChatSource[] = [
+  let sources: ChatSource[] = [
     ...orchestratorSummary.timeline.events.slice(0, 15).map((e: any) => ({
       type: 'entry' as const, id: e.id,
       title: e.summary || e.content?.substring(0, 50) || 'Untitled',
@@ -559,8 +560,11 @@ export async function buildRAGPacket(
       // Response scope gate: retrieval stays broad, but evidence from domains
       // this question blocked (family in a work answer, romance in a family
       // answer, diagnostics anywhere) never reaches the LLM.
+      // Prefer the caller's plan — it carries the thread's active context, so a
+      // follow-up like "what about Joss?" gates by the inherited intent instead
+      // of re-planning from the bare message.
       const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
-      workingMemory = applyScopePlanToAssembly(workingMemory, planResponseScope(message));
+      workingMemory = applyScopePlanToAssembly(workingMemory, scopePlan ?? planResponseScope(message));
       workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
       foundationRecallBlock = workingMemoryPacket.text;
       foundationRelationships = workingMemory.relationships;
@@ -599,6 +603,48 @@ export async function buildRAGPacket(
     }));
   } catch (e) {
     logger.debug({ e }, 'RAGBuilder: skills index fetch failed');
+  }
+
+  // Scope every downstream evidence surface once. This filtered list feeds
+  // the prompt, visible source chips, citations, suggested actions, and
+  // response metadata, preventing the UI from leaking broad retrieval noise.
+  if (scopePlan) {
+    const { filterSourcesForPresentation } = await import('../responseScope');
+    sources = filterSourcesForPresentation(sources, scopePlan, workingMemory);
+
+    if (scopePlan.intent === 'work' && scopePlan.responseMode !== 'audit' && scopePlan.responseMode !== 'debug_inspector') {
+      const allowedCharacterIds = new Set(
+        sources.filter((source) => source.type === 'character').map((source) => source.id),
+      );
+      const allowedTimelineIds = new Set(
+        sources.filter((source) => source.type === 'entry').map((source) => source.id),
+      );
+      allCharacters = allCharacters.filter((character: any) => allowedCharacterIds.has(character.id));
+      characterAttributesMap = new Map(
+        [...characterAttributesMap.entries()].filter(([characterId]) => allowedCharacterIds.has(characterId)),
+      );
+      characterMemoriesMap = Object.fromEntries(
+        Object.entries(characterMemoriesMap).filter(([characterId]) => allowedCharacterIds.has(characterId)),
+      );
+      allLocations = [];
+      allChapters = [];
+      romanticRelationships = [];
+      romanticContext = [];
+      timelineHierarchy = { eras: [], sagas: [], arcs: [] };
+      orchestratorSummary = {
+        ...orchestratorSummary,
+        timeline: {
+          ...(orchestratorSummary.timeline ?? {}),
+          events: (orchestratorSummary.timeline?.events ?? []).filter((event: any) =>
+            allowedTimelineIds.has(event.id),
+          ),
+          arcs: [],
+        },
+        characters: (orchestratorSummary.characters ?? []).filter((entry: any) =>
+          allowedCharacterIds.has(entry.character?.id),
+        ),
+      };
+    }
   }
 
   const packet = {

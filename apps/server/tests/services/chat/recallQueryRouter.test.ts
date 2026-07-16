@@ -221,4 +221,69 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
     expect(result.foundationPrimary).toBe(true);
     expect(result.contextBlock).toContain('Some narrative.');
   });
+
+  it('builds identity recall from core identity through chronological life chapters before recent context', async () => {
+    tableResults = {
+      ...tableResults,
+      narrative_accounts: {
+        data: {
+          narrative_text: 'Abel recently started working at Ring.',
+          metadata: {
+            facts: {
+              identity: {
+                name: 'Abel',
+                hometown: 'Whittier',
+                education: 'CSUF Computer Science graduate',
+                career: 'Robotics and software engineering',
+              },
+            },
+            themes: [{ theme: 'Career & work' }],
+          },
+        },
+        error: null,
+      },
+      biographies: {
+        data: {
+          title: 'My Full Life Story',
+          subtitle: 'A life shaped by building, fighting, and reinvention.',
+          biography_data: {
+            chapters: [
+              {
+                title: 'The Ring Era',
+                text: 'Years later, I joined Ring and entered a new technical chapter.',
+                timeSpan: { start: '2026-06-01', end: '2026-07-01' },
+              },
+              {
+                title: 'Early Foundations',
+                text: 'I grew up in Whittier before restaurant work and college reshaped my direction.',
+                timeSpan: { start: '2000-01-01', end: '2018-01-01' },
+              },
+              {
+                title: 'Robotics Takes Hold',
+                text: 'Solar work and technical study led into robotics projects.',
+                timeSpan: { start: '2019-01-01', end: '2025-12-31' },
+              },
+            ],
+          },
+        },
+        error: null,
+      },
+    };
+
+    const result = await routeRecallQuery('user-1', 'Who am I?');
+
+    expect(result.contextBlock).toContain('## CORE IDENTITY');
+    expect(result.contextBlock).toContain('Hometown: Whittier');
+    expect(result.contextBlock).toContain('## LIFE STORY — CHRONOLOGICAL');
+    expect(result.contextBlock.indexOf('Early Foundations')).toBeLessThan(
+      result.contextBlock.indexOf('Robotics Takes Hold'),
+    );
+    expect(result.contextBlock.indexOf('Robotics Takes Hold')).toBeLessThan(
+      result.contextBlock.indexOf('The Ring Era'),
+    );
+    expect(result.contextBlock.indexOf('The Ring Era')).toBeLessThan(
+      result.contextBlock.indexOf('## CURRENT CHAPTER'),
+    );
+    expect(result.contextBlock).not.toContain('People in your story');
+  });
 });

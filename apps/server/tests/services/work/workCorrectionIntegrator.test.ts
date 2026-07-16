@@ -43,4 +43,15 @@ describe('roster correction integration', () => {
     // Corrections update the answer, not the response size.
     expect(answer.length).toBeLessThan(800);
   });
+
+  it('keeps a correction list ending in Ordell intact', () => {
+    const plan = planResponseScope(
+      'You forgot Ravix, Jesse, Naveska, Chris, and Ordell.',
+      { previousIntent: 'work' },
+    );
+    const corrected = applyRosterCorrection(baseContext(), plan.correctionNames);
+    expect(corrected.coworkers.map((person) => person.displayName)).toEqual(
+      expect.arrayContaining(['Ravix', 'Jesse', 'Naveska', 'Chris', 'Ordell']),
+    );
+  });
 });

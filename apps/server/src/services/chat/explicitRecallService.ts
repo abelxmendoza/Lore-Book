@@ -10,7 +10,7 @@
 import { queryEngine } from '../../cognition/query/QueryEngine';
 import type { QueryContext } from '../../cognition/query/QueryTypes';
 import type { RecallResult as RoutedRecall } from './recallQueryRouter';
-import { isFoundationPrimaryIntent } from './recallIntentPatterns';
+import { detectSyncRecallIntent, isFoundationPrimaryIntent } from './recallIntentPatterns';
 import { VERIFIED_SILENCE_FALLBACK } from './verifiedMemoryLanguage';
 import {
   buildThreadRecall,
@@ -43,9 +43,13 @@ export async function executeExplicitRecall(
 
   const isThreadQuery =
     matchesThreadRecallQuery(message) || THREAD_RECALL_RE.test(message.trim());
+  const explicitFoundationIntent = detectSyncRecallIntent(message);
 
-  // Phase 2 — thread first when history exists or threadId provided
-  if (isThreadQuery || conversationHistory.length > 0) {
+  // Thread context is useful for ordinary follow-ups, but it must never
+  // outrank an explicit foundation request. In particular, "Who am I?" is a
+  // longitudinal biography query even when asked in the middle of an active
+  // conversation; returning the thread here collapses a life into recent chat.
+  if (isThreadQuery || (conversationHistory.length > 0 && !explicitFoundationIntent)) {
     const thread = await runThread();
 
     if (thread.hasContent) {

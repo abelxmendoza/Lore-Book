@@ -42,6 +42,43 @@ export async function writeRelationship(
   const toEnt = resolvedEntities.get(rel.toTempId);
   if (!fromEnt || !toEnt) return;
 
+  // Stage contract: two distinct endpoints + specific type + evidence before any write.
+  try {
+    const { validateRelationshipBeforeWrite, recordPersisted } = await import(
+      '../services/ingestion/stageContractGate'
+    );
+    const gated = validateRelationshipBeforeWrite({
+      subjectEntityId: fromEnt.id,
+      objectEntityId: toEnt.id,
+      relationshipType: rel.relationship,
+      confidence: rel.confidence,
+      evidenceIds: opts?.evidenceSourceIds?.length
+        ? opts.evidenceSourceIds
+        : opts?.evidence
+          ? [opts.evidence.slice(0, 64)]
+          : ['writeRelationship'],
+      description: opts?.evidence,
+      temporalStatus: 'uncertain',
+    });
+    if (!gated.accepted) {
+      logger.info(
+        {
+          userId,
+          from: fromEnt.id,
+          to: toEnt.id,
+          type: rel.relationship,
+          reason: gated.reason,
+        },
+        'writeRelationship: stage contract rejected relationship candidate',
+      );
+      return;
+    }
+    recordPersisted('relationship_candidate');
+  } catch (err) {
+    logger.warn({ err }, 'writeRelationship: contract gate error — skipping write');
+    return;
+  }
+
   const fromStorage = toStorageEntityType(fromEnt.type);
   const toStorage = toStorageEntityType(toEnt.type);
 

@@ -59,7 +59,7 @@ describe('EventsBook', () => {
   it('renders the Moments tab by default with a search input', async () => {
     const { findByText } = render(<EventsBook />);
     await findByText(/This view is built from your conversations/i);
-    expect(screen.getByRole('button', { name: /Moments/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Moments$/i })).toBeInTheDocument();
     const searchInput = document.querySelector('input[type="text"]');
     expect(searchInput).toBeInTheDocument();
   });

@@ -4,8 +4,14 @@
  */
 
 import { domainPolicyFor } from './responseDomainPolicy';
-import { CORRECTION_RE, resolveResponseMode } from './responseModeResolver';
-import type { EntityRef, ResponseScopePlan, ScopeIntent } from './responseScopeTypes';
+import { CORRECTION_RE, isFollowUpShaped, resolveResponseMode } from './responseModeResolver';
+import type {
+  ActiveConversationContext,
+  EntityRef,
+  ResponseScopePlan,
+  ScopeIntent,
+  ScopeSource,
+} from './responseScopeTypes';
 
 const WORK_INTENT_RE =
   /\b(work|job|team|teammates?|coworkers?|colleagues?|manager|boss|lead(?:s)?\b|shift|on[- ]?site|office|warehouse|employer|company i work|my (role|position|title)\b|career|employed)\b/i;
@@ -24,6 +30,20 @@ const STOPWORD_NAMES = new Set([
   'did', 'do', 'does', 'lorebook', 'ok', 'okay', 'hey', 'also', 'but',
 ]);
 
+const SENTENCE_BLEED_TOKENS = new Set(['also', 'and', 'but', 'or', 'so', 'then', 'you', 'your', 'we', 'our']);
+
+function isPlausibleEntityCandidate(name: string): boolean {
+  const tokens = name.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  // Acronyms such as USC are useful facts, but are not people to add to a
+  // corrected roster. Organization names with normal casing still pass.
+  if (name.length > 1 && name === name.toUpperCase()) return false;
+  // Reject sentence bleed such as "Also You" without rejecting a legitimate
+  // capitalized name that happens to begin a sentence.
+  if (tokens.some((token) => SENTENCE_BLEED_TOKENS.has(token))) return false;
+  return true;
+}
+
 /** Capitalized tokens/phrases likely to be proper names in the question. */
 export function extractCandidateEntities(message: string): EntityRef[] {
   const found = new Map<string, EntityRef>();
@@ -34,6 +54,7 @@ export function extractCandidateEntities(message: string): EntityRef[] {
     const name = match[1].trim();
     const key = name.toLowerCase();
     if (STOPWORD_NAMES.has(key)) continue;
+    if (!isPlausibleEntityCandidate(name)) continue;
     if (!found.has(key)) found.set(key, { name });
   }
   return [...found.values()];
@@ -58,27 +79,76 @@ export function detectScopeIntent(message: string): ScopeIntent {
   return 'general';
 }
 
+/**
+ * Find the most recent explicit user intent that a context-free correction can
+ * inherit. General chatter and the correction itself are intentionally skipped.
+ */
+export function inferPreviousScopeIntent(
+  history: ReadonlyArray<{ role: string; content: string }>,
+): ScopeIntent | undefined {
+  let skippedTrailingCorrection = false;
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (entry.role !== 'user' || !entry.content.trim()) continue;
+
+    const intent = detectScopeIntent(entry.content);
+    // Some callers include the current user turn in history. Skip that one
+    // context-free correction, then inspect exactly the user turn it follows.
+    if (!skippedTrailingCorrection && intent === 'general' && CORRECTION_RE.test(entry.content)) {
+      skippedTrailingCorrection = true;
+      continue;
+    }
+
+    return intent === 'general' ? undefined : intent;
+  }
+
+  return undefined;
+}
+
 export function planResponseScope(
   message: string,
-  opts: { previousIntent?: ScopeIntent } = {},
+  opts: { previousIntent?: ScopeIntent; activeContext?: ActiveConversationContext } = {},
 ): ResponseScopePlan {
   const responseMode = resolveResponseMode(message);
   let intent = detectScopeIntent(message);
-  // A bare correction ("you forgot Kaustubh") often names people without
-  // domain words — inherit the intent of the answer being corrected.
+  let scopeSource: ScopeSource = 'message';
+  // Context-free follow-ups ("you forgot Kavi", "what about Joss?") name
+  // people without domain words — they inherit the conversation's active
+  // context. An explicit intent in the message itself always wins.
   const isCorrection = CORRECTION_RE.test(message);
-  if (isCorrection && intent === 'general' && opts.previousIntent) {
-    intent = opts.previousIntent;
+  if (intent === 'general') {
+    if (isCorrection && opts.previousIntent) {
+      intent = opts.previousIntent;
+      scopeSource = 'inherited_correction';
+    } else if (opts.activeContext && isFollowUpShaped(message)) {
+      intent = opts.activeContext.intent;
+      scopeSource = isCorrection ? 'inherited_correction' : 'inherited_follow_up';
+    }
   }
 
   const policy = domainPolicyFor(intent);
 
+  // A follow-up keeps the entities already in play so entity-relevance checks
+  // don't strand it ("tell me more about them" carries the answer's names).
+  const primaryEntities = extractCandidateEntities(message);
+  if (scopeSource !== 'message' && opts.activeContext) {
+    const seen = new Set(primaryEntities.map((e) => e.name.toLowerCase()));
+    for (const entity of opts.activeContext.entities) {
+      const key = entity.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      primaryEntities.push(entity);
+    }
+  }
+
   return {
     intent,
     responseMode,
+    scopeSource,
     allowedDomains: policy.allowed,
     blockedDomains: policy.blocked,
-    primaryEntities: extractCandidateEntities(message),
+    primaryEntities,
     isCorrection,
     correctionNames: isCorrection ? extractCorrectionNames(message) : [],
     maxEvidenceItems: responseMode === 'audit' ? 100 : 12,
