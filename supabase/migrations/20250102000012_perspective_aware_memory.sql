@@ -38,9 +38,13 @@ CREATE TABLE IF NOT EXISTS perspective_claims (
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at TIMESTAMPTZ,
-    metadata JSONB DEFAULT '{}'::jsonb,
-    UNIQUE(base_claim_id, perspective_id, is_active) WHERE is_active = true
+    metadata JSONB DEFAULT '{}'::jsonb
 );
+
+-- Partial unique index (UNIQUE(... ) WHERE is not valid in CREATE TABLE).
+CREATE UNIQUE INDEX IF NOT EXISTS perspective_claims_active_unique
+  ON perspective_claims (base_claim_id, perspective_id)
+  WHERE is_active = true;
 
 -- Perspective Disputes: Track disagreements between perspectives
 CREATE TABLE IF NOT EXISTS perspective_disputes (
