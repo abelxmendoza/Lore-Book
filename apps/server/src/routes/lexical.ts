@@ -63,8 +63,8 @@ router.post(
 /** POST /api/lexical/preview — read-only composer span preview (no persistence) */
 router.post(
   '/preview',
-  lexicalPreviewLimit,
   requireAuth,
+  lexicalPreviewLimit,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = previewSchema.parse(req.body);
     const userId = req.user!.id;

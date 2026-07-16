@@ -477,8 +477,8 @@ router.post(
  */
 router.post(
   '/lorebook-parse',
-  loreBookParseLimit,
   requireAuth,
+  loreBookParseLimit,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const schema = z.object({

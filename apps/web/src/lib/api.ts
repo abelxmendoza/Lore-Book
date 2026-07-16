@@ -200,7 +200,12 @@ export const fetchJson = async <T>(
           if (options?.onError) options.onError(authError);
           throw authError;
         }
-        const apiError = new Error(errorMessage);
+        const apiError = new Error(errorMessage) as Error & {
+          status?: number;
+          retryAfter?: number;
+        };
+        apiError.status = res.status;
+        if (typeof error.retryAfter === 'number') apiError.retryAfter = error.retryAfter;
         if (options?.onError) options.onError(apiError);
         throw apiError;
       }

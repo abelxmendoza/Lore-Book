@@ -270,7 +270,7 @@ async function salvageDurabilityFromIdempotencyKey(opts: {
 }
 
 // Streaming endpoint
-router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
   req.socket?.setNoDelay(true);
 
@@ -761,7 +761,7 @@ router.post('/stream', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, chec
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', openAiHttpLimit, openAiHttpBurstLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
