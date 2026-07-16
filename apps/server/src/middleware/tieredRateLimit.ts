@@ -5,6 +5,7 @@ import {
   createRateLimitStore,
   type RateLimitStore,
 } from '../lib/rateLimitCore';
+import { getRateLimitClientId } from '../lib/rateLimitClientId';
 import { logSecurityEvent } from '../services/securityLog';
 import { checkPostgresRateLimit } from '../services/postgresRateLimitService';
 
@@ -70,10 +71,14 @@ const GUEST_PATH = /\/api\/guest/i;
 const PUBLIC_PROBE_PATH = /\/api\/(diagnostics|runtime)\/?$/i;
 
 /**
- * High-frequency composer helpers (debounced while typing). They already have
- * per-route limiters (lexicalPreviewLimit / loreBookParseLimit ≈ 240/15m).
- * Keep them on the general write budget but skip write_burst so a typing
- * session cannot lock the user out of chat for the rest of the minute.
+ * High-frequency composer helpers (debounced ~280ms while typing).
+ * They already have dedicated per-route limiters (lexicalPreviewLimit /
+ * loreBookParseLimit ≈ 900/15m, keyed after auth).
+ *
+ * Do NOT count them against the shared write / write_burst / ai tiers —
+ * sustained journaling drains a 450/15m write bucket in ~1–2 minutes, then
+ * POST /api/chat/stream 429s with "Cloud sync failed" even though chat
+ * itself was not overused.
  */
 const COMPOSER_HOT_PATH =
   /\/api\/(lexical\/preview|conversation\/lorebook-parse)\/?$/i;
@@ -87,12 +92,15 @@ function shouldSkip(path: string): boolean {
 }
 
 function getClientId(req: Request): string {
-  return (req as Request & { user?: { id?: string } }).user?.id || req.ip || 'anonymous';
+  return getRateLimitClientId(req);
 }
 
 function resolveTierRules(req: Request): TierRule[] {
   const path = requestPath(req);
   if (shouldSkip(path)) return [];
+
+  // Composer previews are capped by route middleware only.
+  if (COMPOSER_HOT_PATH.test(path)) return [];
 
   const method = req.method.toUpperCase();
   const rules: TierRule[] = [];
@@ -124,11 +132,7 @@ function resolveTierRules(req: Request): TierRule[] {
     rules.push({ tier: 'read', ...TIER_LIMITS.read });
   } else {
     rules.push({ tier: 'write', ...TIER_LIMITS.write });
-    // Composer preview/parse already debounce client-side + have route caps.
-    // Applying write_burst here makes normal typing trip 429s on chat too.
-    if (!COMPOSER_HOT_PATH.test(path)) {
-      rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
-    }
+    rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
   }
 
   return rules;
