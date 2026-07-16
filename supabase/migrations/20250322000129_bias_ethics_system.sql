@@ -91,7 +91,8 @@ CREATE INDEX IF NOT EXISTS idx_consent_records_status ON public.consent_records(
 CREATE TABLE IF NOT EXISTS public.publication_versions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  lorebook_id UUID REFERENCES lorebooks(id) ON DELETE CASCADE,
+  -- lorebooks table may not exist on all environments; keep nullable UUID without FK.
+  lorebook_id UUID,
   version_name TEXT NOT NULL, -- 'draft', 'safe', 'full', 'public'
   publication_status TEXT DEFAULT 'draft' CHECK (publication_status IN ('draft', 'scheduled', 'published', 'archived')),
   scheduled_publish_date TIMESTAMPTZ,

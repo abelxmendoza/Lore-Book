@@ -31,6 +31,20 @@ CREATE TABLE IF NOT EXISTS public.identity_signals (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Identity Core Profiles Table (must precede dimensions/conflicts FKs)
+CREATE TABLE IF NOT EXISTS public.identity_core_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  dimensions JSONB DEFAULT '[]',
+  conflicts JSONB DEFAULT '[]',
+  stability JSONB DEFAULT '{}',
+  projection JSONB DEFAULT '{}',
+  summary TEXT,
+  profile_data JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Identity Dimensions Table
 CREATE TABLE IF NOT EXISTS public.identity_dimensions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,20 +73,6 @@ CREATE TABLE IF NOT EXISTS public.identity_conflicts (
   evidence TEXT[] DEFAULT '{}',
   tension NUMERIC CHECK (tension >= 0 AND tension <= 1),
   created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Identity Core Profiles Table
-CREATE TABLE IF NOT EXISTS public.identity_core_profiles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  dimensions JSONB DEFAULT '[]',
-  conflicts JSONB DEFAULT '[]',
-  stability JSONB DEFAULT '{}',
-  projection JSONB DEFAULT '{}',
-  summary TEXT,
-  profile_data JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes
