@@ -343,78 +343,112 @@ END $$;
 -- =====================================================
 -- 8. PERFORMANCE INDEXES FOR COMMON QUERIES
 -- =====================================================
+-- Guard indexes: several tables are created later on fresh preview replay.
 
--- Index for character-location queries
-CREATE INDEX IF NOT EXISTS idx_character_location_via_memories
-ON public.character_memories(character_id, journal_entry_id);
+DO $$ BEGIN
+  IF to_regclass('public.character_memories') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_character_location_via_memories
+      ON public.character_memories(character_id, journal_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_character_event_via_memories
+      ON public.character_memories(character_id, journal_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_character_memories_entry_character
+      ON public.character_memories(journal_entry_id, character_id);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_location_character_via_mentions
-ON public.location_mentions(location_id, memory_id);
+DO $$ BEGIN
+  IF to_regclass('public.location_mentions') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_location_character_via_mentions
+      ON public.location_mentions(location_id, memory_id);
+    CREATE INDEX IF NOT EXISTS idx_location_event_via_mentions
+      ON public.location_mentions(location_id, memory_id);
+    CREATE INDEX IF NOT EXISTS idx_location_mentions_entry_location
+      ON public.location_mentions(memory_id, location_id);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
--- Index for event-character queries (via journal entries)
-CREATE INDEX IF NOT EXISTS idx_event_character_via_mentions
-ON public.event_mentions(event_id, memory_id);
+DO $$ BEGIN
+  IF to_regclass('public.event_mentions') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_event_character_via_mentions
+      ON public.event_mentions(event_id, memory_id);
+    CREATE INDEX IF NOT EXISTS idx_event_location_via_mentions
+      ON public.event_mentions(event_id, memory_id);
+    CREATE INDEX IF NOT EXISTS idx_event_mentions_entry_event
+      ON public.event_mentions(memory_id, event_id);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_character_event_via_memories
-ON public.character_memories(character_id, journal_entry_id);
+DO $$ BEGIN
+  IF to_regclass('public.perception_entries') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_perception_location_via_memory
+      ON public.perception_entries(related_memory_id)
+      WHERE related_memory_id IS NOT NULL;
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
--- Index for event-location queries (via journal entries)
-CREATE INDEX IF NOT EXISTS idx_event_location_via_mentions
-ON public.event_mentions(event_id, memory_id);
+DO $$ BEGIN
+  IF to_regclass('public.timeline_memberships') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_timeline_location_via_memberships
+      ON public.timeline_memberships(timeline_id, journal_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_timeline_memberships_entry_timeline
+      ON public.timeline_memberships(journal_entry_id, timeline_id);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_location_event_via_mentions
-ON public.location_mentions(location_id, memory_id);
+DO $$ BEGIN
+  IF to_regclass('public.skill_progress') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_skill_location_via_progress
+      ON public.skill_progress(skill_id, source_id)
+      WHERE source_type = 'memory' AND source_id IS NOT NULL;
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
--- Index for perception-location queries
-CREATE INDEX IF NOT EXISTS idx_perception_location_via_memory
-ON public.perception_entries(related_memory_id)
-WHERE related_memory_id IS NOT NULL;
-
--- Index for timeline-location queries
-CREATE INDEX IF NOT EXISTS idx_timeline_location_via_memberships
-ON public.timeline_memberships(timeline_id, journal_entry_id);
-
--- Index for skill-location queries
-CREATE INDEX IF NOT EXISTS idx_skill_location_via_progress
-ON public.skill_progress(skill_id, source_id)
-WHERE source_type = 'memory' AND source_id IS NOT NULL;
-
--- Index for group-location queries (via characters)
-CREATE INDEX IF NOT EXISTS idx_group_character_via_communities
-ON public.social_communities USING GIN(members);
+DO $$ BEGIN
+  IF to_regclass('public.social_communities') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_group_character_via_communities
+      ON public.social_communities USING GIN(members);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
 -- =====================================================
--- 9. COMPOSITE INDEXES FOR COMMON JOIN PATTERNS
+-- 9. COMMENTS FOR DOCUMENTATION (only when relations exist)
 -- =====================================================
 
--- Character-Event-Location query pattern
-CREATE INDEX IF NOT EXISTS idx_character_memories_entry_character
-ON public.character_memories(journal_entry_id, character_id);
-
-CREATE INDEX IF NOT EXISTS idx_event_mentions_entry_event
-ON public.event_mentions(memory_id, event_id);
-
-CREATE INDEX IF NOT EXISTS idx_location_mentions_entry_location
-ON public.location_mentions(memory_id, location_id);
-
--- Timeline-Character-Event query pattern
-CREATE INDEX IF NOT EXISTS idx_timeline_memberships_entry_timeline
-ON public.timeline_memberships(journal_entry_id, timeline_id);
-
--- =====================================================
--- 10. COMMENTS FOR DOCUMENTATION
--- =====================================================
-
-COMMENT ON TABLE public.event_mentions IS 'Direct link between resolved_events and journal_entries. Part of ERD implementation.';
-COMMENT ON TABLE public.location_mentions IS 'Direct link between locations and journal_entries. Part of ERD implementation.';
-COMMENT ON TABLE public.character_memories IS 'Direct link between characters and journal_entries. Part of ERD implementation.';
-COMMENT ON TABLE public.task_memory_bridges IS 'Bridge table linking timeline_events to journal_entries. Part of ERD implementation.';
-COMMENT ON TABLE public.timeline_memberships IS 'Many-to-many relationship between timelines and journal_entries. Part of ERD implementation.';
-COMMENT ON TABLE public.event_continuity_links IS 'Event-to-event relationships for continuity tracking. Part of ERD implementation.';
-
-COMMENT ON COLUMN public.resolved_events.people IS 'Array of character UUIDs directly linked to this event. Part of ERD implementation.';
-COMMENT ON COLUMN public.resolved_events.locations IS 'Array of location UUIDs directly linked to this event. Part of ERD implementation.';
-COMMENT ON COLUMN public.social_communities.members IS 'Array of character names in this group. Part of ERD implementation.';
+DO $$ BEGIN
+  IF to_regclass('public.event_mentions') IS NOT NULL THEN
+    COMMENT ON TABLE public.event_mentions IS 'Direct link between resolved_events and journal_entries. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.location_mentions') IS NOT NULL THEN
+    COMMENT ON TABLE public.location_mentions IS 'Direct link between locations and journal_entries. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.character_memories') IS NOT NULL THEN
+    COMMENT ON TABLE public.character_memories IS 'Direct link between characters and journal_entries. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.task_memory_bridges') IS NOT NULL THEN
+    COMMENT ON TABLE public.task_memory_bridges IS 'Bridge table linking timeline_events to journal_entries. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.timeline_memberships') IS NOT NULL THEN
+    COMMENT ON TABLE public.timeline_memberships IS 'Many-to-many relationship between timelines and journal_entries. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.event_continuity_links') IS NOT NULL THEN
+    COMMENT ON TABLE public.event_continuity_links IS 'Event-to-event relationships for continuity tracking. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.resolved_events') IS NOT NULL THEN
+    COMMENT ON COLUMN public.resolved_events.people IS 'Array of character UUIDs directly linked to this event. Part of ERD implementation.';
+    COMMENT ON COLUMN public.resolved_events.locations IS 'Array of location UUIDs directly linked to this event. Part of ERD implementation.';
+  END IF;
+  IF to_regclass('public.social_communities') IS NOT NULL THEN
+    COMMENT ON COLUMN public.social_communities.members IS 'Array of character names in this group. Part of ERD implementation.';
+  END IF;
+EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+END $$;
 
 -- =====================================================
 -- 11. VERIFICATION QUERIES (for testing)
