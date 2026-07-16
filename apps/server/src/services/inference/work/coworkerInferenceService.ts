@@ -2,11 +2,16 @@
  * Coworker / teammate inference — "with Gary and Jeff".
  * Never assumes manager unless explicit evidence exists elsewhere.
  */
-import type { HistoryContext, InferredPersonAssociation, InferredRelationshipAssociation } from '../inferenceAssociationTypes';
-import { inferenceBase } from '../inferenceAssociationTypes';
+import {
+  inferenceBase,
+  type HistoryContext,
+  type InferredPersonAssociation,
+  type InferredRelationshipAssociation,
+} from '../inferenceAssociationTypes';
 import { matchExistingPerson } from '../historyAssociationService';
 
-const WITH_NAMES_RE = /\bwith\s+([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?\b/g;
+const WITH_NAMES_RE =
+  /\bwith\s+([A-Z][\p{L}'’-]+(?:\s*,\s*[A-Z][\p{L}'’-]+)*(?:\s*,?\s+and\s+[A-Z][\p{L}'’-]+)?)/gu;
 const MANAGER_EVIDENCE_RE = /\b(?:my\s+)?(?:boss|manager|supervisor|reports?\s+to)\s+([A-Z][a-z]+)\b/i;
 
 export interface CoworkerCandidate {
@@ -25,7 +30,9 @@ export function extractCoworkerNames(text: string): CoworkerCandidate[] {
   WITH_NAMES_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = WITH_NAMES_RE.exec(text)) !== null) {
-    const names = [m[1], m[2]].filter(Boolean) as string[];
+    // Preserve the final coordinated member: "with Chris, Jesse, and
+    // Jimani" must produce all three names, not silently drop the tail.
+    const names = m[1].match(/[A-Z][\p{L}'’-]+/gu) ?? [];
     for (const name of names) {
       if (/^(I|We|My|Our|The)$/i.test(name)) continue;
       const isManager = managerName === name.toLowerCase();

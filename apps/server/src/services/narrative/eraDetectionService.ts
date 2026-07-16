@@ -44,11 +44,6 @@ const ERA_SIGNALS: EraSignal[] = [
     minMatches: 2,
   },
   {
-    anchorType: 'relationship_arc',
-    title: 'Relationship Arc',
-    keywords: /\b(dating|ghosting|blocking|reappearance|met|broke up|distancing|best friend)\b/i,
-  },
-  {
     anchorType: 'family_period',
     title: 'Family Period',
     keywords: /\b(family|tio|tía|aunt|uncle|cousin|graduation party|family party)\b/i,
@@ -56,7 +51,7 @@ const ERA_SIGNALS: EraSignal[] = [
   {
     anchorType: 'community',
     title: 'Ska Scene Era',
-    keywords: /\b(ska|goth|bad dogg|club metro|compound|show)\b/i,
+    keywords: /\b(ska scene|goth scene|bad dogg|club metro|music community|local scene)\b/i,
     minMatches: 2,
   },
   {
@@ -78,6 +73,31 @@ export type EraDetectionResult = {
   matchedSignals: string[];
   entityIds: string[];
 };
+
+function uniqueSignals(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function contextualTitle(
+  signal: EraSignal,
+  entityIds: string[],
+  ctx: AnchorBuildContext,
+): string {
+  const idSet = new Set(entityIds);
+  const organization = ctx.organizations.find((org) =>
+    org.memberIds.some((id) => idSet.has(id)),
+  );
+
+  if (organization && signal.anchorType === 'work_era') return `${organization.name} Chapter`;
+  if (organization && signal.anchorType === 'community') return organization.name;
+  return signal.title;
+}
 
 function corpusForEntities(
   entityIds: string[],
@@ -108,6 +128,36 @@ function corpusForEntities(
   return parts.join(' ').toLowerCase();
 }
 
+function matchingEvidenceSources(
+  signal: EraSignal,
+  entityIds: string[],
+  ctx: AnchorBuildContext,
+): number {
+  const idSet = new Set(entityIds);
+  const sources = new Set<string>();
+
+  if (ctx.entities.some((entity) => idSet.has(entity.entityId) &&
+    signal.keywords.test([entity.name, ...(entity.roles ?? [])].join(' ')))) sources.add('entity');
+  if (ctx.facts.some((fact) => idSet.has(fact.entityId) && signal.keywords.test(fact.text))) sources.add('fact');
+  if (ctx.organizations.some((org) => org.memberIds.some((id) => idSet.has(id)) &&
+    signal.keywords.test(`${org.name} ${org.type ?? ''}`))) sources.add('organization');
+  if (ctx.events.some((event) => event.entityIds.some((id) => idSet.has(id)) &&
+    signal.keywords.test(event.title))) sources.add('event');
+
+  return sources.size;
+}
+
+function matchingEntityCount(signal: EraSignal, entityIds: string[], ctx: AnchorBuildContext): number {
+  const supported = new Set<string>();
+  for (const entityId of entityIds) {
+    const entity = ctx.entities.find((item) => item.entityId === entityId);
+    const facts = ctx.facts.filter((fact) => fact.entityId === entityId).map((fact) => fact.text);
+    const corpus = [entity?.name ?? '', ...(entity?.roles ?? []), ...(entity?.facts ?? []), ...facts].join(' ');
+    if (signal.keywords.test(corpus)) supported.add(entityId);
+  }
+  return supported.size;
+}
+
 export function detectEraForCluster(
   entityIds: string[],
   ctx: AnchorBuildContext,
@@ -122,36 +172,30 @@ export function detectEraForCluster(
     const min = signal.minMatches ?? 1;
     if (matches.length < min) continue;
 
-    const confidence = Math.min(0.95, 0.45 + matches.length * 0.12);
+    const uniqueMatches = uniqueSignals(matches);
+    const evidenceSources = matchingEvidenceSources(signal, entityIds, ctx);
+    const supportedEntities = matchingEntityCount(signal, entityIds, ctx);
+    const hasExplicitGroup = ctx.organizations.some((org) =>
+      org.memberIds.filter((id) => entityIds.includes(id)).length >= 2 &&
+      signal.keywords.test(`${org.name} ${org.type ?? ''}`));
+    // One keyword on one entity must not label an entire co-mention cluster.
+    if (supportedEntities < 2 && !hasExplicitGroup) continue;
+    if (evidenceSources < 2 && !hasExplicitGroup) continue;
+    // Repetition alone is weak evidence. Confidence rises when distinct terms
+    // agree across facts, entities, organizations, and resolved events.
+    const confidence = Math.min(0.95, 0.45 + uniqueMatches.length * 0.08 + evidenceSources * 0.08);
     const result: EraDetectionResult = {
       anchorType: signal.anchorType,
-      title: signal.title,
+      title: contextualTitle(signal, entityIds, ctx),
       confidence,
-      matchedSignals: [signal.title, ...matches.slice(0, 5)],
+      matchedSignals: uniqueSignals([signal.title, ...uniqueMatches]),
       entityIds,
     };
 
     if (!best || confidence > best.confidence) best = result;
   }
 
-  if (best) return best;
-
-  // Fallback: generic life era when cluster has enough gravity-bearing entities
-  const names = entityIds
-    .map((id) => ctx.entities.find((e) => e.entityId === id)?.name)
-    .filter(Boolean) as string[];
-
-  if (entityIds.length >= 3) {
-    return {
-      anchorType: 'life_era',
-      title: `${names[0] ?? 'Life'} Cluster`,
-      confidence: 0.4,
-      matchedSignals: ['co_mention_cluster'],
-      entityIds,
-    };
-  }
-
-  return null;
+  return best;
 }
 
 export function entitiesBelongToMultipleEras(

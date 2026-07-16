@@ -1,4 +1,4 @@
-/* Vendored mirror of packages/api-contracts — DO NOT EDIT. Sync from packages/api-contracts/src. */
+/* Vendored mirror of packages/api-contracts — DO NOT EDIT. */
 export {
   apiSuccessEnvelopeSchema,
   apiErrorEnvelopeSchema,

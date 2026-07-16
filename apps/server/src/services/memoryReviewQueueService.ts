@@ -5,9 +5,8 @@
 
 
 import { config } from '../config';
-import { logger } from '../logger';
 import { openai } from '../lib/openai';
-import type { Claim } from '../types/omegaMemory';
+import { logger } from '../logger';
 import type {
   MemoryProposal,
   MemoryDecision,
@@ -18,12 +17,14 @@ import type {
   ProposalStatus,
   DecisionType,
 } from '../types/memoryReviewQueue';
+import type { Claim } from '../types/omegaMemory';
 import { extractTags } from '../utils/keywordDetector';
 
 import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { essenceProfileService } from './essenceProfileService';
 import { memoirService } from './memoirService';
+import { canAutoApproveProposal, evaluateProposalIntegrity } from './memoryProposalPolicy';
 import { memoryService } from './memoryService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { peoplePlacesService } from './peoplePlacesService';
@@ -34,48 +35,12 @@ export class MemoryReviewQueueService {
    * Classify risk level for a memory proposal
    */
   async classifyRisk(proposal: MemoryProposalInput, userId: string): Promise<RiskLevel> {
-    try {
-      // High confidence (>= 0.6) is medium risk
-      if ((proposal.confidence || 0.6) >= 0.6) {
-        return 'MEDIUM';
-      }
-
-      // Check if affects identity
-      if (await this.affectsIdentity(proposal.claim_text)) {
-        return 'HIGH';
-      }
-
-      // Check if contradicts existing claims
-      if (proposal.entity_id) {
-        const contradictions = await this.contradictsExistingClaims(
-          proposal.entity_id,
-          proposal.claim_text,
-          userId
-        );
-        if (contradictions) {
-          return 'HIGH';
-        }
-      }
-
-      // System perspective is medium risk
-      if (proposal.perspective_id) {
-        const { data: perspective } = await supabaseAdmin
-          .from('perspectives')
-          .select('type')
-          .eq('id', proposal.perspective_id)
-          .single();
-
-        if (perspective?.type === 'SYSTEM') {
-          return 'MEDIUM';
-        }
-      }
-
-      return 'LOW';
-    } catch (error) {
-      logger.error({ err: error, proposal }, 'Failed to classify risk');
-      // Default to medium risk on error
-      return 'MEDIUM';
-    }
+    return evaluateProposalIntegrity({
+      userId,
+      entityId: proposal.entity_id,
+      proposal,
+      sourceText: proposal.source_excerpt ?? proposal.claim_text,
+    }).riskLevel;
   }
 
   /**
@@ -186,8 +151,32 @@ Identity-affecting claims include:
     sourceText: string
   ): Promise<{ proposal: MemoryProposal; auto_approved: boolean; claim?: Claim }> {
     try {
-      // Find affected claims
-      const affectedClaimIds = await this.findAffectedClaims(entity.id, claim, userId);
+      const claimMetadata = (claim.metadata ?? {}) as Record<string, unknown>;
+      const integrity = evaluateProposalIntegrity({
+        userId,
+        entityId: entity.id,
+        entityName: entity.primary_name,
+        proposal: {
+          entity_id: entity.id,
+          claim_text: claim.text,
+          confidence: claim.confidence,
+          temporal_context: claim.metadata?.temporal_context,
+        },
+        sourceText,
+        metadata: { ...claimMetadata, entity_name: entity.primary_name },
+      });
+
+      // Find only claims the proposed mutation can actually affect. The old
+      // implementation returned every active claim for the entity.
+      const mutatesExistingClaims = integrity.proposalKind === 'correction' || integrity.proposalKind === 'retraction';
+      const affectedClaimIds = integrity.valid && mutatesExistingClaims
+        ? await this.findAffectedClaims(
+            entity.id,
+            claim,
+            userId,
+            integrity.fingerprintInputs.subjectScope === 'self'
+          )
+        : [];
 
       // Generate reasoning
       const reasoning = await this.generateReasoning(claim, entity, sourceText);
@@ -195,8 +184,8 @@ Identity-affecting claims include:
       // Create proposal
       const proposalInput: MemoryProposalInput = {
         entity_id: entity.id,
-        claim_text: claim.text,
-        perspective_id: perspectiveId || null,
+        claim_text: integrity.normalizedSummary,
+        perspective_id: perspectiveId || undefined,
         confidence: claim.confidence || 0.6,
         temporal_context: claim.metadata?.temporal_context || {},
         source_excerpt: sourceText.length > 200 ? sourceText.substring(0, 200) + '...' : sourceText,
@@ -204,8 +193,134 @@ Identity-affecting claims include:
         affected_claim_ids: affectedClaimIds,
       };
 
-      // Classify risk
-      const riskLevel = await this.classifyRisk(proposalInput, userId);
+      const evidenceId = [claimMetadata.extracted_unit_id, claimMetadata.message_id, claimMetadata.utterance_id]
+        .find((value): value is string => typeof value === 'string' && value.length > 0);
+
+      // Stage contract: atomic memory_proposal / correction / retraction before insert.
+      const { validateMemoryProposalBeforePersist, validateCorrectionBeforeApply, validateRetractionBeforeApply, recordPersisted } =
+        await import('./ingestion/stageContractGate');
+      const evidenceIds = evidenceId ? [evidenceId] : ['mrq'];
+      let contractOk = integrity.valid;
+      let contractReason: string | null = integrity.rejectionReason ?? null;
+      if (integrity.proposalKind === 'retraction') {
+        const ret = validateRetractionBeforeApply({
+          targetClaimIds: affectedClaimIds,
+          reason: integrity.proposedMutation || integrity.normalizedSummary,
+          authority: 'user_explicit',
+          note: sourceText.slice(0, 500),
+        });
+        contractOk = ret.accepted && integrity.valid;
+        if (!ret.accepted) contractReason = ret.reason;
+      } else if (integrity.proposalKind === 'correction') {
+        const corr = validateCorrectionBeforeApply({
+          targetClaimIds: affectedClaimIds,
+          replacementClaim: integrity.normalizedSummary,
+          correctionAuthority: 'user_explicit',
+          evidenceIds,
+          note: sourceText.slice(0, 500),
+          supersessionBehavior: affectedClaimIds.length ? 'replace_claims' : 'annotate_only',
+        });
+        contractOk = corr.accepted && integrity.valid;
+        if (!corr.accepted) contractReason = corr.reason;
+      } else {
+        const mem = validateMemoryProposalBeforePersist({
+          proposalKind: integrity.proposalKind,
+          subjectEntityId: entity.id,
+          predicate: integrity.predicate,
+          objectEntityId: typeof claimMetadata.object_entity_id === 'string'
+            ? claimMetadata.object_entity_id
+            : undefined,
+          typedValue: integrity.typedValue,
+          confidence: integrity.confidence,
+          risk: integrity.riskLevel,
+          sensitivity: integrity.sensitivity,
+          evidenceIds,
+          temporalScope: { kind: 'UNKNOWN' },
+          proposedMutation: integrity.proposedMutation,
+          claimText: integrity.normalizedSummary,
+        });
+        contractOk = mem.accepted && integrity.valid;
+        if (!mem.accepted) contractReason = mem.reason;
+      }
+
+      const proposalMetadata = {
+        ...claimMetadata,
+        proposal_kind: integrity.proposalKind,
+        normalized_summary: integrity.normalizedSummary,
+        proposed_mutation: integrity.proposedMutation,
+        normalized_predicate: integrity.predicate,
+        typed_value: integrity.typedValue,
+        proposal_fingerprint: integrity.fingerprint,
+        fingerprint_inputs: integrity.fingerprintInputs,
+        group_key: integrity.groupKey,
+        group_label: integrity.groupLabel,
+        risk_reason: integrity.riskReason,
+        sensitivity: integrity.sensitivity,
+        source_evidence_ids: evidenceId ? [evidenceId] : [],
+        evidence_count: evidenceId ? 1 : 0,
+        proposal_integrity: {
+          valid: integrity.valid && contractOk,
+          rejection_reason: contractReason ?? integrity.rejectionReason ?? null,
+          policy_version: 'v1',
+          stage_contract: contractOk ? 'accepted' : 'rejected',
+        },
+      };
+
+      // Contract/policy failure → REJECTED row (no auto-approve, no additive memory).
+      if (!contractOk) {
+        const { data: rejectedProposal, error: rejErr } = await supabaseAdmin
+          .from('memory_proposals')
+          .insert({
+            user_id: userId,
+            ...proposalInput,
+            risk_level: integrity.riskLevel,
+            status: 'REJECTED',
+            resolved_at: new Date().toISOString(),
+            metadata: proposalMetadata,
+          })
+          .select()
+          .single();
+        if (rejErr) {
+          logger.warn({ err: rejErr, userId }, 'MRQ: failed to insert rejected proposal');
+          throw rejErr;
+        }
+        return { proposal: rejectedProposal as MemoryProposal, auto_approved: false };
+      }
+      recordPersisted('memory_proposal');
+
+      // Replay-safe semantic collapse. Evidence accumulates on the canonical
+      // pending proposal instead of creating another Approve button.
+      if (integrity.valid) {
+        const existing = await this.findPendingByFingerprint(userId, integrity.fingerprint);
+        if (existing) {
+          const existingMetadata = (existing.metadata ?? {}) as Record<string, any>;
+          const evidenceIds = [...new Set([
+            ...((existingMetadata.source_evidence_ids as string[] | undefined) ?? []),
+            ...(evidenceId ? [evidenceId] : []),
+          ])];
+          const excerpts = [...new Set([
+            ...((existingMetadata.source_excerpts as string[] | undefined) ?? []),
+            sourceText.slice(0, 500),
+          ])].slice(-12);
+          const { data: updated } = await supabaseAdmin
+            .from('memory_proposals')
+            .update({
+              confidence: Math.max(existing.confidence, integrity.confidence),
+              metadata: {
+                ...existingMetadata,
+                source_evidence_ids: evidenceIds,
+                source_excerpts: excerpts,
+                evidence_count: Math.max(evidenceIds.length, Number(existingMetadata.evidence_count ?? 0) + 1),
+                last_supported_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', existing.id)
+            .eq('user_id', userId)
+            .select('*')
+            .single();
+          return { proposal: (updated ?? existing) as MemoryProposal, auto_approved: false };
+        }
+      }
 
       // Create proposal
       const { data: proposal, error } = await supabaseAdmin
@@ -213,19 +328,25 @@ Identity-affecting claims include:
         .insert({
           user_id: userId,
           ...proposalInput,
-          risk_level: riskLevel,
-          status: 'PENDING',
+          risk_level: integrity.riskLevel,
+          status: integrity.valid ? 'PENDING' : 'REJECTED',
+          resolved_at: integrity.valid ? null : new Date().toISOString(),
+          metadata: proposalMetadata,
         })
         .select()
         .single();
 
       if (error) {
+        if (error.code === '23505' && integrity.valid) {
+          const canonical = await this.findPendingByFingerprint(userId, integrity.fingerprint);
+          if (canonical) return { proposal: canonical, auto_approved: false };
+        }
         logger.error({ err: error, userId }, 'Failed to create memory proposal');
         throw error;
       }
 
       // Auto-approve if low risk — claim is persisted inside autoApprove
-      if (this.shouldBypassReview(riskLevel)) {
+      if (canAutoApproveProposal(integrity)) {
         const storedClaim = await this.autoApprove(proposal);
         return { proposal, auto_approved: true, claim: storedClaim };
       }
@@ -295,13 +416,13 @@ Identity-affecting claims include:
       const claim = await omegaMemoryService.storeClaim({
         user_id: proposal.user_id,
         entity_id: proposal.entity_id,
-        text: proposal.claim_text,
+        text: String(proposal.metadata?.normalized_summary ?? proposal.claim_text),
         source: 'AI',
         confidence: proposal.confidence,
-        temporal_context: proposal.temporal_context,
         start_time: proposal.temporal_context?.start_time || new Date().toISOString(),
         end_time: proposal.temporal_context?.end_time || null,
         is_active: true,
+        metadata: { temporal_context: proposal.temporal_context ?? {} },
       });
 
       // Create perspective claim if perspective_id exists
@@ -331,11 +452,25 @@ Identity-affecting claims include:
         throw new Error('Proposal not found');
       }
 
-      // Commit the claim
-      await this.commitClaim(proposal);
+      const integrity = (proposal.metadata?.proposal_integrity ?? {}) as { valid?: boolean; rejection_reason?: string };
+      if (integrity.valid === false) {
+        throw new Error(`Invalid proposal cannot be approved: ${integrity.rejection_reason ?? 'failed integrity policy'}`);
+      }
+
+      const proposalKind = proposal.metadata?.proposal_kind;
+      if (proposalKind === 'retraction' || proposalKind === 'correction') {
+        const affected = proposal.affected_claim_ids ?? [];
+        if (affected.length === 0) throw new Error('Correction has no specific conflicting claim to supersede');
+        await supabaseAdmin
+          .from('omega_claims')
+          .update({ is_active: false, metadata: { superseded_by_proposal_id: proposal.id } })
+          .eq('user_id', userId)
+          .in('id', affected);
+      }
+      if (proposalKind !== 'retraction') await this.commitClaim(proposal);
 
       // Run comprehensive ingestion to parse and categorize into all LoreBook systems
-      await this.comprehensiveIngestion(userId, proposal);
+      if (proposalKind !== 'retraction') await this.comprehensiveIngestion(userId, proposal);
 
       // Record decision
       const { data: decision, error } = await supabaseAdmin
@@ -475,7 +610,7 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
           content: proposal.claim_text,
           date: response.date,
           tags: extractTags(text),
-          source: 'memory_suggestion',
+          source: 'system',
           metadata: {
             proposal_id: proposal.id,
             entity_id: proposal.entity_id,
@@ -651,20 +786,150 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
    */
   async getPendingMRQ(userId: string): Promise<PendingMRQItem[]> {
     try {
-      const { data, error } = await supabaseAdmin.rpc('get_pending_mrq', {
-        user_id_param: userId,
-      });
+      const { data, error } = await supabaseAdmin
+        .from('memory_proposals')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: true })
+        .limit(500);
 
       if (error) {
         logger.warn({ err: error, userId }, 'get_pending_mrq failed, returning empty list');
         return [];
       }
 
-      return data || [];
+      const rows = (data ?? []) as MemoryProposal[];
+      const entityIds = [...new Set(rows.map(row => row.entity_id).filter(Boolean))];
+      const { data: entities } = entityIds.length > 0
+        ? await supabaseAdmin.from('omega_entities').select('id, primary_name').eq('user_id', userId).in('id', entityIds)
+        : { data: [] as Array<{ id: string; primary_name: string }> };
+      const names = new Map((entities ?? []).map(entity => [entity.id as string, entity.primary_name as string]));
+      const canonical = new Map<string, PendingMRQItem>();
+      for (const row of rows) {
+        const metadata = (row.metadata ?? {}) as Record<string, any>;
+        const decision = evaluateProposalIntegrity({
+          userId,
+          entityId: row.entity_id,
+          entityName: names.get(row.entity_id),
+          proposal: {
+            entity_id: row.entity_id,
+            claim_text: row.claim_text,
+            perspective_id: row.perspective_id ?? undefined,
+            confidence: row.confidence,
+            temporal_context: row.temporal_context,
+            source_excerpt: row.source_excerpt,
+            reasoning: row.reasoning,
+            affected_claim_ids: row.affected_claim_ids,
+          },
+          sourceText: row.source_excerpt ?? row.claim_text,
+          metadata,
+        });
+        if (!decision.valid) continue;
+        const fingerprint = String(metadata.proposal_fingerprint ?? decision.fingerprint);
+        const current = canonical.get(fingerprint);
+        const enriched = {
+          ...row,
+          claim_text: String(metadata.normalized_summary ?? decision.normalizedSummary),
+          metadata: {
+            ...metadata,
+            proposal_kind: metadata.proposal_kind ?? decision.proposalKind,
+            normalized_summary: metadata.normalized_summary ?? decision.normalizedSummary,
+            proposed_mutation: metadata.proposed_mutation ?? decision.proposedMutation,
+            proposal_fingerprint: fingerprint,
+            group_key: metadata.group_key ?? decision.groupKey,
+            group_label: metadata.group_label ?? decision.groupLabel,
+            risk_reason: metadata.risk_reason ?? decision.riskReason,
+            sensitivity: metadata.sensitivity ?? decision.sensitivity,
+            evidence_count: Number(metadata.evidence_count ?? 1),
+          },
+        } as PendingMRQItem;
+        if (!current) canonical.set(fingerprint, enriched);
+        else {
+          const currentCount = Number(current.metadata?.evidence_count ?? 1);
+          const nextCount = Number(enriched.metadata?.evidence_count ?? 1);
+          current.metadata = { ...current.metadata, evidence_count: currentCount + nextCount };
+        }
+      }
+      return [...canonical.values()].sort((a, b) => {
+        const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+        return rank[a.risk_level] - rank[b.risk_level] || a.created_at.localeCompare(b.created_at);
+      });
     } catch (error) {
       logger.warn({ err: error, userId }, 'get_pending_mrq threw, returning empty list');
       return [];
     }
+  }
+
+  /** Dry-run cleanup plan for legacy pending proposals. Never mutates evidence. */
+  async auditPendingMRQ(userId: string): Promise<{
+    dryRun: true;
+    summary: Record<'keep' | 'merge_into' | 'auto_reject' | 'correction' | 'requires_review', number>;
+    items: Array<{ proposalId: string; action: 'keep' | 'merge_into' | 'auto_reject' | 'correction' | 'requires_review'; reason: string; destinationProposalId?: string }>;
+  }> {
+    const { data, error } = await supabaseAdmin
+      .from('memory_proposals')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: true })
+      .limit(1000);
+    if (error) throw error;
+
+    const rows = (data ?? []) as MemoryProposal[];
+    const entityIds = [...new Set(rows.map(row => row.entity_id).filter(Boolean))];
+    const { data: entities } = entityIds.length > 0
+      ? await supabaseAdmin.from('omega_entities').select('id, primary_name').eq('user_id', userId).in('id', entityIds)
+      : { data: [] as Array<{ id: string; primary_name: string }> };
+    const entityNames = new Map((entities ?? []).map(entity => [entity.id as string, entity.primary_name as string]));
+    const summary = { keep: 0, merge_into: 0, auto_reject: 0, correction: 0, requires_review: 0 };
+    const canonical = new Map<string, string>();
+    const items = rows.map(row => {
+      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+      const decision = evaluateProposalIntegrity({
+        userId,
+        entityId: row.entity_id,
+        entityName: entityNames.get(row.entity_id),
+        proposal: {
+          entity_id: row.entity_id,
+          claim_text: row.claim_text,
+          perspective_id: row.perspective_id ?? undefined,
+          confidence: row.confidence,
+          temporal_context: row.temporal_context,
+          source_excerpt: row.source_excerpt,
+          reasoning: row.reasoning,
+          affected_claim_ids: row.affected_claim_ids,
+        },
+        sourceText: row.source_excerpt ?? row.claim_text,
+        metadata: { ...metadata, entity_name: metadata.entity_name ?? entityNames.get(row.entity_id) },
+      });
+      let action: 'keep' | 'merge_into' | 'auto_reject' | 'correction' | 'requires_review';
+      let reason: string;
+      let destinationProposalId: string | undefined;
+      if (!decision.valid) {
+        action = 'auto_reject';
+        reason = decision.rejectionReason ?? 'failed_integrity_policy';
+      } else if (canonical.has(decision.fingerprint)) {
+        action = 'merge_into';
+        destinationProposalId = canonical.get(decision.fingerprint);
+        reason = 'duplicate_normalized_belief';
+      } else {
+        canonical.set(decision.fingerprint, row.id);
+        if (decision.proposalKind === 'correction' || decision.proposalKind === 'retraction') {
+          action = 'correction';
+          reason = 'must_supersede_a_specific_existing_claim';
+        } else if (decision.riskLevel === 'LOW' && decision.confidence >= 0.85) {
+          action = 'keep';
+          reason = 'valid_atomic_low_impact_belief';
+        } else {
+          action = 'requires_review';
+          reason = decision.riskReason;
+        }
+      }
+      summary[action]++;
+      return { proposalId: row.id, action, reason, ...(destinationProposalId ? { destinationProposalId } : {}) };
+    });
+    return { dryRun: true, summary, items };
   }
 
   /**
@@ -696,31 +961,51 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
   private async findAffectedClaims(
     entityId: string,
     claim: any,
-    userId: string
+    userId: string,
+    searchAcrossUser = false
   ): Promise<string[]> {
     try {
-      // Get similar claims
-      const { data: similarClaims } = await supabaseAdmin
+      // Self-corrections may arrive attached to an extracted object entity
+      // (for example Amazon) rather than the user's identity entity. Search the
+      // user's active beliefs in that case, then retain only lexical matches.
+      let query = supabaseAdmin
         .from('omega_claims')
-        .select('id')
-        .eq('entity_id', entityId)
+        .select('id, text')
         .eq('user_id', userId)
         .eq('is_active', true);
+      if (!searchAcrossUser) query = query.eq('entity_id', entityId);
+      const { data: similarClaims } = await query;
 
-      // Use semantic similarity to find truly affected claims
-      const affected: string[] = [];
-      const claimEmbedding = await embeddingService.embedText(claim.text);
-
-      for (const similar of similarClaims || []) {
-        // TODO: Get claim text and check similarity
-        // For now, return all similar claims
-        affected.push(similar.id);
-      }
-
-      return affected;
+      const normalized = String(claim.text ?? '').toLowerCase();
+      const negatedObject = normalized.match(/\bnot\s+(?:a|an|the)?\s*([a-z][a-z0-9_-]{2,})/)?.[1];
+      const tokens = new Set(normalized.match(/[a-z0-9]{3,}/g) ?? []);
+      return (similarClaims ?? [])
+        .filter(existing => {
+          const existingText = String(existing.text ?? '').toLowerCase();
+          if (negatedObject && existingText.includes(negatedObject)) return true;
+          const existingTokens = existingText.match(/[a-z0-9]{3,}/g) ?? [];
+          return existingTokens.filter(token => tokens.has(token)).length >= 2;
+        })
+        .map(existing => existing.id);
     } catch (error) {
       logger.error({ err: error, entityId }, 'Failed to find affected claims');
       return [];
+    }
+  }
+
+  private async findPendingByFingerprint(userId: string, fingerprint: string): Promise<MemoryProposal | null> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('memory_proposals')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'PENDING')
+        .eq('metadata->>proposal_fingerprint', fingerprint)
+        .limit(1)
+        .maybeSingle();
+      return (data as MemoryProposal | null) ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -814,4 +1099,3 @@ Return JSON:
 }
 
 export const memoryReviewQueueService = new MemoryReviewQueueService();
-

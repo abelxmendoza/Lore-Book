@@ -108,7 +108,7 @@ class MessageCorrectionService {
     // ── 4. Re-ingest the corrected text ────────────────────────────────────
     // force:true bypasses the "already ingested" idempotency guard so the new
     // text actually re-runs extraction instead of being skipped as a dup.
-    const reingestJobId = ingestionQueue.enqueue(
+    const reingest = await ingestionQueue.enqueueDurable(
       {
         userId,
         chatMessageId: messageId,
@@ -117,6 +117,9 @@ class MessageCorrectionService {
       },
       'HIGH'
     );
+    const reingestJobId = reingest.status === 'QUEUED' || reingest.status === 'DUPLICATE'
+      ? reingest.jobId
+      : null;
 
     // ── 5. Invalidate caches so the next reply reflects the correction ─────
     ragPacketCacheService.invalidateLoreCache(userId);
@@ -147,12 +150,25 @@ class MessageCorrectionService {
   ): Promise<{ supersededUtterances: number; supersededUnits: number }> {
     const now = new Date().toISOString();
 
-    // utterances are keyed by message_id (1:1 with the chat message text)
-    const { data: utterances } = await supabaseAdmin
-      .from('utterances')
-      .select('id')
+    // A chat message is first copied into one or more conversation_messages;
+    // utterances reference those derived row ids, not chat_messages.id.
+    const { data: conversationMessages, error: conversationMessagesError } = await supabaseAdmin
+      .from('conversation_messages')
+      .select('id, metadata')
       .eq('user_id', userId)
-      .eq('message_id', messageId);
+      .eq('metadata->>chat_message_id', messageId);
+    if (conversationMessagesError) {
+      logger.warn({ conversationMessagesError, messageId }, 'Loading conversation message derivations failed');
+    }
+
+    const conversationMessageIds = (conversationMessages ?? []).map((row) => row.id as string);
+    const { data: utterances } = conversationMessageIds.length > 0
+      ? await supabaseAdmin
+          .from('utterances')
+          .select('id')
+          .eq('user_id', userId)
+          .in('message_id', conversationMessageIds)
+      : { data: [] as Array<{ id: string }> };
 
     const utteranceIds = (utterances ?? []).map((u) => u.id as string);
     let supersededUnits = 0;
@@ -167,6 +183,41 @@ class MessageCorrectionService {
         .select('id');
       supersededUnits = (units ?? []).length;
 
+      // Events supported by retired units must stop surfacing immediately.
+      // The corrected extraction will deterministically republish/rebuild them.
+      const retiredUnitIds = (units ?? []).map((unit) => unit.id as string);
+      if (retiredUnitIds.length > 0) {
+        const { data: links } = await supabaseAdmin
+          .from('event_unit_links')
+          .select('event_id')
+          .in('unit_id', retiredUnitIds);
+        const eventIds = [...new Set((links ?? []).map((link) => link.event_id as string))];
+        if (eventIds.length > 0) {
+          const { data: events } = await supabaseAdmin
+            .from('resolved_events')
+            .select('id, metadata')
+            .eq('user_id', userId)
+            .in('id', eventIds);
+          for (const event of events ?? []) {
+            const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+            await supabaseAdmin
+              .from('resolved_events')
+              .update({
+                metadata: {
+                  ...metadata,
+                  life_log: {
+                    ...((metadata.life_log ?? {}) as Record<string, unknown>),
+                    publication_status: 'quarantined',
+                    eligibility_reason: 'source_corrected_pending_rebuild',
+                  },
+                },
+              })
+              .eq('id', event.id)
+              .eq('user_id', userId);
+          }
+        }
+      }
+
       // Record provenance "superseded" edges for audit + future aggregate
       // reconciliation (best-effort; never blocks the correction).
       await this.recordSupersedeEdges(userId, messageId, utteranceIds).catch((err) =>
@@ -176,13 +227,22 @@ class MessageCorrectionService {
 
     // Mark prior ingested conversation_messages superseded so the forced
     // re-ingest is not deduped against them.
-    const { error: cmErr } = await supabaseAdmin
-      .from('conversation_messages')
-      .update({ metadata: { chat_message_id: messageId, superseded_at: now, superseded_reason: reason } })
-      .eq('user_id', userId)
-      .eq('metadata->>chat_message_id', messageId);
-    if (cmErr) {
-      logger.debug({ cmErr, messageId }, 'Marking conversation_messages superseded failed (non-blocking)');
+    for (const row of conversationMessages ?? []) {
+      const { error: cmErr } = await supabaseAdmin
+        .from('conversation_messages')
+        .update({
+          metadata: {
+            ...((row.metadata ?? {}) as Record<string, unknown>),
+            chat_message_id: messageId,
+            superseded_at: now,
+            superseded_reason: reason,
+          },
+        })
+        .eq('id', row.id)
+        .eq('user_id', userId);
+      if (cmErr) {
+        logger.debug({ cmErr, messageId, conversationMessageId: row.id }, 'Marking conversation_messages superseded failed (non-blocking)');
+      }
     }
 
     return { supersededUtterances: utteranceIds.length, supersededUnits };

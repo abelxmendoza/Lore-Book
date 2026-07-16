@@ -1,416 +1,308 @@
-/**
- * Memory Review Queue Panel
- * The trust choke point - users see and control what memories are being proposed
- */
-
-import { useState } from 'react';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Edit, 
-  Clock, 
-  AlertTriangle, 
-  Info,
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock3,
+  FileCheck2,
+  Fingerprint,
+  Quote,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+
 import { useMemoryReviewQueue, type MemoryProposal } from '../../hooks/useMemoryReviewQueue';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
 
-const RiskBadge = ({ riskLevel }: { riskLevel: string }) => {
-  const colors = {
-    LOW: 'bg-green-500/20 text-green-400 border-green-500/50',
-    MEDIUM: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-    HIGH: 'bg-red-500/20 text-red-400 border-red-500/50',
-  };
-
-  return (
-    <span className={`px-2 py-1 rounded text-xs font-medium border ${colors[riskLevel as keyof typeof colors] || colors.MEDIUM}`}>
-      {riskLevel} Risk
-    </span>
-  );
+type ProposalMeta = {
+  proposal_kind?: string;
+  normalized_summary?: string;
+  proposed_mutation?: string;
+  group_key?: string;
+  group_label?: string;
+  risk_reason?: string;
+  sensitivity?: string;
+  evidence_count?: number;
 };
 
-const ConfidenceBar = ({ confidence }: { confidence: number }) => {
-  const percentage = Math.round(confidence * 100);
+function metadataFor(proposal: MemoryProposal): ProposalMeta {
+  return (proposal.metadata ?? {}) as ProposalMeta;
+}
+
+function proposalLabel(kind?: string): string {
+  if (!kind) return 'Proposed belief';
+  return kind.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function RiskBadge({ proposal }: { proposal: MemoryProposal }) {
+  const meta = metadataFor(proposal);
+  const styles = {
+    LOW: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200',
+    MEDIUM: 'border-amber-400/25 bg-amber-400/10 text-amber-200',
+    HIGH: 'border-rose-400/25 bg-rose-400/10 text-rose-200',
+  } as const;
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-primary transition-all"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-white/60 w-12 text-right">{percentage}%</span>
-    </div>
+    <Badge className={styles[proposal.risk_level] ?? styles.MEDIUM} title={meta.risk_reason}>
+      {proposal.risk_level.toLowerCase()} impact
+    </Badge>
   );
-};
+}
 
 interface ProposalCardProps {
   proposal: MemoryProposal;
-  onAction: () => void;
   onApprove: (id: string) => Promise<void>;
   onReject: (id: string, reason?: string) => Promise<void>;
-  onEdit: (id: string, newText: string, newConfidence?: number) => Promise<void>;
   onDefer: (id: string) => Promise<void>;
 }
 
-const ProposalCard = ({ proposal, onAction, onApprove, onReject, onEdit, onDefer }: ProposalCardProps) => {
+function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(proposal.claim_text);
-  const [editConfidence, setEditConfidence] = useState(proposal.confidence);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'defer' | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const meta = metadataFor(proposal);
+  const belief = meta.normalized_summary || proposal.claim_text;
+  const confidence = Math.round(proposal.confidence * 100);
 
-  const handleApprove = async () => {
-    setActionLoading('approve');
+  const act = async (action: 'approve' | 'reject' | 'defer') => {
+    setBusy(action);
+    setActionMessage(null);
     try {
-      await onApprove(proposal.id);
-      onAction();
+      if (action === 'approve') await onApprove(proposal.id);
+      if (action === 'reject') await onReject(proposal.id, 'User rejected the proposed belief');
+      if (action === 'defer') await onDefer(proposal.id);
+      setActionMessage({
+        kind: 'success',
+        text: action === 'approve' ? 'Belief approved.' : action === 'reject' ? 'Belief rejected.' : 'Belief deferred.',
+      });
     } catch (error) {
-      console.error('Failed to approve:', error);
+      setActionMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'The review action failed. Please try again.',
+      });
     } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleReject = async () => {
-    const reason = prompt('Why are you rejecting this? (optional)');
-    setActionLoading('reject');
-    try {
-      await onReject(proposal.id, reason || undefined);
-      onAction();
-    } catch (error) {
-      console.error('Failed to reject:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleEdit = async () => {
-    if (!editText.trim()) return;
-    setActionLoading('edit');
-    try {
-      await onEdit(proposal.id, editText, editConfidence);
-      setEditing(false);
-      onAction();
-    } catch (error) {
-      console.error('Failed to edit:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDefer = async () => {
-    setActionLoading('defer');
-    try {
-      await onDefer(proposal.id);
-      onAction();
-    } catch (error) {
-      console.error('Failed to defer:', error);
-    } finally {
-      setActionLoading(null);
+      setBusy(null);
     }
   };
 
   return (
-    <div className="border border-border/60 rounded-lg bg-black/40 p-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <RiskBadge riskLevel={proposal.risk_level} />
-            <ConfidenceBar confidence={proposal.confidence} />
+    <article className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="border-primary/25 bg-primary/10 text-primary">
+                {proposalLabel(meta.proposal_kind)}
+              </Badge>
+              <RiskBadge proposal={proposal} />
+              {meta.sensitivity && meta.sensitivity !== 'NORMAL' && (
+                <Badge className="border-violet-400/25 bg-violet-400/10 text-violet-200">
+                  {meta.sensitivity.toLowerCase()}
+                </Badge>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
+                What LoreBook wants to believe
+              </p>
+              <h4 className="mt-1 text-base font-medium leading-relaxed text-white">{belief}</h4>
+            </div>
           </div>
-          <p className="text-white text-sm leading-relaxed">
-            {editing ? (
-              <textarea
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded p-2 text-white text-sm resize-none"
-                rows={3}
-              />
-            ) : (
-              proposal.claim_text
+          <button
+            type="button"
+            onClick={() => setExpanded(value => !value)}
+            className="rounded-lg p-2 text-white/45 transition hover:bg-white/5 hover:text-white"
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Hide proposal evidence' : 'Show proposal evidence'}
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-white/35">Confidence</p>
+            <p className="mt-0.5 text-sm font-medium text-white">{confidence}% certain</p>
+          </div>
+          <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-white/35">Evidence</p>
+            <p className="mt-0.5 text-sm font-medium text-white">
+              {Math.max(1, Number(meta.evidence_count ?? 1))} {Number(meta.evidence_count ?? 1) === 1 ? 'passage' : 'passages'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-white/35">Impact</p>
+            <p className="mt-0.5 line-clamp-2 text-sm text-white/75">{meta.risk_reason || 'Reversible memory update'}</p>
+          </div>
+        </div>
+
+        {expanded && (
+          <div className="mt-4 space-y-3 border-t border-white/8 pt-4">
+            <div className="flex gap-3 rounded-lg border border-primary/15 bg-primary/[0.06] p-3">
+              <FileCheck2 className="mt-0.5 h-4 w-4 flex-none text-primary" />
+              <div>
+                <p className="text-xs font-medium text-white">Approve will</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-white/60">
+                  {meta.proposed_mutation || `Add this belief to LoreBook: ${belief}`}
+                </p>
+              </div>
+            </div>
+            {proposal.source_excerpt && (
+              <div className="flex gap-3 p-1">
+                <Quote className="mt-0.5 h-4 w-4 flex-none text-white/35" />
+                <div>
+                  <p className="text-xs font-medium text-white/65">Source evidence</p>
+                  <blockquote className="mt-1 text-sm italic leading-relaxed text-white/50">
+                    “{proposal.source_excerpt}”
+                  </blockquote>
+                </div>
+              </div>
             )}
-          </p>
-        </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded hover:bg-white/10 transition-colors"
-          aria-label={expanded ? 'Collapse' : 'Expand'}
-        >
-          {expanded ? (
-            <ChevronUp className="h-5 w-5 text-white/70" />
-          ) : (
-            <ChevronDown className="h-5 w-5 text-white/70" />
-          )}
-        </button>
-      </div>
-
-      {/* Expanded Details */}
-      {expanded && (
-        <div className="space-y-3 pt-3 border-t border-white/10">
-          {proposal.reasoning && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Info className="h-4 w-4 text-white/60" />
-                <span className="text-xs font-medium text-white/60">Why this was suggested</span>
+            {proposal.affected_claim_ids?.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-amber-200/80">
+                <ShieldAlert className="h-4 w-4" />
+                Changes {proposal.affected_claim_ids.length} existing {proposal.affected_claim_ids.length === 1 ? 'belief' : 'beliefs'}
               </div>
-              <p className="text-sm text-white/80 ml-6">{proposal.reasoning}</p>
-            </div>
-          )}
-
-          {proposal.source_excerpt && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Info className="h-4 w-4 text-white/60" />
-                <span className="text-xs font-medium text-white/60">Source excerpt</span>
-              </div>
-              <p className="text-sm text-white/80 ml-6 italic">"{proposal.source_excerpt}"</p>
-            </div>
-          )}
-
-          {proposal.affected_claim_ids && proposal.affected_claim_ids.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 text-yellow-400" />
-                <span className="text-xs font-medium text-white/60">
-                  Affects {proposal.affected_claim_ids.length} existing {proposal.affected_claim_ids.length === 1 ? 'claim' : 'claims'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {editing && (
-            <div>
-              <label className="block text-xs font-medium text-white/60 mb-1">
-                Confidence: {Math.round(editConfidence * 100)}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={editConfidence}
-                onChange={(e) => setEditConfidence(parseFloat(e.target.value))}
-                className="w-full"
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-2 border-t border-white/10">
-        {editing ? (
-          <>
-            <button
-              onClick={handleEdit}
-              disabled={!editText.trim() || actionLoading !== null}
-              className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              {actionLoading === 'edit' ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button
-              onClick={() => {
-                setEditing(false);
-                setEditText(proposal.claim_text);
-                setEditConfidence(proposal.confidence);
-              }}
-              className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors text-sm"
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={handleApprove}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/50 rounded-lg hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              {actionLoading === 'approve' ? 'Approving...' : 'Approve'}
-            </button>
-            <button
-              onClick={() => setEditing(true)}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/50 rounded-lg hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              <Edit className="h-4 w-4" />
-              Edit
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              <XCircle className="h-4 w-4" />
-              {actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}
-            </button>
-            <button
-              onClick={handleDefer}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 rounded-lg hover:bg-yellow-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              <Clock className="h-4 w-4" />
-              {actionLoading === 'defer' ? 'Deferring...' : 'Defer'}
-            </button>
-          </>
+            )}
+          </div>
         )}
       </div>
-    </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/8 bg-white/[0.02] px-4 py-3 sm:px-5">
+        <Button type="button" size="sm" onClick={() => void act('approve')} disabled={busy !== null}>
+          <Check className="mr-1.5 h-4 w-4" /> {busy === 'approve' ? 'Applying…' : 'Approve belief'}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => void act('reject')} disabled={busy !== null}>
+          <X className="mr-1.5 h-4 w-4" /> {busy === 'reject' ? 'Rejecting…' : 'Not accurate'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => void act('defer')} disabled={busy !== null} className="text-white/50">
+          <Clock3 className="mr-1.5 h-4 w-4" /> {busy === 'defer' ? 'Saving…' : 'Review later'}
+        </Button>
+        {actionMessage && (
+          <p
+            className={`w-full text-xs ${actionMessage.kind === 'error' ? 'text-rose-300' : 'text-emerald-300'}`}
+            role={actionMessage.kind === 'error' ? 'alert' : 'status'}
+            aria-live="polite"
+          >
+            {actionMessage.text}
+          </p>
+        )}
+      </div>
+    </article>
   );
-};
+}
 
-export const MemoryReviewQueuePanel = () => {
-  const { proposals, loading, error, refetch, approveProposal, rejectProposal, editProposal, deferProposal } = useMemoryReviewQueue();
+type ProposalGroup = { key: string; label: string; proposals: MemoryProposal[]; evidenceCount: number };
 
-  // Group by risk level
-  const grouped = {
-    HIGH: proposals.filter(p => p.risk_level === 'HIGH'),
-    MEDIUM: proposals.filter(p => p.risk_level === 'MEDIUM'),
-    LOW: proposals.filter(p => p.risk_level === 'LOW'),
-  };
+export function MemoryReviewQueuePanel() {
+  const { proposals, loading, error, refetch, approveProposal, rejectProposal, deferProposal } = useMemoryReviewQueue();
+  const visibleProposals = useMemo(
+    () => proposals.filter(proposal => proposal.metadata?.proposal_integrity?.valid !== false),
+    [proposals]
+  );
+
+  const groups = useMemo<ProposalGroup[]>(() => {
+    const grouped = new Map<string, ProposalGroup>();
+    for (const proposal of visibleProposals) {
+      const meta = metadataFor(proposal);
+      const key = meta.group_key || proposal.entity_id || 'related-memories';
+      const current = grouped.get(key) ?? {
+        key,
+        label: meta.group_label || 'Related memories',
+        proposals: [],
+        evidenceCount: 0,
+      };
+      current.proposals.push(proposal);
+      current.evidenceCount += Math.max(1, Number(meta.evidence_count ?? 1));
+      grouped.set(key, current);
+    }
+    return [...grouped.values()].sort((a, b) => b.proposals.length - a.proposals.length || a.label.localeCompare(b.label));
+  }, [visibleProposals]);
 
   if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="mt-4 text-white/60">Loading memory proposals...</p>
-      </div>
-    );
+    return <div className="py-16 text-center text-sm text-white/45">Checking proposed beliefs…</div>;
   }
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-400" />
-        <p className="text-red-400 mb-2">Failed to load proposals</p>
-        <p className="text-sm text-white/60 mb-4">{error}</p>
-        <button
-          onClick={() => refetch()}
-          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-        >
-          Retry
-        </button>
-      </div>
+      <Card className="border-rose-400/25 bg-rose-400/[0.06]">
+        <CardContent className="flex flex-col items-center py-10 text-center">
+          <AlertTriangle className="h-8 w-8 text-rose-300" />
+          <p className="mt-3 font-medium text-white">The review queue could not be verified</p>
+          <p className="mt-1 text-sm text-white/50">{error}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void refetch()} className="mt-4">Try again</Button>
+        </CardContent>
+      </Card>
     );
   }
 
-  if (proposals.length === 0) {
+  if (visibleProposals.length === 0) {
     return (
-      <div className="text-center py-12 border border-border/60 rounded-lg bg-black/20">
-        <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-400" />
-        <p className="text-white/60 mb-2">No pending proposals</p>
-        <p className="text-sm text-white/40">
-          All memory proposals have been reviewed, or no new proposals have been generated yet.
-        </p>
-      </div>
+      <Card className="border-emerald-400/15 bg-emerald-400/[0.04]">
+        <CardContent className="flex flex-col items-center py-12 text-center">
+          <CheckCircle2 className="h-9 w-9 text-emerald-300" />
+          <p className="mt-3 font-medium text-white">Nothing needs your review</p>
+          <p className="mt-1 max-w-md text-sm text-white/45">
+            LoreBook automatically filtered commands, duplicates, incomplete relationships, and low-quality extractions.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Info */}
-      <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+    <section className="space-y-5" aria-labelledby="memory-review-heading">
+      <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/[0.04] to-transparent p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <Info className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+          <Fingerprint className="mt-0.5 h-5 w-5 flex-none text-primary" />
           <div>
-            <h3 className="text-sm font-semibold text-white mb-1">Memory Review Queue</h3>
-            <p className="text-sm text-white/70">
-              These are memory proposals that need your review. Low-risk items are auto-approved, 
-              but medium and high-risk items require your decision. You can approve, edit, reject, or defer each proposal.
+            <h3 id="memory-review-heading" className="font-semibold text-white">Beliefs awaiting confirmation</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/55">
+              Each item is one normalized belief. Related evidence is merged, confidence and impact are separate,
+              and every card explains the exact mutation before you approve it.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-          <div className="text-2xl font-bold text-red-400">{grouped.HIGH.length}</div>
-          <div className="text-xs text-white/60">High Risk</div>
-        </div>
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-          <div className="text-2xl font-bold text-yellow-400">{grouped.MEDIUM.length}</div>
-          <div className="text-xs text-white/60">Medium Risk</div>
-        </div>
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-          <div className="text-2xl font-bold text-green-400">{grouped.LOW.length}</div>
-          <div className="text-xs text-white/60">Low Risk</div>
-        </div>
+      <div className="flex flex-wrap gap-2 text-xs text-white/45">
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{visibleProposals.length} beliefs</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{groups.length} story groups</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
+          {groups.reduce((sum, group) => sum + group.evidenceCount, 0)} evidence passages
+        </span>
       </div>
 
-      {/* Proposals List - Ordered by Risk */}
-      <div className="space-y-4">
-        {grouped.HIGH.length > 0 && (
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-400" />
-              High Risk ({grouped.HIGH.length})
-            </h3>
+      {groups.map(group => {
+        const headingId = `proposal-group-${group.key.replace(/[^a-z0-9_-]+/gi, '-')}`;
+        return (
+          <section key={group.key} className="space-y-3" aria-labelledby={headingId}>
+            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/8 pb-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/65">Story group</p>
+                <h4 id={headingId} className="mt-0.5 text-lg font-semibold text-white">{group.label}</h4>
+              </div>
+              <p className="text-xs text-white/40">
+                {group.proposals.length} {group.proposals.length === 1 ? 'belief' : 'beliefs'} · {group.evidenceCount} evidence passages
+              </p>
+            </div>
             <div className="space-y-3">
-              {grouped.HIGH.map(proposal => (
-                <ProposalCard 
-                  key={proposal.id} 
-                  proposal={proposal} 
-                  onAction={refetch}
+              {group.proposals.map(proposal => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
                   onApprove={approveProposal}
                   onReject={rejectProposal}
-                  onEdit={editProposal}
                   onDefer={deferProposal}
                 />
               ))}
             </div>
-          </div>
-        )}
-
-        {grouped.MEDIUM.length > 0 && (
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-400" />
-              Medium Risk ({grouped.MEDIUM.length})
-            </h3>
-            <div className="space-y-3">
-              {grouped.MEDIUM.map(proposal => (
-                <ProposalCard 
-                  key={proposal.id} 
-                  proposal={proposal} 
-                  onAction={refetch}
-                  onApprove={approveProposal}
-                  onReject={rejectProposal}
-                  onEdit={editProposal}
-                  onDefer={deferProposal}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {grouped.LOW.length > 0 && (
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Info className="h-5 w-5 text-green-400" />
-              Low Risk ({grouped.LOW.length})
-            </h3>
-            <div className="space-y-3">
-              {grouped.LOW.map(proposal => (
-                <ProposalCard 
-                  key={proposal.id} 
-                  proposal={proposal} 
-                  onAction={refetch}
-                  onApprove={approveProposal}
-                  onReject={rejectProposal}
-                  onEdit={editProposal}
-                  onDefer={deferProposal}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          </section>
+        );
+      })}
+    </section>
   );
-};
-
+}

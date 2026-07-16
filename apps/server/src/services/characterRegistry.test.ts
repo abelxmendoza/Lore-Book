@@ -40,6 +40,13 @@ describe('characterRegistry', () => {
     vi.clearAllMocks();
   });
 
+  it('rejects sentence-bleed names before any character write', () => {
+    expect(characterRegistry.gateName('Also You')).toMatchObject({
+      ok: false,
+      reason: 'sentence_bleed',
+    });
+  });
+
   it('does not auto-merge a bare first name into a contextual kinship name', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);

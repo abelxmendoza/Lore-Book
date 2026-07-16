@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
+import { logger } from '../logger';
 import { authMiddleware, type AuthenticatedRequest } from '../middleware/auth';
 import {
   resolveAccountAuthority,
@@ -362,10 +363,12 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     await handleWebhook(event);
     return res.json({ received: true });
   } catch (error) {
-    console.error('Error handling webhook:', error);
+    logger.error(
+      { err: error, eventId: event.id, eventType: event.type },
+      'Error handling Stripe webhook'
+    );
     return res.status(500).json({ error: 'Webhook handler failed' });
   }
 }
 
 export { router as subscriptionRouter };
-

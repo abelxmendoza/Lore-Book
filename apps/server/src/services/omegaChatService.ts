@@ -423,8 +423,13 @@ class OmegaChatService {
   /**
    * Build comprehensive RAG packet with ALL lore knowledge
    */
-  private async buildRAGPacket(userId: string, message: string, currentContext?: CurrentContext) {
-    return _buildRAGPacket(userId, message, currentContext, this.extractDatesAndTimes.bind(this));
+  private async buildRAGPacket(
+    userId: string,
+    message: string,
+    currentContext?: CurrentContext,
+    scopePlan?: import('./responseScope').ResponseScopePlan,
+  ) {
+    return _buildRAGPacket(userId, message, currentContext, this.extractDatesAndTimes.bind(this), scopePlan);
   }
 
   /**
@@ -1418,8 +1423,11 @@ When updating relationship analytics or emotional signals from this thread, weig
     // inform this answer, whether the user asked a chat question or for
     // diagnostics, and whether this message corrects a previous answer.
     const responseScope = await import('./responseScope');
-    const previousScopeIntent = responseScope.inferPreviousScopeIntent(conversationHistory);
-    const scopePlan = responseScope.planResponseScope(message, { previousIntent: previousScopeIntent });
+    // Active context: what this thread is currently about. Context-free
+    // follow-ups ("what about Joss?", "you forgot Wren") inherit it so scope
+    // and entity anchoring survive across turns, not just for corrections.
+    const activeContext = responseScope.deriveActiveContext(conversationHistory);
+    const scopePlan = responseScope.planResponseScope(message, { activeContext });
     const scopeGuard = (content: string): string => {
       const guarded = responseScope.enforceChatScope(content, scopePlan);
       if (guarded.violations.length > 0) {
@@ -1430,6 +1438,7 @@ When updating relationship analytics or emotional signals from this thread, weig
           plan: {
             intent: scopePlan.intent,
             responseMode: scopePlan.responseMode,
+            scopeSource: scopePlan.scopeSource,
             allowedDomains: scopePlan.allowedDomains,
             blockedDomains: scopePlan.blockedDomains,
           },
@@ -1467,6 +1476,61 @@ When updating relationship analytics or emotional signals from this thread, weig
       }
     } catch (err) {
       logger.warn({ err, userId }, 'Sprint AK conversation intelligence failed, continuing');
+    }
+
+    // =====================================================
+    // NARRATIVE COGNITION — reasoning questions, not retrieval
+    // =====================================================
+    // "Who matters most to me?", "what era am I in?", "what changed?" need
+    // reasoning over the narrative graph. Without this gate they fall through
+    // to generic chat and get an empathy deflection instead of an answer.
+    if (!workingMemoryPrimary && responseScope.isChatFacingMode(scopePlan.responseMode)) try {
+      const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
+      const cognitionKind = detectCognitionQuestion(message);
+      if (cognitionKind) {
+        const cognition = await answerNarrativeCognition(userId, cognitionKind);
+        if (cognition) {
+          const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+          return formatModeResponse(
+            {
+              content: cognition.content,
+              response_mode: 'FOCUSED_RECALL',
+              confidence: cognition.confidence,
+              metadata: {
+                narrative_cognition: cognitionKind,
+                cognition_reasoning: cognition.reasoning,
+              },
+            },
+            'FOUNDATION_RECALL',
+            modeExtras(),
+          );
+        }
+      }
+      // Relationship questions ("who am I interested in?", "am I over X?")
+      // are reasoned over evidence, dimensions, and decay — not retrieved.
+      const { detectRelationshipQuestion, answerRelationshipCognition } = await import('./relationships/relationshipReasoner');
+      const relationshipKind = detectRelationshipQuestion(message);
+      if (relationshipKind) {
+        const relationship = await answerRelationshipCognition(userId, relationshipKind, message);
+        if (relationship) {
+          const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+          return formatModeResponse(
+            {
+              content: relationship.content,
+              response_mode: 'FOCUSED_RECALL',
+              confidence: relationship.confidence,
+              metadata: {
+                relationship_cognition: relationshipKind,
+                cognition_reasoning: relationship.reasoning,
+              },
+            },
+            'FOUNDATION_RECALL',
+            modeExtras(),
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Narrative cognition gate failed, continuing');
     }
 
     // =====================================================
@@ -1779,7 +1843,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const ragStart = Date.now();
     const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, message) !== null;
     try {
-      ragPacket = await this.buildRAGPacket(userId, message, currentContext);
+      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan);
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
       ragPacket = {
@@ -2476,7 +2540,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       logger.debug({ err, userId }, 'Stale projection hint collection failed, continuing without');
     }
 
-    const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
     const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
       id,
@@ -2662,6 +2727,9 @@ When updating relationship analytics or emotional signals from this thread, weig
     threadId?: string
   ): Promise<OmegaChatResponse> {
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
+    const responseScope = await import('./responseScope');
+    const activeContext = responseScope.deriveActiveContext(conversationHistory);
+    const scopePlan = responseScope.planResponseScope(message, { activeContext });
 
     let entryId: string | undefined;
     let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
@@ -2695,8 +2763,31 @@ When updating relationship analytics or emotional signals from this thread, weig
       logger.debug({ err: metaErr, userId }, 'Meta product gate failed (non-stream) — continuing');
     }
 
+    // Narrative + relationship cognition questions are reasoned, not
+    // retrieved (see chatStream).
+    if (responseScope.isChatFacingMode(scopePlan.responseMode)) try {
+      const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
+      const cognitionKind = detectCognitionQuestion(message);
+      if (cognitionKind) {
+        const cognition = await answerNarrativeCognition(userId, cognitionKind);
+        if (cognition) {
+          return { answer: cognition.content, entryId };
+        }
+      }
+      const { detectRelationshipQuestion, answerRelationshipCognition } = await import('./relationships/relationshipReasoner');
+      const relationshipKind = detectRelationshipQuestion(message);
+      if (relationshipKind) {
+        const relationship = await answerRelationshipCognition(userId, relationshipKind, message);
+        if (relationship) {
+          return { answer: relationship.content, entryId };
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Narrative cognition gate failed (non-stream), continuing');
+    }
+
     // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
+    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
     // Essence + identity-core profiles are independent userId-only loads — fetch
@@ -3218,7 +3309,10 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Generate citations
-    const citations = this.generateCitations(sources, answer);
+    const citations = responseScope.filterCitationsForPresentation(
+      this.generateCitations(sources, answer),
+      sources,
+    );
 
     // Extract memory claims used in response (from omega memory)
     // Note: This is a placeholder - in production, you'd query omega_claims
@@ -3250,7 +3344,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Resolve entities from character/location/org books + omega_entities (not legacy people_places)
-    const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
     const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
       id,

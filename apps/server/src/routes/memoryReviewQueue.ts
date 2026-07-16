@@ -25,13 +25,24 @@ router.get('/pending', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+/** GET /api/mrq/audit — deterministic cleanup plan; read-only. */
+router.get('/audit', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const report = await memoryReviewQueueService.auditPendingMRQ(req.user!.id);
+    res.json(report);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to audit pending MRQ');
+    res.status(500).json({ error: 'Failed to audit pending MRQ' });
+  }
+});
+
 /**
  * GET /api/mrq/proposals/:id
  * Get a specific proposal
  */
 router.get('/proposals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const proposal = await memoryReviewQueueService.getProposal(id, req.user!.id);
 
     if (!proposal) {
@@ -51,7 +62,7 @@ router.get('/proposals/:id', requireAuth, async (req: AuthenticatedRequest, res)
  */
 router.post('/proposals/:id/approve', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const decision = await memoryReviewQueueService.approveProposal(req.user!.id, id);
     res.json({ decision, success: true });
   } catch (error) {
@@ -66,7 +77,7 @@ router.post('/proposals/:id/approve', requireAuth, async (req: AuthenticatedRequ
  */
 router.post('/proposals/:id/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { reason } = req.body;
     const decision = await memoryReviewQueueService.rejectProposal(req.user!.id, id, reason);
     res.json({ decision, success: true });
@@ -82,7 +93,7 @@ router.post('/proposals/:id/reject', requireAuth, async (req: AuthenticatedReque
  */
 router.post('/proposals/:id/edit', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { new_text, new_confidence } = req.body;
 
     if (!new_text || typeof new_text !== 'string') {
@@ -109,7 +120,7 @@ router.post('/proposals/:id/edit', requireAuth, async (req: AuthenticatedRequest
  */
 router.post('/proposals/:id/defer', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const decision = await memoryReviewQueueService.deferProposal(req.user!.id, id);
     res.json({ decision, success: true });
   } catch (error) {
@@ -119,4 +130,3 @@ router.post('/proposals/:id/defer', requireAuth, async (req: AuthenticatedReques
 });
 
 export const memoryReviewQueueRouter = router;
-

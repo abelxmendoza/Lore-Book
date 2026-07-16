@@ -15,24 +15,28 @@ const WEIGHTS = {
 } as const;
 
 function normMention(count: number): number {
+  if (!Number.isFinite(count)) return 0;
   if (count <= 0) return 0;
   if (count >= 20) return 1;
   return Math.min(1, count / 20);
 }
 
 function normThread(count: number): number {
+  if (!Number.isFinite(count)) return 0;
   if (count <= 0) return 0;
   if (count >= 8) return 1;
   return Math.min(1, count / 8);
 }
 
 function normDays(days: number): number {
+  if (!Number.isFinite(days)) return 0;
   if (days <= 0) return 0;
   if (days >= 30) return 1;
   return Math.min(1, days / 30);
 }
 
 function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
 }
 

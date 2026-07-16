@@ -13,6 +13,7 @@ function makeChain(result: TableResult) {
     in: () => chain,
     not: () => chain,
     gt: () => chain,
+    gte: () => chain,
     order: () => chain,
     limit: () => chain,
     single: () => Promise.resolve(result),
@@ -66,7 +67,7 @@ function makeBio(overrides: Partial<BiographyOutput> = {}): BiographyOutput {
         { title: 'Moved in with Grandma Rose', eventType: 'living_event', date: '2026-04-01', connection: 'Grandma Rose', confidence: 0.9, sourceEntryIds: [] },
       ],
       livingSituation: 'Living with Grandma Rose',
-      upcomingEvents: ['Preparing for Epirus interview'],
+      upcomingEvents: ['Ship MemoVault beta'],
       sourceEntryCount: 42,
     },
     themes: [
@@ -113,14 +114,53 @@ describe('getLivingBiographyCard', () => {
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
     tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
 
     expect(card.hasEnoughData).toBe(true);
     expect(card.name).toBe('Abel Mendoza');
     expect(card.topThemes).toEqual(['career rebuilding', 'family closeness']);
-    expect(card.currentFocus).toEqual(['Preparing for Epirus interview']);
+    expect(card.currentFocus).toEqual(['Ship MemoVault beta']);
     expect(card.lastUpdated).toBe(bio.generatedAt);
+  });
+
+  it('prefers live active quests over stale snapshot upcoming events', async () => {
+    const bio = makeBio({
+      facts: {
+        ...makeBio().facts,
+        upcomingEvents: ['Job interview with Northwind Labs (position TBD)'],
+      },
+    });
+    getBiography.mockResolvedValue(bio);
+    tableResults.journal_entries = { data: [], error: null, count: 0 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = {
+      data: [{ title: 'Finish career lore review' }, { title: 'Ship MemoVault beta' }],
+      error: null,
+    };
+
+    const card = await getLivingBiographyCard('user-1');
+
+    expect(card.currentFocus).toEqual(['Finish career lore review', 'Ship MemoVault beta']);
+  });
+
+  it('filters known-stale focus strings even when they remain in the snapshot', async () => {
+    const bio = makeBio({
+      facts: {
+        ...makeBio().facts,
+        upcomingEvents: ['Job interview with Epirus (position TBD)', 'Family weekend plans'],
+      },
+    });
+    getBiography.mockResolvedValue(bio);
+    tableResults.journal_entries = { data: [], error: null, count: 0 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
+
+    const card = await getLivingBiographyCard('user-1');
+
+    expect(card.currentFocus).toEqual(['Family weekend plans']);
+    expect(card.currentFocus.join(' ')).not.toMatch(/epirus/i);
   });
 
   it('excludes ended relationships and ranks key people by evidence strength', async () => {
@@ -128,6 +168,7 @@ describe('getLivingBiographyCard', () => {
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
     tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
 
@@ -151,6 +192,7 @@ describe('getLivingBiographyCard', () => {
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
     tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
 
@@ -163,6 +205,7 @@ describe('getLivingBiographyCard', () => {
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
     tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
 
@@ -246,9 +289,17 @@ describe('shouldRefreshBiography', () => {
   it('does not refresh past cooldown when neither threshold is met', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 1 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 1 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(false);
+  });
+
+  it('refreshes with a single new timeline event once cooldown has passed', async () => {
+    const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
+    tableResults.journal_entries = { data: [], error: null, count: 0 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 1 };
+
+    expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
 });
 

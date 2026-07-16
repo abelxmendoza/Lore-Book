@@ -96,10 +96,33 @@ describe('narrativeAnchor clustering', () => {
     };
 
     const anchors = buildAnchorsFromContext(ctx);
-    const workEra = anchors.find((a) => a.anchorType === 'work_era');
+    const workEra = anchors.find((a) => a.anchorType === 'work_era' && a.title === 'Vanguard Robotics Chapter');
 
     expect(workEra).toBeDefined();
-    expect(workEra!.entities.length).toBeGreaterThanOrEqual(2);
+    expect(workEra!.entities.length + workEra!.groups.length).toBeGreaterThanOrEqual(2);
+    expect(workEra!.title).toBe('Vanguard Robotics Chapter');
+    expect(workEra!.groups.map((group) => group.name)).toContain('Vanguard Robotics');
+    expect(new Set(workEra!.evidence.map((item) => item.label.toLowerCase())).size).toBe(workEra!.evidence.length);
+  });
+
+  it('does not call repeated copies of one keyword a strong match', () => {
+    const ctx: AnchorBuildContext = {
+      userId: USER,
+      entities: [
+        entity({ entityId: 'a', name: 'Alex', facts: ['job job job job'] }),
+        entity({ entityId: 'b', name: 'Blair' }),
+      ],
+      coMentionPairs: [pair('a', 'b')],
+      facts: [{ entityId: 'a', text: 'job job job job' }],
+      relationships: [],
+      organizations: [],
+      events: [],
+      recurringPatterns: [],
+    };
+
+    const workEra = buildAnchorsFromContext(ctx).find((anchor) => anchor.anchorType === 'work_era');
+
+    expect(workEra).toBeUndefined();
   });
 
   it('Sol cluster creates Relationship Arc', () => {
@@ -120,7 +143,16 @@ describe('narrativeAnchor clustering', () => {
         { entityId: 'sol', text: 'distancing and ghosting from Sol' },
         { entityId: 'sol', text: 'blocking Sol then reappearance' },
       ],
-      relationships: [{ sourceId: 'sol', targetId: 'user', type: 'dating' }],
+      relationships: [{
+        sourceId: 'sol',
+        targetId: 'user',
+        type: 'dating',
+        directEvidence: true,
+        evidence: [
+          { id: 'sol-1', label: 'Sol and I started dating', source: 'relationship', sourceRef: 'memory-1', confidence: 0.9 },
+          { id: 'sol-2', label: 'Sol and I drifted apart after ghosting', source: 'relationship', sourceRef: 'memory-2', confidence: 0.9 },
+        ],
+      }],
       organizations: [],
       events: [],
       recurringPatterns: [],
@@ -134,7 +166,7 @@ describe('narrativeAnchor clustering', () => {
     expect(relArc!.evidence.some((e) => /dating|ghosting|met/i.test(e.label))).toBe(true);
   });
 
-  it('family party creates Family Anchor', () => {
+  it('a significant party remains a pivotal event, not a life era', () => {
     const ctx: AnchorBuildContext = {
       userId: USER,
       entities: [
@@ -150,16 +182,41 @@ describe('narrativeAnchor clustering', () => {
           id: 'ev-grad',
           title: 'Leslie Graduation Party',
           entityIds: ['leslie', 'ralph'],
+          significanceScore: 80,
+          significanceLevel: 'major',
+          evidence: [{ id: 'party-source', label: 'Leslie and Ralph celebrated graduation together.', source: 'event', sourceRef: 'entry-1', confidence: 0.9 }],
         },
       ],
       recurringPatterns: [],
     };
 
     const anchors = buildAnchorsFromContext(ctx);
-    const family = anchors.find((a) => a.anchorType === 'family_period' || /leslie|family/i.test(a.title));
+    const family = anchors.find((a) => a.anchorType === 'pivotal_event');
 
     expect(family).toBeDefined();
     expect(family!.entities.some((e) => e.name.includes('Leslie'))).toBe(true);
+    expect(anchors.some((anchor) => anchor.anchorType === 'life_era')).toBe(false);
+  });
+
+  it('does not turn an unsupported relationship row into an arc', () => {
+    const ctx: AnchorBuildContext = {
+      userId: USER,
+      entities: [entity({ entityId: 'a', name: 'Alex' }), entity({ entityId: 'b', name: 'Blair' })],
+      coMentionPairs: [pair('a', 'b', 10)],
+      facts: [{ entityId: 'a', text: 'Alex attended a party' }],
+      relationships: [{ sourceId: 'a', targetId: 'b', type: 'romantic' }],
+      organizations: [], events: [], recurringPatterns: [],
+    };
+    expect(buildAnchorsFromContext(ctx).some((anchor) => anchor.anchorType === 'relationship_arc')).toBe(false);
+  });
+
+  it('does not infer an era from co-occurrence alone', () => {
+    const ctx: AnchorBuildContext = {
+      userId: USER,
+      entities: [entity({ entityId: 'a', name: 'Alex' }), entity({ entityId: 'b', name: 'Blair' })],
+      coMentionPairs: [pair('a', 'b', 20)], facts: [], relationships: [], organizations: [], events: [], recurringPatterns: [],
+    };
+    expect(buildAnchorsFromContext(ctx)).toEqual([]);
   });
 
   it('repeated Wednesday practice creates Recurring Activity Anchor', () => {

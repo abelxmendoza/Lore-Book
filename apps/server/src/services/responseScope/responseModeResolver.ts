@@ -26,6 +26,28 @@ const FOCUSED_RECALL_RE =
 export const CORRECTION_RE =
   /\b(you (forgot|missed|left out|skipped)|don'?t forget|you'?re missing|(that|this) (is|was) (wrong|incorrect)|actually,? (it|that|he|she|they)\b|not (accurate|right|correct)\b)/i;
 
+/** Continuation openers that lean on the previous exchange for their subject. */
+const FOLLOW_UP_OPENER_RE =
+  /^(?:what about|how about|and|also|plus|what else|who else|anyone else|any others?|tell me more|more about|go on|which one(?:s)?)\b/i;
+
+/** Third-person references that only resolve against the previous answer. */
+const ANAPHORA_RE = /\b(?:he|him|his|she|her|hers|they|them|their|theirs|that one)\b/i;
+
+const SHORT_QUESTION_MAX_CHARS = 80;
+
+/**
+ * A message that cannot stand alone: a correction, a continuation opener, or a
+ * short question whose subject is a pronoun. These inherit the conversation's
+ * active context instead of being scoped as context-free general chatter.
+ */
+export function isFollowUpShaped(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (CORRECTION_RE.test(text)) return true;
+  if (FOLLOW_UP_OPENER_RE.test(text)) return true;
+  return text.length <= SHORT_QUESTION_MAX_CHARS && text.endsWith('?') && ANAPHORA_RE.test(text);
+}
+
 export function resolveResponseMode(message: string): ResponseMode {
   const text = message.trim();
   // Corrections are checked before debug patterns: "you forgot X" must update

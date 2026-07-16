@@ -22,12 +22,21 @@ vi.mock('../../api/livingBiography', () => ({
   fetchLivingBiographyCard: (...args: unknown[]) => mockFetchCard(...args),
 }));
 
+vi.mock('../../lib/cache', () => ({
+  apiCache: {
+    deletePattern: vi.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+    getInflight: vi.fn(),
+  },
+}));
+
 const FULL_CARD = {
-  name: 'Abel',
+  name: 'Alex',
   currentChapter: { label: 'The Creative Sprint', evidence: [] },
   topThemes: ['music', 'growth', 'travel'],
   keyPeople: [
-    { name: 'Sarah Chen', relationship: 'friend', status: 'active' },
+    { name: 'Jamie Chen', relationship: 'friend', status: 'active' },
     { name: 'Marcus', relationship: 'colleague', status: 'active' },
   ],
   currentFocus: ['shipping the product'],
@@ -45,16 +54,17 @@ describe('LivingBiographyCard', () => {
     vi.clearAllMocks();
   });
 
-  it('renders nothing while loading', () => {
+  it('renders a loading skeleton while fetching', () => {
     mockFetchCard.mockReturnValue(new Promise(() => {})); // never resolves
     const { container } = wrap(<LivingBiographyCard />);
-    expect(container.firstChild).toBeNull();
+    expect(container.querySelector('[aria-hidden]')).toBeTruthy();
   });
 
   it('renders nothing when card is null', async () => {
     mockFetchCard.mockResolvedValue({ card: null });
     const { container } = wrap(<LivingBiographyCard />);
     await waitFor(() => {
+      expect(container.querySelector('[aria-hidden]')).toBeNull();
       expect(container.firstChild).toBeNull();
     });
   });
@@ -75,21 +85,21 @@ describe('LivingBiographyCard', () => {
     });
   });
 
-  it('renders top themes', async () => {
+  it('renders top themes as chips', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);
     await waitFor(() => {
-      expect(screen.getByText('music, growth, travel')).toBeInTheDocument();
+      expect(screen.getByText('music')).toBeInTheDocument();
+      expect(screen.getByText('growth')).toBeInTheDocument();
+      expect(screen.getByText('travel')).toBeInTheDocument();
     });
   });
 
   it('renders key people as clickable buttons', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);
-    // Use getByText — outer div[role=button] also contains "Sarah Chen" in its
-    // computed accessible name, so getByRole('button') would match two elements.
     await waitFor(() => {
-      expect(screen.getByText('Sarah Chen')).toBeInTheDocument();
+      expect(screen.getByText('Jamie Chen')).toBeInTheDocument();
       expect(screen.getByText('Marcus')).toBeInTheDocument();
     });
   });
@@ -97,24 +107,22 @@ describe('LivingBiographyCard', () => {
   it('clicking a person name navigates to /lorebook?focus=...', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);
-    await waitFor(() => screen.getByText('Sarah Chen'));
+    await waitFor(() => screen.getByText('Jamie Chen'));
 
-    fireEvent.click(screen.getByText('Sarah Chen'));
+    fireEvent.click(screen.getByText('Jamie Chen'));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.stringContaining('/lorebook?focus=')
     );
     expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining('Sarah%20Chen')
+      expect.stringContaining('Jamie%20Chen')
     );
   });
 
   it('clicking the card itself navigates to the compiled lorebook editor', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);
-    // Wait for card to appear
     await waitFor(() => screen.getByText('The Creative Sprint'));
 
-    // The outer div[role=button] is the card
     const card = screen.getByRole('button', { name: /Your Story Right Now/i });
     fireEvent.click(card);
     expect(mockNavigate).toHaveBeenCalledWith('/memoir?book=demo-1');
@@ -141,7 +149,8 @@ describe('LivingBiographyCard', () => {
     mockFetchCard.mockResolvedValue({ card });
     wrap(<LivingBiographyCard />);
     await waitFor(() => {
-      expect(screen.getByText('launched v2 · hit 100 users')).toBeInTheDocument();
+      expect(screen.getByText('launched v2')).toBeInTheDocument();
+      expect(screen.getByText('hit 100 users')).toBeInTheDocument();
     });
   });
 

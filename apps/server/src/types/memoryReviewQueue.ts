@@ -4,6 +4,19 @@
  */
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type SensitivityLevel = 'NORMAL' | 'PRIVATE' | 'SENSITIVE';
+export type ProposalKind =
+  | 'durable_fact'
+  | 'identity_fact'
+  | 'occupation'
+  | 'relationship'
+  | 'event'
+  | 'plan'
+  | 'preference'
+  | 'emotional_state'
+  | 'entity_classification'
+  | 'correction'
+  | 'retraction';
 export type ProposalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EDITED' | 'DEFERRED';
 export type DecisionType = 'APPROVE' | 'REJECT' | 'EDIT' | 'DEFER';
 export type DecidedBy = 'USER' | 'SYSTEM';
@@ -67,5 +80,7 @@ export interface PendingMRQItem {
   created_at: string;
   reasoning?: string;
   source_excerpt?: string;
+  affected_claim_ids?: string[];
+  temporal_context?: Record<string, any>;
+  metadata?: Record<string, any>;
 }
-

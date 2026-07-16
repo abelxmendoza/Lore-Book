@@ -71,6 +71,14 @@ describe('correction parsing', () => {
     expect(names).toEqual(expect.arrayContaining(['Kavi', 'Joss', 'Wren']));
   });
 
+  it('preserves the final coordinated name in a correction clause', () => {
+    const names = extractCorrectionNames(
+      'You forgot Chris — he has been here a long time, and so is Ordell.',
+    );
+    expect(names).toEqual(expect.arrayContaining(['Chris', 'Ordell']));
+    expect(names).not.toContain('Also You');
+  });
+
   it('a correction inherits the previous intent when its own is general', () => {
     const plan = planResponseScope('you forgot Kavi and Joss', { previousIntent: 'work' });
     expect(plan.isCorrection).toBe(true);

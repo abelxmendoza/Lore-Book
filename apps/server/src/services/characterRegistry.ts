@@ -55,6 +55,7 @@ import { filterSelfCandidatesForIncoming } from './identity/selfIdentityGuard';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
+import { evaluateSentenceBleed } from './characters/audit/characterIdentityGate';
 import { isUserRejectedEntityCard } from './entityRejectionRegistry';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -147,6 +148,8 @@ class CharacterRegistry {
 
     if (name.length < 2) return { ok: false, reason: 'too_short' };
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
+    const sentenceBleed = evaluateSentenceBleed(name);
+    if (sentenceBleed.rejected) return { ok: false, reason: sentenceBleed.kind };
     if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
 

@@ -301,7 +301,7 @@ async function logPaymentEvent(
   }
 
   try {
-    const { error } = await supabaseAdmin.from('payment_events').insert({
+    const { error } = await supabase.from('payment_events').insert({
       user_id: userId,
       stripe_customer_id: stripeCustomerId,
       stripe_invoice_id: stripeInvoiceId || null,
@@ -325,7 +325,7 @@ async function logPaymentEvent(
  * Get user_id from Stripe customer ID
  */
 async function getUserIdFromCustomer(customerId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await supabase
     .from('subscriptions')
     .select('user_id')
     .eq('stripe_customer_id', customerId)
@@ -589,4 +589,3 @@ export function verifyWebhookSignature(
     return null;
   }
 }
-

@@ -33,6 +33,48 @@ test.describe('Chat mobile layout', () => {
     }
   });
 
+  test('long drafts keep the Send button inside the visible mobile viewport', async ({ page, context }) => {
+    await context.addInitScript(() => {
+      window.localStorage.setItem('lorekeeper_guest_state', JSON.stringify({
+        isGuest: true,
+        guestId: 'mobile-layout-guest',
+        chatMessagesUsed: 0,
+        chatLimit: 5,
+        createdAt: Date.now(),
+      }));
+      window.sessionStorage.setItem('lk_demo_runtime', 'true');
+    });
+    await page.goto('/demo');
+    await page.waitForLoadState('domcontentloaded');
+    const splash = page.getByTestId('welcome-splash');
+    if (await splash.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await splash.click();
+      await expect(splash).toBeHidden();
+    }
+
+    const composer = page.getByTestId('chat-composer');
+    const textarea = composer.locator('textarea').first();
+    const send = composer.getByRole('button', { name: 'Send message' }).last();
+
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await textarea.fill(Array.from({ length: 80 }, (_, index) => `Story line ${index + 1}`).join('\n'));
+
+    // The field must contain the draft instead of growing the composer beyond
+    // the mobile viewport. Keyboard-height behavior is driven by
+    // window.visualViewport in the component; Playwright's mobile emulation
+    // keeps that viewport at the device height when setViewportSize is called.
+    await expect(send).toBeVisible();
+
+    const viewport = page.viewportSize();
+    expect(viewport).toBeTruthy();
+    if (viewport) {
+      await expect.poll(async () => {
+        const box = await send.boundingBox();
+        return box ? box.y + box.height : Number.POSITIVE_INFINITY;
+      }).toBeLessThanOrEqual(viewport.height + 2);
+    }
+  });
+
   test('guest thread shows user and assistant bubbles after reload', async ({ page, context }) => {
     const threadId = 'mobile-guest-thread';
     const seed = [

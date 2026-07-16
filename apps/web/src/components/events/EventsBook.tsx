@@ -4,11 +4,12 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
   Music2, Building2, Briefcase, Plane, Heart, LayoutGrid,
-  CalendarDays, Repeat2, Star, TrendingUp, BookOpen,
+  CalendarDays, Repeat2, Star, TrendingUp, BookOpen, Milestone, Route, ArrowRight,
 } from 'lucide-react';
 import {
   addMonths,
@@ -45,6 +46,7 @@ import { MemoryExplorer, dummyMemoryCards } from '../memory-explorer/MemoryExplo
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useCalendarMonth } from '../../hooks/useCalendarMonth';
 import { TimelineStitchedView } from '../timeline/TimelineStitchedView';
+import { getRouteFromSurface } from '../../utils/routeMapping';
 
 const ITEMS_PER_PAGE = 18;
 
@@ -136,7 +138,7 @@ const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClas
 
 const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
   { value: 'events', label: 'Moments', icon: Sparkles },
-  { value: 'calendar', label: 'Calendar', icon: CalendarDays },
+  { value: 'calendar', label: 'Time', icon: CalendarDays },
   { value: 'recurring', label: 'Patterns', icon: Repeat2 },
 ];
 
@@ -501,6 +503,7 @@ const MOCK_SCENES: RecurringScene[] = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const EventsBook: React.FC = () => {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const { entries = [] } = useLoreKeeper();
@@ -797,20 +800,19 @@ export const EventsBook: React.FC = () => {
     <div className="space-y-4">
       <ChatFirstViewHint />
 
-      <Card className="border-border/60 bg-black/40">
-        <CardContent className="p-4 sm:p-5">
+      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-black/70 via-purple-950/25 to-black/60">
+        <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
                 Life Log
               </p>
               <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
-                Your life, scene by scene
+                Your story, from evidence to meaning
               </h2>
               <p className="mt-1 max-w-3xl text-sm text-white/55">
-                Browse <strong className="font-medium text-white/70">Moments</strong> — scenes from your conversations with people, places, and meaning.
-                Use <strong className="font-medium text-white/70">Search facts</strong> for atomic details inside those moments.
-                <strong className="font-medium text-white/70"> Patterns</strong> shows rhythms LoreBook notices over time.
+                Facts are the sourced details. Moments gather those details into scenes. Narrative Anchors mark
+                turning points, the Timeline puts everything in order, and Patterns reveal what repeats across time.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[16rem]">
@@ -826,6 +828,40 @@ export const EventsBook: React.FC = () => {
                 <p className="text-lg font-semibold text-white">{memoryCards.length}</p>
                 <p className="text-[10px] uppercase tracking-wide text-white/35">Facts</p>
               </div>
+            </div>
+          </div>
+
+          <div className="mt-5 border-t border-white/8 pt-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">How your story connects</p>
+              <p className="hidden text-[10px] text-white/30 sm:block">Evidence → scenes → meaning → chronology</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-5">
+              <button type="button" onClick={() => { setViewMode('events'); setMomentsLayout('facts'); }} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <BookOpen className="h-4 w-4 text-sky-300" />
+                <p className="mt-2 text-xs font-medium text-white">Facts</p>
+                <p className="mt-0.5 text-[10px] text-white/35">Atomic evidence</p>
+              </button>
+              <button type="button" onClick={() => { setViewMode('events'); setMomentsLayout('grid'); }} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <Sparkles className="h-4 w-4 text-violet-300" />
+                <p className="mt-2 text-xs font-medium text-white">Moments</p>
+                <p className="mt-0.5 text-[10px] text-white/35">Life scenes</p>
+              </button>
+              <button type="button" onClick={() => navigate(getRouteFromSurface('anchors'))} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <Milestone className="h-4 w-4 text-amber-300" />
+                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Anchors <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
+                <p className="mt-0.5 text-[10px] text-white/35">Turning points</p>
+              </button>
+              <button type="button" onClick={() => navigate(getRouteFromSurface('timeline'))} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <Route className="h-4 w-4 text-emerald-300" />
+                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Timeline <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
+                <p className="mt-0.5 text-[10px] text-white/35">Life in order</p>
+              </button>
+              <button type="button" onClick={() => setViewMode('recurring')} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <Repeat2 className="h-4 w-4 text-fuchsia-300" />
+                <p className="mt-2 text-xs font-medium text-white">Patterns</p>
+                <p className="mt-0.5 text-[10px] text-white/35">Recurring rhythms</p>
+              </button>
             </div>
           </div>
         </CardContent>
@@ -861,7 +897,7 @@ export const EventsBook: React.FC = () => {
               `}
             >
               <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="hidden sm:inline">{label}</span>
+              <span>{label}</span>
             </button>
           ))}
         </div>

@@ -881,11 +881,31 @@
 .journal-composer-shell--mobile .journal-composer-field:not(.journal-composer-field--embedded) {
   min-height: 2.625rem !important;
   height: 2.625rem;
-  max-height: min(40dvh, 15rem);
+  max-height: min(40dvh, 15rem, calc(var(--composer-visual-height, 100dvh) - 9rem));
 }
 
 .journal-composer-shell--mobile.journal-composer-shell--focused .journal-composer-field:not(.journal-composer-field--embedded) {
-  max-height: min(44dvh, 16rem);
+  max-height: min(44dvh, 16rem, calc(var(--composer-visual-height, 100dvh) - 9rem));
+}
+
+/* Keep the action row inside the actually visible mobile viewport. Long
+   drafts scroll in the field; they never grow the composer past Send. */
+.journal-composer-shell--mobile {
+  max-height: calc(var(--composer-visual-height, 100dvh) - 1rem);
+  overflow: hidden;
+}
+
+.journal-composer-shell--mobile .journal-composer-input-wrap,
+.journal-composer-shell--mobile .journal-composer-highlight-host {
+  min-height: 0;
+}
+
+.journal-composer-shell--mobile .journal-composer-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgb(8 6 14 / 0), rgb(8 6 14 / 0.96) 32%);
 }
 
 .journal-composer-meta {

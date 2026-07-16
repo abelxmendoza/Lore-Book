@@ -5,7 +5,7 @@ import { ComposerEntityChips } from './ComposerEntityChips';
 import { EntityHighlightedComposer } from './EntityHighlightedComposer';
 import { JournalComposerOverlay } from './JournalComposerOverlay';
 import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { useVisualViewportSize, getComposerStats } from '../hooks/useVisualViewportSize';
 import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
@@ -156,6 +156,14 @@ export const ChatComposer = ({
   const resolvedPlaceholder = placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
   const stats = getComposerStats(input);
   const showStats = input.length > 0 || isFocused;
+  const composerStyle: CSSProperties & { '--composer-visual-height'?: string } = {
+    paddingBottom: keyboardInset > 0 && !journalModeOpen ? keyboardInset : undefined,
+    // `dvh` is still the layout viewport on some iOS versions while the
+    // software keyboard is open. Expose the actual visible height to CSS so
+    // a long draft scrolls inside the textarea instead of pushing Send below
+    // the keyboard.
+    '--composer-visual-height': viewportHeight > 0 ? `${viewportHeight}px` : '100dvh',
+  };
 
   const handleUploadClick = () => {
     setShowUpload(!showUpload);
@@ -185,7 +193,7 @@ export const ChatComposer = ({
           ? 'bg-black/95 backdrop-blur-md'
           : 'border-t border-white/10 bg-gradient-to-t from-black/80 via-black/50 to-black/30 backdrop-blur-md chat-composer',
       )}
-      style={{ paddingBottom: keyboardInset > 0 && !journalModeOpen ? keyboardInset : undefined }}
+      style={composerStyle}
     >
       {showCommandSuggestions && commandSuggestions.length > 0 && !(isMobile && mobileCollapsed) && (
         <CommandSuggestions suggestions={commandSuggestions} onSelect={insertSuggestion} />
