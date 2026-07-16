@@ -48,21 +48,18 @@ describe('tieredRateLimit', () => {
     expect(rules.map((r) => r.tier)).toEqual(['ai', 'write', 'write_burst']);
   });
 
-  it('does not put composer lexical preview on the AI tier', () => {
+  it('excludes composer lexical preview from global tiers (route limiter only)', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/lexical/preview', 'POST', 'user-1') as Request
     );
-    expect(rules.map((r) => r.tier)).toEqual(['write']);
-    expect(rules.map((r) => r.tier)).not.toContain('ai');
-    expect(rules.map((r) => r.tier)).not.toContain('write_burst');
+    expect(rules).toEqual([]);
   });
 
-  it('does not put lorebook-parse on write_burst', () => {
+  it('excludes lorebook-parse from global tiers so typing cannot starve chat writes', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/conversation/lorebook-parse', 'POST', 'user-1') as Request
     );
-    expect(rules.map((r) => r.tier)).toEqual(['write']);
-    expect(rules.map((r) => r.tier)).not.toContain('write_burst');
+    expect(rules).toEqual([]);
   });
 
   it('classifies compute rescan routes', () => {

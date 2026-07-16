@@ -5,6 +5,7 @@ import {
   createRateLimitStore,
   startRateLimitStoreJanitor,
 } from '../lib/rateLimitCore';
+import { getRateLimitClientId } from '../lib/rateLimitClientId';
 import { logSecurityEvent } from '../services/securityLog';
 
 // Shared janitor for all limiter stores in this module
@@ -37,9 +38,7 @@ const getMaxRequests = (req: Request) => {
   return AUTHENTICATED_WRITE_MAX;
 };
 
-const getClientId = (req: Request): string => {
-  return (req as Request & { user?: { id?: string } }).user?.id || req.ip || 'anonymous';
-};
+const getClientId = (req: Request): string => getRateLimitClientId(req);
 
 const getMethodBucket = (req: Request): 'read' | 'write' => {
   const method = req.method.toUpperCase();
