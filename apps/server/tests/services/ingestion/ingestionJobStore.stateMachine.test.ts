@@ -42,7 +42,7 @@ describe('ingestionJobStore state machine fields', () => {
       chatMessageId: 'msg-1',
       sessionId: 's1',
       priority: 'NORMAL',
-      payload: {},
+      payload: { schemaVersion: 1 },
     });
     expect(ok.ok).toBe(true);
     if (ok.ok) expect(ok.isNew).toBe(true);

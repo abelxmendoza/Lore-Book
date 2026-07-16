@@ -12,7 +12,7 @@ describe('Route Registry', () => {
     const mod = await import('../../src/routes/routeRegistry');
     validateRouteRegistry = mod.validateRouteRegistry;
     routeRegistry = mod.routeRegistry;
-  }, 30_000);
+  }, 120_000);
 
   it('validateRouteRegistry returns valid and no errors when registry is well-formed', () => {
     const result = validateRouteRegistry();

@@ -31,7 +31,7 @@ const base = {
   chatMessageId: 'msg-1',
   sessionId: 's1',
   priority: 'NORMAL',
-  payload: { force: false },
+  payload: { schemaVersion: 1, force: false },
 };
 
 describe('ingestionJobStore', () => {

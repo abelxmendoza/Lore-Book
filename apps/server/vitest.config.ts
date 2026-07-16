@@ -30,7 +30,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      // Tests always use the vendored contracts SOURCE — CI installs the vendor
+      // package whose exports point at dist/, which is only built on deploy.
+      '@lorebook/api-contracts': path.resolve(__dirname, './vendor/api-contracts/src/index.ts')
     }
   },
   esbuild: {

@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+// Mirror vite.config.ts: monorepo contracts source locally; vendored mirror otherwise.
+const monorepoContracts = path.resolve(__dirname, '../../packages/api-contracts/src/index.ts');
+const webContracts = path.resolve(__dirname, './src/lib/api-contracts/index.ts');
+const contractsEntry = fs.existsSync(monorepoContracts) ? monorepoContracts : webContracts;
 
 export default defineConfig({
   plugins: [react()],
@@ -47,6 +53,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@lorebook/api-contracts': contractsEntry,
     },
   },
 });
