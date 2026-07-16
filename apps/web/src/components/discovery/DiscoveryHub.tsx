@@ -46,6 +46,9 @@ const ReactionsResiliencePanel = lazy(() =>
 const MemoryManagementPanel = lazy(() =>
   import('./MemoryManagementPanel').then(m => ({ default: m.MemoryManagementPanel }))
 );
+const LivingMemoryPanel = lazy(() =>
+  import('./LivingMemoryPanel').then(m => ({ default: m.LivingMemoryPanel }))
+);
 const MemoryReviewQueuePanel = lazy(() =>
   import('./MemoryReviewQueuePanel').then(m => ({ default: m.MemoryReviewQueuePanel }))
 );
@@ -131,6 +134,7 @@ export const DiscoveryHub = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => vo
         <Route path="insights"             element={<Navigate to="/discovery/insights-predictions" replace />} />
 
         {/* Data & Control panels */}
+        <Route path="living-memory"        element={<Panel><LivingMemoryPanel /></Panel>} />
         <Route path="memory-management"    element={<Panel><MemoryManagementPanel /></Panel>} />
         <Route path="memory-review"        element={<Panel><MemoryReviewQueuePanel /></Panel>} />
         <Route path="continuity"           element={<Panel><ContinuityDashboard /></Panel>} />

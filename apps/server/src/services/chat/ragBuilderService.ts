@@ -546,27 +546,33 @@ export async function buildRAGPacket(
   let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
 
   try {
-    workingMemory = await assembleWorkingMemory({
-      userId,
-      question: message,
-      threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
-    });
-    // Response scope gate: retrieval stays broad, but evidence from domains
-    // this question blocked (family in a work answer, romance in a family
-    // answer, diagnostics anywhere) never reaches the LLM.
-    const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
-    workingMemory = applyScopePlanToAssembly(workingMemory, planResponseScope(message));
-    workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
-    foundationRecallBlock = workingMemoryPacket.text;
-    foundationRelationships = workingMemory.relationships;
-    foundationTimeline = workingMemory.timeline;
-    logger.debug({
-      userId,
-      intent: workingMemory.intent,
-      selected: workingMemory.budget.selected,
-      rejected: workingMemory.budget.rejected,
-      confidence: workingMemory.confidence,
-    }, 'RAGBuilder: working memory assembled');
+    const { loadLivingMemoryPreferences } = await import('../preferences/livingMemoryPreferences');
+    const livingMemory = await loadLivingMemoryPreferences(userId);
+    if (!livingMemory.useLivingMemory) {
+      logger.debug({ userId }, 'RAGBuilder: Living Memory use disabled — skipping WMA');
+    } else {
+      workingMemory = await assembleWorkingMemory({
+        userId,
+        question: message,
+        threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
+      });
+      // Response scope gate: retrieval stays broad, but evidence from domains
+      // this question blocked (family in a work answer, romance in a family
+      // answer, diagnostics anywhere) never reaches the LLM.
+      const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
+      workingMemory = applyScopePlanToAssembly(workingMemory, planResponseScope(message));
+      workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
+      foundationRecallBlock = workingMemoryPacket.text;
+      foundationRelationships = workingMemory.relationships;
+      foundationTimeline = workingMemory.timeline;
+      logger.debug({
+        userId,
+        intent: workingMemory.intent,
+        selected: workingMemory.budget.selected,
+        rejected: workingMemory.budget.rejected,
+        confidence: workingMemory.confidence,
+      }, 'RAGBuilder: working memory assembled');
+    }
   } catch (e) { logger.debug({ e }, 'RAGBuilder: working memory assembly failed'); }
 
   let lifeArcSynthesisBlock = '';

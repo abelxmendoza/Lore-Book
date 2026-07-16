@@ -3,6 +3,7 @@ import {
   Heart, Brain, Users, TrendingUp, Target, Clock, MapPin,
   AlertCircle, Zap, HeartPulse, Database, ClipboardCheck, Activity,
   Ghost, CalendarDays, BarChart3, Trophy, Scale, UserCircle, Network, Eye,
+  Sparkles,
 } from 'lucide-react';
 
 export type DiscoveryBadgeKey = 'pendingProposals' | 'openContradictions' | 'fadingMemories';
@@ -39,6 +40,7 @@ export const INSIGHT_PANELS: DiscoveryPanelDef[] = [
 ];
 
 export const DATA_CONTROL_PANELS: DiscoveryPanelDef[] = [
+  { id: 'living-memory', title: 'Living Memory', shortTitle: 'Living', description: 'Use, write, and pause ambient Life Chronicle.', path: '/discovery/living-memory', icon: Sparkles, accent: 'from-amber-500 to-violet-600' },
   { id: 'memory-management', title: 'Memory Management', shortTitle: 'Memory', description: 'Time-aware, evidence-based memory.', path: '/discovery/memory-management', icon: Database, accent: 'from-purple-600 to-indigo-700' },
   { id: 'memory-review', title: 'Memory Review Queue', shortTitle: 'Review', description: 'Approve proposals before storage.', path: '/discovery/memory-review', icon: ClipboardCheck, badgeKey: 'pendingProposals', accent: 'from-amber-500 to-orange-600' },
   { id: 'continuity', title: 'Continuity Intelligence', shortTitle: 'Continuity', description: 'Conflicts, arcs, and repeating loops.', path: '/discovery/continuity', icon: Activity, accent: 'from-teal-600 to-cyan-700' },

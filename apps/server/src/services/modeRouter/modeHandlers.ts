@@ -325,12 +325,17 @@ class ModeHandlers {
     continuityContext?: string
   ): Promise<ModeHandlerResponse> {
     try {
-      // Fire-and-forget: Extract and store experience structure
-      if (messageId) {
+      const { loadLivingMemoryPreferences } = await import('../preferences/livingMemoryPreferences');
+      const livingMemory = await loadLivingMemoryPreferences(userId);
+
+      // Fire-and-forget: Extract and store experience structure (Living Memory write gate)
+      if (messageId && livingMemory.writeLivingMemory) {
         const { eventExtractionService } = await import('../eventExtraction/eventExtractionService');
         eventExtractionService.extractEventStructure(userId, message, messageId).catch(err => {
           logger.warn({ err }, 'Experience extraction failed (non-blocking)');
         });
+      } else if (messageId && !livingMemory.writeLivingMemory) {
+        logger.debug({ userId }, 'Living Memory write disabled — skipping experience extraction');
       }
 
       // Check if it's a dump (large multi-part share)

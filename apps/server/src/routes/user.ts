@@ -27,6 +27,13 @@ const privacySettingsSchema = z.object({
   twoFactorEnabled: z.boolean().optional(),
 });
 
+const livingMemorySchema = z.object({
+  useLivingMemory: z.boolean().optional(),
+  writeLivingMemory: z.boolean().optional(),
+  ambientCapturePaused: z.boolean().optional(),
+  externalContextWrites: z.boolean().optional(),
+});
+
 /**
  * GET /api/user/authority
  * Canonical server-side role authority for the authenticated user.
@@ -289,6 +296,45 @@ router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
   } catch (error) {
     logger.error({ error }, 'Failed to update privacy settings');
     res.status(500).json({ error: 'Failed to update privacy settings' });
+  }
+});
+
+/**
+ * GET /api/user/living-memory
+ * Living Memory / Life Chronicle controls (use, write, pause ambient).
+ */
+router.get('/living-memory', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { loadLivingMemoryPreferences } = await import(
+      '../services/preferences/livingMemoryPreferences'
+    );
+    const preferences = await loadLivingMemoryPreferences(req.user!.id);
+    return res.json({ preferences });
+  } catch (error) {
+    logger.error({ error, userId: req.user?.id }, 'Failed to load living memory preferences');
+    return res.status(500).json({ error: 'Failed to load living memory preferences' });
+  }
+});
+
+/**
+ * PUT /api/user/living-memory
+ * Update Living Memory / Life Chronicle controls.
+ */
+router.put('/living-memory', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = livingMemorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const { saveLivingMemoryPreferences } = await import(
+      '../services/preferences/livingMemoryPreferences'
+    );
+    const preferences = await saveLivingMemoryPreferences(req.user!.id, parsed.data);
+    return res.json({ preferences });
+  } catch (error) {
+    logger.error({ error, userId: req.user?.id }, 'Failed to update living memory preferences');
+    return res.status(500).json({ error: 'Failed to update living memory preferences' });
   }
 });
 

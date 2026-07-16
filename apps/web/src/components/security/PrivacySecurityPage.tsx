@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Database, EyeOff, Key, Server, CheckCircle2, AlertCircle, FileLock, Globe, Zap, Download, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -7,6 +8,8 @@ interface PrivacySecurityPageProps {
 }
 
 export const PrivacySecurityPage = ({ onSurfaceChange }: PrivacySecurityPageProps = {}) => {
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto text-white w-full" role="main" aria-label="Privacy and Security">
       {/* Hero Section */}
@@ -315,7 +318,14 @@ export const PrivacySecurityPage = ({ onSurfaceChange }: PrivacySecurityPageProp
           encrypted and protected. We can't see it, advertisers can't see it, and other users can't see it. 
           Only you have the key.
         </p>
-        <div className="flex gap-4 justify-center">
+        <div className="flex flex-wrap gap-4 justify-center">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/discovery/living-memory')}
+            className="border-amber-500/50 text-amber-300 hover:bg-amber-500/20"
+          >
+            Living Memory controls
+          </Button>
           <Button 
             variant="outline" 
             onClick={() => onSurfaceChange?.('privacy-settings')}

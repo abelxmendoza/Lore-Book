@@ -5,6 +5,12 @@
 
 ---
 
+## Product
+
+| Doc | What it covers |
+| --- | -------------- |
+| [living-memory-and-life-chronicle.md](product/living-memory-and-life-chronicle.md) | ChatGPT Memories/Chronicle → LoreBook Living Memory & Life Chronicle |
+
 ## Architecture
 
 How the system is designed and why.

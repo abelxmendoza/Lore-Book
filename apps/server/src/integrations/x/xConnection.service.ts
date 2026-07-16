@@ -670,6 +670,27 @@ export class XConnectionService {
   }
 
   async sync(userId: string, maxPosts = 25) {
+    const { loadLivingMemoryPreferences } = await import(
+      '../../services/preferences/livingMemoryPreferences'
+    );
+    const livingMemory = await loadLivingMemoryPreferences(userId);
+    if (livingMemory.ambientCapturePaused || !livingMemory.externalContextWrites) {
+      logger.info(
+        { userId, ambientCapturePaused: livingMemory.ambientCapturePaused },
+        'X sync skipped — Life Chronicle ambient capture paused or external writes disabled',
+      );
+      return {
+        count: 0,
+        imported: 0,
+        skipped: 0,
+        loreIntakeMode: loreIntakeModeFrom(null),
+        paused: true as const,
+        reason: livingMemory.ambientCapturePaused
+          ? 'ambient_capture_paused'
+          : 'external_context_writes_disabled',
+      };
+    }
+
     const { row, accessToken } = await getValidAccessToken(userId);
     const xUserId = row.provider_user_id;
     if (!xUserId) throw new Error('X connection is missing provider user id. Reconnect X.');
