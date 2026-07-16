@@ -45,9 +45,10 @@ ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS source_component_ids UUID[]
 ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS source_entry_ids UUID[] DEFAULT '{}';
 ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
 ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.insights ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
--- Backfill insight_type from IRE `type` when present
+-- Backfill from IRE columns when present (`type`, `generated_at`)
 DO $$
 BEGIN
   IF EXISTS (
@@ -57,6 +58,15 @@ BEGIN
     UPDATE public.insights
     SET insight_type = lower(type::text)
     WHERE insight_type IS NULL AND type IS NOT NULL;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'insights' AND column_name = 'generated_at'
+  ) THEN
+    UPDATE public.insights
+    SET created_at = generated_at
+    WHERE created_at IS NULL AND generated_at IS NOT NULL;
   END IF;
 END $$;
 
