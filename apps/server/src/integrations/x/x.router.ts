@@ -14,7 +14,8 @@ const beginSchema = z.object({
 });
 
 const syncSchema = z.object({
-  maxPosts: z.number().min(5).max(100).optional(),
+  /** First sync / manual pull size. Incremental syncs (with since_id) may fetch more. */
+  maxPosts: z.number().min(5).max(300).optional(),
 });
 
 const settingsSchema = z.object({
@@ -75,7 +76,7 @@ xIntegrationRouter.post('/sync', requireAuth, async (req: AuthenticatedRequest, 
   if (!parsed.success) return res.status(400).json(parsed.error.flatten());
 
   try {
-    const result = await xConnectionService.sync(req.user!.id, parsed.data.maxPosts ?? 25);
+    const result = await xConnectionService.sync(req.user!.id, parsed.data.maxPosts ?? 50);
     return res.json(result);
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to sync X posts' });

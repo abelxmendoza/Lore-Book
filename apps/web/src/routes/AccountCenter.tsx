@@ -583,7 +583,7 @@ export default function AccountCenter() {
                   <div className="space-y-6">
                     <div>
                       <h3 className="text-sm font-semibold uppercase tracking-[0.5px] text-white/50">User Connectivity</h3>
-                      <p className="mt-1 text-sm text-white/45">Connect personal accounts to automatically import posts, commits, and moments into your lore.</p>
+                      <p className="mt-1 text-sm text-white/45">Connect personal accounts to pull posts, commits, and moments into your lore — X keeps catching up quietly when you open Home.</p>
                     </div>
 
                     <div className="space-y-4">

@@ -55,4 +55,31 @@ describe('response presentation filtering', () => {
     expect(isPresentableEntityName('Also You')).toBe(false);
     expect(isPresentableEntityName('Jowell')).toBe(true);
   });
+
+  it('drops unrelated character sources on person-focused questions (Ink must not ride along)', () => {
+    const plan = planResponseScope('What do you know about Jesse?');
+    const sources = filterSourcesForPresentation(
+      [
+        { type: 'character', id: 'jesse', title: 'Jesse', snippet: 'lab coworker' },
+        { type: 'character', id: 'ink', title: 'Ink', snippet: 'ska promoter and music contact' },
+        { type: 'entry', id: 'e1', title: 'Jesse on Ring testing', snippet: 'worked with Jesse on lab shift' },
+        { type: 'entry', id: 'e2', title: 'Ink Fest night', snippet: 'saw Ink at the venue' },
+      ],
+      plan,
+    );
+    const titles = sources.map((s) => s.title);
+    expect(titles).toContain('Jesse');
+    expect(titles).toContain('Jesse on Ring testing');
+    expect(titles).not.toContain('Ink');
+    expect(titles).not.toContain('Ink Fest night');
+
+    const entities = filterEntitiesForPresentation(
+      [
+        { id: 'jesse', name: 'Jesse', type: 'character' },
+        { id: 'ink', name: 'Ink', type: 'character' },
+      ],
+      plan,
+    );
+    expect(entities.map((e) => e.name)).toEqual(['Jesse']);
+  });
 });

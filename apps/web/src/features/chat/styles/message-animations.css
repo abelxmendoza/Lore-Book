@@ -243,6 +243,56 @@
   transform-origin: center;
 }
 
+/*
+ * Selected thread — revolving neon outline (same language as assistant bubbles).
+ * Desktop sidebar + mobile drawer share this class for parity.
+ */
+.chat-thread-active-shell {
+  --neon-angle: 0deg;
+  position: relative;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(155deg, rgba(154, 77, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 70%) padding-box,
+    conic-gradient(
+      from var(--neon-angle),
+      #2e1065 0%,
+      #581c87 14%,
+      #7e22ce 28%,
+      #9a4dff 40%,
+      #a855f7 48%,
+      #6b21a8 58%,
+      #3b0764 72%,
+      #2e1065 86%,
+      #7e22ce 100%
+    ) border-box;
+  box-shadow:
+    0 0 6px rgba(126, 34, 206, 0.45),
+    0 0 16px rgba(154, 77, 255, 0.22),
+    0 0 28px rgba(168, 85, 247, 0.1);
+  animation:
+    neonBorderSpin 3.2s linear infinite,
+    neonGlowPulse 2.8s ease-in-out infinite;
+}
+
+.chat-thread-active-shell-collapsed {
+  --neon-angle: 0deg;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(155deg, rgba(154, 77, 255, 0.18) 0%, rgba(255, 255, 255, 0.04) 70%) padding-box,
+    conic-gradient(
+      from var(--neon-angle),
+      #2e1065 0%,
+      #7e22ce 30%,
+      #a855f7 50%,
+      #581c87 75%,
+      #2e1065 100%
+    ) border-box;
+  box-shadow:
+    0 0 8px rgba(154, 77, 255, 0.35),
+    0 0 18px rgba(168, 85, 247, 0.18);
+  animation: neonBorderSpin 2.8s linear infinite;
+}
+
 /* ─── Bubble styling ─── */
 
 .chat-message {
@@ -677,6 +727,8 @@
   .chat-thread-enter,
   .chat-thread-bump,
   .chat-thread-active-bar,
+  .chat-thread-active-shell,
+  .chat-thread-active-shell-collapsed,
   .chat-bubble-streaming,
   .chat-bubble-streaming::before,
   .chat-avatar-thinking,

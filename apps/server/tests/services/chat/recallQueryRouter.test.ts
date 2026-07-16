@@ -268,6 +268,93 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
         },
         error: null,
       },
+      identity_core_profiles: {
+        data: {
+          summary: 'You repeatedly turn difficult technical work into creative self-reinvention.',
+          stability: { anchors: ['roboticist', 'fighter', 'builder'] },
+          dimensions: [
+            {
+              name: 'Builder',
+              score: 0.91,
+              signals: [{ text: 'Builds autobiographical systems' }, { text: 'Builds robots' }],
+            },
+            { name: 'Generic growth', score: 0.8, signals: [] },
+          ],
+        },
+        error: null,
+      },
+      projects: {
+        data: [
+          {
+            name: 'LoreBook',
+            summary: 'an autobiographical memory system for AI',
+            status: 'active',
+            importance_score: 96,
+          },
+          { name: 'Weekend todo app', status: 'archived', importance_score: 20 },
+        ],
+        error: null,
+      },
+      interests: {
+        data: [
+          {
+            interest_name: 'robotics',
+            interest_level: 0.95,
+            mention_count: 18,
+            behavioral_impact_score: 0.9,
+            time_investment_hours: 400,
+          },
+          {
+            interest_name: 'one club night',
+            interest_level: 0.8,
+            mention_count: 1,
+            behavioral_impact_score: 0.1,
+            time_investment_hours: 3,
+          },
+        ],
+        error: null,
+      },
+      skills: {
+        data: [
+          { skill_name: 'Muay Thai', total_xp: 900, is_active: true },
+          { skill_name: 'Brazilian Jiu-Jitsu', total_xp: 700, is_active: true },
+          { skill_name: 'C++', total_xp: 600, is_active: true },
+        ],
+        error: null,
+      },
+      organizations: {
+        data: [
+          { name: 'CSUF', type: 'university', importance_score: 95 },
+          { name: 'Serve Robotics', type: 'company', importance_score: 92 },
+          { name: 'Armstrong Robotics', type: 'company', importance_score: 88 },
+          { name: 'Ring', type: 'company', importance_score: 80 },
+        ],
+        error: null,
+      },
+      characters: {
+        data: [
+          { id: 'self', name: 'Abel', importance_level: 'protagonist', importance_score: 100, metadata: { is_self: true } },
+          { id: 'sol', name: 'Sol', importance_level: 'major', importance_score: 91, relationship_depth: 0.8, metadata: {} },
+          { id: 'james', name: 'Cousin James', importance_level: 'minor', importance_score: 25, relationship_depth: 0.1, metadata: {} },
+        ],
+        error: null,
+      },
+      character_relationships: {
+        data: [
+          { source_character_id: 'self', target_character_id: 'sol', relationship_type: 'close_friend' },
+          { source_character_id: 'self', target_character_id: 'james', relationship_type: 'cousin' },
+        ],
+        error: null,
+      },
+      character_memories: {
+        data: [
+          { character_id: 'sol' },
+          { character_id: 'sol' },
+          { character_id: 'sol' },
+          { character_id: 'james' },
+        ],
+        error: null,
+      },
     };
 
     const result = await routeRecallQuery('user-1', 'Who am I?');
@@ -284,6 +371,16 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
     expect(result.contextBlock.indexOf('The Ring Era')).toBeLessThan(
       result.contextBlock.indexOf('## CURRENT CHAPTER'),
     );
+    expect(result.contextBlock).toContain('## IDENTITY SYNTHESIS');
+    expect(result.contextBlock).toContain('LoreBook (an autobiographical memory system for AI)');
+    expect(result.contextBlock).toContain('Serve Robotics');
+    expect(result.contextBlock).toContain('Muay Thai');
+    expect(result.contextBlock).toContain('Brazilian Jiu-Jitsu');
+    expect(result.contextBlock).toContain('robotics');
+    expect(result.contextBlock).toContain('Sol — close friend; importance 91/100; 3 supporting memories');
+    expect(result.contextBlock).not.toContain('Cousin James');
+    expect(result.contextBlock).not.toContain('one club night');
+    expect(result.contextBlock).not.toContain('Generic growth');
     expect(result.contextBlock).not.toContain('People in your story');
   });
 });

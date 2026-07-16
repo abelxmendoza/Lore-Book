@@ -21,11 +21,11 @@ import { fetchCharacterList } from '../api/characterList';
 import { skillsApi } from '../api/skills';
 import { fetchWhatChanged } from '../api/whatChanged';
 import { useRecentChatThreads } from '../contexts/ChatThreadContext';
-import { XConnectionPanel } from '../features/integrations/XConnectionPanel';
-import { useAccountAuthority } from '../hooks/useAccountAuthority';
+import { XPulseHomeCard } from '../features/integrations/XPulseHomeCard';
 import { useQuestBoard } from '../hooks/useQuests';
 import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
+import { useXAutoSync } from '../hooks/useXAutoSync';
 import { apiCache } from '../lib/cache';
 import { cn } from '../lib/cn';
 import { useAuth } from '../lib/supabase';
@@ -308,10 +308,8 @@ export const HomeScreen = () => {
   const navigate  = useNavigate();
   const recentThreads = useRecentChatThreads(3);
   const isMock = useShouldUseMockData();
-  // X panel on Home: demo mode always (panel self-mocks), real accounts only
-  // with server-driven admin authority.
-  const { authority } = useAccountAuthority();
-  const showXPanel = isMock || authority?.canAccessAdmin === true;
+  // Quietly catch up X → journal when the user lands on Home.
+  useXAutoSync(!isMock);
 
   const userId = user?.id ?? '';
   const displayName =
@@ -431,10 +429,8 @@ export const HomeScreen = () => {
         {/* ── 3b. Career — resume-sourced job history ─────────────────────── */}
         <CareerHomeCard />
 
-        {/* ── X Integration — full panel (connect, sync receipt, lore intake
-               modes). Admin accounts get the real connection; demo mode gets
-               the panel's built-in mock state so the feature is explorable. ── */}
-        {showXPanel && <XConnectionPanel />}
+        {/* ── X pulse — connect / recent posts / one-tap sync for everyone ── */}
+        <XPulseHomeCard />
 
         {/* ── 4–6. Three panels: People · Quests · Skills ─────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

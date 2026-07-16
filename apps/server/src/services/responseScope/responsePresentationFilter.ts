@@ -66,6 +66,35 @@ function overlapsRelevantName(value: string, names: Set<string>): boolean {
   return [...names].some((name) => lower.includes(name) || name.includes(lower));
 }
 
+/** When the plan names people/topics, require source overlap (or work signal). */
+function sourceIsInScope(
+  source: PresentableSource,
+  plan: ResponseScopePlan,
+  names: Set<string>,
+): boolean {
+  const text = `${source.title} ${source.snippet ?? ''}`;
+  const hasFocus = names.size > 0;
+
+  // Work answers must never drag music-scene contacts (e.g. Ink) into chips.
+  if (plan.intent === 'work') {
+    if (source.type === 'character') {
+      return overlapsRelevantName(source.title, names) || WORK_SIGNAL_RE.test(text);
+    }
+    return overlapsRelevantName(text, names) || WORK_SIGNAL_RE.test(text);
+  }
+
+  // Person/place-focused questions: keep only sources that name the focus.
+  // Untagged general queries (empty names) stay permissive.
+  if (hasFocus && (source.type === 'character' || source.type === 'person')) {
+    return overlapsRelevantName(source.title, names);
+  }
+  if (hasFocus && plan.primaryEntities.length > 0) {
+    // Episodes/entries still need name overlap so unrelated music lore drops.
+    return overlapsRelevantName(text, names);
+  }
+  return true;
+}
+
 /** Scope and de-noise the source list before prompt, metadata, or citations. */
 export function filterSourcesForPresentation<T extends PresentableSource>(
   sources: T[],
@@ -75,22 +104,45 @@ export function filterSourcesForPresentation<T extends PresentableSource>(
   const names = relevantNames(plan, workingMemory);
   const eligible = sources.filter((source) => {
     if (!isPresentableEntityName(source.title)) return false;
-    if (plan.intent !== 'work') return true;
-
-    const text = `${source.title} ${source.snippet ?? ''}`;
-    if (source.type === 'character') {
-      return overlapsRelevantName(source.title, names) || WORK_SIGNAL_RE.test(text);
-    }
-    return overlapsRelevantName(text, names) || WORK_SIGNAL_RE.test(text);
+    return sourceIsInScope(source, plan, names);
   });
 
-  const scoped: ScopedEvidenceItem[] = eligible.map((source) => ({
-    id: source.id,
-    title: source.title,
-    content: source.snippet ?? '',
-    domain: classifyItemDomain({ type: source.type, title: source.title, content: source.snippet }),
-    entityNames: [source.title],
-  }));
+  // Prefer type-stable domains for presentation. Content heuristics can tag a
+  // character/entry as "work_relationships" / "music_scene" and then
+  // filterEvidence drops them when that domain is not in the plan — even when
+  // the name is in primaryEntities (Jesse filtered out of a Jesse question).
+  const scoped: ScopedEvidenceItem[] = eligible.map((source) => {
+    const type = (source.type ?? '').toLowerCase();
+    const domain =
+      type === 'character' || type === 'person'
+        ? 'people'
+        : type === 'location' || type === 'place'
+          ? 'places'
+          : type === 'organization' || type === 'org'
+            ? 'organizations'
+            : type === 'event'
+              ? 'events'
+              : type === 'project'
+                ? 'projects'
+                : type === 'entry' ||
+                    type === 'memory' ||
+                    type === 'journal' ||
+                    type === 'episode' ||
+                    type === 'timeline'
+                  ? 'people'
+                  : classifyItemDomain({
+                      type: source.type,
+                      title: source.title,
+                      content: source.snippet,
+                    });
+    return {
+      id: source.id,
+      title: source.title,
+      content: source.snippet ?? '',
+      domain,
+      entityNames: [source.title],
+    };
+  });
   const presentationPlan: ResponseScopePlan = {
     ...plan,
     primaryEntities: [...names].map((name) => ({ name })),
@@ -107,9 +159,17 @@ export function filterEntitiesForPresentation<T extends PresentableEntity>(
   const names = relevantNames(plan);
   return entities.filter((entity) => {
     if (!isPresentableEntityName(entity.name)) return false;
-    if (plan.intent !== 'work') return true;
-    if (entity.type === 'location') return false;
-    return overlapsRelevantName(entity.name, names);
+    // Work: no location chips; characters must be roster-relevant.
+    if (plan.intent === 'work') {
+      if (entity.type === 'location') return false;
+      return names.size === 0 || overlapsRelevantName(entity.name, names);
+    }
+    // Focused person answers: only surface the people the plan is about.
+    // Stops "Ink" (music contact) from riding along on unrelated recall.
+    if (names.size > 0 && (entity.type === 'character' || entity.type === 'person' || !entity.type)) {
+      return overlapsRelevantName(entity.name, names);
+    }
+    return true;
   });
 }
 

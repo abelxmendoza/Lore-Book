@@ -122,24 +122,41 @@ function expandedUrlsForPost(post: XPost): string[] {
     .filter((url): url is string => Boolean(url));
 }
 
-function isOriginalPost(post: XPost): boolean {
-  return !(post.referenced_tweets ?? []).some((ref) => ref.type === 'retweeted' || ref.type === 'replied_to');
+function isRetweet(post: XPost): boolean {
+  return (post.referenced_tweets ?? []).some((ref) => ref.type === 'retweeted');
+}
+
+function isReply(post: XPost): boolean {
+  return (post.referenced_tweets ?? []).some((ref) => ref.type === 'replied_to');
+}
+
+function isQuote(post: XPost): boolean {
+  return (post.referenced_tweets ?? []).some((ref) => ref.type === 'quoted');
 }
 
 export function xAdapter(response: XResponse): ExternalEvent[] {
   const includes = Array.isArray(response) ? undefined : response.includes;
 
   return asPosts(response)
-    .filter((post) => post.id && isOriginalPost(post))
+    // Keep originals, quotes, and replies — replies often carry life lore.
+    // Pure retweets are noise for a personal lorebook.
+    .filter((post) => post.id && !isRetweet(post))
     .map((post) => {
       const imageUrl = imageUrlForPost(post, includes);
-      const tags = [...hashtagsForPost(post), ...(imageUrl ? ['media'] : [])];
+      const reply = isReply(post);
+      const quote = isQuote(post);
+      const tags = [
+        ...hashtagsForPost(post),
+        ...(imageUrl ? ['media'] : []),
+        ...(reply ? ['reply'] : []),
+        ...(quote ? ['quote'] : []),
+      ];
 
       return {
         source: 'x' as const,
         sourceId: post.id,
         timestamp: post.created_at ?? new Date(0).toISOString(),
-        type: 'post',
+        type: reply ? 'reply' : quote ? 'quote' : 'post',
         text: normalizeText(post),
         imageUrl,
         url: urlForPost(post, includes),
@@ -149,6 +166,7 @@ export function xAdapter(response: XResponse): ExternalEvent[] {
           lang: post.lang,
           public_metrics: post.public_metrics,
           quoted_post_id: post.referenced_tweets?.find((ref) => ref.type === 'quoted')?.id,
+          replied_to_id: post.referenced_tweets?.find((ref) => ref.type === 'replied_to')?.id,
           expanded_urls: expandedUrlsForPost(post),
         },
       };
