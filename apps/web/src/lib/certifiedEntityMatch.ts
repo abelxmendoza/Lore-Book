@@ -56,6 +56,29 @@ function lastToken(text: string): string {
   return trimmed.split(/\s+/).pop() ?? '';
 }
 
+/** Prefix autocomplete only after this many typed characters. */
+const MIN_PREFIX_CHARS = 3;
+
+/**
+ * Whether a typed token is a strong enough prefix of an entity key/label.
+ *
+ * Short names ("Ink", "Sol", "Max") never use prefix autocomplete — only full
+ * word-boundary matches. Otherwise common English ("in", "so", "ma") surfaces
+ * unrelated people as sticky composer chips.
+ */
+export function isStrongEntityPrefix(prefix: string, key: string): boolean {
+  if (!prefix || !key) return false;
+  if (!key.startsWith(prefix)) return false;
+  // Full-key typing is handled by the full-match path (word boundaries).
+  if (prefix === key) return false;
+  // 2–3 letter names: full match only (prevents "in" → "Ink").
+  if (key.length <= 3) return false;
+  if (prefix.length < MIN_PREFIX_CHARS) return false;
+  // Require roughly half the name so "Ale" can suggest "Alexandra" but "Al" cannot.
+  const minNeeded = Math.max(MIN_PREFIX_CHARS, Math.ceil(key.length * 0.45));
+  return prefix.length >= minNeeded;
+}
+
 function sortedLabels(entity: CertifiedEntity): string[] {
   return [entity.name, ...entity.aliases]
     .filter((l) => l.length >= 2)
@@ -134,7 +157,8 @@ export function matchCertifiedEntitiesWithIndex(
   }
 
   const prefix = normalizeNameKey(lastToken(text));
-  if (prefix.length >= 2) {
+  // Need at least MIN_PREFIX_CHARS before autocomplete — "in" must not suggest "Ink".
+  if (prefix.length >= MIN_PREFIX_CHARS) {
     const bucket = prefix.slice(0, 2);
     const candidates =
       matchIndex.prefixBuckets.get(bucket) ??
@@ -144,9 +168,9 @@ export function matchCertifiedEntitiesWithIndex(
       const entry = matchIndex.entries[entryIndex];
       if (matched.has(entry.slot)) continue;
 
-      const keyHit = entry.mentionKeys.some((k) => k.startsWith(prefix));
+      const keyHit = entry.mentionKeys.some((k) => isStrongEntityPrefix(prefix, k));
       const labelHit = entry.fullChecks.some(({ label }) =>
-        normalizeNameKey(label).startsWith(prefix)
+        isStrongEntityPrefix(prefix, normalizeNameKey(label))
       );
 
       if (keyHit || labelHit) {
