@@ -11,7 +11,9 @@ create table if not exists public.subscriptions (
   user_id uuid references auth.users(id) on delete cascade not null,
   stripe_customer_id text unique,
   stripe_subscription_id text unique,
-  status subscription_status not null default 'free',
+  -- Free-tier users are plan_type=free with status=active (see initialize_free_subscription).
+  -- 'free' is not a subscription_status enum value.
+  status subscription_status not null default 'active',
   plan_type plan_type not null default 'free',
   trial_ends_at timestamptz,
   current_period_start timestamptz,

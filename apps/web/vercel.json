@@ -1,9 +1,9 @@
 {
-  "installCommand": "rm -rf node_modules && npm install --legacy-peer-deps --include=dev",
-  "buildCommand": "rm -rf dist && npm run build",
+  "installCommand": "bash scripts/vercel-install.sh",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "dist",
   "framework": "vite",
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi",
+  "ignoreCommand": "bash scripts/vercel-ignore-preview.sh",
   "github": {
     "silent": true
   },
@@ -66,12 +66,5 @@
     "VITE_SHOW_DEV_NOTICE": "true",
     "VITE_SUPABASE_URL": "https://supabase.lorebookai.com",
     "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaHR0aHpwZ2ttcmJjc2ZnaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjE0NjgsImV4cCI6MjA5NTIzNzQ2OH0.IzX4Q04kFMZeLBFiUv3Ga5GiAg9AS2898yfTeGG4md8"
-  },
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "stable": true,
-      "*": false
-    }
   }
 }
