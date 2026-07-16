@@ -4,6 +4,7 @@
  */
 
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { formatSelfChipLabel, isReservedSelfName } from '../identity/selfIdentityGuard';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type CertifiedEntityType = 'character' | 'location' | 'organization' | 'skill' | 'event';
@@ -34,8 +35,21 @@ function mentionKeysFor(name: string, aliases: string[]): string[] {
 }
 
 function primaryDisplayName(name: string, metadata?: Record<string, unknown> | null): string {
-  const stored = metadata?.display_title as { primaryTitle?: string } | undefined;
+  const meta = metadata ?? {};
+  // Self / sentence-bleed names ("And You", "Also You", bare "You") must never
+  // surface as third-person chips — show "You (Firstname)" or "You".
+  if (
+    isReservedSelfName(name) ||
+    meta.is_self === true ||
+    meta.is_user === true
+  ) {
+    return formatSelfChipLabel(name, meta);
+  }
+  const stored = meta.display_title as { primaryTitle?: string } | undefined;
   const title = stored?.primaryTitle?.trim();
+  if (title && isReservedSelfName(title)) {
+    return formatSelfChipLabel(title, meta);
+  }
   return title || name;
 }
 

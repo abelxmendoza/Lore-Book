@@ -10,6 +10,8 @@ describe('isSelfCharacter', () => {
 
   it('detects reserved names', () => {
     expect(isSelfCharacter({ id: '1', name: 'Me' } as Character)).toBe(true);
+    expect(isSelfCharacter({ id: '1', name: 'And You' } as Character)).toBe(true);
+    expect(isSelfCharacter({ id: '1', name: 'Also You' } as Character)).toBe(true);
     expect(isSelfCharacter({ id: '1', name: 'Sarah' } as Character)).toBe(false);
   });
 

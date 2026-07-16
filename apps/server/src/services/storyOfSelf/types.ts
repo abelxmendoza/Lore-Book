@@ -1,19 +1,18 @@
+/**
+ * Legacy-facing Story of Self result shape, kept for the route, mode handler,
+ * and engine-registry consumers. Populated by the structured pipeline in
+ * ./storyOfSelfEngine — see ./narrativeRecords.ts for the internal types.
+ */
+import type {
+  NarrativeSynthesisResult,
+  StoryOfSelfTrace,
+} from './narrativeRecords';
+
 export interface SelfTheme {
   id: string;
-  theme:
-    | 'survival'
-    | 'rebirth'
-    | 'revenge'
-    | 'transformation'
-    | 'ambition'
-    | 'identity'
-    | 'connection'
-    | 'violence'
-    | 'growth'
-    | 'self_worth'
-    | 'shadow'
-    | 'faith'
-    | 'purpose';
+  /** Specific, evidence-backed theme label (no longer a fixed keyword enum). */
+  theme: string;
+  /** Canonical event ids supporting the theme (never raw evidence text). */
   evidence: string[];
   strength: number; // 0–1
 }
@@ -21,6 +20,7 @@ export interface SelfTheme {
 export interface TurningPoint {
   id: string;
   timestamp: string;
+  /** Synthesized one-line description — never raw entry text. */
   description: string;
   category:
     | 'trauma'
@@ -31,7 +31,10 @@ export interface TurningPoint {
     | 'fall'
     | 'rise'
     | 'betrayal'
-    | 'breakthrough';
+    | 'breakthrough'
+    | 'transition'
+    | 'conflict'
+    | 'ordinary_event';
   emotionalImpact: number; // 0–1
 }
 
@@ -47,6 +50,8 @@ export interface NarrativeMode {
     | 'protector'
     | 'rebel';
   confidence: number; // 0–1
+  /** True when the classification lacks enough evidence to state firmly. */
+  tentative?: boolean;
 }
 
 export interface StoryArcSegment {
@@ -69,7 +74,11 @@ export interface StoryOfSelf {
   mode: NarrativeMode;
   arcs: StoryArcSegment[];
   coherence: StoryCoherence;
+  /** Deprecated: always empty. Raw entry excerpts must never be surfaced. */
   voicePrint: string;
   summary: string;
+  /** Structured synthesis backing the summary. */
+  synthesis: NarrativeSynthesisResult;
+  /** Development diagnostics; not for user-facing rendering. */
+  trace: StoryOfSelfTrace;
 }
-

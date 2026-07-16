@@ -9,7 +9,6 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ChatMode } from './modeRouterService';
 import type { StreamingChatResponse } from '../omegaChatService';
-import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 
 export interface ModeHandlerResponse {
   content: string;
@@ -121,7 +120,7 @@ class ModeHandlers {
         userId,
         message,
         conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
-        { threadId: options?.threadId }
+        { threadId }
       );
 
       return {
@@ -158,7 +157,7 @@ class ModeHandlers {
           userId,
           message,
           conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
-          { threadId: options?.threadId }
+          { threadId }
         );
         if (foundation.response_mode !== 'SILENCE') {
           return {
@@ -521,18 +520,12 @@ class ModeHandlers {
     _message: string
   ): Promise<ModeHandlerResponse> {
     try {
-      const { supabaseAdmin: db } = await import('../supabaseClient');
       const { StoryOfSelfEngine } = await import('../storyOfSelf/storyOfSelfEngine');
+      const { retrieveStoryOfSelfInput } = await import('../storyOfSelf/longitudinalRetrieval');
 
-      // Fetch recent entries (up to 200 for sufficient signal)
-      const { data: rows } = await db
-        .from('journal_entries')
-        .select(JOURNAL_COLS)
-        .eq('user_id', userId)
-        .order('date', { ascending: false })
-        .limit(200);
-
-      const entries = (rows ?? []) as any[];
+      // Longitudinal retrieval: the whole timeline plus the entity roster,
+      // not just the most recent rows.
+      const { entries, entities } = await retrieveStoryOfSelfInput(userId);
 
       if (entries.length === 0) {
         return {
@@ -544,46 +537,18 @@ class ModeHandlers {
       }
 
       const engine = new StoryOfSelfEngine();
-      const story = await engine.process({ entries });
+      const story = await engine.process({ entries, entities, queryIntent: 'narrative_story' });
 
-      // Build readable text summary
-      const topThemes = story.themes
-        .sort((a, b) => b.strength - a.strength)
-        .slice(0, 3)
-        .map(t => t.theme.replace(/_/g, ' '))
-        .join(', ');
-
-      const tpLines = story.turningPoints
-        .slice(0, 3)
-        .map(tp => `- **${tp.category}** (${tp.timestamp.substring(0, 7)}): ${tp.description}`)
-        .join('\n');
-
-      const arcLines = story.arcs
-        .slice(0, 3)
-        .map(arc => `**${arc.title}** *(${arc.era})*\n${arc.content}`)
-        .join('\n\n');
-
-      const content = [
-        story.summary,
-        '',
-        `**Narrative Mode:** ${story.mode.mode.charAt(0).toUpperCase() + story.mode.mode.slice(1)}`,
-        `**Core Themes:** ${topThemes}`,
-        '',
-        tpLines.length > 0 ? `**Turning Points:**\n${tpLines}` : null,
-        '',
-        arcLines.length > 0 ? `**Story Arcs:**\n${arcLines}` : null,
-        '',
-        story.voicePrint ? `*${story.voicePrint}*` : null,
-      ]
-        .filter(Boolean)
-        .join('\n');
-
+      // story.summary is gate-validated synthesized prose; the structured
+      // synthesis and trace ride along in metadata for the client/inspector.
+      // Never append raw evidence, voice prints, or turning-point dumps here.
       return {
-        content,
+        content: story.summary,
         response_mode: 'NARRATIVE_STORY',
         confidence: story.coherence.coherenceScore,
         metadata: {
-          story,
+          story: { ...story, trace: undefined },
+          trace: process.env.NODE_ENV !== 'production' ? story.trace : undefined,
           entry_count: entries.length,
           coherence_score: story.coherence.coherenceScore,
         },
