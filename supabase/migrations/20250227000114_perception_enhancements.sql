@@ -43,9 +43,9 @@ UPDATE public.characters
 SET requires_extra_confirmation = TRUE
 WHERE sensitivity_level = 'sensitive';
 
--- Create index for cool-down review queries
+-- Create index for cool-down review queries (no NOW() in predicate — not IMMUTABLE)
 CREATE INDEX IF NOT EXISTS perception_entries_review_reminder_idx ON public.perception_entries(user_id, review_reminder_at)
-WHERE review_reminder_at IS NOT NULL AND review_reminder_at <= NOW();
+WHERE review_reminder_at IS NOT NULL;
 
 -- Create index for high-emotion entries
 CREATE INDEX IF NOT EXISTS perception_entries_high_emotion_idx ON public.perception_entries(user_id, created_in_high_emotion, created_at)
