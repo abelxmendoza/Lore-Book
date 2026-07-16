@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS insight_evidence (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     insight_id UUID NOT NULL REFERENCES insights(id) ON DELETE CASCADE,
-    claim_id UUID NOT NULL REFERENCES omega_claims(id) ON DELETE CASCADE,
+    -- FK added in 20250102000009_omega_memory_engine (omega_claims is created there).
+    claim_id UUID NOT NULL,
     explanation TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     metadata JSONB DEFAULT '{}'::jsonb

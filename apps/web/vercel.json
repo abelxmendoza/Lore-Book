@@ -54,7 +54,7 @@
     }
   ],
   "env": {
-    "NODE_VERSION": "20",
+    "NODE_VERSION": "24",
     "VITE_APP_URL": "https://lorebookai.com",
     "VITE_API_URL": "",
     "VITE_STRIPE_PUBLISHABLE_KEY": "pk_test_51L9CLGDEX66PEmCrcyscRq4ojvpWsWAScd2dFNwJChIFoAdyNAGvDmok0JP0RBWdPjnzYoaP5fXTMO7FBHprD6Yz00BmGfEXxj",

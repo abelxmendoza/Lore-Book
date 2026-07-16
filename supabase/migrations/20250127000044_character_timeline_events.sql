@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS public.character_timeline_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   character_id UUID NOT NULL REFERENCES public.characters(id) ON DELETE CASCADE,
-  event_id UUID NOT NULL REFERENCES public.resolved_events(id) ON DELETE CASCADE,
+  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
+  event_id UUID NOT NULL,
   
   -- Timeline Type
   timeline_type TEXT NOT NULL CHECK (timeline_type IN (

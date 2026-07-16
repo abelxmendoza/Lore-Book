@@ -356,3 +356,68 @@ CREATE POLICY "Users can delete own social insights"
   FOR DELETE
   USING (auth.uid() = user_id);
 
+
+-- Deferred FKs from earlier migrations that referenced this table before it existed.
+DO $$
+BEGIN
+  IF to_regclass('public.group_relationships') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'group_relationships_from_group_id_fkey'
+     ) THEN
+    ALTER TABLE public.group_relationships
+      ADD CONSTRAINT group_relationships_from_group_id_fkey
+      FOREIGN KEY (from_group_id) REFERENCES public.social_communities(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.group_relationships') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'group_relationships_to_group_id_fkey'
+     ) THEN
+    ALTER TABLE public.group_relationships
+      ADD CONSTRAINT group_relationships_to_group_id_fkey
+      FOREIGN KEY (to_group_id) REFERENCES public.social_communities(id) ON DELETE CASCADE;
+  END IF;
+  IF to_regclass('public.group_evolution') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'group_evolution_group_id_fkey'
+     ) THEN
+    ALTER TABLE public.group_evolution
+      ADD CONSTRAINT group_evolution_group_id_fkey
+      FOREIGN KEY (group_id) REFERENCES public.social_communities(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Columns + self-FK that 20250125000039 tried to add before this table existed.
+DO $$
+BEGIN
+  IF to_regclass('public.social_communities') IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'social_communities' AND column_name = 'group_type'
+  ) THEN
+    ALTER TABLE public.social_communities
+      ADD COLUMN group_type TEXT CHECK (group_type IN ('family', 'work', 'school', 'hobby', 'social', 'online', 'offline', 'mixed')),
+      ADD COLUMN purpose TEXT,
+      ADD COLUMN location TEXT,
+      ADD COLUMN frequency TEXT,
+      ADD COLUMN founded_date TIMESTAMPTZ,
+      ADD COLUMN status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'dissolved', 'merged')),
+      ADD COLUMN hierarchy_level INT DEFAULT 0,
+      ADD COLUMN parent_group_id UUID;
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'social_communities' AND column_name = 'parent_group_id'
+  ) THEN
+    ALTER TABLE public.social_communities ADD COLUMN parent_group_id UUID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'social_communities_parent_group_id_fkey'
+  ) THEN
+    ALTER TABLE public.social_communities
+      ADD CONSTRAINT social_communities_parent_group_id_fkey
+      FOREIGN KEY (parent_group_id) REFERENCES public.social_communities(id) ON DELETE SET NULL;
+  END IF;
+END $$;

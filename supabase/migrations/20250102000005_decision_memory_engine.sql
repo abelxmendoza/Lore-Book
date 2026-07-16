@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     entity_ids UUID[] DEFAULT '{}',
     related_claim_ids UUID[] DEFAULT '{}',
     related_insight_ids UUID[] DEFAULT '{}',
-    perspective_id UUID REFERENCES perspectives(id) ON DELETE SET NULL,
+    -- FK added in 20250102000012_perspective_aware_memory (perspectives is created there).
+    perspective_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     confidence FLOAT NOT NULL DEFAULT 0.6 CHECK (confidence >= 0.0 AND confidence <= 1.0),
     uncertainty_notes TEXT,

@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS public.interest_mentions (
   
   -- Context
   mentioned_with_people UUID[] DEFAULT '{}',
-  mentioned_at_location UUID REFERENCES public.locations(id),
+  mentioned_at_location UUID, -- FK added when locations exists
   related_events UUID[] DEFAULT '{}',
   
   -- Behavioral indicators

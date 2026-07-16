@@ -25,6 +25,8 @@ BEGIN
     ADD CONSTRAINT event_mentions_event_id_fkey
     FOREIGN KEY (event_id) REFERENCES public.resolved_events(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Ensure event_mentions has proper foreign key to journal_entries
@@ -39,15 +41,27 @@ BEGIN
     ADD CONSTRAINT event_mentions_memory_id_fkey
     FOREIGN KEY (memory_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Add index for event-character queries (via resolved_events.people array)
-CREATE INDEX IF NOT EXISTS idx_resolved_events_people_character_lookup 
+DO $$ BEGIN
+  IF to_regclass('public.resolved_events') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_resolved_events_people_character_lookup 
 ON public.resolved_events USING GIN(people);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
 -- Add index for event-location queries (via resolved_events.locations array)
-CREATE INDEX IF NOT EXISTS idx_resolved_events_locations_location_lookup 
+DO $$ BEGIN
+  IF to_regclass('public.resolved_events') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_resolved_events_locations_location_lookup 
 ON public.resolved_events USING GIN(locations);
+  END IF;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
 -- =====================================================
 -- 2. LOCATION RELATIONSHIPS
@@ -75,6 +89,8 @@ BEGIN
     ADD CONSTRAINT location_mentions_memory_id_fkey
     FOREIGN KEY (memory_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Ensure photo_location_links has proper foreign keys
@@ -99,6 +115,8 @@ BEGIN
     ADD CONSTRAINT photo_location_links_journal_entry_id_fkey
     FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================
@@ -127,6 +145,8 @@ BEGIN
     ADD CONSTRAINT character_memories_journal_entry_id_fkey
     FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Ensure character_relationships has proper foreign keys
@@ -151,6 +171,8 @@ BEGIN
     ADD CONSTRAINT character_relationships_target_character_id_fkey
     FOREIGN KEY (target_character_id) REFERENCES public.characters(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================
@@ -189,6 +211,8 @@ BEGIN
     ADD CONSTRAINT perception_entries_related_memory_id_fkey
     FOREIGN KEY (related_memory_id) REFERENCES public.journal_entries(id) ON DELETE SET NULL;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================
@@ -217,6 +241,8 @@ BEGIN
     ADD CONSTRAINT timeline_memberships_journal_entry_id_fkey
     FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Ensure timeline_relationships has proper foreign keys
@@ -241,6 +267,8 @@ BEGIN
     ADD CONSTRAINT timeline_relationships_target_timeline_id_fkey
     FOREIGN KEY (target_timeline_id) REFERENCES public.timelines(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================
@@ -259,6 +287,8 @@ BEGIN
     ADD CONSTRAINT skill_progress_skill_id_fkey
     FOREIGN KEY (skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- Add foreign key constraint for skill_progress.source_id to journal_entries
@@ -276,6 +306,8 @@ BEGIN
     ON public.skill_progress(source_id) 
     WHERE source_type = 'memory' AND source_id IS NOT NULL;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================
@@ -304,6 +336,8 @@ BEGIN
     ADD CONSTRAINT task_memory_bridges_journal_entry_id_fkey
     FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
   END IF;
+EXCEPTION WHEN undefined_table OR undefined_object THEN
+  NULL; -- referenced table not created yet on fresh preview branches
 END $$;
 
 -- =====================================================

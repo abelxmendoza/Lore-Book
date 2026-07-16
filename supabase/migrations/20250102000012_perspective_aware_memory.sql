@@ -168,3 +168,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Deferred FKs from earlier migrations that referenced perspectives before it existed.
+DO $$
+BEGIN
+  IF to_regclass('public.decisions') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'decisions_perspective_id_fkey'
+     ) THEN
+    ALTER TABLE public.decisions
+      ADD CONSTRAINT decisions_perspective_id_fkey
+      FOREIGN KEY (perspective_id) REFERENCES public.perspectives(id) ON DELETE SET NULL;
+  END IF;
+
+  IF to_regclass('public.memory_proposals') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'memory_proposals_perspective_id_fkey'
+     ) THEN
+    ALTER TABLE public.memory_proposals
+      ADD CONSTRAINT memory_proposals_perspective_id_fkey
+      FOREIGN KEY (perspective_id) REFERENCES public.perspectives(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
