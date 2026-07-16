@@ -28,11 +28,14 @@ import {
   deriveTitleFromMessages,
 } from '../utils/threadTitleUtils';
 import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
+import { dbRowToThread } from '../utils/dbRowToThread';
 import { mergeLoadedThreadsWithHydrated } from '../utils/mergeLoadedThreadsWithHydrated';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
 import { mapDbMessageRow } from '../utils/mapDbMessageRow';
+import { sortThreadsByActivity } from '../utils/sortThreadsChronologically';
 import {
   persistAuthThreadCache,
+  readAuthThreadCache,
   readAuthThreadFromCache,
 } from '../utils/threadLocalCache';
 
@@ -74,22 +77,6 @@ function messagesToJson(messages: Message[]) {
   }));
 }
 
-function dbRowToThread(t: any): ChatThread {
-  const messageCount = typeof t.message_count === 'number' ? t.message_count : undefined;
-  const threadNumber = typeof t.thread_number === 'number' ? t.thread_number : undefined;
-  const thread: ChatThread = {
-    id: t.id,
-    title: t.title || DRAFT_THREAD_TITLE,
-    subtitle: t.metadata?.subtitle as string | undefined,
-    dominantEntities: Array.isArray(t.metadata?.dominantEntities) ? t.metadata.dominantEntities : undefined,
-    messages: [],
-    updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
-    ...(messageCount !== undefined ? { messageCount } : {}),
-    ...(threadNumber !== undefined ? { threadNumber } : {}),
-  };
-  return normalizeThreadTitle(thread);
-}
-
 function dbMessageToMessage(row: Parameters<typeof mapDbMessageRow>[0]): Message {
   return mapDbMessageRow(row);
 }
@@ -107,12 +94,6 @@ function isUsableGuestThread(t: ChatThread): boolean {
 /** Deduplicates threads by ID, identical conversations, and extra empty drafts. */
 function dedupeThreads(threads: ChatThread[]): ChatThread[] {
   return dedupeConversationThreads(threads);
-}
-
-function sortThreadsByActivity(threads: ChatThread[]): ChatThread[] {
-  return [...threads].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
 }
 
 async function fetchThreadsPage(args: { limit?: number; cursor?: string | null }) {
@@ -187,15 +168,17 @@ export const useChatThreads = () => {
     try {
       const raw = localStorage.getItem(storageKey(userId));
       const parsed: ChatThread[] = raw ? JSON.parse(raw) : [];
-      const hydrated = dedupeThreads(
-        seedDemoChatThreadsIfEmpty(
-          parsed
-            .map((t) => ({
-              ...t,
-              messages: (t.messages || []).map(parseStoredMessage),
-              updatedAt: t.updatedAt || new Date(0).toISOString(),
-            }))
-            .filter(isUsableGuestThread)
+      const hydrated = sortThreadsByActivity(
+        dedupeThreads(
+          seedDemoChatThreadsIfEmpty(
+            parsed
+              .map((t) => ({
+                ...t,
+                messages: (t.messages || []).map(parseStoredMessage),
+                updatedAt: t.updatedAt || new Date(0).toISOString(),
+              }))
+              .filter(isUsableGuestThread)
+          )
         )
       );
       setThreads(hydrated);
@@ -229,10 +212,18 @@ export const useChatThreads = () => {
 
       const data = await fetchThreadsPage({ limit: 30 });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
+
+      // Seed merge with device cache so a mid-flight create/prompt isn't wiped on login/refetch.
+      const authCache = userId ? readAuthThreadCache(userId) : null;
+      const cacheThreads = authCache?.threads ?? [];
+
       setThreads((prev) => {
-        const merged = mergeLoadedThreadsWithHydrated(loaded, prev);
-        threadsRef.current = merged;
-        return merged;
+        const withCache = mergeLoadedThreadsWithHydrated(loaded, cacheThreads);
+        const merged = mergeLoadedThreadsWithHydrated(withCache, prev);
+        const ordered = sortThreadsByActivity(dedupeThreads(merged));
+        threadsRef.current = ordered;
+        if (userId) persistAuthThreadCache(userId, ordered, currentThreadIdRef.current);
+        return ordered;
       });
       threadsNextCursorRef.current = data.nextCursor ?? null;
       setThreadsHasMore(data.hasMore ?? false);
@@ -248,8 +239,12 @@ export const useChatThreads = () => {
             .catch(() => {});
         }
       }
-      const last = localStorage.getItem(lastThreadKey(userId));
-      if (last && loaded.some((t) => t.id === last)) {
+      const last =
+        localStorage.getItem(lastThreadKey(userId)) ||
+        authCache?.lastThreadId ||
+        null;
+      const knownIds = new Set(threadsRef.current.map((t) => t.id));
+      if (last && knownIds.has(last)) {
         applyCurrentThreadId(last);
       } else {
         applyCurrentThreadId(null);
@@ -287,8 +282,12 @@ export const useChatThreads = () => {
       const page = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads((prev) => {
         const seen = new Set(prev.map((t) => t.id));
-        const merged = [...prev, ...page.filter((t) => !seen.has(t.id))];
+        const merged = sortThreadsByActivity([
+          ...prev,
+          ...page.filter((t) => !seen.has(t.id)),
+        ]);
         threadsRef.current = merged;
+        if (userId) persistAuthThreadCache(userId, merged, currentThreadIdRef.current);
         return merged;
       });
       for (const t of page) threadPersistenceTracker.markRestoredFromBackend(t.id);
@@ -303,7 +302,7 @@ export const useChatThreads = () => {
     } finally {
       setThreadsLoadingMore(false);
     }
-  }, [isAuthenticated, threadsHasMore, threadsLoadingMore, dispatch]);
+  }, [isAuthenticated, threadsHasMore, threadsLoadingMore, dispatch, userId]);
 
   // ── Boot: wait for auth to resolve, then load from the right source ─────────
   useEffect(() => {
@@ -340,8 +339,9 @@ export const useChatThreads = () => {
       updatedAt: new Date().toISOString(),
     };
     setThreads((prev) => {
-      const next = [thread, ...prev];
+      const next = sortThreadsByActivity([thread, ...prev]);
       if (!isAuthenticated) persistLocal(next, id);
+      else if (userId) persistAuthThreadCache(userId, next, id);
       return next;
     });
     applyCurrentThreadId(id);
@@ -474,20 +474,27 @@ export const useChatThreads = () => {
             row?.updatedAt ??
             existing?.updatedAt ??
             messages[messages.length - 1].timestamp.toISOString();
+          const localUpdatedAt = row?.updatedAt ?? existing?.updatedAt;
+          const localMs = localUpdatedAt ? new Date(localUpdatedAt).getTime() : 0;
+          const serverMs = new Date(updatedAt).getTime();
           hydratedThread = {
             id,
             title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
             subtitle: ensuredMeta.subtitle ?? row?.subtitle ?? existing?.subtitle,
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
-            updatedAt: row?.updatedAt && row.updatedAt > updatedAt ? row.updatedAt : updatedAt,
+            updatedAt: localMs > serverMs ? localUpdatedAt! : updatedAt,
             threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
+            messageCount: Math.max(messages.length, row?.messageCount ?? 0, existing?.messageCount ?? 0),
           };
 
-          const next = row
-            ? prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t))
-            : [hydratedThread, ...prev];
+          const next = sortThreadsByActivity(
+            row
+              ? prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t))
+              : [hydratedThread, ...prev]
+          );
           threadsRef.current = next;
+          if (userId) persistAuthThreadCache(userId, next, currentThreadIdRef.current);
           return next;
         });
 
@@ -499,7 +506,7 @@ export const useChatThreads = () => {
         return null;
       }
     },
-    []
+    [userId]
   );
 
   const switchThread = useCallback(
@@ -555,7 +562,7 @@ export const useChatThreads = () => {
               }
             : t
         );
-        const sorted = touchActivity ? sortThreadsByActivity(next) : next;
+        const sorted = sortThreadsByActivity(next);
         threadsRef.current = sorted;
         if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
         else if (userId) persistAuthThreadCache(userId, sorted, currentThreadIdRef.current);
@@ -636,7 +643,7 @@ export const useChatThreads = () => {
               }
             : t
         );
-        const sorted = touchActivity ? sortThreadsByActivity(next) : next;
+        const sorted = sortThreadsByActivity(next);
         threadsRef.current = sorted;
         if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
         else if (userId) persistAuthThreadCache(userId, sorted, currentThreadIdRef.current);

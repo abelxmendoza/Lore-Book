@@ -4,6 +4,10 @@ import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
 import { isGenericThreadTitle, resolveThreadDisplayTitle } from '../utils/threadTitleUtils';
 import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
+import {
+  sortThreadsChronologically,
+  threadActivityMs,
+} from '../utils/sortThreadsChronologically';
 import { useThreadExplorer } from '../hooks/useThreadExplorer';
 import type { ThreadExploreHit } from '../../../api/threadExplorer';
 import { lexicalRescanApi, type KeywordRescanSummary } from '../../../api/lexicalRescan';
@@ -39,8 +43,10 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function formatTimestamp(updatedAt: string): string {
-  const d = new Date(updatedAt);
+function formatActivityTimestamp(thread: ChatThread): string {
+  const ms = threadActivityMs(thread);
+  if (!ms) return '';
+  const d = new Date(ms);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMin = diffMs / 60_000;
@@ -61,6 +67,9 @@ function formatTimestamp(updatedAt: string): string {
 type ThreadGroup = { label: string; threads: ChatThread[] };
 
 function groupThreadsByDate(threads: ChatThread[]): ThreadGroup[] {
+  // Enforce reverse-chronological order before bucketing so date groups
+  // and within-group rows always match activity timestamps.
+  const ordered = sortThreadsChronologically(threads);
   const now = new Date();
   const todayStart = startOfDay(now).getTime();
   const yesterdayStart = todayStart - 86_400_000;
@@ -75,12 +84,12 @@ function groupThreadsByDate(threads: ChatThread[]): ThreadGroup[] {
     Older: [],
   };
 
-  for (const t of threads) {
-    const ts = new Date(t.updatedAt).getTime();
-    if (ts >= todayStart) buckets['Today'].push(t);
-    else if (ts >= yesterdayStart) buckets['Yesterday'].push(t);
-    else if (ts >= weekStart) buckets['Previous 7 days'].push(t);
-    else if (ts >= monthStart) buckets['Previous 30 days'].push(t);
+  for (const t of ordered) {
+    const safeTs = threadActivityMs(t);
+    if (safeTs >= todayStart) buckets['Today'].push(t);
+    else if (safeTs >= yesterdayStart) buckets['Yesterday'].push(t);
+    else if (safeTs >= weekStart) buckets['Previous 7 days'].push(t);
+    else if (safeTs >= monthStart) buckets['Previous 30 days'].push(t);
     else buckets['Older'].push(t);
   }
 
@@ -195,27 +204,23 @@ function ThreadItem({
     if (dx > 8 || dy > 8) cancelLongPress();
   };
 
-  // Delete with inline confirmation on mobile, direct on desktop
+  // Same two-tap delete confirm on desktop + mobile (prevents accidental wipes).
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isMobile) {
-      if (!confirmingDelete) {
-        setConfirmingDelete(true);
-        confirmDeleteTimer.current = setTimeout(() => {
-          setConfirmingDelete(false);
-          confirmDeleteTimer.current = null;
-        }, 3000);
-      } else {
-        if (confirmDeleteTimer.current) {
-          clearTimeout(confirmDeleteTimer.current);
-          confirmDeleteTimer.current = null;
-        }
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      confirmDeleteTimer.current = setTimeout(() => {
         setConfirmingDelete(false);
-        onDelete(e);
-      }
-    } else {
-      onDelete(e);
+        confirmDeleteTimer.current = null;
+      }, 3000);
+      return;
     }
+    if (confirmDeleteTimer.current) {
+      clearTimeout(confirmDeleteTimer.current);
+      confirmDeleteTimer.current = null;
+    }
+    setConfirmingDelete(false);
+    onDelete(e);
   };
 
   if (editing) {
@@ -246,19 +251,20 @@ function ThreadItem({
         animateBump && !animateEnter && 'chat-thread-bump'
       )}
       style={animateEnter ? { animationDelay: `${Math.min(enterIndex, 8) * 35}ms` } : undefined}
+      data-thread-active={isActive ? 'true' : undefined}
     >
       {/* Active left-edge indicator bar */}
       {isActive && (
         <span
-          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-primary chat-thread-active-bar"
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-primary chat-thread-active-bar z-10"
           aria-hidden
         />
       )}
       <div
         className={cn(
-          'group flex items-center gap-1 rounded-lg cursor-pointer transition-all duration-200 min-h-[44px] sm:min-h-0',
+          'group flex items-center gap-1 rounded-xl cursor-pointer transition-all duration-200 min-h-[48px]',
           isActive
-            ? 'bg-primary/[0.13] text-white shadow-sm shadow-primary/5'
+            ? 'chat-thread-active-shell text-white'
             : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90 hover:translate-x-0.5'
         )}
       >
@@ -270,7 +276,7 @@ function ThreadItem({
           onPointerUp={cancelLongPress}
           onPointerMove={handlePointerMove}
           onPointerCancel={cancelLongPress}
-          className="flex-1 min-w-0 text-left flex items-start gap-2 px-2 py-2.5 sm:py-2 touch-manipulation select-none"
+          className="flex-1 min-w-0 text-left flex items-start gap-2 px-2.5 py-2.5 touch-manipulation select-none"
           title={isMobile ? (onRename ? 'Hold to rename' : undefined) : (onRename ? 'Double-click to rename' : undefined)}
         >
           <MessageSquareText
@@ -350,35 +356,37 @@ function ThreadItem({
             <p className={cn(
               'text-[10px] mt-0.5',
               isActive ? 'text-white/50' : 'text-white/25'
-            )}>{formatTimestamp(thread.updatedAt)}</p>
+            )}>{formatActivityTimestamp(thread)}</p>
           </div>
         </button>
 
-        {/* Actions */}
-        <div className={cn(
-          'flex items-center flex-shrink-0 mr-1',
-          isMobile ? 'gap-0' : 'gap-0 opacity-0 group-hover:opacity-100'
-        )}>
-          {onRename && !isMobile && (
+        {/* Actions — same affordances on desktop + mobile */}
+        <div
+          className={cn(
+            'flex items-center flex-shrink-0 mr-1 gap-0.5 transition-opacity',
+            isMobile || confirmingDelete || isActive
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+          )}
+        >
+          {onRename && (
             <button
               type="button"
               onClick={startEdit}
-              className="p-1.5 rounded text-white/30 hover:text-white/70 hover:bg-white/8 transition-colors touch-manipulation"
+              className="p-2 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/8 transition-colors touch-manipulation min-h-[36px] min-w-[36px] flex items-center justify-center"
               aria-label="Rename thread"
             >
-              <Pencil className="h-3 w-3" />
+              <Pencil className="h-3.5 w-3.5" />
             </button>
           )}
           <button
             type="button"
             onClick={handleDeleteClick}
             className={cn(
-              'transition-all touch-manipulation rounded',
-              isMobile
-                ? confirmingDelete
-                  ? 'flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/20 border border-red-500/40 min-h-[36px]'
-                  : 'p-2 text-white/25 hover:text-red-400 hover:bg-red-500/10'
-                : 'p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10'
+              'transition-all touch-manipulation rounded-lg min-h-[36px]',
+              confirmingDelete
+                ? 'flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/20 border border-red-500/40'
+                : 'p-2 text-white/30 hover:text-red-400 hover:bg-red-500/10 min-w-[36px] flex items-center justify-center'
             )}
             aria-label={confirmingDelete ? 'Confirm delete' : 'Delete thread'}
           >
@@ -531,25 +539,32 @@ export const ChatThreadList = ({
     }
   };
 
-  const baseThreads: ChatThread[] = exploreActive
-    ? exploreHits.map(hit => {
-        const existing = threads.find(t => t.id === hit.threadId);
-        return existing ?? {
-          id: hit.threadId,
-          title: hit.title,
-          subtitle: hit.subtitle,
-          dominantEntities: hit.entities,
-          messages: [],
-          updatedAt: hit.updatedAt,
-        };
-      })
-    : searchQuery.trim()
-      ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
-      : threads;
+  // Always render newest → oldest by activity timestamp (updatedAt / last message).
+  const displayThreads = useMemo(() => {
+    const baseThreads: ChatThread[] = exploreActive
+      ? exploreHits.map((hit) => {
+          const existing = threads.find((t) => t.id === hit.threadId);
+          return (
+            existing ?? {
+              id: hit.threadId,
+              title: hit.title,
+              subtitle: hit.subtitle,
+              dominantEntities: hit.entities,
+              messages: [],
+              updatedAt: hit.updatedAt,
+            }
+          );
+        })
+      : searchQuery.trim()
+        ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+        : threads;
 
-  const displayThreads: ChatThread[] = castFilter
-    ? baseThreads.filter((t) => castFilter.threadIds.has(t.id))
-    : baseThreads;
+    const filtered = castFilter
+      ? baseThreads.filter((t) => castFilter.threadIds.has(t.id))
+      : baseThreads;
+
+    return sortThreadsChronologically(filtered);
+  }, [exploreActive, exploreHits, threads, searchQuery, castFilter]);
 
   const groups = groupThreadsByDate(displayThreads);
   const titleLabels = useMemo(
@@ -769,16 +784,16 @@ export const ChatThreadList = ({
             >
               <MessageSquarePlus className="h-4 w-4" />
             </button>
-            {threads.slice(0, 8).map((t) => (
+            {sortThreadsChronologically(threads).slice(0, 8).map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => handleSelectThread(t.id)}
                 title={t.title}
                 className={cn(
-                  'p-2 rounded-lg transition-colors touch-manipulation',
+                  'p-2 rounded-xl transition-colors touch-manipulation',
                   currentThreadId === t.id
-                    ? 'bg-primary/[0.13] text-primary ring-1 ring-primary/20'
+                    ? 'chat-thread-active-shell-collapsed text-primary'
                     : 'text-white/35 hover:text-white/80 hover:bg-white/[0.06]'
                 )}
               >
@@ -855,10 +870,12 @@ export const ChatThreadList = ({
         )}
       </div>
 
-      {/* Mobile footer hint */}
-      {isMobile && threads.length > 0 && (
+      {/* Footer hint — same guidance on both viewports */}
+      {!collapsed && threads.length > 0 && (
         <div className="flex-shrink-0 px-3 py-2 border-t border-white/6">
-          <p className="text-[10px] text-white/20 text-center">Hold a chat to rename it</p>
+          <p className="text-[10px] text-white/20 text-center">
+            {isMobile ? 'Hold to rename · tap delete twice to confirm' : 'Double-click to rename · click delete twice to confirm'}
+          </p>
         </div>
       )}
     </>
