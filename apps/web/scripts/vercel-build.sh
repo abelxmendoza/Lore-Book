@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Emit a tiny static stub for lore-book-web non-production deploys so the
-# GitHub check is green without competing with lore-keeper PR previews.
+# Stub non-lore-keeper preview builds so lore-book-web PR checks stay green.
 set -euo pipefail
 
 prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
@@ -8,9 +7,9 @@ prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
 case "$prod_url" in
   *lore-keeper*)
     ;;
-  lorebookai.com|www.lorebookai.com|*lorebookai.com*|*lore-book*)
+  *)
     if [ "${VERCEL_ENV:-}" != "production" ]; then
-      echo "Stub build for lore-book-web ${VERCEL_ENV:-unknown} deploy (prod_url=${prod_url})"
+      echo "Stub build for non-lore-keeper ${VERCEL_ENV:-unknown} deploy (prod_url=${prod_url})"
       rm -rf dist
       mkdir -p dist
       cat > dist/index.html <<'HTML'

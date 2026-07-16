@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Skip dependency install for lore-book-web non-production deploys (PR noise).
+# Skip dependency install for non-lore-keeper preview deploys.
 set -euo pipefail
 
 prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
@@ -7,9 +7,9 @@ prod_url="${VERCEL_PROJECT_PRODUCTION_URL:-}"
 case "$prod_url" in
   *lore-keeper*)
     ;;
-  lorebookai.com|www.lorebookai.com|*lorebookai.com*|*lore-book*)
+  *)
     if [ "${VERCEL_ENV:-}" != "production" ]; then
-      echo "Skipping install for lore-book-web ${VERCEL_ENV:-unknown} deploy (prod_url=${prod_url})"
+      echo "Skipping install for non-lore-keeper ${VERCEL_ENV:-unknown} deploy (prod_url=${prod_url})"
       exit 0
     fi
     ;;
