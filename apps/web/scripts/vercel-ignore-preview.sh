@@ -17,3 +17,4 @@ case "${VERCEL_GIT_COMMIT_REF:-}" in
   main|stable) exit 1 ;;
   *) exit 0 ;;
 esac
+
