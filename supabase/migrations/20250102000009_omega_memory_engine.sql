@@ -169,3 +169,25 @@ CREATE TRIGGER update_omega_relationships_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_omega_updated_at();
 
+-- Deferred FKs from earlier migrations that referenced omega_* before those tables existed.
+DO $$
+BEGIN
+  IF to_regclass('public.insight_evidence') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'insight_evidence_claim_id_fkey'
+     ) THEN
+    ALTER TABLE public.insight_evidence
+      ADD CONSTRAINT insight_evidence_claim_id_fkey
+      FOREIGN KEY (claim_id) REFERENCES public.omega_claims(id) ON DELETE CASCADE;
+  END IF;
+
+  IF to_regclass('public.memory_proposals') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'memory_proposals_entity_id_fkey'
+     ) THEN
+    ALTER TABLE public.memory_proposals
+      ADD CONSTRAINT memory_proposals_entity_id_fkey
+      FOREIGN KEY (entity_id) REFERENCES public.omega_entities(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+

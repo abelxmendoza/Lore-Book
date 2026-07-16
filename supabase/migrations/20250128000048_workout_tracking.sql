@@ -9,10 +9,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.workout_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  event_id UUID REFERENCES public.resolved_events(id) ON DELETE CASCADE,
+  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
+  event_id UUID,
   
   workout_type TEXT NOT NULL CHECK (workout_type IN ('weightlifting', 'cardio', 'mixed', 'other')),
-  location_id UUID REFERENCES public.locations(id),
+  location_id UUID, -- FK added when locations exists
   
   -- Stats (stored as JSONB for flexibility)
   stats JSONB NOT NULL DEFAULT '{}'::jsonb,

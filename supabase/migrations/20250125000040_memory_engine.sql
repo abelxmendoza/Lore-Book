@@ -3,7 +3,7 @@
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Conversation Sessions Table
 -- Groups chat message sessions for memory extraction
@@ -234,3 +234,16 @@ COMMENT ON COLUMN public.memory_components.component_type IS 'Type of memory com
 COMMENT ON COLUMN public.memory_components.importance_score IS 'Importance score from 0-10 for ranking and filtering';
 COMMENT ON COLUMN public.memory_components.embedding IS 'Semantic embedding vector(1536) for similarity search';
 
+
+-- Deferred FKs from earlier migrations that referenced this table before it existed.
+DO $$
+BEGIN
+  IF to_regclass('public.utterances') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint WHERE conname = 'utterances_message_id_fkey'
+     ) THEN
+    ALTER TABLE public.utterances
+      ADD CONSTRAINT utterances_message_id_fkey
+      FOREIGN KEY (message_id) REFERENCES public.conversation_messages(id) ON DELETE CASCADE;
+  END IF;
+END $$;

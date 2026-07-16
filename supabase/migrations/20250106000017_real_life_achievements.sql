@@ -1,7 +1,6 @@
 -- Real Life Achievements Support
 -- Adds fields for real-life achievements with auto-rarity calculation
 
--- achievements may not exist yet on fresh preview bases; skip until present.
 DO $$
 BEGIN
   IF to_regclass('public.achievements') IS NULL THEN
@@ -22,7 +21,6 @@ BEGIN
     ADD COLUMN IF NOT EXISTS impact_description TEXT NULL;
 END $$;
 
--- Indexes for category filtering
 DO $$
 BEGIN
   IF to_regclass('public.achievements') IS NULL THEN
@@ -33,7 +31,6 @@ BEGIN
   CREATE INDEX IF NOT EXISTS achievements_verified_idx ON public.achievements(user_id, verified) WHERE category = 'real_life' AND verified = TRUE;
 END $$;
 
--- Comments
 DO $$
 BEGIN
   IF to_regclass('public.achievements') IS NULL THEN
