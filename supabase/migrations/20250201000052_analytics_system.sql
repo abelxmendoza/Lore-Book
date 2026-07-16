@@ -14,7 +14,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   BEGIN
     -- Fallback to "pgvector" (standard naming)
-    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE EXTENSION IF NOT EXISTS "pgvector";
   EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Vector extension not available. Enable "vector" in Supabase Dashboard > Database > Extensions';
   END;

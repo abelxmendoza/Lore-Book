@@ -3,7 +3,7 @@
   "buildCommand": "rm -rf dist && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "ignoreCommand": "bash scripts/vercel-ignore-preview.sh",
+  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi",
   "rewrites": [
     {
       "source": "/api/(.*)",

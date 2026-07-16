@@ -7,7 +7,7 @@
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "pgvector";
 
 -- =====================================================
 -- PRIMARY DATA MODEL (USER-FACING)
@@ -28,8 +28,7 @@ ALTER TABLE IF EXISTS public.conversation_sessions
 -- Utterances: Normalized text units from messages
 CREATE TABLE IF NOT EXISTS public.utterances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- FK added in 20250125000040_memory_engine.sql (conversation_messages created there).
-  message_id UUID NOT NULL,
+  message_id UUID NOT NULL REFERENCES public.conversation_messages(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   normalized_text TEXT NOT NULL,              -- cleaned, corrected
   original_text TEXT NOT NULL,                -- preserve original
@@ -68,8 +67,7 @@ CREATE TABLE IF NOT EXISTS public.extracted_units (
 -- Note: resolved_events table already exists, we'll link to it
 CREATE TABLE IF NOT EXISTS public.event_unit_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- FK added in 20250223000097_temporal_events.sql (resolved_events created there).
-  event_id UUID NOT NULL,
+  event_id UUID NOT NULL REFERENCES public.resolved_events(id) ON DELETE CASCADE,
   unit_id UUID NOT NULL REFERENCES public.extracted_units(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(event_id, unit_id)

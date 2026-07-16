@@ -8,10 +8,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.skill_relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  -- FK added in 20250230000122_skills_achievements.sql (skills created there).
-  from_skill_id UUID NOT NULL,
-  -- FK added in 20250230000122_skills_achievements.sql (skills created there).
-  to_skill_id UUID NOT NULL,
+  from_skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
+  to_skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
   relationship_type TEXT NOT NULL CHECK (relationship_type IN (
     'prerequisite_for',      -- Skill A is required before Skill B
     'requires',              -- Skill A requires Skill B

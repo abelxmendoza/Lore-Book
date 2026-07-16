@@ -24,8 +24,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     entity_ids UUID[] DEFAULT '{}',
     related_claim_ids UUID[] DEFAULT '{}',
     related_insight_ids UUID[] DEFAULT '{}',
-    -- FK added in 20250102000012_perspective_aware_memory (perspectives is created there).
-    perspective_id UUID,
+    perspective_id UUID REFERENCES perspectives(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     confidence FLOAT NOT NULL DEFAULT 0.6 CHECK (confidence >= 0.0 AND confidence <= 1.0),
     uncertainty_notes TEXT,
@@ -146,9 +145,9 @@ CREATE OR REPLACE FUNCTION get_decision_summary(decision_id_param UUID)
 RETURNS JSONB AS $$
 DECLARE
     decision_record RECORD;
-    options_json JSONB;
+    options_records RECORD[];
     rationale_record RECORD;
-    outcomes_json JSONB;
+    outcomes_records RECORD[];
     result JSONB;
 BEGIN
     SELECT * INTO decision_record
@@ -159,7 +158,7 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT COALESCE(jsonb_agg(to_jsonb(o)), '[]'::jsonb) INTO options_json
+    SELECT ARRAY_AGG(row_to_json(o)) INTO options_records
     FROM decision_options o
     WHERE o.decision_id = decision_id_param;
 
@@ -167,16 +166,16 @@ BEGIN
     FROM decision_rationales
     WHERE decision_id = decision_id_param;
 
-    SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.recorded_at DESC), '[]'::jsonb)
-    INTO outcomes_json
+    SELECT ARRAY_AGG(row_to_json(o)) INTO outcomes_records
     FROM decision_outcomes o
-    WHERE o.decision_id = decision_id_param;
+    WHERE o.decision_id = decision_id_param
+    ORDER BY o.recorded_at DESC;
 
     result := jsonb_build_object(
-        'decision', to_jsonb(decision_record),
-        'options', options_json,
-        'rationale', COALESCE(to_jsonb(rationale_record), 'null'::jsonb),
-        'outcomes', outcomes_json
+        'decision', row_to_json(decision_record),
+        'options', COALESCE(options_records, '[]'::jsonb),
+        'rationale', COALESCE(row_to_json(rationale_record), 'null'::jsonb),
+        'outcomes', COALESCE(outcomes_records, '[]'::jsonb)
     );
 
     RETURN result;

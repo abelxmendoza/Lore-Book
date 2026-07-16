@@ -8,11 +8,9 @@
 CREATE TABLE IF NOT EXISTS memory_proposals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    -- FK added in 20250102000009_omega_memory_engine (omega_entities is created there).
-    entity_id UUID NOT NULL,
+    entity_id UUID NOT NULL REFERENCES omega_entities(id) ON DELETE CASCADE,
     claim_text TEXT NOT NULL,
-    -- FK added in 20250102000012_perspective_aware_memory (perspectives is created there).
-    perspective_id UUID,
+    perspective_id UUID REFERENCES perspectives(id) ON DELETE SET NULL,
     confidence FLOAT NOT NULL DEFAULT 0.6 CHECK (confidence >= 0.0 AND confidence <= 1.0),
     temporal_context JSONB DEFAULT '{}'::jsonb,
     source_excerpt TEXT,

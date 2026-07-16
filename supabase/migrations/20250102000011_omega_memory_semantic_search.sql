@@ -5,10 +5,10 @@
 -- Function for semantic entity matching
 CREATE OR REPLACE FUNCTION match_omega_entities(
   query_embedding vector(1536),
-  user_id_param uuid,
-  type_param text,
   match_threshold float DEFAULT 0.7,
-  match_count int DEFAULT 5
+  match_count int DEFAULT 5,
+  user_id_param uuid,
+  type_param text
 )
 RETURNS TABLE (
   id uuid,

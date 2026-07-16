@@ -190,32 +190,3 @@ INSERT INTO public.achievement_templates (achievement_name, achievement_type, de
   ('Consistency Champion', 'consistency', '100 days of journaling', 'calendar', 'count', '{"target": 100, "entity": "journal_entries", "timeframe": "days"}', 600, 'rare'),
   ('Growth Seeker', 'growth', 'Leveled up 5 different skills', 'trending-up', 'count', '{"target": 5, "entity": "skill_levels"}', 450, 'uncommon')
 ON CONFLICT DO NOTHING;
-
--- Deferred FKs from earlier migrations that referenced this table before it existed.
-DO $$
-BEGIN
-  IF to_regclass('public.photo_skill_links') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'photo_skill_links_skill_id_fkey'
-     ) THEN
-    ALTER TABLE public.photo_skill_links
-      ADD CONSTRAINT photo_skill_links_skill_id_fkey
-      FOREIGN KEY (skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
-  END IF;
-  IF to_regclass('public.skill_relationships') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'skill_relationships_from_skill_id_fkey'
-     ) THEN
-    ALTER TABLE public.skill_relationships
-      ADD CONSTRAINT skill_relationships_from_skill_id_fkey
-      FOREIGN KEY (from_skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
-  END IF;
-  IF to_regclass('public.skill_relationships') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'skill_relationships_to_skill_id_fkey'
-     ) THEN
-    ALTER TABLE public.skill_relationships
-      ADD CONSTRAINT skill_relationships_to_skill_id_fkey
-      FOREIGN KEY (to_skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
-  END IF;
-END $$;

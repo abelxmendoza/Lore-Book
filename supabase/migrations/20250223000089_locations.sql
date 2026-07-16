@@ -3,7 +3,7 @@
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "pgvector";
 
 -- Locations Table
 CREATE TABLE IF NOT EXISTS public.locations (
@@ -84,44 +84,3 @@ CREATE POLICY "Users can delete own location mentions"
   FOR DELETE
   USING (auth.uid() = user_id);
 
-
--- Deferred FKs from earlier migrations that referenced this table before it existed.
-DO $$
-BEGIN
-  IF to_regclass('public.photo_location_links') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'photo_location_links_location_id_fkey'
-     ) THEN
-    ALTER TABLE public.photo_location_links
-      ADD CONSTRAINT photo_location_links_location_id_fkey
-      FOREIGN KEY (location_id) REFERENCES public.locations(id) ON DELETE CASCADE;
-  END IF;
-END $$;
-
--- Deferred FK from earlier migration (fresh preview branches).
-DO $$
-BEGIN
-  IF to_regclass('public.workout_events') IS NOT NULL
-     AND to_regclass('public.locations') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'workout_events_location_id_fkey'
-     ) THEN
-    ALTER TABLE public.workout_events
-      ADD CONSTRAINT workout_events_location_id_fkey
-      FOREIGN KEY (location_id) REFERENCES public.locations(id) ON DELETE SET NULL;
-  END IF;
-END $$;
-
--- Deferred FK from earlier migration (fresh preview branches).
-DO $$
-BEGIN
-  IF to_regclass('public.interest_mentions') IS NOT NULL
-     AND to_regclass('public.locations') IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_constraint WHERE conname = 'interest_mentions_mentioned_at_location_fkey'
-     ) THEN
-    ALTER TABLE public.interest_mentions
-      ADD CONSTRAINT interest_mentions_mentioned_at_location_fkey
-      FOREIGN KEY (mentioned_at_location) REFERENCES public.locations(id) ON DELETE SET NULL;
-  END IF;
-END $$;
