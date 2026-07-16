@@ -23,6 +23,17 @@ CREATE TABLE IF NOT EXISTS public.decisions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250102000005 with a different shape.
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS risk_level FLOAT;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS similarity_matches TEXT[];
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS predicted_consequences TEXT[];
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS context TEXT;
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS alternatives_considered TEXT[];
+ALTER TABLE public.decisions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
 -- Decision Insights Table
 -- Stores insights and recommendations about decisions
 CREATE TABLE IF NOT EXISTS public.decision_insights (
@@ -59,6 +70,15 @@ CREATE INDEX IF NOT EXISTS idx_decision_insights_timestamp ON public.decision_in
 
 ALTER TABLE public.decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.decision_insights ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own decisions" ON public.decisions;
+DROP POLICY IF EXISTS "Users can insert own decisions" ON public.decisions;
+DROP POLICY IF EXISTS "Users can update own decisions" ON public.decisions;
+DROP POLICY IF EXISTS "Users can delete own decisions" ON public.decisions;
+DROP POLICY IF EXISTS "Users can view own decision insights" ON public.decision_insights;
+DROP POLICY IF EXISTS "Users can insert own decision insights" ON public.decision_insights;
+DROP POLICY IF EXISTS "Users can update own decision insights" ON public.decision_insights;
+DROP POLICY IF EXISTS "Users can delete own decision insights" ON public.decision_insights;
 
 -- Users can only see their own decisions
 CREATE POLICY "Users can view own decisions"

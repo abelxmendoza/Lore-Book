@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS public.engine_manifest (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250223000076 without path.
+ALTER TABLE public.engine_manifest ADD COLUMN IF NOT EXISTS path TEXT;
+
 -- Engine Health Table
 CREATE TABLE IF NOT EXISTS public.engine_health (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

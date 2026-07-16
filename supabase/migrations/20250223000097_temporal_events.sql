@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS public.event_mentions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250223000080 without signal.
+ALTER TABLE public.event_mentions ADD COLUMN IF NOT EXISTS signal JSONB DEFAULT '{}'::jsonb;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_resolved_events_user ON public.resolved_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_resolved_events_start_time ON public.resolved_events(user_id, start_time DESC);
@@ -62,6 +65,14 @@ CREATE INDEX IF NOT EXISTS idx_resolved_events_activities_gin ON public.resolved
 -- RLS
 ALTER TABLE public.resolved_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_mentions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can insert own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can update own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can delete own resolved events" ON public.resolved_events;
+DROP POLICY IF EXISTS "Users can view own event mentions" ON public.event_mentions;
+DROP POLICY IF EXISTS "Users can insert own event mentions" ON public.event_mentions;
+DROP POLICY IF EXISTS "Users can delete own event mentions" ON public.event_mentions;
 
 CREATE POLICY "Users can view own resolved events"
   ON public.resolved_events

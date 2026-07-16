@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS public.narrative_diffs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250115000026 with a different shape.
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS entry_id_1 UUID;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS entry_id_2 UUID;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS evolution_type TEXT;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS knowledge_type TEXT;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS shared_entities TEXT[] DEFAULT '{}';
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS shared_themes TEXT[] DEFAULT '{}';
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS diff_description TEXT;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS confidence FLOAT;
+ALTER TABLE public.narrative_diffs ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_narrative_diffs_user ON public.narrative_diffs(user_id);
 CREATE INDEX IF NOT EXISTS idx_narrative_diffs_entry_1 ON public.narrative_diffs(entry_id_1);
 CREATE INDEX IF NOT EXISTS idx_narrative_diffs_entry_2 ON public.narrative_diffs(entry_id_2);
@@ -49,6 +60,12 @@ CREATE INDEX IF NOT EXISTS idx_narrative_diffs_detected_at ON public.narrative_d
 -- RLS Policies
 ALTER TABLE public.belief_evolutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.narrative_diffs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own belief evolutions" ON public.belief_evolutions;
+DROP POLICY IF EXISTS "Users can insert own belief evolutions" ON public.belief_evolutions;
+DROP POLICY IF EXISTS "Users can update own belief evolutions" ON public.belief_evolutions;
+DROP POLICY IF EXISTS "Users can view own narrative diffs" ON public.narrative_diffs;
+DROP POLICY IF EXISTS "Users can insert own narrative diffs" ON public.narrative_diffs;
 
 CREATE POLICY "Users can view own belief evolutions"
   ON public.belief_evolutions

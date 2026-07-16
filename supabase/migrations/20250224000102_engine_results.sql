@@ -7,10 +7,15 @@ CREATE TABLE IF NOT EXISTS engine_results (
   UNIQUE(user_id)
 );
 
+-- Table may already exist from 20250223000078 without created_at.
+ALTER TABLE engine_results ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_engine_results_user_id ON engine_results(user_id);
 CREATE INDEX IF NOT EXISTS idx_engine_results_updated_at ON engine_results(updated_at);
 
 ALTER TABLE engine_results ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "engine_results_self" ON engine_results;
 
 CREATE POLICY "engine_results_self"
   ON engine_results FOR ALL

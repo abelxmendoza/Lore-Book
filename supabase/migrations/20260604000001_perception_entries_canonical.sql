@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS public.perception_entries (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Table may already exist from 20250226000111 with a different shape.
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS subject_alias TEXT DEFAULT 'Unknown';
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS source_detail TEXT;
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS original_content TEXT;
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'unverified';
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS impact_on_me TEXT DEFAULT 'Not specified';
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS evolution_notes TEXT[] DEFAULT '{}';
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS created_in_high_emotion BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.perception_entries ADD COLUMN IF NOT EXISTS review_reminder_at TIMESTAMPTZ;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS perception_entries_user_id_idx
   ON public.perception_entries(user_id);
@@ -102,6 +112,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS perception_entries_updated_at ON public.perception_entries;
 CREATE TRIGGER perception_entries_updated_at
   BEFORE UPDATE ON public.perception_entries
   FOR EACH ROW
@@ -118,6 +129,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS perception_entries_preserve_original ON public.perception_entries;
 CREATE TRIGGER perception_entries_preserve_original
   BEFORE UPDATE ON public.perception_entries
   FOR EACH ROW
@@ -139,6 +151,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS perception_entries_sync_retraction ON public.perception_entries;
 CREATE TRIGGER perception_entries_sync_retraction
   BEFORE INSERT OR UPDATE ON public.perception_entries
   FOR EACH ROW
@@ -191,6 +204,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS perception_entries_character_stats ON public.perception_entries;
 CREATE TRIGGER perception_entries_character_stats
   AFTER INSERT OR UPDATE OR DELETE ON public.perception_entries
   FOR EACH ROW
@@ -199,5 +213,6 @@ CREATE TRIGGER perception_entries_character_stats
 -- RLS
 ALTER TABLE public.perception_entries ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS perception_entries_user_isolation ON public.perception_entries;
 CREATE POLICY perception_entries_user_isolation ON public.perception_entries
   FOR ALL USING (user_id = auth.uid());

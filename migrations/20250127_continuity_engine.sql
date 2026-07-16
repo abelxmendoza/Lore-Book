@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS public.continuity_events (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table may already exist from 20250102000003 with a different shape.
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS event_type TEXT;
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.continuity_events ADD COLUMN IF NOT EXISTS source_components UUID[] DEFAULT '{}';
+
 -- ============================================
 -- INDEXES (Optimized for Performance)
 -- ============================================
@@ -32,6 +37,11 @@ CREATE INDEX IF NOT EXISTS idx_continuity_events_components_gin ON public.contin
 -- ============================================
 
 ALTER TABLE public.continuity_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS continuity_events_owner_select ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_insert ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_update ON public.continuity_events;
+DROP POLICY IF EXISTS continuity_events_owner_delete ON public.continuity_events;
 
 CREATE POLICY continuity_events_owner_select ON public.continuity_events
   FOR SELECT USING (auth.uid() = user_id);

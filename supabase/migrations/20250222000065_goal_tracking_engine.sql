@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS public.goals (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- Table may already exist from 20250102000006 with a different shape.
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS last_action_at TIMESTAMPTZ;
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS milestones JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS probability FLOAT;
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS dependencies UUID[] DEFAULT '{}';
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS source_id UUID;
+
 -- Goal Insights Table
 -- Stores insights and recommendations about goals
 CREATE TABLE IF NOT EXISTS public.goal_insights (
@@ -57,6 +66,15 @@ CREATE INDEX IF NOT EXISTS idx_goal_insights_timestamp ON public.goal_insights(u
 
 ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.goal_insights ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own goals" ON public.goals;
+DROP POLICY IF EXISTS "Users can insert own goals" ON public.goals;
+DROP POLICY IF EXISTS "Users can update own goals" ON public.goals;
+DROP POLICY IF EXISTS "Users can delete own goals" ON public.goals;
+DROP POLICY IF EXISTS "Users can view own goal insights" ON public.goal_insights;
+DROP POLICY IF EXISTS "Users can insert own goal insights" ON public.goal_insights;
+DROP POLICY IF EXISTS "Users can update own goal insights" ON public.goal_insights;
+DROP POLICY IF EXISTS "Users can delete own goal insights" ON public.goal_insights;
 
 -- Users can only see their own goals
 CREATE POLICY "Users can view own goals"

@@ -10,6 +10,9 @@ create table if not exists public.engine_dependencies (
   constraint engine_dependencies_no_self_reference check (engine_name <> depends_on)
 );
 
+-- Table may already exist from 20250223000077 without updated_at.
+alter table public.engine_dependencies add column if not exists updated_at timestamptz default now();
+
 create index if not exists idx_engine_dependencies_engine_name
   on public.engine_dependencies(engine_name);
 
