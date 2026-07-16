@@ -243,6 +243,98 @@
   transform-origin: center;
 }
 
+/*
+ * Selected thread — purple neon ONLY on the outer border ring.
+ * Masked ::before so the fill stays clear; light spins clockwise.
+ */
+.chat-thread-active-shell {
+  --neon-angle: 0deg;
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  box-shadow: none;
+}
+
+.chat-thread-active-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px; /* ring thickness */
+  pointer-events: none;
+  z-index: 0;
+  background: conic-gradient(
+    from var(--neon-angle),
+    #2e1065 0%,
+    #581c87 10%,
+    #9a4dff 24%,
+    #e9d5ff 32%,
+    #a855f7 40%,
+    #7e22ce 55%,
+    #2e1065 70%,
+    #581c87 85%,
+    #2e1065 100%
+  );
+  /* Punch out the interior — only the outer outline remains */
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  box-shadow:
+    0 0 6px rgba(154, 77, 255, 0.65),
+    0 0 14px rgba(168, 85, 247, 0.35);
+  animation:
+    neonBorderSpin 2.4s linear infinite,
+    neonGlowPulse 2.8s ease-in-out infinite;
+}
+
+.chat-thread-active-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.chat-thread-active-shell-collapsed {
+  --neon-angle: 0deg;
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  box-shadow: none;
+}
+
+.chat-thread-active-shell-collapsed::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  z-index: 0;
+  background: conic-gradient(
+    from var(--neon-angle),
+    #2e1065 0%,
+    #9a4dff 28%,
+    #e9d5ff 40%,
+    #7e22ce 62%,
+    #2e1065 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  box-shadow: 0 0 8px rgba(154, 77, 255, 0.55);
+  animation: neonBorderSpin 2.2s linear infinite;
+}
+
 /* ─── Bubble styling ─── */
 
 .chat-message {
@@ -677,6 +769,10 @@
   .chat-thread-enter,
   .chat-thread-bump,
   .chat-thread-active-bar,
+  .chat-thread-active-shell,
+  .chat-thread-active-shell::before,
+  .chat-thread-active-shell-collapsed,
+  .chat-thread-active-shell-collapsed::before,
   .chat-bubble-streaming,
   .chat-bubble-streaming::before,
   .chat-avatar-thinking,

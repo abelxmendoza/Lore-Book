@@ -4,6 +4,7 @@ import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
 import { isGenericThreadTitle, resolveThreadDisplayTitle } from '../utils/threadTitleUtils';
 import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
+import { sortThreadsChronologically, threadActivityMs } from '../utils/sortThreadsChronologically';
 import { useThreadExplorer } from '../hooks/useThreadExplorer';
 import type { ThreadExploreHit } from '../../../api/threadExplorer';
 import { lexicalRescanApi, type KeywordRescanSummary } from '../../../api/lexicalRescan';
@@ -39,8 +40,8 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function formatTimestamp(updatedAt: string): string {
-  const d = new Date(updatedAt);
+function formatActivityTimestamp(thread: ChatThread): string {
+  const d = new Date(threadActivityMs(thread) || thread.updatedAt);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMin = diffMs / 60_000;
@@ -76,7 +77,7 @@ function groupThreadsByDate(threads: ChatThread[]): ThreadGroup[] {
   };
 
   for (const t of threads) {
-    const ts = new Date(t.updatedAt).getTime();
+    const ts = threadActivityMs(t) || new Date(t.updatedAt).getTime();
     if (ts >= todayStart) buckets['Today'].push(t);
     else if (ts >= yesterdayStart) buckets['Yesterday'].push(t);
     else if (ts >= weekStart) buckets['Previous 7 days'].push(t);
@@ -195,25 +196,21 @@ function ThreadItem({
     if (dx > 8 || dy > 8) cancelLongPress();
   };
 
-  // Delete with inline confirmation on mobile, direct on desktop
+  // Delete with inline confirmation (two-tap on desktop + mobile)
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isMobile) {
-      if (!confirmingDelete) {
-        setConfirmingDelete(true);
-        confirmDeleteTimer.current = setTimeout(() => {
-          setConfirmingDelete(false);
-          confirmDeleteTimer.current = null;
-        }, 3000);
-      } else {
-        if (confirmDeleteTimer.current) {
-          clearTimeout(confirmDeleteTimer.current);
-          confirmDeleteTimer.current = null;
-        }
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      confirmDeleteTimer.current = setTimeout(() => {
         setConfirmingDelete(false);
-        onDelete(e);
-      }
+        confirmDeleteTimer.current = null;
+      }, 3000);
     } else {
+      if (confirmDeleteTimer.current) {
+        clearTimeout(confirmDeleteTimer.current);
+        confirmDeleteTimer.current = null;
+      }
+      setConfirmingDelete(false);
       onDelete(e);
     }
   };
@@ -258,7 +255,7 @@ function ThreadItem({
         className={cn(
           'group flex items-center gap-1 rounded-lg cursor-pointer transition-all duration-200 min-h-[44px] sm:min-h-0',
           isActive
-            ? 'bg-primary/[0.13] text-white shadow-sm shadow-primary/5'
+            ? 'chat-thread-active-shell text-white'
             : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90 hover:translate-x-0.5'
         )}
       >
@@ -350,7 +347,7 @@ function ThreadItem({
             <p className={cn(
               'text-[10px] mt-0.5',
               isActive ? 'text-white/50' : 'text-white/25'
-            )}>{formatTimestamp(thread.updatedAt)}</p>
+            )}>{formatActivityTimestamp(thread)}</p>
           </div>
         </button>
 
@@ -374,11 +371,11 @@ function ThreadItem({
             onClick={handleDeleteClick}
             className={cn(
               'transition-all touch-manipulation rounded',
-              isMobile
-                ? confirmingDelete
-                  ? 'flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/20 border border-red-500/40 min-h-[36px]'
-                  : 'p-2 text-white/25 hover:text-red-400 hover:bg-red-500/10'
-                : 'p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10'
+              confirmingDelete
+                ? 'flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/20 border border-red-500/40 min-h-[36px]'
+                : isMobile
+                  ? 'p-2 text-white/25 hover:text-red-400 hover:bg-red-500/10'
+                  : 'p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10'
             )}
             aria-label={confirmingDelete ? 'Confirm delete' : 'Delete thread'}
           >
@@ -531,25 +528,29 @@ export const ChatThreadList = ({
     }
   };
 
-  const baseThreads: ChatThread[] = exploreActive
-    ? exploreHits.map(hit => {
-        const existing = threads.find(t => t.id === hit.threadId);
-        return existing ?? {
-          id: hit.threadId,
-          title: hit.title,
-          subtitle: hit.subtitle,
-          dominantEntities: hit.entities,
-          messages: [],
-          updatedAt: hit.updatedAt,
-        };
-      })
-    : searchQuery.trim()
-      ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
-      : threads;
+  const displayThreads: ChatThread[] = useMemo(() => {
+    const base: ChatThread[] = exploreActive
+      ? exploreHits.map(hit => {
+          const existing = threads.find(t => t.id === hit.threadId);
+          return existing ?? {
+            id: hit.threadId,
+            title: hit.title,
+            subtitle: hit.subtitle,
+            dominantEntities: hit.entities,
+            messages: [],
+            updatedAt: hit.updatedAt,
+          };
+        })
+      : searchQuery.trim()
+        ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+        : threads;
 
-  const displayThreads: ChatThread[] = castFilter
-    ? baseThreads.filter((t) => castFilter.threadIds.has(t.id))
-    : baseThreads;
+    const filtered = castFilter
+      ? base.filter((t) => castFilter.threadIds.has(t.id))
+      : base;
+
+    return sortThreadsChronologically(filtered);
+  }, [exploreActive, exploreHits, threads, searchQuery, castFilter]);
 
   const groups = groupThreadsByDate(displayThreads);
   const titleLabels = useMemo(
@@ -769,7 +770,7 @@ export const ChatThreadList = ({
             >
               <MessageSquarePlus className="h-4 w-4" />
             </button>
-            {threads.slice(0, 8).map((t) => (
+            {sortThreadsChronologically(threads).slice(0, 8).map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -778,7 +779,7 @@ export const ChatThreadList = ({
                 className={cn(
                   'p-2 rounded-lg transition-colors touch-manipulation',
                   currentThreadId === t.id
-                    ? 'bg-primary/[0.13] text-primary ring-1 ring-primary/20'
+                    ? 'chat-thread-active-shell-collapsed text-primary'
                     : 'text-white/35 hover:text-white/80 hover:bg-white/[0.06]'
                 )}
               >
