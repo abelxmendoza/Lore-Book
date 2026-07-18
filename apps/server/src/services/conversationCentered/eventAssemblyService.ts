@@ -28,6 +28,8 @@ import {
   isPublishableLifeLogTitle,
 } from '../events/lifeLogEligibilityPolicy';
 import { maintainLifeLogForUser } from '../events/lifeLogMaintenanceService';
+import { findBestDuplicate, MAX_MERGE_GAP_MS } from '../chronologyV2/eventCanonicalization';
+import { tokenizeTerms } from '../chronologyV2/narrativeCohesion';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -383,6 +385,58 @@ export class EventAssemblyService {
       return existingByFp as typeof existingByFp;
     }
 
+    // People rows in omega_entities are typed PERSON at extraction time but
+    // legacy rows hold CHARACTER — resolution returns whichever the row has,
+    // so both count as participants.
+    const peopleIds = [...new Set(ingestionResult.entities
+      .filter(e => e.type === 'PERSON' || e.type === 'CHARACTER')
+      .map(e => e.id))];
+    const locationIds = [...new Set(ingestionResult.entities
+      .filter(e => e.type === 'LOCATION')
+      .map(e => e.id))];
+
+    // Paraphrase-level canonicalization: the canonical_event_key match above
+    // only catches replays that regenerate the same key. Re-extractions that
+    // re-word the same occurrence ("Testing the app" / "Building the app")
+    // produce different keys, so compare structured fingerprints against
+    // nearby events with the same math the read-time stitcher uses. Gated on
+    // a publishable title so generic shells ("Captured Conversation") never
+    // merge distinct conversations, and on an anchored start time because
+    // fingerprint similarity is meaningless without one.
+    if (publishable && evidence.start) {
+      const startMs = new Date(evidence.start).getTime();
+      const { data: nearby } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, start_time, end_time, people, locations, activities, metadata')
+        .eq('user_id', userId)
+        .gte('start_time', new Date(startMs - MAX_MERGE_GAP_MS).toISOString())
+        .lte('start_time', new Date(startMs + MAX_MERGE_GAP_MS).toISOString())
+        .limit(50);
+      const duplicate = findBestDuplicate(
+        { id: 'incoming', title, summary: what, time: evidence.start, peopleIds, locationIds },
+        (nearby ?? []).map(row => ({
+          id: row.id as string,
+          title: (row.title ?? '') as string,
+          summary: (row.summary ?? '') as string,
+          time: (row.start_time ?? '') as string,
+          peopleIds: (row.people ?? []) as string[],
+          locationIds: (row.locations ?? []) as string[],
+          activityIds: (row.activities ?? []) as string[],
+          row,
+        })),
+      );
+      if (duplicate) {
+        return await this.absorbDuplicateEvent(userId, duplicate.match.row, {
+          title,
+          what,
+          peopleIds,
+          locationIds,
+          unitGroup,
+          similarity: duplicate.similarity,
+        });
+      }
+    }
+
     // Create resolved event
     const { data: event, error } = await supabaseAdmin
       .from('resolved_events')
@@ -400,13 +454,9 @@ export class EventAssemblyService {
         temporal_confidence: evidence.confidence,
         temporal_expression: evidence.expression,
         temporal_status: evidence.status,
-        people: ingestionResult.entities
-          .filter(e => e.type === 'PERSON')
-          .map(e => e.id),
-        locations: ingestionResult.entities
-          .filter(e => e.type === 'LOCATION')
-          .map(e => e.id),
-        activities: [], // Can be extracted from activities
+        people: peopleIds,
+        locations: locationIds,
+        activities: [], // no activity registry to reference yet; similarity math renormalizes around it
         confidence: 0.8,
         source_fingerprint: sourceFingerprint,
         extractor_version: EVENT_EXTRACTOR_VERSION,
@@ -592,6 +642,101 @@ export class EventAssemblyService {
   /**
    * Update existing event with new units (refinement)
    */
+  /**
+   * Write-time merge: the incoming assembly re-described an occurrence that
+   * already has a row, so absorb it instead of inserting a paraphrase
+   * duplicate. Keeps the more informative title and the richer summary,
+   * unions entity ids and unit links, and records the merge on
+   * metadata.write_time_merges.
+   */
+  private async absorbDuplicateEvent(
+    userId: string,
+    existing: {
+      id: string;
+      title: string | null;
+      summary: string | null;
+      start_time: string | null;
+      end_time: string | null;
+      people: string[] | null;
+      locations: string[] | null;
+      metadata: Record<string, unknown> | null;
+    },
+    incoming: {
+      title: string;
+      what: string;
+      peopleIds: string[];
+      locationIds: string[];
+      unitGroup: ExtractedUnit[];
+      similarity: number;
+    },
+  ): Promise<EventAssemblyResult> {
+    const existingTitle = existing.title ?? '';
+    const title = tokenizeTerms(incoming.title).size > tokenizeTerms(existingTitle).size
+      ? incoming.title
+      : existingTitle;
+    const existingSummary = existing.summary ?? '';
+    const summary = incoming.what.length > existingSummary.length ? incoming.what : existingSummary;
+    const people = [...new Set([...(existing.people ?? []), ...incoming.peopleIds])];
+    const locations = [...new Set([...(existing.locations ?? []), ...incoming.locationIds])];
+
+    const priorMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+    const priorUnits = (priorMetadata.assembled_from_units as string[] | undefined) ?? [];
+    const unitIds = incoming.unitGroup.map(u => u.id).filter(Boolean);
+    const allUnitIds = [...new Set([...priorUnits, ...unitIds])];
+    const priorMerges = (priorMetadata.write_time_merges as unknown[] | undefined) ?? [];
+
+    const { error } = await supabaseAdmin
+      .from('resolved_events')
+      .update({
+        title,
+        summary,
+        people,
+        locations,
+        metadata: {
+          ...priorMetadata,
+          assembled_from_units: allUnitIds,
+          write_time_merges: [
+            ...priorMerges,
+            {
+              at: new Date().toISOString(),
+              similarity: Number(incoming.similarity.toFixed(3)),
+              absorbed_title: incoming.title,
+              unit_ids: unitIds,
+            },
+          ],
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, userId, eventId: existing.id }, 'eventAssembly: duplicate absorb update failed');
+      throw error;
+    }
+
+    for (const unit of incoming.unitGroup) {
+      await supabaseAdmin.from('event_unit_links').upsert(
+        { event_id: existing.id, unit_id: unit.id },
+        { onConflict: 'event_id,unit_id', ignoreDuplicates: true },
+      );
+    }
+
+    logger.info(
+      { userId, eventId: existing.id, similarity: incoming.similarity, absorbedTitle: incoming.title },
+      'eventAssembly: absorbed paraphrase duplicate into existing event',
+    );
+
+    return {
+      event_id: existing.id,
+      title,
+      who: people,
+      what: summary,
+      where: locations[0] ?? null,
+      when: existing.start_time ? { start: existing.start_time, end: existing.end_time } : null,
+      source_unit_ids: allUnitIds,
+    };
+  }
+
   private async updateExistingEvent(
     userId: string,
     eventId: string,

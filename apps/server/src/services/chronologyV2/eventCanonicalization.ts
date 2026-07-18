@@ -59,7 +59,8 @@ export interface MergeLogEntry {
 export const MERGE_THRESHOLD = 0.6;
 
 /** Never compare events further apart than this. */
-const MAX_GAP_MS = 7 * 86_400_000;
+export const MAX_MERGE_GAP_MS = 7 * 86_400_000;
+const MAX_GAP_MS = MAX_MERGE_GAP_MS;
 const DAY_MS = 86_400_000;
 
 // Feature weights; renormalized over the features that are known.
@@ -195,6 +196,29 @@ export function clusterDuplicateEvents<T extends CanonicalizableEvent>(
       mergedTitles,
     };
   });
+}
+
+/**
+ * Best duplicate for one incoming event, or null when nothing clears
+ * MERGE_THRESHOLD. Write-time complement of clusterDuplicateEvents: lets the
+ * ingestion path ask "does this occurrence already exist?" with the same
+ * fingerprint math the read-time stitcher uses.
+ */
+export function findBestDuplicate<T extends CanonicalizableEvent>(
+  incoming: CanonicalizableEvent,
+  candidates: T[],
+): { match: T; similarity: number } | null {
+  let best: T | null = null;
+  let bestSim = 0;
+  for (const candidate of candidates) {
+    if (candidate.id === incoming.id) continue;
+    const sim = fingerprintSimilarity(incoming, candidate);
+    if (sim > bestSim) {
+      bestSim = sim;
+      best = candidate;
+    }
+  }
+  return best && bestSim >= MERGE_THRESHOLD ? { match: best, similarity: bestSim } : null;
 }
 
 export function buildMergeLog(

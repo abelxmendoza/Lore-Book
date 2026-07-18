@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   clusterDuplicateEvents,
   fingerprintSimilarity,
+  findBestDuplicate,
   buildMergeLog,
   MERGE_THRESHOLD,
   type CanonicalizableEvent,
@@ -121,6 +122,31 @@ describe('clusterDuplicateEvents', () => {
     expect(clusters).toHaveLength(1);
     expect(clusters[0].title).toBe(UNRELATED.title);
     expect(clusters[0].mergedTitles).toEqual([]);
+  });
+});
+
+describe('findBestDuplicate', () => {
+  const incoming = ev(
+    'incoming',
+    "Testing OrbitPad at Grandma Nell's",
+    "Another pass testing the OrbitPad app over at Grandma Nell's house.",
+    '2026-06-03T17:00:00Z',
+    { peopleIds: [NELL_ID], locationIds: [HOUSE_ID] },
+  );
+
+  it('returns the best-matching existing event above the merge threshold', () => {
+    const result = findBestDuplicate(incoming, [...DUPLICATES, UNRELATED]);
+    expect(result).not.toBeNull();
+    expect(result!.similarity).toBeGreaterThanOrEqual(MERGE_THRESHOLD);
+    expect(['e-a', 'e-b']).toContain(result!.match.id);
+  });
+
+  it('returns null when nothing clears the threshold', () => {
+    expect(findBestDuplicate(incoming, [UNRELATED])).toBeNull();
+  });
+
+  it('never matches an event against itself', () => {
+    expect(findBestDuplicate(DUPLICATES[0], [DUPLICATES[0]])).toBeNull();
   });
 });
 
