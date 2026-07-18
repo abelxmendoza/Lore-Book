@@ -4,6 +4,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { stitchedTimelineService } from './stitchedTimelineService';
 
 export type CalendarPresence = 'attended' | 'heard_about' | 'unknown';
 
@@ -16,6 +17,11 @@ export type CalendarDayItem = {
   temporalRole?: string;
   lifeArcId?: string;
   body?: string;
+  sourceKind?: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceId?: string;
+  sourceIds?: string[];
+  sourceType?: string;
+  tags?: string[];
 };
 
 export type CalendarOccasion = {
@@ -63,7 +69,10 @@ export class CalendarAggregationService {
     const startDay = start.slice(0, 10);
     const endDay = end.slice(0, 10);
 
-    const [occasionsRes, eventsRes, momentsRes, linksRes] = await Promise.all([
+    // Calendar is a date projection of the same canonical feed used by the
+    // Omni Events, Swimlanes, Story, and search views. This prevents each
+    // surface from independently deduplicating or omitting source records.
+    const [occasionsRes, stitched, linksRes] = await Promise.all([
       supabaseAdmin
         .from('life_arcs')
         .select('id, title, summary, start_date, metadata, confidence')
@@ -72,20 +81,11 @@ export class CalendarAggregationService {
         .gte('start_date', startDay)
         .lte('start_date', endDay)
         .gte('confidence', 0.5),
-      supabaseAdmin
-        .from('resolved_events')
-        .select('id, title, summary, start_time, end_time, metadata')
-        .eq('user_id', userId)
-        .gte('start_time', start)
-        .lte('start_time', end)
-        .order('start_time', { ascending: true }),
-      supabaseAdmin
-        .from('journal_entries')
-        .select('id, content, date')
-        .eq('user_id', userId)
-        .gte('date', start)
-        .lte('date', end)
-        .order('date', { ascending: true }),
+      stitchedTimelineService.getStitchedTimeline(userId, {
+        scope_type: 'global',
+        start_time: startDay,
+        end_time: endDay,
+      }),
       supabaseAdmin
         .from('arc_event_links')
         .select('arc_id, resolved_event_id, journal_entry_id, user_presence, temporal_role, sort_time')
@@ -99,16 +99,7 @@ export class CalendarAggregationService {
     }
 
     const occasions = occasionsRes.data ?? [];
-    const events = eventsRes.data ?? [];
-    const moments = momentsRes.data ?? [];
     const links = linksRes.data ?? [];
-
-    const linkedEventIds = new Set(
-      links.filter(l => l.resolved_event_id).map(l => l.resolved_event_id as string)
-    );
-    const linkedJournalIds = new Set(
-      links.filter(l => l.journal_entry_id).map(l => l.journal_entry_id as string)
-    );
 
     const daysMap = new Map<string, CalendarDay>();
 
@@ -142,7 +133,7 @@ export class CalendarAggregationService {
       });
       day.concurrentOccasions = day.occasions.length;
       day.items.push({
-        id: `occasion-${o.id}`,
+        id: `occasion:${o.id}`,
         kind: 'occasion',
         title: o.title,
         sortTime: `${date}T12:00:00.000Z`,
@@ -152,75 +143,36 @@ export class CalendarAggregationService {
       });
     }
 
-    for (const e of events) {
-      const date = dayKey(e.start_time);
-      const day = ensureDay(date);
-      const presence = presenceFromMeta(e.metadata as Record<string, unknown>);
-      if (linkedEventIds.has(e.id)) continue;
-      day.items.push({
-        id: `event-${e.id}`,
-        kind: 'event',
-        title: e.title,
-        sortTime: e.start_time,
-        userPresence: presence,
-        body: e.summary ?? undefined,
+    for (const item of stitched.items) {
+      const link = links.find((candidate) => {
+        const linkedId = item.sourceKind === 'journal_entry'
+          ? candidate.journal_entry_id
+          : item.sourceKind === 'resolved_event'
+            ? candidate.resolved_event_id
+            : null;
+        return Boolean(linkedId && item.sourceIds.includes(linkedId));
       });
-      if (presence === 'attended') day.attendedCount++;
-      else if (presence === 'heard_about') day.heardAboutCount++;
-    }
-
-    for (const m of moments) {
-      const sortTime = m.date ?? '';
-      if (!sortTime) continue;
+      const sortTime = link?.sort_time ?? item.sortTime;
       const date = dayKey(sortTime);
       const day = ensureDay(date);
-      if (linkedJournalIds.has(m.id)) continue;
-      const preview = m.content.replace(/\s+/g, ' ').trim().slice(0, 72);
+      const presence = (link?.user_presence as CalendarPresence | undefined)
+        ?? item.userPresence
+        ?? (item.sourceKind === 'journal_entry' ? 'attended' : 'unknown');
       day.items.push({
-        id: `moment-${m.id}`,
-        kind: 'moment',
-        title: preview,
+        id: item.id,
+        kind: item.kind,
+        title: item.title,
         sortTime,
-        userPresence: 'attended',
-        body: m.content,
+        userPresence: presence,
+        temporalRole: link?.temporal_role ?? item.temporalRole,
+        lifeArcId: link?.arc_id ?? undefined,
+        body: item.body || undefined,
+        sourceKind: item.sourceKind,
+        sourceId: item.sourceId,
+        sourceIds: item.sourceIds,
+        sourceType: item.sourceType,
+        tags: item.tags,
       });
-    }
-
-    for (const link of links) {
-      const date = link.sort_time ? dayKey(link.sort_time) : startDay;
-      const day = ensureDay(date);
-      const presence = (link.user_presence as CalendarPresence) ?? 'unknown';
-      if (link.resolved_event_id) {
-        const ev = events.find(e => e.id === link.resolved_event_id);
-        if (ev && !day.items.some(i => i.id === `event-${ev.id}`)) {
-          day.items.push({
-            id: `event-${ev.id}`,
-            kind: 'event',
-            title: ev.title,
-            sortTime: link.sort_time ?? ev.start_time,
-            userPresence: presence,
-            temporalRole: link.temporal_role ?? undefined,
-            lifeArcId: link.arc_id,
-            body: ev.summary ?? undefined,
-          });
-        }
-      }
-      if (link.journal_entry_id) {
-        const je = moments.find(j => j.id === link.journal_entry_id);
-        if (je && !day.items.some(i => i.id === `moment-${je.id}`)) {
-          const preview = je.content.replace(/\s+/g, ' ').trim().slice(0, 72);
-          day.items.push({
-            id: `moment-${je.id}`,
-            kind: 'moment',
-            title: preview,
-            sortTime: link.sort_time ?? je.date ?? '',
-            userPresence: presence,
-            temporalRole: link.temporal_role ?? undefined,
-            lifeArcId: link.arc_id,
-            body: je.content,
-          });
-        }
-      }
       if (presence === 'attended') day.attendedCount++;
       else if (presence === 'heard_about') day.heardAboutCount++;
     }

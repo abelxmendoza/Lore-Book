@@ -22,6 +22,9 @@ export function buildMockStitchedTimeline(options?: {
     userSortIndex: index,
     title: formatTitle(event.start_time),
     body: event.content,
+    sourceKind: 'journal_entry',
+    sourceIds: [event.id],
+    sourceType: 'demo',
     userPresence: 'attended',
   }));
 

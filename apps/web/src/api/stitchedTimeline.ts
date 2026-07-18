@@ -10,8 +10,26 @@ export type StitchedTimelineItem = {
   userSortIndex: number | null;
   title: string;
   body: string;
+  confidence?: number;
+  sourceKind: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceIds: string[];
+  sourceType: string;
+  tags?: string[];
   userPresence?: 'attended' | 'heard_about' | 'unknown';
   temporalRole?: string;
+  /** Narrative cohesion score vs. the arc's anchor (0–100), when gated. */
+  cohesion?: number;
+  /** Number of extracted duplicates collapsed into this canonical event. */
+  mergedCount?: number;
+  /** Titles of the merged-away duplicates (excludes the shown title). */
+  mergedTitles?: string[];
+};
+
+export type MergeLogEntry = {
+  canonical_id: string;
+  canonical_title: string;
+  merged_ids: string[];
+  merged_titles: string[];
 };
 
 export type StitchedTimelineResult = {
@@ -20,6 +38,12 @@ export type StitchedTimelineResult = {
   scope_label: string | null;
   items: StitchedTimelineItem[];
   has_user_order: boolean;
+  /** Persistent-state facts from the same period — context, not scene events. */
+  background?: StitchedTimelineItem[];
+  /** Same-window items dropped for lacking narrative cohesion with the scene. */
+  excluded_count?: number;
+  /** Duplicate-event merges applied before stitching (canonicalization). */
+  merge_log?: MergeLogEntry[];
 };
 
 export const stitchedTimelineApi = {

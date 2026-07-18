@@ -9,6 +9,21 @@ import { getGlobalMockDataEnabled, getBackendUnavailable, notifyBackendReachable
 // Log backend-down message once per session to avoid console flood
 let backendDownWarned = false;
 
+// Stale-token self-heal: when a request 401s, refresh the Supabase session
+// once and retry. Deduped so a page-load burst of parallel 401s (10+ requests
+// all carrying the same expired token) triggers exactly one refresh call.
+let refreshInFlight: Promise<string | null> | null = null;
+async function refreshAccessTokenOnce(): Promise<string | null> {
+  refreshInFlight ??= supabase.auth
+    .refreshSession()
+    .then(({ data, error }) => (error ? null : data.session?.access_token ?? null))
+    .catch(() => null)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
 export const fetchJson = async <T>(
   input: RequestInfo, 
   init?: RequestInit,
@@ -107,21 +122,39 @@ export const fetchJson = async <T>(
         await acquireCsrfToken(token, apiBaseUrl);
       }
 
-      const headers = addCsrfHeaders({
-        'Content-Type': 'application/json',
-        // The user's IANA timezone rides every request so the server resolves
-        // "yesterday"/"last night" in THEIR day, not the UTC day.
-        'X-User-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        ...(init?.headers ?? {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      });
+      const buildHeaders = (authToken: string | undefined) =>
+        addCsrfHeaders({
+          'Content-Type': 'application/json',
+          // The user's IANA timezone rides every request so the server resolves
+          // "yesterday"/"last night" in THEIR day, not the UTC day.
+          'X-User-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          ...(init?.headers ?? {}),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        });
 
       timeoutId = setTimeout(
         () => controller.abort(),
         options?.timeoutMs ?? config.api.timeout
       );
 
-      const res = await fetch(url, { headers, signal: controller.signal, ...init });
+      let res = await fetch(url, { headers: buildHeaders(token), signal: controller.signal, ...init });
+
+      // 401 with a token usually means the access token expired while the tab
+      // was asleep (session restored from storage as "authenticated", refresh
+      // not landed yet). Refresh once and retry inline — recursing into
+      // fetchJson would deadlock on the in-flight request dedupe.
+      if (res.status === 401 && token) {
+        const freshToken = await refreshAccessTokenOnce();
+        if (freshToken && freshToken !== token) {
+          log.debug(`[Auth] Refreshed stale session, retrying ${urlStr}`);
+          if (timeoutId) clearTimeout(timeoutId);
+          timeoutId = setTimeout(
+            () => controller.abort(),
+            options?.timeoutMs ?? config.api.timeout
+          );
+          res = await fetch(url, { headers: buildHeaders(freshToken), signal: controller.signal, ...init });
+        }
+      }
 
       if (timeoutId) clearTimeout(timeoutId);
 

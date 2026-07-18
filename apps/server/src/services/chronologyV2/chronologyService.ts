@@ -15,6 +15,9 @@ export interface ChronologyEntry {
   content: string;
   timeline_memberships: string[]; // Timeline IDs
   timeline_names?: string[]; // Timeline names (optional, populated by backend)
+  /** Original Life Log source (chat, calendar, manual, etc.). */
+  source_type?: string;
+  tags?: string[];
 }
 
 export interface ChronologyOverlap {
@@ -119,7 +122,7 @@ export class ChronologyService {
           .from('chronology_index')
           .select(`
             *,
-            journal_entries!inner(id, content, user_id)
+            journal_entries!inner(id, content, user_id, source, tags)
           `)
           .eq('user_id', userId)
           .order('start_time', { ascending: true });
@@ -182,6 +185,8 @@ export class ChronologyService {
         time_precision: row.time_precision,
         time_confidence: row.time_confidence || 1.0,
         content: row.journal_entries?.content || '',
+        source_type: row.journal_entries?.source || 'manual',
+        tags: row.journal_entries?.tags || [],
         timeline_memberships: memberships[row.journal_entry_id] || [],
         timeline_names: (memberships[row.journal_entry_id] || []).map((tid: string) => timelineNames[tid] || 'Unknown Timeline')
       }));

@@ -50,6 +50,15 @@ export interface ChronologyEntry {
   content: string;
   timeline_memberships: string[]; // Timeline IDs
   timeline_names?: string[]; // Timeline names (optional, populated by backend)
+  /** Shared identity/provenance when projected from the canonical stitched feed. */
+  source_kind?: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  source_id?: string;
+  source_ids?: string[];
+  source_type?: string;
+  title?: string;
+  tags?: string[];
+  user_presence?: 'attended' | 'heard_about' | 'unknown';
+  temporal_role?: string;
 }
 
 export interface ChronologyOverlap {

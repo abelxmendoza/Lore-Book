@@ -11,6 +11,11 @@ export type CalendarDayItem = {
   temporalRole?: string;
   lifeArcId?: string;
   body?: string;
+  sourceKind?: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceId?: string;
+  sourceIds?: string[];
+  sourceType?: string;
+  tags?: string[];
 };
 
 export type CalendarOccasion = {

@@ -19,12 +19,12 @@ vi.mock('../../hooks/useLifeArcs', () => ({
   })),
 }));
 
-vi.mock('../../hooks/useChronology', () => ({
-  useChronology: vi.fn(() => ({
-    entries: [],
+vi.mock('../../hooks/useStitchedTimeline', () => ({
+  useStitchedTimeline: vi.fn(() => ({
+    items: [],
     loading: false,
     error: null,
-    refetch: vi.fn(),
+    reload: vi.fn(),
   })),
 }));
 
@@ -97,7 +97,7 @@ vi.mock('./GeneratedTimelineReveal', () => ({
 
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs } from '../../hooks/useLifeArcs';
-import { useChronology } from '../../hooks/useChronology';
+import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useAuth } from '../../lib/supabase';
 
@@ -122,11 +122,15 @@ describe('OmniTimeline layout and navigation', () => {
       error: null,
       refresh: vi.fn(),
     });
-    vi.mocked(useChronology).mockReturnValue({
-      entries: [],
+    vi.mocked(useStitchedTimeline).mockReturnValue({
+      data: null,
+      items: [],
       loading: false,
+      saving: false,
       error: null,
-      refetch: vi.fn(),
+      reload: vi.fn(),
+      reorderItems: vi.fn(),
+      persistOrder: vi.fn(),
     });
   });
 
@@ -170,11 +174,15 @@ describe('OmniTimeline layout and navigation', () => {
       error: 'Failed to load life arcs',
       refresh,
     });
-    vi.mocked(useChronology).mockReturnValue({
-      entries: [],
+    vi.mocked(useStitchedTimeline).mockReturnValue({
+      data: null,
+      items: [],
       loading: false,
+      saving: false,
       error: null,
-      refetch,
+      reload: refetch,
+      reorderItems: vi.fn(),
+      persistOrder: vi.fn(),
     });
 
     renderOmniTimeline();

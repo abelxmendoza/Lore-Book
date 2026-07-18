@@ -18,9 +18,22 @@ import { fetchJson } from '../../lib/api';
 import type { BiographySpec, Domain, BiographyTone, BiographyDepth, BiographyAudience } from '../../../server/src/services/biographyGeneration/types';
 import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
 
+/** Prefill for launching the creator from another surface (e.g. a timeline arc). */
+export interface LorebookCreatorPrefill {
+  scope?: 'full_life' | 'domain' | 'time_range' | 'thematic';
+  /** YYYY-MM-DD, used when scope is time_range */
+  timeRangeStart?: string;
+  timeRangeEnd?: string;
+  /** Comma-separated, used when scope is thematic */
+  themes?: string;
+  lorebookName?: string;
+  saveAsCore?: boolean;
+}
+
 interface KnowledgeBaseCreatorProps {
   onGenerated: (biography: any) => void;
   onClose?: () => void;
+  prefill?: LorebookCreatorPrefill;
 }
 
 const DOMAINS: { value: Domain; label: string; description: string }[] = [
@@ -64,18 +77,18 @@ const VERSIONS: { value: 'main' | 'safe' | 'explicit' | 'private'; label: string
   { value: 'private', label: 'Private', description: 'Complete, never published' },
 ];
 
-export const KnowledgeBaseCreator = ({ onGenerated, onClose }: KnowledgeBaseCreatorProps) => {
-  const [scope, setScope] = useState<'full_life' | 'domain' | 'time_range' | 'thematic'>('full_life');
+export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: KnowledgeBaseCreatorProps) => {
+  const [scope, setScope] = useState<'full_life' | 'domain' | 'time_range' | 'thematic'>(prefill?.scope ?? 'full_life');
   const [domain, setDomain] = useState<Domain | undefined>(undefined);
-  const [timeRangeStart, setTimeRangeStart] = useState('');
-  const [timeRangeEnd, setTimeRangeEnd] = useState('');
-  const [themes, setThemes] = useState('');
+  const [timeRangeStart, setTimeRangeStart] = useState(prefill?.timeRangeStart ?? '');
+  const [timeRangeEnd, setTimeRangeEnd] = useState(prefill?.timeRangeEnd ?? '');
+  const [themes, setThemes] = useState(prefill?.themes ?? '');
   const [tone, setTone] = useState<BiographyTone>('neutral');
   const [depth, setDepth] = useState<BiographyDepth>('detailed');
   const [audience, setAudience] = useState<BiographyAudience>('self');
   const [version, setVersion] = useState<'main' | 'safe' | 'explicit' | 'private'>('main');
-  const [lorebookName, setLorebookName] = useState('');
-  const [saveAsCore, setSaveAsCore] = useState(false);
+  const [lorebookName, setLorebookName] = useState(prefill?.lorebookName ?? '');
+  const [saveAsCore, setSaveAsCore] = useState(prefill?.saveAsCore ?? false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

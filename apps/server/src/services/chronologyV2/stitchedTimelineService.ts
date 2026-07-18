@@ -1,6 +1,17 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { chronologyService } from './chronologyService';
+import {
+  buildNarrativeAnchor,
+  attachAnchorEntityNames,
+  classifyCandidate,
+  type CohesionCandidate,
+} from './narrativeCohesion';
+import {
+  clusterDuplicateEvents,
+  buildMergeLog,
+  type MergeLogEntry,
+} from './eventCanonicalization';
 
 export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
@@ -15,9 +26,21 @@ export type StitchedTimelineItem = {
   userSortIndex: number | null;
   title: string;
   body: string;
+  /** Canonical backing record. sourceIds also contains merged aliases. */
+  sourceKind: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceIds: string[];
+  /** Ingestion provenance such as calendar, chat, manual, or resolved_event. */
+  sourceType: string;
+  tags?: string[];
   confidence?: number;
   userPresence?: 'attended' | 'heard_about' | 'unknown';
   temporalRole?: string;
+  /** Narrative cohesion score vs. the arc's anchor (0–100), when gated. */
+  cohesion?: number;
+  /** Number of extracted duplicates collapsed into this canonical event. */
+  mergedCount?: number;
+  /** Titles of the merged-away duplicates (excludes the shown title). */
+  mergedTitles?: string[];
 };
 
 export type StitchedTimelineResult = {
@@ -26,6 +49,12 @@ export type StitchedTimelineResult = {
   scope_label: string | null;
   items: StitchedTimelineItem[];
   has_user_order: boolean;
+  /** Persistent-state facts from the same period — context, not scene events. */
+  background?: StitchedTimelineItem[];
+  /** Same-window items dropped for lacking narrative cohesion with the scene. */
+  excluded_count?: number;
+  /** Duplicate-event merges applied before stitching (canonicalization). */
+  merge_log?: MergeLogEntry[];
 };
 
 function momentTitle(content: string): string {
@@ -76,10 +105,18 @@ async function loadUserOrder(
 async function resolveArcWindow(
   userId: string,
   lifeArcId: string
-): Promise<{ start?: string; end?: string; label: string | null; arc_type?: string; metadata?: Record<string, unknown> }> {
+): Promise<{
+  start?: string;
+  end?: string;
+  label: string | null;
+  arc_type?: string;
+  metadata?: Record<string, unknown>;
+  summary?: string | null;
+  tags?: string[];
+}> {
   const { data: arc } = await supabaseAdmin
     .from('life_arcs')
-    .select('title, start_date, end_date, arc_type, metadata')
+    .select('title, start_date, end_date, arc_type, metadata, summary, tags')
     .eq('user_id', userId)
     .eq('id', lifeArcId)
     .maybeSingle();
@@ -91,7 +128,67 @@ async function resolveArcWindow(
     label: arc.title ?? null,
     arc_type: arc.arc_type ?? undefined,
     metadata: (arc.metadata as Record<string, unknown>) ?? {},
+    summary: arc.summary ?? null,
+    tags: (arc.tags as string[]) ?? [],
   };
+}
+
+/**
+ * Narrative cohesion gate for window-scoped arc timelines.
+ *
+ * The plain date-window branch used to admit everything in the arc's window,
+ * which over-stitched unrelated threads into one scene. Build an anchor from
+ * the arc + its seed-matching events, classify every item, and split the
+ * result into scene / background / excluded. Falls back to the unfiltered
+ * list when no anchor can be established (better complete than wrong).
+ */
+async function applyCohesionGate(
+  userId: string,
+  seed: { title: string; summary?: string | null; tags?: string[] },
+  items: StitchedTimelineItem[],
+  candidatesByKey: Map<string, CohesionCandidate>,
+): Promise<{ scene: StitchedTimelineItem[]; background: StitchedTimelineItem[]; excludedCount: number } | null> {
+  const anchor = buildNarrativeAnchor(seed, [...candidatesByKey.values()]);
+  if (!anchor) return null;
+
+  // Resolve display names for anchor entities so text-only moments that
+  // mention them by name ("went shopping with …") still match.
+  const peopleIds = [...anchor.peopleIds];
+  const locationIds = [...anchor.locationIds];
+  const [charsRes, locsRes] = await Promise.all([
+    peopleIds.length
+      ? supabaseAdmin.from('characters').select('id, name').eq('user_id', userId).in('id', peopleIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+    locationIds.length
+      ? supabaseAdmin.from('locations').select('id, name').eq('user_id', userId).in('id', locationIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+  ]);
+  attachAnchorEntityNames(
+    anchor,
+    (charsRes.data ?? []).map((c) => c.name ?? '').filter(Boolean),
+    (locsRes.data ?? []).map((l) => l.name ?? '').filter(Boolean),
+  );
+
+  const scene: StitchedTimelineItem[] = [];
+  const background: StitchedTimelineItem[] = [];
+  let excludedCount = 0;
+
+  for (const item of items) {
+    const candidate = candidatesByKey.get(item.id);
+    if (!candidate) {
+      scene.push(item);
+      continue;
+    }
+    const verdict = classifyCandidate(anchor, candidate, {
+      userPinned: item.userSortIndex != null,
+    });
+    item.cohesion = verdict.score;
+    if (verdict.cls === 'scene') scene.push(item);
+    else if (verdict.cls === 'background') background.push(item);
+    else excludedCount++;
+  }
+
+  return { scene, background, excludedCount };
 }
 
 async function loadOccasionLinks(userId: string, arcId: string) {
@@ -156,16 +253,21 @@ export class StitchedTimelineService {
     let startTime = opts.start_time;
     let endTime = opts.end_time;
     let scopeLabel: string | null = null;
+    let arcSummary: string | null = null;
+    let arcTags: string[] = [];
     let isOccasionArc = false;
     let isNarrativeConsolidationArc = false;
     let narrativeEventIds: string[] = [];
     let occasionLinks: Awaited<ReturnType<typeof loadOccasionLinks>> = [];
+    let mergeLog: MergeLogEntry[] | undefined;
 
     if (scopeType === 'life_arc' && opts.life_arc_id) {
       const window = await resolveArcWindow(userId, opts.life_arc_id);
       startTime = startTime ?? window.start;
       endTime = endTime ?? window.end;
       scopeLabel = window.label;
+      arcSummary = window.summary ?? null;
+      arcTags = window.tags ?? [];
       isOccasionArc = window.arc_type === 'occasion';
       isNarrativeConsolidationArc =
         window.metadata?.detector === 'narrative_consolidation' ||
@@ -191,7 +293,7 @@ export class StitchedTimelineService {
       (async () => {
         let query = supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata')
+          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags')
           .eq('user_id', userId);
         if (startTime) query = query.gte('start_time', `${startTime}T00:00:00.000Z`);
         if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
@@ -218,10 +320,10 @@ export class StitchedTimelineService {
 
       const [linkedEvents, linkedJournal] = await Promise.all([
         eventIds.length
-          ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata').in('id', eventIds)
+          ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata, tags').in('id', eventIds)
           : Promise.resolve({ data: [] as any[] }),
         journalIds.length
-          ? supabaseAdmin.from('journal_entries').select('id, content, date').in('id', journalIds)
+          ? supabaseAdmin.from('journal_entries').select('id, content, date, source, tags').in('id', journalIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
 
@@ -238,6 +340,10 @@ export class StitchedTimelineService {
             userSortIndex: orderMap.get(key) ?? null,
             title: e.title ?? 'Event',
             body: e.summary ?? '',
+            sourceKind: 'resolved_event',
+            sourceIds: [e.id],
+            sourceType: (((e.metadata ?? {}) as Record<string, unknown>).source_type as string | undefined) ?? 'resolved_event',
+            tags: (e.tags as string[]) ?? [],
             confidence: e.confidence ?? 1,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
             temporalRole: link.temporal_role ?? undefined,
@@ -257,6 +363,10 @@ export class StitchedTimelineService {
             userSortIndex: orderMap.get(key) ?? null,
             title: momentTitle(m.content),
             body: m.content,
+            sourceKind: 'journal_entry',
+            sourceIds: [sourceId],
+            sourceType: m.source ?? 'manual',
+            tags: (m.tags as string[]) ?? [],
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'attended',
             temporalRole: link.temporal_role ?? undefined,
           });
@@ -282,6 +392,9 @@ export class StitchedTimelineService {
           userSortIndex: orderMap.get(key) ?? null,
           title: e.title ?? 'Event',
           body: e.summary ?? '',
+          sourceKind: 'resolved_event',
+          sourceIds: [e.id],
+          sourceType: 'resolved_event',
           confidence: e.confidence ?? 1,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           temporalRole: primaryRole,
@@ -289,6 +402,8 @@ export class StitchedTimelineService {
         seenEventIds.add(e.id);
       }
     } else {
+      const candidatesByKey = new Map<string, CohesionCandidate>();
+
       for (const m of moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
@@ -300,24 +415,75 @@ export class StitchedTimelineService {
           userSortIndex: orderMap.get(key) ?? null,
           title: momentTitle(m.content),
           body: m.content,
+          sourceKind: 'journal_entry',
+          sourceIds: [sourceId],
+          sourceType: m.source_type ?? 'manual',
+          tags: m.tags ?? [],
           confidence: m.time_confidence,
+        });
+        candidatesByKey.set(key, {
+          key,
+          kind: 'moment',
+          text: m.content,
+          time: m.start_time,
         });
       }
 
-      for (const e of resolvedRows ?? []) {
-        const key = `event:${e.id}`;
-        seenEventIds.add(e.id);
-        const meta = (e.metadata ?? {}) as Record<string, unknown>;
+      // Canonicalize before stitching: multiple extracted summaries of the
+      // same occurrence collapse to one item; the stitcher never sees
+      // duplicate paraphrases. Identity comes from structured properties
+      // (who/where/what/when), not from generated wording.
+      const clusters = clusterDuplicateEvents(
+        (resolvedRows ?? []).map((e) => ({
+          id: e.id as string,
+          title: (e.title as string) ?? 'Event',
+          summary: (e.summary as string) ?? '',
+          time: e.start_time as string,
+          peopleIds: (e.people as string[]) ?? [],
+          locationIds: (e.locations as string[]) ?? [],
+          activityIds: (e.activities as string[]) ?? [],
+          row: e,
+        })),
+      );
+      mergeLog = buildMergeLog(clusters);
+
+      for (const cluster of clusters) {
+        for (const member of cluster.members) seenEventIds.add(member.id);
+        const canonical = cluster.members.find((m) => m.id === cluster.canonicalId) ?? cluster.members[0];
+        const meta = ((canonical.row as { metadata?: unknown }).metadata ?? {}) as Record<string, unknown>;
+        const key = `event:${cluster.canonicalId}`;
+        const confidence = Math.max(
+          ...cluster.members.map((m) => ((m.row as { confidence?: number }).confidence ?? 1)),
+        );
         items.push({
           id: key,
           kind: 'event',
-          sourceId: e.id,
-          sortTime: e.start_time,
+          sourceId: cluster.canonicalId,
+          sortTime: cluster.time,
           userSortIndex: orderMap.get(key) ?? null,
-          title: e.title ?? 'Event',
-          body: e.summary ?? '',
-          confidence: e.confidence ?? 1,
+          title: cluster.title,
+          body: cluster.summary,
+          sourceKind: 'resolved_event',
+          sourceIds: cluster.members.map((member) => member.id),
+          sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
+          tags: [...new Set(cluster.members.flatMap((member) => {
+            const row = member.row as { tags?: string[] };
+            return row.tags ?? [];
+          }))],
+          confidence,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
+          ...(cluster.members.length > 1
+            ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
+            : {}),
+        });
+        candidatesByKey.set(key, {
+          key,
+          kind: 'event',
+          text: `${cluster.title} ${cluster.summary} ${cluster.mergedTitles.join(' ')}`,
+          time: cluster.time,
+          peopleIds: cluster.peopleIds,
+          locationIds: cluster.locationIds,
+          activityIds: cluster.activityIds,
         });
       }
 
@@ -333,8 +499,41 @@ export class StitchedTimelineService {
           userSortIndex: orderMap.get(key) ?? null,
           title: e.title ?? 'Event',
           body: e.description ?? '',
+          sourceKind: 'timeline_event',
+          sourceIds: [e.id],
+          sourceType: e.source_type ?? 'timeline_event',
           confidence: e.confidence ?? 1,
         });
+        candidatesByKey.set(key, {
+          key,
+          kind: 'event',
+          text: `${e.title ?? ''} ${e.description ?? ''}`,
+          time: sortTime,
+        });
+      }
+
+      // Arc scope only: gate the date-window sweep on narrative cohesion.
+      // Global timelines stay complete — the user asked for everything there.
+      if (scopeType === 'life_arc' && scopeLabel) {
+        const gated = await applyCohesionGate(
+          userId,
+          { title: scopeLabel, summary: arcSummary, tags: arcTags },
+          items,
+          candidatesByKey,
+        );
+        if (gated) {
+          const sortedScene = sortItems(gated.scene);
+          return {
+            scope_type: scopeType,
+            scope_id: scopeId,
+            scope_label: scopeLabel,
+            items: sortedScene,
+            has_user_order: sortedScene.some((i) => i.userSortIndex != null),
+            background: sortItems(gated.background),
+            excluded_count: gated.excludedCount,
+            ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
+          };
+        }
       }
     }
 
@@ -347,6 +546,7 @@ export class StitchedTimelineService {
       scope_label: scopeLabel,
       items: sorted,
       has_user_order: hasUserOrder,
+      ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
     };
   }
 

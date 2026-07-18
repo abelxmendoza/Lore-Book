@@ -239,6 +239,83 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+.omni-date-search {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.omni-date-search__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.omni-date-search__label svg {
+  color: rgba(167, 139, 250, 0.8);
+}
+
+.omni-date-search__controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.omni-date-search__input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.68rem 0.8rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  color-scheme: dark;
+  font-size: 0.8125rem;
+}
+
+.omni-date-search__input:focus {
+  outline: none;
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+.omni-date-search__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.68rem 0.9rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  background: rgba(139, 92, 246, 0.12);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.omni-date-search__submit:hover:not(:disabled) {
+  border-color: rgba(167, 139, 250, 0.55);
+  background: rgba(139, 92, 246, 0.22);
+}
+
+.omni-date-search__submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+@media (max-width: 420px) {
+  .omni-date-search__controls {
+    flex-direction: column;
+  }
+}
+
 .omni-search-chips {
   position: relative;
   display: flex;

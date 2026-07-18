@@ -4,11 +4,11 @@
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useLifeArcs } from '../../hooks/useLifeArcs';
-import { useChronology } from '../../hooks/useChronology';
+import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
+import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useAuth } from '../../lib/supabase';
 import { useGuest } from '../../contexts/GuestContext';
@@ -20,7 +20,6 @@ import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
 import { useGetChaptersQuery } from '../../store/api/loreApi';
-import type { LifeArc } from '../../hooks/useLifeArcs';
 import { TimelineGeneratingSimulation } from './TimelineGeneratingSimulation';
 import { GeneratedTimelineReveal, type GeneratedTimelineEvent } from './GeneratedTimelineReveal';
 import { GeneratedTimelineLibraryPanel } from './GeneratedTimelineLibraryPanel';
@@ -30,6 +29,9 @@ import { useGeneratedTimelinesLibrary } from '../../hooks/useGeneratedTimelinesL
 import type { SavedGeneratedTimeline } from '../../lib/generatedTimelinesLibrary';
 import { OmniTimelineErrorBanner } from './OmniTimelineErrorBanner';
 import { UniversalTimelineSearch } from './UniversalTimelineSearch';
+import { KnowledgeBaseCreator, type LorebookCreatorPrefill } from '../lorebook/KnowledgeBaseCreator';
+import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
+import { filterChronologyByExactDate, stitchedItemsToChronology } from '../../lib/unifiedTimeline';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
@@ -37,7 +39,7 @@ type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
-  { id: 'events',    label: 'Events',    shortLabel: 'Events', Icon: CalendarDays,  desc: 'Moments and events stitched chronologically — drag to reorder' },
+  { id: 'events',    label: 'Events',    shortLabel: 'Events', Icon: CalendarDays,  desc: 'Moments and events stitched chronologically — copyable, with an explicit reorder mode' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
   { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Arc-by-arc narrative reading view' },
 ];
@@ -66,12 +68,15 @@ type OmniTimelineProps = {
 
 export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const urlQuery = searchParams.get('q') ?? '';
   const isMobile = useIsMobile();
   const [view, setView] = useState<View>('swimlanes');
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
+  const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
 
   const [genInput, setGenInput] = useState(urlQuery);
+  const [dateInput, setDateInput] = useState(/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : '');
   const [genQuery, setGenQuery] = useState(urlQuery);
   const [genPhase, setGenPhase] = useState<GenPhase>(urlQuery.trim() ? 'revealed' : 'idle');
   const [genSearchOpen, setGenSearchOpen] = useState(Boolean(urlQuery.trim()));
@@ -95,7 +100,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
 
   const { arcs, activeArcs, arcsByTrack, loading: arcsLoading, error: arcsError, refresh: refreshArcs } = useLifeArcs();
-  const { entries, loading: entriesLoading, error: chronologyError, refetch: refetchChronology } = useChronology();
+  const {
+    items: stitchedItems,
+    loading: entriesLoading,
+    error: chronologyError,
+    reload: refetchChronology,
+  } = useStitchedTimeline({ scope_type: 'global' });
+  const entries = useMemo(
+    () => stitchedItemsToChronology(stitchedItems, user?.id),
+    [stitchedItems, user?.id],
+  );
 
   // Birth-year-anchored life eras (Childhood / Twenties / …). These are the
   // `lifestage-*` chapter candidates produced server-side from resolved event
@@ -127,7 +141,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   const dataError = useMemo(() => {
     if (isDemoMode || loading) return null;
-    return arcsError ?? chronologyError?.message ?? null;
+    return arcsError ?? chronologyError ?? null;
   }, [isDemoMode, loading, arcsError, chronologyError]);
 
   const handleRetryData = useCallback(() => {
@@ -169,14 +183,18 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       }
 
       const terms = query.trim().toLowerCase().split(/\s+/).filter((t) => t.length > 2);
-      const matched = [...entries]
+      const exactDate = /^\d{4}-\d{2}-\d{2}$/.test(query) ? query : null;
+      const candidates = exactDate ? filterChronologyByExactDate(entries, exactDate) : entries;
+      const matched = [...candidates]
         .filter((e) => {
+          if (exactDate) return true;
           if (terms.length === 0) return true;
           const hay = `${e.content ?? ''} ${(e.timeline_names ?? []).join(' ')}`.toLowerCase();
           return terms.some((t) => hay.includes(t));
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
       if (matched.length > 0) return { events: matched, isMock: false };
+      if (exactDate) return { events: [], isMock: false };
       return { events: buildMockGeneratedTimeline(query), isMock: true };
     },
     [entries, isDemoMode]
@@ -221,6 +239,38 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     setStitchedArc(arc);
   }, [isDemoMode, generateFor]);
 
+  // ── LoreBook-from-timeline: open the creator prefilled with the arc's
+  // calendar window so its chapter is compiled from exactly that era. ─────────
+  const handleCreateLorebookFromArc = useCallback((arc: LifeArc) => {
+    if (!arc.start_date) return;
+    setLorebookPrefill({
+      scope: 'time_range',
+      timeRangeStart: arc.start_date.slice(0, 10),
+      timeRangeEnd: (arc.end_date ?? new Date().toISOString()).slice(0, 10),
+      lorebookName: arc.title,
+      saveAsCore: true,
+    });
+  }, []);
+
+  // Generated timelines: use the revealed events' date span when available,
+  // otherwise fall back to a thematic book built from the query itself.
+  const handleCreateLorebookFromReveal = useCallback((events: GeneratedTimelineEvent[], query: string) => {
+    const times = events
+      .map((e) => new Date(e.start_time).getTime())
+      .filter((t) => Number.isFinite(t));
+    if (times.length > 0) {
+      setLorebookPrefill({
+        scope: 'time_range',
+        timeRangeStart: new Date(Math.min(...times)).toISOString().slice(0, 10),
+        timeRangeEnd: new Date(Math.max(...times)).toISOString().slice(0, 10),
+        lorebookName: query,
+        saveAsCore: true,
+      });
+    } else {
+      setLorebookPrefill({ scope: 'thematic', themes: query, lorebookName: query, saveAsCore: true });
+    }
+  }, []);
+
   useEffect(() => {
     if (!isDemoMode || demoLibrarySeededRef.current || savedTimelines.length > 0) return;
     demoLibrarySeededRef.current = true;
@@ -234,12 +284,17 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   }, [isDemoMode, savedTimelines.length, saveTimeline]);
 
   const submitGenSearch = () => generateFor(genInput);
+  const submitDateSearch = () => {
+    if (!dateInput) return;
+    generateFor(dateInput, { forceRegenerate: true, instant: true });
+  };
 
   const closeGeneratedTimeline = () => {
     setGenQuery('');
     setGenInput('');
     setGenPhase('idle');
     setActiveTimelineId(null);
+    setDateInput('');
   };
 
   const handleGenComplete = useCallback(() => {
@@ -340,8 +395,17 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           }}
           onClose={closeGeneratedTimeline}
           onRegenerate={() => generateFor(genQuery, { forceRegenerate: true })}
+          onCreateLorebook={
+            isDemoMode || revealEvents.isMock
+              ? undefined
+              : () => handleCreateLorebookFromReveal(revealEvents.events, genQuery)
+          }
           onEventClick={(e) => {
-            if (!revealEvents.isMock && 'timeline_memberships' in e) {
+            if (
+              !revealEvents.isMock &&
+              'timeline_memberships' in e &&
+              (!e.source_kind || e.source_kind === 'journal_entry')
+            ) {
               openMemory(e);
             }
           }}
@@ -360,6 +424,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             entries={displayEntries}
             loading={loading}
             onOpenArcTimeline={handleOpenArcTimeline}
+            onCreateLorebook={isDemoMode ? undefined : handleCreateLorebookFromArc}
           />
         );
       case 'events':
@@ -497,6 +562,9 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             onSubmit={submitGenSearch}
             onClear={genQuery ? closeGeneratedTimeline : undefined}
             onSuggestionClick={generateFor}
+            dateInput={dateInput}
+            onDateInputChange={setDateInput}
+            onDateSubmit={submitDateSearch}
             variant="desktop"
           />
         )}
@@ -534,6 +602,9 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             onSubmit={submitGenSearch}
             onClear={genQuery ? closeGeneratedTimeline : undefined}
             onSuggestionClick={generateFor}
+            dateInput={dateInput}
+            onDateInputChange={setDateInput}
+            onDateSubmit={submitDateSearch}
             variant="mobile"
             suggestionLimit={5}
           />
@@ -598,6 +669,18 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           lifeArcId={stitchedArc.id}
           scopeLabel={stitchedArc.title}
           onClose={() => setStitchedArc(null)}
+        />
+      )}
+
+      {/* ── LoreBook creator, prefilled from an arc or generated timeline ── */}
+      {lorebookPrefill && (
+        <KnowledgeBaseCreator
+          prefill={lorebookPrefill}
+          onClose={() => setLorebookPrefill(null)}
+          onGenerated={() => {
+            setLorebookPrefill(null);
+            navigate(lorebookLibraryUrl());
+          }}
         />
       )}
     </div>

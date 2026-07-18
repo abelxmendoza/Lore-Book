@@ -93,6 +93,24 @@ export const TimelineStitchedView = ({
                 ? 'Loading…'
                 : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
               {data?.has_user_order && !loading && ' · custom order saved'}
+              {!loading && (data?.excluded_count ?? 0) > 0 && (
+                <span
+                  className="text-white/25"
+                  title="Items from the same period that belong to other stories were left out of this scene"
+                >
+                  {' '}· {data!.excluded_count} unrelated hidden
+                </span>
+              )}
+              {!loading && (data?.merge_log?.length ?? 0) > 0 && (
+                <span
+                  className="text-white/25"
+                  title={data!.merge_log!
+                    .map((m) => `${m.canonical_title} ← ${m.merged_titles.join(' · ')}`)
+                    .join('\n')}
+                >
+                  {' '}· {data!.merge_log!.length} duplicate{data!.merge_log!.length !== 1 ? 's' : ''} merged
+                </span>
+              )}
             </p>
           </div>
           {onClose && (
@@ -115,14 +133,44 @@ export const TimelineStitchedView = ({
         {loading ? (
           <div className="py-16 text-center text-white/40 text-sm animate-pulse">Stitching timeline…</div>
         ) : (
-          <TimelineReorderableList
-            items={items}
-            selectedId={selected?.id}
-            saving={saving}
-            onSelect={handleSelect}
-            onReorder={reorderItems}
-            onSaveOrder={persistOrder}
-          />
+          <>
+            <TimelineReorderableList
+              items={items}
+              selectedId={selected?.id}
+              saving={saving}
+              onSelect={handleSelect}
+              onReorder={reorderItems}
+              onSaveOrder={persistOrder}
+            />
+
+            {/* Persistent-state facts from the same period — context that
+                shapes the scene without being part of it. */}
+            {(data?.background?.length ?? 0) > 0 && (
+              <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3">
+                <h3 className="text-[11px] uppercase tracking-widest font-mono text-white/35 mb-2">
+                  Background during this period
+                </h3>
+                <ul className="space-y-1.5">
+                  {data!.background!.map((bg) => (
+                    <li key={bg.id} className="flex items-start gap-2 text-sm text-white/55">
+                      <span className="text-white/25 mt-0.5 select-none">•</span>
+                      {bg.kind === 'moment' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSelect(bg)}
+                          className="text-left select-text hover:text-white/80 transition-colors leading-relaxed"
+                        >
+                          {bg.title}
+                        </button>
+                      ) : (
+                        <span className="select-text leading-relaxed">{bg.title}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </>
         )}
       </div>
 

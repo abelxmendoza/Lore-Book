@@ -14,7 +14,7 @@
  */
 
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers, BookOpen } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
@@ -36,6 +36,13 @@ import {
   TimelineRulerTick,
 } from './TimelineDateDisplay';
 import { buildSwimlaneAxisTicks, getMonthsBetween } from './timelineRulerTicks';
+import {
+  computeSubLanes,
+  clusterEntries,
+  clusterRangeLabel,
+  type EntryCluster,
+  type SubLaneMap,
+} from './swimlaneOverlap';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -56,46 +63,13 @@ const TRACK_SHORT: Record<ArcTrack, string> = {
 };
 const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
+const ARC_MIN_W     = 6;    // px minimum rendered arc-bar width
+const CLUSTER_PX    = 52;   // px — memory markers closer than this merge into a cluster
 const MIN_ZOOM      = 0.3;
 const MAX_ZOOM      = 8;
 const TRACK_ORDER: ArcTrack[] = ['career', 'relationships', 'creative', 'health', 'inner', 'mixed'];
 
-// ─── Sub-lane layout ─────────────────────────────────────────────────────────
-//
-// Overlapping arcs within the same track are stacked into separate sub-lanes
-// using a greedy interval-scheduling algorithm.
-//
-// Sort arcs by start date, then assign each arc to the first sub-lane whose
-// last arc has already ended. If all lanes are occupied, open a new one.
-//
-// This is O(n log n) due to the sort, O(n·lanes) for lane assignment —
-// lanes is bounded by the maximum number of simultaneously-active arcs, which
-// is typically 1–3 in practice.
-
-type SubLaneMap = Map<string, number>; // arcId → sub-lane index (0-based)
-
-function computeSubLanes(arcs: LifeArc[]): { map: SubLaneMap; count: number } {
-  const sorted = [...arcs]
-    .filter(a => a.start_date)
-    .sort((a, b) => new Date(a.start_date!).getTime() - new Date(b.start_date!).getTime());
-
-  const laneMap: SubLaneMap = new Map();
-  const laneEnds: number[] = []; // end-ms of the last arc assigned to each lane
-
-  for (const arc of sorted) {
-    const start = new Date(arc.start_date!).getTime();
-    const end   = arc.end_date ? new Date(arc.end_date).getTime() : Date.now() + 86_400_000;
-
-    // Find first lane where this arc starts at or after the lane's last-arc end
-    let lane = laneEnds.findIndex(e => start >= e);
-    if (lane === -1) lane = laneEnds.length; // all occupied → open new lane
-
-    laneEnds[lane] = Math.max(laneEnds[lane] ?? 0, end);
-    laneMap.set(arc.id, lane);
-  }
-
-  return { map: laneMap, count: Math.max(1, laneEnds.length) };
-}
+// Sub-lane layout + memory clustering live in ./swimlaneOverlap (unit-tested).
 
 function trackHeight(numLanes: number): number {
   return numLanes * SUBLANE_H;
@@ -133,6 +107,16 @@ function entryTrack(entry: ChronologyEntry, arcs: LifeArc[]): ArcTrack {
   return match?.track ?? 'inner';
 }
 
+function canOpenAsMemory(entry: ChronologyEntry): boolean {
+  return !entry.source_kind || entry.source_kind === 'journal_entry';
+}
+
+function provenanceTable(entry: ChronologyEntry): 'resolved_events' | 'journal_entries' | null {
+  if (entry.source_kind === 'resolved_event') return 'resolved_events';
+  if (entry.source_kind === 'timeline_event') return null;
+  return 'journal_entries';
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 interface ArcBarProps {
@@ -148,8 +132,7 @@ interface ArcBarProps {
 const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: ArcBarProps) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c = TRACK_COLORS[track];
-  const MIN_W = 6;
-  const displayWidth = Math.max(MIN_W, width);
+  const displayWidth = Math.max(ARC_MIN_W, width);
   const isStoryArc = isNarrativeConsolidationArc(arc);
 
   return (
@@ -235,6 +218,48 @@ const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }
   );
 };
 
+interface MemClusterProps {
+  cluster: EntryCluster;
+  selected: boolean;
+  onClick: (cluster: EntryCluster) => void;
+}
+
+const MemClusterMarker = ({ cluster, selected, onClick }: MemClusterProps) => {
+  const rangeLabel = clusterRangeLabel(cluster, formatEventDateCompact);
+
+  return (
+    <button
+      type="button"
+      title={`${cluster.entries.length} memories · ${rangeLabel}`}
+      onClick={() => onClick(cluster)}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        onClick(cluster);
+      }}
+      style={{ position: 'absolute', left: cluster.x, transform: 'translateX(-50%)', top: 6 }}
+      className="flex flex-col items-center gap-0.5 touch-manipulation z-[6]"
+    >
+      <span
+        className={`text-[9px] sm:text-[10px] font-bold font-mono whitespace-nowrap px-1.5 py-0.5 rounded-md border shadow-[0_0_8px_rgba(99,102,241,0.2)] ${
+          selected
+            ? 'text-white border-primary/55 bg-primary/30'
+            : 'text-white border-primary/35 bg-primary/15'
+        }`}
+      >
+        {rangeLabel}
+      </span>
+      <div className={`w-px h-3 ${selected ? 'bg-primary/70' : 'bg-white/25'}`} />
+      <span
+        className={`min-w-[1.375rem] h-[1.375rem] px-1 rounded-full border-2 border-black/50 bg-primary/80 text-white text-[10px] font-bold flex items-center justify-center transition-transform hover:scale-110 ${
+          selected ? 'ring-2 ring-primary/50 scale-105' : ''
+        }`}
+      >
+        {cluster.entries.length}
+      </span>
+    </button>
+  );
+};
+
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
 const Tooltip = ({
@@ -284,6 +309,7 @@ interface TimelineSwimlanesProps {
   entries: ChronologyEntry[];
   loading: boolean;
   onOpenArcTimeline?: (arc: LifeArc) => void;
+  onCreateLorebook?: (arc: LifeArc) => void;
 }
 
 export const TimelineSwimlanes = ({
@@ -292,9 +318,13 @@ export const TimelineSwimlanes = ({
   entries,
   loading,
   onOpenArcTimeline,
+  onCreateLorebook,
 }: TimelineSwimlanesProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
+  // Anchor to keep visually fixed across a zoom change: a content position in
+  // days plus the viewport x it should stay under. Applied after ppd updates.
+  const pendingZoomAnchor = useRef<{ days: number; viewportX: number } | null>(null);
   const isMobile = useIsMobile();
   const { openMemory } = useEntityModal();
   const [zoom, setZoom] = useState(1);
@@ -302,6 +332,7 @@ export const TimelineSwimlanes = ({
   const [hoveredEntry, setHoveredEntry] = useState<ChronologyEntry | null>(null);
   const [selectedArc, setSelectedArc]   = useState<LifeArc | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<ChronologyEntry | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<EntryCluster | null>(null);
   const sortedEntries = useMemo(() => sortEntriesChronologically(entries), [entries]);
 
   const ppd = BASE_PPD * zoom;
@@ -339,13 +370,22 @@ export const TimelineSwimlanes = ({
   );
 
   // ── Sub-lane layout (overlap stacking per track) ────────────────────────────
+  // Zoom-aware: short arcs render at ARC_MIN_W px, so widen intervals to that
+  // rendered footprint before packing to avoid visual collisions at low zoom.
   const subLaneData = useMemo(() => {
+    const minSpanMs = (ARC_MIN_W / ppd) * 86_400_000;
     const result: Partial<Record<ArcTrack, { map: SubLaneMap; count: number }>> = {};
     for (const track of TRACK_ORDER) {
-      result[track] = computeSubLanes(arcsByTrack[track] ?? []);
+      result[track] = computeSubLanes(arcsByTrack[track] ?? [], minSpanMs);
     }
     return result;
-  }, [arcsByTrack]);
+  }, [arcsByTrack, ppd]);
+
+  // ── Memory marker clustering (overlap merging at current zoom) ──────────────
+  const entryClusters = useMemo(
+    () => clusterEntries(sortedEntries, xOf, CLUSTER_PX),
+    [sortedEntries, xOf],
+  );
 
   // Cumulative top-offset per track (since each track has dynamic height)
   const { trackTops, totalTracksHeight } = useMemo(() => {
@@ -359,15 +399,72 @@ export const TimelineSwimlanes = ({
   }, [subLaneData]);
 
   // ── Zoom helpers ─────────────────────────────────────────────────────────────
-  const zoomIn  = () => setZoom(z => Math.min(MAX_ZOOM, +(z * 1.6).toFixed(2)));
-  const zoomOut = () => setZoom(z => Math.max(MIN_ZOOM, +(z / 1.6).toFixed(2)));
-  const zoomReset = () => setZoom(1);
+  // All zoom changes preserve an anchor point (cursor position for wheel-zoom,
+  // viewport center for buttons) so the view doesn't jump when ppd changes.
+  const setZoomAnchored = useCallback((nextZoom: number, anchorClientX?: number) => {
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +nextZoom.toFixed(2)));
+    const el = scrollRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const viewportX = anchorClientX != null
+        ? Math.max(0, Math.min(el.clientWidth, anchorClientX - rect.left))
+        : el.clientWidth / 2;
+      pendingZoomAnchor.current = {
+        days: (el.scrollLeft + viewportX) / ppd,
+        viewportX,
+      };
+    }
+    setZoom(clamped);
+  }, [ppd]);
+
+  const zoomIn    = () => setZoomAnchored(zoom * 1.6);
+  const zoomOut   = () => setZoomAnchored(zoom / 1.6);
+  const zoomReset = () => setZoomAnchored(1);
+  const zoomFit   = () => {
+    const el = scrollRef.current;
+    if (!el || totalDays <= 0) return;
+    setZoomAnchored((el.clientWidth - 60) / (totalDays * BASE_PPD));
+  };
+
+  // Re-apply the anchor once the canvas has been laid out at the new zoom.
+  useEffect(() => {
+    const anchor = pendingZoomAnchor.current;
+    const el = scrollRef.current;
+    if (!anchor || !el) return;
+    pendingZoomAnchor.current = null;
+    const prevBehavior = el.style.scrollBehavior;
+    el.style.scrollBehavior = 'auto'; // jump, don't animate, while re-anchoring
+    el.scrollLeft = Math.max(0, anchor.days * ppd - anchor.viewportX);
+    el.style.scrollBehavior = prevBehavior;
+  }, [ppd]);
+
+  // Ctrl/Cmd + wheel zooms at the cursor. Native listener because React's
+  // synthetic wheel handler is passive and can't preventDefault page zoom.
+  const wheelZoomRef = useRef<(z: number, x?: number) => void>(setZoomAnchored);
+  wheelZoomRef.current = setZoomAnchored;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.002);
+      wheelZoomRef.current(zoomRef.current * factor, e.clientX);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // Re-run once real content mounts — during loading/empty states the
+    // scroll container doesn't exist yet and the listener can't attach.
+  }, [loading, arcs.length, entries.length]);
 
   const handleSelectArc = useCallback((arc: LifeArc) => {
     // Mobile: preview in bottom sheet first; full stitched view via "Full timeline" in sheet.
     if (isMobile && onOpenArcTimeline) {
       setSelectedArc(arc);
       setSelectedEntry(null);
+      setSelectedCluster(null);
       return;
     }
     if (onOpenArcTimeline) {
@@ -376,13 +473,20 @@ export const TimelineSwimlanes = ({
     }
     setSelectedArc(arc);
     setSelectedEntry(null);
+    setSelectedCluster(null);
   }, [onOpenArcTimeline, isMobile]);
 
   const handleSelectEntry = useCallback((entry: ChronologyEntry) => {
-    if (isMobile) setShowEventsList(false);
     setSelectedEntry(entry);
     setSelectedArc(null);
-  }, [isMobile]);
+    setSelectedCluster(null);
+  }, []);
+
+  const handleSelectCluster = useCallback((cluster: EntryCluster) => {
+    setSelectedCluster(prev => (prev?.key === cluster.key ? null : cluster));
+    setSelectedEntry(null);
+    setSelectedArc(null);
+  }, []);
 
   const todayX = xOf(today);
 
@@ -456,22 +560,32 @@ export const TimelineSwimlanes = ({
               aria-label="Zoom out">
               <ZoomOut className="h-4 w-4" />
             </button>
+            <button type="button" onClick={zoomFit}
+              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 flex items-center justify-center touch-manipulation"
+              aria-label="Fit entire timeline">
+              <Maximize2 className="h-4 w-4" />
+            </button>
           </div>
         </div>
       ) : (
         <div className="flex-shrink-0 flex items-center justify-end gap-1 px-4 py-2 border-b border-white/6">
+          <span className="text-[11px] text-white/20 mr-3 hidden lg:inline">⌘/Ctrl + scroll to zoom</span>
           <span className="text-xs text-white/25 font-mono mr-2">{zoom.toFixed(1)}×</span>
-          <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
+          <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out" title="Zoom out"
             className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
-          <button type="button" onClick={zoomReset}
+          <button type="button" onClick={zoomReset} aria-label="Reset zoom" title="Reset zoom"
             className="px-2.5 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono">
             1×
           </button>
-          <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
+          <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in"
             className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
             <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={zoomFit} title="Fit entire timeline"
+            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition flex items-center justify-center">
+            <Maximize2 className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
@@ -607,20 +721,29 @@ export const TimelineSwimlanes = ({
               style={{ top: AXIS_H + totalTracksHeight, height: MEM_H }}
             >
               <div className="absolute inset-0 border-t border-white/6" />
-              {sortedEntries.map(entry => {
-                const x = xOf(entry.start_time);
-                if (x < 0 || x > totalWidth + 30) return null;
-                const track = entryTrack(entry, arcs);
+              {entryClusters.map(cluster => {
+                if (cluster.x < 0 || cluster.x > totalWidth + 30) return null;
+                if (cluster.entries.length === 1) {
+                  const entry = cluster.entries[0];
+                  return (
+                    <MemEvent
+                      key={cluster.key}
+                      entry={entry}
+                      x={cluster.x}
+                      track={entryTrack(entry, arcs)}
+                      selected={selectedEntry?.id === entry.id}
+                      onHover={setHoveredEntry}
+                      onClick={handleSelectEntry}
+                      onTouchSelect={handleSelectEntry}
+                    />
+                  );
+                }
                 return (
-                  <MemEvent
-                    key={entry.id}
-                    entry={entry}
-                    x={x}
-                    track={track}
-                    selected={selectedEntry?.id === entry.id}
-                    onHover={setHoveredEntry}
-                    onClick={handleSelectEntry}
-                    onTouchSelect={handleSelectEntry}
+                  <MemClusterMarker
+                    key={cluster.key}
+                    cluster={cluster}
+                    selected={selectedCluster?.key === cluster.key}
+                    onClick={handleSelectCluster}
                   />
                 );
               })}
@@ -648,7 +771,7 @@ export const TimelineSwimlanes = ({
             onClose={() => setSelectedEntry(null)}
             title={selectedEntry ? formatEventDateShort(selectedEntry.start_time) : undefined}
             footer={
-              selectedEntry ? (
+              selectedEntry && canOpenAsMemory(selectedEntry) ? (
                 <button
                   type="button"
                   onClick={() => openMemory(selectedEntry)}
@@ -663,13 +786,43 @@ export const TimelineSwimlanes = ({
             {selectedEntry && (
               <div className="space-y-4">
                 <p className="text-sm text-white/75 leading-relaxed">{selectedEntry.content}</p>
-                <NarrativeProvenancePanel
-                  sourceTable="journal_entries"
-                  sourceId={selectedEntry.journal_entry_id}
-                  compact
-                  defaultExpanded={false}
-                  title="What supports this memory?"
-                />
+                {provenanceTable(selectedEntry) && (
+                  <NarrativeProvenancePanel
+                    sourceTable={provenanceTable(selectedEntry)!}
+                    sourceId={selectedEntry.source_id ?? selectedEntry.journal_entry_id}
+                    compact
+                    defaultExpanded={false}
+                    title="What supports this memory?"
+                  />
+                )}
+              </div>
+            )}
+          </MobileBottomSheet>
+
+          <MobileBottomSheet
+            open={Boolean(selectedCluster)}
+            onClose={() => setSelectedCluster(null)}
+            title={
+              selectedCluster
+                ? `${selectedCluster.entries.length} memories · ${clusterRangeLabel(selectedCluster, formatEventDateCompact)}`
+                : undefined
+            }
+          >
+            {selectedCluster && (
+              <div className="space-y-2 pb-2">
+                {selectedCluster.entries.map(entry => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => handleSelectEntry(entry)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] active:bg-white/10"
+                  >
+                    <span className="text-[11px] font-mono text-primary/80">
+                      {formatEventDateShort(entry.start_time)}
+                    </span>
+                    <p className="text-sm text-white/75 leading-snug line-clamp-2 mt-0.5">{entry.content}</p>
+                  </button>
+                ))}
               </div>
             )}
           </MobileBottomSheet>
@@ -679,18 +832,35 @@ export const TimelineSwimlanes = ({
             onClose={() => setSelectedArc(null)}
             title={selectedArc?.title}
             footer={
-              selectedArc && onOpenArcTimeline ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenArcTimeline(selectedArc);
-                    setSelectedArc(null);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary/20 border border-primary/40 text-primary text-sm font-semibold active:bg-primary/30"
-                >
-                  <Layers className="h-4 w-4" />
-                  Full timeline
-                </button>
+              selectedArc && (onOpenArcTimeline || onCreateLorebook) ? (
+                <div className="flex gap-2">
+                  {onOpenArcTimeline && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenArcTimeline(selectedArc);
+                        setSelectedArc(null);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-primary/20 border border-primary/40 text-primary text-sm font-semibold active:bg-primary/30"
+                    >
+                      <Layers className="h-4 w-4" />
+                      Full timeline
+                    </button>
+                  )}
+                  {onCreateLorebook && selectedArc.start_date && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCreateLorebook(selectedArc);
+                        setSelectedArc(null);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-sm font-semibold active:bg-amber-500/25"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Create LoreBook
+                    </button>
+                  )}
+                </div>
               ) : undefined
             }
           >
@@ -714,6 +884,41 @@ export const TimelineSwimlanes = ({
         </>
       ) : (
         <>
+      {/* ── Cluster detail panel (desktop) — pick a memory from the group ── */}
+      {selectedCluster && !selectedEntry && !selectedArc && (
+        <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <p className="text-sm font-semibold text-white flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary/80 shrink-0" />
+              {selectedCluster.entries.length} memories · {clusterRangeLabel(selectedCluster, formatEventDateCompact)}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelectedCluster(null)}
+              className="text-white/30 hover:text-white/60 transition text-sm min-h-[32px] min-w-[32px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {selectedCluster.entries.map(entry => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => handleSelectEntry(entry)}
+                className="shrink-0 w-56 text-left px-3 py-2 rounded-lg border border-white/10 bg-white/[0.03] hover:border-primary/40 hover:bg-white/[0.06] transition"
+              >
+                <span className="text-[11px] font-mono text-primary/80">
+                  {formatEventDateShort(entry.start_time)}
+                </span>
+                <p className="text-xs text-white/65 leading-snug line-clamp-2 mt-0.5">{entry.content}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {selectedEntry && !selectedArc && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex-1 min-w-0 w-full">
@@ -723,24 +928,28 @@ export const TimelineSwimlanes = ({
             </p>
             <p className="text-sm text-white/70 leading-relaxed line-clamp-4">{selectedEntry.content}</p>
             <div className="mt-3">
-              <NarrativeProvenancePanel
-                sourceTable="journal_entries"
-                sourceId={selectedEntry.journal_entry_id}
-                compact
-                defaultExpanded={false}
-                title="What supports this memory?"
-              />
+              {provenanceTable(selectedEntry) && (
+                <NarrativeProvenancePanel
+                  sourceTable={provenanceTable(selectedEntry)!}
+                  sourceId={selectedEntry.source_id ?? selectedEntry.journal_entry_id}
+                  compact
+                  defaultExpanded={false}
+                  title="What supports this memory?"
+                />
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
-            <button
-              type="button"
-              onClick={() => openMemory(selectedEntry)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/30 transition-colors min-h-[44px]"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open
-            </button>
+            {canOpenAsMemory(selectedEntry) && (
+              <button
+                type="button"
+                onClick={() => openMemory(selectedEntry)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/30 transition-colors min-h-[44px]"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSelectedEntry(null)}
@@ -787,6 +996,17 @@ export const TimelineSwimlanes = ({
               >
                 <Layers className="h-3.5 w-3.5" />
                 Full timeline
+              </button>
+            )}
+            {onCreateLorebook && selectedArc.start_date && (
+              <button
+                type="button"
+                onClick={() => onCreateLorebook(selectedArc)}
+                title="Generate a LoreBook covering this arc's time range"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium hover:bg-amber-500/25 transition-colors min-h-[44px]"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Create LoreBook
               </button>
             )}
             <button

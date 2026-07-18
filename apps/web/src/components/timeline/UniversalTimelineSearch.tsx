@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { CalendarSearch, Sparkles } from 'lucide-react';
 import './UniversalTimelineSearch.css';
 
 type Props = {
@@ -9,6 +9,9 @@ type Props = {
   onSubmit: () => void;
   onClear?: () => void;
   onSuggestionClick: (query: string) => void;
+  dateInput?: string;
+  onDateInputChange?: (value: string) => void;
+  onDateSubmit?: () => void;
   variant?: 'desktop' | 'mobile';
   suggestionLimit?: number;
 };
@@ -21,6 +24,9 @@ export function UniversalTimelineSearch({
   onSubmit,
   onClear,
   onSuggestionClick,
+  dateInput = '',
+  onDateInputChange,
+  onDateSubmit,
   variant = 'desktop',
   suggestionLimit,
 }: Props) {
@@ -96,6 +102,36 @@ export function UniversalTimelineSearch({
           )}
         </div>
       </form>
+
+      {onDateInputChange && onDateSubmit && (
+        <form
+          className="omni-date-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onDateSubmit();
+          }}
+        >
+          <label className="omni-date-search__label" htmlFor={`omni-date-search-${variant}`}>
+            <CalendarSearch className="h-3.5 w-3.5" />
+            Search by date
+          </label>
+          <div className="omni-date-search__controls">
+            <input
+              id={`omni-date-search-${variant}`}
+              type="date"
+              value={dateInput}
+              onChange={(e) => onDateInputChange(e.target.value)}
+              max="9999-12-31"
+              aria-label="Search timeline by date"
+              className="omni-date-search__input"
+            />
+            <button type="submit" disabled={!dateInput} className="omni-date-search__submit">
+              <CalendarSearch className="h-4 w-4" />
+              Search date
+            </button>
+          </div>
+        </form>
+      )}
 
       {showSuggestions && (
         <SuggestionChips suggestions={visibleSuggestions} onSelect={onSuggestionClick} />

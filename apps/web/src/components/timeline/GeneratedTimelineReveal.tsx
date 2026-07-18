@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  BookOpen,
   ChevronDown,
   ChevronUp,
   X,
@@ -46,6 +47,8 @@ type Props = {
   onRegenerate?: () => void;
   onEventClick?: (event: GeneratedTimelineEvent) => void;
   onArcClick?: (arc: LifeArc) => void;
+  /** Open the LoreBook creator prefilled with this timeline's range/query. */
+  onCreateLorebook?: () => void;
 };
 
 function eventTime(e: GeneratedTimelineEvent): number {
@@ -131,6 +134,7 @@ export function GeneratedTimelineReveal({
   onRegenerate,
   onEventClick,
   onArcClick,
+  onCreateLorebook,
 }: Props) {
   const isMobile = useIsMobile();
 
@@ -225,6 +229,17 @@ export function GeneratedTimelineReveal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
+            {onCreateLorebook && (
+              <button
+                type="button"
+                onClick={onCreateLorebook}
+                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-amber-500/30 text-amber-300/90 text-xs hover:bg-amber-500/10 touch-manipulation"
+                title="Generate a LoreBook from this timeline"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Create LoreBook</span>
+              </button>
+            )}
             {onRegenerate && (
               <button
                 type="button"
