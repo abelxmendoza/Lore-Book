@@ -30,6 +30,16 @@ import {
 import { maintainLifeLogForUser } from '../events/lifeLogMaintenanceService';
 import { findBestDuplicate, MAX_MERGE_GAP_MS } from '../chronologyV2/eventCanonicalization';
 import { tokenizeTerms } from '../chronologyV2/narrativeCohesion';
+import { classifySentence, mayBecomeMoment } from '../narrative/sentenceClassifier';
+import { mayPromoteMomentToEvent } from '../narrative/eventSignificance';
+import { narrativeMomentService } from '../narrative/narrativeMomentService';
+import {
+  assembleScenesFromMoments,
+  linkMomentGraph,
+  type SceneMomentInput,
+} from '../narrative/sceneAssembler';
+import { mayPromoteSceneToEvent, SCENE_EVENT_PROMOTION_THRESHOLD } from '../narrative/sceneSignificance';
+import { narrativeSceneService } from '../narrative/narrativeSceneService';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -123,30 +133,154 @@ export class EventAssemblyService {
       // Group units by temporal and entity proximity
       const eventGroups = this.groupUnitsIntoEvents(experienceUnits);
 
-      // Create or update events
+      // Layered ladder:
+      // Conversation → Moments → Scenes → Canonical Events
+      // Profile facts / states / opinions never become Moments.
       const results: EventAssemblyResult[] = [];
       for (const group of eventGroups) {
-        const sourceText = group.map(unit => unit.content).join(' ');
-        const eligibility = evaluateLifeLogEligibility({ text: sourceText });
-        if (!eligibility.eligible) {
-          logger.info({ userId, reason: eligibility.reason, unitIds: group.map(unit => unit.id) }, 'Life Log candidate rejected');
-          continue;
-        }
-        // Commands such as "Remember that I visited…" may carry a valid event.
-        // Assemble only the autobiographical payload, while the original unit
-        // remains untouched as provenance.
-        const eligibleGroup = group.map(unit => ({
+        const clauseGroup = group.map(unit => ({
           ...unit,
           content: autobiographicalClause(unit.content) || unit.content,
         }));
-        const candidateTitle = this.extractEventTitle(eligibleGroup);
-        if (!isPublishableLifeLogTitle(candidateTitle)) {
-          logger.info({ userId, reason: 'rejected_failed_extraction', candidateTitle, unitIds: group.map(unit => unit.id) }, 'Life Log candidate rejected');
+
+        const eventUnits = clauseGroup.filter(unit => {
+          const classified = classifySentence(unit.content);
+          return mayBecomeMoment(classified.kind);
+        });
+        if (eventUnits.length === 0) {
+          logger.info(
+            { userId, unitIds: group.map(u => u.id) },
+            'Narrative ladder: no EVENT sentences — skipped Moments/Scenes/Events',
+          );
           continue;
         }
-        const event = await this.createOrUpdateEvent(userId, eligibleGroup, threadId);
-        if ((event as { rejected?: boolean }).rejected) continue;
-        results.push(event);
+
+        // 1) Persist Moments (atomic memories)
+        const sceneMomentInputs: SceneMomentInput[] = [];
+        const unitByMomentId = new Map<string, ExtractedUnit>();
+        for (const unit of eventUnits) {
+          const unitClass = classifySentence(unit.content);
+          const unitScore = mayPromoteMomentToEvent({ text: unit.content });
+          const occurredAt =
+            (unit.temporal_context as { start_time?: string } | null)?.start_time ??
+            unit.created_at ??
+            null;
+          const moment = await narrativeMomentService.upsertMoment({
+            userId,
+            summary: unit.content.slice(0, 280),
+            sentenceKind: unitClass.kind,
+            occurredAt,
+            evidenceUnitIds: [unit.id],
+            threadId: threadId ?? null,
+            significanceScore: unitScore.score.total,
+            metadata: {
+              sentence_reason: unitClass.reason,
+              significance: unitScore.score,
+            },
+          });
+          if (!moment?.id) continue;
+          unitByMomentId.set(moment.id, unit);
+          sceneMomentInputs.push({
+            id: moment.id,
+            summary: moment.summary,
+            occurredAt: moment.occurred_at ?? occurredAt,
+            participants: moment.participants ?? [],
+            location: moment.location,
+            significanceScore: moment.significance_score ?? unitScore.score.total,
+            emotions: moment.emotions ?? [],
+          });
+        }
+
+        if (sceneMomentInputs.length === 0) continue;
+
+        // 2) Link moment graph (previous/next/causal neighbors)
+        const graphLinks = linkMomentGraph(sceneMomentInputs);
+        await narrativeSceneService.linkMomentGraph(userId, graphLinks);
+
+        // 3) Assemble Scenes from Moments (continuous experiences)
+        const scenes = assembleScenesFromMoments(sceneMomentInputs);
+
+        for (const assembled of scenes) {
+          const sceneScore = mayPromoteSceneToEvent(assembled);
+          const sceneRow = await narrativeSceneService.upsertScene({
+            userId,
+            scene: assembled,
+            significanceScore: sceneScore.score,
+            threadId: threadId ?? null,
+            metadata: { significance: sceneScore.breakdown },
+          });
+
+          const sceneUnits = assembled.momentIds
+            .map((id) => unitByMomentId.get(id))
+            .filter((u): u is ExtractedUnit => Boolean(u));
+          if (sceneUnits.length === 0) continue;
+
+          const sourceText = assembled.summary || sceneUnits.map((u) => u.content).join(' ');
+          const eligibility = evaluateLifeLogEligibility({
+            text: sourceText,
+            title: assembled.title,
+          });
+          if (!eligibility.eligible) {
+            logger.info(
+              {
+                userId,
+                reason: eligibility.reason,
+                sceneId: sceneRow?.id,
+                momentIds: assembled.momentIds,
+              },
+              'Narrative ladder: Scene saved; Life Log Event rejected',
+            );
+            continue;
+          }
+
+          // 4) Compress Scene → Canonical Event (not Moment → Event)
+          if (!sceneScore.allow) {
+            logger.info(
+              {
+                userId,
+                score: sceneScore.score,
+                threshold: SCENE_EVENT_PROMOTION_THRESHOLD,
+                sceneId: sceneRow?.id,
+                title: assembled.title,
+                momentIds: assembled.momentIds,
+              },
+              'Narrative ladder: Scene below Event significance — Scene only',
+            );
+            continue;
+          }
+
+          const candidateTitle =
+            (assembled.title && isPublishableLifeLogTitle(assembled.title)
+              ? assembled.title
+              : this.extractEventTitle(sceneUnits)) || '';
+          if (!isPublishableLifeLogTitle(candidateTitle)) {
+            logger.info(
+              {
+                userId,
+                reason: 'rejected_failed_extraction',
+                candidateTitle,
+                sceneId: sceneRow?.id,
+                momentIds: assembled.momentIds,
+              },
+              'Narrative ladder: Scene saved; unpublishable Event title',
+            );
+            continue;
+          }
+
+          const event = await this.createOrUpdateEvent(userId, sceneUnits, threadId);
+          if ((event as { rejected?: boolean }).rejected) continue;
+          if (event.event_id) {
+            if (sceneRow?.id) {
+              await narrativeSceneService.markPromoted(userId, sceneRow.id, event.event_id);
+            }
+            await narrativeMomentService.markPromoted(
+              userId,
+              assembled.momentIds,
+              event.event_id,
+            );
+          }
+          results.push(event);
+        }
       }
 
       // Self-heal legacy derived rows as part of normal processing. This is

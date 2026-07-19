@@ -26,7 +26,9 @@ const COMMAND_PREFIX = /^(?:please\s+)?(?:remember(?:\s+that)?|recap|summari[sz]
 const PURE_COMMAND = /^(?:please\s+)?(?:recap|summari[sz]e|do you remember|what do you know|remember this|test(?:ing)?(?:\s+the)?\s+(?:chat|app|response|improvements?)|fix (?:this|the)|generate (?:a )?title)\b/i;
 const GREETING = /^(?:hi|hey|hello|yo|good (?:morning|afternoon|evening))\b[!,.\s]*(?:i(?:'?m| am)\s+[\p{L}'-]+(?:\s+[\p{L}'-]+){0,3})?[!,.\s]*$/iu;
 const AUDIT = /\b(?:reclassified|reclassification|migrated|merged record|cleanup|debug record)\b/i;
-const FAILED_TITLE = /^(?:captured conversation|untitled event|conversation|chat|memory|event|moment)$/i;
+/** Forbidden permanent titles — placeholders must never publish. */
+const FAILED_TITLE =
+  /^(?:captured conversation|untitled(?: event)?|unknown(?: event)?|conversation(?: summary)?|chat|memory|event|moment|event on .{1,24})$/i;
 const WORLD_FACT = /^(?:the\s+)?(?:world cup|weather|news|stock market|election|game|show)\b.*\b(?:is|are|was|were|starts?|happens?|going on)\b/i;
 const PERSONAL_ACTION = /\b(?:i|we)\s+(?:(?:briefly|recently|finally|just)\s+)?(?:went|visited|saw|attended|worked|built|created|designed|developed|fixed|finished|completed|started|began|ended|left|joined|quit|moved|traveled|arrived|stayed|met|dated|broke up|hooked up|slept with|had sex|kissed|argued|fought|listened|played|performed|celebrated|skipped|missed|did not attend|didn't attend|decided not to go)\b/i;
 const CURRENT_VISIT = /\b(?:i(?:'m| am)|we(?:'re| are))\s+(?:here\s+)?at\s+[^.!?]+(?:house|home|place|venue|club|school|work)\b/i;
@@ -115,6 +117,10 @@ export function evaluateLifeLogEligibility(input: {
 export function isPublishableLifeLogTitle(title: string | null | undefined): boolean {
   const value = compact(title ?? '');
   if (!value || FAILED_TITLE.test(value)) return false;
+  if (/\b(?:captured conversation|untitled event|unknown event|conversation summary)\b/i.test(value)) {
+    return false;
+  }
+  if (/^event on \w+/i.test(value)) return false;
   if (/^(?:i|we|hi|hey|damn|wtf|so|well)\b/i.test(value)) return false;
   const words = value.split(/\s+/);
   return words.length >= 2 && words.length <= 12 && !/\b(?:and|or|but|because|so|then|the|a|an)$/i.test(value);
