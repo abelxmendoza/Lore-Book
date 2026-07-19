@@ -167,6 +167,11 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
   });
 
+  it('opens calendar from ?view=calendar deep link', () => {
+    renderOmniTimeline('/timeline?view=calendar');
+    expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  });
+
   it('shows data error banner with retry', async () => {
     const user = userEvent.setup();
     const refresh = vi.fn();

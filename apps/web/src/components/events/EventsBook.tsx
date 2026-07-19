@@ -9,25 +9,15 @@ import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
   Music2, Building2, Briefcase, Plane, Heart, LayoutGrid,
-  CalendarDays, Repeat2, Star, TrendingUp, BookOpen, Milestone, Route, ArrowRight,
+  Repeat2, Star, TrendingUp, BookOpen, Milestone, ArrowRight,
 } from 'lucide-react';
 import {
-  addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
-  format,
   formatDistanceToNow,
-  isSameDay,
-  isSameMonth,
   isWithinInterval,
   parseISO,
   parseISO as dfParseISO,
   startOfDay,
-  startOfMonth,
-  startOfWeek,
   subDays,
-  subMonths,
   endOfDay,
 } from 'date-fns';
 import { Card, CardContent } from '../ui/card';
@@ -44,8 +34,6 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { MemoryExplorer, dummyMemoryCards } from '../memory-explorer/MemoryExplorer';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { useCalendarMonth } from '../../hooks/useCalendarMonth';
-import { TimelineStitchedView } from '../timeline/TimelineStitchedView';
 import { getRouteFromSurface } from '../../utils/routeMapping';
 
 const ITEMS_PER_PAGE = 18;
@@ -66,7 +54,7 @@ type RecurringScene = {
   timeline_candidate?: boolean;
 };
 
-type ViewMode = 'events' | 'calendar' | 'recurring';
+type ViewMode = 'events' | 'recurring';
 type MomentsLayout = 'grid' | 'facts';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
@@ -86,21 +74,6 @@ interface FilterState {
   locations: string[];
   hasLocation: boolean | null;
   hasPeople: boolean | null;
-}
-
-type CalendarItem =
-  | { id: string; kind: 'event'; date: Date; title: string; event: Event }
-  | { id: string; kind: 'memory'; date: Date; title: string; memory: MemoryCard }
-  | { id: string; kind: 'occasion'; date: Date; title: string; lifeArcId: string; userPresence: 'attended' | 'heard_about' | 'unknown' };
-
-function safeDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function dayKey(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
 }
 
 // ─── Category config ─────────────────────────────────────────────────────────
@@ -138,7 +111,6 @@ const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClas
 
 const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
   { value: 'events', label: 'Moments', icon: Sparkles },
-  { value: 'calendar', label: 'Time', icon: CalendarDays },
   { value: 'recurring', label: 'Patterns', icon: Repeat2 },
 ];
 
@@ -537,9 +509,6 @@ export const EventsBook: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showFilters, setShowFilters] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => startOfDay(new Date()));
-  const [selectedOccasionArc, setSelectedOccasionArc] = useState<{ id: string; title: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: 'all',
     types: [],
@@ -552,13 +521,6 @@ export const EventsBook: React.FC = () => {
     hasPeople: null,
   });
 
-  const calendarYear = calendarMonth.getFullYear();
-  const calendarMonthNum = calendarMonth.getMonth() + 1;
-  const { dayMap: calendarDayMap, loading: calendarApiLoading } = useCalendarMonth(
-    calendarYear,
-    calendarMonthNum,
-    viewMode === 'calendar' && !isMockDataEnabled
-  );
   const memoryCards = useMemo<MemoryCard[]>(() => {
     const realMemories = entries.map(entry => memoryEntryToCard({
       id: entry.id,
@@ -702,66 +664,6 @@ export const EventsBook: React.FC = () => {
   const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedEvents = filteredEvents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  const calendarDays = useMemo(() => eachDayOfInterval({
-    start: startOfWeek(startOfMonth(calendarMonth)),
-    end: endOfWeek(endOfMonth(calendarMonth)),
-  }), [calendarMonth]);
-  const calendarItems = useMemo<CalendarItem[]>(() => {
-    const items: CalendarItem[] = [];
-
-    for (const event of events) {
-      const start = safeDate(event.start_time);
-      if (!start) continue;
-      // Calendar admission: a day cell asserts "this happened on this day."
-      // Month/season/year precision and unanchored events must not fake a day.
-      const precision = (event as { temporal_precision?: string | null }).temporal_precision;
-      const status = (event as { temporal_status?: string | null }).temporal_status;
-      if (status === 'unanchored') continue;
-      if (precision === 'month' || precision === 'season' || precision === 'year' || precision === 'unknown') continue;
-      const end = safeDate(event.end_time) ?? start;
-      const normalizedStart = startOfDay(start);
-      const normalizedEnd = startOfDay(end);
-      const spanDays = eachDayOfInterval({
-        start: normalizedStart <= normalizedEnd ? normalizedStart : normalizedEnd,
-        end: normalizedEnd >= normalizedStart ? normalizedEnd : normalizedStart,
-      });
-      for (const date of spanDays) {
-        items.push({
-          id: `event-${event.id}-${dayKey(date)}`,
-          kind: 'event',
-          date,
-          title: event.title || 'Untitled event',
-          event,
-        });
-      }
-    }
-
-    for (const memory of memoryCards) {
-      const date = safeDate(memory.date);
-      if (!date) continue;
-      items.push({
-        id: `memory-${memory.id}`,
-        kind: 'memory',
-        date,
-        title: memory.title || 'Memory',
-        memory,
-      });
-    }
-
-    return items.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [events, memoryCards]);
-  const itemsByDay = useMemo(() => {
-    const buckets = new Map<string, CalendarItem[]>();
-    for (const item of calendarItems) {
-      const key = dayKey(item.date);
-      const existing = buckets.get(key) ?? [];
-      existing.push(item);
-      buckets.set(key, existing);
-    }
-    return buckets;
-  }, [calendarItems]);
-  const selectedCalendarItems = itemsByDay.get(dayKey(selectedCalendarDate)) ?? [];
-  const selectedApiDay = calendarDayMap.get(dayKey(selectedCalendarDate));
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -852,10 +754,10 @@ export const EventsBook: React.FC = () => {
                 <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Anchors <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
                 <p className="mt-0.5 text-[10px] text-white/35">Turning points</p>
               </button>
-              <button type="button" onClick={() => navigate(getRouteFromSurface('timeline'))} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <Route className="h-4 w-4 text-emerald-300" />
-                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Timeline <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
-                <p className="mt-0.5 text-[10px] text-white/35">Life in order</p>
+              <button type="button" onClick={() => navigate('/timeline?view=calendar')} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
+                <Calendar className="h-4 w-4 text-emerald-300" />
+                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Calendar <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
+                <p className="mt-0.5 text-[10px] text-white/35">Month view</p>
               </button>
               <button type="button" onClick={() => setViewMode('recurring')} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
                 <Repeat2 className="h-4 w-4 text-fuchsia-300" />
@@ -1281,261 +1183,6 @@ export const EventsBook: React.FC = () => {
         </div>
       )}
 
-      {/* ══ CALENDAR VIEW ══ */}
-      {viewMode === 'calendar' && (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_22rem] gap-4">
-          <Card className="bg-black/35 border-border/50">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-white/35 font-semibold">
-                    Calendar
-                  </p>
-                  <h3 className="text-lg sm:text-xl font-semibold text-white">
-                    {format(calendarMonth, 'MMMM yyyy')}
-                  </h3>
-                  <p className="text-xs text-white/45 mt-0.5">
-                    Moments, named occasions, and facts — with times.
-                    {calendarApiLoading && ' Loading…'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void loadEvents({ assembleFromChats: true })}
-                    disabled={loading}
-                    title="Sync historical events from chats"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                    <span className="hidden sm:inline ml-1.5">Sync</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCalendarMonth(month => subMonths(month, 1))}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const today = new Date();
-                      setCalendarMonth(startOfMonth(today));
-                      setSelectedCalendarDate(startOfDay(today));
-                    }}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCalendarMonth(month => addMonths(month, 1))}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-7 gap-1.5 text-center text-[10px] uppercase tracking-wide text-white/35 mb-2">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="py-1">{day}</div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-1.5">
-                {calendarDays.map(day => {
-                  const key = dayKey(day);
-                  const items = itemsByDay.get(key) ?? [];
-                  const apiDay = calendarDayMap.get(key);
-                  const eventCount = items.filter(item => item.kind === 'event').length;
-                  const memoryCount = items.filter(item => item.kind === 'memory').length;
-                  const occasionCount = apiDay?.occasions.length ?? 0;
-                  const selected = isSameDay(day, selectedCalendarDate);
-                  const inMonth = isSameMonth(day, calendarMonth);
-                  const primaryOccasion = apiDay?.occasions[0];
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setSelectedCalendarDate(startOfDay(day))}
-                      className={`
-                        min-h-[5.25rem] rounded-xl border p-2 text-left transition flex flex-col
-                        ${selected
-                          ? 'border-primary/70 bg-primary/15 shadow-lg shadow-primary/10'
-                          : 'border-white/8 bg-white/[0.03] hover:border-primary/30 hover:bg-white/[0.06]'
-                        }
-                        ${inMonth ? 'opacity-100' : 'opacity-35'}
-                      `}
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className={`text-xs font-semibold ${selected ? 'text-primary' : 'text-white/75'}`}>
-                          {format(day, 'd')}
-                        </span>
-                        {(items.length > 0 || occasionCount > 0) && (
-                          <span className="text-[10px] text-white/35 tabular-nums">
-                            {occasionCount + items.length}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-auto space-y-1">
-                        {primaryOccasion && (
-                          <div className="flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-violet-300 shrink-0" />
-                            <span className="text-[10px] text-violet-200 truncate leading-tight">
-                              {primaryOccasion.title}
-                            </span>
-                          </div>
-                        )}
-                        {occasionCount > 1 && (
-                          <span className="text-[9px] text-white/30 pl-2.5">
-                            +{occasionCount - 1} more occasion{occasionCount - 1 === 1 ? '' : 's'}
-                          </span>
-                        )}
-                        {eventCount > 0 && (
-                          <div className="flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-                            <span className="text-[10px] text-cyan-200 truncate">
-                              {eventCount} event{eventCount === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                        )}
-                        {memoryCount > 0 && (
-                          <div className="flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
-                            <span className="text-[10px] text-amber-200 truncate">
-                              {memoryCount} memor{memoryCount === 1 ? 'y' : 'ies'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-black/35 border-border/50 xl:sticky xl:top-4 xl:self-start">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-white/35 font-semibold">
-                    Selected Day
-                  </p>
-                  <h3 className="text-base font-semibold text-white">
-                    {format(selectedCalendarDate, 'EEEE, MMM d')}
-                  </h3>
-                </div>
-                <Badge variant="outline" className="border-white/15 text-white/45">
-                  {selectedApiDay?.items.filter(i => i.kind !== 'occasion').length ?? selectedCalendarItems.length}
-                </Badge>
-              </div>
-
-              {selectedApiDay && selectedApiDay.occasions.length > 0 && (
-                <div className="space-y-2 mb-4">
-                  {selectedApiDay.occasions.map(o => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => setSelectedOccasionArc({ id: o.id, title: o.title })}
-                      className="w-full rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-left hover:bg-violet-500/15 transition"
-                    >
-                      <p className="text-[10px] uppercase tracking-wide text-violet-300/80 mb-1">
-                        {o.userPresence === 'heard_about' ? 'Heard about' : 'You were there'}
-                      </p>
-                      <p className="text-sm font-semibold text-white leading-snug">{o.title}</p>
-                      {o.summary && (
-                        <p className="text-xs text-white/50 mt-1 line-clamp-2">{o.summary}</p>
-                      )}
-                      <p className="text-[10px] text-white/35 mt-1">{o.itemCount} linked moment{o.itemCount !== 1 ? 's' : ''} & events</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {selectedApiDay && selectedApiDay.items.length > 0 ? (
-                <div className="space-y-2">
-                  {selectedApiDay.items
-                    .filter(i => i.kind !== 'occasion')
-                    .map(item => (
-                      <div
-                        key={item.id}
-                        className="w-full rounded-xl border border-white/8 bg-white/[0.04] p-3 text-left"
-                      >
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className={`h-2 w-2 rounded-full ${item.kind === 'event' ? 'bg-cyan-300' : 'bg-amber-300'}`} />
-                          <span className="text-[10px] uppercase tracking-wide text-white/35">
-                            {item.kind === 'event' ? 'Event' : 'Moment'}
-                            {item.temporalRole && item.temporalRole !== 'during' && ` · ${item.temporalRole}`}
-                          </span>
-                          {item.userPresence === 'heard_about' && (
-                            <span className="text-[10px] text-amber-300/80">heard about</span>
-                          )}
-                          <span className="text-[10px] text-white/30 ml-auto font-mono">
-                            {item.sortTime.slice(11, 16)}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-white">{item.title}</p>
-                      </div>
-                    ))}
-                </div>
-              ) : selectedCalendarItems.length === 0 ? (
-                <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 text-sm text-white/45">
-                  No moments or facts recorded for this day.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {selectedCalendarItems.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        if (item.kind === 'event') setSelectedEvent(item.event);
-                        else if (item.kind === 'memory') setSelectedMemory(item.memory);
-                      }}
-                      className="w-full rounded-xl border border-white/8 bg-white/[0.04] p-3 text-left hover:border-primary/35 hover:bg-primary/8 transition"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`h-2 w-2 rounded-full ${item.kind === 'event' ? 'bg-cyan-300' : 'bg-amber-300'}`} />
-                            <span className="text-[10px] uppercase tracking-wide text-white/35">
-                              {item.kind === 'event' ? 'Moment' : 'Fact'}
-                            </span>
-                          </div>
-                          <p className="text-sm font-medium text-white truncate">{item.title}</p>
-                          {item.kind === 'event' ? (
-                            <p className="text-xs text-white/40 mt-1 truncate">
-                              {[item.event.type, ...item.event.people.slice(0, 2), ...item.event.locations.slice(0, 1)]
-                                .filter(Boolean)
-                                .join(' · ') || 'Detected event'}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-white/40 mt-1 truncate">
-                              {[item.memory.source, ...item.memory.tags.slice(0, 2)]
-                                .filter(Boolean)
-                                .join(' · ') || 'Memory entry'}
-                            </p>
-                          )}
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-white/25 flex-shrink-0 mt-1" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* ══ PATTERNS ══ */}
       {viewMode === 'recurring' && (
         <div className="space-y-5">
@@ -1712,13 +1359,6 @@ export const EventsBook: React.FC = () => {
       )}
       {selectedMemory && (
         <MemoryDetailModal memory={selectedMemory} onClose={() => setSelectedMemory(null)} />
-      )}
-      {selectedOccasionArc && (
-        <TimelineStitchedView
-          lifeArcId={selectedOccasionArc.id}
-          scopeLabel={selectedOccasionArc.title}
-          onClose={() => setSelectedOccasionArc(null)}
-        />
       )}
     </div>
   );

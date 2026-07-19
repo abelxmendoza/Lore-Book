@@ -210,7 +210,7 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <Sparkles className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Life Log</span>
             {counts && counts.events > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
@@ -287,18 +287,49 @@ const SidebarContent = ({
           {/* 4. Explore your story */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
           <button
-            onClick={() => handleSurfaceChange('timeline')}
+            onClick={() => {
+              navigate('/timeline');
+              onSurfaceChange?.('timeline');
+              onMobileDrawerClose?.();
+            }}
             aria-label="Open timeline view"
-            aria-current={activeSurface === 'timeline' ? 'page' : undefined}
+            aria-current={
+              activeSurface === 'timeline' && !location.search.includes('view=calendar')
+                ? 'page'
+                : undefined
+            }
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'timeline'
+              activeSurface === 'timeline' && !location.search.includes('view=calendar')
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
             <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
-            Omni Timeline
+            <span className="flex-1 text-left">Omni Timeline</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate('/timeline?view=calendar');
+              onSurfaceChange?.('timeline');
+              onMobileDrawerClose?.();
+            }}
+            aria-label="Open calendar"
+            aria-current={
+              activeSurface === 'timeline' && location.search.includes('view=calendar')
+                ? 'page'
+                : undefined
+            }
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'timeline' && location.search.includes('view=calendar')
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Calendar</span>
           </button>
           <button
             onClick={() => handleSurfaceChange('saga')}
