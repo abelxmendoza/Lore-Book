@@ -35,7 +35,11 @@ import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { ThreadRosterBar } from './ThreadRosterBar';
 import { CastTrendsNudge } from './CastTrendsNudge';
 import { fetchCastThreads } from '../../../api/threadRoster';
-import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
+import {
+  collectRecentThreadMentions,
+  collectThreadEntities,
+  toEntityContext,
+} from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
@@ -823,13 +827,17 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           onRecallInChat={user ? handleRecallPrompt : undefined}
         />
 
-        {/* Cast of this conversation — server-derived roster with pin/exclude */}
+        {/* Actors — resolved identities only; recent mentions stay evidence */}
         {user && (
           <ThreadRosterBar
             threadId={activeThreadId}
             messageCount={messages.length}
             threadTitle={threads.find((t) => t.id === activeThreadId)?.title}
             onFilterByEntity={handleFilterByEntity}
+            recentMentions={collectRecentThreadMentions(messages, {
+              recentMessageWindow: 12,
+              max: 6,
+            })}
           />
         )}
 

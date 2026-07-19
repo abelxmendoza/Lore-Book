@@ -25,11 +25,14 @@ const humanizeExpressionMode = (mode: string): string => {
 };
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric';
+  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
   date?: string;
+  /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
+  relevanceScore?: number;
+  relevanceReasons?: string[];
 };
 
 export type ChatSuggestedAction = {
@@ -53,7 +56,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   character: 'Character',
   task: 'Task',
   hqi: 'Smart search',
-  fabric: 'Related'
+  fabric: 'Related',
+  knowledge: 'Knowledge'
 };
 
 import type { RecallChatPayload } from './recallTypes';
@@ -172,6 +176,12 @@ export type Message = {
     type: 'character' | 'location' | 'organization' | 'skill' | 'event';
     characterVariant?: import('../../../types/certifiedEntity').CharacterVariant;
     loreKind?: LoreEntityKind;
+    confidence?: number;
+    provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+    mentionStatus?: 'confirmed' | 'mentioned_only';
+    lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+    identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+    identityConfidence?: number;
   }>;
   creationOutcomes?: Array<{
     mention: string;

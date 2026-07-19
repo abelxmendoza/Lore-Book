@@ -105,11 +105,14 @@ import { timelineManager } from './timelineManager';
 import { extendChatContext } from './timelineInsight';
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
+  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
   date?: string;
+  /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
+  relevanceScore?: number;
+  relevanceReasons?: string[];
 };
 
 export type MemoryClaim = {
@@ -164,6 +167,9 @@ export type OmegaChatResponse = {
     confidence?: number;
     provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
     mentionStatus?: 'confirmed' | 'mentioned_only';
+    lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+    identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+    identityConfidence?: number;
   }>;
   suggestedActions?: ChatSuggestedAction[];
 };
@@ -350,6 +356,12 @@ export type StreamingChatResponse = {
       id: string;
       name: string;
       type: 'character' | 'location' | 'organization';
+      confidence?: number;
+      provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+      mentionStatus?: 'confirmed' | 'mentioned_only';
+      lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+      identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+      identityConfidence?: number;
     }>;
     suggestedActions?: ChatSuggestedAction[];
     /** P1 creation protocol decisions for names in this turn (read-only). */
@@ -2188,6 +2200,9 @@ When updating relationship analytics or emotional signals from this thread, weig
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
+      cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
+      epistemicBlock: (ragPacket as { epistemicBlock?: string | null }).epistemicBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
@@ -2545,14 +2560,29 @@ When updating relationship analytics or emotional signals from this thread, weig
     const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
-    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
-      id,
-      name,
-      type,
-      confidence,
-      provenance,
-      mentionStatus,
-    }));
+    const mentionedEntities = displayEntities.map(
+      ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }) => ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }),
+    );
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -3061,6 +3091,9 @@ When updating relationship analytics or emotional signals from this thread, weig
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
+      cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
+      epistemicBlock: (ragPacket as { epistemicBlock?: string | null }).epistemicBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
@@ -3349,14 +3382,29 @@ When updating relationship analytics or emotional signals from this thread, weig
     const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
-    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
-      id,
-      name,
-      type,
-      confidence,
-      provenance,
-      mentionStatus,
-    }));
+    const mentionedEntities = displayEntities.map(
+      ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }) => ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }),
+    );
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

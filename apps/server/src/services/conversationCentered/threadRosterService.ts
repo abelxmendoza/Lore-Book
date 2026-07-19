@@ -17,18 +17,29 @@
  */
 
 import { logger } from '../../logger';
+import {
+  classifyActorLabel,
+  type ActorType,
+} from '../actors/actorLabelPolicy';
+import {
+  classifyMention,
+  mayAppearOnCast,
+} from '../actors/mentionClassifier';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ThreadMessageRow } from './threadContentService';
 
 export type RosterRole = 'main' | 'supporting' | 'mentioned';
 export type RosterStatus = 'active' | 'excluded';
-export type RosterKind = 'character' | 'location' | 'organization' | 'skill' | 'event' | 'unknown';
+export type RosterKind = 'character' | 'location' | 'organization' | 'group' | 'skill' | 'event' | 'unknown';
+export type RosterActorType = ActorType;
 
 export type RosterEntry = {
   /** Linked entity id, or null for a name-only entry (mentioned but never linked). */
   entityId: string | null;
   name: string;
   kind: RosterKind;
+  /** PERSON / GROUP / ANONYMOUS_PERSON / … — Cast quality typing. */
+  actorType: RosterActorType;
   role: RosterRole;
   status: RosterStatus;
   /** 'user' when any override touched this entry; overrides always win. */
@@ -65,9 +76,62 @@ function mentionKind(type: unknown): RosterKind {
   if (t === 'character' || t === 'person') return 'character';
   if (t === 'location' || t === 'place') return 'location';
   if (t === 'organization' || t === 'org') return 'organization';
+  if (t === 'group' || t === 'community') return 'group';
   if (t === 'skill') return 'skill';
   if (t === 'event') return 'event';
   return 'unknown';
+}
+
+/**
+ * Cast/Actors gate: only RESOLVED identities.
+ * Groups / unresolved / generics stay as transcript mentions, not Cast.
+ */
+export function resolveRosterActor(
+  name: string,
+  kind: RosterKind,
+  entityId: string | null = null,
+): { keep: boolean; actorType: RosterActorType; kind: RosterKind } {
+  const mention = classifyMention({
+    text: name,
+    entityId,
+    kind,
+    provenance:
+      kind === 'character' && entityId
+        ? 'character_book'
+        : kind === 'location' && entityId
+          ? 'location_book'
+          : kind === 'organization' && entityId
+            ? 'organization_book'
+            : null,
+  });
+
+  if (!mayAppearOnCast(mention)) {
+    return {
+      keep: false,
+      actorType: (mention.actorType ?? 'PERSON') as RosterActorType,
+      kind,
+    };
+  }
+
+  if (kind === 'location' || kind === 'skill' || kind === 'event') {
+    return { keep: true, actorType: 'PERSON', kind };
+  }
+  if (kind === 'organization') {
+    return { keep: true, actorType: 'ORGANIZATION', kind };
+  }
+
+  const actor = classifyActorLabel(name);
+  if (actor.action === 'anonymous') {
+    // Recurring anonymous can be cast-worthy only when classifyMention said RESOLVED
+    // (normally anonymous → UNRESOLVED → not cast).
+    return { keep: true, actorType: 'ANONYMOUS_PERSON', kind: 'character' };
+  }
+
+  return {
+    keep: true,
+    actorType: (mention.actorType ?? 'PERSON') as RosterActorType,
+    kind: kind === 'unknown' || kind === 'group' ? 'character' : kind,
+  };
 }
 
 function messageRef(threadNumber: number | null, row: ThreadMessageRow): string | null {
@@ -104,17 +168,22 @@ export function deriveRosterEntries(
       const name = typeof m.name === 'string' ? m.name.trim() : '';
       if (!name) continue;
       const entityId = typeof m.id === 'string' && m.id.trim() ? m.id : null;
+      const resolved = resolveRosterActor(name, mentionKind(m.type), entityId);
+      if (!resolved.keep) continue;
       const key = rosterKey({ entityId, name });
       const existing = byKey.get(key);
       if (existing) {
         existing.mentions += 1;
         existing.lastSeenRef = ref ?? existing.lastSeenRef;
         existing.name = name;
+        existing.actorType = resolved.actorType;
+        existing.kind = resolved.kind;
       } else {
         byKey.set(key, {
           entityId,
           name,
-          kind: mentionKind(m.type),
+          kind: resolved.kind,
+          actorType: resolved.actorType,
           role: 'mentioned',
           status: 'active',
           source: 'auto',
@@ -134,10 +203,13 @@ export function deriveRosterEntries(
     if (byKey.has(key)) continue;
     const name = link.metadata?.entity_name?.trim();
     if (!name) continue;
+    const resolved = resolveRosterActor(name, mentionKind(link.entity_type), link.entity_id);
+    if (!resolved.keep) continue;
     byKey.set(key, {
       entityId: link.entity_id,
       name,
-      kind: mentionKind(link.entity_type),
+      kind: resolved.kind,
+      actorType: resolved.actorType,
       role: 'mentioned',
       status: 'active',
       source: 'auto',
@@ -153,6 +225,8 @@ export function deriveRosterEntries(
   for (const person of legacyPeople) {
     const name = person?.trim();
     if (!name) continue;
+    const resolved = resolveRosterActor(name, 'character', null);
+    if (!resolved.keep) continue;
     const key = rosterKey({ entityId: null, name });
     const linkedAlready = [...byKey.values()].some(
       (e) => e.name.trim().toLowerCase() === name.toLowerCase(),
@@ -161,7 +235,8 @@ export function deriveRosterEntries(
     byKey.set(key, {
       entityId: null,
       name,
-      kind: 'character',
+      kind: resolved.kind,
+      actorType: resolved.actorType,
       role: 'mentioned',
       status: 'active',
       source: 'auto',

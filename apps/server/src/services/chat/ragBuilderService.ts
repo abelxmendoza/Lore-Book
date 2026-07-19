@@ -479,10 +479,40 @@ export async function buildRAGPacket(
   // Fetched here so the system prompt builder receives pre-ranked claims.
   // loadPromptClaims applies the 6-claim cap and per-type limits internally.
   // Failure is non-fatal — the WHAT LOREBOOK KNOWS block is simply omitted.
-  let crystallizedKnowledge: Array<{ knowledge_type: string; human_readable_claim: string; confidence: number }> = [];
+  let crystallizedKnowledge: Array<{ id?: string; knowledge_type: string; human_readable_claim: string; confidence: number; last_reinforced_at?: string | null }> = [];
   try {
     crystallizedKnowledge = await loadPromptClaims(userId);
   } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
+
+  // Crystallized claims are first-class sources: retrieval prefers durable
+  // knowledge over re-deriving the same truth from many observations.
+  sources.push(
+    ...crystallizedKnowledge.map((k, i) => ({
+      type: 'knowledge' as const,
+      id: k.id ?? `claim-${i}`,
+      title: k.human_readable_claim.slice(0, 80),
+      snippet: k.human_readable_claim,
+      date: k.last_reinforced_at ?? undefined,
+    })),
+  );
+
+  // ── Cognitive plan: how to think about this question (pure, no I/O) ──────
+  // Strategy is chosen BEFORE evidence: retrieval becomes a consequence of
+  // planning. The directive reaches the prompt; the plan tightens the
+  // evidence contract for inspect-style strategies below.
+  const { planCognition, formatCognitivePlanBlock } = await import('../cognitivePlanner/cognitivePlanner');
+  const { classifyIntentForAudit } = await import('./workingMemoryAssembler');
+  const cognitivePlan = planCognition(message, { wmaIntent: classifyIntentForAudit(message) });
+  const cognitivePlanBlock = formatCognitivePlanBlock(cognitivePlan);
+  let epistemicBlock: string | null = null;
+
+  // ── Active Narrative Threads (what is unfolding, not what happened) ──────
+  // Derived fresh from life_arcs + recent moments/scenes; failure is non-fatal.
+  let activeThreadsBlock: string | null = null;
+  try {
+    const { buildThreadsPromptBlock } = await import('../narrativeThreads/narrativeThreadService');
+    activeThreadsBlock = await buildThreadsPromptBlock(userId);
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: narrative threads fetch failed'); }
 
   // ── Continuity That Feels Alive (0–3 structured candidates) ──────────────
   // Selective autobiographical continuity with explainable relevance + modes.
@@ -612,6 +642,55 @@ export async function buildRAGPacket(
     const { filterSourcesForPresentation } = await import('../responseScope');
     sources = filterSourcesForPresentation(sources, scopePlan, workingMemory);
 
+    // Evidence contract: every surviving source must justify why it belongs.
+    // Scores travel with the source so the UI can show them; sub-floor
+    // sources never reach the model.
+    const { buildEvidenceContract, enforceEvidenceContract } = await import('../responseScope');
+    const contract = buildEvidenceContract(message, scopePlan);
+    // Inspect-style strategies answer from structured state (threads,
+    // knowledge). The allowlist is hard: broad observation results never
+    // ride along, regardless of how well they scored.
+    if (!cognitivePlan.allowObservationSearch) {
+      contract.minScore = Math.max(contract.minScore, 45);
+      contract.maxSources = Math.min(contract.maxSources, 12);
+      sources = sources.filter(
+        (source) => source.type !== 'entry' && source.type !== 'hqi' && source.type !== 'fabric',
+      );
+    }
+    const verdict = enforceEvidenceContract(sources, contract);
+    if (verdict.rejected.length > 0) {
+      logger.info(
+        {
+          userId,
+          topic: contract.topic,
+          accepted: verdict.accepted.length,
+          rejected: verdict.rejected.length,
+          rejectedSample: verdict.rejected.slice(0, 5).map((s) => ({
+            title: s.title,
+            score: s.relevanceScore,
+            reasons: s.relevanceReasons,
+          })),
+        },
+        'Evidence contract: sources rejected before prompt',
+      );
+    }
+    sources = verdict.accepted;
+
+    // Epistemic calibration: what level of claim does the assembled evidence
+    // justify? Computed from the accepted sources, not from vibes.
+    try {
+      const { assessEpistemicState, formatEpistemicBlock } = await import(
+        '../cognitivePlanner/epistemicCalibration'
+      );
+      const assessment = assessEpistemicState({
+        strategy: cognitivePlan.strategy,
+        sources: verdict.accepted,
+        claims: crystallizedKnowledge.map((k) => ({ confidence: k.confidence })),
+        threadsAvailable: Boolean(activeThreadsBlock),
+      });
+      epistemicBlock = formatEpistemicBlock(assessment);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: epistemic calibration failed'); }
+
     if (scopePlan.intent === 'work' && scopePlan.responseMode !== 'audit' && scopePlan.responseMode !== 'debug_inspector') {
       const allowedCharacterIds = new Set(
         sources.filter((source) => source.type === 'character').map((source) => source.id),
@@ -658,6 +737,10 @@ export async function buildRAGPacket(
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
     continuityAliveBlock,
+    activeThreadsBlock,
+    cognitivePlan,
+    cognitivePlanBlock,
+    epistemicBlock,
     continuityAliveTrace,
     // Entity dossier: verified facts + recurring moments for mentioned entities
     entityDossierBlock,

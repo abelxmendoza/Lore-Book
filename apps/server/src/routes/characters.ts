@@ -3058,6 +3058,30 @@ router.post('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) =>
       logger.error({ error, characterId }, 'insert character media failed');
       return res.status(500).json({ error: 'Could not save media' });
     }
+    // Character photo uploads also belong in the global Photo Album.
+    if (kind === 'photo' && url && storage_path) {
+      try {
+        const { photoService } = await import('../services/photoService');
+        const photoId = storage_path.split('/').pop()?.replace(/\.[^.]+$/, '') || randomUUID();
+        await photoService.ensurePhotoAlbumEntry({
+          userId,
+          photoUrl: url,
+          photoId,
+          filename: storage_path.split('/').pop(),
+          source: 'character_media',
+          content: caption?.trim() || `Photo of ${character.name as string}`,
+          tags: ['photo', 'character'],
+          metadata: {
+            characterId,
+            characterName: character.name,
+            characterMediaId: data?.id,
+            storagePath: storage_path,
+          },
+        });
+      } catch (albumErr) {
+        logger.warn({ albumErr, characterId }, 'character media album entry failed — media still saved');
+      }
+    }
     res.json({ media: data });
   } catch (e) {
     logger.error({ error: e, characterId }, 'character media error');

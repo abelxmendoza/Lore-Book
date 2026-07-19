@@ -4,6 +4,7 @@ import { Sparkles, X } from 'lucide-react';
 import type { LexicalPreviewSpan } from '../../../api/lexicalPreview';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { filterPreviewSpansForStrip, dedupeCertifiedForStrip } from '../../../lib/composerEntityStrip';
+import { isTranscriptMentionWorthy } from '../utils/mentionLifecycle';
 import { displayStatus } from '../../../lib/correctedPreviewSpanReducer';
 import { colorKeyForPreviewType, previewChipClass as previewChipClasses } from '../../../lib/entityColorMap';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
@@ -165,12 +166,16 @@ export const ComposerEntityChips = ({
   const correctedByKey = new Map(correctedRecords.map((c) => [`${c.start}:${c.end}`, c]));
 
   // Only surface people/characters, places/locations, organizations, and groups.
-  const chipEntities = dedupeCertifiedForStrip(entities).filter((e) =>
-    ALLOWED_CHIP_KINDS.has(loreKindForChip(e)),
+  // Mention resolver: never show GENERIC/IGNORE noun phrases as Detected chips.
+  const chipEntities = dedupeCertifiedForStrip(entities).filter(
+    (e) =>
+      ALLOWED_CHIP_KINDS.has(loreKindForChip(e)) && isTranscriptMentionWorthy(e.name),
   );
-  const dedupedPreview = filterPreviewSpansForStrip(text, chipEntities, previewSpans).filter((span) =>
-    ALLOWED_CHIP_KINDS.has(previewSpanKind(span, correctedByKey.get(`${span.start}:${span.end}`))),
-  );
+  const dedupedPreview = filterPreviewSpansForStrip(text, chipEntities, previewSpans)
+    .filter((span) =>
+      ALLOWED_CHIP_KINDS.has(previewSpanKind(span, correctedByKey.get(`${span.start}:${span.end}`))),
+    )
+    .filter((span) => isTranscriptMentionWorthy(span.text));
 
   if (chipEntities.length === 0 && dedupedPreview.length === 0) return null;
 

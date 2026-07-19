@@ -26,6 +26,7 @@ import {
   type RetractionMutationPayload,
 } from '@lorebook/api-contracts';
 import { logger } from '../../logger';
+import { classifyActorLabel } from '../actors/actorLabelPolicy';
 import {
   recordStageCandidate,
   type StageCandidateKind,
@@ -90,6 +91,24 @@ export function validateEntityCandidateBeforePersist(input: {
 
   // PERSON pollution: reject or retype before any insert
   if (typeUpper === 'PERSON' || typeUpper === 'CHARACTER') {
+    // Actor policy: indefinite / vague collectives must never persist as PERSON.
+    const actor = classifyActorLabel(name);
+    if (actor.action === 'reject' || (actor.action === 'group' && actor.actorType !== 'PERSON')) {
+      if (actor.action === 'group') {
+        recordStageCandidate('entity_candidate', 'retyped', actor.reason ?? 'actor_group');
+        return accept('entity_candidate', {
+          name,
+          type: 'ORGANIZATION',
+          retyped: 'ORGANIZATION',
+        });
+      }
+      return reject('entity_candidate', actor.reason ?? 'vague_actor_label', { name, type: typeUpper });
+    }
+    if (actor.action === 'anonymous') {
+      // Anonymous individuals may persist as omega PERSON but are not Character-eligible;
+      // leave type as PERSON for storage — promotion gates enforce Character Book rules.
+    }
+
     const bad = isInvalidPersonName(name);
     if (bad.invalid) {
       const suggested = suggestEntityTypeForName(name);

@@ -8,6 +8,9 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { compileBookOutline } from '../services/narrative/bookCompilerService';
 import { historyEngineService } from '../services/narrative/history';
 import { narrativeCompilerService } from '../services/narrative/narrativeCompilerService';
+import { narrativeStoryChapterService } from '../services/narrative/narrativeStoryChapterService';
+import { narrativeLifeEraService } from '../services/narrative/narrativeLifeEraService';
+import { storyChapterReprocessService } from '../services/narrative/storyChapterReprocessService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
 import type { BookOutline } from '../services/narrative/types';
@@ -24,12 +27,20 @@ router.get(
   })
 );
 
+function parseStoryLimit(raw: unknown): number | undefined {
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return Math.min(n, 5000);
+}
+
 /** GET /api/story/life-history — classified events, life chapters, turning points */
 router.get(
   '/life-history',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const history = await historyEngineService.compile(req.user!.id);
+    const limit = parseStoryLimit(req.query.limit);
+    const history = await historyEngineService.compile(req.user!.id, [], { limit });
     res.json({ success: true, history });
   }),
 );
@@ -39,12 +50,59 @@ router.get(
   '/life-chapters',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const history = await historyEngineService.compile(req.user!.id);
+    const limit = parseStoryLimit(req.query.limit);
+    const history = await historyEngineService.compile(req.user!.id, [], { limit });
     res.json({
       success: true,
       generatedAt: history.generatedAt,
       chapters: history.chapters,
       eventCount: history.eventCount,
+    });
+  }),
+);
+
+/** GET /api/story/story-chapters — durable chapters assembled from Scenes */
+router.get(
+  '/story-chapters',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const limit = parseStoryLimit(req.query.limit) ?? 100;
+    const chapters = await narrativeStoryChapterService.listChapters(req.user!.id, { limit });
+    res.json({
+      success: true,
+      chapters,
+      chapterCount: chapters.length,
+    });
+  }),
+);
+
+/**
+ * POST /api/story/story-chapters/reprocess
+ * Rebuild Story Chapters (+ Life Eras) from existing Scenes using Narrative Ownership.
+ */
+router.post(
+  '/story-chapters/reprocess',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const result = await storyChapterReprocessService.reprocessForUser(req.user!.id);
+    res.json({
+      success: true,
+      ...result,
+    });
+  }),
+);
+
+/** GET /api/story/life-eras — durable eras assembled from Story Chapters */
+router.get(
+  '/life-eras',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const limit = parseStoryLimit(req.query.limit) ?? 50;
+    const eras = await narrativeLifeEraService.listEras(req.user!.id, { limit });
+    res.json({
+      success: true,
+      eras,
+      eraCount: eras.length,
     });
   }),
 );

@@ -7,6 +7,10 @@
  * graph nodes.
  */
 
+import {
+  classifyMention,
+  mayAppearAsTranscriptMention,
+} from '../actors/mentionClassifier';
 import type { WorkingMemoryAssembly } from '../chat/workingMemoryAssembler';
 
 import { filterEvidence, classifyItemDomain } from './responseEvidenceFilter';
@@ -34,6 +38,9 @@ export function isPresentableEntityName(name: string): boolean {
   if (clean.length < 2 || clean.split(' ').length > 5) return false;
   if (JUNK_ENTITY_RE.test(clean)) return false;
   if (/^(?:also|and|but|so|then)\s+/i.test(clean)) return false;
+  // Mention resolver: generics / indefinites are not presentable chips.
+  const mention = classifyMention({ text: clean });
+  if (!mayAppearAsTranscriptMention(mention)) return false;
   return true;
 }
 
@@ -133,7 +140,9 @@ export function filterSourcesForPresentation<T extends PresentableSource>(
 ): T[] {
   const names = relevantNames(plan, workingMemory);
   const eligible = sources.filter((source) => {
-    if (!isPresentableEntityName(source.title)) return false;
+    // Crystallized knowledge claims are sentences, not entity chips — they
+    // skip the name-shape gate but still face scope + evidence-contract checks.
+    if ((source.type ?? '') !== 'knowledge' && !isPresentableEntityName(source.title)) return false;
     return sourceIsInScope(source, plan, names);
   });
 

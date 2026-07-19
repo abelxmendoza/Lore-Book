@@ -38,6 +38,9 @@ export interface ChatSource {
   title: string;
   snippet?: string;
   date?: string;
+  /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
+  relevanceScore?: number;
+  relevanceReasons?: string[];
 }
 
 /**

@@ -1,7 +1,17 @@
 /**
  * Resolves entities detected in a chat message for UI display.
  * Replaces legacy people_places substring matching with book + omega lookups.
+ *
+ * Mentions are classified before return: GENERIC/IGNORE never surface as chips.
+ * A mention is evidence; only RESOLVED identities belong on Cast.
  */
+import { decideIdentityLifecycle } from '../actors/identityLifecycleService';
+import type { IdentityStage } from '../actors/identityLifecycleTypes';
+import {
+  classifyMention,
+  mayAppearAsTranscriptMention,
+  type MentionStatus,
+} from '../actors/mentionClassifier';
 import { supabaseAdmin } from '../supabaseClient';
 import { detectMentionedEntities } from './entityScopedRetriever';
 
@@ -12,6 +22,12 @@ export type MessageEntityChip = {
   confidence: number;
   provenance: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
   mentionStatus?: 'confirmed' | 'mentioned_only';
+  /** Mention lifecycle status — Cast only uses RESOLVED. */
+  lifecycleStatus?: MentionStatus;
+  /** Identity lifecycle stage (historian ladder). */
+  identityStage?: IdentityStage;
+  /** 0–100 identity confidence for UI. */
+  identityConfidence?: number;
 };
 
 const OMEGA_TYPE_MAP: Record<string, MessageEntityChip['type']> = {
@@ -93,5 +109,35 @@ export async function resolveMessageEntitiesForDisplay(
     });
   }
 
-  return [...chips.values()].sort((a, b) => b.confidence - a.confidence);
+  const classified: MessageEntityChip[] = [];
+  for (const chip of chips.values()) {
+    const mention = classifyMention({
+      text: chip.name,
+      entityId: chip.id,
+      provenance: chip.provenance,
+      mentionStatus: chip.mentionStatus,
+      kind: chip.type,
+    });
+    if (!mayAppearAsTranscriptMention(mention)) continue;
+    const identity = decideIdentityLifecycle({
+      name: chip.name,
+      mention,
+      signals: {
+        mentionCount: chip.provenance === 'character_book' ? 2 : 1,
+        conversationCount: chip.provenance === 'character_book' ? 2 : 1,
+        timeSpanDays: 0,
+        namedExplicitly: mention.status === 'RESOLVED',
+        baseConfidence: chip.confidence,
+      },
+    });
+    classified.push({
+      ...chip,
+      confidence: Math.min(chip.confidence, mention.confidence + 0.2),
+      lifecycleStatus: mention.status,
+      identityStage: identity.stage,
+      identityConfidence: identity.identityConfidence,
+    });
+  }
+
+  return classified.sort((a, b) => b.confidence - a.confidence);
 }

@@ -67,8 +67,9 @@ function matchArcs(event: ClassifiedLifeEvent, arcs: EnrichedLifeArc[]): string[
 export async function compileLifeHistory(
   userId: string,
   arcs: EnrichedLifeArc[] = [],
+  opts: { limit?: number } = {},
 ): Promise<LifeHistoryReport> {
-  const events = await loadClassifiedLifeEvents(userId);
+  const events = await loadClassifiedLifeEvents(userId, opts.limit ?? 2000);
   const chapters = compileLifeChapters(events);
 
   const turningPoints = events

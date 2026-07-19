@@ -79,8 +79,13 @@ describe('LifeLogEligibilityPolicy', () => {
 
   it('requires a meaningful bounded title', () => {
     expect(isPublishableLifeLogTitle('Captured Conversation')).toBe(false);
+    expect(isPublishableLifeLogTitle('Untitled Event')).toBe(false);
+    expect(isPublishableLifeLogTitle('Unknown Event')).toBe(false);
+    expect(isPublishableLifeLogTitle('Event on Jun 12')).toBe(false);
+    expect(isPublishableLifeLogTitle('Conversation Summary')).toBe(false);
     expect(isPublishableLifeLogTitle('Damn Wtf Did Someone Spam My Tokens I')).toBe(false);
     expect(isPublishableLifeLogTitle('LoreBook UI Progress')).toBe(true);
     expect(isPublishableLifeLogTitle('A Story About the')).toBe(false);
   });
 });
+

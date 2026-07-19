@@ -38,7 +38,7 @@ function recencyFactor(lastReinforcedAt: string | null): number {
 export async function loadPromptClaims(userId: string): Promise<PromptReadyClaim[]> {
   const { data, error } = await supabaseAdmin
     .from('crystallized_knowledge')
-    .select('knowledge_type, human_readable_claim, confidence, last_reinforced_at')
+    .select('id, knowledge_type, human_readable_claim, confidence, last_reinforced_at')
     .eq('user_id', userId)
     .eq('status', 'ACTIVE')
     .gte('confidence', MIN_CONFIDENCE_FOR_PROMPT)
@@ -50,9 +50,11 @@ export async function loadPromptClaims(userId: string): Promise<PromptReadyClaim
   // Rank by confidence × recency_factor
   const ranked = data
     .map(row => ({
+      id:                   row.id as string,
       knowledge_type:       row.knowledge_type as KnowledgeType,
       human_readable_claim: row.human_readable_claim,
       confidence:           row.confidence,
+      last_reinforced_at:   row.last_reinforced_at as string | null,
       score:                row.confidence * recencyFactor(row.last_reinforced_at),
     }))
     .sort((a, b) => b.score - a.score);
@@ -67,9 +69,11 @@ export async function loadPromptClaims(userId: string): Promise<PromptReadyClaim
     if (typeCount >= MAX_PER_TYPE) continue;
     typeCounts[claim.knowledge_type] = typeCount + 1;
     selected.push({
+      id:                   claim.id,
       knowledge_type:       claim.knowledge_type,
       human_readable_claim: claim.human_readable_claim,
       confidence:           claim.confidence,
+      last_reinforced_at:   claim.last_reinforced_at,
     });
   }
 

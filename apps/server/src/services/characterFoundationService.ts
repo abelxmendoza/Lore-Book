@@ -19,6 +19,7 @@ import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
+import { mayCreateCharacterFromLifecycle } from './actors/identityLifecycleService';
 import { parseKinshipFromName } from './kinship/kinshipGlossary';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { characterRegistry } from './characterRegistry';
@@ -185,6 +186,22 @@ class CharacterFoundationService {
       logger.debug({ name: entity.name, mentions }, 'Deferring entity to promotion candidate (not auto-creating character)');
       return null;
     }
+    const lifecycle = mayCreateCharacterFromLifecycle({
+      name: entity.name,
+      mentionCount: mentions,
+    });
+    if (!options?.forcePromote && !lifecycle.allow) {
+      logger.debug(
+        {
+          name: entity.name,
+          mentions,
+          stage: lifecycle.decision.stage,
+          confidence: lifecycle.decision.identityConfidence,
+        },
+        'Deferring entity — identity lifecycle not ready for Character',
+      );
+      return null;
+    }
 
     // ── 3. Create new character ──────────────────────────────────────────────
     // NOTE: Fuzzy name matching (findSimilarCharacter) is intentionally NOT
@@ -236,6 +253,9 @@ class CharacterFoundationService {
       generated_at: new Date().toISOString(),
       first_name: firstName || undefined,
       last_name: lastName || undefined,
+      identity_stage: lifecycle.decision.stage,
+      identity_confidence: lifecycle.decision.identityConfidence,
+      identity_promotion_log: lifecycle.decision.promotionLog,
       ...kinshipMetadata(cleanedName),
     }, cleanedName, entity.type, { userId, rootType: 'PERSON' })
     );
@@ -627,6 +647,23 @@ class CharacterFoundationService {
     }
 
     const cleanedName = decision.cleanName;
+    const lifecycle = mayCreateCharacterFromLifecycle({
+      name: cleanedName,
+      mentionCount: mentions,
+    });
+    if (!options?.forcePromote && !lifecycle.allow) {
+      logger.debug(
+        {
+          name: cleanedName,
+          mentions,
+          stage: lifecycle.decision.stage,
+          confidence: lifecycle.decision.identityConfidence,
+          log: lifecycle.decision.promotionLog,
+        },
+        'Deferring mention — identity lifecycle not ready for Character',
+      );
+      return null;
+    }
 
     const characterId = uuid();
     const aliases = Array.isArray(entity.aliases)
@@ -639,7 +676,14 @@ class CharacterFoundationService {
     // the Mentioned tab until facts confirm a real relationship. Archetype and
     // proximity are NOT guessed here — entityFactsService upgrades them when
     // relationship facts arrive.
-    const importanceLevel = mentions >= 6 ? 'major' : mentions >= 3 ? 'supporting' : 'minor';
+    const importanceLevel =
+      lifecycle.decision.stage === 'CORE_CHARACTER'
+        ? 'major'
+        : mentions >= 6
+          ? 'major'
+          : mentions >= 3
+            ? 'supporting'
+            : 'minor';
     const avatarUrl = await assignCharacterAvatar(characterId);
     const { error } = await supabaseAdmin.from('characters').insert({
       id: characterId,
@@ -660,6 +704,9 @@ class CharacterFoundationService {
         generated_at: new Date().toISOString(),
         first_name: firstName || undefined,
         last_name: lastName || undefined,
+        identity_stage: lifecycle.decision.stage,
+        identity_confidence: lifecycle.decision.identityConfidence,
+        identity_promotion_log: lifecycle.decision.promotionLog,
         ...kinshipMetadata(cleanedName),
       },
     });

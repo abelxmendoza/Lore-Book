@@ -20,3 +20,16 @@ export {
   filterCitationsForPresentation,
   isPresentableEntityName,
 } from './responsePresentationFilter';
+export {
+  buildEvidenceContract,
+  scoreEvidence,
+  enforceEvidenceContract,
+  DEFAULT_MIN_EVIDENCE_SCORE,
+} from './evidenceContract';
+export type {
+  EvidenceContract,
+  EvidenceContractVerdict,
+  EvidenceTopic,
+  ExpectedAnswerShape,
+  ScoredSource,
+} from './evidenceContract';

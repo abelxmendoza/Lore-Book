@@ -20,8 +20,8 @@ describe('collectThreadEntities', () => {
       assistant('a3', [sanDiego]),
     ]);
 
-    expect(entities[0]).toEqual(sanDiego);
-    expect(entities[1]).toEqual(maya);
+    expect(entities[0]).toMatchObject(sanDiego);
+    expect(entities[1]).toMatchObject(maya);
   });
 
   it('returns empty when no messages surfaced entities', () => {
@@ -47,7 +47,15 @@ describe('collectThreadEntities', () => {
   it('includes organizations in thread entity aggregation', () => {
     const acme = { id: 'o1', name: 'Acme Corp', type: 'organization' as const };
     const entities = collectThreadEntities([assistant('a1', [acme])]);
-    expect(entities).toEqual([acme]);
+    expect(entities).toHaveLength(1);
+    expect(entities[0]).toMatchObject(acme);
+  });
+
+  it('omits GENERIC mentions from building-on aggregation', () => {
+    const junk = { id: 'c-junk', name: 'one girl', type: 'character' as const };
+    const maya = { id: 'c1', name: 'Maya', type: 'character' as const };
+    const entities = collectThreadEntities([assistant('a1', [junk, maya])]);
+    expect(entities.map((e) => e.name)).toEqual(['Maya']);
   });
 
   it('recentMessageWindow drops stale early-thread entities (e.g. Ink after topic change)', () => {

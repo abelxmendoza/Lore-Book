@@ -1,8 +1,9 @@
 /**
- * Month calendar for Omni Timeline — occasions + events by day.
+ * Canonical month calendar — occasions + stitched events/moments by day.
+ * Single calendar for the app (Omni Timeline). Life Log links here.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   addMonths,
   eachDayOfInterval,
@@ -19,7 +20,11 @@ import {
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useCalendarMonth } from '../../hooks/useCalendarMonth';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useEntityModal } from '../../contexts/EntityModalContext';
 import { fetchJson } from '../../lib/api';
+import type { CalendarDayItem } from '../../api/calendarMonth';
+import type { Event } from '../events/EventProfileCard';
+import { EventDetailModal } from '../events/EventDetailModal';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineDateHeader, TimelineMonthBanner } from './TimelineDateDisplay';
@@ -30,10 +35,13 @@ function dayKey(date: Date): string {
 
 export const TimelineCalendarView = () => {
   const isMobile = useIsMobile();
+  const { openMemory } = useEntityModal();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [daySheetOpen, setDaySheetOpen] = useState(false);
   const [selectedOccasion, setSelectedOccasion] = useState<{ id: string; title: string } | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [openingItemId, setOpeningItemId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const year = month.getFullYear();
@@ -69,6 +77,62 @@ export const TimelineCalendarView = () => {
     if (isMobile) setDaySheetOpen(true);
   };
 
+  const openDayItem = useCallback(
+    async (item: CalendarDayItem) => {
+      const sourceId = item.sourceId ?? item.id;
+      const isJournal =
+        item.kind === 'moment' ||
+        item.sourceKind === 'journal_entry' ||
+        item.sourceType === 'journal';
+      if (isJournal) {
+        openMemory({
+          id: sourceId,
+          journal_entry_id: sourceId,
+          content: item.body || item.title,
+          date: item.sortTime,
+          title: item.title,
+        });
+        setDaySheetOpen(false);
+        return;
+      }
+
+      // Resolved events — load full card for the shared Event detail modal.
+      setOpeningItemId(item.id);
+      try {
+        const eventId =
+          item.sourceKind === 'resolved_event' || item.kind === 'event'
+            ? sourceId
+            : item.id;
+        const res = await fetchJson<{ success?: boolean; event?: Event }>(
+          `/api/conversation/events/${eventId}`,
+        );
+        if (res?.event) {
+          setSelectedEvent(res.event);
+          setDaySheetOpen(false);
+        } else {
+          openMemory({
+            id: sourceId,
+            content: item.body || item.title,
+            date: item.sortTime,
+            title: item.title,
+          });
+          setDaySheetOpen(false);
+        }
+      } catch {
+        openMemory({
+          id: sourceId,
+          content: item.body || item.title,
+          date: item.sortTime,
+          title: item.title,
+        });
+        setDaySheetOpen(false);
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [openMemory],
+  );
+
   const dayDetailContent = (
     <>
       {!selectedDay || (selectedDay.occasions.length === 0 && selectedDay.items.length === 0) ? (
@@ -92,11 +156,17 @@ export const TimelineCalendarView = () => {
           {selectedDay.items
             .filter((i) => i.kind !== 'occasion')
             .map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
+              <button
+                key={item.id}
+                type="button"
+                disabled={openingItemId === item.id}
+                onClick={() => void openDayItem(item)}
+                className="w-full text-left rounded-xl border border-white/8 bg-white/[0.03] p-3 hover:border-primary/35 hover:bg-primary/8 transition touch-manipulation"
+              >
                 <p className="text-[10px] text-white/35 uppercase">{item.kind}</p>
                 <p className="text-sm text-white/85 mt-0.5">{item.title}</p>
                 <p className="text-[10px] text-white/30 font-mono mt-0.5">{item.sortTime.slice(11, 16)}</p>
-              </div>
+              </button>
             ))}
         </div>
       )}
@@ -217,6 +287,17 @@ export const TimelineCalendarView = () => {
           lifeArcId={selectedOccasion.id}
           scopeLabel={selectedOccasion.title}
           onClose={() => setSelectedOccasion(null)}
+        />
+      )}
+
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onDeleted={() => {
+            setSelectedEvent(null);
+            void reload();
+          }}
         />
       )}
     </div>

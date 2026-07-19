@@ -66,14 +66,39 @@ type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
 
+const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story']);
+
+function viewFromSearchParams(params: URLSearchParams): View {
+  const raw = params.get('view');
+  if (raw && VALID_VIEWS.has(raw as View)) return raw as View;
+  return 'swimlanes';
+}
+
 export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const urlQuery = searchParams.get('q') ?? '';
   const isMobile = useIsMobile();
-  const [view, setView] = useState<View>('swimlanes');
+  const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams));
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
   const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
+
+  // Keep view in sync with ?view= so Life Log / deep links share one calendar.
+  useEffect(() => {
+    const next = viewFromSearchParams(searchParams);
+    setViewState((prev) => (prev === next ? prev : next));
+  }, [searchParams]);
+
+  const setView = useCallback(
+    (next: View) => {
+      setViewState(next);
+      const params = new URLSearchParams(searchParams);
+      if (next === 'swimlanes') params.delete('view');
+      else params.set('view', next);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const [genInput, setGenInput] = useState(urlQuery);
   const [dateInput, setDateInput] = useState(/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : '');

@@ -12,6 +12,7 @@ import {
 import { inferContextualPersons, rejectBareWithoutContext } from './contextualPersonInference';
 import { inferFamilyTitlePersons } from './familyPersonInference';
 import { inferNamedPersons } from './namedPersonInference';
+import { mayPromoteToCharacter } from '../../actors/actorLabelPolicy';
 import { isBareGenericLabel } from './rolePersonInference';
 import { inferHonorificPersons } from './titlePersonInference';
 import type {
@@ -107,6 +108,12 @@ export class CharacterInferenceService {
 
       if (isBareGenericLabel(candidate.displayName) && !/\bfrom\b|\bwith\b/i.test(candidate.displayName)) {
         rejected.push({ displayName: candidate.displayName, reason: 'bare_generic_label' });
+        continue;
+      }
+
+      // Phrase-level actor policy: "one girl", vague collectives, etc.
+      if (!mayPromoteToCharacter(candidate.displayName) && !/\bfrom\b|\bwith\b|\bat\b|\bwho\b/i.test(candidate.displayName)) {
+        rejected.push({ displayName: candidate.displayName, reason: 'actor_policy_reject' });
         continue;
       }
 

@@ -154,9 +154,11 @@ export interface UpsertClaimPayload {
 // ─── Prompt-ready claim (subset used in systemPromptBuilder) ─────────────────
 
 export interface PromptReadyClaim {
+  id?: string;
   knowledge_type: KnowledgeType;
   human_readable_claim: string;
   confidence: number;
+  last_reinforced_at?: string | null;
 }
 
 // ─── Pattern threshold trigger context ───────────────────────────────────────

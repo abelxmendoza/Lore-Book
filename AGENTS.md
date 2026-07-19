@@ -1,5 +1,7 @@
 # LoreBook agent guidance
 
+
+
 This file is the checked-in rule layer for humans and coding agents working in
 this repo. Treat local IDE “memories” (Cursor/Codex) as a helpful recall layer —
 **not** as the only source for rules that must always apply.
@@ -17,12 +19,12 @@ this repo. Treat local IDE “memories” (Cursor/Codex) as a helpful recall lay
 
 LoreBook is a **life memory system**, not a chat-summary memory bolt-on.
 
-| Concept | LoreBook name | Where it lives |
-| --- | --- | --- |
-| Durable recall into future turns | Living Memory (use) | Working Memory Assembler, canon facts |
-| Propose durable facts from a turn | Living Memory (write) | Ingestion → Memory Review Queue |
-| Ambient external → memory | Life Chronicle | Chat, journal, X intake, Life Log |
-| User governance | Memory Review / Privacy | Discovery + Privacy surfaces |
+| Concept                           | LoreBook name           | Where it lives                        |
+| --------------------------------- | ----------------------- | ------------------------------------- |
+| Durable recall into future turns  | Living Memory (use)     | Working Memory Assembler, canon facts |
+| Propose durable facts from a turn | Living Memory (write)   | Ingestion → Memory Review Queue      |
+| Ambient external → memory        | Life Chronicle          | Chat, journal, X intake, Life Log     |
+| User governance                   | Memory Review / Privacy | Discovery + Privacy surfaces          |
 
 Full mapping: [`docs/product/living-memory-and-life-chronicle.md`](docs/product/living-memory-and-life-chronicle.md).
 
@@ -90,8 +92,7 @@ Local dev uses the Supabase local stack (Docker). `supabase start` is on 54321 (
 2. **`pgvector` extension name:** the installed extension is `vector` (not `pgvector`). Migration
    files were bulk-fixed to `CREATE EXTENSION IF NOT EXISTS vector` in PR #224 (2026-07-16).
 3. **Grant privileges after loading schema.** Tables created via `psql` (as `postgres`) are not visible
-   to Supabase roles. Run `GRANT ... ON ALL TABLES/SEQUENCES/FUNCTIONS IN SCHEMA public TO anon,
-   authenticated, service_role;` + `ALTER DEFAULT PRIVILEGES ...`, then reload PostgREST
+   to Supabase roles. Run `GRANT ... ON ALL TABLES/SEQUENCES/FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;` + `ALTER DEFAULT PRIVILEGES ...`, then reload PostgREST
    (`NOTIFY pgrst, 'reload schema';` and/or `docker restart supabase_rest_<project_id>`), or every
    supabase-js call returns "permission denied" / stale-schema (`PGRST205`) errors.
 4. **Signup fails ("Database error saving new user") until the `subscriptions` table exists.** The

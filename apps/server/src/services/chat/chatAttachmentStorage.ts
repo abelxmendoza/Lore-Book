@@ -1,9 +1,11 @@
 /**
  * Durable storage for chat vision attachments in the Supabase `photos` bucket.
+ * Every successful upload also creates a Photo Album journal entry.
  */
 import { randomUUID } from 'crypto';
 
 import { logger } from '../../logger';
+import { photoService } from '../photoService';
 import { supabaseAdmin } from '../supabaseClient';
 import {
   inferMimeFromDataUrl,
@@ -18,6 +20,8 @@ export type StoredChatAttachment = {
   /** Public URL for rehydration / display. */
   url: string;
   storagePath: string;
+  photoId: string;
+  journalEntryId?: string;
   /** Original data URL kept only for same-request model vision (not persisted). */
   dataUrl?: string;
 };
@@ -28,7 +32,7 @@ function parseDataUrl(dataUrl: string): { contentType: string; buffer: Buffer } 
   try {
     return {
       contentType: match[1].toLowerCase().replace('image/jpg', 'image/jpeg'),
-      buffer: Buffer.from(match[2].replace(/\s/g, ''), 'base64'),
+      buffer: Buffer.from(match[2].replace(/\s+/g, ''), 'base64'),
     };
   } catch {
     return null;
@@ -44,7 +48,7 @@ function extFromMime(mime: string): string {
 
 /**
  * Upload one chat image data URL to `photos` under
- * `{userId}/chat/{sessionId}/{uuid}.{ext}`.
+ * `{userId}/chat/{sessionId}/{uuid}.{ext}` and add it to the Photo Album.
  */
 export async function storeChatImageAttachment(
   userId: string,
@@ -59,7 +63,8 @@ export async function storeChatImageAttachment(
 
   const mimeType = image.mimeType ?? parsed.contentType ?? inferMimeFromDataUrl(image.dataUrl);
   const ext = extFromMime(mimeType ?? 'image/jpeg');
-  const storagePath = `${userId}/chat/${sessionId}/${randomUUID()}.${ext}`;
+  const photoId = randomUUID();
+  const storagePath = `${userId}/chat/${sessionId}/${photoId}.${ext}`;
 
   const { error } = await supabaseAdmin.storage
     .from('photos')
@@ -74,12 +79,36 @@ export async function storeChatImageAttachment(
   }
 
   const url = supabaseAdmin.storage.from('photos').getPublicUrl(storagePath).data.publicUrl;
+
+  let journalEntryId: string | undefined;
+  try {
+    const album = await photoService.ensurePhotoAlbumEntry({
+      userId,
+      photoUrl: url,
+      photoId,
+      filename: `chat-${photoId}.${ext}`,
+      source: 'chat_attachment',
+      content: 'Photo shared in chat',
+      tags: ['photo', 'chat'],
+      metadata: {
+        sessionId,
+        storagePath,
+        mimeType: mimeType ?? undefined,
+      },
+    });
+    journalEntryId = album?.id;
+  } catch (err) {
+    logger.warn({ err, userId, photoId }, 'chat attachment album entry failed — photo still stored');
+  }
+
   return {
     kind: 'image',
     mimeType: mimeType ?? undefined,
     detail: image.detail ?? 'high',
     url,
     storagePath,
+    photoId,
+    journalEntryId,
     dataUrl: image.dataUrl,
   };
 }

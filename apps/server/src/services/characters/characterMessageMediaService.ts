@@ -75,6 +75,29 @@ export const characterMessageMediaService = {
       url = uploaded.url;
       storage_path = uploaded.storage_path;
 
+      // Message screenshots are durable photos — include them in the Photo Album.
+      try {
+        const { photoService } = await import('../photoService');
+        const photoId =
+          storage_path.split('/').pop()?.replace(/\.[^.]+$/, '') || randomUUID();
+        await photoService.ensurePhotoAlbumEntry({
+          userId,
+          photoUrl: url,
+          photoId,
+          filename: storage_path.split('/').pop(),
+          source: 'message_screenshot',
+          content: caption?.trim() || `Message screenshot${characterName ? ` with ${characterName}` : ''}`,
+          tags: ['photo', 'message', 'screenshot'],
+          metadata: {
+            characterId,
+            characterName,
+            storagePath: storage_path,
+          },
+        });
+      } catch (albumErr) {
+        logger.warn({ albumErr, characterId }, 'message screenshot album entry failed — media still saved');
+      }
+
       if (input.analyzeImage !== false) {
         const b64Match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(input.dataUrl);
         if (b64Match) {

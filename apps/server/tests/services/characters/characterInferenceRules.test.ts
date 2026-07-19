@@ -4,7 +4,7 @@ import { areDistinctContextualPeople, dedupeAmbiguousCandidates } from '../../..
 import { characterInferenceService } from '../../../src/services/characters/inference/characterInferenceService';
 import type { CharacterCandidate } from '../../../src/services/characters/inference/characterInferenceTypes';
 import { evaluatePromotionStatus } from '../../../src/services/characters/inference/characterPromotionGate';
-import { detectEmotionalWeight } from '../../../src/services/characters/inference/rolePersonInference';
+import { isBareGenericLabel, detectEmotionalWeight } from '../../../src/services/characters/inference/rolePersonInference';
 import { isBareTitleInvalid } from '../../../src/services/characters/audit/bareTitleInvalidGuard';
 import { isJunkTestData } from '../../../src/services/characters/audit/wrongDomainCharacterGuard';
 
@@ -50,6 +50,17 @@ describe('character inference rules', () => {
     expect(isBareTitleInvalid('Professor')).toBe(true);
     const result = infer('Professor was helpful today.');
     expect(result.accepted.some((c) => normalize(c.displayName) === 'professor')).toBe(false);
+  });
+
+  it('indefinite and vague collective phrases are bare generics', () => {
+    expect(isBareGenericLabel('one girl')).toBe(true);
+    expect(isBareGenericLabel('other girls')).toBe(true);
+    expect(isBareGenericLabel('people in the scene')).toBe(true);
+    expect(isBareGenericLabel('popular egirls')).toBe(true);
+    const result = infer('one girl and other girls and people in the scene showed up.');
+    expect(result.accepted.some((c) => /one girl|other girls|people in the scene/i.test(c.displayName))).toBe(
+      false,
+    );
   });
 
   it('Potential Investor from Antler creates contextual character', () => {

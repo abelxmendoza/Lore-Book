@@ -1,3 +1,4 @@
+import { enrichActorLabel } from '../../actors/enrichActorLabel';
 import { normalizePersonNameKey } from '../../../utils/personNameValidation';
 import type { CharacterCandidate } from './characterInferenceTypes';
 import { buildInferenceContext, collectLinkedPeople } from './characterProvenanceService';
@@ -96,6 +97,39 @@ export function inferContextualPersons(text: string): CharacterCandidate[] {
         requiresReview: true,
         promotionStatus: 'candidate',
       });
+    }
+  }
+
+  // Enrich remaining bare-role mentions that have place/action cues in the same message
+  // (e.g. "coworker" + "Vanguard Robotics" → contextual anonymous label).
+  const bareRole = text.match(
+    /\b((?:my|our|the)\s+)?(coworker|recruiter|manager|roommate|neighbor|barista|interviewer)\b/i,
+  );
+  if (bareRole) {
+    const rawRole = bareRole[2];
+    const enriched = enrichActorLabel({
+      raw: rawRole,
+      messageText: text,
+      places: linked.length ? [] : undefined,
+    });
+    if (enriched.enriched && !isBareGenericLabel(enriched.label)) {
+      const key = normalizePersonNameKey(enriched.label);
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({
+          displayName: enriched.label,
+          identityType: 'role_contextual',
+          titleParts: { roleTitle: rawRole, contextualQualifier: enriched.description },
+          context: buildInferenceContext(text, rawRole, linked),
+          aliases: [],
+          evidencePhrases: [bareRole[0]],
+          sourceMessageIds: [],
+          confidence: 0.72,
+          needsResolution: true,
+          requiresReview: true,
+          promotionStatus: 'candidate',
+        });
+      }
     }
   }
 
