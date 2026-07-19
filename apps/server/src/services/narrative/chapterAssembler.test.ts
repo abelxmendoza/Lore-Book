@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assembleChaptersFromScenes,
+  classifySceneNarrative,
   deriveChapterTitle,
   shouldMergeScenes,
   type ChapterSceneInput,
@@ -29,105 +30,195 @@ function scene(
   };
 }
 
-describe('chapterAssembler', () => {
-  it('merges related same-week scenes into one chapter', () => {
-    const scenes = [
-      scene('s1', 'Costco trip with Abuela', {
-        timeStart: '2026-07-18T14:00:00.000Z',
-        location: 'Costco',
-        participants: ['abuela'],
-        primaryGoal: 'errand_visit',
-        significanceScore: 60,
-        promotedEventId: 'e1',
-      }),
-      scene('s2', 'Afternoon at Abuela\'s house', {
-        timeStart: '2026-07-19T15:00:00.000Z',
-        location: "Abuela's house",
-        participants: ['abuela'],
-        primaryGoal: 'creative_work',
-        summary: 'Worked on MemoVault at Abuela\'s house.',
-        significanceScore: 58,
-      }),
-      scene('s3', 'Building MemoVault', {
-        timeStart: '2026-07-20T16:00:00.000Z',
-        location: "Abuela's house",
-        participants: ['abuela'],
-        primaryGoal: 'creative_work',
-        summary: 'Continued MemoVault development.',
-        significanceScore: 50,
-      }),
-    ];
+/**
+ * The mixed week that motivated the identity-first redesign: a breakup beat,
+ * an errand with family, duplicate club nights, a different romance, and
+ * creative work — previously all glued into one index-like chapter.
+ */
+function mixedWeek(): ChapterSceneInput[] {
+  return [
+    scene('s-date', 'Date night with Rina', {
+      timeStart: '2026-07-10T20:00:00.000Z',
+      participants: ['rina'],
+      significanceScore: 62,
+    }),
+    scene('s-app', 'Building MemoVault', {
+      timeStart: '2026-07-14T16:00:00.000Z',
+      summary: 'Stayed home working on MemoVault all afternoon.',
+      significanceScore: 50,
+    }),
+    scene('s-club-1', 'Went to Neon Palace', {
+      timeStart: '2026-07-15T04:00:00.000Z',
+      location: 'Neon Palace',
+      summary: 'Danced all night at the club.',
+      significanceScore: 44,
+    }),
+    scene('s-club-2', 'Went to Neon Palace', {
+      timeStart: '2026-07-15T05:00:00.000Z',
+      location: 'Neon Palace',
+      summary: 'Danced all night at the club.',
+      significanceScore: 40,
+    }),
+    scene('s-club-3', 'Visit to Neon Palace', {
+      timeStart: '2026-07-16T04:00:00.000Z',
+      location: 'Neon Palace',
+      summary: 'Another night dancing at the club.',
+      significanceScore: 41,
+    }),
+    scene('s-mara', 'Hooked up with Mara at the afters', {
+      timeStart: '2026-07-16T07:00:00.000Z',
+      participants: ['mara'],
+      significanceScore: 58,
+    }),
+    scene('s-grocer', 'Grocery run with Grandma', {
+      timeStart: '2026-07-16T18:00:00.000Z',
+      participants: ['grandma'],
+      significanceScore: 45,
+    }),
+    scene('s-blocked', 'Rina blocked me on Instagram', {
+      timeStart: '2026-07-17T15:00:00.000Z',
+      participants: ['rina'],
+      summary: 'Then she blocked me on Instagram after weeks of no contact.',
+      significanceScore: 72,
+    }),
+  ];
+}
 
-    expect(shouldMergeScenes(scenes[0], scenes[1])).toBe(true);
-    const chapters = assembleChaptersFromScenes(scenes);
-    expect(chapters).toHaveLength(1);
-    expect(chapters[0].sceneIds).toHaveLength(3);
-    expect(chapters[0].eventIds).toContain('e1');
-    expect(chapters[0].title.toLowerCase()).not.toContain('captured conversation');
+describe('classifySceneNarrative', () => {
+  it('answers what a scene is fundamentally about', () => {
+    const identity = classifySceneNarrative(
+      scene('s1', 'Rina blocked me on Instagram', { participants: ['rina'] }),
+    );
+    expect(identity.domain).toBe('romance');
+    expect(identity.subject).toBe('rina');
+    expect(identity.statement).toBe('This chapter is about your relationship with Rina.');
   });
 
-  it('splits when scenes jump across hard time gaps', () => {
-    const a = scene('a', 'Met Jamie at Northwind Depot', {
-      timeStart: '2026-01-01T12:00:00.000Z',
-      participants: ['jamie'],
-      location: 'Northwind Depot',
-      primaryGoal: 'social_time',
-    });
-    const b = scene('b', 'Onboarding day', {
-      timeStart: '2026-07-01T12:00:00.000Z',
-      location: 'Vanguard Robotics',
-      primaryGoal: 'career_progress',
-      summary: 'Years later I started onboarding at Vanguard Robotics.',
-    });
-    expect(shouldMergeScenes(a, b)).toBe(false);
-    expect(assembleChaptersFromScenes([a, b])).toHaveLength(2);
+  it('routes kin scenes to family with the relative as subject', () => {
+    const identity = classifySceneNarrative(
+      scene('s1', 'Grocery run with Grandma', { participants: ['grandma'] }),
+    );
+    expect(identity.domain).toBe('family');
+    expect(identity.subject).toBe('grandma');
   });
 
-  it('derives evidence-first chapter titles', () => {
+  it('treats a named cast with no stronger evidence as a friends story', () => {
+    const identity = classifySceneNarrative(
+      scene('s1', 'Afternoon with Devon', { participants: ['devon'] }),
+    );
+    expect(identity.domain).toBe('friends');
+    expect(identity.subject).toBe('devon');
+  });
+});
+
+describe('assembleChaptersFromScenes', () => {
+  it('splits a mixed week into one chapter per story, never one index', () => {
+    const chapters = assembleChaptersFromScenes(mixedWeek());
+
+    const rina = chapters.find((c) => c.narrative.subject === 'rina');
+    expect(rina).toBeDefined();
+    expect(rina!.narrative.domain).toBe('romance');
+    expect(rina!.sceneIds.sort()).toEqual(['s-blocked', 's-date']);
+    // Unrelated life threads must not pad the breakup story.
+    expect(rina!.sceneIds).not.toContain('s-grocer');
+    expect(rina!.sceneIds).not.toContain('s-app');
+    expect(rina!.sceneIds).not.toContain('s-mara');
+    expect(rina!.participants).not.toContain('mara');
+    expect(rina!.themes).toContain('romance');
+    expect(rina!.themes).not.toContain('errands');
+    expect(rina!.ownership.primarySubject).toMatch(/rina/i);
+    expect(rina!.ownership.primaryNarrative.toLowerCase()).toContain('rina');
+    expect(rina!.thesis.toLowerCase()).toContain('rina');
+    expect(rina!.ownership.domain).toBe('romance');
+    expect(rina!.contributions.every((c) => c.classification === 'supporting')).toBe(true);
+
+    // A different partner is a different story.
+    const mara = chapters.find((c) => c.narrative.subject === 'mara');
+    expect(mara).toBeDefined();
+    expect(mara!.sceneIds).toEqual(['s-mara']);
+
+    const family = chapters.find((c) => c.narrative.domain === 'family');
+    expect(family!.sceneIds).toEqual(['s-grocer']);
+
+    const creative = chapters.find((c) => c.narrative.domain === 'creative');
+    expect(creative!.sceneIds).toEqual(['s-app']);
+    expect(creative!.title).toBe('Building MemoVault');
+  });
+
+  it('collapses duplicate experiences into one beat of one chapter', () => {
+    const chapters = assembleChaptersFromScenes(mixedWeek());
+    const club = chapters.filter((c) => c.narrative.domain === 'social_scene');
+    expect(club).toHaveLength(1);
+    expect(club[0].sceneIds.sort()).toEqual(['s-club-1', 's-club-2', 's-club-3']);
+    expect(club[0].title).toBe('Nights out at Neon Palace');
+  });
+
+  it('refuses to assemble a chapter with no narrative identity', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('s1', 'A quiet day', { summary: 'Nothing much happened.', significanceScore: 12 }),
+      scene('s2', 'Some afternoon', {
+        timeStart: '2026-07-19T14:00:00.000Z',
+        summary: 'Misc stuff.',
+        significanceScore: 15,
+      }),
+    ]);
+    expect(chapters).toHaveLength(0);
+  });
+
+  it('refuses identity-less anchors even when significant — no ownership contract', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('s1', 'Totaled the car on the freeway', {
+        summary: 'Wrecked the car on the freeway ramp.',
+        significanceScore: 80,
+      }),
+    ]);
+    // Narrative Ownership: without a discoverable story, do not publish a chapter.
+    expect(chapters).toHaveLength(0);
+  });
+
+  it('splits the same story across hard time gaps', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('a', 'Date night with Rina', {
+        timeStart: '2026-01-01T20:00:00.000Z',
+        participants: ['rina'],
+      }),
+      scene('b', 'Anniversary date night with Rina', {
+        timeStart: '2026-07-01T20:00:00.000Z',
+        participants: ['rina'],
+      }),
+    ]);
+    expect(chapters).toHaveLength(2);
+    expect(chapters.every((c) => c.narrative.subject === 'rina')).toBe(true);
+  });
+});
+
+describe('shouldMergeScenes', () => {
+  it('continues a story only for the same domain and subject', () => {
+    const [dateNight, , , , , mara, grocer, blocked] = mixedWeek();
+    expect(shouldMergeScenes(dateNight, blocked)).toBe(true);
+    expect(shouldMergeScenes(blocked, grocer)).toBe(false);
+    expect(shouldMergeScenes(blocked, mara)).toBe(false);
+  });
+});
+
+describe('deriveChapterTitle', () => {
+  it('titles flow from the narrative identity', () => {
+    const anchor = scene('s1', 'Rina blocked me on Instagram', { participants: ['rina'] });
     const title = deriveChapterTitle({
-      scenes: [
-        scene('s1', 'Costco trip with Abuela', {
-          summary: 'Costco then MemoVault at home',
-          participants: ['abuela'],
-        }),
-      ],
-      location: "Abuela's house",
-      participants: ['abuela'],
-      themes: ['creative', 'errands', 'social'],
+      identity: classifySceneNarrative(anchor),
+      anchor,
+      location: null,
     });
-    expect(title.length).toBeGreaterThan(0);
-    expect(title.toLowerCase()).not.toContain('captured conversation');
+    expect(title).toBe('Falling out with Rina');
   });
 });
 
 describe('chapterSignificance', () => {
-  it('persists multi-scene chapters even when individual scenes are modest', () => {
-    const [chapter] = assembleChaptersFromScenes([
-      scene('s1', 'Went to Costco', { significanceScore: 40, participants: ['jamie'] }),
-      scene('s2', 'Time with Jamie', {
-        timeStart: '2026-07-19T12:00:00.000Z',
-        significanceScore: 38,
-        participants: ['jamie'],
-        primaryGoal: 'social_time',
-      }),
-      scene('s3', 'Worked on MemoVault', {
-        timeStart: '2026-07-20T12:00:00.000Z',
-        significanceScore: 36,
-        participants: ['jamie'],
-        primaryGoal: 'creative_work',
-      }),
-    ]);
-    const decision = mayPersistChapter(chapter);
+  it('persists a multi-scene story chapter', () => {
+    const chapters = assembleChaptersFromScenes(mixedWeek());
+    const rina = chapters.find((c) => c.narrative.subject === 'rina')!;
+    const decision = mayPersistChapter(rina);
     expect(decision.allow).toBe(true);
-    expect(decision.breakdown.sceneCount).toBe(3);
-    expect(decision.score).toBeGreaterThanOrEqual(35);
-  });
-
-  it('skips a thin single scene with no event', () => {
-    const [chapter] = assembleChaptersFromScenes([
-      scene('s1', 'Bought snacks', { significanceScore: 12 }),
-    ]);
-    const decision = mayPersistChapter(chapter);
-    expect(decision.allow).toBe(false);
+    expect(decision.breakdown.sceneCount).toBe(2);
   });
 });

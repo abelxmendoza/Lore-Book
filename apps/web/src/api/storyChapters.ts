@@ -6,6 +6,11 @@ export type StoryChapter = {
   title: string;
   summary: string;
   thesis: string | null;
+  primary_narrative?: string | null;
+  primary_subject?: string | null;
+  primary_conflict?: string | null;
+  primary_outcome?: string | null;
+  contribution_scores?: Record<string, number>;
   time_start: string | null;
   time_end: string | null;
   location: string | null;

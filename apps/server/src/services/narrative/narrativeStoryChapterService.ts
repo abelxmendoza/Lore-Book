@@ -14,6 +14,11 @@ export type NarrativeStoryChapterRow = {
   title: string;
   summary: string;
   thesis: string | null;
+  primary_narrative?: string | null;
+  primary_subject?: string | null;
+  primary_conflict?: string | null;
+  primary_outcome?: string | null;
+  contribution_scores?: Record<string, number>;
   time_start: string | null;
   time_end: string | null;
   location: string | null;
@@ -78,10 +83,19 @@ export class NarrativeStoryChapterService {
         .limit(1)
         .maybeSingle();
 
+      const contributionScores = Object.fromEntries(
+        (chapter.contributions ?? []).map((c) => [c.sceneId, c.strength]),
+      );
+
       const payload = {
         title: chapter.title || 'Untitled chapter',
         summary: chapter.summary,
-        thesis: chapter.thesis || null,
+        thesis: chapter.ownership?.primaryNarrative || chapter.thesis || null,
+        primary_narrative: chapter.ownership?.primaryNarrative || null,
+        primary_subject: chapter.ownership?.primarySubject || null,
+        primary_conflict: chapter.ownership?.primaryConflict || null,
+        primary_outcome: chapter.ownership?.primaryOutcome || null,
+        contribution_scores: contributionScores,
         time_start: chapter.timeStart,
         time_end: chapter.timeEnd,
         location: chapter.location,
@@ -97,6 +111,8 @@ export class NarrativeStoryChapterService {
         metadata: {
           ...(input.metadata ?? {}),
           fingerprint,
+          ownership: chapter.ownership,
+          contributions: chapter.contributions,
         },
       };
 
@@ -105,19 +121,19 @@ export class NarrativeStoryChapterService {
       }
 
       if (existing?.id) {
-        const mergedSceneIds = Array.from(
-          new Set([...(existing.scene_ids ?? []), ...chapter.sceneIds]),
-        );
-        const mergedEventIds = Array.from(
-          new Set([...(existing.event_ids ?? []), ...chapter.eventIds]),
-        );
+        // Ownership replaces membership — do not merge historical unrelated scenes back in.
+        const priorSceneIds = (existing.scene_ids as string[]) ?? [];
+        const dropSceneIds = priorSceneIds.filter((id) => !chapter.sceneIds.includes(id));
+        if (dropSceneIds.length) {
+          await supabaseAdmin
+            .from('narrative_scenes')
+            .update({ chapter_id: null, updated_at: new Date().toISOString() })
+            .eq('user_id', userId)
+            .in('id', dropSceneIds);
+        }
         const { data, error } = await supabaseAdmin
           .from('narrative_story_chapters')
-          .update({
-            ...payload,
-            scene_ids: mergedSceneIds,
-            event_ids: mergedEventIds,
-          })
+          .update(payload)
           .eq('id', existing.id)
           .eq('user_id', userId)
           .select('*')
@@ -126,7 +142,7 @@ export class NarrativeStoryChapterService {
           logger.warn({ error, userId }, 'narrative_story_chapters update failed');
           return existing as NarrativeStoryChapterRow;
         }
-        await this.attachScenes(userId, data.id, mergedSceneIds);
+        await this.attachScenes(userId, data.id, chapter.sceneIds);
         return data as NarrativeStoryChapterRow;
       }
 
@@ -160,6 +176,33 @@ export class NarrativeStoryChapterService {
       .in('id', sceneIds);
     if (error) {
       logger.warn({ error, userId, chapterId }, 'attach scenes to chapter failed');
+    }
+  }
+
+  /**
+   * Clear story chapters for a user and detach scenes so ownership reprocess can rebuild.
+   */
+  async clearChaptersForUser(userId: string): Promise<number> {
+    try {
+      await supabaseAdmin
+        .from('narrative_scenes')
+        .update({ chapter_id: null, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .not('chapter_id', 'is', null);
+
+      const { data, error } = await supabaseAdmin
+        .from('narrative_story_chapters')
+        .delete()
+        .eq('user_id', userId)
+        .select('id');
+      if (error) {
+        logger.warn({ error, userId }, 'narrative_story_chapters clear failed');
+        return 0;
+      }
+      return data?.length ?? 0;
+    } catch (error) {
+      logger.warn({ error, userId }, 'narrative_story_chapters clear error');
+      return 0;
     }
   }
 }

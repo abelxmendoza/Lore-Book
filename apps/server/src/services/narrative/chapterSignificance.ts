@@ -6,6 +6,7 @@
  */
 
 import type { AssembledChapter } from './chapterAssembler';
+import { mayPublishOwnedChapter } from './narrativeValidation';
 
 /** Soft floor: single weak scene chapters below this may be skipped. */
 export const CHAPTER_MIN_SIGNIFICANCE = 35;
@@ -72,5 +73,17 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
 }
 
 export function mayPersistChapter(chapter: AssembledChapter): ChapterSignificanceResult {
-  return scoreChapterSignificance(chapter);
+  const scored = scoreChapterSignificance(chapter);
+  const ownership = mayPublishOwnedChapter(chapter);
+  if (!ownership.allow) {
+    return {
+      ...scored,
+      allow: false,
+      breakdown: {
+        ...scored.breakdown,
+        // Keep numeric breakdown; callers log ownership.reasons separately via metadata.
+      },
+    };
+  }
+  return scored;
 }

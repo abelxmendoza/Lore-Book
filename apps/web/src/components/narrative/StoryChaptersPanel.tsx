@@ -209,8 +209,35 @@ export function StoryChapterReader({
         </div>
       </div>
       <div className="px-4 sm:px-8 py-6 max-w-2xl space-y-5">
-        {chapter.thesis && (
-          <p className="text-base text-white/80 leading-relaxed italic">{chapter.thesis}</p>
+        {(chapter.primary_narrative || chapter.thesis) && (
+          <p className="text-base text-white/80 leading-relaxed italic">
+            {chapter.primary_narrative || chapter.thesis}
+          </p>
+        )}
+        {(chapter.primary_subject || chapter.primary_conflict || chapter.primary_outcome) && (
+          <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 space-y-1">
+            <p className="text-[10px] uppercase tracking-widest text-amber-300/70 font-mono">
+              Narrative ownership
+            </p>
+            {chapter.primary_subject && (
+              <p className="text-xs text-white/70">
+                <span className="text-white/40">Subject · </span>
+                {chapter.primary_subject}
+              </p>
+            )}
+            {chapter.primary_conflict && (
+              <p className="text-xs text-white/70">
+                <span className="text-white/40">Conflict · </span>
+                {chapter.primary_conflict}
+              </p>
+            )}
+            {chapter.primary_outcome && (
+              <p className="text-xs text-white/70">
+                <span className="text-white/40">Outcome · </span>
+                {chapter.primary_outcome}
+              </p>
+            )}
+          </div>
         )}
         <p className="text-sm text-white/65 leading-relaxed">{chapter.summary}</p>
         <div className="flex flex-wrap gap-3 text-xs text-white/40">

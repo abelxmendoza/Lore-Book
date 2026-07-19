@@ -45,6 +45,7 @@ import {
   type ChapterSceneInput,
 } from '../narrative/chapterAssembler';
 import { mayPersistChapter } from '../narrative/chapterSignificance';
+import { mayPublishOwnedChapter } from '../narrative/narrativeValidation';
 import { narrativeStoryChapterService } from '../narrative/narrativeStoryChapterService';
 import {
   assembleErasFromChapters,
@@ -332,6 +333,20 @@ export class EventAssemblyService {
       if (chapterSceneInputs.length > 0) {
         const chapters = assembleChaptersFromScenes(chapterSceneInputs);
         for (const assembledChapter of chapters) {
+          const ownershipGate = mayPublishOwnedChapter(assembledChapter);
+          if (!ownershipGate.allow) {
+            logger.info(
+              {
+                userId,
+                sceneIds: assembledChapter.sceneIds,
+                title: assembledChapter.title,
+                reasons: ownershipGate.reasons,
+                ownership: assembledChapter.ownership,
+              },
+              'Narrative ladder: chapter failed ownership validation',
+            );
+            continue;
+          }
           const chapterScore = mayPersistChapter(assembledChapter);
           if (!chapterScore.allow) {
             logger.info(
@@ -350,7 +365,12 @@ export class EventAssemblyService {
             chapter: assembledChapter,
             significanceScore: chapterScore.score,
             threadId: threadId ?? null,
-            metadata: { significance: chapterScore.breakdown },
+            metadata: {
+              significance: chapterScore.breakdown,
+              narrative: assembledChapter.narrative,
+              ownership: assembledChapter.ownership,
+              contributions: assembledChapter.contributions,
+            },
           });
           if (chapterRow?.id) wroteChapters = true;
         }
