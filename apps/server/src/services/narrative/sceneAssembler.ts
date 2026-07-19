@@ -306,10 +306,6 @@ export function deriveSceneTitle(input: {
   }
   if (loc && /\b(?:house|home|place)\b/i.test(loc)) {
     const building = /\b(?:built|building|worked on|coded)\b/i.test(blob);
-    if (building && /\blore\s*book\b/i.test(blob)) {
-      const lb = `Building LoreBook at ${loc}`;
-      if (isPublishableLifeLogTitle(lb)) return lb;
-    }
     if (building && /\bmemovault\b/i.test(blob)) {
       const mv = `Building MemoVault at ${loc}`;
       if (isPublishableLifeLogTitle(mv)) return mv;

@@ -61,14 +61,20 @@ export type LifeHistoryReport = {
 };
 
 export const lifeHistoryApi = {
-  getLifeHistory: () =>
-    fetchJson<{ success: boolean; history: LifeHistoryReport }>('/api/story/life-history'),
+  getLifeHistory: (opts?: { limit?: number }) => {
+    const qs = opts?.limit ? `?limit=${opts.limit}` : '';
+    return fetchJson<{ success: boolean; history: LifeHistoryReport }>(
+      `/api/story/life-history${qs}`,
+    );
+  },
 
-  getLifeChapters: () =>
-    fetchJson<{
+  getLifeChapters: (opts?: { limit?: number }) => {
+    const qs = opts?.limit ? `?limit=${opts.limit}` : '';
+    return fetchJson<{
       success: boolean;
       generatedAt: string;
       chapters: LifeHistoryChapter[];
       eventCount: number;
-    }>('/api/story/life-chapters'),
+    }>(`/api/story/life-chapters${qs}`);
+  },
 };

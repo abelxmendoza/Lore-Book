@@ -8,6 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { compileBookOutline } from '../services/narrative/bookCompilerService';
 import { historyEngineService } from '../services/narrative/history';
 import { narrativeCompilerService } from '../services/narrative/narrativeCompilerService';
+import { narrativeStoryChapterService } from '../services/narrative/narrativeStoryChapterService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
 import type { BookOutline } from '../services/narrative/types';
@@ -24,12 +25,20 @@ router.get(
   })
 );
 
+function parseStoryLimit(raw: unknown): number | undefined {
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return Math.min(n, 5000);
+}
+
 /** GET /api/story/life-history — classified events, life chapters, turning points */
 router.get(
   '/life-history',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const history = await historyEngineService.compile(req.user!.id);
+    const limit = parseStoryLimit(req.query.limit);
+    const history = await historyEngineService.compile(req.user!.id, [], { limit });
     res.json({ success: true, history });
   }),
 );
@@ -39,12 +48,28 @@ router.get(
   '/life-chapters',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const history = await historyEngineService.compile(req.user!.id);
+    const limit = parseStoryLimit(req.query.limit);
+    const history = await historyEngineService.compile(req.user!.id, [], { limit });
     res.json({
       success: true,
       generatedAt: history.generatedAt,
       chapters: history.chapters,
       eventCount: history.eventCount,
+    });
+  }),
+);
+
+/** GET /api/story/story-chapters — durable chapters assembled from Scenes */
+router.get(
+  '/story-chapters',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const limit = parseStoryLimit(req.query.limit) ?? 100;
+    const chapters = await narrativeStoryChapterService.listChapters(req.user!.id, { limit });
+    res.json({
+      success: true,
+      chapters,
+      chapterCount: chapters.length,
     });
   }),
 );

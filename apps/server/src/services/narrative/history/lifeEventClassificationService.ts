@@ -115,7 +115,7 @@ export async function enrichResolvedEventClassification(
 
 export async function loadClassifiedLifeEvents(
   userId: string,
-  limit = 500,
+  limit = 2000,
 ): Promise<ClassifiedLifeEvent[]> {
   const { data: rows, error } = await supabaseAdmin
     .from('resolved_events')

@@ -40,6 +40,12 @@ import {
 } from '../narrative/sceneAssembler';
 import { mayPromoteSceneToEvent, SCENE_EVENT_PROMOTION_THRESHOLD } from '../narrative/sceneSignificance';
 import { narrativeSceneService } from '../narrative/narrativeSceneService';
+import {
+  assembleChaptersFromScenes,
+  type ChapterSceneInput,
+} from '../narrative/chapterAssembler';
+import { mayPersistChapter } from '../narrative/chapterSignificance';
+import { narrativeStoryChapterService } from '../narrative/narrativeStoryChapterService';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -134,9 +140,10 @@ export class EventAssemblyService {
       const eventGroups = this.groupUnitsIntoEvents(experienceUnits);
 
       // Layered ladder:
-      // Conversation → Moments → Scenes → Canonical Events
+      // Conversation → Moments → Scenes → Canonical Events → Story Chapters
       // Profile facts / states / opinions never become Moments.
       const results: EventAssemblyResult[] = [];
+      const chapterSceneInputs: ChapterSceneInput[] = [];
       for (const group of eventGroups) {
         const clauseGroup = group.map(unit => ({
           ...unit,
@@ -210,10 +217,29 @@ export class EventAssemblyService {
             metadata: { significance: sceneScore.breakdown },
           });
 
+          let promotedEventId: string | null = null;
+
           const sceneUnits = assembled.momentIds
             .map((id) => unitByMomentId.get(id))
             .filter((u): u is ExtractedUnit => Boolean(u));
-          if (sceneUnits.length === 0) continue;
+          if (sceneUnits.length === 0) {
+            if (sceneRow?.id) {
+              chapterSceneInputs.push({
+                id: sceneRow.id,
+                title: assembled.title,
+                summary: assembled.summary,
+                timeStart: assembled.timeStart,
+                timeEnd: assembled.timeEnd,
+                location: assembled.location,
+                participants: assembled.participants,
+                primaryGoal: assembled.primaryGoal,
+                dominantEmotion: assembled.dominantEmotion,
+                significanceScore: sceneScore.score,
+                promotedEventId: null,
+              });
+            }
+            continue;
+          }
 
           const sourceText = assembled.summary || sceneUnits.map((u) => u.content).join(' ');
           const eligibility = evaluateLifeLogEligibility({
@@ -230,11 +256,8 @@ export class EventAssemblyService {
               },
               'Narrative ladder: Scene saved; Life Log Event rejected',
             );
-            continue;
-          }
-
-          // 4) Compress Scene → Canonical Event (not Moment → Event)
-          if (!sceneScore.allow) {
+          } else if (!sceneScore.allow) {
+            // 4) Compress Scene → Canonical Event (not Moment → Event)
             logger.info(
               {
                 userId,
@@ -246,40 +269,82 @@ export class EventAssemblyService {
               },
               'Narrative ladder: Scene below Event significance — Scene only',
             );
-            continue;
+          } else {
+            const candidateTitle =
+              (assembled.title && isPublishableLifeLogTitle(assembled.title)
+                ? assembled.title
+                : this.extractEventTitle(sceneUnits)) || '';
+            if (!isPublishableLifeLogTitle(candidateTitle)) {
+              logger.info(
+                {
+                  userId,
+                  reason: 'rejected_failed_extraction',
+                  candidateTitle,
+                  sceneId: sceneRow?.id,
+                  momentIds: assembled.momentIds,
+                },
+                'Narrative ladder: Scene saved; unpublishable Event title',
+              );
+            } else {
+              const event = await this.createOrUpdateEvent(userId, sceneUnits, threadId);
+              if (!(event as { rejected?: boolean }).rejected && event.event_id) {
+                promotedEventId = event.event_id;
+                if (sceneRow?.id) {
+                  await narrativeSceneService.markPromoted(userId, sceneRow.id, event.event_id);
+                }
+                await narrativeMomentService.markPromoted(
+                  userId,
+                  assembled.momentIds,
+                  event.event_id,
+                );
+                results.push(event);
+              }
+            }
           }
 
-          const candidateTitle =
-            (assembled.title && isPublishableLifeLogTitle(assembled.title)
-              ? assembled.title
-              : this.extractEventTitle(sceneUnits)) || '';
-          if (!isPublishableLifeLogTitle(candidateTitle)) {
+          // Feed Scene into Story Chapter assembly regardless of Event promotion
+          if (sceneRow?.id) {
+            chapterSceneInputs.push({
+              id: sceneRow.id,
+              title: assembled.title || sceneRow.title,
+              summary: assembled.summary || sceneRow.summary,
+              timeStart: assembled.timeStart,
+              timeEnd: assembled.timeEnd,
+              location: assembled.location,
+              participants: assembled.participants,
+              primaryGoal: assembled.primaryGoal,
+              dominantEmotion: assembled.dominantEmotion,
+              significanceScore: sceneScore.score,
+              promotedEventId,
+            });
+          }
+        }
+      }
+
+      // 5) Assemble Story Chapters from Scenes (experiences → autobiographical spans)
+      if (chapterSceneInputs.length > 0) {
+        const chapters = assembleChaptersFromScenes(chapterSceneInputs);
+        for (const assembledChapter of chapters) {
+          const chapterScore = mayPersistChapter(assembledChapter);
+          if (!chapterScore.allow) {
             logger.info(
               {
                 userId,
-                reason: 'rejected_failed_extraction',
-                candidateTitle,
-                sceneId: sceneRow?.id,
-                momentIds: assembled.momentIds,
+                score: chapterScore.score,
+                sceneIds: assembledChapter.sceneIds,
+                title: assembledChapter.title,
               },
-              'Narrative ladder: Scene saved; unpublishable Event title',
+              'Narrative ladder: Chapter skipped — thin single scene',
             );
             continue;
           }
-
-          const event = await this.createOrUpdateEvent(userId, sceneUnits, threadId);
-          if ((event as { rejected?: boolean }).rejected) continue;
-          if (event.event_id) {
-            if (sceneRow?.id) {
-              await narrativeSceneService.markPromoted(userId, sceneRow.id, event.event_id);
-            }
-            await narrativeMomentService.markPromoted(
-              userId,
-              assembled.momentIds,
-              event.event_id,
-            );
-          }
-          results.push(event);
+          await narrativeStoryChapterService.upsertChapter({
+            userId,
+            chapter: assembledChapter,
+            significanceScore: chapterScore.score,
+            threadId: threadId ?? null,
+            metadata: { significance: chapterScore.breakdown },
+          });
         }
       }
 

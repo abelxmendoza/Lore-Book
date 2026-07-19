@@ -81,7 +81,7 @@ describe('sceneAssembler', () => {
       summaries: [
         'I drove to Costco.',
         'Hung out with Abuela.',
-        'Came home and worked on LoreBook.',
+        'Came home and worked on MemoVault.',
       ],
       location: "Abuela's house",
       participants: ['abuela'],

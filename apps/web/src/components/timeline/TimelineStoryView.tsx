@@ -13,10 +13,11 @@ import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
+import type { StoryChapter } from '../../api/storyChapters';
 import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineMonthBanner } from './TimelineDateDisplay';
-import { LifeHistoryChaptersPanel } from '../narrative/LifeHistoryChaptersPanel';
+import { StoryChapterReader, StoryChaptersPanel } from '../narrative/StoryChaptersPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,13 @@ function entriesForArc(arc: LifeArc, entries: ChronologyEntry[]): ChronologyEntr
       return t >= s && t <= e;
     })
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+}
+
+/** Prefer arc membership (source_event_ids); fall back to date-window overlap. */
+function chapterItemCount(arc: LifeArc, entries: ChronologyEntry[]): number {
+  const fromMeta = getSourceEventCount(arc);
+  if (fromMeta != null) return fromMeta;
+  return entriesForArc(arc, entries).length;
 }
 
 function confidenceBars(confidence: number): string {
@@ -191,6 +199,7 @@ interface TimelineStoryViewProps {
 export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewProps) => {
   const isMobile = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedStoryChapter, setSelectedStoryChapter] = useState<StoryChapter | null>(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
   useEffect(() => {
@@ -211,12 +220,15 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
     }),
   [arcs]);
 
-  const selectedArc = sortedArcs.find(a => a.id === selectedId) ?? sortedArcs[0] ?? null;
+  const selectedArc =
+    selectedStoryChapter
+      ? null
+      : sortedArcs.find(a => a.id === selectedId) ?? sortedArcs[0] ?? null;
 
-  const arcEntryMap = useMemo(() => {
-    const map: Record<string, ChronologyEntry[]> = {};
+  const arcCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
     for (const arc of sortedArcs) {
-      map[arc.id] = entriesForArc(arc, entries);
+      map[arc.id] = chapterItemCount(arc, entries);
     }
     return map;
   }, [sortedArcs, entries]);
@@ -239,20 +251,6 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
     );
   }
 
-  if (sortedArcs.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-4 px-8 text-center">
-        <Star className="h-10 w-10 text-white/10" />
-        <div>
-          <p className="text-white/50 font-medium">No chapters yet</p>
-          <p className="text-white/25 text-sm mt-1 max-w-xs">
-            Your life arcs will appear here once LoreBook detects recurring patterns in your memories.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex overflow-hidden">
       {/* ── Table of contents ────────────────────────────────────────── */}
@@ -263,7 +261,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
       >
         <div className="px-3 sm:px-4 py-3 border-b border-white/8 sticky top-0 bg-black/95 backdrop-blur-sm z-10">
           <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">
-            {sortedArcs.length} chapter{sortedArcs.length !== 1 ? 's' : ''}
+            {sortedArcs.length} life arc{sortedArcs.length !== 1 ? 's' : ''}
           </p>
           {isMobile && (
             <p className="text-xs text-white/40 mt-1">Tap a chapter to read</p>
@@ -271,21 +269,40 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
         </div>
 
         <div className="p-3 border-b border-white/8">
-          <LifeHistoryChaptersPanel compact maxChapters={3} />
-        </div>
-
-        {sortedArcs.map(arc => (
-          <ChapterItem
-            key={arc.id}
-            arc={arc}
-            selected={arc.id === (selectedArc?.id)}
-            entryCount={arcEntryMap[arc.id]?.length ?? 0}
-            onClick={() => {
-              setSelectedId(arc.id);
+          <StoryChaptersPanel
+            compact
+            selectedId={selectedStoryChapter?.id ?? null}
+            onSelectChapter={(chapter) => {
+              setSelectedStoryChapter(chapter);
+              setSelectedId(null);
               setMobileReaderOpen(true);
             }}
           />
-        ))}
+        </div>
+
+        {sortedArcs.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <Star className="h-8 w-8 text-white/10 mx-auto mb-3" />
+            <p className="text-white/40 text-sm">No life arcs yet</p>
+            <p className="text-white/25 text-xs mt-1">
+              Story chapters above appear as Scenes cluster into life periods.
+            </p>
+          </div>
+        ) : (
+          sortedArcs.map(arc => (
+            <ChapterItem
+              key={arc.id}
+              arc={arc}
+              selected={!selectedStoryChapter && arc.id === (selectedArc?.id)}
+              entryCount={arcCountMap[arc.id] ?? 0}
+              onClick={() => {
+                setSelectedStoryChapter(null);
+                setSelectedId(arc.id);
+                setMobileReaderOpen(true);
+              }}
+            />
+          ))
+        )}
       </div>
 
       {/* ── Reading area ─────────────────────────────────────────────── */}
@@ -294,7 +311,15 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
           mobileReaderOpen ? 'block' : 'hidden md:block'
         }`}
       >
-        {selectedArc ? (
+        {selectedStoryChapter ? (
+          <StoryChapterReader
+            chapter={selectedStoryChapter}
+            onBack={() => {
+              setSelectedStoryChapter(null);
+              setMobileReaderOpen(false);
+            }}
+          />
+        ) : selectedArc ? (
           <ArcPanel
             arc={selectedArc}
             onBack={() => setMobileReaderOpen(false)}

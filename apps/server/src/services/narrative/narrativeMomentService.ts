@@ -1,6 +1,6 @@
 /**
  * Narrative Moments — durable smallest memories.
- * Conversation → Moments → Scenes → Canonical Events.
+ * Conversation → Moments → Scenes → Canonical Events → Story Chapters.
  */
 
 import { logger } from '../../logger';

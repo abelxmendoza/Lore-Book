@@ -14,9 +14,18 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: 'text-white/50 border-white/15 bg-white/5',
 };
 
-function ChapterCard({ chapter, defaultOpen }: { chapter: LifeHistoryChapter; defaultOpen?: boolean }) {
+function ChapterCard({
+  chapter,
+  defaultOpen,
+  showAllEvents = false,
+}: {
+  chapter: LifeHistoryChapter;
+  defaultOpen?: boolean;
+  showAllEvents?: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const badge = CATEGORY_COLORS[chapter.dominantCategory] ?? CATEGORY_COLORS.other;
+  const visibleEvents = showAllEvents ? chapter.events : chapter.events.slice(0, 6);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
@@ -41,7 +50,7 @@ function ChapterCard({ chapter, defaultOpen }: { chapter: LifeHistoryChapter; de
       </button>
       {open && (
         <div className="px-3 pb-3 space-y-1.5 border-t border-white/8">
-          {chapter.events.slice(0, 6).map((event) => (
+          {visibleEvents.map((event) => (
             <div key={event.id} className="flex items-start gap-2 pt-2">
               <span className="text-[10px] text-white/30 w-16 shrink-0">{event.startTime.slice(0, 10)}</span>
               <div className="min-w-0">
@@ -52,7 +61,7 @@ function ChapterCard({ chapter, defaultOpen }: { chapter: LifeHistoryChapter; de
               </div>
             </div>
           ))}
-          {chapter.events.length > 6 && (
+          {!showAllEvents && chapter.events.length > 6 && (
             <p className="text-[10px] text-white/30 pt-1">+{chapter.events.length - 6} more events</p>
           )}
         </div>
@@ -63,10 +72,18 @@ function ChapterCard({ chapter, defaultOpen }: { chapter: LifeHistoryChapter; de
 
 type LifeHistoryChaptersPanelProps = {
   compact?: boolean;
-  maxChapters?: number;
+  /** Omit or pass null to show every compiled chapter. */
+  maxChapters?: number | null;
+  showAllEvents?: boolean;
+  eventLimit?: number;
 };
 
-export function LifeHistoryChaptersPanel({ compact = false, maxChapters = 5 }: LifeHistoryChaptersPanelProps) {
+export function LifeHistoryChaptersPanel({
+  compact = false,
+  maxChapters = 5,
+  showAllEvents = false,
+  eventLimit = 2000,
+}: LifeHistoryChaptersPanelProps) {
   const [chapters, setChapters] = useState<LifeHistoryChapter[]>([]);
   const [eventCount, setEventCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -74,7 +91,7 @@ export function LifeHistoryChaptersPanel({ compact = false, maxChapters = 5 }: L
 
   useEffect(() => {
     lifeHistoryApi
-      .getLifeChapters()
+      .getLifeChapters({ limit: eventLimit })
       .then((res) => {
         if (res.success) {
           setChapters(res.chapters);
@@ -83,7 +100,7 @@ export function LifeHistoryChaptersPanel({ compact = false, maxChapters = 5 }: L
       })
       .catch(() => setError('Life chapters not available yet.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [eventLimit]);
 
   if (loading) {
     return (
@@ -107,7 +124,10 @@ export function LifeHistoryChaptersPanel({ compact = false, maxChapters = 5 }: L
     );
   }
 
-  const visible = chapters.slice(-maxChapters).reverse();
+  const visible =
+    maxChapters == null
+      ? [...chapters].reverse()
+      : chapters.slice(-maxChapters).reverse();
 
   return (
     <div
@@ -121,7 +141,12 @@ export function LifeHistoryChaptersPanel({ compact = false, maxChapters = 5 }: L
       </div>
       <div className="space-y-2">
         {visible.map((chapter, i) => (
-          <ChapterCard key={chapter.id} chapter={chapter} defaultOpen={i === 0} />
+          <ChapterCard
+            key={chapter.id}
+            chapter={chapter}
+            defaultOpen={i === 0}
+            showAllEvents={showAllEvents}
+          />
         ))}
       </div>
     </div>
