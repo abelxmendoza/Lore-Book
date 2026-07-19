@@ -30,10 +30,10 @@ import { supabaseAdmin } from '../services/supabaseClient';
 
 // Every table referencing resolved_events.id (from live FK constraints).
 // event_unit_links is handled separately because of unique(event_id, unit_id).
-// (event_mentions is NOT here: despite the name, the live table stores
-// per-entry entity mentions — entry_id/entity_id — and has no FK to
-// resolved_events.)
 const EVENT_REFS: Array<{ table: string; column: string }> = [
+  // Requires migration 20260731150000 — before it, event_mentions held an
+  // unrelated legacy shape with no event_id column.
+  { table: 'event_mentions', column: 'event_id' },
   { table: 'event_records', column: 'resolved_event_id' },
   { table: 'event_confidence_snapshots', column: 'event_id' },
   { table: 'event_causal_links', column: 'cause_event_id' },

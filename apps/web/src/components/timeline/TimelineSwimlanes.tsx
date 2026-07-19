@@ -2,7 +2,7 @@
  * TimelineSwimlanes
  *
  * Horizontal parallel-tracks visualization:
- *   - Rows = life tracks (career, relationships, creative, health, inner)
+ *   - Rows = life tracks (career, romance, relationships, creative, health, inner)
  *   - Bars = life arcs spanning their real calendar duration
  *   - Dots = individual memories positioned by date
  *   - Vertical "NOW" line anchored to today
@@ -54,6 +54,7 @@ const LABEL_W       = 96;   // px for the fixed track-label column (desktop)
 const LABEL_W_MOBILE = 36;
 const TRACK_SHORT: Record<ArcTrack, string> = {
   career: 'Work',
+  romance: 'Love',
   relationships: 'Rel',
   creative: 'Art',
   health: 'Body',
@@ -67,7 +68,7 @@ const ARC_MIN_W     = 6;    // px minimum rendered arc-bar width
 const CLUSTER_PX    = 52;   // px — memory markers closer than this merge into a cluster
 const MIN_ZOOM      = 0.3;
 const MAX_ZOOM      = 8;
-const TRACK_ORDER: ArcTrack[] = ['career', 'relationships', 'creative', 'health', 'inner', 'mixed'];
+const TRACK_ORDER: ArcTrack[] = ['career', 'romance', 'relationships', 'creative', 'health', 'inner', 'mixed'];
 
 // Sub-lane layout + memory clustering live in ./swimlaneOverlap (unit-tested).
 
@@ -361,12 +362,17 @@ export const TimelineSwimlanes = ({
     return Math.round(daysBetween(timelineStart, d) * ppd);
   }, [timelineStart, ppd]);
 
-  // ── Axis ticks: all months when zoomed in; Jan 'YY every 4 years when zoomed out ──
-  const showAllMonthLabels = zoom >= 2;
-  const showMonthGrid = zoom >= 1.5;
+  // ── Axis ticks: every month stays visible at every zoom level ────────────
   const axisTicks = useMemo(
-    () => buildSwimlaneAxisTicks(timelineStart, today, xOf, showAllMonthLabels),
-    [showAllMonthLabels, timelineStart, today, xOf],
+    () => buildSwimlaneAxisTicks(timelineStart, today, xOf),
+    [timelineStart, today, xOf],
+  );
+
+  // User-created arcs can carry track 'custom'; that row appears only when
+  // such arcs exist so the fixed life tracks stay visually stable.
+  const visibleTracks = useMemo<ArcTrack[]>(
+    () => ((arcsByTrack.custom?.length ?? 0) > 0 ? [...TRACK_ORDER, 'custom'] : TRACK_ORDER),
+    [arcsByTrack],
   );
 
   // ── Sub-lane layout (overlap stacking per track) ────────────────────────────
@@ -375,11 +381,11 @@ export const TimelineSwimlanes = ({
   const subLaneData = useMemo(() => {
     const minSpanMs = (ARC_MIN_W / ppd) * 86_400_000;
     const result: Partial<Record<ArcTrack, { map: SubLaneMap; count: number }>> = {};
-    for (const track of TRACK_ORDER) {
+    for (const track of visibleTracks) {
       result[track] = computeSubLanes(arcsByTrack[track] ?? [], minSpanMs);
     }
     return result;
-  }, [arcsByTrack, ppd]);
+  }, [arcsByTrack, ppd, visibleTracks]);
 
   // ── Memory marker clustering (overlap merging at current zoom) ──────────────
   const entryClusters = useMemo(
@@ -391,12 +397,12 @@ export const TimelineSwimlanes = ({
   const { trackTops, totalTracksHeight } = useMemo(() => {
     let offset = AXIS_H;
     const tops: Partial<Record<ArcTrack, number>> = {};
-    for (const track of TRACK_ORDER) {
+    for (const track of visibleTracks) {
       tops[track] = offset;
       offset += trackHeight(subLaneData[track]?.count ?? 1);
     }
     return { trackTops: tops, totalTracksHeight: offset - AXIS_H };
-  }, [subLaneData]);
+  }, [subLaneData, visibleTracks]);
 
   // ── Zoom helpers ─────────────────────────────────────────────────────────────
   // All zoom changes preserve an anchor point (cursor position for wheel-zoom,
@@ -600,7 +606,7 @@ export const TimelineSwimlanes = ({
         >
           <div style={{ height: AXIS_H }} className="border-b border-white/6 flex-shrink-0" />
 
-          {TRACK_ORDER.map(track => {
+          {visibleTracks.map(track => {
             const c      = TRACK_COLORS[track];
             const lanes  = subLaneData[track]?.count ?? 1;
             const h      = trackHeight(lanes);
@@ -667,8 +673,7 @@ export const TimelineSwimlanes = ({
                 <TimelineRulerTick key={i} x={tick.x} label={tick.label} major={tick.major} />
               ))}
             </TimelineRulerAxis>
-            {showMonthGrid &&
-              getMonths(timelineStart, today).map((d, i) => (
+            {getMonths(timelineStart, today).map((d, i) => (
                 <TimelineRulerGridline
                   key={`grid-${i}`}
                   x={xOf(d)}
@@ -679,7 +684,7 @@ export const TimelineSwimlanes = ({
               ))}
 
             {/* ── Track rows — height expands with sub-lane count ─────── */}
-            {TRACK_ORDER.map((track, rowIdx) => {
+            {visibleTracks.map((track, rowIdx) => {
               const rowTop  = trackTops[track] ?? AXIS_H;
               const lanes   = subLaneData[track]?.count ?? 1;
               const rowH    = trackHeight(lanes);
