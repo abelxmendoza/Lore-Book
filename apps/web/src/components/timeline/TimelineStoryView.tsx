@@ -14,10 +14,12 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import type { StoryChapter } from '../../api/storyChapters';
+import type { LifeEraRecord } from '../../api/lifeEras';
 import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineMonthBanner } from './TimelineDateDisplay';
 import { StoryChapterReader, StoryChaptersPanel } from '../narrative/StoryChaptersPanel';
+import { LifeEraReader, LifeErasPanel } from '../narrative/LifeErasPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,6 +202,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
   const isMobile = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedStoryChapter, setSelectedStoryChapter] = useState<StoryChapter | null>(null);
+  const [selectedLifeEra, setSelectedLifeEra] = useState<LifeEraRecord | null>(null);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
   useEffect(() => {
@@ -221,7 +224,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
   [arcs]);
 
   const selectedArc =
-    selectedStoryChapter
+    selectedStoryChapter || selectedLifeEra
       ? null
       : sortedArcs.find(a => a.id === selectedId) ?? sortedArcs[0] ?? null;
 
@@ -268,12 +271,23 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
           )}
         </div>
 
-        <div className="p-3 border-b border-white/8">
+        <div className="p-3 border-b border-white/8 space-y-3">
+          <LifeErasPanel
+            compact
+            selectedId={selectedLifeEra?.id ?? null}
+            onSelectEra={(era) => {
+              setSelectedLifeEra(era);
+              setSelectedStoryChapter(null);
+              setSelectedId(null);
+              setMobileReaderOpen(true);
+            }}
+          />
           <StoryChaptersPanel
             compact
             selectedId={selectedStoryChapter?.id ?? null}
             onSelectChapter={(chapter) => {
               setSelectedStoryChapter(chapter);
+              setSelectedLifeEra(null);
               setSelectedId(null);
               setMobileReaderOpen(true);
             }}
@@ -285,7 +299,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
             <Star className="h-8 w-8 text-white/10 mx-auto mb-3" />
             <p className="text-white/40 text-sm">No life arcs yet</p>
             <p className="text-white/25 text-xs mt-1">
-              Story chapters above appear as Scenes cluster into life periods.
+              Eras and story chapters above fill in as Scenes cluster over time.
             </p>
           </div>
         ) : (
@@ -293,10 +307,11 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
             <ChapterItem
               key={arc.id}
               arc={arc}
-              selected={!selectedStoryChapter && arc.id === (selectedArc?.id)}
+              selected={!selectedStoryChapter && !selectedLifeEra && arc.id === (selectedArc?.id)}
               entryCount={arcCountMap[arc.id] ?? 0}
               onClick={() => {
                 setSelectedStoryChapter(null);
+                setSelectedLifeEra(null);
                 setSelectedId(arc.id);
                 setMobileReaderOpen(true);
               }}
@@ -311,7 +326,15 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
           mobileReaderOpen ? 'block' : 'hidden md:block'
         }`}
       >
-        {selectedStoryChapter ? (
+        {selectedLifeEra ? (
+          <LifeEraReader
+            era={selectedLifeEra}
+            onBack={() => {
+              setSelectedLifeEra(null);
+              setMobileReaderOpen(false);
+            }}
+          />
+        ) : selectedStoryChapter ? (
           <StoryChapterReader
             chapter={selectedStoryChapter}
             onBack={() => {

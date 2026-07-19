@@ -25,6 +25,7 @@ export type NarrativeStoryChapterRow = {
   significance_score: number;
   confidence: number;
   thread_id: string | null;
+  era_id?: string | null;
   metadata: Record<string, unknown>;
 };
 

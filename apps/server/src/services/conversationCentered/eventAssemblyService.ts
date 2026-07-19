@@ -46,6 +46,12 @@ import {
 } from '../narrative/chapterAssembler';
 import { mayPersistChapter } from '../narrative/chapterSignificance';
 import { narrativeStoryChapterService } from '../narrative/narrativeStoryChapterService';
+import {
+  assembleErasFromChapters,
+  chapterRowToEraInput,
+} from '../narrative/eraAssembler';
+import { mayPersistEra } from '../narrative/eraSignificance';
+import { narrativeLifeEraService } from '../narrative/narrativeLifeEraService';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -140,7 +146,7 @@ export class EventAssemblyService {
       const eventGroups = this.groupUnitsIntoEvents(experienceUnits);
 
       // Layered ladder:
-      // Conversation → Moments → Scenes → Canonical Events → Story Chapters
+      // Conversation → Moments → Scenes → Canonical Events → Story Chapters → Life Eras
       // Profile facts / states / opinions never become Moments.
       const results: EventAssemblyResult[] = [];
       const chapterSceneInputs: ChapterSceneInput[] = [];
@@ -322,6 +328,7 @@ export class EventAssemblyService {
       }
 
       // 5) Assemble Story Chapters from Scenes (experiences → autobiographical spans)
+      let wroteChapters = false;
       if (chapterSceneInputs.length > 0) {
         const chapters = assembleChaptersFromScenes(chapterSceneInputs);
         for (const assembledChapter of chapters) {
@@ -338,12 +345,44 @@ export class EventAssemblyService {
             );
             continue;
           }
-          await narrativeStoryChapterService.upsertChapter({
+          const chapterRow = await narrativeStoryChapterService.upsertChapter({
             userId,
             chapter: assembledChapter,
             significanceScore: chapterScore.score,
             threadId: threadId ?? null,
             metadata: { significance: chapterScore.breakdown },
+          });
+          if (chapterRow?.id) wroteChapters = true;
+        }
+      }
+
+      // 6) Assemble Life Eras from Story Chapters (months-to-years containers)
+      if (wroteChapters) {
+        const recentChapters = await narrativeStoryChapterService.listChapters(userId, {
+          limit: 100,
+        });
+        const eraInputs = recentChapters.map(chapterRowToEraInput);
+        const eras = assembleErasFromChapters(eraInputs);
+        for (const assembledEra of eras) {
+          const eraScore = mayPersistEra(assembledEra);
+          if (!eraScore.allow) {
+            logger.info(
+              {
+                userId,
+                score: eraScore.score,
+                chapterIds: assembledEra.chapterIds,
+                title: assembledEra.title,
+              },
+              'Narrative ladder: Era skipped — thin chapter span',
+            );
+            continue;
+          }
+          await narrativeLifeEraService.upsertEra({
+            userId,
+            era: assembledEra,
+            significanceScore: eraScore.score,
+            threadId: threadId ?? null,
+            metadata: { significance: eraScore.breakdown },
           });
         }
       }

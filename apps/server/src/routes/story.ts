@@ -9,6 +9,7 @@ import { compileBookOutline } from '../services/narrative/bookCompilerService';
 import { historyEngineService } from '../services/narrative/history';
 import { narrativeCompilerService } from '../services/narrative/narrativeCompilerService';
 import { narrativeStoryChapterService } from '../services/narrative/narrativeStoryChapterService';
+import { narrativeLifeEraService } from '../services/narrative/narrativeLifeEraService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
 import type { BookOutline } from '../services/narrative/types';
@@ -70,6 +71,21 @@ router.get(
       success: true,
       chapters,
       chapterCount: chapters.length,
+    });
+  }),
+);
+
+/** GET /api/story/life-eras — durable eras assembled from Story Chapters */
+router.get(
+  '/life-eras',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const limit = parseStoryLimit(req.query.limit) ?? 50;
+    const eras = await narrativeLifeEraService.listEras(req.user!.id, { limit });
+    res.json({
+      success: true,
+      eras,
+      eraCount: eras.length,
     });
   }),
 );
