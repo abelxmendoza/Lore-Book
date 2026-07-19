@@ -45,6 +45,8 @@ export type NarrativeThread = {
   activityCount30d: number;
   /** 0–100: how much this thread currently matters. */
   priority: number;
+  /** 0–100: how certain we are this thread is real and correctly characterized. */
+  confidence: number;
   people: string[];
   /** A thread can be dormant while its conflict is still live. */
   conflictActive: boolean;
@@ -159,6 +161,12 @@ export function deriveNarrativeThreads(opts: {
       Math.min(100, recencyScore + frequencyScore + significanceScore + (conflictActive ? 10 : 0)),
     );
 
+    // Confidence: an arc backed by repeated recent evidence is near-certain;
+    // an arc with no matching activity is only as sure as its own existence.
+    const confidence = Math.round(
+      Math.min(99, 40 + Math.min(40, matched.length * 8) + (count30d >= 2 ? 10 : 0) + (people.length ? 5 : 0)),
+    );
+
     threads.push({
       id: arc.id,
       title: arc.title,
@@ -168,6 +176,7 @@ export function deriveNarrativeThreads(opts: {
       daysSinceActivity: daysSince,
       activityCount30d: count30d,
       priority,
+      confidence,
       people,
       conflictActive,
       recentEvidence: matched.slice(0, 3).map((m) => excerpt(m.text)),
@@ -206,7 +215,7 @@ export function formatThreadsPromptBlock(threads: NarrativeThread[]): string | n
   const lines = shown.map((t) => {
     const people = t.people.length ? `; people: ${t.people.join(', ')}` : '';
     const category = t.category ? ` [${t.category}]` : '';
-    return `- ${t.title}${category} — ${statusLabel(t)} (priority ${t.priority})${people}`;
+    return `- ${t.title}${category} — ${statusLabel(t)} (priority ${t.priority}, confidence ${t.confidence})${people}`;
   });
 
   return [

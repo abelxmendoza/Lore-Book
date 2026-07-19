@@ -504,6 +504,7 @@ export async function buildRAGPacket(
   const { classifyIntentForAudit } = await import('./workingMemoryAssembler');
   const cognitivePlan = planCognition(message, { wmaIntent: classifyIntentForAudit(message) });
   const cognitivePlanBlock = formatCognitivePlanBlock(cognitivePlan);
+  let epistemicBlock: string | null = null;
 
   // ── Active Narrative Threads (what is unfolding, not what happened) ──────
   // Derived fresh from life_arcs + recent moments/scenes; failure is non-fatal.
@@ -675,6 +676,21 @@ export async function buildRAGPacket(
     }
     sources = verdict.accepted;
 
+    // Epistemic calibration: what level of claim does the assembled evidence
+    // justify? Computed from the accepted sources, not from vibes.
+    try {
+      const { assessEpistemicState, formatEpistemicBlock } = await import(
+        '../cognitivePlanner/epistemicCalibration'
+      );
+      const assessment = assessEpistemicState({
+        strategy: cognitivePlan.strategy,
+        sources: verdict.accepted,
+        claims: crystallizedKnowledge.map((k) => ({ confidence: k.confidence })),
+        threadsAvailable: Boolean(activeThreadsBlock),
+      });
+      epistemicBlock = formatEpistemicBlock(assessment);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: epistemic calibration failed'); }
+
     if (scopePlan.intent === 'work' && scopePlan.responseMode !== 'audit' && scopePlan.responseMode !== 'debug_inspector') {
       const allowedCharacterIds = new Set(
         sources.filter((source) => source.type === 'character').map((source) => source.id),
@@ -724,6 +740,7 @@ export async function buildRAGPacket(
     activeThreadsBlock,
     cognitivePlan,
     cognitivePlanBlock,
+    epistemicBlock,
     continuityAliveTrace,
     // Entity dossier: verified facts + recurring moments for mentioned entities
     entityDossierBlock,

@@ -42,6 +42,8 @@ export function buildSystemPrompt(
     activeThreadsBlock?: string | null;
     /** Cognitive plan — how to think about this question before answering. */
     cognitivePlanBlock?: string | null;
+    /** Epistemic calibration — what level of claim the evidence justifies. */
+    epistemicBlock?: string | null;
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -812,6 +814,9 @@ These are durable knowledge claims earned from recurring behavioral evidence —
 
 ` : ''}${loreData?.cognitivePlanBlock ? `**COGNITIVE STRATEGY FOR THIS QUESTION** (decided before retrieval — follow it):
 ${loreData.cognitivePlanBlock}
+
+` : ''}${loreData?.epistemicBlock ? `**EPISTEMIC CALIBRATION** (match your wording to what the evidence justifies — never overstate):
+${loreData.epistemicBlock}
 
 ` : ''}${loreData?.activeThreadsBlock ? `**ACTIVE NARRATIVE THREADS** (what is unfolding — knowledge answers "what is true", threads answer "what is happening"):
 ${loreData.activeThreadsBlock}
