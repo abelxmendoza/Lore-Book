@@ -45,6 +45,20 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
+  // Body-parser "request entity too large" → clean 413 instead of a generic 500.
+  // The chat client shows this message next to the failed send.
+  const maybeHttpError = err as Error & { type?: string; status?: number; limit?: number };
+  if (maybeHttpError.type === 'entity.too.large') {
+    logger.warn(
+      { path: req.path, method: req.method, limit: maybeHttpError.limit },
+      'Request body too large'
+    );
+    return res.status(413).json({
+      error: 'Request too large',
+      message: 'This message is too large to send. If you attached photos, try fewer or smaller photos.',
+    });
+  }
+
   // Log error
   if (err instanceof AppError && err.isOperational) {
     logger.warn({ err, path: req.path, method: req.method }, 'Operational error');
