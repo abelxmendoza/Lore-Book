@@ -33,18 +33,25 @@ export type ApiRateTier =
 
 type TierRule = { tier: ApiRateTier; max: number; windowMs: number };
 
-/** Production limits per tier (per user id or IP). */
+/**
+ * Production limits per tier (per user id or IP).
+ *
+ * `read` must tolerate SPA cold-start fan-out: Omni Timeline / Books / Story
+ * fire dozens of GETs at once, often from phone + desktop in parallel. A
+ * 1200/15m ceiling was starving legitimate sessions into wall-to-wall 429s
+ * while /api/health stayed green.
+ */
 const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
-  read: { max: 1200, windowMs: FIFTEEN_MIN },
-  write: { max: 450, windowMs: FIFTEEN_MIN },
-  write_burst: { max: 120, windowMs: ONE_MIN },
+  read: { max: 6000, windowMs: FIFTEEN_MIN },
+  write: { max: 900, windowMs: FIFTEEN_MIN },
+  write_burst: { max: 240, windowMs: ONE_MIN },
   // Real chat completions only (not composer preview). ~1 msg / 12s average.
-  ai: { max: 60, windowMs: FIFTEEN_MIN },
-  compute: { max: 35, windowMs: FIFTEEN_MIN },
-  auth_sensitive: { max: 12, windowMs: FIFTEEN_MIN },
+  ai: { max: 90, windowMs: FIFTEEN_MIN },
+  compute: { max: 50, windowMs: FIFTEEN_MIN },
+  auth_sensitive: { max: 20, windowMs: FIFTEEN_MIN },
   webhook: { max: 120, windowMs: FIFTEEN_MIN },
-  guest: { max: 20, windowMs: FIFTEEN_MIN },
-  public_probe: { max: 30, windowMs: FIFTEEN_MIN },
+  guest: { max: 40, windowMs: FIFTEEN_MIN },
+  public_probe: { max: 60, windowMs: FIFTEEN_MIN },
 };
 
 const store: RateLimitStore = createRateLimitStore();
@@ -54,6 +61,11 @@ const SKIP_PATHS = [
   /^\/api\/health\/db\/?$/,
   /^\/health\/?$/,
 ];
+
+/** CORS preflights must not consume the read budget. */
+function isCorsPreflight(req: Request): boolean {
+  return req.method.toUpperCase() === 'OPTIONS';
+}
 
 // LLM / paid-model routes only. Do NOT include composer lexical preview —
 // it is local pattern matching and fires on a 280ms debounce while typing.
@@ -109,7 +121,7 @@ function getClientId(req: Request): string {
 
 function resolveTierRules(req: Request): TierRule[] {
   const path = requestPath(req);
-  if (shouldSkip(path)) return [];
+  if (shouldSkip(path) || isCorsPreflight(req)) return [];
 
   // Composer previews are capped by route middleware only.
   if (COMPOSER_HOT_PATH.test(path)) return [];
@@ -139,7 +151,7 @@ function resolveTierRules(req: Request): TierRule[] {
     rules.push({ tier: 'compute', ...TIER_LIMITS.compute });
   }
 
-  const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+  const isRead = method === 'GET' || method === 'HEAD';
   if (isRead) {
     rules.push({ tier: 'read', ...TIER_LIMITS.read });
   } else if (!CHAT_SEND_PATH.test(path)) {
@@ -197,7 +209,7 @@ export async function tieredRateLimitMiddleware(
   if (isRateLimitDisabled()) return next();
 
   const path = requestPath(req);
-  if (shouldSkip(path)) return next();
+  if (shouldSkip(path) || isCorsPreflight(req)) return next();
 
   const rules = resolveTierRules(req);
   for (const rule of rules) {

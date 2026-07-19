@@ -34,6 +34,21 @@ describe('tieredRateLimit', () => {
     expect(resolveApiRateTierRulesForTests(mockReq('/api/health') as Request)).toEqual([]);
   });
 
+  it('skips CORS preflight OPTIONS so they do not consume the read budget', () => {
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/books/characters', 'OPTIONS') as Request),
+    ).toEqual([]);
+  });
+
+  it('allows a high SPA read ceiling in production', () => {
+    const rules = resolveApiRateTierRulesForTests(
+      mockReq('/api/books/characters', 'GET', 'user-1') as Request,
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0].tier).toBe('read');
+    expect(rules[0].max).toBeGreaterThanOrEqual(6000);
+  });
+
   it('classifies guest chat as guest tier only', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/guest/stream', 'POST') as Request
