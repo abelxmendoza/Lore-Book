@@ -2,11 +2,19 @@ import { fetchJson } from '../lib/api';
 
 export type RosterRole = 'main' | 'supporting' | 'mentioned';
 export type RosterStatus = 'active' | 'excluded';
+export type RosterActorType =
+  | 'PERSON'
+  | 'GROUP'
+  | 'ORGANIZATION'
+  | 'COMMUNITY'
+  | 'ANONYMOUS_PERSON';
 
 export type RosterEntry = {
   entityId: string | null;
   name: string;
-  kind: 'character' | 'location' | 'organization' | 'skill' | 'event' | 'unknown';
+  kind: 'character' | 'location' | 'organization' | 'group' | 'skill' | 'event' | 'unknown';
+  /** Present on new server responses; optional for older cached snapshots. */
+  actorType?: RosterActorType;
   role: RosterRole;
   status: RosterStatus;
   source: 'auto' | 'user';

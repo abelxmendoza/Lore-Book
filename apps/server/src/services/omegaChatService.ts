@@ -164,6 +164,9 @@ export type OmegaChatResponse = {
     confidence?: number;
     provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
     mentionStatus?: 'confirmed' | 'mentioned_only';
+    lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+    identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+    identityConfidence?: number;
   }>;
   suggestedActions?: ChatSuggestedAction[];
 };
@@ -350,6 +353,12 @@ export type StreamingChatResponse = {
       id: string;
       name: string;
       type: 'character' | 'location' | 'organization';
+      confidence?: number;
+      provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+      mentionStatus?: 'confirmed' | 'mentioned_only';
+      lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+      identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+      identityConfidence?: number;
     }>;
     suggestedActions?: ChatSuggestedAction[];
     /** P1 creation protocol decisions for names in this turn (read-only). */
@@ -2545,14 +2554,29 @@ When updating relationship analytics or emotional signals from this thread, weig
     const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
-    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
-      id,
-      name,
-      type,
-      confidence,
-      provenance,
-      mentionStatus,
-    }));
+    const mentionedEntities = displayEntities.map(
+      ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }) => ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }),
+    );
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -3349,14 +3373,29 @@ When updating relationship analytics or emotional signals from this thread, weig
     const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
     const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
-    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
-      id,
-      name,
-      type,
-      confidence,
-      provenance,
-      mentionStatus,
-    }));
+    const mentionedEntities = displayEntities.map(
+      ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }) => ({
+        id,
+        name,
+        type,
+        confidence,
+        provenance,
+        mentionStatus,
+        lifecycleStatus,
+        identityStage,
+        identityConfidence,
+      }),
+    );
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

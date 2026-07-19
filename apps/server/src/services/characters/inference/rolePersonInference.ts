@@ -1,37 +1,10 @@
+import {
+  BARE_GENERIC_EXACT,
+  isVagueOrIndefiniteActorPhrase,
+} from '../../actors/actorLabelPolicy';
+
 /** Bare generic labels that cannot become characters without contextual conversion. */
-export const BARE_GENERIC_LABELS = new Set([
-  'guy',
-  'girl',
-  'man',
-  'woman',
-  'person',
-  'someone',
-  'somebody',
-  'friend',
-  'best friend',
-  'cousin',
-  'professor',
-  'recruiter',
-  'investor',
-  'promoter',
-  'coworker',
-  'manager',
-  'boss',
-  'neighbor',
-  'homie',
-  'new guy',
-  'the new guy',
-  'old roommate',
-  'old college roommate',
-  'roommate',
-  'tio',
-  'tia',
-  'tía',
-  'tío',
-  'mr',
-  'dr',
-  'coach',
-]);
+export const BARE_GENERIC_LABELS = BARE_GENERIC_EXACT;
 
 export const EMOTIONAL_WEIGHT_PHRASES: Array<{ pattern: RegExp; weight: number; label: string }> = [
   { pattern: /\bbest friend\b/i, weight: 0.15, label: 'best friend' },
@@ -64,6 +37,6 @@ export function detectEmotionalWeight(text: string): { boost: number; label?: st
 }
 
 export function isBareGenericLabel(name: string): boolean {
-  const key = (name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-  return BARE_GENERIC_LABELS.has(key);
+  // Exact set + indefinite/vague phrases ("one girl", "other girls", …)
+  return isVagueOrIndefiniteActorPhrase(name);
 }

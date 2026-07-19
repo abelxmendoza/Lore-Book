@@ -104,6 +104,49 @@ describe('threadRosterService — pure helpers', () => {
       );
       expect(entries).toEqual([]);
     });
+
+    it('omits indefinite refs, vague collectives, and self from actors', () => {
+      const entries = deriveRosterEntries(
+        [
+          msg('m1', 1, 0, [
+            { id: 'c-marcus', name: 'Marcus', type: 'character' },
+            { name: 'one girl', type: 'character' },
+            { name: 'other girls', type: 'character' },
+            { name: 'people in the scene', type: 'character' },
+            { name: 'popular egirls', type: 'character' },
+            { name: 'You', type: 'character' },
+            { name: 'Also You', type: 'character' },
+          ]),
+        ],
+        4,
+      );
+
+      expect(entries.map((e) => e.name)).toEqual(['Marcus']);
+      expect(entries[0].actorType).toBe('PERSON');
+    });
+
+    it('omits groups and unresolved from Cast — only RESOLVED identities', () => {
+      const entries = deriveRosterEntries(
+        [
+          msg('m1', 1, 0, [
+            {
+              name: 'Other girls who reposted allegations on Instagram',
+              type: 'character',
+            },
+            {
+              name: 'Members of the LA ska scene discussing the incident',
+              type: 'character',
+            },
+            { name: 'people in', type: 'character' },
+            { id: 'c-jamie', name: 'Jamie', type: 'character' },
+          ]),
+        ],
+        5,
+      );
+
+      expect(entries.map((e) => e.name)).toEqual(['Jamie']);
+      expect(entries[0].actorType).toBe('PERSON');
+    });
   });
 
   describe('applyRosterOverrides + activeRoster', () => {

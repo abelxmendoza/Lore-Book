@@ -172,6 +172,12 @@ export type Message = {
     type: 'character' | 'location' | 'organization' | 'skill' | 'event';
     characterVariant?: import('../../../types/certifiedEntity').CharacterVariant;
     loreKind?: LoreEntityKind;
+    confidence?: number;
+    provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+    mentionStatus?: 'confirmed' | 'mentioned_only';
+    lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+    identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+    identityConfidence?: number;
   }>;
   creationOutcomes?: Array<{
     mention: string;

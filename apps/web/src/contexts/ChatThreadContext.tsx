@@ -73,10 +73,12 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
     [dispatch]
   );
 
+  const { mutateThreadMessages, updateThread, getThread, threads } = threadApi;
+
   const activeMessages = useMemo(() => {
     if (!activeThreadId) return [];
-    return threadApi.getThread(activeThreadId)?.messages ?? [];
-  }, [activeThreadId, threadApi, threadApi.threads]);
+    return getThread(activeThreadId)?.messages ?? [];
+  }, [activeThreadId, getThread, threads]);
 
   const updateActiveMessages = useCallback(
     (
@@ -85,13 +87,13 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
     ) => {
       const id = activeThreadIdRef.current;
       if (!id) return;
-      threadApi.mutateThreadMessages(
+      mutateThreadMessages(
         id,
         (prev) => (typeof updater === 'function' ? updater(prev) : updater),
         opts
       );
     },
-    [threadApi]
+    [mutateThreadMessages]
   );
 
   const mutateThreadMessagesForThread = useCallback(
@@ -100,20 +102,16 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
       updater: (prev: Message[]) => Message[],
       opts?: UpdateActiveMessagesOptions
     ) => {
-      threadApi.mutateThreadMessages(
-        threadId,
-        (prev) => updater(prev),
-        opts
-      );
+      mutateThreadMessages(threadId, (prev) => updater(prev), opts);
     },
-    [threadApi]
+    [mutateThreadMessages]
   );
 
   const clearActiveMessages = useCallback(() => {
     const id = activeThreadIdRef.current;
     if (!id) return;
-    threadApi.updateThread(id, { messages: [] });
-  }, [threadApi]);
+    updateThread(id, { messages: [] });
+  }, [updateThread]);
 
   const value = useMemo(
     (): ChatThreadContextValue => ({

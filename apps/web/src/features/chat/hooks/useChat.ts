@@ -221,12 +221,15 @@ export const useChat = () => {
 
   // After refresh/restart: restore pending vault attempts into the thread so Retry sync
   // can reuse the same clientIdempotencyKey without creating a duplicate user bubble.
+  const restoredVaultAttemptsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const ownerId = user?.id ?? guestState?.guestId;
     const threadId = urlThreadId;
     if (!ownerId || !threadId) return;
     const attempt = latestRecoverableStory(ownerId, threadId);
     if (!attempt?.text) return;
+    const restoreKey = `${threadId}:${attempt.id}`;
+    if (restoredVaultAttemptsRef.current.has(restoreKey)) return;
 
     mutateThreadMessagesForThread(threadId, (prev) => {
       const alreadyPresent = prev.some(
@@ -283,6 +286,7 @@ export const useChat = () => {
       };
       return [...prev, recoveredUser, notice];
     });
+    restoredVaultAttemptsRef.current.add(restoreKey);
   }, [user?.id, guestState?.guestId, urlThreadId, mutateThreadMessagesForThread]);
 
   // Finalize in-flight assistant bubbles when the tab backgrounds or closes.

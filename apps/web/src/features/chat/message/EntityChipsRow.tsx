@@ -8,6 +8,11 @@ import {
 } from '../../../lib/loreEntities';
 import { displayChipName } from '../../../lib/selfChipLabel';
 import { CompactEntityChip, CompactChipStrip } from '../components/CompactEntityChip';
+import {
+  isTranscriptMentionWorthy,
+  resolveMentionLifecycleStatus,
+  type MentionLifecycleStatus,
+} from '../utils/mentionLifecycle';
 
 export interface EntityChip {
   id: string;
@@ -18,6 +23,9 @@ export interface EntityChip {
   confidence?: number;
   provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
   mentionStatus?: 'confirmed' | 'mentioned_only';
+  lifecycleStatus?: MentionLifecycleStatus;
+  identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+  identityConfidence?: number;
 }
 
 interface EntityChipsRowProps {
@@ -51,6 +59,10 @@ function chipTitle(entity: EntityChip, mode: EntityChipsRowProps['mode'], select
   const parts = [`${label} (${def.label})`];
   if (entity.provenance) parts.push(`source: ${PROVENANCE_LABEL[entity.provenance]}`);
   if (entity.confidence != null) parts.push(`confidence: ${Math.round(entity.confidence * 100)}%`);
+  if (entity.identityStage) parts.push(`stage: ${entity.identityStage}`);
+  if (entity.identityConfidence != null) {
+    parts.push(`identity: ${Math.round(entity.identityConfidence)}`);
+  }
   if (entity.mentionStatus === 'mentioned_only') parts.push('status: detected, not yet confirmed');
   return parts.join(' · ');
 }
@@ -76,8 +88,11 @@ export const EntityChipsRow = ({
 
   if (!entities || entities.length === 0) return null;
 
-  const visible = entities.slice(0, max);
-  const overflow = entities.length - visible.length;
+  const filtered = entities.filter((e) => isTranscriptMentionWorthy(e.name, e.lifecycleStatus));
+  if (filtered.length === 0) return null;
+
+  const visible = filtered.slice(0, max);
+  const overflow = filtered.length - visible.length;
 
   const handleClick = (entity: EntityChip) => {
     if (mode === 'focus') {
@@ -94,7 +109,12 @@ export const EntityChipsRow = ({
     <CompactChipStrip label={label.replace(/:$/, '')}>
       {visible.map((entity) => {
         const selected = mode === 'focus' && selectedId === entity.id;
-        const tentative = entity.mentionStatus === 'mentioned_only' || entity.provenance === 'omega_entity';
+        const lifecycle = resolveMentionLifecycleStatus(entity.name, entity.lifecycleStatus);
+        const tentative =
+          lifecycle === 'UNRESOLVED' ||
+          lifecycle === 'GROUP' ||
+          entity.mentionStatus === 'mentioned_only' ||
+          entity.provenance === 'omega_entity';
         const kind = loreKindForChip(entity);
         const Icon = getLoreEntity(kind).icon;
         const route = routeForLoreKind(kind);

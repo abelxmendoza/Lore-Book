@@ -16,6 +16,7 @@ import {
 import { openai } from '../lib/openai';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import { classifyActorLabel } from './actors/actorLabelPolicy';
 import { classifyEntity, toOmegaType } from './entities/entityClassifier';
 import { expandEntityCandidates } from './kinship/multiEntitySplitter';
 import { extractKinshipMentions } from './kinship/kinshipGlossary';
@@ -305,8 +306,12 @@ The text is written in FIRST-PERSON. The narrator ("I" / "me" / "my") is the jou
 
 Extract all OTHER people, places, organizations, events, projects, products, and software tools. Rules:
 - Named people: use their full name if known, first name only if that is all that was mentioned.
-- Unnamed people: generate a SHORT DESCRIPTIVE NICKNAME from context, like "the barista at Blue Bottle", "guy from the show who gave free shirt", "Abuela's neighbor with the dog". Keep it under 6 words and specific enough to be recognizable.
+- Unnamed individuals who play a meaningful role: generate a SHORT CONTEXTUAL nickname that explains their role in the story (e.g. "Anonymous barista at Blue Bottle", "guy from the show who gave free shirt"). Keep under 8 words. Prefer "Anonymous {role} at/from {place}" when unidentified.
+- Groups/collectives: type as ORG. Label must describe shared role, not a bare plural — e.g. "Members of the LA ska scene discussing the incident", "Online commenters responding to the allegations", "Friends who attended Anime Expo Afters".
+- NEVER emit vague labels: "one girl", "other girls", "some people", "people in the scene", "friends", "coworkers", "organizers", "attendees", "fans", "popular egirls", "guys", "people". Skip indefinite references with no role. Skip the narrator / "You" / "Also You".
 - Aliases and nicknames: capture any alternate names mentioned (e.g. "Tío Juan" and "Uncle Juan" → aliases of each other).
+
+Every person/group label must answer: "If I read this six months from now, will I remember who this refers to?" If not, regenerate with more context or omit.
 
 Return JSON:
 {
@@ -334,21 +339,42 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
       const llmEntities = (response.entities || [])
         .filter((e: any) => e.confidence >= 0.5 && typeof e.name === 'string')
         .map((e: any) => {
-          const classification = classifyEntity(e.name, text);
+          const name = String(e.name).trim();
+          const actor = classifyActorLabel(name);
+          if (actor.action === 'reject') return null;
+
+          const classification = classifyEntity(name, text);
           const deterministicType = toOmegaType(classification.rootType) as EntityType;
           // Deterministic classifier wins when it's confident; otherwise keep the
           // LLM's typed guess (LOCATION/ORG/EVENT/PERSON) rather than defaulting
           // everything to PERSON. Untypable -> UNKNOWN (dropped below).
-          return {
-            name: e.name,
-            type: deterministicType !== 'UNKNOWN' ? deterministicType : llmEntityType(e.type),
-          };
-        });
+          let type: EntityType =
+            deterministicType !== 'UNKNOWN' ? deterministicType : llmEntityType(e.type);
+
+          // Actor policy: collectives → ORG; never keep rejected PERSON pollution.
+          if (actor.action === 'group') type = 'ORG';
+          if (
+            (type === 'PERSON' || type === 'CHARACTER') &&
+            actor.action !== 'person' &&
+            actor.action !== 'anonymous'
+          ) {
+            return null;
+          }
+
+          return { name, type };
+        })
+        .filter(Boolean) as Array<{ name: string; type: EntityType }>;
 
       const expanded = expandEntityCandidates(text, [...deterministicCandidates, ...llmEntities]);
       return uniqueEntities(
         expanded.map((e) => ({ name: e.name, type: e.type as EntityType, bornConfirmed: e.bornConfirmed }))
-      ).filter((entity) => entity.type !== 'UNKNOWN');
+      )
+        .filter((entity) => entity.type !== 'UNKNOWN')
+        .filter((entity) => {
+          if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return true;
+          const actor = classifyActorLabel(entity.name);
+          return actor.action === 'person' || actor.action === 'anonymous';
+        });
     } catch (error: any) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
       // FIX 4: Rate-limit circuit breaker

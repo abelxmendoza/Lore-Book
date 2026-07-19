@@ -631,6 +631,16 @@ export const useChatThreads = () => {
             ? ensureLocalUniqueTitle(derivedTitle, id, prev)
             : undefined;
 
+        // No-op: updater returned the same array and nothing else changes.
+        // Avoids infinite loops when effects call mutate with an already-present guard.
+        if (
+          messages === row.messages &&
+          titleToApply === undefined &&
+          updatedAt === undefined
+        ) {
+          return prev;
+        }
+
         const next = prev.map((t) =>
           t.id === id
             ? {

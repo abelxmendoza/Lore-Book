@@ -4,6 +4,12 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { splitPersonName } from '../utils/nameNormalization';
 
+import { enrichActorLabel } from './actors/enrichActorLabel';
+import { mayCreateCharacterFromLifecycle } from './actors/identityLifecycleService';
+import {
+  classifyMention,
+  mayPromoteMentionToCharacter,
+} from './actors/mentionClassifier';
 import { supabaseAdmin } from './supabaseClient';
 import { characterRegistry } from './characterRegistry';
 
@@ -106,7 +112,15 @@ Relationship depth:
 - acquaintance: Just an acquaintance
 - mentioned_only: Only mentioned, no real relationship
 
-Only detect characters that are clearly mentioned but don't have names. Skip generic references that aren't specific people.
+Only detect characters that are clearly mentioned but don't have names.
+
+NEVER treat these as characters (skip entirely):
+- Indefinite refs: "one girl", "this guy", "someone", "that woman", "a person"
+- Vague groups: "other girls", "people in the scene", "friends", "coworkers", "organizers", "attendees", "fans", "popular egirls"
+- The narrator / "You" / "Also You"
+
+If a group matters, do not invent a person — omit it here (groups are handled separately).
+If an unnamed individual matters, require enough context for a six-month-recall nickname (role + place/action).
 
 IMPORTANT: Detect proximity and relationship depth:
 - If mentioned with possessive (e.g., "Sarah's friend", "Marcus's wife") → proximity: "indirect" or "third_party", hasMet: false
@@ -180,6 +194,33 @@ If no unnamed characters are found, return {"unnamedCharacters": []}.`
         );
 
         if (nickname) {
+          // Identity lifecycle: never promote GENERIC/GROUP/unresolved nicknames
+          // into Character Book from a single mention.
+          const mention = classifyMention({ text: nickname, kind: 'character' });
+          if (!mayPromoteMentionToCharacter(mention)) {
+            logger.debug(
+              { nickname, status: mention.status, reason: mention.reason },
+              'Skipping character creation — mention not Cast/Character-worthy',
+            );
+            continue;
+          }
+          // Nickname path is a single mention — lifecycle keeps it Resolved, not Character.
+          const lifecycle = mayCreateCharacterFromLifecycle({
+            name: nickname,
+            mentionCount: 1,
+          });
+          if (!lifecycle.allow) {
+            logger.debug(
+              {
+                nickname,
+                stage: lifecycle.decision.stage,
+                confidence: lifecycle.decision.identityConfidence,
+              },
+              'Skipping character creation — identity lifecycle not ready',
+            );
+            continue;
+          }
+
           charactersWithNicknames.push({
             name: nickname,
             description: unnamedChar.description,
@@ -243,17 +284,19 @@ If no unnamed characters are found, return {"unnamedCharacters": []}.`
 Guidelines:
 - Include relationship context when available (e.g., "Josh's Startup Cofounder", "Recruiter that sent you to Josh")
 - Use descriptive phrases that capture their connection to other characters or situations
-- Make it specific and memorable (3-6 words is ideal)
+- Make it specific and memorable (3-8 words is ideal)
 - Include the character they're associated with in the nickname when relevant
-- Use action/relationship words (e.g., "that sent", "who works with", "from", "at")
-- Avoid generic names like "The Recruiter" or "The Co-Founder" - be more specific
+- Use action/relationship words (e.g., "that sent", "who works with", "from", "at", "who reposted")
+- Never output vague labels: "one girl", "other girls", "some people", "friends", "coworkers", "people in the scene"
+- Prefer "Anonymous {role} at/from {place}" when they remain unidentified
 
 Examples:
 - "Josh's Startup Cofounder" (for a co-founder mentioned by Josh)
 - "Recruiter that sent you to Josh" (for a recruiter who connected you to Josh)
 - "Sarah's Friend from College" (for someone mentioned by Sarah)
 - "The Mentor at Tech Startup" (for a mentor at a specific company)
-- "Coffee Shop Owner I Met Yesterday" (for someone met at a specific place/time)
+- "Anonymous barista at Blue Bottle" (unnamed person with place context)
+- "Friends who attended Anime Expo Afters" — DO NOT use this path for groups; omit instead
 
 Return only the nickname, no quotes or explanation.`
           },
@@ -310,7 +353,10 @@ Generate a unique, contextual nickname that includes relationship information:`
     const role = character.role?.toLowerCase() || '';
     const description = (character.description || '').toLowerCase();
     const associatedWith = character.associatedWith || [];
-    
+    const contextBlob = [character.context, character.description, character.relationship]
+      .filter(Boolean)
+      .join(' ');
+
     // If associated with characters, include them in nickname
     if (associatedWith.length > 0) {
       const primaryAssoc = associatedWith[0];
@@ -330,33 +376,33 @@ Generate a unique, contextual nickname that includes relationship information:`
       
       return `${primaryAssoc}'s ${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Contact'}`;
     }
-    
-    // Role-based nicknames without associations
-    const roleNicknames: Record<string, string> = {
-      'recruiter': 'The Recruiter',
-      'co-founder': 'The Cofounder',
-      'cofounder': 'The Cofounder',
-      'friend': 'The Friend',
-      'colleague': 'The Colleague',
-      'mentor': 'The Mentor',
-      'family': 'Family Member',
-      'acquaintance': 'The Acquaintance'
-    };
 
-    if (roleNicknames[role]) {
-      return roleNicknames[role];
+    // Prefer context-aware enrichment over bare "The Friend" labels
+    {
+      const seed = character.role || character.description || 'person';
+      const enriched = enrichActorLabel({
+        raw: seed,
+        messageText: contextBlob,
+      });
+      if (enriched.label && enriched.enriched) {
+        return enriched.label.startsWith('Anonymous')
+          ? enriched.label
+          : `Anonymous ${enriched.label.replace(/^the\s+/i, '')}`;
+      }
     }
-
-    // Description-based
+    
+    // Role-based nicknames without associations — still require a qualifier word
     if (description.includes('startup') || description.includes('company')) {
-      return 'The Startup Contact';
+      return 'Anonymous startup contact';
     }
     if (description.includes('recruiter') || description.includes('hiring')) {
-      return 'The Recruiter';
+      return 'Anonymous recruiter from hiring process';
     }
+    if (role === 'mentor') return 'Anonymous mentor from conversation';
+    if (role === 'colleague') return 'Anonymous colleague from work';
 
-    // Default
-    return `The ${character.role ? character.role.charAt(0).toUpperCase() + character.role.slice(1) : 'Person'}`;
+    // Default — never emit bare "The Person"
+    return `Anonymous ${character.role ? character.role : 'person'} from conversation`;
   }
 
   /**

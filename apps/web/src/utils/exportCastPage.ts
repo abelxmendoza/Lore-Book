@@ -1,7 +1,7 @@
 import type { RosterEntry } from '../api/threadRoster';
 
 const ROLE_LABEL: Record<RosterEntry['role'], string> = {
-  main: 'Main cast',
+  main: 'Main actors',
   supporting: 'Supporting',
   mentioned: 'Mentioned',
 };
@@ -16,10 +16,10 @@ export function exportCastAsMarkdown(
   const active = entries.filter((e) => e.status === 'active');
   const excluded = entries.filter((e) => e.status === 'excluded');
 
-  let md = `# Cast — ${threadTitle}\n\n`;
+  let md = `# Actors — ${threadTitle}\n\n`;
   md += `**Thread:** ${threadNumber != null ? `#${threadNumber}` : threadTitle}\n`;
   md += `**Exported:** ${date}\n`;
-  md += `**Cast size:** ${active.length}\n\n`;
+  md += `**Actors:** ${active.length}\n\n`;
 
   for (const role of ['main', 'supporting', 'mentioned'] as const) {
     const group = active.filter((e) => e.role === role);
@@ -27,7 +27,7 @@ export function exportCastAsMarkdown(
     md += `## ${ROLE_LABEL[role]}\n\n`;
     for (const e of group) {
       const bits = [
-        e.kind !== 'character' ? e.kind : null,
+        e.actorType ?? (e.kind !== 'character' ? e.kind : null),
         `${e.mentions} mention${e.mentions === 1 ? '' : 's'}`,
         e.firstSeenRef ? `first seen #${e.firstSeenRef}` : null,
         e.lastSeenRef && e.lastSeenRef !== e.firstSeenRef ? `last seen #${e.lastSeenRef}` : null,
