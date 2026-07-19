@@ -130,4 +130,18 @@ describe('eraSignificance', () => {
     const decision = mayPersistEra(era);
     expect(decision.allow).toBe(false);
   });
+
+  it('persists a single chapter that already spans multiple scenes', () => {
+    const [era] = assembleErasFromChapters([
+      chapter('c1', 'Northwind Depot day with Jamie', {
+        significanceScore: 34,
+        sceneIds: ['s1', 's2', 's3', 's4'],
+        eventIds: [],
+        participants: ['jamie'],
+        themes: ['social'],
+      }),
+    ]);
+    const decision = mayPersistEra(era);
+    expect(decision.allow).toBe(true);
+  });
 });

@@ -49,11 +49,12 @@ export function scoreEraSignificance(era: AssembledEra): EraSignificanceResult {
     100,
   );
 
+  // Multi-scene eras are experiences already — don't require a second chapter.
   const allow =
     Boolean(era.title.trim()) &&
     (chapterCount >= 2 ||
       era.eventIds.length >= 2 ||
-      (era.sceneIds.length >= 3 && total >= ERA_MIN_SIGNIFICANCE) ||
+      era.sceneIds.length >= 3 ||
       total >= ERA_MIN_SIGNIFICANCE + 10);
 
   return {
