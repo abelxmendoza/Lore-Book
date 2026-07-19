@@ -4197,7 +4197,7 @@ router.get(
     const userId = req.user!.id;
     const minStrength = parseFloat((req.query.min_strength as string) ?? '0.35');
 
-    const { data: candidates, error } = await supabaseAdmin
+    let { data: candidates, error } = await supabaseAdmin
       .from('event_candidates')
       .select(
         'id, canonical_title, dominant_entity_names, recurring_activities, emotional_tone, ' +
@@ -4209,6 +4209,32 @@ router.get(
       .gte('continuity_strength', minStrength)
       .order('continuity_strength', { ascending: false })
       .limit(50);
+
+    // Some databases were created from the older Supabase migration, which
+    // omitted the optional emotional_tone column. Keep recurring scenes usable
+    // while the forward migration rolls out instead of failing the whole page.
+    if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+      logger.warn(
+        { code: error.code, userId },
+        'event_candidates.emotional_tone missing; retrying with the legacy schema'
+      );
+
+      const legacyResult = await supabaseAdmin
+        .from('event_candidates')
+        .select(
+          'id, canonical_title, dominant_entity_names, recurring_activities, ' +
+          'occurrence_count, continuity_strength, first_seen_at, last_seen_at, ' +
+          'source_event_ids, timeline_candidate'
+        )
+        .eq('user_id', userId)
+        .gte('occurrence_count', 2)
+        .gte('continuity_strength', minStrength)
+        .order('continuity_strength', { ascending: false })
+        .limit(50);
+
+      candidates = legacyResult.data;
+      error = legacyResult.error;
+    }
 
     if (error) throw error;
 
