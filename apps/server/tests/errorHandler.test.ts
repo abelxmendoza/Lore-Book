@@ -66,6 +66,22 @@ describe('ErrorHandler', () => {
     );
   });
 
+  it('should map body-parser entity.too.large to a 413 with a friendly message', () => {
+    const error = new Error('request entity too large') as Error & { type?: string; status?: number };
+    error.type = 'entity.too.large';
+    error.status = 413;
+
+    errorHandler(error, mockRequest as Request, mockResponse as Response, mockNext);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(413);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: 'Request too large',
+        message: expect.stringContaining('too large')
+      })
+    );
+  });
+
   it('should handle unknown errors correctly', () => {
     const error = new Error('Unknown error');
     process.env.NODE_ENV = 'test';

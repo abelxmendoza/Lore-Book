@@ -16,6 +16,7 @@ import { intrusionDetection } from './middleware/intrusionDetection';
 import { tieredRateLimit } from './middleware/tieredRateLimit';
 import { mcpOAuthLimit } from './middleware/apiProtection';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
+import { createJsonBodyParser } from './middleware/bodyLimits';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
 import { userIsolationGuard } from './middleware/userIsolationGuard';
@@ -167,8 +168,9 @@ app.post(
   handleOpenAiWebhook
 );
 
-// Request size limits - larger in development
-app.use(express.json({ limit: isDevelopment ? '50mb' : '1mb' }));
+// Request size limits — larger in development, and a dedicated large limit for
+// chat sends with inline base64 photo attachments (see middleware/bodyLimits.ts).
+app.use(createJsonBodyParser(isDevelopment));
 app.use(express.urlencoded({ extended: true, limit: isDevelopment ? '50mb' : '1mb' }));
 
 // Request ID middleware (must be early in the chain)
