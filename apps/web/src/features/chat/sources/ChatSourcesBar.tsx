@@ -11,7 +11,11 @@ type ChatSourcesBarProps = {
 export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) => {
   if (!sources || sources.length === 0) return null;
 
-  const groupedSources = sources.reduce((acc, source) => {
+  // Highest-scoring evidence first within each type (unscored sources keep order).
+  const ranked = [...sources].sort(
+    (a, b) => (b.relevanceScore ?? -1) - (a.relevanceScore ?? -1),
+  );
+  const groupedSources = ranked.reduce((acc, source) => {
     if (!acc[source.type]) {
       acc[source.type] = [];
     }
@@ -36,10 +40,19 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
               <button
                 key={idx}
                 onClick={() => onSourceClick?.(source)}
-                className="px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-black/40 transition-colors truncate max-w-[100px]"
-                title={source.title}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-black/40 transition-colors max-w-[140px]"
+                title={
+                  source.relevanceScore != null
+                    ? `${source.title} — relevance ${source.relevanceScore}`
+                    : source.title
+                }
               >
-                {source.title}
+                <span className="truncate">{source.title}</span>
+                {source.relevanceScore != null && (
+                  <span className="shrink-0 text-[10px] tabular-nums text-primary/60">
+                    {source.relevanceScore}
+                  </span>
+                )}
               </button>
             ))}
             {typeSources.length > 3 && (

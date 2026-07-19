@@ -203,6 +203,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedStoryChapter, setSelectedStoryChapter] = useState<StoryChapter | null>(null);
   const [selectedLifeEra, setSelectedLifeEra] = useState<LifeEraRecord | null>(null);
+  const [erasRefreshKey, setErasRefreshKey] = useState(0);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
   useEffect(() => {
@@ -274,6 +275,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
         <div className="p-3 border-b border-white/8 space-y-3">
           <LifeErasPanel
             compact
+            refreshKey={erasRefreshKey}
             selectedId={selectedLifeEra?.id ?? null}
             onSelectEra={(era) => {
               setSelectedLifeEra(era);
@@ -290,6 +292,15 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
               setSelectedLifeEra(null);
               setSelectedId(null);
               setMobileReaderOpen(true);
+            }}
+            onReprocessed={(chapters) => {
+              setErasRefreshKey((k) => k + 1);
+              setSelectedLifeEra(null);
+              setSelectedStoryChapter((prev) => {
+                if (chapters.length === 0) return null;
+                const still = prev ? chapters.find((c) => c.id === prev.id) : null;
+                return still ?? chapters[chapters.length - 1] ?? null;
+              });
             }}
           />
         </div>

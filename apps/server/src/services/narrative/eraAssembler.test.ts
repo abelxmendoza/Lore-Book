@@ -95,6 +95,31 @@ describe('eraAssembler', () => {
     expect(title.toLowerCase()).toMatch(/vanguard|robotics|era|onboarding/);
     expect(title.toLowerCase()).not.toContain('captured conversation');
   });
+
+  it('names multi-chapter eras by season themes, not the loudest venue night', () => {
+    const title = deriveEraTitle({
+      chapters: [
+        chapter('c1', 'Family life', {
+          themes: ['family'],
+          significanceScore: 24,
+        }),
+        chapter('c2', 'Nights out', {
+          themes: ['social_scene'],
+          significanceScore: 23,
+        }),
+        chapter('c3', 'Nights out at Velvet Room', {
+          themes: ['social_scene'],
+          significanceScore: 26,
+          summary: 'One club night.',
+        }),
+      ],
+      location: 'Velvet Room',
+      participants: [],
+      themes: ['family', 'social_scene'],
+    });
+    expect(title.toLowerCase()).toMatch(/season/);
+    expect(title.toLowerCase()).not.toContain('velvet room');
+  });
 });
 
 describe('eraSignificance', () => {

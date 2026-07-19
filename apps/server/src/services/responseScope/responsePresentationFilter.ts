@@ -140,7 +140,9 @@ export function filterSourcesForPresentation<T extends PresentableSource>(
 ): T[] {
   const names = relevantNames(plan, workingMemory);
   const eligible = sources.filter((source) => {
-    if (!isPresentableEntityName(source.title)) return false;
+    // Crystallized knowledge claims are sentences, not entity chips — they
+    // skip the name-shape gate but still face scope + evidence-contract checks.
+    if ((source.type ?? '') !== 'knowledge' && !isPresentableEntityName(source.title)) return false;
     return sourceIsInScope(source, plan, names);
   });
 

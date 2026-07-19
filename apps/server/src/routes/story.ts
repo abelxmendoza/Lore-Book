@@ -10,6 +10,7 @@ import { historyEngineService } from '../services/narrative/history';
 import { narrativeCompilerService } from '../services/narrative/narrativeCompilerService';
 import { narrativeStoryChapterService } from '../services/narrative/narrativeStoryChapterService';
 import { narrativeLifeEraService } from '../services/narrative/narrativeLifeEraService';
+import { storyChapterReprocessService } from '../services/narrative/storyChapterReprocessService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
 import type { BookOutline } from '../services/narrative/types';
@@ -71,6 +72,22 @@ router.get(
       success: true,
       chapters,
       chapterCount: chapters.length,
+    });
+  }),
+);
+
+/**
+ * POST /api/story/story-chapters/reprocess
+ * Rebuild Story Chapters (+ Life Eras) from existing Scenes using Narrative Ownership.
+ */
+router.post(
+  '/story-chapters/reprocess',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const result = await storyChapterReprocessService.reprocessForUser(req.user!.id);
+    res.json({
+      success: true,
+      ...result,
     });
   }),
 );

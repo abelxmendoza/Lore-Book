@@ -68,7 +68,7 @@ const DOMAIN_PATTERNS: Array<{ domain: NarrativeDomain; pattern: RegExp; weight:
   {
     domain: 'romance',
     pattern:
-      /\b(?:girlfriend|boyfriend|partner|breakup|broke up|blocked me|blocked|unfollowed|ghost(?:ed|ing)?|no contact|dating|date night|first date|went on a date|dates?|situationship|crush|hooked up|kissed|slept with|romantic|my ex|her ex|his ex|anniversary)\b/,
+      /\b(?:girlfriend|boyfriend|partner|breakup|broke up|blocked me|blocked|unfollowed|ghost(?:ed|ing)?|no contact|dating|date night|first date|went on a date|dates?|situationship|crush|hooked up|kissed|slept with|romantic|my ex|her ex|his ex|our anniversary|wedding anniversary|dating anniversary|met (?:her|him)|she blocked|he blocked)\b/,
     weight: 3,
   },
   {
@@ -92,7 +92,7 @@ const DOMAIN_PATTERNS: Array<{ domain: NarrativeDomain; pattern: RegExp; weight:
   {
     domain: 'health',
     pattern:
-      /\b(?:gym|workout|lifting|ran|running|doctor|dentist|therapy|therapist|sick|injury|injured|surgery|hospital|diet|meds)\b/,
+      /\b(?:gym|workout|lifting|ran|running|doctor|dentist|therapy|therapist|sick|injury|injured|surgery|hospital|diet|meds|depressed|depression|anxious|anxiety|lonely|burnt out|burned out|mental health)\b/,
     weight: 2,
   },
   {
@@ -113,7 +113,7 @@ const DOMAIN_PATTERNS: Array<{ domain: NarrativeDomain; pattern: RegExp; weight:
   {
     domain: 'social_scene',
     pattern:
-      /\b(?:club|show|concert|gig|set|bar|party|afters|afterparty|festival|rave|dj|prom|night out|danced|dancing)\b/,
+      /\b(?:club|show|concert|gig|set|bar|party|afters|afterparty|festival|rave|dj|prom|night out|danced|dancing|the scene|in the scene|goth club)\b/,
     weight: 1,
   },
   {
@@ -148,13 +148,29 @@ function scoreDomains(scene: ChapterSceneInput): Map<NarrativeDomain, number> {
   return scores;
 }
 
-function pickSubject(scene: ChapterSceneInput): { subject: string | null; subjectLabel: string | null } {
+/** Family roles often appear in prose without a participants[] entry. */
+const FAMILY_ROLE_SUBJECT =
+  /\b(abuela|abuelo|grandma|grandpa|grandmother|grandfather|mom|mother|dad|father|mama|papa|t[ií]a|t[ií]o|aunt|uncle)\b/i;
+
+function pickSubject(
+  scene: ChapterSceneInput,
+  domain: NarrativeDomain,
+): { subject: string | null; subjectLabel: string | null } {
   const cast = castOf(scene);
-  if (cast.length === 0) return { subject: null, subjectLabel: null };
   const blob = sceneBlob(scene);
-  const mentioned = cast.find((p) => blob.includes(p));
-  const subject = mentioned ?? cast[0];
-  return { subject, subjectLabel: titleCase(subject) };
+  if (cast.length > 0) {
+    const mentioned = cast.find((p) => blob.includes(p));
+    const subject = mentioned ?? cast[0];
+    return { subject, subjectLabel: titleCase(subject) };
+  }
+  if (domain === 'family') {
+    const role = blob.match(FAMILY_ROLE_SUBJECT)?.[1];
+    if (role) {
+      const subject = normalizeToken(role);
+      return { subject, subjectLabel: titleCase(subject) };
+    }
+  }
+  return { subject: null, subjectLabel: null };
 }
 
 function identityStatement(
@@ -204,8 +220,21 @@ export function classifySceneNarrative(scene: ChapterSceneInput): NarrativeIdent
   const secondaryDomain = ranked[1]?.[0] ?? null;
 
   let effectiveDomain = domain;
-  const { subject, subjectLabel } = pickSubject(scene);
-  if (domain === 'unknown' && subject) effectiveDomain = 'friends';
+
+  // Club/venue "anniversary" is nightlife, not romance.
+  if (
+    effectiveDomain === 'romance' &&
+    /\b(?:club|bar|venue|show|festival)\b/.test(sceneBlob(scene)) &&
+    /\banniversary\b/.test(sceneBlob(scene)) &&
+    !/\b(?:girlfriend|boyfriend|partner|blocked|ghost|date night|our anniversary|wedding)\b/.test(
+      sceneBlob(scene),
+    )
+  ) {
+    effectiveDomain = scores.has('social_scene') ? 'social_scene' : 'unknown';
+  }
+
+  const { subject, subjectLabel } = pickSubject(scene, effectiveDomain);
+  if (effectiveDomain === 'unknown' && subject) effectiveDomain = 'friends';
 
   const personSubject = PERSON_DOMAINS.has(effectiveDomain) ? subject : null;
   const personLabel = PERSON_DOMAINS.has(effectiveDomain) ? subjectLabel : null;

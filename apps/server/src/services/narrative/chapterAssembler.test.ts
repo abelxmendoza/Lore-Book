@@ -149,8 +149,50 @@ describe('assembleChaptersFromScenes', () => {
     const chapters = assembleChaptersFromScenes(mixedWeek());
     const club = chapters.filter((c) => c.narrative.domain === 'social_scene');
     expect(club).toHaveLength(1);
-    expect(club[0].sceneIds.sort()).toEqual(['s-club-1', 's-club-2', 's-club-3']);
-    expect(club[0].title).toBe('Nights out at Neon Palace');
+    // Near-duplicate Neon Palace nights collapse to one biographical beat.
+    expect(club[0].sceneIds).toHaveLength(1);
+    expect(['s-club-1', 's-club-2', 's-club-3']).toContain(club[0].sceneIds[0]);
+    expect(club[0].title).toBe('Nights out');
+  });
+
+  it('keeps distinct club venues in one nightlife chapter without pinning one venue', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('v1', 'Went to Neon Palace', {
+        timeStart: '2026-06-10T04:00:00.000Z',
+        location: 'Neon Palace',
+        summary: 'Danced at the goth club.',
+        significanceScore: 40,
+      }),
+      scene('v2', 'Visit to Velvet Room', {
+        timeStart: '2026-06-27T04:00:00.000Z',
+        location: 'Velvet Room',
+        summary: 'One night dancing at the club.',
+        significanceScore: 42,
+      }),
+      scene('v3', 'Went to the club last night', {
+        timeStart: '2026-07-07T04:00:00.000Z',
+        summary: 'Another night out dancing.',
+        significanceScore: 38,
+      }),
+    ]);
+    const club = chapters.filter((c) => c.narrative.domain === 'social_scene');
+    expect(club).toHaveLength(1);
+    expect(club[0].sceneIds.sort()).toEqual(['v1', 'v2', 'v3']);
+    expect(club[0].title).toBe('Nights out');
+    expect(club[0].location).toBeNull();
+    expect(club[0].summary).toMatch(/→/);
+  });
+
+  it('treats club anniversary nights as nightlife, not romance', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('ann', 'Visit to Neon Palace', {
+        summary: 'Saw a DJ at Neon Palace 2 year anniversary.',
+        location: 'Neon Palace',
+        significanceScore: 40,
+      }),
+    ]);
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].narrative.domain).toBe('social_scene');
   });
 
   it('refuses to assemble a chapter with no narrative identity', () => {
@@ -220,5 +262,17 @@ describe('chapterSignificance', () => {
     const decision = mayPersistChapter(rina);
     expect(decision.allow).toBe(true);
     expect(decision.breakdown.sceneCount).toBe(2);
+  });
+
+  it('persists a high-stakes single-scene romance with an outcome', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('block', 'then she blocked me just yesterday on instagram', {
+        summary: 'then she blocked me just yesterday on instagram',
+        significanceScore: 41,
+      }),
+    ]);
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].ownership.domain).toBe('romance');
+    expect(mayPersistChapter(chapters[0]).allow).toBe(true);
   });
 });

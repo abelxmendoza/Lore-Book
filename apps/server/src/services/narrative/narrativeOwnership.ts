@@ -52,6 +52,12 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+function pickProjectName(blob: string): string | null {
+  const m = blob.match(/\b(?:building|built|build|working on|worked on)\s+([a-z][\w'-]+)/i);
+  if (!m?.[1]) return null;
+  return m[1].replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /**
  * Pick the anchor scene that best declares the story (significance + clear identity).
  */
@@ -91,7 +97,7 @@ function inferConflictOutcome(
     if (/\b(?:ghost(?:ed|ing)?|no contact|radio silence)\b/.test(blob)) {
       return { conflict: 'Silence and uncertainty', outcome: 'No contact' };
     }
-    if (/\b(?:first date|started dating|met|crush|fell for)\b/.test(blob)) {
+    if (/\b(?:first date|started dating|met (?:her|him)|crush|fell for)\b/.test(blob)) {
       return { conflict: 'New romantic connection', outcome: 'Relationship beginning' };
     }
     return { conflict: 'Relationship tension', outcome: null };
@@ -112,19 +118,34 @@ function inferConflictOutcome(
     if (/\b(?:shipped|launched|released|deployed)\b/.test(blob)) {
       return { conflict: 'Shipping creative work', outcome: 'Release' };
     }
-    if (/\b(?:built|building|coded|working on|worked on)\b/.test(blob)) {
+    if (/\b(?:built|building|build|coded|coding|working on|worked on)\b/.test(blob)) {
       return { conflict: 'Building something that matters', outcome: 'Ongoing creative work' };
     }
     return { conflict: 'Creative effort', outcome: null };
   }
   if (domain === 'family') {
+    if (/\b(?:costco|grocery|groceries|errand|shopping)\b/.test(blob)) {
+      return { conflict: 'Family errands and caregiving', outcome: null };
+    }
     return { conflict: 'Family time and obligations', outcome: null };
   }
   if (domain === 'friends') {
     return { conflict: 'Friendship and social connection', outcome: null };
   }
   if (domain === 'social_scene') {
+    if (/\b(?:lame|weirdo|posting me|calling me|uncomfortable)\b/.test(blob)) {
+      return { conflict: 'Reputation and fallout in the scene', outcome: 'Social strain' };
+    }
+    if (/\b(?:missed out|another weekend)\b/.test(blob)) {
+      return { conflict: 'Chasing nights and missing scenes', outcome: null };
+    }
     return { conflict: 'Nights out and the social scene', outcome: null };
+  }
+  if (domain === 'health') {
+    if (/\b(?:depressed|depression|anxious|anxiety|lonely)\b/.test(blob)) {
+      return { conflict: 'Mental health and emotional weight', outcome: null };
+    }
+    return { conflict: 'Health and recovery', outcome: null };
   }
   if (domain === 'errands') {
     return { conflict: 'Daily logistics', outcome: null };
@@ -132,16 +153,35 @@ function inferConflictOutcome(
   return { conflict: null, outcome: null };
 }
 
-function ownershipNarrative(identity: NarrativeIdentity, conflict: string | null, outcome: string | null): string {
+function ownershipNarrative(
+  identity: NarrativeIdentity,
+  conflict: string | null,
+  outcome: string | null,
+  scenes: ChapterSceneInput[],
+): string {
   const subject = identity.subjectLabel;
-  if (identity.domain === 'romance' && subject) {
+  const blob = scenes.map(sceneBlob).join(' ');
+
+  if (identity.domain === 'romance') {
+    if (subject) {
+      if (outcome && /no contact|separation/i.test(outcome)) {
+        return `Your relationship with ${subject} came to an end.`;
+      }
+      if (conflict && /beginning|new romantic/i.test(conflict)) {
+        return `You began a romance with ${subject}.`;
+      }
+      return `Your relationship with ${subject}.`;
+    }
     if (outcome && /no contact|separation/i.test(outcome)) {
-      return `Your relationship with ${subject} came to an end.`;
+      if (/\bmet (?:her|him)\b/.test(blob) && /\bblocked\b/.test(blob)) {
+        return 'You met someone at the afters, then the connection ended in no contact.';
+      }
+      return 'A romance that ended in no contact.';
     }
     if (conflict && /beginning|new romantic/i.test(conflict)) {
-      return `You began a romance with ${subject}.`;
+      return 'A new romantic connection.';
     }
-    return `Your relationship with ${subject}.`;
+    return 'A romance chapter.';
   }
   if (identity.domain === 'career') {
     if (outcome && /begins|promotion/i.test(outcome)) {
@@ -150,9 +190,43 @@ function ownershipNarrative(identity: NarrativeIdentity, conflict: string | null
     return 'A chapter of your work life.';
   }
   if (identity.domain === 'creative') {
+    const project = pickProjectName(blob);
+    if (project) {
+      return outcome && /ongoing/i.test(outcome)
+        ? `You kept building ${project}.`
+        : `A chapter of building ${project}.`;
+    }
     return 'A chapter of building and creative work.';
   }
-  if (identity.statement) return identity.statement.replace(/^This chapter is about\s+/i, '').replace(/\.$/, '') + '.';
+  if (identity.domain === 'family') {
+    if (subject && /\b(?:costco|grocery|errand|shopping)\b/.test(blob)) {
+      return `Errands and time with ${subject}.`;
+    }
+    if (subject) return `Family life with ${subject}.`;
+    return 'Family life and everyday obligations.';
+  }
+  if (identity.domain === 'social_scene') {
+    if (outcome && /social strain/i.test(outcome)) {
+      return 'Nights out in the scene, and the fallout that followed.';
+    }
+    if (/\b(?:club|afters|danced|dancing)\b/.test(blob)) {
+      return 'A stretch of nights out in the scene.';
+    }
+    return 'Nights out and the social scene.';
+  }
+  if (identity.domain === 'health') {
+    if (/\b(?:depressed|depression)\b/.test(blob)) {
+      return 'A heavier stretch when you stayed in and felt depressed.';
+    }
+    return 'A chapter about your health and emotional state.';
+  }
+  if (identity.domain === 'friends') {
+    if (subject) return `Time and friendship with ${subject}.`;
+    return 'Time with friends.';
+  }
+  if (identity.statement) {
+    return identity.statement.replace(/^This chapter is about\s+/i, '').replace(/\.$/, '') + '.';
+  }
   return identity.statement || '';
 }
 
@@ -167,14 +241,8 @@ export function declareOwnership(
 
   const blob = scenes.map(sceneBlob).join(' ');
   const { conflict, outcome } = inferConflictOutcome(identity.domain, blob);
-  const primaryNarrative = ownershipNarrative(identity, conflict, outcome);
+  const primaryNarrative = ownershipNarrative(identity, conflict, outcome, scenes);
   if (!primaryNarrative.trim()) return null;
-
-  // High-stakes domains should eventually answer what changed.
-  const needsOutcome = identity.domain === 'romance' || identity.domain === 'career';
-  if (needsOutcome && !outcome && !conflict) {
-    // Still allow publish with conflict inferred as generic tension
-  }
 
   return {
     primaryNarrative: compact(primaryNarrative),
@@ -215,12 +283,11 @@ export function scoreSceneContribution(
     };
   }
 
+  const domainMatch =
+    identity.domain === ownership.domain || identity.secondaryDomain === ownership.domain;
+
   // Wrong domain (e.g. errands during a breakup) → hard exclude
-  if (
-    identity.domain !== 'unknown' &&
-    identity.domain !== ownership.domain &&
-    identity.secondaryDomain !== ownership.domain
-  ) {
+  if (identity.domain !== 'unknown' && !domainMatch) {
     // Soft background only if the ownership subject appears in cast and domain is weak social glue
     const cast = (scene.participants ?? []).map(normalizeToken);
     if (
@@ -251,17 +318,27 @@ export function scoreSceneContribution(
   if (identity.domain === ownership.domain) {
     strength += 30;
     reasons.push('Same narrative domain');
+  } else if (identity.secondaryDomain === ownership.domain) {
+    strength += 28;
+    reasons.push('Secondary domain matches ownership');
+  } else if (identity.domain === 'unknown' && ownership.domain === 'social_scene' && /\b(?:club|bar|afters|scene|danced)\b/.test(blob)) {
+    strength += 28;
+    reasons.push('Nightlife cues under social-scene ownership');
   }
+
   if (ownershipSubject && sceneSubject === ownershipSubject) {
     strength += 25;
     reasons.push('Matches primary subject');
   } else if (ownershipSubject && (scene.participants ?? []).map(normalizeToken).includes(ownershipSubject)) {
     strength += 15;
     reasons.push('Primary subject appears in cast');
+  } else if (ownershipSubject && blob.includes(ownershipSubject)) {
+    strength += 15;
+    reasons.push('Primary subject mentioned in scene');
   }
 
   // Conflict/outcome cue alignment
-  if (ownership.primaryConflict && /\b(?:block|ghost|breakup|onboard|hired|built|building)\b/.test(blob)) {
+  if (ownership.primaryConflict && /\b(?:block|ghost|breakup|onboard|hired|built|building|depressed|costco|club)\b/.test(blob)) {
     strength += 10;
     reasons.push('Aligns with chapter conflict cues');
   }

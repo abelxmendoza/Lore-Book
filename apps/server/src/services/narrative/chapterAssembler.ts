@@ -52,7 +52,10 @@ export const CHAPTER_DEDUPE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const CHAPTER_ORPHAN_MIN_SIGNIFICANCE = 60;
 
 export type AssembledChapter = {
+  /** Chronological biographical beats (deduped retellings). */
   sceneIds: string[];
+  /** All supporting scene rows to attach in the graph (includes collapsed dupes). */
+  memberSceneIds: string[];
   scenes: ChapterSceneInput[];
   title: string;
   summary: string;
@@ -102,14 +105,14 @@ function sceneBlob(scene: ChapterSceneInput): string {
 /**
  * Thread key: the story a beat belongs to. Person domains split per subject —
  * a romance beat about one person can never share a thread with another's.
- * Career and social_scene split per setting so distinct workplaces / venues
- * keep distinct chapters.
+ * Career splits per workplace. Social-scene venues are settings inside one
+ * nightlife story — do not split chapters by club name.
  */
 function threadKey(identity: NarrativeIdentity, scene: ChapterSceneInput): string {
   if (PERSON_DOMAINS.has(identity.domain)) {
     return `${identity.domain}:${identity.subject ?? ''}`;
   }
-  if (identity.domain === 'career' || identity.domain === 'social_scene') {
+  if (identity.domain === 'career') {
     return `${identity.domain}:${normalizeToken(scene.location ?? '')}`;
   }
   return identity.domain;
@@ -125,16 +128,83 @@ function coreTitle(scene: ChapterSceneInput): string {
   return normalizeToken(compact(scene.title).toLowerCase().replace(TITLE_NOISE, ''));
 }
 
+function coreSummary(scene: ChapterSceneInput): string {
+  return normalizeToken(compact(scene.summary).toLowerCase().replace(TITLE_NOISE, '')).slice(0, 80);
+}
+
 function isDuplicateScene(a: ChapterSceneInput, b: ChapterSceneInput): boolean {
-  const ca = coreTitle(a);
-  const cb = coreTitle(b);
-  if (!ca || ca !== cb) return false;
   const ta = sceneSortTime(a);
   const tb = sceneSortTime(b);
-  if (ta && tb && Math.abs(ta - tb) > CHAPTER_DEDUPE_WINDOW_MS) return false;
+  const gap = ta && tb ? Math.abs(ta - tb) : 0;
+
+  const ca = coreTitle(a);
+  const cb = coreTitle(b);
+  const titleMatch = Boolean(ca && ca === cb);
+
+  const sa = coreSummary(a);
+  const sb = coreSummary(b);
+  const summaryMatch = Boolean(sa && sa === sb && sa.length >= 12);
+  // Short exact retellings may land weeks apart; distinct nights with the same
+  // venue title (different summaries) still use the 7-day window.
+  const retellingMatch = summaryMatch && sa.length <= 48;
+
+  if (!titleMatch && !retellingMatch) return false;
+  const windowMs = retellingMatch ? CHAPTER_HARD_GAP_MS : CHAPTER_DEDUPE_WINDOW_MS;
+  if (ta && tb && gap > windowMs) return false;
+
   const la = normalizeToken(a.location ?? '');
   const lb = normalizeToken(b.location ?? '');
   return !la || !lb || la === lb;
+}
+
+/** One biographical beat → one body scene (keep the strongest telling). */
+function collapseBeatsToScenes(
+  cluster: Beat[],
+  supporting: ChapterSceneInput[],
+): ChapterSceneInput[] {
+  const supportingIds = new Set(supporting.map((s) => s.id));
+  const body: ChapterSceneInput[] = [];
+  for (const beat of cluster) {
+    const inBeat = beat.scenes.filter((s) => supportingIds.has(s.id));
+    if (inBeat.length === 0) continue;
+    const best = [...inBeat].sort(
+      (a, b) => (b.significanceScore ?? 0) - (a.significanceScore ?? 0),
+    )[0];
+    body.push(best);
+  }
+  return body.sort((a, b) => sceneSortTime(a) - sceneSortTime(b));
+}
+
+function formatSceneDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function chronologicalSummary(scenes: ChapterSceneInput[]): string {
+  return scenes
+    .map((s) => {
+      const label = compact(s.title || s.summary);
+      if (!label) return '';
+      const when = formatSceneDate(s.timeStart ?? s.timeEnd);
+      return when ? `${when}: ${label}` : label;
+    })
+    .filter(Boolean)
+    .join(' → ')
+    .slice(0, 700);
+}
+
+/** Only pin a venue when it clearly dominates the chapter body. */
+function dominantChapterLocation(scenes: ChapterSceneInput[]): string | null {
+  const located = scenes.filter((s) => Boolean(s.location?.trim()));
+  if (located.length === 0) return null;
+  if (located.length < Math.ceil(scenes.length / 2)) return null;
+  const top = pickDominant(located.map((s) => s.location!));
+  if (!top) return null;
+  const topKey = normalizeToken(top);
+  const agree = located.filter((s) => normalizeToken(s.location!) === topKey).length;
+  return agree >= Math.ceil(located.length * 0.6) ? top : null;
 }
 
 function dedupeIntoBeats(scenes: ChapterSceneInput[]): Beat[] {
@@ -264,26 +334,39 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
   }
 
   const candidateScenes = cluster.flatMap((b) => b.scenes);
-  const ownership = declareOwnership(identity, candidateScenes);
+  const subjectFromCluster = cluster.map((b) => b.identity).find((id) => id.subject);
+  const ownershipIdentity: NarrativeIdentity =
+    !identity.subject && subjectFromCluster?.subject
+      ? {
+          ...identity,
+          subject: subjectFromCluster.subject,
+          subjectLabel: subjectFromCluster.subjectLabel,
+          statement: identity.statement,
+        }
+      : identity;
+
+  const ownership = declareOwnership(ownershipIdentity, candidateScenes);
   if (!ownership?.primaryNarrative.trim()) return null;
 
   const evidence = collectEvidence(ownership, candidateScenes);
-  // Chapter defines membership: only supporting scenes become the chapter body.
-  const scenes = evidence.supporting.length > 0 ? evidence.supporting : [];
+  // One scene per beat — retellings collapse so biographies stay chronological, not duplicated.
+  const scenes = collapseBeatsToScenes(cluster, evidence.supporting);
   if (scenes.length === 0) return null;
 
   const participants = Array.from(new Set(scenes.flatMap((s) => castOf(s))));
-  // Subject leads the cast.
-  if (identity.subject) {
-    const idx = participants.indexOf(identity.subject);
+  const subjectKey = ownershipIdentity.subject ?? ownership.primarySubject;
+  if (subjectKey) {
+    const normalized = normalizeToken(subjectKey);
+    const idx = participants.findIndex((p) => p === normalized || p === subjectKey);
     if (idx > 0) {
-      participants.splice(idx, 1);
-      participants.unshift(identity.subject);
+      const [row] = participants.splice(idx, 1);
+      participants.unshift(row);
+    } else if (!participants.includes(normalized)) {
+      participants.unshift(normalized);
     }
   }
 
-  const locations = scenes.map((s) => s.location).filter((x): x is string => Boolean(x));
-  const location = pickDominant(locations);
+  const location = dominantChapterLocation(scenes);
 
   const starts = scenes.map((s) => s.timeStart).filter((x): x is string => Boolean(x));
   const ends = scenes.map((s) => s.timeEnd ?? s.timeStart).filter((x): x is string => Boolean(x));
@@ -294,7 +377,6 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
     new Set(scenes.map((s) => s.promotedEventId).filter((x): x is string => Boolean(x))),
   );
 
-  // Themes flow from ownership, never the other way around.
   const themeSet = new Set<string>([ownership.domain]);
   themeSet.delete('unknown');
   const themes = [...themeSet].slice(0, 4);
@@ -303,16 +385,12 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
   const dominantEmotion = pickDominant(emotions);
 
   const title = deriveChapterTitle({
-    identity,
+    identity: ownershipIdentity,
     ownership,
     anchor: anchor.anchor,
     location,
   });
-  const summary = scenes
-    .map((s) => compact(s.title || s.summary))
-    .filter(Boolean)
-    .join(' · ')
-    .slice(0, 600);
+  const summary = chronologicalSummary(scenes);
   const thesis = ownership.primaryNarrative;
 
   const confidence = Math.min(
@@ -327,6 +405,7 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
 
   return {
     sceneIds: scenes.map((s) => s.id),
+    memberSceneIds: evidence.supporting.map((s) => s.id),
     scenes,
     title,
     summary,
@@ -339,7 +418,7 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
     themes,
     dominantEmotion,
     confidence,
-    narrative: { ...identity, anchorSceneId: anchor.anchor.id },
+    narrative: { ...ownershipIdentity, anchorSceneId: anchor.anchor.id },
     ownership,
     contributions: evidence.contributions,
   };
@@ -369,6 +448,9 @@ export function deriveChapterTitle(input: {
       candidates.push('A romance chapter');
       break;
     case 'family':
+      if (subject && /\b(?:costco|grocery|errand|shopping)\b/.test(anchorBlob)) {
+        candidates.push(`Errands with ${subject}`);
+      }
       if (subject) candidates.push(`Time with ${subject}`);
       candidates.push('Family life');
       break;
@@ -381,15 +463,22 @@ export function deriveChapterTitle(input: {
       break;
     case 'creative': {
       // Data-driven project name from the anchor, e.g. "Building MemoVault".
-      const project = anchor.title.match(/\b(?:building|built|working on|worked on)\s+([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)?)/i);
+      const project = `${anchor.title} ${anchor.summary}`.match(
+        /\b(?:building|built|build|working on|worked on)\s+([A-Z][\w'-]+)/,
+      );
       if (project?.[1]) candidates.push(`Building ${compact(project[1])}`);
       candidates.push('Creative work');
       break;
     }
     case 'social_scene':
-      candidates.push(location ? `Nights out at ${location}` : 'Nights out');
+      // Venue is a setting, not the story title — one night at a named club
+      // must not become the chapter (or era) name for the whole nightlife arc.
+      candidates.push('Nights out');
       break;
     case 'health':
+      if (/\b(?:depressed|depression)\b/.test(anchorBlob)) {
+        candidates.push('A heavier stretch');
+      }
       candidates.push('A health chapter');
       break;
     case 'education':

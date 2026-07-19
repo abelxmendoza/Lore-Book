@@ -105,11 +105,14 @@ import { timelineManager } from './timelineManager';
 import { extendChatContext } from './timelineInsight';
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
+  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
   date?: string;
+  /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
+  relevanceScore?: number;
+  relevanceReasons?: string[];
 };
 
 export type MemoryClaim = {
@@ -2197,6 +2200,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
+      cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
@@ -3085,6 +3090,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       continuityAliveBlock: (ragPacket as { continuityAliveBlock?: string | null }).continuityAliveBlock ?? null,
+      activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
+      cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,

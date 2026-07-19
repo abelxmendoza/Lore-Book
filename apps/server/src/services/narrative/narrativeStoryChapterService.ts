@@ -122,8 +122,9 @@ export class NarrativeStoryChapterService {
 
       if (existing?.id) {
         // Ownership replaces membership — do not merge historical unrelated scenes back in.
+        const attachIds = chapter.memberSceneIds?.length ? chapter.memberSceneIds : chapter.sceneIds;
         const priorSceneIds = (existing.scene_ids as string[]) ?? [];
-        const dropSceneIds = priorSceneIds.filter((id) => !chapter.sceneIds.includes(id));
+        const dropSceneIds = priorSceneIds.filter((id) => !attachIds.includes(id));
         if (dropSceneIds.length) {
           await supabaseAdmin
             .from('narrative_scenes')
@@ -142,7 +143,7 @@ export class NarrativeStoryChapterService {
           logger.warn({ error, userId }, 'narrative_story_chapters update failed');
           return existing as NarrativeStoryChapterRow;
         }
-        await this.attachScenes(userId, data.id, chapter.sceneIds);
+        await this.attachScenes(userId, data.id, attachIds);
         return data as NarrativeStoryChapterRow;
       }
 
@@ -159,7 +160,8 @@ export class NarrativeStoryChapterService {
         logger.warn({ error, userId }, 'narrative_story_chapters insert failed');
         return null;
       }
-      await this.attachScenes(userId, data.id, chapter.sceneIds);
+      const attachIds = chapter.memberSceneIds?.length ? chapter.memberSceneIds : chapter.sceneIds;
+      await this.attachScenes(userId, data.id, attachIds);
       return data as NarrativeStoryChapterRow;
     } catch (error) {
       logger.warn({ error, userId }, 'narrative_story_chapters upsert error');

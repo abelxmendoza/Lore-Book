@@ -25,11 +25,14 @@ const humanizeExpressionMode = (mode: string): string => {
 };
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric';
+  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
   date?: string;
+  /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
+  relevanceScore?: number;
+  relevanceReasons?: string[];
 };
 
 export type ChatSuggestedAction = {
@@ -53,7 +56,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   character: 'Character',
   task: 'Task',
   hqi: 'Smart search',
-  fabric: 'Related'
+  fabric: 'Related',
+  knowledge: 'Knowledge'
 };
 
 import type { RecallChatPayload } from './recallTypes';

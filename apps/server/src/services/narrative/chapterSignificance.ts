@@ -53,10 +53,23 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
     100,
   );
 
-  // Persist multi-scene chapters always; single-scene needs enough weight or an event.
+  // High-stakes owned singles (breakup, shipping work, mood collapses, etc.)
+  // are real stories even when only one scene has landed yet.
+  const domain = chapter.ownership?.domain;
+  const highStakesSingle =
+    sceneCount === 1 &&
+    ((domain === 'romance' || domain === 'career' || domain === 'creative') &&
+      (Boolean(chapter.ownership?.primaryOutcome) || maxScene >= 30) ||
+      (domain === 'health' && maxScene >= 18));
+
+  // Persist multi-scene chapters always; single-scene needs weight, an event,
+  // or a clear owned high-stakes beat.
   const allow =
     Boolean(chapter.title.trim()) &&
-    (sceneCount >= 2 || chapter.eventIds.length > 0 || total >= CHAPTER_MIN_SIGNIFICANCE);
+    (sceneCount >= 2 ||
+      chapter.eventIds.length > 0 ||
+      total >= CHAPTER_MIN_SIGNIFICANCE ||
+      highStakesSingle);
 
   return {
     allow,

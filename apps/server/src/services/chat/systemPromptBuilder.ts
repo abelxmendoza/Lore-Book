@@ -38,6 +38,10 @@ export function buildSystemPrompt(
     crystallizedKnowledge?: Array<{ knowledge_type: string; human_readable_claim: string; confidence: number }>;
     /** Continuity That Feels Alive — 0–3 structured candidates + composition rules */
     continuityAliveBlock?: string | null;
+    /** Active Narrative Threads — what is unfolding now; answer focus questions from this. */
+    activeThreadsBlock?: string | null;
+    /** Cognitive plan — how to think about this question before answering. */
+    cognitivePlanBlock?: string | null;
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -348,6 +352,21 @@ When asked "did you save [X]?" or "did you add [X] as a character/location/group
 - If X is NOT in your loaded context → say: "People, places, and groups you mention are extracted automatically — [X] should appear in your Characters/Locations/Groups section. Check there to confirm it was picked up."
 - NEVER say "I've saved [X]" or "I added [X]" as if you personally performed the action — the extraction pipeline runs in the background, not through you. You cannot confirm saves you didn't witness.
 - NEVER dodge the question by pivoting to how great the night was. The user asked a direct yes/no — answer it first.
+
+**MEDIA & ATTACHMENTS — YOU ARE MULTIMODAL:**
+
+Never say:
+- "I can't process photos directly"
+- "I can't see images"
+- "Please describe the photo for me"
+
+You CAN see images attached to the conversation. When the user uploads photos, screenshots, or documents:
+- Analyze what's actually in them — people, places, text, context, mood
+- Connect what you see to existing people, places, and events in their LoreBook
+- Preserve both the factual details and the story behind them
+- If an expected attachment truly isn't present in your context, say the upload didn't reach you this turn and ask them to re-attach it — never claim you lack the capability
+
+When inviting uploads: "Upload photos, screenshots, documents — anything that captures part of your life. I'll analyze them, connect them to your LoreBook, and preserve both the details and the story."
 
 When the record is new or empty:
 - Never say: "I don't have any entries yet"
@@ -786,10 +805,16 @@ These arcs have been consistently reinforced across multiple journal entries. Re
 
 ${loreData?.crystallizedKnowledge && loreData.crystallizedKnowledge.length > 0 ? `**WHAT LOREBOOK KNOWS ABOUT YOU (verified by behavioral evidence):**
 ${loreData.crystallizedKnowledge.map((k: { knowledge_type: string; human_readable_claim: string; confidence: number }) =>
-  `• [${k.knowledge_type}] ${k.human_readable_claim.substring(0, 120)}${k.human_readable_claim.length > 120 ? '…' : ''}`
+  `• [${k.knowledge_type}, ${Math.round(k.confidence * 100)}% confidence] ${k.human_readable_claim.substring(0, 120)}${k.human_readable_claim.length > 120 ? '…' : ''}`
 ).join('\n')}
 
 These are durable knowledge claims earned from recurring behavioral evidence — not inferences or AI summaries. Treat them as established facts about this person when they are relevant to the conversation.
+
+` : ''}${loreData?.cognitivePlanBlock ? `**COGNITIVE STRATEGY FOR THIS QUESTION** (decided before retrieval — follow it):
+${loreData.cognitivePlanBlock}
+
+` : ''}${loreData?.activeThreadsBlock ? `**ACTIVE NARRATIVE THREADS** (what is unfolding — knowledge answers "what is true", threads answer "what is happening"):
+${loreData.activeThreadsBlock}
 
 ` : ''}${loreData?.continuityAliveBlock ? `**CONTINUITY THAT FEELS ALIVE** (selected for this message only — 0–3 candidates; do not invent more):
 ${loreData.continuityAliveBlock}

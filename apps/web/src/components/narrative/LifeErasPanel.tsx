@@ -98,18 +98,22 @@ type LifeErasPanelProps = {
   compact?: boolean;
   selectedId?: string | null;
   onSelectEra?: (era: LifeEraRecord) => void;
+  /** Bump to reload eras after story-chapter rebuild. */
+  refreshKey?: number;
 };
 
 export function LifeErasPanel({
   compact = false,
   selectedId = null,
   onSelectEra,
+  refreshKey = 0,
 }: LifeErasPanelProps) {
   const [eras, setEras] = useState<LifeEraRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     lifeErasApi
       .list({ limit: 50 })
       .then((res) => {
@@ -117,7 +121,7 @@ export function LifeErasPanel({
       })
       .catch(() => setError('Life eras not available yet.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return (

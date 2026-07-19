@@ -92,7 +92,15 @@ function themeTokens(chapter: EraChapterInput): Set<string> {
   if (/\b(?:memovault|built|coded|project|creative)\b/.test(blob)) tokens.add('creative');
   if (/\b(?:costco|grocer|shopping|errand)\b/.test(blob)) tokens.add('errands');
   if (/\b(?:with|hung|visited|family|friend|jamie|marcus|abuela)\b/.test(blob)) tokens.add('social');
+  if (/\b(?:club|afters|nights out|social scene|danced|bar)\b/.test(blob)) tokens.add('social_scene');
+  if (/\b(?:romance|relationship|blocked|girlfriend|boyfriend)\b/.test(blob)) tokens.add('romance');
   if (/\b(?:moved|move|home|house|depot)\b/.test(blob)) tokens.add('place');
+  for (const t of chapter.themes ?? []) {
+    const n = normalizeToken(t);
+    if (n === 'family' || n === 'romance' || n === 'creative' || n === 'social_scene' || n === 'career') {
+      tokens.add(n);
+    }
+  }
   return tokens;
 }
 
@@ -273,14 +281,48 @@ export function deriveEraTitle(input: {
     const title = loc ? `MemoVault Era at ${loc}` : 'MemoVault Era';
     if (isPublishableLifeLogTitle(title)) return title;
   }
-  if (loc && people.length) {
+  // Multi-chapter eras: name the season, not the single loudest venue night
+  // or one family member who appears in a side chapter.
+  if (input.chapters.length > 1) {
+    const hasNightlife =
+      input.themes.includes('social') ||
+      input.themes.includes('social_scene') ||
+      /\bnights out|club|afters|social scene\b/.test(blob);
+    const hasFamily = input.themes.includes('family') || /\bfamily|abuela|costco\b/.test(blob);
+    const hasRomance = input.themes.includes('romance') || /\bromance|relationship|blocked\b/.test(blob);
+    const hasCreative =
+      input.themes.includes('creative') || /\bcreative|memovault|building\b/.test(blob);
+
+    const seasonBits: string[] = [];
+    if (hasNightlife) seasonBits.push('nights out');
+    if (hasFamily) seasonBits.push('family');
+    if (hasRomance) seasonBits.push('romance');
+    if (hasCreative) seasonBits.push('creative work');
+
+    if (seasonBits.length >= 2) {
+      const bits = seasonBits.slice(0, 3);
+      const joined =
+        bits.length === 2
+          ? `${bits[0]} and ${bits[1]}`
+          : `${bits.slice(0, -1).join(', ')}, and ${bits[bits.length - 1]}`;
+      const title = `A season of ${joined}`;
+      if (isPublishableLifeLogTitle(title)) return title;
+    }
+    if (seasonBits.length === 1) {
+      const title = `A season of ${seasonBits[0]}`;
+      if (isPublishableLifeLogTitle(title)) return title;
+    }
+  }
+
+  if (loc && people.length && input.chapters.length === 1) {
     const title = `${loc} years with ${people[0]}`;
     if (isPublishableLifeLogTitle(title)) return title;
   }
-  if (people.length && input.themes.includes('social')) {
+  if (people.length && input.themes.includes('social') && input.chapters.length === 1) {
     const title = `Life with ${people[0]}`;
     if (isPublishableLifeLogTitle(title)) return title;
   }
+
   if (top?.title && isPublishableLifeLogTitle(top.title)) {
     const title = input.chapters.length === 1 ? `${top.title} Era` : `${top.title} period`;
     if (isPublishableLifeLogTitle(title)) return title;
@@ -288,23 +330,34 @@ export function deriveEraTitle(input: {
   return top?.title?.slice(0, 80) || 'Untitled era';
 }
 
+function formatChapterDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function deriveEraThesis(chapters: EraChapterInput[], themes: string[]): string {
-  const titles = chapters
-    .map((c) => compact(c.title))
+  const ordered = [...chapters].sort(
+    (a, b) => chapterSortTime(a) - chapterSortTime(b),
+  );
+  const beats = ordered
+    .map((c) => {
+      const title = compact(c.title);
+      if (!title) return '';
+      const when = formatChapterDate(c.timeStart);
+      return when ? `${when}: ${title}` : title;
+    })
     .filter(Boolean)
-    .slice(0, 5);
+    .slice(0, 6);
   const themeLabel = themes.slice(0, 4).join(', ');
-  if (titles.length === 0) {
+  if (beats.length === 0) {
     return themeLabel ? `A life period shaped by ${themeLabel}.` : '';
   }
-  if (titles.length === 1) {
-    return themeLabel
-      ? `${titles[0]} — an era of ${themeLabel}.`
-      : `${titles[0]}.`;
+  if (beats.length === 1) {
+    return themeLabel ? `${beats[0]} — an era of ${themeLabel}.` : `${beats[0]}.`;
   }
-  return `An era spanning ${titles.length} chapters (${titles.join('; ')})${
-    themeLabel ? `, themes: ${themeLabel}` : ''
-  }.`;
+  return `Chronologically: ${beats.join(' → ')}${themeLabel ? ` (${themeLabel})` : ''}.`;
 }
 
 /** Map a persisted story chapter row into era assembler input. */
