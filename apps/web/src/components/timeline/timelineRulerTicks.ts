@@ -81,10 +81,6 @@ export function buildSwimlaneAxisTicks(
   start: Date,
   end: Date,
   xOf: (d: Date) => number,
-  showAllMonthLabels: boolean,
 ): RulerTick[] {
-  if (showAllMonthLabels) {
-    return buildMonthlyAxisTicks(start, end, xOf);
-  }
-  return buildQuadrennialAxisTicks(start, end, xOf);
+  return buildMonthlyAxisTicks(start, end, xOf);
 }

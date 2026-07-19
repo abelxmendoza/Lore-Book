@@ -1,17 +1,17 @@
 import crypto from 'node:crypto';
 
 import type { Request } from 'express';
+import postgres from 'postgres';
 
 import { config } from '../../config';
+import { summarizeMilestonesBridge } from '../../external/summarizer.bridge';
+import type { ExternalSummary } from '../../external/types';
+import { xAdapter, type XResponse } from '../../external/x.adapter';
 import { xApiGuard } from '../../lib/externalCircuitBreaker';
 import { logger } from '../../logger';
 import { encrypt, decrypt } from '../../services/encryption';
 import { memoryService } from '../../services/memoryService';
 import { supabaseAdmin } from '../../services/supabaseClient';
-import postgres from 'postgres';
-import { xAdapter, type XResponse } from '../../external/x.adapter';
-import { summarizeMilestonesBridge } from '../../external/summarizer.bridge';
-import type { ExternalSummary } from '../../external/types';
 import {
   ingestExternalPost,
   confirmExternalLoreCandidate,
@@ -434,7 +434,14 @@ async function refreshAccessToken(row: XConnectionRow): Promise<XTokenResponse> 
   );
 
   if (!response.ok) {
-    throw new Error(`X token refresh failed: ${response.status} ${await response.text()}`);
+    const body = await response.text();
+    // After Client ID/Secret rotation, stored refresh tokens are dead — force reconnect.
+    if (/invalid_request|invalid_grant|Value passed for the token was invalid/i.test(body)) {
+      throw new Error(
+        `X token refresh failed: stored refresh token is invalid for the current Client ID/Secret. Disconnect X and Connect again. (${response.status} ${body})`
+      );
+    }
+    throw new Error(`X token refresh failed: ${response.status} ${body}`);
   }
   return response.json() as Promise<XTokenResponse>;
 }

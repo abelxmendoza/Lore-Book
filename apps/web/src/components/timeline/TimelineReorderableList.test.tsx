@@ -64,16 +64,16 @@ describe('buildTimelineClipboardText', () => {
     expect(text).not.toContain('\n');
   });
 
-  it('includes cohesion score and merged duplicate titles when present', () => {
+  it('includes chapter contribution and merged duplicate titles when present', () => {
     const text = buildTimelineClipboardText([
       {
         ...ITEMS[1],
-        cohesion: 93,
+        contribution: 93,
         mergedCount: 3,
         mergedTitles: ['Show prep', 'Sound check at the venue'],
       },
     ]);
-    expect(text).toContain('[cohesion 93]');
+    expect(text).toContain('[chapter contribution 93]');
     expect(text).toContain('(merged duplicates: Show prep · Sound check at the venue)');
   });
 });

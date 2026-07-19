@@ -68,9 +68,17 @@ vi.mock('./TimelineSwimlanes', () => ({
 }));
 
 vi.mock('./TimelineStitchedView', () => ({
-  TimelineStitchedView: ({ embedded }: { embedded?: boolean }) => (
+  TimelineStitchedView: ({
+    embedded,
+    lifeArcId,
+    scopeLabel,
+  }: {
+    embedded?: boolean;
+    lifeArcId?: string;
+    scopeLabel?: string;
+  }) => (
     <div data-testid={embedded ? 'timeline-stitched-embedded' : 'timeline-stitched-modal'}>
-      Stitched view
+      {lifeArcId ? `${scopeLabel} · ${lifeArcId}` : 'Stitched view'}
     </div>
   ),
 }));
@@ -197,7 +205,7 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('generated-timeline-reveal')).toHaveTextContent('nightlife');
   });
 
-  it('opens generated timeline when clicking an active arc in demo mode', async () => {
+  it('opens the scoped stitched timeline when clicking an active arc in demo mode', async () => {
     const user = userEvent.setup();
     vi.mocked(useLifeArcs).mockReturnValue({
       arcs: [
@@ -244,7 +252,9 @@ describe('OmniTimeline layout and navigation', () => {
 
     renderOmniTimeline();
     await user.click(screen.getByRole('button', { name: /Agency Years/i }));
-    expect(screen.getByTestId('generated-timeline-reveal')).toHaveTextContent('Agency Years');
+    expect(screen.getByTestId('timeline-stitched-modal')).toHaveTextContent(
+      'Agency Years · mock-arc-agency',
+    );
   });
 });
 

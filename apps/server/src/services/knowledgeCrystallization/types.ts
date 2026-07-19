@@ -45,7 +45,11 @@ export type EvidenceType =
   | 'event_interpretation'
   | 'resolved_event'
   | 'omega_claim'
-  | 'correction';
+  | 'correction'
+  | 'romantic_interaction'
+  | 'romantic_relationship'
+  | 'relationship_cycle'
+  | 'relationship_drift';
 
 export interface EvidenceLink {
   id: string;

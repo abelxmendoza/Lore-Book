@@ -1,13 +1,14 @@
-import { logger } from '../../../logger';
 import { tracedCompletion } from '../../../lib/openai';
+import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
-import { arcService, type ArcType } from './arcService';
+
 import { arcMembershipService, type MembershipRole } from './arcMembershipService';
 import { arcRelationshipService } from './arcRelationshipService';
+import { arcService, type ArcType } from './arcService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type RawCandidate = {
+export type RawCandidate = {
   id: string;
   canonical_title: string;
   dominant_entity_names: string[];
@@ -40,17 +41,23 @@ const WORK_ACTIVITIES = new Set([
   'managing', 'reviewing', 'deploying', 'shipping', 'launching',
 ]);
 
-const RELATIONSHIP_ENTITIES = new Set([
-  'girlfriend', 'boyfriend', 'wife', 'husband', 'partner', 'date',
+const ROMANCE_SIGNALS = [
+  'girlfriend', 'boyfriend', 'wife', 'husband', 'partner', 'fiance', 'fiancee',
+  'dating', 'date night', 'romance', 'romantic', 'crush', 'breakup', 'engagement',
+  'honeymoon', 'love life', 'ex-girlfriend', 'ex-boyfriend',
+];
+
+const RELATIONSHIP_SIGNALS = [
   'friend', 'best friend', 'family', 'mom', 'dad', 'sister', 'brother',
-]);
+  'mother', 'father', 'sibling', 'grandma', 'grandpa', 'community',
+];
 
 const HEALTH_ACTIVITIES = new Set([
   'gym', 'running', 'exercising', 'workout', 'training', 'fighting',
   'boxing', 'mma', 'yoga', 'meditating', 'therapy', 'doctor', 'hospital',
 ]);
 
-type TrackType = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed';
+type TrackType = 'career' | 'romance' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed';
 
 // Max days between two candidates' date ranges to be considered the same cluster
 const CLUSTER_GAP_DAYS = 180;
@@ -75,9 +82,16 @@ function inferArcType(candidate: RawCandidate): ArcType {
  * Maps arc_type + activity signals to a parallel track label.
  * Track is the *thematic lane* a life arc belongs to, orthogonal to arc_type.
  */
-function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType {
+function containsPhrase(text: string, phrase: string): boolean {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+}
+
+export function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType {
   const activities = new Set(candidate.recurring_activities.map(a => a.toLowerCase()));
-  const names = candidate.dominant_entity_names.map(n => n.toLowerCase()).join(' ');
+  const context = [candidate.canonical_title, ...candidate.dominant_entity_names]
+    .map(value => value.toLowerCase())
+    .join(' ');
 
   if (arcType === 'work') return 'career';
   if (arcType === 'skill') {
@@ -91,14 +105,15 @@ function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType {
   // life_era / custom: pick the strongest single domain (never dump everything into mixed).
   const scores: Record<TrackType, number> = {
     health: [...HEALTH_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
-    relationships: [...RELATIONSHIP_ENTITIES].some(r => names.includes(r)) ? 1 : 0,
+    romance: ROMANCE_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
+    relationships: RELATIONSHIP_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
     creative: ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a)) ? 1 : 0,
     career: [...WORK_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
     inner: 0,
     mixed: 0,
   };
 
-  const ranked: TrackType[] = ['relationships', 'career', 'health', 'creative'];
+  const ranked: TrackType[] = ['romance', 'relationships', 'career', 'health', 'creative'];
   let best: TrackType = 'inner';
   let bestScore = 0;
   for (const track of ranked) {

@@ -3,11 +3,12 @@
  * Example: "My Cousin Leslie's Graduation Party" with before/during/after context linked.
  */
 
-import { logger } from '../../../logger';
 import { tracedCompletion } from '../../../lib/openai';
+import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
-import { arcService, type ArcTrack } from './arcService';
+
 import { arcRelationshipService } from './arcRelationshipService';
+import { arcService, type ArcTrack } from './arcService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,9 @@ function inferTemporalRole(
 
 function inferTrack(events: ResolvedEventRow[]): ArcTrack {
   const text = events.map(e => `${e.title} ${e.summary ?? ''}`).join(' ').toLowerCase();
+  if (/\b(date night|romantic|romance|anniversary|proposal|engagement|honeymoon|breakup)\b/.test(text)) {
+    return 'romance';
+  }
   if (/\b(graduation|wedding|party|birthday|funeral|reunion|celebration)\b/.test(text)) {
     return 'relationships';
   }

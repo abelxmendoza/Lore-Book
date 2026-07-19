@@ -19,10 +19,41 @@ export type StitchedTimelineItem = {
   temporalRole?: string;
   /** Narrative cohesion score vs. the arc's anchor (0–100), when gated. */
   cohesion?: number;
+  /** Contribution to the chapter thesis (0–100). */
+  contribution?: number;
   /** Number of extracted duplicates collapsed into this canonical event. */
   mergedCount?: number;
   /** Titles of the merged-away duplicates (excludes the shown title). */
   mergedTitles?: string[];
+};
+
+export type NarrativeChapterQuality = {
+  narrativeCoherence?: number;
+  topicPurity?: number;
+  chronologicalFlow?: number;
+  characterConsistency?: number;
+  locationConsistency?: number;
+  goalConsistency?: number;
+  emotionalConsistency?: number;
+  redundancy?: number;
+  overallStoryQuality?: number;
+};
+
+export type NarrativeChapter = {
+  title: string;
+  thesis: string;
+  dominantTheme: string;
+  startDate: string | null;
+  endDate: string | null;
+  participants: string[];
+  locations: string[];
+  supportingEventIds: string[];
+  backgroundEventIds: string[];
+  backgroundContext: string[];
+  outcomes: string[];
+  contributionScores: Record<string, number>;
+  quality: NarrativeChapterQuality;
+  confidence: number;
 };
 
 export type MergeLogEntry = {
@@ -44,6 +75,7 @@ export type StitchedTimelineResult = {
   excluded_count?: number;
   /** Duplicate-event merges applied before stitching (canonicalization). */
   merge_log?: MergeLogEntry[];
+  chapter?: NarrativeChapter;
 };
 
 export const stitchedTimelineApi = {

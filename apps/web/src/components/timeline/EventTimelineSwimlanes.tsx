@@ -131,10 +131,9 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     [timelineStart, ppd]
   );
 
-  const showAllMonthLabels = zoom >= 2;
   const axisTicks = useMemo(
-    () => buildSwimlaneAxisTicks(timelineStart, today, xOf, showAllMonthLabels),
-    [showAllMonthLabels, timelineStart, today, xOf],
+    () => buildSwimlaneAxisTicks(timelineStart, today, xOf),
+    [timelineStart, today, xOf],
   );
 
   // Greedy sub-row packing per lane so pills never overlap.

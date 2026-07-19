@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../../supabaseClient';
 
 export type ArcType = 'life_era' | 'skill' | 'location' | 'work' | 'custom' | 'occasion';
 export type ArcSource = 'inferred' | 'user_created';
-export type ArcTrack = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
+export type ArcTrack = 'career' | 'romance' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
 export type EmotionalArc = 'building' | 'climax' | 'resolution' | 'grief' | 'recovery' | 'neutral';
 
 export interface LifeArc {

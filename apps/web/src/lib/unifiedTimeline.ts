@@ -40,3 +40,11 @@ export function filterChronologyByExactDate(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
   return entries.filter((entry) => entry.start_time.slice(0, 10) === date);
 }
+
+export function sortStitchedItemsNewestFirst(
+  items: StitchedTimelineItem[],
+): StitchedTimelineItem[] {
+  return [...items].sort(
+    (a, b) => new Date(b.sortTime).getTime() - new Date(a.sortTime).getTime(),
+  );
+}

@@ -66,4 +66,27 @@ describe('UniversalTimelineSearch', () => {
     expect(screen.queryByRole('button', { name: /everything with alex/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
   });
+
+  it('submits the dedicated date search', async () => {
+    const user = userEvent.setup();
+    const onDateSubmit = vi.fn();
+
+    render(
+      <UniversalTimelineSearch
+        genInput=""
+        genQuery=""
+        suggestions={SUGGESTIONS}
+        onInputChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSuggestionClick={vi.fn()}
+        dateInput="2026-07-18"
+        onDateInputChange={vi.fn()}
+        onDateSubmit={onDateSubmit}
+      />,
+    );
+
+    expect(screen.getByLabelText('Search timeline by date')).toHaveValue('2026-07-18');
+    await user.click(screen.getByRole('button', { name: /search date/i }));
+    expect(onDateSubmit).toHaveBeenCalledTimes(1);
+  });
 });

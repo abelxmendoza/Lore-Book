@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { StitchedTimelineItem } from '../api/stitchedTimeline';
-import { filterChronologyByExactDate, stitchedItemsToChronology } from './unifiedTimeline';
+import {
+  filterChronologyByExactDate,
+  sortStitchedItemsNewestFirst,
+  stitchedItemsToChronology,
+} from './unifiedTimeline';
 
 describe('stitchedItemsToChronology', () => {
   it('preserves canonical identity and source provenance across Omni views', () => {
@@ -54,5 +58,24 @@ describe('stitchedItemsToChronology', () => {
 
     expect(filterChronologyByExactDate(entries, '2026-07-18').map((entry) => entry.id))
       .toEqual(['moment:1']);
+  });
+
+  it('places the newest Omni event first without mutating canonical order', () => {
+    const older = {
+      id: 'event:older', kind: 'event' as const, sourceId: 'older', sourceIds: ['older'],
+      sourceKind: 'resolved_event' as const, sourceType: 'resolved_event',
+      sortTime: '2025-01-01T00:00:00.000Z', userSortIndex: null,
+      title: 'Older', body: 'Older',
+    };
+    const newer = {
+      ...older,
+      id: 'event:newer', sourceId: 'newer', sourceIds: ['newer'],
+      sortTime: '2026-07-18T00:00:00.000Z', title: 'Newer', body: 'Newer',
+    };
+    const canonical = [older, newer];
+
+    expect(sortStitchedItemsNewestFirst(canonical).map((item) => item.id))
+      .toEqual(['event:newer', 'event:older']);
+    expect(canonical.map((item) => item.id)).toEqual(['event:older', 'event:newer']);
   });
 });

@@ -16,6 +16,7 @@ export function isNarrativeConsolidationArc(arc: LifeArc): boolean {
   const meta = getArcMetadata(arc);
   return (
     meta?.detector === 'narrative_consolidation' ||
+    meta?.detector === 'narrative_chapter' ||
     arc.tags?.includes('narrative_consolidation') === true
   );
 }

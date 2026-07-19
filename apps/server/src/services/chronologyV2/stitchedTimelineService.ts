@@ -1,17 +1,18 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { chronologyService } from './chronologyService';
+import {
+  clusterDuplicateEvents,
+  buildMergeLog,
+  type MergeLogEntry,
+} from './eventCanonicalization';
 import {
   buildNarrativeAnchor,
   attachAnchorEntityNames,
   classifyCandidate,
   type CohesionCandidate,
 } from './narrativeCohesion';
-import {
-  clusterDuplicateEvents,
-  buildMergeLog,
-  type MergeLogEntry,
-} from './eventCanonicalization';
 
 export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
@@ -37,10 +38,29 @@ export type StitchedTimelineItem = {
   temporalRole?: string;
   /** Narrative cohesion score vs. the arc's anchor (0–100), when gated. */
   cohesion?: number;
+  /** How much this scene helps tell the chapter's thesis (0–100). */
+  contribution?: number;
   /** Number of extracted duplicates collapsed into this canonical event. */
   mergedCount?: number;
   /** Titles of the merged-away duplicates (excludes the shown title). */
   mergedTitles?: string[];
+};
+
+export type NarrativeChapterData = {
+  title: string;
+  thesis: string;
+  dominantTheme: string;
+  startDate: string | null;
+  endDate: string | null;
+  participants: string[];
+  locations: string[];
+  supportingEventIds: string[];
+  backgroundEventIds: string[];
+  backgroundContext: string[];
+  outcomes: string[];
+  contributionScores: Record<string, number>;
+  quality: Record<string, number>;
+  confidence: number;
 };
 
 export type StitchedTimelineResult = {
@@ -55,6 +75,8 @@ export type StitchedTimelineResult = {
   excluded_count?: number;
   /** Duplicate-event merges applied before stitching (canonicalization). */
   merge_log?: MergeLogEntry[];
+  /** Story identity generated before the title and used to gate scenes. */
+  chapter?: NarrativeChapterData;
 };
 
 function momentTitle(content: string): string {
@@ -113,10 +135,11 @@ async function resolveArcWindow(
   metadata?: Record<string, unknown>;
   summary?: string | null;
   tags?: string[];
+  confidence?: number;
 }> {
   const { data: arc } = await supabaseAdmin
     .from('life_arcs')
-    .select('title, start_date, end_date, arc_type, metadata, summary, tags')
+    .select('title, start_date, end_date, arc_type, metadata, summary, tags, confidence')
     .eq('user_id', userId)
     .eq('id', lifeArcId)
     .maybeSingle();
@@ -130,6 +153,68 @@ async function resolveArcWindow(
     metadata: (arc.metadata as Record<string, unknown>) ?? {},
     summary: arc.summary ?? null,
     tags: (arc.tags as string[]) ?? [],
+    confidence: Number(arc.confidence ?? 0.5),
+  };
+}
+
+function chapterFromMetadata(
+  title: string | null,
+  metadata: Record<string, unknown> | undefined,
+  confidence = 0.5,
+  startDate: string | null = null,
+  endDate: string | null = null,
+): NarrativeChapterData | undefined {
+  const thesis = metadata?.chapter_thesis as string | undefined;
+  if (!thesis) return undefined;
+  return {
+    title: title ?? 'Life chapter',
+    thesis,
+    dominantTheme: (metadata?.dominant_theme as string | undefined) ?? 'Life chapter',
+    startDate,
+    endDate,
+    participants: (metadata?.participant_ids as string[] | undefined) ?? [],
+    locations: (metadata?.location_ids as string[] | undefined) ?? [],
+    supportingEventIds: (metadata?.source_event_ids as string[] | undefined) ?? [],
+    backgroundEventIds: (metadata?.background_event_ids as string[] | undefined) ?? [],
+    backgroundContext: (metadata?.background_context as string[] | undefined) ?? [],
+    outcomes: (metadata?.outcomes as string[] | undefined) ?? [],
+    contributionScores: (metadata?.contribution_scores as Record<string, number> | undefined) ?? {},
+    quality: (metadata?.chapter_quality as Record<string, number> | undefined) ?? {},
+    confidence,
+  };
+}
+
+async function loadNarrativeChapter(
+  userId: string,
+  lifeArcId: string,
+  fallback: NarrativeChapterData | undefined,
+): Promise<NarrativeChapterData | undefined> {
+  const { data, error } = await supabaseAdmin
+    .from('narrative_chapters')
+    .select('title, thesis, dominant_theme, start_date, end_date, participant_ids, location_ids, supporting_event_ids, background_event_ids, background_context, outcomes, contribution_scores, quality, confidence')
+    .eq('user_id', userId)
+    .eq('life_arc_id', lifeArcId)
+    .maybeSingle();
+  if (error) {
+    logger.warn({ error, userId, lifeArcId }, 'Failed to load narrative chapter projection');
+    return fallback;
+  }
+  if (!data) return fallback;
+  return {
+    title: data.title as string,
+    thesis: data.thesis as string,
+    dominantTheme: data.dominant_theme as string,
+    startDate: (data.start_date as string | null) ?? null,
+    endDate: (data.end_date as string | null) ?? null,
+    participants: (data.participant_ids as string[]) ?? [],
+    locations: (data.location_ids as string[]) ?? [],
+    supportingEventIds: (data.supporting_event_ids as string[]) ?? [],
+    backgroundEventIds: (data.background_event_ids as string[]) ?? [],
+    backgroundContext: (data.background_context as string[]) ?? [],
+    outcomes: (data.outcomes as string[]) ?? [],
+    contributionScores: (data.contribution_scores as Record<string, number>) ?? {},
+    quality: (data.quality as Record<string, number>) ?? {},
+    confidence: Number(data.confidence ?? 0.5),
   };
 }
 
@@ -183,6 +268,7 @@ async function applyCohesionGate(
       userPinned: item.userSortIndex != null,
     });
     item.cohesion = verdict.score;
+    item.contribution = verdict.score;
     if (verdict.cls === 'scene') scene.push(item);
     else if (verdict.cls === 'background') background.push(item);
     else excludedCount++;
@@ -258,6 +344,8 @@ export class StitchedTimelineService {
     let isOccasionArc = false;
     let isNarrativeConsolidationArc = false;
     let narrativeEventIds: string[] = [];
+    let chapter: NarrativeChapterData | undefined;
+    let chapterBackground: StitchedTimelineItem[] = [];
     let occasionLinks: Awaited<ReturnType<typeof loadOccasionLinks>> = [];
     let mergeLog: MergeLogEntry[] | undefined;
 
@@ -271,11 +359,24 @@ export class StitchedTimelineService {
       isOccasionArc = window.arc_type === 'occasion';
       isNarrativeConsolidationArc =
         window.metadata?.detector === 'narrative_consolidation' ||
+        window.metadata?.detector === 'narrative_chapter' ||
         ((window.metadata?.source_event_ids as string[] | undefined)?.length ?? 0) > 0;
+      if (isNarrativeConsolidationArc) {
+        const fallbackChapter = chapterFromMetadata(
+          scopeLabel,
+          window.metadata,
+          window.confidence,
+          window.start ?? null,
+          window.end ?? null,
+        );
+        chapter = await loadNarrativeChapter(userId, opts.life_arc_id, fallbackChapter);
+      }
       if (isOccasionArc) {
         occasionLinks = await loadOccasionLinks(userId, opts.life_arc_id);
       } else if (isNarrativeConsolidationArc) {
-        narrativeEventIds = await loadNarrativeArcEventIds(userId, opts.life_arc_id, window.metadata);
+        narrativeEventIds = chapter?.supportingEventIds.length
+          ? chapter.supportingEventIds
+          : await loadNarrativeArcEventIds(userId, opts.life_arc_id, window.metadata);
       }
     }
 
@@ -398,8 +499,31 @@ export class StitchedTimelineService {
           confidence: e.confidence ?? 1,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           temporalRole: primaryRole,
+          contribution: chapter?.contributionScores[e.id],
         });
         seenEventIds.add(e.id);
+      }
+
+      if (chapter?.backgroundEventIds.length) {
+        const { data: backgroundRows } = await supabaseAdmin
+          .from('resolved_events')
+          .select('id, title, summary, start_time, confidence, metadata')
+          .eq('user_id', userId)
+          .in('id', chapter.backgroundEventIds);
+        chapterBackground = (backgroundRows ?? []).map((event) => ({
+          id: `event:${event.id}`,
+          kind: 'event' as const,
+          sourceId: event.id as string,
+          sortTime: event.start_time as string,
+          userSortIndex: null,
+          title: (event.title as string) ?? 'Background context',
+          body: (event.summary as string) ?? '',
+          sourceKind: 'resolved_event' as const,
+          sourceIds: [event.id as string],
+          sourceType: 'resolved_event',
+          confidence: Number(event.confidence ?? 1),
+          contribution: chapter?.contributionScores[event.id as string],
+        }));
       }
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
@@ -531,6 +655,7 @@ export class StitchedTimelineService {
             has_user_order: sortedScene.some((i) => i.userSortIndex != null),
             background: sortItems(gated.background),
             excluded_count: gated.excludedCount,
+            ...(chapter ? { chapter } : {}),
             ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
           };
         }
@@ -546,6 +671,8 @@ export class StitchedTimelineService {
       scope_label: scopeLabel,
       items: sorted,
       has_user_order: hasUserOrder,
+      ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
+      ...(chapter ? { chapter } : {}),
       ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
     };
   }

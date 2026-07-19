@@ -8,6 +8,7 @@
  */
 
 import type { WorkingMemoryAssembly } from '../chat/workingMemoryAssembler';
+
 import { filterEvidence, classifyItemDomain } from './responseEvidenceFilter';
 import type { EntityRef, ResponseScopePlan, ScopedEvidenceItem } from './responseScopeTypes';
 
@@ -36,6 +37,22 @@ export function isPresentableEntityName(name: string): boolean {
   return true;
 }
 
+/** Intents where WM relationship/community titles may invent focus people. */
+const ROSTER_EXPAND_INTENTS = new Set<ResponseScopePlan['intent']>([
+  'work',
+  'relationship',
+  'family',
+]);
+
+/** Vague vents / recaps must not surface unmentioned graph people as sources. */
+const STRICT_PERSON_SOURCE_INTENTS = new Set<ResponseScopePlan['intent']>([
+  'general',
+  'event',
+  'biography',
+  'place',
+  'project',
+]);
+
 function relevantNames(
   plan: ResponseScopePlan,
   workingMemory?: WorkingMemoryAssembly | null,
@@ -49,14 +66,17 @@ function relevantNames(
   plan.correctionNames.forEach(add);
   workingMemory?.entities.forEach((entity) => add(entity.name));
 
-  // Accepted work relationship/community items often carry the teammate names
-  // that were not present in the question itself ("who is on my team?").
-  for (const item of [
-    ...(workingMemory?.relationships ?? []),
-    ...(workingMemory?.communities ?? []),
-  ]) {
-    const candidates = `${item.title} ${item.content}`.match(/\b[A-ZÁÉÍÓÚÑ][\w'’-]+\b/g) ?? [];
-    candidates.forEach(add);
+  // Only expand focus from WM roster titles for work/relationship/family.
+  // Mining crush/friend edges on a vague "worst night" vent invents people
+  // the user never named (e.g. a crush listed under romantic edges).
+  if (ROSTER_EXPAND_INTENTS.has(plan.intent)) {
+    for (const item of [
+      ...(workingMemory?.relationships ?? []),
+      ...(workingMemory?.communities ?? []),
+    ]) {
+      const candidates = `${item.title} ${item.content}`.match(/\b[A-ZÁÉÍÓÚÑ][\w'’-]+\b/g) ?? [];
+      candidates.forEach(add);
+    }
   }
   return names;
 }
@@ -84,13 +104,23 @@ function sourceIsInScope(
   }
 
   // Person/place-focused questions: keep only sources that name the focus.
-  // Untagged general queries (empty names) stay permissive.
   if (hasFocus && (source.type === 'character' || source.type === 'person')) {
     return overlapsRelevantName(source.title, names);
   }
   if (hasFocus && plan.primaryEntities.length > 0) {
     // Episodes/entries still need name overlap so unrelated music lore drops.
     return overlapsRelevantName(text, names);
+  }
+
+  // No named focus: never list character chips on vents/recaps. RAG still
+  // attaches the whole roster as candidate sources; without this gate a crush
+  // in the top-N characters appears "sourced" despite never being mentioned.
+  if (
+    !hasFocus &&
+    STRICT_PERSON_SOURCE_INTENTS.has(plan.intent) &&
+    (source.type === 'character' || source.type === 'person')
+  ) {
+    return false;
   }
   return true;
 }
@@ -168,6 +198,14 @@ export function filterEntitiesForPresentation<T extends PresentableEntity>(
     // Stops "Ink" (music contact) from riding along on unrelated recall.
     if (names.size > 0 && (entity.type === 'character' || entity.type === 'person' || !entity.type)) {
       return overlapsRelevantName(entity.name, names);
+    }
+    // Vague vents: no invented person chips when the plan named nobody.
+    if (
+      names.size === 0 &&
+      STRICT_PERSON_SOURCE_INTENTS.has(plan.intent) &&
+      (entity.type === 'character' || entity.type === 'person' || !entity.type)
+    ) {
+      return false;
     }
     return true;
   });

@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildNarrativeChapterPlan,
+  buildNarrativeChapterPlans,
   clusterStoryEvents,
   inferEmotionalArc,
   isEligibleStoryEvent,
@@ -85,6 +87,91 @@ describe('narrativeArcConsolidationBridge', () => {
     ];
     const clusters = clusterStoryEvents(events);
     expect(clusters).toHaveLength(2);
+  });
+
+  it('discovers separate stories before generating a chapter thesis', () => {
+    const sharedDay = '2026-06-03';
+    const events: StoryEventRecord[] = [
+      {
+        ...storyEvent('build', `${sharedDay}T10:00:00Z`, {}, ['grandma-nell']),
+        title: 'Building OrbitPad at Grandma Nell’s House',
+        summary: 'Coded and tested the app from the kitchen table.',
+        locations: ['nell-house'],
+        activities: ['coding'],
+      },
+      {
+        ...storyEvent('test', `${sharedDay}T14:00:00Z`, {}, ['grandma-nell']),
+        title: 'Testing OrbitPad with an Alternate Account',
+        summary: 'Verified the login flow and fixed the sync issue.',
+        locations: ['nell-house'],
+        activities: ['coding'],
+      },
+      {
+        ...storyEvent('costco', `${sharedDay}T17:00:00Z`, {}, ['grandma-nell']),
+        title: 'Costco with Grandma Nell',
+        summary: 'Went shopping together before returning home.',
+        locations: ['warehouse-store'],
+        activities: ['shopping'],
+      },
+      {
+        ...storyEvent('heartbreak', `${sharedDay}T19:00:00Z`, {}, ['quinn']),
+        title: 'Quinn Blocked Me',
+        summary: 'Recovering from the breakup and trying to move forward.',
+        activities: ['relationship'],
+      },
+      {
+        ...storyEvent('graduation', `${sharedDay}T08:00:00Z`, {}, []),
+        title: 'Recently Graduated',
+        summary: 'Graduated and currently looking for work.',
+      },
+    ];
+
+    const clusters = clusterStoryEvents(events);
+    const appCluster = clusters.find((cluster) => cluster.events.some((event) => event.id === 'build'));
+    expect(appCluster?.events.map((event) => event.id)).toEqual(['build', 'test', 'costco']);
+    expect(appCluster?.events.map((event) => event.id)).not.toContain('heartbreak');
+
+    const chapter = buildNarrativeChapterPlan(appCluster!, events);
+    expect(chapter.supportingEvents.map((event) => event.id)).toEqual(['build', 'test', 'costco']);
+    expect(chapter.backgroundEvents.map((event) => event.id)).toEqual(
+      expect.arrayContaining(['graduation', 'heartbreak']),
+    );
+    expect(chapter.contributions.find((item) => item.eventId === 'build')?.score).toBe(100);
+    expect(chapter.contributions.find((item) => item.eventId === 'heartbreak')?.score).toBeLessThan(60);
+  });
+
+  it('reconsiders rejected bridge events as a separate chapter', () => {
+    const events: StoryEventRecord[] = [
+      {
+        ...storyEvent('build', '2026-06-03T10:00:00Z', {
+          stages: [{ stage: 'CLIMAX', cue: 'shipped', confidence: 0.95 }],
+        }, ['grandma-nell']),
+        title: 'Shipping OrbitPad at Grandma Nell’s House',
+        summary: 'Finished the app release from the kitchen table.',
+        locations: ['nell-house'],
+        activities: ['coding'],
+      },
+      {
+        ...storyEvent('costco', '2026-06-03T17:00:00Z', {}, ['grandma-nell', 'quinn']),
+        title: 'Costco with Grandma Nell',
+        summary: 'Went shopping together before returning home.',
+        activities: ['shopping'],
+      },
+      {
+        ...storyEvent('heartbreak', '2026-06-03T19:00:00Z', {}, ['quinn']),
+        title: 'Relationship with Quinn Ended',
+        summary: 'The breakup became final that evening.',
+        activities: ['relationship'],
+      },
+    ];
+
+    const cluster = clusterStoryEvents(events)[0];
+    expect(cluster.events).toHaveLength(3);
+
+    const chapters = buildNarrativeChapterPlans(cluster, events);
+    expect(chapters).toHaveLength(2);
+    expect(chapters[0].supportingEvents.map((event) => event.id)).toEqual(['build', 'costco']);
+    expect(chapters[1].supportingEvents.map((event) => event.id)).toEqual(['heartbreak']);
   });
 
   it('proposeStoryArc derives emotional arc and confidence from stages', () => {

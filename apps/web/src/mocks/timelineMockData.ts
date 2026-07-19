@@ -839,12 +839,12 @@ export const generateMockLifeArcs = (): LifeArc[] => {
       tags: ['indie', 'side-project', 'building', 'creative-tech'],
     },
 
-    // ── RELATIONSHIPS ───────────────────────────────────────────────
+    // ── LOVE, DATING & RELATIONSHIPS ────────────────────────────────
     {
       id: 'mock-arc-sarah',
       title: 'Sarah',
       arc_type: 'life_era',
-      track: 'relationships' as ArcTrack,
+      track: 'romance' as ArcTrack,
       dominant_emotion: 'loved',
       emotional_arc: 'resolution',
       parent_id: null,
@@ -876,7 +876,7 @@ export const generateMockLifeArcs = (): LifeArc[] => {
       id: 'mock-arc-alex',
       title: 'Alex',
       arc_type: 'life_era',
-      track: 'relationships' as ArcTrack,
+      track: 'romance' as ArcTrack,
       dominant_emotion: 'happy',
       emotional_arc: 'building',
       parent_id: null,
@@ -999,7 +999,7 @@ export const generateMockLifeArcs = (): LifeArc[] => {
       id: 'mock-arc-jordan',
       title: 'Jordan',
       arc_type: 'life_era',
-      track: 'relationships' as ArcTrack,
+      track: 'romance' as ArcTrack,
       dominant_emotion: 'confused',
       emotional_arc: 'resolution',
       parent_id: null,

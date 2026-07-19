@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildQuadrennialAxisTicks,
+  buildSwimlaneAxisTicks,
   formatRulerMonthLabel,
   formatRulerMonthWithYear,
   isQuadYearJanuary,
@@ -30,5 +31,13 @@ describe('timelineRulerTicks', () => {
     const xOf = (d: Date) => d.getFullYear();
     const ticks = buildQuadrennialAxisTicks(start, end, xOf);
     expect(ticks.map((t) => t.label)).toEqual(["Jan '20", "Jan '24"]);
+  });
+
+  it('shows every month on timeline graphs', () => {
+    const start = new Date(2025, 10, 1);
+    const end = new Date(2026, 2, 1);
+    const ticks = buildSwimlaneAxisTicks(start, end, (date) => date.getMonth());
+
+    expect(ticks.map((tick) => tick.label)).toEqual(['Nov', 'Dec', 'Jan', 'Feb', 'Mar']);
   });
 });

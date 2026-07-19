@@ -6,7 +6,7 @@
 // intelligence system — a closed relationship has a complete evidence set.
 //
 // What this trigger does:
-//   1. Creates a relationship arc in life_arcs (track = 'relationships')
+//   1. Creates a relationship arc in life_arcs (track = 'romance')
 //   2. Crystallizes a 'relationship' knowledge claim (documented fact)
 //   3. Queues a cross-relationship pattern analysis if >= 3 ended relationships exist
 //
@@ -20,10 +20,11 @@
 // ============================================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { arcService } from '../continuityRuntime/arcs/arcService';
-import { upsertClaim } from './claimLifecycleManager';
 import { buildAtomsForRelationshipId } from '../biographyGeneration/relationshipAtomBuilder';
+import { arcService } from '../continuityRuntime/arcs/arcService';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { upsertClaim } from './claimLifecycleManager';
 import type { ConfidenceBreakdown } from './types';
 
 // Emotional arc mapping from relationship data
@@ -116,7 +117,7 @@ export async function onRelationshipEnded(
       await arcService.upsert(userId, {
         title:           arcTitle,
         arc_type:        'custom',
-        track:           'relationships',
+        track:           'romance',
         dominant_emotion: breakup?.breakup_type === 'ghosted' ? 'confusion'
                         : emotionalArc === 'grief' ? 'grief'
                         : emotionalArc === 'resolution' ? 'acceptance'

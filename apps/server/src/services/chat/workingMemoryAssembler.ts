@@ -2,13 +2,14 @@ import { normalizeNameKey } from '../../utils/nameNormalization';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { truthStateWeight } from '../provenance/epistemicWeights';
-import { formatTemporalLabel } from '../temporal/formatTemporalLabel';
 import { supabaseAdmin } from '../supabaseClient';
+import { formatTemporalLabel } from '../temporal/formatTemporalLabel';
 import {
   classifyTemporalQuery,
   occurredInWindow,
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
+
 import {
   classifyComposerIntentFast,
   composerIntentToWorkingMemoryIntent,
@@ -735,11 +736,19 @@ async function loadProtagonistRelationshipCandidates(
 
   const out: Candidate[] = [];
 
+  const ROMANTIC_EDGE_RE =
+    /\b(crush|dating|boyfriend|girlfriend|romantic|partner|situationship|lover|ex[-_ ]?(boyfriend|girlfriend)?|hookup|unrequited)\b/i;
+
   for (const rel of (rels ?? []) as any[]) {
     const otherId =
       rel.source_character_id === protagonist.id ? rel.target_character_id : rel.source_character_id;
     const otherName = nameMap.get(otherId) ?? 'Unknown';
     const kinship = (rel.metadata as Record<string, unknown>)?.kinship;
+    const relMeta = (rel.metadata as Record<string, unknown> | null) ?? {};
+    const relType = String(rel.relationship_type ?? '');
+    const edgeText = `${relType} ${kinship ?? ''} ${JSON.stringify(relMeta)}`;
+    // Tag romantic edges so response-scope can block them on general/event vents.
+    const domain = ROMANTIC_EDGE_RE.test(edgeText) ? 'romance' : undefined;
     out.push({
       id: `relationship:${rel.id}`,
       type: 'relationship',
@@ -747,12 +756,13 @@ async function loadProtagonistRelationshipCandidates(
       content: `${rel.relationship_type}${kinship ? ` (${kinship})` : ''}${rel.status ? `, ${rel.status}` : ''}`,
       source: 'character_relationships',
       date: rel.updated_at,
-      confidence: Number((rel.metadata as Record<string, unknown>)?.confidence ?? 0.85),
+      confidence: Number(relMeta.confidence ?? 0.85),
       relevance: 0.95,
       importance: 0.8,
       significance: 0.75,
       relationshipDistance: 0.85,
       reasons: ['protagonist relationship edge'],
+      metadata: domain ? { ...relMeta, domain } : relMeta,
     });
   }
 
@@ -794,7 +804,10 @@ async function loadProtagonistRelationshipCandidates(
     for (const edge of edgeRows) {
       const otherId = edge.from_entity_id === protagonist.id ? edge.to_entity_id : edge.from_entity_id;
       const otherName = nameMap.get(otherId) ?? 'Unknown';
-      const role = (edge.metadata?.role as string | undefined) ?? undefined;
+      const edgeMeta = edge.metadata ?? {};
+      const role = (edgeMeta.role as string | undefined) ?? undefined;
+      const edgeText = `${edge.relationship_type} ${role ?? ''} ${JSON.stringify(edgeMeta)}`;
+      const domain = ROMANTIC_EDGE_RE.test(edgeText) ? 'romance' : undefined;
       out.push({
         id: `entity-relationship:${edge.id}`,
         type: 'relationship',
@@ -808,6 +821,7 @@ async function loadProtagonistRelationshipCandidates(
         significance: 0.78,
         relationshipDistance: 0.86,
         reasons: ['persisted entity relationship edge'],
+        metadata: domain ? { ...edgeMeta, domain } : edgeMeta,
       });
     }
   }

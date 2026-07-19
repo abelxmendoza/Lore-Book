@@ -232,12 +232,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   }, [findByQuery, openSavedTimeline, isMobile]);
 
   const handleOpenArcTimeline = useCallback((arc: LifeArc) => {
-    if (isDemoMode) {
-      generateFor(arc.title, { instant: true });
-      return;
-    }
     setStitchedArc(arc);
-  }, [isDemoMode, generateFor]);
+  }, []);
 
   // ── LoreBook-from-timeline: open the creator prefilled with the arc's
   // calendar window so its chapter is compiled from exactly that era. ─────────
@@ -428,7 +424,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         );
       case 'events':
-        return <TimelineStitchedView embedded />;
+        return <TimelineStitchedView embedded newestFirst />;
       case 'calendar':
         return <TimelineCalendarView />;
       case 'story':

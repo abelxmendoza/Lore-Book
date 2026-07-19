@@ -10,7 +10,6 @@
  * for debugging chronology or pasting into another assistant.
  */
 
-import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpDown,
   Check,
@@ -21,8 +20,11 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import { useEffect, useRef, useState } from 'react';
+
 import type { StitchedTimelineItem } from '../../api/stitchedTimeline';
+import { useIsMobile } from '../../hooks/useIsMobile';
+
 import { TimelineDateHeader, TimelineInlineDate } from './TimelineDateDisplay';
 
 type TimelineReorderableListProps = {
@@ -50,12 +52,13 @@ export function buildTimelineClipboardText(items: StitchedTimelineItem[]): strin
     .map((item) => {
       const date = item.sortTime.slice(0, 10);
       const kind = item.kind === 'event' ? 'Event' : 'Moment';
-      const cohesion = item.cohesion != null ? ` [cohesion ${item.cohesion}]` : '';
+      const contribution = item.contribution ?? item.cohesion;
+      const contributionLabel = contribution != null ? ` [chapter contribution ${contribution}]` : '';
       const body = item.body && item.body !== item.title ? `\n  ${item.body}` : '';
       const merged = item.mergedTitles?.length
         ? `\n  (merged duplicates: ${item.mergedTitles.join(' · ')})`
         : '';
-      return `${date} · ${kind} · ${item.title}${cohesion}${body}${merged}`;
+      return `${date} · ${kind} · ${item.title}${contributionLabel}${body}${merged}`;
     })
     .join('\n');
 }
@@ -224,6 +227,14 @@ export const TimelineReorderableList = ({
                           className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30"
                         >
                           ×{item.mergedCount} merged
+                        </span>
+                      )}
+                      {(item.contribution ?? item.cohesion) != null && (
+                        <span
+                          title="How much this scene helps tell the chapter thesis"
+                          className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25"
+                        >
+                          {Math.round(item.contribution ?? item.cohesion!)} contribution
                         </span>
                       )}
                     </div>

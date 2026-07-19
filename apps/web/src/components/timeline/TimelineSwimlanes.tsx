@@ -86,10 +86,6 @@ function daysBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / 86_400_000;
 }
 
-function clampDate(d: Date, min: Date, max: Date): Date {
-  return new Date(Math.min(Math.max(d.getTime(), min.getTime()), max.getTime()));
-}
-
 function getMonths(start: Date, end: Date): Date[] {
   return getMonthsBetween(start, end);
 }
@@ -466,13 +462,6 @@ export const TimelineSwimlanes = ({
   }, [loading, arcs.length, entries.length]);
 
   const handleSelectArc = useCallback((arc: LifeArc) => {
-    // Mobile: preview in bottom sheet first; full stitched view via "Full timeline" in sheet.
-    if (isMobile && onOpenArcTimeline) {
-      setSelectedArc(arc);
-      setSelectedEntry(null);
-      setSelectedCluster(null);
-      return;
-    }
     if (onOpenArcTimeline) {
       onOpenArcTimeline(arc);
       return;
@@ -480,7 +469,7 @@ export const TimelineSwimlanes = ({
     setSelectedArc(arc);
     setSelectedEntry(null);
     setSelectedCluster(null);
-  }, [onOpenArcTimeline, isMobile]);
+  }, [onOpenArcTimeline]);
 
   const handleSelectEntry = useCallback((entry: ChronologyEntry) => {
     setSelectedEntry(entry);

@@ -63,6 +63,19 @@ describe('detectMentionedEntities', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].id).toBe('c1');
   });
+
+  it('does not match denylisted alias substrings inside ordinary words', () => {
+    const withBadAlias = [
+      ...characters,
+      { id: 'c3', name: 'Hadley', alias: ['had'] },
+    ];
+    const hits = detectMentionedEntities(
+      'I had the worst night last night',
+      withBadAlias,
+      locations
+    );
+    expect(hits.map((h) => h.name)).not.toContain('Hadley');
+  });
 });
 
 describe('isEntityQuery', () => {

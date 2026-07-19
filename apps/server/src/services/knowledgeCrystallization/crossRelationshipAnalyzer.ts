@@ -22,6 +22,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { upsertClaim } from './claimLifecycleManager';
 import type { ConfidenceBreakdown, EvidenceBundleItem } from './types';
 
@@ -352,7 +353,7 @@ export async function analyzeCrossRelationshipPatterns(userId: string): Promise<
     // Load all ended relationships with enough data to analyze
     const { data: endedRels } = await supabaseAdmin
       .from('romantic_relationships')
-      .select('id, relationship_type, affection_score, red_flags, start_date, end_date, person_id')
+      .select('id, relationship_type, affection_score, red_flags, start_date, end_date, person_id, person_type')
       .eq('user_id', userId)
       .eq('status', 'ended');
 

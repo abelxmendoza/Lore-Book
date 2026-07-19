@@ -79,6 +79,14 @@ const THEME_OVERRIDES: Record<string, Partial<MockGeneratedTimelineEvent>[]> = {
     { content: 'First night out in the city — neon, strangers, possibility.', timeline_names: ['Social'] },
     { content: 'The after-hours diner where stories got honest.', timeline_names: ['Social', 'Friends'] },
   ],
+  project: [
+    { start_time: '2025-06-03T09:00:00Z', content: 'Defined the prototype goal at the kitchen table.', timeline_names: ['Creative', 'Project'] },
+    { start_time: '2025-06-03T11:00:00Z', content: 'Built the first end-to-end flow and got it running.', timeline_names: ['Creative', 'Project'] },
+    { start_time: '2025-06-03T14:00:00Z', content: 'Tested the flow with an alternate account.', timeline_names: ['Creative', 'Project'] },
+    { start_time: '2025-06-03T16:00:00Z', content: 'Jamie reviewed the prototype and identified the confusing step.', timeline_names: ['Creative', 'Project'] },
+    { start_time: '2025-06-04T10:00:00Z', content: 'Fixed the sync issue and simplified the onboarding path.', timeline_names: ['Creative', 'Project'] },
+    { start_time: '2025-06-04T17:00:00Z', content: 'Shipped the first usable version and wrote down the next milestone.', timeline_names: ['Creative', 'Milestone'], stateChange: 'Milestone' },
+  ],
 };
 
 function pickTheme(query: string): keyof typeof THEME_OVERRIDES | null {
@@ -87,6 +95,7 @@ function pickTheme(query: string): keyof typeof THEME_OVERRIDES | null {
   if (/love|dating|relationship|partner|heartbreak|\balex\b/.test(q)) return 'love';
   if (/family|grandma|grandmother|mom|dad|thanksgiving/.test(q)) return 'family';
   if (/night|club|party|nightlife|bar/.test(q)) return 'nightlife';
+  if (/project|sprint|startup|creative|music|writing|photo|fitness/.test(q)) return 'project';
   return null;
 }
 

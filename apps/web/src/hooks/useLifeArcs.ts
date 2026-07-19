@@ -5,7 +5,7 @@ import { useAuth } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
 import { generateMockLifeArcs } from '../mocks/timelineMockData';
 
-export type ArcTrack = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
+export type ArcTrack = 'career' | 'romance' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
 export type ArcType  = 'life_era' | 'skill' | 'location' | 'work' | 'custom' | 'occasion';
 
 export interface LifeArc {
@@ -30,6 +30,7 @@ export interface LifeArc {
 // Color per track for use throughout the UI
 export const TRACK_COLORS: Record<ArcTrack, { bg: string; border: string; text: string; dotBg: string }> = {
   career:        { bg: 'bg-blue-500/15',    border: 'border-blue-500/40',    text: 'text-blue-300',    dotBg: 'bg-blue-400' },
+  romance:       { bg: 'bg-pink-500/15',    border: 'border-pink-500/40',    text: 'text-pink-300',    dotBg: 'bg-pink-400' },
   relationships: { bg: 'bg-rose-500/15',    border: 'border-rose-500/40',    text: 'text-rose-300',    dotBg: 'bg-rose-400' },
   creative:      { bg: 'bg-violet-500/15',  border: 'border-violet-500/40',  text: 'text-violet-300',  dotBg: 'bg-violet-400' },
   health:        { bg: 'bg-emerald-500/15', border: 'border-emerald-500/40', text: 'text-emerald-300', dotBg: 'bg-emerald-400' },
@@ -40,6 +41,7 @@ export const TRACK_COLORS: Record<ArcTrack, { bg: string; border: string; text: 
 
 export const TRACK_LABELS: Record<ArcTrack, string> = {
   career: 'Career',
+  romance: 'Love & Dating',
   relationships: 'Relationships',
   creative: 'Creative',
   health: 'Health',

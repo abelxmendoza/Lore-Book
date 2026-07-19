@@ -586,8 +586,24 @@ export function XConnectionPanel() {
         <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-300">
           {error}
           <div className="mt-1 text-[11px] text-red-300/70">
-            The usual culprit: the callback URL registered in the X Developer Portal doesn't exactly match the one this app sends (see the setup note above).
-            Your server logs print the exact URL after you click Connect — registering both the <span className="font-mono">localhost</span> and <span className="font-mono">127.0.0.1</span> variants usually sorts it out.
+            {/rate limit|too many requests|429/i.test(error) ? (
+              <>
+                LoreBook’s API briefly slowed you down after a burst of requests — not an X callback problem.
+                Wait a few minutes, then try Sync again. Avoid rapid reconnect/sync clicks.
+              </>
+            ) : /refresh token is invalid|token was invalid|token refresh failed/i.test(error) ? (
+              <>
+                Your saved X tokens are stale (common after regenerating Client ID/Secret). Click{' '}
+                <span className="font-medium text-red-200">Disconnect</span>, then{' '}
+                <span className="font-medium text-red-200">Connect X</span> again so LoreBook gets a fresh refresh token.
+              </>
+            ) : (
+              <>
+                If this happened during Connect: register both callback URLs in the X Developer Portal —
+                the exact URL this app sends is shown in the setup note above (usually{' '}
+                <span className="font-mono">localhost</span> and <span className="font-mono">127.0.0.1</span>).
+              </>
+            )}
           </div>
         </div>
       )}

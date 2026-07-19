@@ -49,6 +49,21 @@ export function isEntityQuery(message: string): boolean {
   return ENTITY_QUERY_PATTERNS.some(p => p.test(message));
 }
 
+/** Common English tokens that must never match as entity aliases via substring. */
+const ALIAS_DENYLIST = new Set([
+  'had', 'has', 'have', 'was', 'were', 'the', 'and', 'but', 'for', 'not', 'you',
+  'she', 'her', 'him', 'his', 'they', 'them', 'last', 'night', 'day', 'week',
+  'month', 'year', 'time', 'just', 'like', 'with', 'from', 'this', 'that',
+  'what', 'when', 'where', 'who', 'how', 'why', 'about', 'into', 'over',
+]);
+
+function mentionsToken(messageLower: string, raw: string): boolean {
+  const needle = raw.trim().toLowerCase();
+  if (needle.length < 3 || ALIAS_DENYLIST.has(needle)) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(messageLower);
+}
+
 /**
  * Detect entity mentions in the message.
  * Returns entities sorted by match quality (exact name > alias).
@@ -64,11 +79,11 @@ export function detectMentionedEntities(
 
   for (const char of characters) {
     if (!char.name || char.name.length < 3) continue;
-    if (lower.includes(char.name.toLowerCase())) {
+    if (mentionsToken(lower, char.name)) {
       results.push({ id: char.id, type: 'character', name: char.name, matchScore: 1.0 });
       continue;
     }
-    const aliasMatch = (char.alias ?? []).find(a => a && a.length >= 3 && lower.includes(a.toLowerCase()));
+    const aliasMatch = (char.alias ?? []).find(a => a && mentionsToken(lower, a));
     if (aliasMatch) {
       results.push({ id: char.id, type: 'character', name: char.name, matchScore: 0.8 });
     }
@@ -76,7 +91,7 @@ export function detectMentionedEntities(
 
   for (const loc of locations) {
     if (!loc.name || loc.name.length < 3) continue;
-    if (lower.includes(loc.name.toLowerCase())) {
+    if (mentionsToken(lower, loc.name)) {
       results.push({ id: loc.id, type: 'location', name: loc.name, matchScore: 1.0 });
     }
   }

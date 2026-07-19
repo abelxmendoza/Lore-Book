@@ -56,6 +56,50 @@ describe('response presentation filtering', () => {
     expect(isPresentableEntityName('Jowell')).toBe(true);
   });
 
+  it('does not surface unmentioned crush characters on a vague night vent', () => {
+    const plan = planResponseScope('I had the worst night last night');
+    expect(plan.intent).toBe('event');
+
+    const sources = filterSourcesForPresentation(
+      [
+        { type: 'character', id: 'crush', title: 'Jamie', snippet: 'crush contact' },
+        { type: 'entry', id: 'e1', title: 'Late shift', snippet: 'tough evening at work' },
+      ],
+      plan,
+      {
+        intent: 'LIFE_REVIEW',
+        entities: [],
+        episodes: [],
+        events: [],
+        projects: [],
+        goals: [],
+        skills: [],
+        communities: [],
+        relationships: [
+          {
+            id: 'r1',
+            type: 'relationship',
+            title: 'crush — Jamie',
+            content: 'crush',
+            source: 'character_relationships',
+            confidence: 0.9,
+            score: 0.9,
+            reasons: [],
+            metadata: { domain: 'romance' },
+          },
+        ],
+        preferences: [],
+        timeline: [],
+        confidence: 0.5,
+        budget: { maxItems: 20, selected: 1, rejected: 0 },
+        rejected: [],
+      },
+    );
+
+    expect(sources.map((s) => s.title)).not.toContain('Jamie');
+    expect(sources.every((s) => s.type !== 'character')).toBe(true);
+  });
+
   it('drops unrelated character sources on person-focused questions (Ink must not ride along)', () => {
     const plan = planResponseScope('What do you know about Jesse?');
     const sources = filterSourcesForPresentation(

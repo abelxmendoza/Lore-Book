@@ -147,14 +147,22 @@ function keywordOverlap(msgTokens: Set<string>, keywords: string[]): number {
   return Math.min(1, matched / Math.max(1, Math.min(keywords.length, 5)));
 }
 
+/** Word-boundary name hit — avoids substring false positives ("had" ⊂ alias). */
+function messageMentionsName(msgLower: string, name: string): boolean {
+  const needle = name.trim().toLowerCase();
+  if (needle.length < 3) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(msgLower);
+}
+
 function entityOverlapScore(
   msg: string,
   entities: Array<{ name: string; alias?: string[] }>
 ): number {
   const lower = msg.toLowerCase();
   const matched = entities.filter(e => {
-    const names = [e.name, ...(e.alias ?? [])].filter(Boolean);
-    return names.some(n => n && lower.includes(n.toLowerCase()));
+    const names = [e.name, ...(e.alias ?? [])].filter(Boolean) as string[];
+    return names.some(n => messageMentionsName(lower, n));
   }).length;
   // At least one match is a strong signal; diminishing returns after 3
   if (matched === 0) return 0;
@@ -419,7 +427,13 @@ export function scoreContext(
     // Apply confidence tiers (direct mention → always FULL)
     const tiered = applyConfidenceTiers(raw, attrMap, message);
 
-    decide('allCharacters', 'OPTIONAL', tiered, {
+    // Without a named person or people-topic cue, do not inject the roster.
+    // Continuity weight alone used to clear OPTIONAL_THRESHOLD and leak crush
+    // contacts into vents like "I had the worst night last night".
+    const charCategory: BlockScore['category'] =
+      entityOverlap > 0 || rel >= OPTIONAL_THRESHOLD ? 'OPTIONAL' : 'ENTITY_SPECIFIC';
+
+    decide('allCharacters', charCategory, tiered, {
       semanticRelevance: rel,
       entityOverlap,
       confidence: avgConfidence(raw as Array<{ confidence?: number }>),
@@ -677,7 +691,12 @@ export function scoreContext(
   filtered.continuityAliveBlock = loreData.continuityAliveBlock;
   filtered.continuityAliveTrace = loreData.continuityAliveTrace;
   filtered.confirmedSkills = loreData.confirmedSkills;
-  filtered.romanticContext = loreData.romanticContext;
+  // Romantic advisor context only when romanticRelationships scored INCLUDE.
+  // Unconditional pass previously steered vents toward active crush partners.
+  const romanceIncluded = scores.some(
+    (s) => s.key === 'romanticRelationships' && s.decision === 'INCLUDE',
+  );
+  filtered.romanticContext = romanceIncluded ? loreData.romanticContext : [];
 
   // ── Compute final stats ─────────────────────────────────────────────────────
   const reductionPct = tokensBefore > 0
