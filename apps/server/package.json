@@ -44,7 +44,7 @@
     "@lorebook/api-contracts": "file:vendor/api-contracts",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.110.7",
-    "chrono-node": "^2.10.0",
+    "chrono-node": "^2.10.1",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.1.0",
