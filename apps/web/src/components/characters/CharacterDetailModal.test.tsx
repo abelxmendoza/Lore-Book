@@ -37,6 +37,10 @@ vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn().mockRejectedValue(new Error('Not found')),
 }));
 
+vi.mock('../../api/characterList', () => ({
+  fetchCharacterList: vi.fn().mockResolvedValue([]),
+}));
+
 // The relationships tab mounts the family tree panel, which needs redux —
 // out of scope for these tests.
 vi.mock('../family/FamilyTreePanel', () => ({
@@ -427,11 +431,12 @@ describe('CharacterDetailModal', () => {
 
     it('adds an existing Character Book person as a connection', async () => {
       const { fetchJson } = await import('../../lib/api');
+      const { fetchCharacterList } = await import('../../api/characterList');
+      vi.mocked(fetchCharacterList).mockResolvedValue([
+        { ...mockCharacter, id: 'char-2', name: 'Shy La' },
+      ] as never);
       vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.url;
-        if (url === '/api/characters') {
-          return { characters: [{ ...mockCharacter, id: 'char-2', name: 'Shy La' }] } as never;
-        }
         if (url === '/api/relationships/character-links' && init?.method === 'POST') {
           return {
             success: true,

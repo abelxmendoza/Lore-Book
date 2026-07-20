@@ -1056,7 +1056,7 @@ router.post('/questions/:id/resolve', requireAuth, async (req: AuthenticatedRequ
  *       500:
  *         description: Server error
  */
-router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
+const listCharactersHandler = async (req: AuthenticatedRequest, res: import('express').Response) => {
   try {
     // Try to get from characters table first (new system)
     const { data: charactersData, error: charactersError } = await supabaseAdmin
@@ -1342,7 +1342,11 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Return empty array instead of error - better UX
     res.json({ characters: [] });
   }
-});
+};
+
+router.get('/list', requireAuth, listCharactersHandler);
+// Back-compat: Character Book pickers historically called GET /api/characters
+router.get('/', requireAuth, listCharactersHandler);
 
 router.get('/registry', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

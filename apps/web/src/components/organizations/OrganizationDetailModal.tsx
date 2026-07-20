@@ -16,6 +16,7 @@ import { Tabs, TabsContent } from '../ui/tabs';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
@@ -1093,14 +1094,7 @@ User's message: ${currentInput}`;
     if (next && characterBookOptions.length === 0 && !characterBookLoading) {
       setCharacterBookLoading(true);
       try {
-        const res = await fetchJson<{ characters?: Character[]; success?: boolean } | Character[]>(
-          '/api/characters',
-        );
-        const list = Array.isArray(res)
-          ? res
-          : Array.isArray((res as { characters?: Character[] }).characters)
-            ? (res as { characters: Character[] }).characters
-            : [];
+        const list = await fetchCharacterList<Character>();
         setCharacterBookOptions(
           list
             .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
