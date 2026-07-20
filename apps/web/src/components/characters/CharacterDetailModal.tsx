@@ -23,6 +23,7 @@ import { LocationDetailModal, type LocationProfile } from '../locations/Location
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
 import { invalidateCache } from '../../lib/requestCache';
+import { fetchCharacterList } from '../../api/characterList';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -2025,8 +2026,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
       setConnectionOptionsLoading(true);
       try {
-        const res = await fetchJson<{ characters: Character[] }>('/api/characters');
-        setConnectionOptions((res.characters ?? []).filter((c) => c.status !== 'archived'));
+        const list = await fetchCharacterList<Character>();
+        setConnectionOptions(list.filter((c) => c.status !== 'archived'));
       } catch {
         setConnectionError('Could not load your Character Book.');
       } finally {

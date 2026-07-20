@@ -81,16 +81,15 @@ vi.mock('../../lib/hydrateBookEntity', async () => {
   };
 });
 
+vi.mock('../../api/characterList', () => ({
+  fetchCharacterList: vi.fn(async () => [
+    { id: 'char-mina', name: 'Mina' },
+    { id: 'char-owen', name: 'Owen' },
+  ]),
+}));
+
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(async (url: string) => {
-    if (url === '/api/characters') {
-      return {
-        characters: [
-          { id: 'char-mina', name: 'Mina' },
-          { id: 'char-owen', name: 'Owen' },
-        ],
-      };
-    }
     if (url.includes('/derived-context')) {
       return { success: true, events: [], locations: [], hierarchy: {} };
     }

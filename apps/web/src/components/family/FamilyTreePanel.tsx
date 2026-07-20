@@ -3,6 +3,7 @@ import { Loader2, Plus, RefreshCw, TreePine } from 'lucide-react';
 import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
@@ -134,8 +135,8 @@ export const FamilyTreePanel = ({
     setCharactersLoading(true);
     setAddError(null);
     try {
-      const response = await fetchJson<{ characters: Character[] }>('/api/characters');
-      setCharacterOptions((response.characters ?? []).filter((item) => item.status !== 'archived'));
+      const list = await fetchCharacterList<Character>();
+      setCharacterOptions(list.filter((item) => item.status !== 'archived'));
     } catch (error) {
       console.error('Failed to load characters for family tree:', error);
       setAddError('Could not load character cards.');

@@ -304,16 +304,20 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
       } else {
         // Fallback: try to fetch from API
         try {
-          const characters = await fetchJson<{ characters: Array<{ id: string; name: string; avatar_url?: string; role?: string }> }>(
-            '/api/characters'
-          ).catch(() => ({ characters: [] }));
-          
-          const related = (characters.characters || []).slice(0, 5).map(char => ({
+          const { fetchCharacterList } = await import('../../api/characterList');
+          const characters = await fetchCharacterList<{
+            id: string;
+            name?: string;
+            avatar_url?: string;
+            role?: string;
+          }>().catch(() => []);
+
+          const related = characters.slice(0, 5).map((char) => ({
             id: char.id,
-            name: char.name,
+            name: char.name ?? 'Unknown',
             avatar_url: char.avatar_url,
             role: char.role,
-            relationship: 'Related'
+            relationship: 'Related',
           }));
           setRelatedCharacters(related);
         } catch (error) {

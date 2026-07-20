@@ -95,8 +95,18 @@ export const handlers = [
     });
   }),
 
-  // Characters
+  // Characters (list lives on books BFF; keep legacy /api/characters for older callers)
+  http.get(`${API_BASE}/api/books/characters`, () => {
+    return HttpResponse.json({
+      characters: [],
+    });
+  }),
   http.get(`${API_BASE}/api/characters`, () => {
+    return HttpResponse.json({
+      characters: [],
+    });
+  }),
+  http.get(`${API_BASE}/api/characters/list`, () => {
     return HttpResponse.json({
       characters: [],
     });
