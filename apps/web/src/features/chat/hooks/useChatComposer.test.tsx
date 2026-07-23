@@ -40,6 +40,44 @@ describe('useChatComposer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMatches.mockReturnValue([]);
+    window.localStorage.clear();
+  });
+
+  it('does not leak an unsent draft between composers with different threadIds', () => {
+    // Regression: embedded composers (character/location/entity modals) that
+    // omit threadId all fall back to the same 'new-thread' draft-storage key,
+    // so typing in one and reopening a different one shows the leftover text.
+    const { result: characterA, unmount: unmountA } = renderHook(
+      () => useChatComposer(vi.fn(), null, { threadId: 'character-chat:a' }),
+      { wrapper },
+    );
+    act(() => {
+      characterA.current.setInput('unsent note about Alice');
+    });
+    unmountA();
+
+    const { result: characterB } = renderHook(
+      () => useChatComposer(vi.fn(), null, { threadId: 'character-chat:b' }),
+      { wrapper },
+    );
+    expect(characterB.current.input).toBe('');
+  });
+
+  it('still recovers its own unsent draft when reopened with the same threadId', () => {
+    const { result: first, unmount: unmountFirst } = renderHook(
+      () => useChatComposer(vi.fn(), null, { threadId: 'character-chat:a' }),
+      { wrapper },
+    );
+    act(() => {
+      first.current.setInput('unsent note about Alice');
+    });
+    unmountFirst();
+
+    const { result: reopened } = renderHook(
+      () => useChatComposer(vi.fn(), null, { threadId: 'character-chat:a' }),
+      { wrapper },
+    );
+    expect(reopened.current.input).toBe('unsent note about Alice');
   });
 
   it('analyzes input as the user types and clears on empty input', () => {

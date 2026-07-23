@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { CharacterDetailModal } from './CharacterDetailModal';
 import type { Character } from './CharacterProfileCard';
+import { STORY_DATA_UPDATED, type StoryDataUpdatedDetail } from '../../lib/storyRefresh';
 
 // Mock dependencies
 vi.mock('../../features/chat/composer/ChatComposer', () => ({
@@ -441,6 +442,14 @@ describe('CharacterDetailModal', () => {
         throw new Error('Not found');
       });
 
+      // Adding/removing a person here must broadcast lk:story-data-updated so the
+      // Knowledge Base panel (and any other open view of the two characters) refreshes
+      // instead of going stale — regression coverage for a bug where the handler called
+      // the wrong storyRefresh export (a no-op subscribe instead of the dispatch).
+      const storyUpdates: StoryDataUpdatedDetail[] = [];
+      const onStoryUpdate = (e: Event) => storyUpdates.push((e as CustomEvent<StoryDataUpdatedDetail>).detail);
+      window.addEventListener(STORY_DATA_UPDATED, onStoryUpdate);
+
       render(
         <CharacterDetailModal
           character={{ ...baseCharacter, relationships: [] }}
@@ -461,6 +470,11 @@ describe('CharacterDetailModal', () => {
         expect.objectContaining({ method: 'POST' }),
       );
       await waitFor(() => expect(screen.getByText('Shy La')).toBeInTheDocument());
+      expect(storyUpdates).toContainEqual(
+        expect.objectContaining({ scopes: ['characters'], characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']) }),
+      );
+
+      window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
     });
 
     it('removes a connection via the trash button', async () => {
@@ -473,6 +487,10 @@ describe('CharacterDetailModal', () => {
         throw new Error('Not found');
       });
       vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      const storyUpdates: StoryDataUpdatedDetail[] = [];
+      const onStoryUpdate = (e: Event) => storyUpdates.push((e as CustomEvent<StoryDataUpdatedDetail>).detail);
+      window.addEventListener(STORY_DATA_UPDATED, onStoryUpdate);
 
       render(
         <CharacterDetailModal
@@ -494,6 +512,11 @@ describe('CharacterDetailModal', () => {
         '/api/relationships/character-links/rel-1',
         expect.objectContaining({ method: 'DELETE' }),
       );
+      expect(storyUpdates).toContainEqual(
+        expect.objectContaining({ scopes: ['characters'], characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']) }),
+      );
+
+      window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
     });
 
     it('adds the character to an existing group from the Groups & Organizations book', async () => {

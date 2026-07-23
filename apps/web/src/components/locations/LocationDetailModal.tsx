@@ -1366,6 +1366,7 @@ export const LocationDetailModal = ({
                   placeholder={`Ask about ${location.name}…`}
                   onSubmit={handleChatSubmit}
                   loading={chatLoading}
+                  threadId={`location-chat:${location.id}`}
                 />
               </div>
             </div>

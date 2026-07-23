@@ -274,6 +274,7 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
             loading={isLoading || isExtracting}
             disabled={isLoading || isExtracting}
             placeholder="What did you hear? Just chat naturally..."
+            threadId="gossip-chat"
           />
         </div>
       </div>

@@ -1057,6 +1057,7 @@ The user can ask questions about this memory, request to add details, update tag
                   <ChatComposer
                     onSubmit={handleChatSubmit}
                     loading={chatLoading}
+                    threadId={`memory-chat:${memory.id}`}
                   />
                 </div>
               </div>

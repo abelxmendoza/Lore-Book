@@ -521,6 +521,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
             onSubmit={handleChatMessage}
             loading={isLoading}
             disabled={isLoading}
+            threadId={`perception-chat:${perception.id}`}
           />
         </div>
       </div>

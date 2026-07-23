@@ -718,6 +718,63 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
   }
 
   /**
+   * User-asserted fact (book UI / explicit membership). High confidence; dedupes
+   * against similar active facts for the same entity + category.
+   */
+  async assertFact(
+    userId: string,
+    entityId: string,
+    entityType: EntityType,
+    fact: string,
+    category: FactCategory,
+    confidence = 0.95,
+  ): Promise<void> {
+    const trimmed = fact.trim();
+    if (!trimmed || !entityId) return;
+
+    const existing = await this.getEntityFacts(userId, entityId, entityType, false);
+    await this.upsertFact(
+      userId,
+      entityId,
+      entityType,
+      { fact: trimmed, category, confidence },
+      existing,
+    );
+  }
+
+  /**
+   * Retract previously asserted facts that are no longer true (e.g. a group
+   * membership removed via the UI). Marks matches 'contradicted' rather than
+   * deleting, consistent with upsertFact's contradiction handling — the row
+   * stays for history but getEntityFacts excludes it by default.
+   */
+  async retractFactsMatching(
+    userId: string,
+    entityId: string,
+    entityType: EntityType,
+    category: FactCategory,
+    matchSubstring: string,
+  ): Promise<void> {
+    const needle = matchSubstring.trim().toLowerCase();
+    if (!needle || !entityId) return;
+
+    const active = await this.getEntityFacts(userId, entityId, entityType, false);
+    const matches = active.filter(
+      (f) => f.category === category && f.fact.toLowerCase().includes(needle),
+    );
+    if (!matches.length) return;
+
+    const { error } = await supabaseAdmin
+      .from('entity_facts')
+      .update({ status: 'contradicted', updated_at: new Date().toISOString() })
+      .in('id', matches.map((f) => f.id));
+
+    if (error) {
+      logger.error({ error, userId, entityId, entityType, category }, 'Failed to retract facts');
+    }
+  }
+
+  /**
    * Fetch facts for an entity. Active + updated + corrected by default (excludes contradicted).
    */
   async getEntityFacts(

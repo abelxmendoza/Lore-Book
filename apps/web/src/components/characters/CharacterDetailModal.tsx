@@ -25,7 +25,7 @@ import { fetchJson } from '../../lib/api';
 import { invalidateCache } from '../../lib/requestCache';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
-import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
+import { schedulePostChatRefresh, onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { UnknownField } from '../ui/UnknownField';
 import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -463,7 +463,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         selfCharacterApi.ensureSelf().catch(() => {});
         selfCharacterApi.getProfile().then(applySelfProfile).catch(() => {});
         selfCharacterApi.repairIdentity().catch(() => {});
-        onStoryDataUpdated();
+        dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id] });
       }
     } catch (err) {
       // Roll back optimistic rename and surface the error inline (EditableEntityName).
@@ -472,8 +472,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   };
 
-  const invalidateRelationshipViews = () => {
+  const invalidateRelationshipViews = (otherCharacterId?: string) => {
     invalidateCache(character.id);
+    // The other side of the link has its own cached knowledge-base/profile-bundle
+    // entries that this edit also affects (relationships are read bidirectionally),
+    // but no listener is mounted for it right now to pick up the dispatch below.
+    if (otherCharacterId && otherCharacterId !== character.id) invalidateCache(otherCharacterId);
     invalidateCache('/api/characters');
     invalidateCache('/api/conversation/romantic-relationships');
   };
@@ -508,15 +512,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews();
-    onStoryDataUpdated();
+    invalidateRelationshipViews(targetCharacterId);
+    dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
     // Manual "People in their world" add is recorded with user_confirmed + manual flags in backend.
     // This feeds entity authority, continuity, biography, and lorebook so the system learns the connection
     // as high-confidence ground truth for identity and long-term narrative.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      onStoryDataUpdated();
+      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
     }
   };
 
@@ -533,13 +537,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews();
-    onStoryDataUpdated();
+    invalidateRelationshipViews(response.relationship.character_id);
+    dispatchStoryDataUpdated({
+      scopes: ['characters'],
+      characterIds: [character.id, response.relationship.character_id],
+    });
     // Manual update learned by system (high authority for continuity/identity).
   };
 
   const deleteWorldPerson = async (relationshipId: string) => {
     if (isMockDataEnabled) return;
+    const otherCharacterId = editedCharacter.relationships?.find((rel) => rel.id === relationshipId)?.character_id;
     await fetchJson<{ success: boolean }>(
       `/api/relationships/character-links/${relationshipId}`,
       { method: 'DELETE' }
@@ -552,13 +560,19 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         relationship_count: relationships.length,
       };
     });
-    invalidateRelationshipViews();
-    onStoryDataUpdated();
+    invalidateRelationshipViews(otherCharacterId);
+    dispatchStoryDataUpdated({
+      scopes: ['characters'],
+      characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
+    });
     // Delete from "People in their world" is a user correction — system treats removal as authoritative for graph/continuity.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      onStoryDataUpdated();
+      dispatchStoryDataUpdated({
+        scopes: ['characters'],
+        characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
+      });
     }
   };
 
@@ -2062,6 +2076,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       setConnectionTargetId('');
       setConnectionType('friend');
       setConnectionAddOpen(false);
+      invalidateRelationshipViews(rel.character_id);
+      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, rel.character_id] });
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
     } finally {
@@ -2069,7 +2085,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   };
 
-  const removeConnection = async (rel: { id?: string; character_name?: string }) => {
+  const removeConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
     if (!rel.id) return;
     const who = rel.character_name ?? 'this person';
     if (!window.confirm(`Remove the connection with ${who}? Their character card stays in your book.`)) return;
@@ -2079,6 +2095,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         ...prev,
         relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
       }));
+      invalidateRelationshipViews(rel.character_id);
+      dispatchStoryDataUpdated({
+        scopes: ['characters'],
+        characterIds: rel.character_id ? [character.id, rel.character_id] : [character.id],
+      });
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : 'Could not remove connection.');
     }
@@ -2118,6 +2139,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       setOrgMemberRole('member');
       setOrgAddOpen(false);
       setOrgsLoaded(false); // re-fetch memberships from the server
+      invalidateCache(character.id);
+      dispatchStoryDataUpdated({
+        scopes: ['characters', 'organizations'],
+        characterIds: [character.id],
+        organizationIds: [orgTargetId],
+      });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not add to group.');
     } finally {
@@ -2140,6 +2167,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     try {
       await fetchJson(`/api/organizations/${org.id}/members/${member.id}`, { method: 'DELETE' });
       setOrgsLoaded(false);
+      invalidateCache(character.id);
+      dispatchStoryDataUpdated({
+        scopes: ['characters', 'organizations'],
+        characterIds: [character.id],
+        organizationIds: [org.id],
+      });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
     }
@@ -2744,7 +2777,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         selfCharacterApi.ensureSelf().catch(() => {});
                         selfCharacterApi.getProfile().then(applySelfProfile).catch(() => {});
                         selfCharacterApi.repairIdentity().catch(() => {});
-                        onStoryDataUpdated();
+                        dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id] });
                       }
                     }}
                   />
@@ -4038,6 +4071,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     onSubmit={handleChatSubmit}
                     loading={chatLoading || isStreaming}
                     initialPrompt={chatPrefill}
+                    threadId={`character-chat:${character.id}`}
                   />
                 </div>
               </div>

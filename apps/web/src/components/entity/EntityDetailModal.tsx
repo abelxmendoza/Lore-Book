@@ -590,6 +590,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
                   onSubmit={handleChatMessage}
                   loading={isLoading}
                   disabled={isLoading}
+                  threadId={`entity-chat:${entityData.id}`}
                 />
               </div>
             </div>

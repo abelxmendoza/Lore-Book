@@ -843,6 +843,13 @@ export class OrganizationService {
         }
         characterId = character.id;
         characterName = character.name || characterName;
+      } else if (characterName) {
+        // If they already exist uniquely in Character Book, auto-link the id.
+        const resolved = await this.resolveUniqueCharacterByName(userId, characterName);
+        if (resolved) {
+          characterId = resolved.id;
+          characterName = resolved.name;
+        }
       }
 
       if (!characterName) {
@@ -875,6 +882,11 @@ export class OrganizationService {
             .select(ORG_MEMBER_COLS)
             .single();
           if (updErr) throw updErr;
+          void this.solidifyMembershipKnowledge(userId, organizationId, {
+            characterId,
+            characterName,
+            role: updated.role ?? member.role,
+          });
           return updated as OrganizationMember;
         }
       }
@@ -895,10 +907,84 @@ export class OrganizationService {
         .single();
 
       if (error) throw error;
-      return data as OrganizationMember;
+      const saved = data as OrganizationMember;
+      if (saved.character_id) {
+        void this.solidifyMembershipKnowledge(userId, organizationId, {
+          characterId: saved.character_id,
+          characterName: saved.character_name,
+          role: saved.role ?? member.role,
+        });
+      }
+      return saved;
     } catch (error) {
       logger.error({ error, userId, organizationId, member }, 'Failed to add member');
       throw error;
+    }
+  }
+
+  /** Exact / unique Character Book match by name (case-insensitive). */
+  private async resolveUniqueCharacterByName(
+    userId: string,
+    name: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const { data, error } = await supabaseAdmin
+      .from('characters')
+      .select('id, name')
+      .eq('user_id', userId)
+      .ilike('name', trimmed)
+      .limit(2);
+    if (error || !data?.length) return null;
+    if (data.length !== 1) return null;
+    return { id: data[0].id, name: data[0].name || trimmed };
+  }
+
+  /**
+   * Persist person↔group membership into entity_facts so Character Knowledge /
+   * Working Memory treat it as user-asserted lore (not UI-only roster state).
+   */
+  private async solidifyMembershipKnowledge(
+    userId: string,
+    organizationId: string,
+    link: { characterId: string; characterName: string; role?: string | null },
+  ): Promise<void> {
+    try {
+      const org = await this.getOrganization(userId, organizationId);
+      const orgName = org?.name?.trim() || 'this group';
+      const role = link.role?.trim();
+      const { entityFactsService } = await import('./entityFactsService');
+
+      const characterFact = role
+        ? `Member of ${orgName} (${role})`
+        : `Member of ${orgName}`;
+      const orgFact = role
+        ? `${link.characterName} is a ${role} in this group`
+        : `${link.characterName} is a member of this group`;
+
+      await Promise.all([
+        entityFactsService.assertFact(
+          userId,
+          link.characterId,
+          'character',
+          characterFact,
+          'relationship',
+          0.96,
+        ),
+        entityFactsService.assertFact(
+          userId,
+          organizationId,
+          'organization',
+          orgFact,
+          'people',
+          0.96,
+        ),
+      ]);
+    } catch (err) {
+      logger.warn(
+        { err, userId, organizationId, characterId: link.characterId },
+        'Membership knowledge solidify failed (roster row still saved)',
+      );
     }
   }
 
@@ -908,6 +994,15 @@ export class OrganizationService {
   async removeMember(userId: string, organizationId: string, memberId: string): Promise<void> {
     this.invalidateOrganizations(userId);
     try {
+      const { data: member, error: fetchErr } = await supabaseAdmin
+        .from('organization_members')
+        .select('character_id, character_name')
+        .eq('id', memberId)
+        .eq('organization_id', organizationId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+
       const { error } = await supabaseAdmin
         .from('organization_members')
         .delete()
@@ -916,9 +1011,44 @@ export class OrganizationService {
         .eq('user_id', userId);
 
       if (error) throw error;
+
+      if (member?.character_id) {
+        void this.retractMembershipKnowledge(userId, organizationId, {
+          characterId: member.character_id,
+          characterName: member.character_name,
+        });
+      }
     } catch (error) {
       logger.error({ error, userId, organizationId, memberId }, 'Failed to remove member');
       throw error;
+    }
+  }
+
+  /**
+   * Counterpart to solidifyMembershipKnowledge — retracts the "Member of X" /
+   * "Y is a member" facts asserted when the roster row was added, so removing
+   * someone from a group doesn't leave a stale membership fact behind.
+   */
+  private async retractMembershipKnowledge(
+    userId: string,
+    organizationId: string,
+    link: { characterId: string; characterName: string },
+  ): Promise<void> {
+    try {
+      const org = await this.getOrganization(userId, organizationId);
+      const orgName = org?.name?.trim();
+      if (!orgName) return;
+      const { entityFactsService } = await import('./entityFactsService');
+
+      await Promise.all([
+        entityFactsService.retractFactsMatching(userId, link.characterId, 'character', 'relationship', orgName),
+        entityFactsService.retractFactsMatching(userId, organizationId, 'organization', 'people', link.characterName),
+      ]);
+    } catch (err) {
+      logger.warn(
+        { err, userId, organizationId, characterId: link.characterId },
+        'Membership knowledge retraction failed (roster row still removed)',
+      );
     }
   }
 
