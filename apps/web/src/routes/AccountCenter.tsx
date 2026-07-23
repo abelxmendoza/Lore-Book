@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   User, Shield, Activity, Download, Trash2,
   Save, Lock, FileText,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth, supabase } from '../lib/supabase';
 import { ActivityTab } from '../components/account/ActivityTab';
+import { ChatGPTLoreMigration } from '../components/account/ChatGPTLoreMigration';
 import { GuestExperienceCard } from '../components/guest/GuestExperienceCard';
 import { useGuest } from '../contexts/GuestContext';
 import { LANDING_PATH } from '../lib/authReturnPath';
@@ -123,6 +124,7 @@ export default function AccountCenter() {
   const { user } = useAuth();
   const { isGuest, endGuestSession } = useGuest();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const displayEmail = getDisplayEmail(user);
   const { authority } = useAccountAuthority();
@@ -132,7 +134,12 @@ export default function AccountCenter() {
   const founderSubline = displayFounderSubline(authority);
   const developerSubline = displayDeveloperSubline(authority);
 
-  const [activeTab, setActiveTab] = useState<Tab>('profile');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab');
+    return requested && ['profile', 'subscription', 'integrations', 'privacy', 'activity', 'data'].includes(requested)
+      ? requested as Tab
+      : 'profile';
+  });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState<string | null>(null);
@@ -697,6 +704,12 @@ export default function AccountCenter() {
                 {/* ── DATA & EXPORT ─────────────────────────────────────── */}
                 {activeTab === 'data' && (
                   <div className="space-y-5">
+                    <Section title="Import My ChatGPT Lore">
+                      <ChatGPTLoreMigration
+                        onOpenMemoryReview={() => navigate('/discovery/memory-review')}
+                      />
+                    </Section>
+
                     {/* Storage */}
                     {storageUsage && (
                       <Section title="Storage">
