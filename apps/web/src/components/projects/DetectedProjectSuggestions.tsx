@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, CheckCircle2, Copy, Check } from 'lucide-react';
 import { projectsApi, type ProjectSuggestion } from '../../api/projects';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
@@ -11,6 +11,8 @@ import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { getMockProjectSuggestions } from '../../mocks/projectSuggestions';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { buildProjectSuggestionsClipboardText } from '../../lib/projectSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import { useToast } from '../ui/toast';
 import { cn } from '../../lib/cn';
 
@@ -65,6 +67,12 @@ export const DetectedProjectSuggestions = ({
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [exiting, setExiting] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const fetchSuggestions = useCallback(async (opts?: { silent?: boolean }) => {
     if (demoMode) {
@@ -200,6 +208,14 @@ export const DetectedProjectSuggestions = ({
     }
   };
 
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildProjectSuggestionsClipboardText(visible));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
   if (hidePanel) {
     return <ToastContainer />;
   }
@@ -235,6 +251,20 @@ export const DetectedProjectSuggestions = ({
           >
             <RefreshCw className={`h-4 w-4 ${rescanning ? 'animate-spin' : ''}`} />
           </button>
+          {visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCopyAll()}
+              className={cn(
+                'h-8 w-8 flex items-center justify-center rounded transition-colors',
+                copied ? 'text-emerald-300' : 'text-white/50 hover:text-primary hover:bg-primary/10',
+              )}
+              title="Copy all suggested projects as plain text"
+              aria-label="Copy all suggested projects"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}

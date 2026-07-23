@@ -88,6 +88,7 @@ import {
   type DatedEvent,
 } from '../../utils/eventRelativeResolver';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
+import { selfCharacterService } from '../selfCharacterService';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -125,6 +126,14 @@ export class ConversationIngestionPipeline {
         logger.debug({ chatMessageId, userId }, 'Chat message has no content; skipping ingestion');
         return;
       }
+
+      // Bind an explicit "my stage name is X" claim to the protagonist before
+      // generic entity extraction sees X and risks creating a duplicate person.
+      await selfCharacterService.captureExplicitStageName(
+        userId,
+        chatMessage.content,
+        chatMessageId,
+      );
 
       // Check if already ingested (avoid duplicate processing). Skipped on a
       // forced re-ingest (a correction) — the caller has already tombstoned the
@@ -225,11 +234,14 @@ export class ConversationIngestionPipeline {
           .catch((err) => logger.debug({ err, chatMessageId }, 'association ingestion skipped'));
       });
     } catch (error) {
-      // Log but don't throw - ingestion failures should not block chat
+      // This runs in the durable background worker, not on the response path.
+      // Re-throw so the job is marked retryable/dead instead of falsely
+      // reporting COMPLETED when no lore was stored.
       logger.error(
         { error, chatMessageId, userId, sessionId },
-        'Failed to ingest chat message (non-blocking)'
+        'Failed to ingest chat message'
       );
+      throw error;
     }
   }
 
@@ -571,7 +583,7 @@ export class ConversationIngestionPipeline {
         ingestOptions
       );
     } catch (err) {
-      logger.error({ error: err, userId, threadId, rawText }, 'Failed to ingest message');
+      logger.error({ error: err, userId, threadId }, 'Failed to ingest message');
       throw err;
     }
   }

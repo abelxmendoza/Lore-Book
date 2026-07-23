@@ -12,6 +12,8 @@ import { buildPhotoAlbumClipboardText } from './photoAlbumClipboard';
 import { buildProjectBookClipboardText } from './projectBookClipboard';
 import { buildProjectSuggestionsClipboardText } from './projectSuggestionsClipboard';
 import { buildQuestSuggestionsClipboardText } from './questSuggestionsClipboard';
+import { buildEventsBookClipboardText } from './eventsBookClipboard';
+import { buildNarrativeAnchorsClipboardText } from './narrativeAnchorsClipboard';
 import { buildSkillBookClipboardText } from './skillBookClipboard';
 
 describe('listClipboard', () => {
@@ -398,5 +400,63 @@ describe('buildDatingRomanceClipboardText', () => {
     expect(text).toContain('Green flags: clear boundaries');
     expect(text).toContain('Attachment intensity: 70%');
     expect(text).toContain('Signal strength: high');
+  });
+});
+
+describe('buildNarrativeAnchorsClipboardText', () => {
+  it('includes type, years, people, places, and evidence', () => {
+    const text = buildNarrativeAnchorsClipboardText([
+      {
+        id: 'anchor-1',
+        title: 'The college years',
+        anchorType: 'school_era',
+        confidence: 0.86,
+        gravityScore: 0.91,
+        startDate: '2018-06-01T12:00:00.000Z',
+        endDate: '2022-06-01T12:00:00.000Z',
+        entities: [{ id: 'person-1', kind: 'entity', name: 'Maya' }],
+        places: [{ id: 'place-1', kind: 'place', name: 'UCSB' }],
+        groups: [],
+        events: [],
+        evidence: [{ id: 'evidence-1', label: 'Maya and UCSB recur together', source: 'co_mention', confidence: 0.9 }],
+        provenance: { builtAt: '2026-07-01T00:00:00.000Z', signals: ['co_mention'] },
+      },
+    ]);
+
+    expect(text).toContain('Narrative Anchors (1 item)');
+    expect(text).toContain('1. The college years');
+    expect(text).toContain('Type: School');
+    expect(text).toContain('Years: 2018–2022');
+    expect(text).toContain('People: Maya');
+    expect(text).toContain('Places: UCSB');
+    expect(text).toContain('Evidence: Maya and UCSB recur together');
+  });
+});
+
+describe('buildEventsBookClipboardText', () => {
+  it('includes title, people, locations, and summary', () => {
+    const text = buildEventsBookClipboardText([
+      {
+        id: 'event-1',
+        title: 'Night out with Jamie',
+        summary: 'Caught up at a show and walked around afterward.',
+        type: 'social',
+        start_time: '2026-06-01T20:00:00.000Z',
+        end_time: null,
+        confidence: 0.84,
+        people: ['Jamie'],
+        locations: ['Downtown'],
+        activities: ['show'],
+        source_count: 2,
+        created_at: '2026-06-02T00:00:00.000Z',
+        updated_at: '2026-06-02T00:00:00.000Z',
+      },
+    ]);
+
+    expect(text).toContain('Life Log / Moments (1 item)');
+    expect(text).toContain('1. Night out with Jamie');
+    expect(text).toContain('People: Jamie');
+    expect(text).toContain('Locations: Downtown');
+    expect(text).toContain('Caught up at a show');
   });
 });

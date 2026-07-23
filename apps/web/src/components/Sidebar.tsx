@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -293,43 +293,16 @@ const SidebarContent = ({
               onMobileDrawerClose?.();
             }}
             aria-label="Open timeline view"
-            aria-current={
-              activeSurface === 'timeline' && !location.search.includes('view=calendar')
-                ? 'page'
-                : undefined
-            }
+            aria-current={activeSurface === 'timeline' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'timeline' && !location.search.includes('view=calendar')
+              activeSurface === 'timeline'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
             <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
             <span className="flex-1 text-left">Omni Timeline</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              navigate('/timeline?view=calendar');
-              onSurfaceChange?.('timeline');
-              onMobileDrawerClose?.();
-            }}
-            aria-label="Open calendar"
-            aria-current={
-              activeSurface === 'timeline' && location.search.includes('view=calendar')
-                ? 'page'
-                : undefined
-            }
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'timeline' && location.search.includes('view=calendar')
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Calendar</span>
           </button>
           <button
             onClick={() => handleSurfaceChange('saga')}

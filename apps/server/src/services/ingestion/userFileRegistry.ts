@@ -49,6 +49,34 @@ export class UserFileRegistry {
       .eq('sha256', hash)
       .maybeSingle();
 
+    if (existing && !existing.storage_url && params.storeBinary !== false) {
+      const filePath = storagePathFor(userId, existing.id, params.filename);
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from(USER_FILES_BUCKET)
+        .upload(filePath, buffer, {
+          contentType: params.mimeType,
+          upsert: true,
+        });
+      if (uploadError) {
+        logger.warn({ error: uploadError, userId, filename: params.filename }, 'user_files storage restore failed');
+      } else {
+        const metadata = {
+          ...((existing.metadata ?? {}) as Record<string, unknown>),
+          source_deleted: false,
+          source_restored_at: new Date().toISOString(),
+        };
+        const { data: restored, error: restoreError } = await supabaseAdmin
+          .from('user_files')
+          .update({ storage_url: filePath, metadata })
+          .eq('id', existing.id)
+          .eq('user_id', userId)
+          .select('*')
+          .single();
+        if (restoreError) throw restoreError;
+        return restored as UserFileRecord;
+      }
+    }
+
     if (existing) {
       return existing as UserFileRecord;
     }
@@ -137,6 +165,61 @@ export class UserFileRegistry {
       .from('user_files')
       .update({ metadata: { ...meta, provenance_links: links } })
       .eq('id', fileId);
+  }
+
+  async updateMetadata(fileId: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .select('metadata')
+      .eq('id', fileId)
+      .single();
+    if (error) throw error;
+    const metadata = {
+      ...((data?.metadata ?? {}) as Record<string, unknown>),
+      ...patch,
+    };
+    const { error: updateError } = await supabaseAdmin
+      .from('user_files')
+      .update({ metadata })
+      .eq('id', fileId);
+    if (updateError) throw updateError;
+    return metadata;
+  }
+
+  async downloadBuffer(
+    file: Pick<UserFileRecord, 'user_id' | 'id' | 'filename' | 'storage_url'>
+  ): Promise<Buffer> {
+    const storagePath = this.resolveStoragePath(file);
+    if (!storagePath) throw new Error('The source archive has already been deleted.');
+    const { data, error } = await supabaseAdmin.storage.from(USER_FILES_BUCKET).download(storagePath);
+    if (error || !data) {
+      logger.warn({ error, storagePath, userId: file.user_id }, 'Failed to download private user file');
+      throw error ?? new Error('Could not download source archive');
+    }
+    return Buffer.from(await data.arrayBuffer());
+  }
+
+  async deleteStoredBinary(
+    file: Pick<UserFileRecord, 'user_id' | 'id' | 'filename' | 'storage_url'>
+  ): Promise<void> {
+    const storagePath = this.resolveStoragePath(file);
+    if (storagePath) {
+      const { error } = await supabaseAdmin.storage.from(USER_FILES_BUCKET).remove([storagePath]);
+      if (error) {
+        logger.warn({ error, storagePath, userId: file.user_id }, 'Failed to delete private user file');
+        throw error;
+      }
+    }
+    await this.updateMetadata(file.id, {
+      source_deleted: true,
+      source_deleted_at: new Date().toISOString(),
+    });
+    const { error } = await supabaseAdmin
+      .from('user_files')
+      .update({ storage_url: null })
+      .eq('id', file.id)
+      .eq('user_id', file.user_id);
+    if (error) throw error;
   }
 
   async listForUser(userId: string): Promise<UserFileRecord[]> {

@@ -364,13 +364,36 @@ export type LocationProfile = {
   timeline?: unknown[];
   currentState?: Record<string, unknown>;
   socialGraph?: Record<string, unknown>;
+  /** Entries with explicit visit/presence language near this place. */
   visitCount: number;
+  /** All journal/source links that name the place (includes non-visits). */
+  mentionCount?: number;
+  /** Event/convention attendance cues (not durable place visits). */
+  attendanceCount?: number;
+  /** Distinct ingest sources that referenced the place. */
+  sourceCount?: number;
   firstVisited?: string;
   lastVisited?: string;
+  firstMentioned?: string;
+  lastMentioned?: string;
   coordinates?: LocationCoordinates | null;
-  relatedPeople: { id: string; name: string; total_mentions: number; entryCount: number; character_id?: string; relationship_type?: string }[];
+  relatedPeople: {
+    id: string;
+    name: string;
+    total_mentions: number;
+    entryCount: number;
+    character_id?: string;
+    relationship_type?: string;
+    /** verified link, participation predicate, or raw co-mention (hidden from card by default). */
+    link_kind?: 'verified' | 'participated' | 'co_mentioned';
+  }[];
+  /** @deprecated Prefer intrinsicTags / visitContextTags / storyTags. Kept as visit-context rollup for older clients. */
   tagCounts: { tag: string; count: number }[];
+  intrinsicTags?: { tag: string; count: number }[];
+  visitContextTags?: { tag: string; count: number }[];
+  storyTags?: { tag: string; count: number }[];
   chapters: { id: string; title?: string; count: number }[];
+  /** Visit-context moods only — not intrinsic place identity. */
   moods: { mood: string; count: number }[];
   entries: LocationVisit[];
   sources: string[];

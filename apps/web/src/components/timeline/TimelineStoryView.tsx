@@ -1,25 +1,21 @@
 /**
- * TimelineStoryView — memoir/book reading experience.
+ * TimelineStoryView — arc-by-arc reading experience.
  *
- * Left:  chapter list (all life arcs sorted chronologically, color-coded by track)
- * Right: selected arc header + AI summary + filtered entries in reading order
+ * Left:  life arcs sorted chronologically
+ * Right: selected arc header + AI summary + entries in reading order
  *
- * Feels like opening a personal autobiography: the table of contents
- * is on the left, the current chapter unfolds on the right.
+ * Gravity-ranked chapters live in Narrative Anchors — this view reads arcs in time.
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, ChevronLeft, ChevronRight, Compass, ArrowUpRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
-import type { StoryChapter } from '../../api/storyChapters';
-import type { LifeEraRecord } from '../../api/lifeEras';
 import { StoryArcBadge, getSourceEventCount } from './StoryArcBadge';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineMonthBanner } from './TimelineDateDisplay';
-import { StoryChapterReader, StoryChaptersPanel } from '../narrative/StoryChaptersPanel';
-import { LifeEraReader, LifeErasPanel } from '../narrative/LifeErasPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,7 +130,7 @@ const ArcPanel = ({
             className="md:hidden flex items-center gap-1.5 text-xs text-white/50 hover:text-white mb-3 -ml-1 min-h-[44px]"
           >
             <ChevronLeft className="h-4 w-4" />
-            Chapters
+            All arcs
           </button>
         )}
         <div className="flex items-start gap-3">
@@ -155,7 +151,7 @@ const ArcPanel = ({
             <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1" style={{ fontFamily: 'Georgia, serif' }}>
               {arc.title}
             </h2>
-            <TimelineMonthBanner label={formatDateRange(arc)} sublabel={arc.is_active ? 'Ongoing chapter' : 'Chapter span'} />
+            <TimelineMonthBanner label={formatDateRange(arc)} sublabel={arc.is_active ? 'Ongoing arc' : 'Arc span'} />
             {getSourceEventCount(arc) != null && (
               <p className="text-[11px] text-white/30 mt-1">
                 {getSourceEventCount(arc)} linked moment{getSourceEventCount(arc) === 1 ? '' : 's'}
@@ -199,11 +195,9 @@ interface TimelineStoryViewProps {
 }
 
 export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewProps) => {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedStoryChapter, setSelectedStoryChapter] = useState<StoryChapter | null>(null);
-  const [selectedLifeEra, setSelectedLifeEra] = useState<LifeEraRecord | null>(null);
-  const [erasRefreshKey, setErasRefreshKey] = useState(0);
   const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
 
   useEffect(() => {
@@ -224,10 +218,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
     }),
   [arcs]);
 
-  const selectedArc =
-    selectedStoryChapter || selectedLifeEra
-      ? null
-      : sortedArcs.find(a => a.id === selectedId) ?? sortedArcs[0] ?? null;
+  const selectedArc = sortedArcs.find(a => a.id === selectedId) ?? sortedArcs[0] ?? null;
 
   const arcCountMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -257,7 +248,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
 
   return (
     <div className="h-full flex overflow-hidden">
-      {/* ── Table of contents ────────────────────────────────────────── */}
+      {/* ── Arc list ─────────────────────────────────────────────────── */}
       <div
         className={`w-full md:w-72 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50 ${
           mobileReaderOpen ? 'hidden md:block' : 'block'
@@ -265,44 +256,29 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
       >
         <div className="px-3 sm:px-4 py-3 border-b border-white/8 sticky top-0 bg-black/95 backdrop-blur-sm z-10">
           <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">
-            {sortedArcs.length} life arc{sortedArcs.length !== 1 ? 's' : ''}
+            Read life arcs in order
           </p>
-          {isMobile && (
-            <p className="text-xs text-white/40 mt-1">Tap a chapter to read</p>
-          )}
+          <p className="mt-1 text-xs text-white/40">
+            {sortedArcs.length} life arc{sortedArcs.length !== 1 ? 's' : ''}
+            {isMobile ? ' — tap one to read' : ''}
+          </p>
         </div>
 
-        <div className="p-3 border-b border-white/8 space-y-3">
-          <LifeErasPanel
-            compact
-            refreshKey={erasRefreshKey}
-            selectedId={selectedLifeEra?.id ?? null}
-            onSelectEra={(era) => {
-              setSelectedLifeEra(era);
-              setSelectedStoryChapter(null);
-              setSelectedId(null);
-              setMobileReaderOpen(true);
-            }}
-          />
-          <StoryChaptersPanel
-            compact
-            selectedId={selectedStoryChapter?.id ?? null}
-            onSelectChapter={(chapter) => {
-              setSelectedStoryChapter(chapter);
-              setSelectedLifeEra(null);
-              setSelectedId(null);
-              setMobileReaderOpen(true);
-            }}
-            onReprocessed={(chapters) => {
-              setErasRefreshKey((k) => k + 1);
-              setSelectedLifeEra(null);
-              setSelectedStoryChapter((prev) => {
-                if (chapters.length === 0) return null;
-                const still = prev ? chapters.find((c) => c.id === prev.id) : null;
-                return still ?? chapters[chapters.length - 1] ?? null;
-              });
-            }}
-          />
+        <div className="p-3 border-b border-white/8">
+          <button
+            type="button"
+            onClick={() => navigate('/narrative-anchors')}
+            className="flex w-full items-start gap-2 rounded-lg border border-cyan-400/15 bg-cyan-400/[0.06] px-3 py-2.5 text-left transition-colors hover:bg-cyan-400/10"
+          >
+            <Compass className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-200/70" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium text-cyan-100/90">Chapters live in Anchors</span>
+              <span className="mt-0.5 block text-[11px] text-white/40">
+                Gravity-ranked story threads across people, places, and rituals.
+              </span>
+            </span>
+            <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
+          </button>
         </div>
 
         {sortedArcs.length === 0 ? (
@@ -310,7 +286,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
             <Star className="h-8 w-8 text-white/10 mx-auto mb-3" />
             <p className="text-white/40 text-sm">No life arcs yet</p>
             <p className="text-white/25 text-xs mt-1">
-              Eras and story chapters above fill in as Scenes cluster over time.
+              Arcs form as Moments cluster over time. Chapters appear in Anchors.
             </p>
           </div>
         ) : (
@@ -318,11 +294,9 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
             <ChapterItem
               key={arc.id}
               arc={arc}
-              selected={!selectedStoryChapter && !selectedLifeEra && arc.id === (selectedArc?.id)}
+              selected={arc.id === (selectedArc?.id)}
               entryCount={arcCountMap[arc.id] ?? 0}
               onClick={() => {
-                setSelectedStoryChapter(null);
-                setSelectedLifeEra(null);
                 setSelectedId(arc.id);
                 setMobileReaderOpen(true);
               }}
@@ -337,30 +311,14 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
           mobileReaderOpen ? 'block' : 'hidden md:block'
         }`}
       >
-        {selectedLifeEra ? (
-          <LifeEraReader
-            era={selectedLifeEra}
-            onBack={() => {
-              setSelectedLifeEra(null);
-              setMobileReaderOpen(false);
-            }}
-          />
-        ) : selectedStoryChapter ? (
-          <StoryChapterReader
-            chapter={selectedStoryChapter}
-            onBack={() => {
-              setSelectedStoryChapter(null);
-              setMobileReaderOpen(false);
-            }}
-          />
-        ) : selectedArc ? (
+        {selectedArc ? (
           <ArcPanel
             arc={selectedArc}
             onBack={() => setMobileReaderOpen(false)}
           />
         ) : (
           <div className="h-full flex items-center justify-center px-6">
-            <p className="text-white/25 text-sm text-center">Select a chapter to start reading.</p>
+            <p className="text-white/25 text-sm text-center">Select an arc to start reading.</p>
           </div>
         )}
       </div>

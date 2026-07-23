@@ -21,6 +21,9 @@ import {
   Loader2,
   RefreshCw,
   Image as ImageIcon,
+  Plus,
+  Trash2,
+  Building2,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
@@ -33,7 +36,9 @@ import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './Chara
 import { CharacterMediaPanel } from './CharacterMediaPanel';
 import type { Character } from './CharacterProfileCard';
 import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
-import { useMainCharacterProfile } from '../../hooks/useMainCharacterProfile';
+import type { Organization } from '../organizations/OrganizationProfileCard';
+import { useMainCharacterProfile, type MainCharacterRelationship } from '../../hooks/useMainCharacterProfile';
+import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelfSummary } from '../../lib/characterDisplay';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
@@ -164,12 +169,200 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     profile.wittyTagline || profile.profileSummary || profile.character.summary,
   );
 
+  // ── Manual world editing: connections + group memberships from existing books ──
+  const selfId = profile.character.id;
+  const canEditWorld = !profile.isMockDataEnabled && !!selfId && !isSyntheticSelfId(selfId);
+
+  // The self profile endpoint doesn't include relationships, so fetch them from
+  // the character record directly; fall back to whatever the hook provided.
+  const [selfRelationships, setSelfRelationships] = useState<MainCharacterRelationship[] | null>(null);
+  useEffect(() => {
+    if (!canEditWorld) {
+      setSelfRelationships(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchJson<{ relationships?: MainCharacterRelationship[] }>(
+          `/api/characters/${selfId}`,
+        );
+        if (!cancelled) setSelfRelationships(res.relationships ?? []);
+      } catch {
+        // keep profile.relationships as the fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditWorld, selfId]);
+
+  const [connectionAddOpen, setConnectionAddOpen] = useState(false);
+  const [connectionOptions, setConnectionOptions] = useState<Character[]>([]);
+  const [connectionOptionsLoading, setConnectionOptionsLoading] = useState(false);
+  const [connectionTargetId, setConnectionTargetId] = useState('');
+  const [connectionType, setConnectionType] = useState('friend');
+  const [connectionSaving, setConnectionSaving] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  const toggleConnectionAdd = async () => {
+    const next = !connectionAddOpen;
+    setConnectionAddOpen(next);
+    setConnectionError(null);
+    if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
+      setConnectionOptionsLoading(true);
+      try {
+        const res = await fetchJson<{ characters: Character[] }>('/api/characters');
+        setConnectionOptions((res.characters ?? []).filter((c) => c.status !== 'archived'));
+      } catch {
+        setConnectionError('Could not load your Character Book.');
+      } finally {
+        setConnectionOptionsLoading(false);
+      }
+    }
+  };
+
+  const addConnection = async () => {
+    if (!connectionTargetId || connectionSaving || !selfId) return;
+    setConnectionSaving(true);
+    setConnectionError(null);
+    try {
+      const res = await fetchJson<{ success: boolean; relationship: MainCharacterRelationship }>(
+        '/api/relationships/character-links',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            source_character_id: selfId,
+            target_character_id: connectionTargetId,
+            relationship_type: connectionType.trim() || 'friend',
+          }),
+        },
+      );
+      const rel = res.relationship;
+      setSelfRelationships((prev) => [
+        rel,
+        ...(prev ?? profile.relationships).filter((r) => r.character_id !== rel.character_id),
+      ]);
+      setConnectionTargetId('');
+      setConnectionType('friend');
+      setConnectionAddOpen(false);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
+    } finally {
+      setConnectionSaving(false);
+    }
+  };
+
+  const removeConnection = async (rel: MainCharacterRelationship) => {
+    if (!rel.id) return;
+    const who = rel.character_name ?? 'this person';
+    if (!window.confirm(`Remove your connection with ${who}? Their character card stays in your book.`)) return;
+    try {
+      await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+      setSelfRelationships((prev) => (prev ?? profile.relationships).filter((r) => r.id !== rel.id));
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not remove connection.');
+    }
+  };
+
+  const [selfOrganizations, setSelfOrganizations] = useState<Organization[]>([]);
+  const [orgsLoaded, setOrgsLoaded] = useState(false);
+  useEffect(() => {
+    if (!canEditWorld || orgsLoaded) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ character_id: selfId });
+        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>(
+          `/api/organizations/by-character?${params}`,
+        );
+        if (!cancelled) {
+          setSelfOrganizations(res.organizations ?? []);
+          setOrgsLoaded(true);
+        }
+      } catch {
+        if (!cancelled) setOrgsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditWorld, orgsLoaded, selfId]);
+
+  const [orgAddOpen, setOrgAddOpen] = useState(false);
+  const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
+  const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
+  const [orgTargetId, setOrgTargetId] = useState('');
+  const [orgMemberRole, setOrgMemberRole] = useState('member');
+  const [orgSaving, setOrgSaving] = useState(false);
+  const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
+
+  const toggleOrgAdd = async () => {
+    const next = !orgAddOpen;
+    setOrgAddOpen(next);
+    setOrgMemberError(null);
+    if (next && orgOptions.length === 0 && !orgOptionsLoading) {
+      setOrgOptionsLoading(true);
+      try {
+        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
+        setOrgOptions(res.organizations ?? []);
+      } catch {
+        setOrgMemberError('Could not load your Groups & Organizations book.');
+      } finally {
+        setOrgOptionsLoading(false);
+      }
+    }
+  };
+
+  const addOrgMembership = async () => {
+    if (!orgTargetId || orgSaving || !selfId) return;
+    setOrgSaving(true);
+    setOrgMemberError(null);
+    try {
+      await fetchJson(`/api/organizations/${orgTargetId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({
+          character_name: profile.character.name,
+          character_id: selfId,
+          role: orgMemberRole.trim() || undefined,
+        }),
+      });
+      setOrgTargetId('');
+      setOrgMemberRole('member');
+      setOrgAddOpen(false);
+      setOrgsLoaded(false); // re-fetch memberships from the server
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not join group.');
+    } finally {
+      setOrgSaving(false);
+    }
+  };
+
+  const removeOrgMembership = async (org: Organization) => {
+    const member = (org.members ?? []).find(
+      (m) =>
+        m.character_id === selfId ||
+        m.character_name.toLowerCase() === (profile.character.name ?? '').toLowerCase(),
+    );
+    if (!member) {
+      setOrgMemberError(`Couldn't find your membership record in ${org.name}.`);
+      return;
+    }
+    if (!window.confirm(`Leave ${org.name}? The group stays in your book.`)) return;
+    try {
+      await fetchJson(`/api/organizations/${org.id}/members/${member.id}`, { method: 'DELETE' });
+      setOrgsLoaded(false);
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
+    }
+  };
+
   const sortedRelationships = useMemo(
     () =>
-      [...profile.relationships].sort(
+      [...(selfRelationships ?? profile.relationships)].sort(
         (a, b) => (b.closeness_score ?? 0) - (a.closeness_score ?? 0),
       ),
-    [profile.relationships],
+    [selfRelationships, profile.relationships],
   );
 
   const statItems = [
@@ -710,34 +903,127 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
               {/* People */}
               <TabsContent value="people" className={`${tabPanelClass} space-y-3`}>
-                <p className="text-xs text-white/50 px-1">
-                  People in your life — tap someone to see their full character profile.
-                </p>
+                <div className="flex items-center gap-2 px-1">
+                  <p className="text-xs text-white/50 flex-1">
+                    People in your life — tap someone to see their full character profile.
+                  </p>
+                  {canEditWorld && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-white/55"
+                      onClick={() => void toggleConnectionAdd()}
+                      data-testid="self-add-connection-toggle"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
+                    </Button>
+                  )}
+                </div>
+                {connectionAddOpen && canEditWorld && (
+                  <div className="rounded-xl border border-amber-500/20 bg-black/35 p-3">
+                    <p className="text-[10px] text-white/35 mb-2">
+                      Link someone who already exists in your Character Book.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                      <select
+                        value={connectionTargetId}
+                        onChange={(e) => setConnectionTargetId(e.target.value)}
+                        disabled={connectionOptionsLoading}
+                        aria-label="Existing character"
+                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                      >
+                        <option value="">
+                          {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
+                        </option>
+                        {connectionOptions
+                          .filter(
+                            (c) =>
+                              c.id !== selfId &&
+                              !sortedRelationships.some((r) => r.character_id === c.id),
+                          )
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                      <input
+                        list="self-connection-type-options"
+                        value={connectionType}
+                        onChange={(e) => setConnectionType(e.target.value)}
+                        placeholder="Relationship (e.g. friend)"
+                        aria-label="Relationship type"
+                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                      />
+                      <datalist id="self-connection-type-options">
+                        {['friend', 'best friend', 'close friend', 'partner', 'family', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
+                          <option key={t} value={t} />
+                        ))}
+                      </datalist>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={!connectionTargetId || connectionSaving}
+                        onClick={() => void addConnection()}
+                        data-testid="self-add-connection-submit"
+                      >
+                        {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                      </Button>
+                    </div>
+                    {connectionError && <p className="text-xs text-red-400 mt-2">{connectionError}</p>}
+                  </div>
+                )}
+                {!connectionAddOpen && connectionError && (
+                  <p className="text-xs text-red-400 px-1">{connectionError}</p>
+                )}
                 {sortedRelationships.length === 0 ? (
                   <div className="rounded-xl border border-amber-500/15 bg-black/35 p-6 text-center">
                     <Users className="h-10 w-10 mx-auto mb-3 text-amber-400/30" />
                     <p className="text-sm text-white/60">
                       People you mention in chat appear here as your cast.
                     </p>
+                    {canEditWorld && !connectionAddOpen && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 h-8 text-xs border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
+                        onClick={() => void toggleConnectionAdd()}
+                        data-testid="self-empty-add-connection"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Add a connection manually
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   sortedRelationships.map((rel, i) => {
                     const name = rel.character_name || 'Unknown';
                     const relId = rel.character_id || rel.id || `rel-${i}`;
+                    const openConnection = () =>
+                      setSelectedConnection({
+                        id: rel.character_id || rel.id || relId,
+                        name,
+                        role: rel.relationship_type,
+                        summary: rel.summary,
+                        status: rel.status || 'active',
+                      } as Character);
                     return (
-                      <button
+                      <div
                         key={relId}
-                        type="button"
-                        onClick={() =>
-                          setSelectedConnection({
-                            id: rel.character_id || rel.id || relId,
-                            name,
-                            role: rel.relationship_type,
-                            summary: rel.summary,
-                            status: rel.status || 'active',
-                          } as Character)
-                        }
-                        className="w-full min-h-[48px] text-left rounded-xl border border-amber-500/15 bg-black/35 hover:bg-amber-950/20 hover:border-amber-500/30 transition-colors p-3 sm:p-4 flex items-start gap-3 group touch-manipulation active:bg-amber-950/25"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openConnection}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openConnection();
+                          }
+                        }}
+                        className="w-full min-h-[48px] cursor-pointer text-left rounded-xl border border-amber-500/15 bg-black/35 hover:bg-amber-950/20 hover:border-amber-500/30 transition-colors p-3 sm:p-4 flex items-start gap-3 group touch-manipulation active:bg-amber-950/25"
                       >
                         <CharacterAvatar
                           characterId={rel.character_id}
@@ -768,10 +1054,146 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                             </p>
                           )}
                         </div>
+                        {canEditWorld && rel.id && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 flex-shrink-0 mt-1 text-white/25 hover:text-red-400"
+                            aria-label={`Remove connection with ${name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void removeConnection(rel);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <ChevronRight className="h-5 w-5 text-amber-400/30 group-hover:text-amber-300 flex-shrink-0 mt-1" />
-                      </button>
+                      </div>
                     );
                   })
+                )}
+
+                {/* Your Groups & Organizations — memberships from the Groups & Orgs book */}
+                {canEditWorld && (
+                  <div className="pt-2 space-y-2">
+                    <div className="flex items-center gap-2 px-1">
+                      <h3 className="flex-1 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5" />
+                        Your Groups &amp; Organizations
+                        <span className="font-normal normal-case text-white/30">
+                          {selfOrganizations.length} total
+                        </span>
+                      </h3>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-white/55"
+                        onClick={() => void toggleOrgAdd()}
+                        data-testid="self-add-membership-toggle"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="ml-1">{orgAddOpen ? 'Close' : 'Add'}</span>
+                      </Button>
+                    </div>
+                    {orgAddOpen && (
+                      <div className="rounded-xl border border-amber-500/20 bg-black/35 p-3">
+                        <p className="text-[10px] text-white/35 mb-2">
+                          Join a group that already exists in your Groups &amp; Organizations book.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                          <select
+                            value={orgTargetId}
+                            onChange={(e) => setOrgTargetId(e.target.value)}
+                            disabled={orgOptionsLoading}
+                            aria-label="Existing group or organization"
+                            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                          >
+                            <option value="">
+                              {orgOptionsLoading ? 'Loading…' : 'Choose a group…'}
+                            </option>
+                            {orgOptions
+                              .filter((o) => !selfOrganizations.some((existing) => existing.id === o.id))
+                              .map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                          </select>
+                          <input
+                            list="self-org-member-role-options"
+                            value={orgMemberRole}
+                            onChange={(e) => setOrgMemberRole(e.target.value)}
+                            placeholder="Role (e.g. member)"
+                            aria-label="Membership role"
+                            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                          />
+                          <datalist id="self-org-member-role-options">
+                            {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus'].map((r) => (
+                              <option key={r} value={r} />
+                            ))}
+                          </datalist>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 text-xs"
+                            disabled={!orgTargetId || orgSaving}
+                            onClick={() => void addOrgMembership()}
+                            data-testid="self-add-membership-submit"
+                          >
+                            {orgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {orgMemberError && <p className="text-xs text-red-400 px-1">{orgMemberError}</p>}
+                    {selfOrganizations.length === 0 && !orgAddOpen && (
+                      <p className="text-xs text-white/30 italic text-center py-3">
+                        No group memberships yet — add one from your Groups &amp; Organizations book.
+                      </p>
+                    )}
+                    {selfOrganizations.map((org) => {
+                      const selfMember = (org.members ?? []).find(
+                        (m) =>
+                          m.character_id === selfId ||
+                          m.character_name?.toLowerCase() === (profile.character.name ?? '').toLowerCase(),
+                      );
+                      return (
+                        <div
+                          key={org.id}
+                          className="rounded-xl border border-amber-500/15 bg-black/35 p-3 flex items-start gap-3"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
+                              <Badge variant="outline" className="text-[10px] py-0 border-white/15 text-white/45">
+                                {String(org.group_type ?? org.type ?? 'group').replace(/_/g, ' ')}
+                              </Badge>
+                            </div>
+                            {org.description && (
+                              <p className="text-xs text-white/45 mt-0.5 truncate">{org.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-1 text-[10px] text-white/30">
+                              {selfMember?.role && <span className="text-white/50">{selfMember.role}</span>}
+                              {(org.member_count ?? 0) > 0 && <span>{org.member_count} members</span>}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 flex-shrink-0 mt-0.5 text-white/25 hover:text-red-400"
+                            aria-label={`Leave ${org.name}`}
+                            onClick={() => void removeOrgMembership(org)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </TabsContent>
 
@@ -936,7 +1358,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
           character={selectedConnection}
           onClose={() => setSelectedConnection(null)}
           onUpdate={() => {
-            setSelectedConnection(null);
+            // Keep the nested character modal open after edits.
             void profile.reload();
             onUpdate?.();
           }}

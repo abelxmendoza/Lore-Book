@@ -14,6 +14,22 @@ import { supabaseAdmin } from './supabaseClient';
 export const SELF_REFERENCE_PATTERN =
   /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i;
 
+/**
+ * Explicit first-person artist identity only. This intentionally does not
+ * infer aliases from looser wording such as "people call me..." because a
+ * wrong self merge is much harder to undo than a missed suggestion.
+ */
+export function extractExplicitSelfStageName(text: string): string | null {
+  const match = text.match(
+    /\bmy\s+(?:new\s+)?(?:stage|artist|performer)\s+name\s+is\s+["“]?([^"”.,;!?\n]{2,80})/i,
+  );
+  const candidate = match?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+  if (!candidate || candidate.split(/\s+/).length > 6) return null;
+  if (/^(?:me|myself|unknown|none|null|n\/a)$/i.test(candidate)) return null;
+  if (/https?:\/\/|@[\w.-]+/.test(candidate)) return null;
+  return candidate;
+}
+
 export type SelfProfileStats = {
   messageCount: number;
   attributeCount: number;
@@ -180,6 +196,64 @@ function buildProfileSummary(
 }
 
 class SelfCharacterService {
+  async captureExplicitStageName(
+    userId: string,
+    text: string,
+    sourceMessageId: string,
+  ): Promise<string | null> {
+    const stageName = extractExplicitSelfStageName(text);
+    if (!stageName) return null;
+
+    const character = await this.ensureSelfCharacter(userId);
+    if (!character?.id) {
+      throw new Error('Could not resolve the protagonist for an explicit self stage-name claim');
+    }
+
+    const aliases = Array.isArray(character.alias)
+      ? (character.alias as unknown[]).filter((value): value is string => typeof value === 'string')
+      : [];
+    const normalized = stageName.toLocaleLowerCase();
+    const alreadyPresent = aliases.some((alias) => alias.trim().toLocaleLowerCase() === normalized);
+    const metadata = (character.metadata as Record<string, unknown> | null) ?? {};
+    const priorEvidence = Array.isArray(metadata.self_alias_evidence)
+      ? (metadata.self_alias_evidence as Array<Record<string, unknown>>)
+      : [];
+    const hasEvidence = priorEvidence.some(
+      (item) => item.source_message_id === sourceMessageId && item.alias === stageName,
+    );
+    const selfAliasEvidence = hasEvidence
+      ? priorEvidence
+      : [
+          ...priorEvidence.slice(-19),
+          {
+            alias: stageName,
+            source_message_id: sourceMessageId,
+            claim_type: 'explicit_stage_name',
+            captured_at: new Date().toISOString(),
+          },
+        ];
+
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({
+        alias: alreadyPresent ? aliases : [...aliases, stageName],
+        metadata: {
+          ...metadata,
+          is_self: true,
+          is_user: true,
+          self_alias_evidence: selfAliasEvidence,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', String(character.id))
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(`Failed to persist explicit self stage name: ${error.message}`);
+    }
+    return stageName;
+  }
+
   /**
    * Fix corrupted protagonist identity — e.g. a third-party card (stage name) that
    * inherited `is_self` or absorbed the self row during a bad merge.

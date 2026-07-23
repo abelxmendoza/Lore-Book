@@ -1,7 +1,10 @@
+import { FileArchive, Presentation, Sparkles, ToggleLeft, ToggleRight, LogIn } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Presentation, ToggleLeft, ToggleRight, LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
 import { useMockData } from '../contexts/MockDataContext';
+import { openChatGPTImportDemo } from '../lib/chatGPTImportDemo';
+import { openOnboardingDemo } from '../lib/onboardingDemo';
 import {
   getDemoActivityCounts,
   type DemoActivityCounts,
@@ -83,8 +86,28 @@ export function DemoModeBanner() {
 
         <button
           type="button"
+          onClick={openOnboardingDemo}
+          className="ml-auto flex items-center gap-1 text-violet-200/70 hover:text-violet-100 transition-colors shrink-0 px-1 py-0.5"
+          aria-label="Open onboarding demo"
+        >
+          <Sparkles className="h-3 w-3" />
+          <span className="hidden sm:inline">Onboarding</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={openChatGPTImportDemo}
+          className="flex items-center gap-1 text-cyan-200/70 hover:text-cyan-100 transition-colors shrink-0 px-1 py-0.5"
+          aria-label="Open ChatGPT import demo"
+        >
+          <FileArchive className="h-3 w-3" />
+          <span className="hidden sm:inline">Import demo</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => navigate('/login')}
-          className="ml-auto flex items-center gap-1 text-white/50 hover:text-white transition-colors shrink-0 px-1 py-0.5"
+          className="flex items-center gap-1 text-white/50 hover:text-white transition-colors shrink-0 px-1 py-0.5"
           aria-label="Sign in"
         >
           <LogIn className="h-3 w-3" />

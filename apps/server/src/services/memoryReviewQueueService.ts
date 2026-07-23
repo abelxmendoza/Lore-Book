@@ -346,7 +346,7 @@ Identity-affecting claims include:
       }
 
       // Auto-approve if low risk — claim is persisted inside autoApprove
-      if (canAutoApproveProposal(integrity)) {
+      if (!claimMetadata.force_review && canAutoApproveProposal(integrity)) {
         const storedClaim = await this.autoApprove(proposal);
         return { proposal, auto_approved: true, claim: storedClaim };
       }
@@ -417,12 +417,19 @@ Identity-affecting claims include:
         user_id: proposal.user_id,
         entity_id: proposal.entity_id,
         text: String(proposal.metadata?.normalized_summary ?? proposal.claim_text),
-        source: 'AI',
+        source: proposal.metadata?.authority === 'user_authored' ? 'USER' : 'AI',
         confidence: proposal.confidence,
         start_time: proposal.temporal_context?.start_time || new Date().toISOString(),
         end_time: proposal.temporal_context?.end_time || null,
         is_active: true,
-        metadata: { temporal_context: proposal.temporal_context ?? {} },
+        metadata: {
+          temporal_context: proposal.temporal_context ?? {},
+          source: proposal.metadata?.source ?? null,
+          source_file_id: proposal.metadata?.source_file_id ?? null,
+          source_conversation_id: proposal.metadata?.source_conversation_id ?? null,
+          source_message_id: proposal.metadata?.source_message_id ?? null,
+          authority: proposal.metadata?.authority ?? null,
+        },
       });
 
       // Create perspective claim if perspective_id exists

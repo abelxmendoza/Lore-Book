@@ -10,7 +10,7 @@ export type MediaDisambiguationResult =
 const EVENT_NAMES = [
   { pattern: /\bSka Prom\b/i, displayName: 'Ska Prom' },
   { pattern: /\bGothicumbia\b/i, displayName: 'Gothicumbia' },
-  { pattern: /\bCode Red\b/i, displayName: 'Code Red', reviewFirst: true },
+  { pattern: /\bCode Red\b/i, displayName: 'Code Red' },
 ];
 
 const VENUE_NAMES = [{ pattern: /\bBad Dogg Compound\b/i, displayName: 'Bad Dogg Compound' }];
@@ -64,6 +64,6 @@ export function shouldRejectAsMedia(
   return null;
 }
 
-export function isCodeRedReviewFirst(text: string): boolean {
-  return /\bCode Red\b/i.test(text);
+export function isCodeRedReviewFirst(_text: string): boolean {
+  return false;
 }

@@ -8,9 +8,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
-  Music2, Building2, Briefcase, Plane, Heart, LayoutGrid,
-  Repeat2, Star, TrendingUp, BookOpen, Milestone, ArrowRight,
+  Music2, Building2, Briefcase, Plane, Heart,
+  Repeat2, Star, TrendingUp, BookOpen, ArrowLeft, ArrowRight,
 } from 'lucide-react';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import {
   formatDistanceToNow,
   isWithinInterval,
@@ -20,23 +21,28 @@ import {
   subDays,
   endOfDay,
 } from 'date-fns';
-import { Card, CardContent } from '../ui/card';
+import { buildEventsBookClipboardText } from '../../lib/eventsBookClipboard';
+import { formatEventTime } from '../../lib/formatEventTime';
+import { fetchJson } from '../../lib/api';
+import { getDisplayTitle } from '../../utils/displayTitle';
+import { useEventsBookData } from '../../store/hooks/useEntityBooks';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
+import { MemoryExplorer } from '../memory-explorer/MemoryExplorer';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 import { Input } from '../ui/input';
-import { fetchJson } from '../../lib/api';
-import { useEventsBookData } from '../../store/hooks/useEntityBooks';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
-import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
-import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { MemoryExplorer, dummyMemoryCards } from '../memory-explorer/MemoryExplorer';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { getRouteFromSurface } from '../../utils/routeMapping';
 
 const ITEMS_PER_PAGE = 18;
+const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -112,11 +118,6 @@ const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClas
 const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
   { value: 'events', label: 'Moments', icon: Sparkles },
   { value: 'recurring', label: 'Patterns', icon: Repeat2 },
-];
-
-const MOMENTS_LAYOUTS: { value: MomentsLayout; label: string; icon: React.ElementType }[] = [
-  { value: 'grid', label: 'Browse', icon: LayoutGrid },
-  { value: 'facts', label: 'Search facts', icon: BookOpen },
 ];
 
 // ─── Keyword matching ─────────────────────────────────────────────────────────
@@ -478,7 +479,9 @@ export const EventsBook: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
-  const { entries = [] } = useLoreKeeper();
+  const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(EVENTS_CARD_VIEW_STORAGE_KEY, 'grid'),
+  );
   const {
     events: serverEvents,
     eventsSuccess,
@@ -505,7 +508,6 @@ export const EventsBook: React.FC = () => {
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
   const [significanceFilter, setSignificanceFilter] = useState<SignificanceFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showFilters, setShowFilters] = useState(false);
@@ -520,21 +522,6 @@ export const EventsBook: React.FC = () => {
     hasLocation: null,
     hasPeople: null,
   });
-
-  const memoryCards = useMemo<MemoryCard[]>(() => {
-    const realMemories = entries.map(entry => memoryEntryToCard({
-      id: entry.id,
-      date: entry.date,
-      content: entry.content,
-      summary: entry.summary || null,
-      tags: entry.tags || [],
-      mood: entry.mood || null,
-      chapter_id: entry.chapter_id || null,
-      source: entry.source || 'manual',
-      metadata: entry.metadata || {},
-    }));
-    return realMemories.length > 0 ? realMemories : (isMockDataEnabled ? dummyMemoryCards : []);
-  }, [entries, isMockDataEnabled]);
 
   useEffect(() => {
     if (isMockDataEnabled || loading) return;
@@ -696,6 +683,11 @@ export const EventsBook: React.FC = () => {
     setSignificanceFilter('all');
   };
 
+  const clipboardText = useMemo(
+    () => buildEventsBookClipboardText(filteredEvents),
+    [filteredEvents],
+  );
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -704,67 +696,17 @@ export const EventsBook: React.FC = () => {
 
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-black/70 via-purple-950/25 to-black/60">
         <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
-                Life Log
-              </p>
-              <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
-                Your story, from evidence to meaning
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm text-white/55">
-                Facts are the sourced details. Moments gather those details into scenes. Narrative Anchors mark
-                turning points, the Timeline puts everything in order, and Patterns reveal what repeats across time.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[16rem]">
-              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <p className="text-lg font-semibold text-white">{events.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Moments</p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <p className="text-lg font-semibold text-white">{recurringScenes.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Patterns</p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <p className="text-lg font-semibold text-white">{memoryCards.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Facts</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 border-t border-white/8 pt-4">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">How your story connects</p>
-              <p className="hidden text-[10px] text-white/30 sm:block">Evidence → scenes → meaning → chronology</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-5">
-              <button type="button" onClick={() => { setViewMode('events'); setMomentsLayout('facts'); }} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <BookOpen className="h-4 w-4 text-sky-300" />
-                <p className="mt-2 text-xs font-medium text-white">Facts</p>
-                <p className="mt-0.5 text-[10px] text-white/35">Atomic evidence</p>
-              </button>
-              <button type="button" onClick={() => { setViewMode('events'); setMomentsLayout('grid'); }} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <Sparkles className="h-4 w-4 text-violet-300" />
-                <p className="mt-2 text-xs font-medium text-white">Moments</p>
-                <p className="mt-0.5 text-[10px] text-white/35">Life scenes</p>
-              </button>
-              <button type="button" onClick={() => navigate(getRouteFromSurface('anchors'))} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <Milestone className="h-4 w-4 text-amber-300" />
-                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Anchors <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
-                <p className="mt-0.5 text-[10px] text-white/35">Turning points</p>
-              </button>
-              <button type="button" onClick={() => navigate('/timeline?view=calendar')} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <Calendar className="h-4 w-4 text-emerald-300" />
-                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-white">Calendar <ArrowRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" /></p>
-                <p className="mt-0.5 text-[10px] text-white/35">Month view</p>
-              </button>
-              <button type="button" onClick={() => setViewMode('recurring')} className="group rounded-lg border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.06]">
-                <Repeat2 className="h-4 w-4 text-fuchsia-300" />
-                <p className="mt-2 text-xs font-medium text-white">Patterns</p>
-                <p className="mt-0.5 text-[10px] text-white/35">Recurring rhythms</p>
-              </button>
-            </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
+              Life Log
+            </p>
+            <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
+              Moments
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-white/55">
+              Scenes from your conversations — filter, search, and spot patterns.
+            </p>
+            <StorySurfaceLinks current="moments" className="mt-3" />
           </div>
         </CardContent>
       </Card>
@@ -783,47 +725,28 @@ export const EventsBook: React.FC = () => {
         </Card>
       )}
 
-      {/* ── Views nav ── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
-          {VIEWS.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => setViewMode(value)}
-              className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
-                ${viewMode === value
-                  ? 'bg-primary/20 text-primary'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
-                }
-              `}
-            >
-              <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {viewMode === 'events' && (
-          <div className="flex items-center gap-1 p-1 bg-black/25 border border-border/40 rounded-lg w-full sm:w-auto sm:inline-flex">
-            {MOMENTS_LAYOUTS.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                onClick={() => setMomentsLayout(value)}
-                className={`
-                  flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
-                  ${momentsLayout === value
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
-                  }
-                `}
-              >
-                <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      {/* ── Primary content switch: Moments | Patterns ── */}
+      <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
+        {VIEWS.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => {
+              setViewMode(value);
+              if (value === 'events') setMomentsLayout('grid');
+            }}
+            className={`
+              flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
+              ${viewMode === value
+                ? 'bg-primary/20 text-primary'
+                : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+              }
+            `}
+          >
+            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>{label}</span>
+          </button>
+        ))}
       </div>
 
       {/* ── Moment search + filters (grid layout only) ── */}
@@ -921,26 +844,6 @@ export const EventsBook: React.FC = () => {
         ))}
       </div>}
 
-      {/* ── Significance filter chips ── */}
-      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 items-center">
-        <span className="text-[10px] text-white/25 font-medium uppercase tracking-wide">Scale</span>
-        {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
-          <button
-            key={value}
-            onClick={() => setSignificanceFilter(value)}
-            className={`
-              inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
-              ${significanceFilter === value
-                ? activeClass
-                : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
-              }
-            `}
-          >
-            {label}
-          </button>
-        ))}
-      </div>}
-
       {/* ── Advanced filters panel ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && showFilters && (
         <Card className="bg-black/80 border border-primary/25">
@@ -963,6 +866,26 @@ export const EventsBook: React.FC = () => {
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+
+            <div className="mb-5 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-white/25">Scale</span>
+              {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSignificanceFilter(value)}
+                  className={`
+                    inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
+                    ${significanceFilter === value
+                      ? activeClass
+                      : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
+                    }
+                  `}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -1099,16 +1022,41 @@ export const EventsBook: React.FC = () => {
         </Card>
       )}
 
-      {/* ── Results summary ── */}
-      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex items-center justify-between text-xs text-white/40">
-        <span>
-          {filteredEvents.length === 0 ? 'No moments' : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
-          {filteredEvents.length !== events.length && <span className="ml-1 text-primary/60">({events.length} total)</span>}
-        </span>
-        {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
-      </div>}
+      {/* ── Results summary + card layout toolbar (Moments browse only) ── */}
+      {viewMode === 'events' && momentsLayout === 'grid' && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between gap-3 text-xs text-white/40 sm:justify-start">
+            <span>
+              {filteredEvents.length === 0
+                ? 'No moments'
+                : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
+              {filteredEvents.length !== events.length && (
+                <span className="ml-1 text-primary/60">({events.length} total)</span>
+              )}
+            </span>
+            {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMomentsLayout('facts')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs font-medium text-white/55 transition-colors hover:border-white/25 hover:text-white"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Search facts
+            </button>
+            <GridListViewToolbar
+              viewMode={cardViewMode}
+              onViewModeChange={setCardViewMode}
+              copyText={clipboardText}
+              copyDisabled={filteredEvents.length === 0}
+              storageKey={EVENTS_CARD_VIEW_STORAGE_KEY}
+            />
+          </div>
+        </div>
+      )}
 
-      {/* ══ MOMENTS — GRID ══ */}
+      {/* ══ MOMENTS — GRID / LIST ══ */}
       {viewMode === 'events' && momentsLayout === 'grid' && (
         loading ? (
           <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -1129,15 +1077,67 @@ export const EventsBook: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-              {paginatedEvents.map((event, index) => (
-                <EventProfileCard
-                  key={event.id || `event-${index}`}
-                  event={event}
-                  onClick={() => setSelectedEvent(event)}
-                />
-              ))}
-            </div>
+            {cardViewMode === 'list' ? (
+              <div
+                className="overflow-hidden rounded-xl border border-white/10 bg-black/30 divide-y divide-white/[0.06]"
+                data-testid="events-book-list"
+              >
+                {paginatedEvents.map((event, index) => {
+                  const title = getDisplayTitle({
+                    title: event.title,
+                    summary: event.summary,
+                    people: event.people,
+                    locations: event.locations,
+                    fallbackNoun: 'Moment',
+                  });
+                  const when = formatEventTime(event);
+                  return (
+                    <button
+                      key={event.id || `event-${index}`}
+                      type="button"
+                      onClick={() => setSelectedEvent(event)}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5 sm:px-4"
+                    >
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300/70" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-sm font-medium text-white">{title}</p>
+                          <span className="shrink-0 text-[10px] text-white/40">
+                            {Math.round(event.confidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                          {when && when !== 'Date unknown' && <span>{when}</span>}
+                          {event.type && <span>Type: {event.type}</span>}
+                          {event.people.length > 0 && (
+                            <span>People: {event.people.slice(0, 3).join(', ')}{event.people.length > 3 ? ` +${event.people.length - 3}` : ''}</span>
+                          )}
+                          {event.locations.length > 0 && (
+                            <span>Places: {event.locations.slice(0, 2).join(', ')}</span>
+                          )}
+                        </div>
+                        {event.summary && (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-white/45">{event.summary}</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"
+                data-testid="events-book-grid"
+              >
+                {paginatedEvents.map((event, index) => (
+                  <EventProfileCard
+                    key={event.id || `event-${index}`}
+                    event={event}
+                    onClick={() => setSelectedEvent(event)}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Pagination */}
             {totalPages > 1 && (
@@ -1169,34 +1169,38 @@ export const EventsBook: React.FC = () => {
         )
       )}
 
-      {/* ══ MOMENTS — FACT SEARCH ══ */}
+      {/* ══ MOMENTS — FACT SEARCH (secondary, not a peer tab) ══ */}
       {viewMode === 'events' && momentsLayout === 'facts' && (
-        <div className="mt-2 rounded-xl border border-border/50 bg-black/25 p-3 sm:p-4">
-          <div className="mb-3">
-            <p className="text-sm font-medium text-white">Search facts</p>
-            <p className="text-xs text-white/45 mt-0.5">
-              Atomic details extracted from your moments — journal entries, chat facts, and linked claims.
-              Every fact belongs inside a moment.
-            </p>
+        <div className="mt-2 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setMomentsLayout('grid')}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-white/55 transition-colors hover:text-white"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to moments
+            </button>
           </div>
-          <MemoryExplorer />
+          <div className="rounded-xl border border-border/50 bg-black/25 p-3 sm:p-4">
+            <div className="mb-3">
+              <p className="text-sm font-medium text-white">Search facts</p>
+              <p className="text-xs text-white/45 mt-0.5">
+                Atomic details extracted from your moments — journal entries, chat facts, and linked claims.
+              </p>
+            </div>
+            <MemoryExplorer />
+          </div>
         </div>
       )}
 
       {/* ══ PATTERNS ══ */}
       {viewMode === 'recurring' && (
         <div className="space-y-5">
-          {/* Header */}
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Repeat2 className="h-5 w-5 text-primary/70" />
-                Patterns
-              </h2>
-              <p className="text-xs text-white/40 mt-1">
-                Recurring rhythms LoreBook notices across your life — Sunday calls, weekly rituals, familiar places
-              </p>
-            </div>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-white/40">
+              Recurring rhythms LoreBook notices — Sunday calls, weekly rituals, familiar places.
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -1204,6 +1208,7 @@ export const EventsBook: React.FC = () => {
               onClick={() => void loadRecurringScenes()}
               disabled={scenesLoading}
               className="flex-shrink-0"
+              aria-label="Refresh patterns"
             >
               <RefreshCw className={`h-4 w-4 ${scenesLoading ? 'animate-spin' : ''}`} />
             </Button>
@@ -1334,12 +1339,24 @@ export const EventsBook: React.FC = () => {
                       )}
 
                       {/* Footer */}
-                      <p className="text-[10px] text-white/20 mt-3 pt-3 border-t border-white/6">
-                        {scene.source_event_ids?.length ?? scene.occurrence_count} moments in this pattern
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/6 pt-3">
+                        <p className="text-[10px] text-white/20">
+                          {scene.source_event_ids?.length ?? scene.occurrence_count} moments in this pattern
+                        </p>
                         {scene.timeline_candidate && (
-                          <span className="ml-2 text-primary/40">· timeline candidate</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/timeline?view=events');
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-primary/70 transition-colors hover:text-primary"
+                          >
+                            View in Chronology
+                            <ArrowRight className="h-3 w-3" />
+                          </button>
                         )}
-                      </p>
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -1356,9 +1373,6 @@ export const EventsBook: React.FC = () => {
           onClose={() => setSelectedEvent(null)}
           onDeleted={() => { setSelectedEvent(null); void refetchEvents(); }}
         />
-      )}
-      {selectedMemory && (
-        <MemoryDetailModal memory={selectedMemory} onClose={() => setSelectedMemory(null)} />
       )}
     </div>
   );

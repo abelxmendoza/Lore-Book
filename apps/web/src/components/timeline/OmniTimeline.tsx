@@ -30,6 +30,7 @@ import type { SavedGeneratedTimeline } from '../../lib/generatedTimelinesLibrary
 import { OmniTimelineErrorBanner } from './OmniTimelineErrorBanner';
 import { UniversalTimelineSearch } from './UniversalTimelineSearch';
 import { KnowledgeBaseCreator, type LorebookCreatorPrefill } from '../lorebook/KnowledgeBaseCreator';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
 import { filterChronologyByExactDate, stitchedItemsToChronology } from '../../lib/unifiedTimeline';
 import './OmniTimeline.css';
@@ -39,9 +40,9 @@ type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
-  { id: 'events',    label: 'Events',    shortLabel: 'Events', Icon: CalendarDays,  desc: 'Moments and events stitched chronologically — copyable, with an explicit reorder mode' },
+  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
-  { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Arc-by-arc narrative reading view' },
+  { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
 ];
 
 const BOTTOM_NAV = VIEWS.map(({ id, shortLabel, Icon }) => ({
@@ -70,6 +71,8 @@ const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story']);
 
 function viewFromSearchParams(params: URLSearchParams): View {
   const raw = params.get('view');
+  // `search` opens Universal Timeline Search (overlay), not a peer view tab.
+  if (raw === 'search') return 'swimlanes';
   if (raw && VALID_VIEWS.has(raw as View)) return raw as View;
   return 'swimlanes';
 }
@@ -104,7 +107,9 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [dateInput, setDateInput] = useState(/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : '');
   const [genQuery, setGenQuery] = useState(urlQuery);
   const [genPhase, setGenPhase] = useState<GenPhase>(urlQuery.trim() ? 'revealed' : 'idle');
-  const [genSearchOpen, setGenSearchOpen] = useState(Boolean(urlQuery.trim()));
+  const [genSearchOpen, setGenSearchOpen] = useState(
+    Boolean(urlQuery.trim()) || searchParams.get('view') === 'search',
+  );
   const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
   const shouldPersistRef = useRef(false);
   const demoLibrarySeededRef = useRef(false);
@@ -192,8 +197,10 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   }, [genQuery, arcs, genTerms]);
 
   useEffect(() => {
-    if (urlQuery.trim()) setGenSearchOpen(true);
-  }, [urlQuery]);
+    if (urlQuery.trim() || searchParams.get('view') === 'search') {
+      setGenSearchOpen(true);
+    }
+  }, [urlQuery, searchParams]);
 
   useEffect(() => {
     if (!urlQuery.trim()) return;
@@ -502,6 +509,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               {genQuery && (
                 <p className="omni-timeline-gen-label">Showing: {genQuery}</p>
               )}
+              <StorySurfaceLinks current="timeline" className="mt-1.5" />
             </div>
             <button
               type="button"
@@ -541,12 +549,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 )}
               </div>
               <p className="omni-timeline-subtitle">
-                {arcs.length > 0
-                  ? `${arcs.length} arc${arcs.length !== 1 ? 's' : ''} · ${entries.length} memories`
-                  : entries.length > 0
-                  ? `${entries.length} memories`
-                  : 'Your life story builds here'}
+                Your life in time — arcs, chronology, and calendar.
               </p>
+              {(arcs.length > 0 || entries.length > 0) && (
+                <p className="mt-0.5 text-xs text-white/35">
+                  {arcs.length > 0
+                    ? `${arcs.length} arc${arcs.length !== 1 ? 's' : ''} · ${entries.length} memories`
+                    : `${entries.length} memories`}
+                </p>
+              )}
+              <StorySurfaceLinks current="timeline" className="mt-2" />
             </div>
 
             <div className="omni-timeline-view-tabs" role="tablist" aria-label="Timeline views">

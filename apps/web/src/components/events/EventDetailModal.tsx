@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X, Clock, MapPin, Users, MessageSquare, Send, Sparkles,
   Calendar, ArrowRight, ArrowLeft, Eye, Heart, Link2, FileText,
   Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2, Trash2,
+  Compass,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -624,6 +626,7 @@ function renderWithChips(text: string, entities: ChatEntity[]): React.ReactNode 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb, onDeleted }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [deleting, setDeleting] = useState(false);
 
@@ -881,6 +884,44 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Open in chronology"
+                title="Open in chronology"
+                onClick={() => {
+                  onClose();
+                  const params = new URLSearchParams({ view: 'events' });
+                  if (eventData.start_time) {
+                    try {
+                      params.set('q', format(parseISO(eventData.start_time), 'yyyy-MM-dd'));
+                    } catch {
+                      /* ignore bad dates */
+                    }
+                  }
+                  navigate(`/timeline?${params.toString()}`);
+                }}
+                className="text-white/45 hover:text-primary hover:bg-primary/10"
+              >
+                <Calendar className="h-4 w-4" />
+                <span className="ml-1.5 hidden sm:inline text-xs">Chronology</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Open narrative anchors"
+                title="Open narrative anchors"
+                onClick={() => {
+                  onClose();
+                  navigate('/narrative-anchors');
+                }}
+                className="text-white/45 hover:text-cyan-200 hover:bg-cyan-500/10"
+              >
+                <Compass className="h-4 w-4" />
+                <span className="ml-1.5 hidden sm:inline text-xs">Anchors</span>
+              </Button>
               {onDeleted && (
                 <Button
                   type="button"

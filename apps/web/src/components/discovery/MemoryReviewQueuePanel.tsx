@@ -27,6 +27,10 @@ type ProposalMeta = {
   risk_reason?: string;
   sensitivity?: string;
   evidence_count?: number;
+  source?: string;
+  source_conversation_title?: string;
+  source_message_created_at?: string | null;
+  authority?: string;
 };
 
 function metadataFor(proposal: MemoryProposal): ProposalMeta {
@@ -103,6 +107,11 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
                   {meta.sensitivity.toLowerCase()}
                 </Badge>
               )}
+              {meta.source === 'chatgpt_export' && (
+                <Badge className="border-cyan-400/25 bg-cyan-400/10 text-cyan-200">
+                  Your ChatGPT message
+                </Badge>
+              )}
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
@@ -155,6 +164,14 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
                 <Quote className="mt-0.5 h-4 w-4 flex-none text-white/35" />
                 <div>
                   <p className="text-xs font-medium text-white/65">Source evidence</p>
+                  {meta.source_conversation_title && (
+                    <p className="mt-0.5 text-[11px] text-white/35">
+                      ChatGPT · {meta.source_conversation_title}
+                      {meta.source_message_created_at
+                        ? ` · ${new Date(meta.source_message_created_at).toLocaleDateString()}`
+                        : ''}
+                    </p>
+                  )}
                   <blockquote className="mt-1 text-sm italic leading-relaxed text-white/50">
                     “{proposal.source_excerpt}”
                   </blockquote>

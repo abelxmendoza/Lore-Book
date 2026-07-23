@@ -41,9 +41,9 @@ export function assertOscarPreviewSpans(result: LexicalPreviewResult): void {
   expect(laShows!.parentContext, 'LA embedded in recurring event').toMatch(/PLACE:\s*LA/);
 
   const codeRed = span(result, /Code Red/i);
-  expect(codeRed, 'EVENT_OR_VENUE Code Red').toBeDefined();
-  expect(codeRed!.subtype).toBe('EVENT_OR_VENUE');
-  expect(codeRed!.needsReview, 'venue vs event needs review').toBe(true);
+  expect(codeRed, 'AFTERS_RAVE_EVENT_SERIES Code Red').toBeDefined();
+  expect(codeRed!.subtype).toBe('AFTERS_RAVE_EVENT_SERIES');
+  expect(codeRed!.needsReview, 'canonical event series does not need venue review').not.toBe(true);
 
   const ska = span(result, /ska shows?/i);
   expect(ska, 'INTEREST ska shows').toBeDefined();

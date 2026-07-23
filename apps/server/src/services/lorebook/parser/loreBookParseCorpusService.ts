@@ -124,7 +124,11 @@ async function applySuggestAdd(
             confidence: op.confidence,
             reasoning,
           },
-          { source: 'chat', sourceMessageId: options.messageId }
+          {
+            source: 'chat',
+            sourceMessageId: options.messageId,
+            sourceText: op.evidence.quote,
+          }
         );
         return true;
       case 'skills':

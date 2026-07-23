@@ -27,9 +27,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
 import { cn } from '../../lib/cn';
+import { buildNarrativeAnchorsClipboardText } from '../../lib/narrativeAnchorsClipboard';
 import { MOCK_NARRATIVE_ANCHORS } from '../../mocks/narrativeAnchors';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { Button } from '../ui/button';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 import { Input } from '../ui/input';
+
+const ANCHORS_VIEW_STORAGE_KEY = 'lorebook.narrativeAnchors.viewMode';
 
 export type AnchorType =
   | 'life_era'
@@ -113,17 +122,21 @@ function confidenceLabel(confidence: number): string {
   return 'Needs review';
 }
 
-function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
-  const [expanded, setExpanded] = useState(false);
-  const meta = TYPE_META[anchor.anchorType];
-  const Icon = meta.icon;
-  const years = formatYears(anchor.startDate, anchor.endDate);
-  const members = [
+function collectMembers(anchor: NarrativeAnchor) {
+  return [
     ...anchor.entities,
     ...anchor.places.map((member) => ({ ...member, kind: 'place' })),
     ...anchor.groups.map((member) => ({ ...member, kind: 'group' })),
     ...anchor.events.map((member) => ({ ...member, kind: 'event' })),
   ];
+}
+
+function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = TYPE_META[anchor.anchorType];
+  const Icon = meta.icon;
+  const years = formatYears(anchor.startDate, anchor.endDate);
+  const members = collectMembers(anchor);
   const visibleMembers = expanded ? members : members.slice(0, 5);
   const visibleEvidence = anchor.evidence.filter((evidence, index, all) =>
     all.findIndex((candidate) => candidate.label.trim().toLowerCase() === evidence.label.trim().toLowerCase()) === index,
@@ -205,6 +218,75 @@ function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
   );
 }
 
+function NarrativeAnchorListRow({
+  anchor,
+  expanded,
+  onToggle,
+}: {
+  anchor: NarrativeAnchor;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const meta = TYPE_META[anchor.anchorType];
+  const Icon = meta.icon;
+  const years = formatYears(anchor.startDate, anchor.endDate);
+  const members = collectMembers(anchor);
+  const preview = members.slice(0, 4).map((m) => m.name).filter(Boolean);
+  const visibleEvidence = anchor.evidence.filter((evidence, index, all) =>
+    all.findIndex((candidate) => candidate.label.trim().toLowerCase() === evidence.label.trim().toLowerCase()) === index,
+  );
+
+  return (
+    <div className="bg-black/20">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-white/[0.04] sm:items-center sm:px-4"
+      >
+        <div className={cn('mt-0.5 rounded-lg border p-2 sm:mt-0', meta.iconSurface)}>
+          <Icon className={cn('h-3.5 w-3.5', meta.accent)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className="truncate text-sm font-semibold text-white sm:text-[15px]">{anchor.title}</h3>
+            <span className={cn('text-[10px] font-semibold uppercase tracking-[0.14em]', meta.accent)}>{meta.label}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/45">
+            {years && <span>{years}</span>}
+            <span>{confidenceLabel(anchor.confidence)}</span>
+            <span>{members.length} details</span>
+            {preview.length > 0 && (
+              <span className="truncate text-white/35">
+                {preview.join(' · ')}
+                {members.length > preview.length ? ` +${members.length - preview.length}` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronDown className={cn('mt-1 h-4 w-4 shrink-0 text-white/35 transition-transform', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="border-t border-white/[0.06] px-3 pb-4 pt-3 sm:px-4 sm:pl-[3.25rem]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Why Lorekeeper connected this</p>
+          {visibleEvidence.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {visibleEvidence.slice(0, 5).map((evidence) => (
+                <li key={evidence.id} className="flex items-start gap-2 text-sm leading-relaxed text-white/65">
+                  <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-300/80" />
+                  <span>{evidence.label}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-white/45">This connection comes from repeated people, places, and events in your memories.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LoadingState() {
   return (
     <div aria-label="Loading narrative anchors" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -234,6 +316,10 @@ export function NarrativeAnchorsBook() {
   const [search, setSearch] = useState('');
   const [activeType, setActiveType] = useState<AnchorType | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(ANCHORS_VIEW_STORAGE_KEY, 'grid'),
+  );
+  const [expandedListId, setExpandedListId] = useState<string | null>(null);
 
   const loadAnchors = useCallback(async () => {
     setLoading(true);
@@ -299,6 +385,11 @@ export function NarrativeAnchorsBook() {
     setActiveType('all');
   };
 
+  const clipboardText = useMemo(
+    () => buildNarrativeAnchorsClipboardText(filtered),
+    [filtered],
+  );
+
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-[radial-gradient(ellipse_at_top_left,rgba(34,211,238,0.07),transparent_35%),radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.07),transparent_30%)]">
       <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
@@ -311,8 +402,9 @@ export function NarrativeAnchorsBook() {
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Narrative Anchors</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-                The chapters, relationships, places, and rituals your memories keep returning to. Anchors help Lorekeeper understand how separate moments belong to the same story.
+                Chapters your memories keep returning to.
               </p>
+              <StorySurfaceLinks current="anchors" className="mt-3" />
             </div>
             <Button onClick={() => void rebuild()} disabled={rebuilding} className="w-full border border-cyan-400/20 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/15 sm:w-auto">
               <RefreshCw className={cn('mr-2 h-4 w-4', rebuilding && 'animate-spin')} />
@@ -356,16 +448,64 @@ export function NarrativeAnchorsBook() {
             <div className="mx-auto max-w-xl py-14 text-center sm:py-20">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.07]"><Anchor className="h-7 w-7 text-cyan-200/70" /></div>
               <h2 className="mt-5 text-xl font-semibold text-white">Your story map is ready to be discovered</h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/50">Lorekeeper will look for the people, places, and activities that recur across your memories, then organize them into meaningful chapters.</p>
+              <p className="mt-2 text-sm leading-relaxed text-white/50">
+                Share life scenes in chat — they show up as Moments. When people, places, and rituals recur, Lorekeeper organizes them into chapters here.
+              </p>
               <Button className="mt-6 bg-white text-black hover:bg-white/90" onClick={() => void rebuild()} disabled={rebuilding}><Sparkles className="mr-2 h-4 w-4" />Discover my anchors</Button>
-              <p className="mt-4 inline-flex items-center gap-1 text-xs text-white/30">The more memories you share, the clearer this becomes <ArrowUpRight className="h-3 w-3" /></p>
+              <p className="mt-4 inline-flex items-center gap-1 text-xs text-white/30">
+                Start in Moments, then come back to Discover <ArrowUpRight className="h-3 w-3" />
+              </p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-16 text-center"><Search className="mx-auto h-8 w-8 text-white/20" /><h2 className="mt-4 font-medium text-white">No matching story threads</h2><p className="mt-1 text-sm text-white/40">Try another search or show all anchor types.</p><Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 border-white/15">Clear filters</Button></div>
           ) : (
             <div>
-              <div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">{activeType === 'all' ? 'Your strongest story threads' : TYPE_META[activeType].label}</p>{activeType !== 'all' && <p className="mt-1 text-sm text-white/45">{TYPE_META[activeType].description}</p>}</div><p className="text-xs text-white/30">{filtered.length} {filtered.length === 1 ? 'anchor' : 'anchors'}</p></div>
-              <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">{filtered.map((anchor) => <NarrativeAnchorCard key={anchor.id} anchor={anchor} />)}</div>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
+                    {activeType === 'all' ? 'Your strongest story threads' : TYPE_META[activeType].label}
+                  </p>
+                  {activeType !== 'all' && (
+                    <p className="mt-1 text-sm text-white/45">{TYPE_META[activeType].description}</p>
+                  )}
+                  <p className="mt-1 text-xs text-white/30">
+                    {filtered.length} {filtered.length === 1 ? 'anchor' : 'anchors'}
+                  </p>
+                </div>
+                <GridListViewToolbar
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  copyText={clipboardText}
+                  copyDisabled={filtered.length === 0}
+                  storageKey={ANCHORS_VIEW_STORAGE_KEY}
+                />
+              </div>
+              {viewMode === 'list' ? (
+                <div
+                  className="overflow-hidden rounded-xl border border-white/10 bg-black/30 divide-y divide-white/[0.06]"
+                  data-testid="narrative-anchors-list"
+                >
+                  {filtered.map((anchor) => (
+                    <NarrativeAnchorListRow
+                      key={anchor.id}
+                      anchor={anchor}
+                      expanded={expandedListId === anchor.id}
+                      onToggle={() =>
+                        setExpandedListId((current) => (current === anchor.id ? null : anchor.id))
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3"
+                  data-testid="narrative-anchors-grid"
+                >
+                  {filtered.map((anchor) => (
+                    <NarrativeAnchorCard key={anchor.id} anchor={anchor} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </main>

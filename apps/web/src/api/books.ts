@@ -41,6 +41,15 @@ export type SkillsBookPayload = {
   counts: BookCounts;
 };
 
+export type PossibleFamilyMatch = {
+  id: string;
+  characterAId: string;
+  characterAName: string;
+  characterBId: string;
+  characterBName: string;
+  sharedLastName: string;
+};
+
 export type FamilyBookPayload = {
   success?: boolean;
   graph: { nodeCount: number; edgeCount: number; selfId: string | null };
@@ -49,6 +58,7 @@ export type FamilyBookPayload = {
   familyGroups: Array<{ id: string; name: string; metadata?: Record<string, unknown> }>;
   analytics: Array<Record<string, unknown>>;
   counts: BookCounts;
+  possibleFamilyMatches: PossibleFamilyMatch[];
 };
 
 export type DiscoveryBookPayload = {

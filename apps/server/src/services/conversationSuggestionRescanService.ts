@@ -105,7 +105,7 @@ async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserte
   let upserted = 0;
   for (const q of extracted) {
     if (!q.title?.trim() || haveTitles.has(q.title.trim().toLowerCase())) continue;
-    await questSuggestionService.upsertFromExtraction(
+    const saved = await questSuggestionService.upsertFromExtraction(
       userId,
       {
         title: q.title,
@@ -118,9 +118,13 @@ async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserte
         confidence: 0.72,
         reasoning: 'Detected from your recent journals and chats',
       },
-      { source: 'llm_scan' }
+      {
+        source: 'llm_scan',
+        sourceText:
+          typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
+      }
     );
-    upserted += 1;
+    if (saved) upserted += 1;
   }
   return { scanned: true, upserted };
 }

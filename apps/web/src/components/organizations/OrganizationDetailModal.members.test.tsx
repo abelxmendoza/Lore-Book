@@ -81,9 +81,29 @@ vi.mock('../../lib/hydrateBookEntity', async () => {
   };
 });
 
+vi.mock('../../api/books', () => ({
+  booksApi: {
+    loadCharacters: vi.fn(async () => ({
+      characters: [
+        { id: 'char-mina', name: 'Mina' },
+        { id: 'char-owen', name: 'Owen' },
+      ],
+      duplicate_groups: [],
+      counts: {
+        characters: 2,
+        locations: 0,
+        events: 0,
+        organizations: 0,
+        skills: 0,
+        projects: 0,
+      },
+    })),
+  },
+}));
+
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(async (url: string) => {
-    if (url === '/api/characters') {
+    if (url === '/api/characters' || url === '/api/books/characters') {
       return {
         characters: [
           { id: 'char-mina', name: 'Mina' },
@@ -180,5 +200,30 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
 
     expect(await screen.findByText('Mina')).toBeInTheDocument();
     expect(screen.getByText('Linked')).toBeInTheDocument();
+    expect(await screen.findByTestId('org-add-member-success')).toHaveTextContent(
+      /linked to this group and saved in your knowledge base/i,
+    );
+  });
+
+  it('filters Character Book options by search', async () => {
+    renderModal();
+    const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
+    fireEvent.click(peopleTabs[0]!);
+    fireEvent.click(screen.getByTestId('org-add-member-toggle'));
+
+    const select = await screen.findByTestId('org-add-member-character-select');
+    await waitFor(() => {
+      expect(select.querySelectorAll('option').length).toBeGreaterThan(1);
+    });
+
+    fireEvent.change(screen.getByTestId('org-add-member-character-search'), {
+      target: { value: 'owe' },
+    });
+
+    await waitFor(() => {
+      const options = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+      expect(options.some((t) => t?.includes('Owen'))).toBe(true);
+      expect(options.some((t) => t?.includes('Mina'))).toBe(false);
+    });
   });
 });

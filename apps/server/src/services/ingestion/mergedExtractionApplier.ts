@@ -94,7 +94,7 @@ export async function applyMergedExtractionPayload(
 
   for (const quest of payload.quest_signals) {
     try {
-      await questSuggestionService.upsertFromExtraction(
+      const upserted = await questSuggestionService.upsertFromExtraction(
         userId,
         {
           title: quest.title,
@@ -104,9 +104,9 @@ export async function applyMergedExtractionPayload(
           confidence: quest.confidence,
           reasoning: quest.evidence || 'Detected from merged extraction',
         },
-        { sourceMessageId: messageId, sourceThreadId, source: 'chat' },
+        { sourceMessageId: messageId, sourceThreadId, source: 'chat', sourceText: rawText },
       );
-      result.quests += 1;
+      if (upserted) result.quests += 1;
     } catch (err) {
       logger.warn({ err, title: quest.title }, 'Merged extraction: quest apply failed');
     }

@@ -9,8 +9,10 @@ import { questSuggestionService } from './quests/questSuggestionService';
 import { skillSuggestionService } from './skills/skillSuggestionService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
 import { omegaMemoryService } from './omegaMemoryService';
-import type { SuggestionBookDomain } from './suggestionCrossBookService';
-import { SUGGESTION_DOMAIN_LABELS } from './suggestionCrossBookService';
+import {
+  SUGGESTION_DOMAIN_LABELS,
+  type SuggestionBookDomain,
+} from './suggestionCrossBookService';
 import {
   applyRedirectTargetMerge,
   buildRedirectMergeNotification,
@@ -95,7 +97,11 @@ async function seedTargetSuggestion(
           confidence: match.disposition === 'uncertain' ? 0.62 : 0.78,
           reasoning: [movedReason, similarNote].filter(Boolean).join(' '),
         },
-        { source: 'chat' }
+        {
+          source: 'chat',
+          sourceText: input.context ?? input.description ?? name,
+          userConfirmed: true,
+        }
       );
       break;
     case 'skills':

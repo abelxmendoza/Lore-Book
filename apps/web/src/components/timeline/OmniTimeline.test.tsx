@@ -160,7 +160,7 @@ describe('OmniTimeline layout and navigation', () => {
 
     expect(screen.getByTestId('timeline-swimlanes-view')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /events/i }));
+    await user.click(screen.getByRole('tab', { name: /chronology/i }));
     expect(screen.getByTestId('timeline-stitched-embedded')).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /calendar/i }));
@@ -170,6 +170,13 @@ describe('OmniTimeline layout and navigation', () => {
   it('opens calendar from ?view=calendar deep link', () => {
     renderOmniTimeline('/timeline?view=calendar');
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  });
+
+  it('opens universal search from ?view=search without treating search as a view tab', () => {
+    renderOmniTimeline('/timeline?view=search');
+    expect(screen.getByTestId('timeline-swimlanes-view')).toBeInTheDocument();
+    expect(screen.getByTestId('universal-timeline-search-desktop')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^search$/i })).not.toBeInTheDocument();
   });
 
   it('shows data error banner with retry', async () => {

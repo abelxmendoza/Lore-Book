@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
+import { fireEvent, render, screen, waitFor } from '../../test/utils';
 
 import { NarrativeAnchorsBook } from './NarrativeAnchorsBook';
 
@@ -36,10 +36,13 @@ describe('NarrativeAnchorsBook', () => {
     render(<NarrativeAnchorsBook />);
 
     expect(screen.getByText('Narrative Anchors')).toBeInTheDocument();
-    expect(screen.getByText(/separate moments belong to the same story/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chapters your memories keep returning to/i)).toBeInTheDocument();
     expect(await screen.findByText('The college years')).toBeInTheDocument();
     expect(screen.getByText('2018–2022')).toBeInTheDocument();
     expect(screen.getByText('Strong match')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Connected story views/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Moments/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
   });
 
   it('reveals the evidence behind an anchor', async () => {
@@ -96,5 +99,30 @@ describe('NarrativeAnchorsBook', () => {
     expect(await screen.findByText('Demo story')).toBeInTheDocument();
     expect(screen.getByText('Building Lorekeeper')).toBeInTheDocument();
     expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it('switches between grid and list views and exposes copy all', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<NarrativeAnchorsBook />);
+    await screen.findByText('The college years');
+
+    expect(screen.getByTestId('narrative-anchors-grid')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+    expect(screen.getByTestId('narrative-anchors-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('narrative-anchors-grid')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
+    expect(screen.getByTestId('narrative-anchors-grid')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /copy all/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('The college years');
   });
 });

@@ -16,6 +16,7 @@ import { Tabs, TabsContent } from '../ui/tabs';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
@@ -258,7 +259,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [characterBookOptions, setCharacterBookOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [characterBookLoading, setCharacterBookLoading] = useState(false);
   const [selectedBookCharacterId, setSelectedBookCharacterId] = useState('');
+  const [characterBookSearch, setCharacterBookSearch] = useState('');
   const [memberAddError, setMemberAddError] = useState<string | null>(null);
+  const [memberAddSuccess, setMemberAddSuccess] = useState<string | null>(null);
   const [memberSaving, setMemberSaving] = useState(false);
   const [showNameOnlyAdd, setShowNameOnlyAdd] = useState(false);
 
@@ -325,13 +328,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [selectedLinkedOrg, setSelectedLinkedOrg] = useState<Organization | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   
+  // Only reset local draft state when switching to a different organization.
+  // Parent book refreshes must not wipe in-progress edits or close-side effects.
   useEffect(() => {
     setEditedOrg(resolvedOrganization);
     setMembers(resolvedOrganization.members || []);
     setStories(resolvedOrganization.stories || []);
     setEvents(resolvedOrganization.events || []);
     setLocations(resolvedOrganization.locations || []);
-  }, [resolvedOrganization]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id-scoped reset only
+  }, [organization.id]);
 
   useEffect(() => {
     if (isMockDataEnabled || isEphemeralEntityId(organization.id)) return;
@@ -1087,20 +1093,29 @@ User's message: ${currentInput}`;
     const next = !showAddMember;
     setShowAddMember(next);
     setMemberAddError(null);
+    setMemberAddSuccess(null);
     setShowNameOnlyAdd(false);
     setSelectedBookCharacterId('');
+    setCharacterBookSearch('');
     setNewMember({ character_name: '', role: '', status: 'active' });
     if (next && characterBookOptions.length === 0 && !characterBookLoading) {
       setCharacterBookLoading(true);
       try {
-        const res = await fetchJson<{ characters?: Character[]; success?: boolean } | Character[]>(
-          '/api/characters',
-        );
-        const list = Array.isArray(res)
-          ? res
-          : Array.isArray((res as { characters?: Character[] }).characters)
-            ? (res as { characters: Character[] }).characters
-            : [];
+        // Prefer books BFF (same source as Character Book page); fall back to list aliases.
+        let list: Character[] = [];
+        try {
+          const book = await booksApi.loadCharacters();
+          list = (book.characters ?? []) as Character[];
+        } catch {
+          const res = await fetchJson<{ characters?: Character[]; success?: boolean } | Character[]>(
+            '/api/characters',
+          );
+          list = Array.isArray(res)
+            ? res
+            : Array.isArray((res as { characters?: Character[] }).characters)
+              ? (res as { characters: Character[] }).characters
+              : [];
+        }
         setCharacterBookOptions(
           list
             .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
@@ -1120,17 +1135,18 @@ User's message: ${currentInput}`;
     [members],
   );
 
-  const availableBookCharacters = useMemo(
-    () =>
-      characterBookOptions.filter((c) => {
-        if (rosterCharacterIds.has(c.id)) return false;
-        const alreadyByName = members.some(
-          (m) => !m.character_id && m.character_name.toLowerCase() === c.name.toLowerCase(),
-        );
-        return !alreadyByName;
-      }),
-    [characterBookOptions, members, rosterCharacterIds],
-  );
+  const availableBookCharacters = useMemo(() => {
+    const term = characterBookSearch.trim().toLowerCase();
+    return characterBookOptions.filter((c) => {
+      if (rosterCharacterIds.has(c.id)) return false;
+      const alreadyByName = members.some(
+        (m) => !m.character_id && m.character_name.toLowerCase() === c.name.toLowerCase(),
+      );
+      if (alreadyByName) return false;
+      if (!term) return true;
+      return c.name.toLowerCase().includes(term);
+    });
+  }, [characterBookOptions, characterBookSearch, members, rosterCharacterIds]);
 
   /** Add from Character Book — posts character_id for an official durable link. */
   const handleAddExistingCharacter = async () => {
@@ -1182,8 +1198,12 @@ User's message: ${currentInput}`;
         ]);
       }
       setSelectedBookCharacterId('');
+      setCharacterBookSearch('');
       setNewMember({ character_name: '', role: '', status: 'active' });
       setShowAddMember(false);
+      setMemberAddSuccess(
+        `${chosen.name} linked to this group and saved in your knowledge base.`,
+      );
       onUpdate?.();
     } catch (error) {
       console.error('Failed to add member from Character Book:', error);
@@ -1229,9 +1249,15 @@ User's message: ${currentInput}`;
           },
         ]);
       }
+      const linkedName = saved?.character_name || newMember.character_name.trim();
       setNewMember({ character_name: '', role: '', status: 'active' });
       setShowAddMember(false);
       setShowNameOnlyAdd(false);
+      setMemberAddSuccess(
+        saved?.character_id
+          ? `${linkedName} matched Character Book and was linked in your knowledge base.`
+          : `${linkedName} added by name (unlinked). Add them to Character Book to solidify.`,
+      );
       onUpdate?.();
     } catch (error) {
       console.error('Failed to add member:', error);
@@ -1839,8 +1865,18 @@ User's message: ${currentInput}`;
               {showAddMember && (
                 <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
                     <p className="text-[12px] text-white/55 leading-relaxed">
-                      Pick someone from your Character Book to create an official membership link.
+                      Pick someone who already exists in your Character Book. LoreBook saves an official
+                      membership link in your knowledge base (person ↔ group).
                     </p>
+                    <Input
+                      value={characterBookSearch}
+                      onChange={(e) => setCharacterBookSearch(e.target.value)}
+                      placeholder="Search Character Book…"
+                      aria-label="Search Character Book people"
+                      data-testid="org-add-member-character-search"
+                      disabled={characterBookLoading || memberSaving}
+                      className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
+                    />
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto]">
                       <select
                         value={selectedBookCharacterId}
@@ -1854,7 +1890,9 @@ User's message: ${currentInput}`;
                           {characterBookLoading
                             ? 'Loading Character Book…'
                             : availableBookCharacters.length === 0
-                              ? 'No available characters'
+                              ? characterBookSearch.trim()
+                                ? 'No matching characters'
+                                : 'No available characters'
                               : 'Choose a person…'}
                         </option>
                         {availableBookCharacters.map((c) => (
@@ -1894,13 +1932,14 @@ User's message: ${currentInput}`;
                       className="text-[11px] text-white/40 hover:text-white/70 underline-offset-2 hover:underline"
                       onClick={() => setShowNameOnlyAdd((v) => !v)}
                     >
-                      {showNameOnlyAdd ? 'Hide name-only add' : 'Person not in Character Book? Add by name'}
+                      {showNameOnlyAdd ? 'Hide name-only add' : 'Person not listed? Add by name'}
                     </button>
 
                     {showNameOnlyAdd && (
                       <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-3">
                         <p className="text-[10px] text-white/40">
-                          Name-only rows stay unlinked until that person is added to the Character Book.
+                          If that exact name already exists in Character Book, LoreBook auto-links them.
+                          Otherwise the row stays unlinked until you create their character card.
                         </p>
                         <Input
                           placeholder="Member name"
@@ -1938,6 +1977,14 @@ User's message: ${currentInput}`;
                         {memberAddError}
                       </p>
                     )}
+                </div>
+              )}
+
+              {memberAddSuccess && !showAddMember && (
+                <div className="border-b border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2 sm:px-4">
+                  <p className="text-xs text-emerald-200" role="status" data-testid="org-add-member-success">
+                    {memberAddSuccess}
+                  </p>
                 </div>
               )}
 

@@ -315,7 +315,7 @@ describe('ConversationIngestionPipeline', () => {
       expect(spy.mock.calls[0][2]).toBe('AI');
     });
 
-    it('never throws when ingestMessage fails (non-blocking contract)', async () => {
+    it('rethrows when ingestMessage fails so the durable worker can retry', async () => {
       setRoute('chat_messages', () => ({
         data: { id: 'chat-1', role: 'user', content: 'boom', metadata: {} },
         error: null,
@@ -333,7 +333,7 @@ describe('ConversationIngestionPipeline', () => {
 
       await expect(
         conversationIngestionPipeline.ingestFromChatMessage('user-1', 'chat-1', 'session-1'),
-      ).resolves.toBeUndefined();
+      ).rejects.toThrow('downstream exploded');
 
       // Failure short-circuits before scheduling follow-up work.
       expect(scheduleInference).not.toHaveBeenCalled();

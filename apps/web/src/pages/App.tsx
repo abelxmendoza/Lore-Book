@@ -73,6 +73,9 @@ import { ContinuityDashboard } from '../components/continuity/ContinuityDashboar
 import { HomeScreen } from '../components/HomeScreen';
 import { PhotoGallery } from '../components/PhotoGallery';
 import { GlobalEntityModalHost } from '../components/entity/GlobalEntityModalHost';
+import { ChatGPTExportReminder } from '../components/account/ChatGPTExportReminder';
+import { ChatGPTImportDemoSimulator } from '../components/account/ChatGPTImportDemoSimulator';
+import { OnboardingDemoSimulator } from '../components/onboarding/OnboardingDemoSimulator';
 import { getSurfaceFromRoute, getRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
 import { isLorebookLibraryRoute } from '../lib/lorebookLibrary';
 import { scrollToTop } from '../lib/scrollToTop';
@@ -572,6 +575,9 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       </div>
       <ModeBadge />
       <GlobalEntityModalHost />
+      <ChatGPTExportReminder />
+      <OnboardingDemoSimulator />
+      <ChatGPTImportDemoSimulator />
       {import.meta.env.DEV && <ConversationPersistenceInspector />}
     </div>
   );
