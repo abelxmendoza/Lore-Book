@@ -1,15 +1,22 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, Search, Filter, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Heart, Search, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle, RefreshCw, BookOpen, Link2, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 import { fetchCharacterList } from '../../api/characterList';
 import { useMockData } from '../../contexts/MockDataContext';
+import { buildDatingRomanceClipboardText } from '../../lib/datingRomanceClipboard';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { 
   getMockRomanticRelationships, 
   getMockRomanticRelationshipsByFilter,
@@ -24,6 +31,10 @@ import { RankingView } from './RankingView';
 import { DetectedCharacterSuggestions } from '../characters/DetectedCharacterSuggestions';
 import { RomanticLexicalInsights } from './RomanticLexicalInsights';
 import { RomanticStoryShowcase } from './RomanticStoryShowcase';
+import {
+  RomanticInterestChatLauncher,
+  type RomanticInterestCharacterOption,
+} from './RomanticInterestChatLauncher';
 import type { RomanticRescanSummary } from '../../api/romanticRelationships';
 import { apiCache } from '../../lib/cache';
 import { fetchCharacterById } from '../../lib/hydrateBookEntity';
@@ -36,7 +47,7 @@ import {
   useRescanRomanticRelationshipsMutation,
 } from '../../store/api/entitiesApi';
 
-type RomanticRelationship = {
+export type RomanticRelationship = {
   id: string;
   person_id: string;
   person_type: 'character' | 'omega_entity';
@@ -86,8 +97,10 @@ type RomanticRelationship = {
 const obsessionScore = (r: RomanticRelationship) => r.metadata?.signals?.obsession_score ?? 0;
 
 type CharacterListItem = {
+  id: string;
   name: string;
   alias?: string[] | null;
+  metadata?: { sex?: string | null } | null;
 };
 
 type FilterType =
@@ -133,6 +146,7 @@ const isHighRiskRelationship = (relationship: RomanticRelationship) =>
 
 const RELATIONSHIP_GRID_CLASS =
   'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr';
+const LOVE_VIEW_STORAGE_KEY = 'lk_dating_romance_view';
 
 export const LoveAndRelationshipsView = () => {
   const { useMockData: shouldUseMockData } = useMockData();
@@ -142,6 +156,9 @@ export const LoveAndRelationshipsView = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
   const [existingCharacterNames, setExistingCharacterNames] = useState<string[]>([]);
+  const [existingCharacters, setExistingCharacters] = useState<RomanticInterestCharacterOption[]>([]);
+  const [romanticInterestBusy, setRomanticInterestBusy] = useState(false);
+  const [romanticInterestError, setRomanticInterestError] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
@@ -150,6 +167,9 @@ export const LoveAndRelationshipsView = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
+  );
   const romanticRelationshipsQuery = useGetRomanticRelationshipsQuery(undefined, { skip: shouldUseMockData });
   const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
   const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
@@ -196,12 +216,27 @@ export const LoveAndRelationshipsView = () => {
 
   const loadCharacterNames = async () => {
     if (shouldUseMockData) {
-      setExistingCharacterNames(getMockCharacterSuggestionBookNames('romantic'));
+      const names = getMockCharacterSuggestionBookNames('romantic');
+      setExistingCharacterNames(names);
+      setExistingCharacters(
+        names.map((name) => ({
+          id: `demo-character-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          name,
+        })),
+      );
       return;
     }
 
     try {
       const list = await fetchCharacterList<CharacterListItem>();
+      setExistingCharacters(
+        list.map((character) => ({
+          id: character.id,
+          name: character.name,
+          aliases: Array.isArray(character.alias) ? character.alias : [],
+          sex: character.metadata?.sex ?? null,
+        })),
+      );
       setExistingCharacterNames(
         list.flatMap(character => [
           character.name,
@@ -210,8 +245,102 @@ export const LoveAndRelationshipsView = () => {
       );
     } catch {
       setExistingCharacterNames([]);
+      setExistingCharacters([]);
     }
   };
+
+  const openRomanticInterestChat = useCallback(
+    async ({
+      name,
+      character,
+    }: {
+      name: string;
+      character?: RomanticInterestCharacterOption;
+    }) => {
+      setRomanticInterestBusy(true);
+      setRomanticInterestError(null);
+      try {
+        if (character) {
+          // Existing Character Book entry — focus chat on the real character.
+          openChatWithFocus({
+            entityId: character.id,
+            entityName: character.name,
+            entityType: 'character',
+            sourceSurface: 'love',
+            sourceLabel: 'Dating & Romance',
+            knowledgeScope: 'romantic interest, shared history, feelings, and relationship context',
+            initialPrompt: `I want to talk about ${character.name} as a romantic interest. Help me capture who they are, how we know each other, and what I am feeling. Please do not assume that they feel the same way or invent details I have not shared.`,
+            arrivedAt: Date.now(),
+          });
+        } else {
+          // Brand-new person — no character exists yet. Send the user to chat to
+          // introduce them (name, aliases, nicknames) so the normal chat-extraction
+          // pipeline creates and identifies the character organically, instead of
+          // pre-creating a bare card from a typed name alone.
+          openChatWithFocus({
+            entityId: `pending:romantic-interest:${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            entityName: name,
+            entityType: 'memory',
+            sourceSurface: 'love',
+            sourceLabel: 'Dating & Romance',
+            knowledgeScope: 'romantic interest, shared history, feelings, and relationship context',
+            initialPrompt:
+              `I want to tell you about ${name}, someone I'm romantically interested in. ` +
+              `Their name is ${name} — let me know any aliases or nicknames I call them too, ` +
+              `plus how we met and what I'm feeling, so you can get to know them.`,
+            arrivedAt: Date.now(),
+          });
+        }
+      } catch (error) {
+        setRomanticInterestError(
+          error instanceof Error ? error.message : 'Could not open a focused chat right now.',
+        );
+      } finally {
+        setRomanticInterestBusy(false);
+      }
+    },
+    [],
+  );
+
+  // People with an active romantic interest shouldn't be offered again in the
+  // "Add a new romantic interest" search — an ended one (ex/ghosted/blocked)
+  // still can be, per isActiveRelationship.
+  const activeRomanticKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const rel of relationships) {
+      if (!isActiveRelationship(rel)) continue;
+      const id = rel.character_id ?? (rel.person_type === 'character' ? rel.person_id : null);
+      if (id) keys.add(id);
+      if (rel.person_name) keys.add(rel.person_name.trim().toLowerCase());
+    }
+    return keys;
+  }, [relationships]);
+
+  const romanticInterestCandidates = useMemo(() => {
+    const merged = [
+      // Character Book entries first — they carry aliases/sex; relationship-only
+      // stubs (below) are just a fallback for people not yet in the Character Book.
+      ...existingCharacters,
+      ...relationships
+        .filter((rel) => rel.person_name && (rel.character_id || rel.person_type === 'character'))
+        .map((rel) => ({
+          id: rel.character_id ?? rel.person_id,
+          name: rel.person_name!,
+        })),
+    ].filter(
+      (character, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.id === character.id ||
+            candidate.name.toLowerCase() === character.name.toLowerCase(),
+        ) === index,
+    );
+    return merged.filter(
+      (character) =>
+        !activeRomanticKeys.has(character.id) &&
+        !activeRomanticKeys.has(character.name.trim().toLowerCase()),
+    );
+  }, [existingCharacters, relationships, activeRomanticKeys]);
 
   const loadRelationships = async () => {
     setLoading(true);
@@ -364,6 +493,9 @@ export const LoveAndRelationshipsView = () => {
         return filteredRelationships;
     }
   })();
+  const clipboardRelationships =
+    activeFilter === 'rankings' ? filteredRelationships : visibleRelationships;
+  const clipboardText = buildDatingRomanceClipboardText(clipboardRelationships);
 
   const renderRelationshipCard = (rel: RomanticRelationship) => (
     <RelationshipCard
@@ -376,6 +508,109 @@ export const LoveAndRelationshipsView = () => {
       linkBusy={linkBusyId === rel.id}
     />
   );
+
+  const renderRelationshipListRow = (rel: RomanticRelationship) => {
+    const hasCharacterCard = rel.person_type === 'character' || Boolean(rel.character_id);
+    const signals = rel.metadata?.signals;
+    const teaser =
+      rel.user_romantic_filter?.note ??
+      (typeof rel.metadata?.lexical_evidence === 'string'
+        ? rel.metadata.lexical_evidence
+        : null);
+    const score = (value: number | null | undefined) =>
+      value == null ? null : `${Math.round(value * 100)}%`;
+
+    return (
+      <div
+        key={rel.id}
+        data-testid={`relationship-card-${rel.id}`}
+        className={`flex flex-col sm:flex-row sm:items-stretch hover:bg-white/5 transition-colors ${
+          highlightedRelationshipId === rel.id
+            ? 'bg-pink-500/10 ring-1 ring-inset ring-pink-400/50'
+            : ''
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setSelectedRelationship(rel.id)}
+          className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left"
+        >
+          <Heart className="h-4 w-4 text-pink-300/75 mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-white truncate">
+                {rel.person_name || rel.relationship_type.replace(/_/g, ' ')}
+              </p>
+              <span className="text-[10px] text-white/45 shrink-0">
+                {rel.status.replace(/_/g, ' ')}
+              </span>
+            </div>
+            {teaser && (
+              <p className="text-xs text-white/50 line-clamp-2 mt-0.5">{teaser}</p>
+            )}
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
+              <span>{rel.relationship_type.replace(/_/g, ' ')}</span>
+              {rel.is_situationship && <span>Situationship</span>}
+              {rel.exclusivity_status && <span>{rel.exclusivity_status}</span>}
+              {score(rel.affection_score) && <span>Affection: {score(rel.affection_score)}</span>}
+              {score(rel.compatibility_score) && (
+                <span>Compatibility: {score(rel.compatibility_score)}</span>
+              )}
+              {score(rel.relationship_health) && (
+                <span>Health: {score(rel.relationship_health)}</span>
+              )}
+              {signals?.attachment_intensity != null && (
+                <span>Attachment: {score(signals.attachment_intensity)}</span>
+              )}
+              {(rel.red_flags?.length ?? 0) > 0 && <span>{rel.red_flags.length} red flags</span>}
+              {(rel.green_flags?.length ?? 0) > 0 && <span>{rel.green_flags.length} green flags</span>}
+              {rel.start_date && (
+                <span>Started: {new Date(rel.start_date).toLocaleDateString()}</span>
+              )}
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-white/25 mt-0.5 shrink-0" />
+        </button>
+        <div className="flex items-center gap-2 px-3 pb-2.5 sm:py-2.5 sm:pl-0">
+          {hasCharacterCard ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void openCharacterCard(rel)}
+              className="h-7 border-cyan-500/30 bg-cyan-500/10 px-2 text-[10px] text-cyan-100 hover:bg-cyan-500/20"
+            >
+              <BookOpen className="mr-1 h-3 w-3" />
+              Character card
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void linkRelationshipToCharacter(rel)}
+              disabled={linkBusyId === rel.id}
+              className="h-7 border-pink-500/30 bg-pink-500/10 px-2 text-[10px] text-pink-100 hover:bg-pink-500/20"
+            >
+              <Link2 className="mr-1 h-3 w-3" />
+              {linkBusyId === rel.id ? 'Linking...' : 'Link to Character Book'}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderRelationshipCollection = (items: RomanticRelationship[]) =>
+    viewMode === 'list' ? (
+      <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+        {items.map(renderRelationshipListRow)}
+      </div>
+    ) : (
+      <div className={RELATIONSHIP_GRID_CLASS}>
+        {items.map(renderRelationshipCard)}
+      </div>
+    );
 
   if (loading) {
     return (
@@ -452,6 +687,13 @@ export const LoveAndRelationshipsView = () => {
         </p>
       )}
 
+      <RomanticInterestChatLauncher
+        characters={romanticInterestCandidates}
+        busy={romanticInterestBusy}
+        error={romanticInterestError}
+        onContinue={openRomanticInterestChat}
+      />
+
       <RomanticStoryShowcase demoMode={shouldUseMockData} />
 
       <RomanticLexicalInsights
@@ -489,6 +731,13 @@ export const LoveAndRelationshipsView = () => {
             className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40"
           />
         </div>
+        <GridListViewToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          copyText={clipboardText}
+          copyDisabled={clipboardRelationships.length === 0}
+          storageKey={LOVE_VIEW_STORAGE_KEY}
+        />
       </div>
 
       {/* Filter Tabs */}
@@ -576,9 +825,7 @@ export const LoveAndRelationshipsView = () => {
                 <Heart className="w-5 h-5 text-pink-400" />
                 Active Relationships
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {activeRelationships.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(activeRelationships)}
             </div>
           )}
 
@@ -589,9 +836,7 @@ export const LoveAndRelationshipsView = () => {
                 <Sparkles className="w-5 h-5 text-pink-400" />
                 Crushes & Interests
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {crushes.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(crushes)}
             </div>
           )}
 
@@ -601,25 +846,19 @@ export const LoveAndRelationshipsView = () => {
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
                 <span className="text-white/60">Past Relationships</span>
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {pastRelationships.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(pastRelationships)}
             </div>
           )}
 
           {/* Situationships Section */}
-          {activeFilter === 'situationships' && filteredRelationships.length > 0 && (
-            <div className={RELATIONSHIP_GRID_CLASS}>
-              {situationships.map(renderRelationshipCard)}
-            </div>
-          )}
+          {activeFilter === 'situationships' &&
+            filteredRelationships.length > 0 &&
+            renderRelationshipCollection(situationships)}
 
           {/* Dating Section */}
-          {activeFilter === 'dating' && datingRelationships.length > 0 && (
-            <div className={RELATIONSHIP_GRID_CLASS}>
-              {datingRelationships.map(renderRelationshipCard)}
-            </div>
-          )}
+          {activeFilter === 'dating' &&
+            datingRelationships.length > 0 &&
+            renderRelationshipCollection(datingRelationships)}
 
           {/* No Contact Section */}
           {activeFilter === 'no_contact' && noContactRelationships.length > 0 && (
@@ -628,9 +867,7 @@ export const LoveAndRelationshipsView = () => {
                 <Ban className="w-5 h-5 text-red-400" />
                 No Contact
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {noContactRelationships.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(noContactRelationships)}
             </div>
           )}
 
@@ -641,9 +878,7 @@ export const LoveAndRelationshipsView = () => {
                 <RotateCcw className="w-5 h-5 text-blue-400" />
                 Possible Reconnection
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {reconnectionRelationships.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(reconnectionRelationships)}
             </div>
           )}
 
@@ -654,9 +889,7 @@ export const LoveAndRelationshipsView = () => {
                 <AlertTriangle className="w-5 h-5 text-orange-400" />
                 High Risk / Needs Care
               </h2>
-              <div className={RELATIONSHIP_GRID_CLASS}>
-                {highRiskRelationships.map(renderRelationshipCard)}
-              </div>
+              {renderRelationshipCollection(highRiskRelationships)}
             </div>
           )}
 
