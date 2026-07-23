@@ -4,27 +4,32 @@
 // Enhanced with advanced filters and optimized for large datasets
 // =====================================================
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { subDays } from 'date-fns';
 import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { SkillProfileCard } from './SkillProfileCard';
-import { SkillDetailModal } from './SkillDetailModal';
-import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
-import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
-import { useSkillsBookData } from '../../store/hooks/useEntityBooks';
+import { useState, useEffect, useMemo, useRef } from 'react';
+
 import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
+import { buildSkillBookClipboardText } from '../../lib/skillBookClipboard';
 import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
 import { epistemicFieldLabel } from '../../lib/epistemicLabels';
 import { cn } from '../../lib/cn';
 import { fetchSkillById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
-import { subDays } from 'date-fns';
+
+
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { mockDataService } from '../../services/mockDataService';
 import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
+import {
+  formatSkillCertainty,
+  levelLabel,
+  skillStatus,
+  statusLabel,
+  usageCountLabel,
+} from '../../lib/skillStory';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { useSkillsBookData } from '../../store/hooks/useEntityBooks';
 import {
   setSearchTerm,
   setActiveCategory,
@@ -49,9 +54,22 @@ import {
   selectSkillsBookShowAdvancedFilters,
   selectSkillsBookNumericFilters,
 } from '../../store/selectors';
+import { Button } from '../ui/button';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
+import { Input } from '../ui/input';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
+
+import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
+import { SkillDetailModal } from './SkillDetailModal';
+import { SkillProfileCard } from './SkillProfileCard';
 
 /** Match Places book — 2 columns × 6 rows on mobile */
 const ITEMS_PER_PAGE = 12;
+const SKILLS_VIEW_STORAGE_KEY = 'lk_skills_view';
 
 function skillMatchesCategory(skill: Skill, category: SkillCategoryFilter): boolean {
   const profile = readSkillProfile(skill.metadata);
@@ -153,6 +171,9 @@ export const SkillsBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [mockRegistryTick, setMockRegistryTick] = useState(0);
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(SKILLS_VIEW_STORAGE_KEY, 'grid'),
+  );
   const bookPageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -292,6 +313,11 @@ export const SkillsBook: React.FC = () => {
     return sorted;
   }, [filteredSkills, sortBy]);
 
+  const clipboardText = useMemo(
+    () => buildSkillBookClipboardText(sortedSkills),
+    [sortedSkills],
+  );
+
   const paginatedSkills = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return sortedSkills.slice(start, start + ITEMS_PER_PAGE);
@@ -408,22 +434,31 @@ export const SkillsBook: React.FC = () => {
         onSkillAdded={() => void loadSkills()}
       />
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Skills</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
             {sortedSkills.length} of {skills.length} skills
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadSkills()}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <GridListViewToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            copyText={clipboardText}
+            copyDisabled={sortedSkills.length === 0}
+            storageKey={SKILLS_VIEW_STORAGE_KEY}
+          />
+          <button
+            type="button"
+            onClick={() => void loadSkills()}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       <SearchWithAutocomplete<Skill>
@@ -649,17 +684,63 @@ export const SkillsBook: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3 content-start min-h-0 auto-rows-fr">
-              {paginatedSkills.map((skill) => (
-                <SkillProfileCard
-                  key={skill.id}
-                  skill={skill}
-                  onClick={() => handleSkillClick(skill)}
-                  showProgress
-                  className="h-full"
-                />
-              ))}
-            </div>
+            {viewMode === 'list' ? (
+              <div className="flex-1 mb-3 min-h-0 rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                {paginatedSkills.map((skill) => {
+                  const profile = readSkillProfile(skill.metadata);
+                  const status = skillStatus(skill, profile);
+                  const relatedProjects = profile?.related_projects?.slice(0, 3) ?? [];
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() => handleSkillClick(skill)}
+                      className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+                    >
+                      <BookOpen className="h-4 w-4 text-violet-300/70 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium text-white truncate">{skill.skill_name}</p>
+                          <span className="text-[10px] text-white/45 shrink-0">
+                            {levelLabel(skill.current_level)}
+                          </span>
+                        </div>
+                        {(profile?.story_summary || skill.description || profile?.origin_story) && (
+                          <p className="text-xs text-white/50 line-clamp-2 mt-0.5">
+                            {profile?.story_summary || skill.description || profile?.origin_story}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
+                          <span>{skill.skill_category}</span>
+                          <span>{statusLabel(status)}</span>
+                          <span>{formatSkillCertainty(skill.confidence_score)} certainty</span>
+                          <span>{usageCountLabel(skill.practice_count)}</span>
+                          {profile?.usage_frequency && <span>{profile.usage_frequency}</span>}
+                          {relatedProjects.length > 0 && (
+                            <span>Projects: {relatedProjects.join(', ')}</span>
+                          )}
+                          {skill.last_practiced_at && (
+                            <span>Last: {new Date(skill.last_practiced_at).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3 content-start min-h-0 auto-rows-fr">
+                {paginatedSkills.map((skill) => (
+                  <SkillProfileCard
+                    key={skill.id}
+                    skill={skill}
+                    onClick={() => handleSkillClick(skill)}
+                    showProgress
+                    className="h-full"
+                  />
+                ))}
+              </div>
+            )}
 
             <div className={cn('flex flex-col gap-2 pt-3 border-t mt-auto', bookTheme.border)}>
               <p className={cn('text-[10px] text-center tabular-nums order-2', bookTheme.accentText, 'opacity-70')}>

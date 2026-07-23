@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { MyFamilyModal } from '../family/MyFamilyModal';
@@ -17,6 +17,8 @@ import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Card, CardContent } from '../ui/card';
 import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
+import { GridListViewToolbar, type CardViewMode } from '../ui/GridListViewToolbar';
+import { buildCharacterBookClipboardText } from '../../lib/characterBookClipboard';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
@@ -2967,8 +2969,8 @@ export const CharacterBook = () => {
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    try { return (localStorage.getItem('lk_char_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
+  const [viewMode, setViewMode] = useState<CardViewMode>(() => {
+    try { return (localStorage.getItem('lk_char_view') as CardViewMode) || 'grid'; } catch { return 'grid'; }
   });
   const [showFamilyTree, setShowFamilyTree] = useState(false);
   const [showMyFamily, setShowMyFamily] = useState(false);
@@ -3571,25 +3573,13 @@ export const CharacterBook = () => {
                 {showFamilyTree ? 'Grid' : 'Family Tree'}
               </button>
             )}
-            {/* View mode toggle */}
-            <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
-              <button
-                type="button"
-                onClick={() => { setViewMode('grid'); try { localStorage.setItem('lk_char_view', 'grid'); } catch {} }}
-                className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
-                title="Grid view"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setViewMode('list'); try { localStorage.setItem('lk_char_view', 'list'); } catch {} }}
-                className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
-                title="List view"
-              >
-                <LayoutList className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <GridListViewToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              copyText={buildCharacterBookClipboardText(filteredCharacters)}
+              copyDisabled={filteredCharacters.length === 0}
+              storageKey="lk_char_view"
+            />
             <Button
               leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />}
               onClick={() => void loadCharacters()}
@@ -4029,8 +4019,8 @@ export const CharacterBook = () => {
           user={user}
           onClose={() => setMainCharacterModalOpen(false)}
           onUpdate={() => {
+            // Keep the modal open while editing; list syncs via characters effect.
             void loadCharacters();
-            setMainCharacterModalOpen(false);
           }}
         />
       )}
@@ -4045,10 +4035,9 @@ export const CharacterBook = () => {
             setCharacterModalInitialTab(undefined);
           }}
           onUpdate={() => {
+            // Refresh book data without closing the detail modal.
             void loadCharacters();
             void loadRelationships();
-            setSelectedCharacter(null);
-            setCharacterModalInitialTab(undefined);
           }}
         />
       )}

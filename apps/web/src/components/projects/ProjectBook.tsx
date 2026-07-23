@@ -1,18 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../../lib/api';
 import { fetchProjectById } from '../../lib/hydrateBookEntity';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { buildProjectBookClipboardText } from '../../lib/projectBookClipboard';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useProjectsBookData } from '../../store/hooks/useEntityBooks';
-import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
-import { ProjectDetailModal } from './ProjectDetailModal';
-import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { Button } from '../ui/button';
-import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
-import { openChatWithFocus } from '../../lib/openChatWithFocus';
-import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
+
+import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
+import { ProjectDetailModal } from './ProjectDetailModal';
+import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
+
 
 interface DuplicateGroup {
   match_type: 'exact' | 'containment';
@@ -118,6 +126,7 @@ const buildDemoProjects = (): ProjectCardData[] => {
 const DEMO_PROJECTS = buildDemoProjects();
 
 const PAGE_SIZE = 15; // 2 × 8 on mobile, 3 × 5 on desktop — at least 5 cards per column
+const PROJECTS_VIEW_STORAGE_KEY = 'lk_projects_view';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Active',
@@ -158,6 +167,9 @@ export const ProjectBook = () => {
   const [error, setError] = useState<string | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [demoProjects, setDemoProjects] = useState<ProjectCardData[]>(() => [...DEMO_PROJECTS]);
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(PROJECTS_VIEW_STORAGE_KEY, 'grid'),
+  );
 
   const projects = useMemo((): ProjectCardData[] => {
     if (isMockDataEnabled) return demoProjects;
@@ -169,7 +181,7 @@ export const ProjectBook = () => {
       setDuplicateGroups([]);
       return;
     }
-    setDuplicateGroups((data?.duplicate_groups ?? []) as DuplicateGroup[]);
+    setDuplicateGroups((data?.duplicate_groups ?? []) as unknown as DuplicateGroup[]);
   }, [data, isMockDataEnabled]);
 
   const load = async () => {
@@ -213,6 +225,11 @@ export const ProjectBook = () => {
       return p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q);
     });
   }, [projects, search, statusFilter, typeFilter]);
+
+  const clipboardText = useMemo(
+    () => buildProjectBookClipboardText(filtered),
+    [filtered],
+  );
 
   useEffect(() => {
     const id = consumeHighlightItemId();
@@ -267,6 +284,8 @@ export const ProjectBook = () => {
           name,
           type: 'project',
           status: 'active',
+          description: null,
+          tags: null,
           updated_at: now,
           metadata: { source: 'demo' },
         };
@@ -416,14 +435,23 @@ export const ProjectBook = () => {
             <BookTrustSummary domain="projects" className="mt-1" />
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => { setSelectionMode((m) => !m); setSelected(new Set()); }}
-          className="sm:ml-auto flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-4 py-2.5 sm:py-2 text-sm text-white/70 hover:bg-white/5 hover:border-primary/30 transition min-h-[44px] sm:min-h-0 w-full sm:w-auto touch-manipulation"
-        >
-          <GitMerge className="h-4 w-4 shrink-0" />
-          <span>{selectionMode ? 'Cancel merge' : 'Merge duplicates'}</span>
-        </button>
+        <div className="sm:ml-auto flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <GridListViewToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            copyText={clipboardText}
+            copyDisabled={filtered.length === 0}
+            storageKey={PROJECTS_VIEW_STORAGE_KEY}
+          />
+          <button
+            type="button"
+            onClick={() => { setSelectionMode((m) => !m); setSelected(new Set()); }}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-4 py-2.5 sm:py-2 text-sm text-white/70 hover:bg-white/5 hover:border-primary/30 transition min-h-[44px] sm:min-h-0 flex-1 sm:flex-none touch-manipulation"
+          >
+            <GitMerge className="h-4 w-4 shrink-0" />
+            <span>{selectionMode ? 'Cancel merge' : 'Merge duplicates'}</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-5 sm:mb-6">
@@ -577,18 +605,73 @@ export const ProjectBook = () => {
                 </div>
               </div>
 
-              {/* Project card grid — square tiles on mobile, auto height on desktop */}
-              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 lg:grid-rows-5 gap-2 sm:gap-3 lg:gap-3 mb-4 sm:mb-6 min-h-0 overflow-hidden auto-rows-fr">
-                {paginated.map((p) => (
-                  <ProjectProfileCard
-                    key={p.id}
-                    project={p}
-                    selected={selected.has(p.id)}
-                    selectionMode={selectionMode}
-                    onClick={() => (selectionMode ? toggleSelect(p.id) : setActive(p))}
-                  />
-                ))}
-              </div>
+              {/* Project card grid / compact list */}
+              {viewMode === 'list' ? (
+                <div className="flex-1 mb-4 sm:mb-6 min-h-0 rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                  {paginated.map((project) => {
+                    const status = project.status ?? 'active';
+                    const type = project.type?.replace(/_/g, ' ') ?? 'project';
+                    return (
+                      <button
+                        key={project.id}
+                        type="button"
+                        onClick={() => (selectionMode ? toggleSelect(project.id) : setActive(project))}
+                        className={`w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left ${
+                          selected.has(project.id) ? 'bg-primary/10' : ''
+                        }`}
+                      >
+                        {selectionMode && (
+                          <span
+                            className={`mt-0.5 h-5 w-5 rounded border flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                              selected.has(project.id)
+                                ? 'border-primary bg-primary text-black'
+                                : 'border-white/30 text-transparent'
+                            }`}
+                          >
+                            ✓
+                          </span>
+                        )}
+                        <Briefcase className="h-4 w-4 text-primary/75 mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">{project.name}</p>
+                            <span className="text-[10px] text-white/45 shrink-0">
+                              {titleizeFilter(status, STATUS_LABELS)}
+                            </span>
+                          </div>
+                          {(project.summary || project.description) && (
+                            <p className="text-xs text-white/50 line-clamp-2 mt-0.5">
+                              {project.summary || project.description}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
+                            <span>{titleizeFilter(type, TYPE_LABELS)}</span>
+                            {project.tags?.length ? <span>Tags: {project.tags.slice(0, 5).join(', ')}</span> : null}
+                            {project.started_at && (
+                              <span>Started: {new Date(project.started_at).toLocaleDateString()}</span>
+                            )}
+                            {project.updated_at && (
+                              <span>Updated: {new Date(project.updated_at).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 lg:grid-rows-5 gap-2 sm:gap-3 lg:gap-3 mb-4 sm:mb-6 min-h-0 overflow-hidden auto-rows-fr">
+                  {paginated.map((p) => (
+                    <ProjectProfileCard
+                      key={p.id}
+                      project={p}
+                      selected={selected.has(p.id)}
+                      selectionMode={selectionMode}
+                      onClick={() => (selectionMode ? toggleSelect(p.id) : setActive(p))}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Page footer */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-primary/20 mt-auto">

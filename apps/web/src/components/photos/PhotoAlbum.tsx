@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Image as ImageIcon, Calendar, MapPin, User, Search, Filter, X, Loader2, ZoomIn } from 'lucide-react';
+import { Image as ImageIcon, Calendar, MapPin, Search, X, Loader2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { LazyImage } from '../ui/LazyImage';
@@ -8,6 +8,12 @@ import { fetchJson } from '../../lib/api';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { mockDataService, type PhotoEntry } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
+import { buildPhotoAlbumClipboardText } from '../../lib/photoAlbumClipboard';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 
 // Mock photo data
 const dummyPhotos: PhotoEntry[] = [
@@ -133,6 +139,92 @@ const dummyPhotos: PhotoEntry[] = [
   }
 ];
 
+const PHOTO_VIEW_STORAGE_KEY = 'lk_photo_album_view';
+
+function PhotoCard({
+  photo,
+  onClick,
+}: {
+  photo: PhotoEntry;
+  onClick: () => void;
+}) {
+  return (
+    <div className="relative group cursor-pointer" onClick={onClick}>
+      <div className="aspect-square rounded-lg overflow-hidden border border-border/60 bg-black/40">
+        <LazyImage
+          src={photo.metadata?.photoUrl || ''}
+          alt={photo.summary || photo.content.substring(0, 50)}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+      </div>
+      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-3 flex flex-col justify-end">
+        <p className="text-xs text-white line-clamp-2 mb-1">
+          {photo.summary || photo.content.substring(0, 100)}
+        </p>
+        <div className="flex items-center gap-2 mt-1">
+          {photo.metadata?.locationName && (
+            <div className="flex items-center gap-1 min-w-0">
+              <MapPin className="w-3 h-3 text-white/60 shrink-0" />
+              <p className="text-[10px] text-white/60 truncate">{photo.metadata.locationName}</p>
+            </div>
+          )}
+          <p className="text-[10px] text-white/60 shrink-0">
+            {new Date(photo.date).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhotoListRow({
+  photo,
+  onClick,
+}: {
+  photo: PhotoEntry;
+  onClick: () => void;
+}) {
+  const people = photo.metadata?.people ?? [];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-stretch gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+    >
+      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-md overflow-hidden border border-border/60 bg-black/40 shrink-0">
+        <LazyImage
+          src={photo.metadata?.photoUrl || ''}
+          alt={photo.summary || photo.content.substring(0, 50)}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="min-w-0 flex-1 py-0.5">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium text-white truncate">
+            {photo.summary || photo.content.slice(0, 80) || 'Photo'}
+          </p>
+          <span className="text-[10px] text-white/45 shrink-0">
+            {new Date(photo.date).toLocaleDateString()}
+          </span>
+        </div>
+        <p className="text-xs text-white/55 line-clamp-2 mt-0.5">{photo.content}</p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px] text-white/45">
+          {photo.metadata?.locationName && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {photo.metadata.locationName}
+            </span>
+          )}
+          {people.length > 0 && <span>People: {people.join(', ')}</span>}
+          {photo.tags?.length > 0 && (
+            <span className="truncate">Tags: {photo.tags.slice(0, 6).join(', ')}</span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export const PhotoAlbum: React.FC = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -140,6 +232,9 @@ export const PhotoAlbum: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoEntry | null>(null);
   const [filterBy, setFilterBy] = useState<'all' | 'recent' | 'by-location' | 'by-date'>('all');
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(PHOTO_VIEW_STORAGE_KEY, 'grid'),
+  );
   const { openMemory } = useEntityModal();
 
   // Register mock data with service on mount
@@ -213,6 +308,11 @@ export const PhotoAlbum: React.FC = () => {
     return filtered;
   }, [photos, searchQuery, filterBy]);
 
+  const clipboardText = useMemo(
+    () => buildPhotoAlbumClipboardText(filteredPhotos),
+    [filteredPhotos],
+  );
+
   const groupedByLocation = useMemo(() => {
     const groups: Record<string, PhotoEntry[]> = {};
     filteredPhotos.forEach(photo => {
@@ -263,10 +363,9 @@ export const PhotoAlbum: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold text-white">Photo Album</h1>
             {isMockDataEnabled && (
               <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
@@ -274,17 +373,18 @@ export const PhotoAlbum: React.FC = () => {
               </Badge>
             )}
           </div>
-            {isMockDataEnabled && (
-              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
-                Demo Data
-              </Badge>
-            )}
-          </div>
           <p className="text-sm text-white/60 mt-1">
-            {filteredPhotos.length} photo{filteredPhotos.length !== 1 ? 's' : ''} 
+            {filteredPhotos.length} photo{filteredPhotos.length !== 1 ? 's' : ''}
             {searchQuery && ` matching "${searchQuery}"`}
           </p>
         </div>
+        <GridListViewToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          copyText={clipboardText}
+          copyDisabled={filteredPhotos.length === 0}
+          storageKey={PHOTO_VIEW_STORAGE_KEY}
+        />
       </div>
 
       {/* Search and Filters */}
@@ -326,7 +426,7 @@ export const PhotoAlbum: React.FC = () => {
         </div>
       </div>
 
-      {/* Photo Grid */}
+      {/* Photo grid / list */}
       {filteredPhotos.length === 0 ? (
         <Card className="p-12 text-center bg-black/40 border-border/60">
           <ImageIcon className="w-16 h-16 text-white/30 mx-auto mb-4" />
@@ -334,7 +434,7 @@ export const PhotoAlbum: React.FC = () => {
             {searchQuery ? 'No photos found' : 'No photos yet'}
           </h3>
           <p className="text-sm text-white/60">
-            {searchQuery 
+            {searchQuery
               ? 'Try a different search term'
               : 'Upload photos in the chat section to see them here'}
           </p>
@@ -350,31 +450,27 @@ export const PhotoAlbum: React.FC = () => {
                   {locationPhotos.length} photo{locationPhotos.length !== 1 ? 's' : ''}
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {locationPhotos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="relative group cursor-pointer"
-                    onClick={() => handlePhotoClick(photo)}
-                  >
-                    <div className="aspect-square rounded-lg overflow-hidden border border-border/60 bg-black/40">
-                      <LazyImage
-                        src={photo.metadata?.photoUrl || ''}
-                        alt={photo.summary || photo.content.substring(0, 50)}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-3 flex flex-col justify-end">
-                      <p className="text-xs text-white line-clamp-2 mb-1">
-                        {photo.summary || photo.content.substring(0, 100)}
-                      </p>
-                      <p className="text-[10px] text-white/60">
-                        {new Date(photo.date).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {viewMode === 'list' ? (
+                <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                  {locationPhotos.map((photo) => (
+                    <PhotoListRow
+                      key={photo.id}
+                      photo={photo}
+                      onClick={() => handlePhotoClick(photo)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {locationPhotos.map((photo) => (
+                    <PhotoCard
+                      key={photo.id}
+                      photo={photo}
+                      onClick={() => handlePhotoClick(photo)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -391,68 +487,48 @@ export const PhotoAlbum: React.FC = () => {
                     {monthPhotos.length} photo{monthPhotos.length !== 1 ? 's' : ''}
                   </Badge>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {monthPhotos.map((photo) => (
-                    <div
-                      key={photo.id}
-                      className="relative group cursor-pointer"
-                      onClick={() => handlePhotoClick(photo)}
-                    >
-                      <div className="aspect-square rounded-lg overflow-hidden border border-border/60 bg-black/40">
-                        <LazyImage
-                          src={photo.metadata?.photoUrl || ''}
-                          alt={photo.summary || photo.content.substring(0, 50)}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      </div>
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-3 flex flex-col justify-end">
-                        <p className="text-xs text-white line-clamp-2 mb-1">
-                          {photo.summary || photo.content.substring(0, 100)}
-                        </p>
-                        <p className="text-[10px] text-white/60">
-                          {new Date(photo.date).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {viewMode === 'list' ? (
+                  <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                    {monthPhotos.map((photo) => (
+                      <PhotoListRow
+                        key={photo.id}
+                        photo={photo}
+                        onClick={() => handlePhotoClick(photo)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {monthPhotos.map((photo) => (
+                      <PhotoCard
+                        key={photo.id}
+                        photo={photo}
+                        onClick={() => handlePhotoClick(photo)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+          {filteredPhotos.map((photo) => (
+            <PhotoListRow
+              key={photo.id}
+              photo={photo}
+              onClick={() => handlePhotoClick(photo)}
+            />
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredPhotos.map((photo) => (
-            <div
+            <PhotoCard
               key={photo.id}
-              className="relative group cursor-pointer"
+              photo={photo}
               onClick={() => handlePhotoClick(photo)}
-            >
-              <div className="aspect-square rounded-lg overflow-hidden border border-border/60 bg-black/40">
-                <LazyImage
-                  src={photo.metadata?.photoUrl || ''}
-                  alt={photo.summary || photo.content.substring(0, 50)}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-3 flex flex-col justify-end">
-                <p className="text-xs text-white line-clamp-2 mb-1">
-                  {photo.summary || photo.content.substring(0, 100)}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  {photo.metadata?.locationName && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-white/60" />
-                      <p className="text-[10px] text-white/60 truncate">
-                        {photo.metadata.locationName}
-                      </p>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-white/60">
-                    {new Date(photo.date).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            </div>
+            />
           ))}
         </div>
       )}

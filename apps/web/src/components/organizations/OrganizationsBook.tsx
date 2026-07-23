@@ -12,6 +12,11 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
@@ -20,6 +25,7 @@ import { GroupMergePanel } from '../groups/GroupMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
+import { buildOrganizationBookClipboardText } from '../../lib/organizationBookClipboard';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { fetchOrganizationById } from '../../lib/hydrateBookEntity';
@@ -33,6 +39,7 @@ import { subDays } from 'date-fns';
 import { enrichOrganizationForDemo } from '../../mocks/modalDemoData';
 
 const ITEMS_PER_PAGE = 24;
+const ORG_VIEW_STORAGE_KEY = 'lk_org_view';
 
 import {
   CANONICAL_GROUP_TYPES,
@@ -1037,6 +1044,9 @@ export const OrganizationsBook: React.FC = () => {
   const createdOrgsRef = useRef<Organization[]>([]);
   const [createdOrgsVersion, setCreatedOrgsVersion] = useState(0);
   const [highlightOrgId, setHighlightOrgId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(ORG_VIEW_STORAGE_KEY, 'grid'),
+  );
   const bookPageRef = useRef<HTMLDivElement>(null);
   const isMockDataEnabled = useShouldUseMockData();
 
@@ -1265,6 +1275,10 @@ export const OrganizationsBook: React.FC = () => {
   const paginatedOrganizations = filteredOrganizations.slice(startIndex, endIndex);
   const visibleStart = filteredOrganizations.length === 0 ? 0 : startIndex + 1;
   const visibleEnd = Math.min(endIndex, filteredOrganizations.length);
+  const clipboardText = useMemo(
+    () => buildOrganizationBookClipboardText(filteredOrganizations),
+    [filteredOrganizations],
+  );
 
   // Auto-open modal when navigated here from an entity chip (chat → organizations).
   useEffect(() => {
@@ -1483,6 +1497,14 @@ export const OrganizationsBook: React.FC = () => {
               <option value="confidence_desc">High Confidence</option>
               <option value="recent">Recently Seen</option>
             </select>
+
+            <GridListViewToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              copyText={clipboardText}
+              copyDisabled={filteredOrganizations.length === 0}
+              storageKey={ORG_VIEW_STORAGE_KEY}
+            />
 
             <Button
               variant="outline"
@@ -1783,7 +1805,7 @@ export const OrganizationsBook: React.FC = () => {
                 </div>
               </div>
 
-              {/* Organizations Grid — two columns on mobile; List stays single column */}
+              {/* Organizations grid / list */}
               <ErrorBoundary
                 fallback={
                   <div className="flex-1 text-center py-12 text-white/60">
@@ -1794,21 +1816,85 @@ export const OrganizationsBook: React.FC = () => {
                   </div>
                 }
               >
-                <div className="flex-1 grid gap-2 sm:gap-3 mb-4 sm:mb-6 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
-                  {paginatedOrganizations.map((org) => (
-                    <OrganizationProfileCard
-                      key={org.id}
-                      organization={org}
-                      selectionMode={selectionMode}
-                      selected={selectedForMerge.has(org.id)}
-                      highlighted={highlightOrgId === org.id}
-                      onClick={() => {
-                        if (selectionMode) toggleSelectedForMerge(org.id);
-                        else setSelectedOrganization(normalizeOrganization(org));
-                      }}
-                    />
-                  ))}
-                </div>
+                {viewMode === 'list' ? (
+                  <div className="flex-1 mb-4 sm:mb-6 min-h-0 rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                    {paginatedOrganizations.map((org) => {
+                      const members = (org.members ?? [])
+                        .map((m) => m.character_name)
+                        .filter(Boolean)
+                        .slice(0, 5);
+                      const places = (org.locations ?? [])
+                        .map((l) => l.location_name)
+                        .filter(Boolean)
+                        .slice(0, 3);
+                      return (
+                        <button
+                          key={org.id}
+                          type="button"
+                          onClick={() => {
+                            if (selectionMode) toggleSelectedForMerge(org.id);
+                            else setSelectedOrganization(normalizeOrganization(org));
+                          }}
+                          className={`w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left ${
+                            selectedForMerge.has(org.id) ? 'bg-primary/10' : ''
+                          } ${highlightOrgId === org.id ? 'ring-1 ring-inset ring-purple-400/50' : ''}`}
+                        >
+                          {selectionMode && (
+                            <span
+                              className={`mt-1 h-5 w-5 rounded border flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                selectedForMerge.has(org.id)
+                                  ? 'border-primary bg-primary text-black'
+                                  : 'border-white/30 text-transparent'
+                              }`}
+                            >
+                              ✓
+                            </span>
+                          )}
+                          <Users className="h-4 w-4 text-purple-300/70 mt-0.5 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium text-white truncate">{org.name}</p>
+                              <span className="text-[10px] text-white/40 shrink-0">
+                                {org.member_count ?? org.members?.length ?? 0} members
+                              </span>
+                            </div>
+                            {org.description && (
+                              <p className="text-xs text-white/50 line-clamp-2 mt-0.5">
+                                {org.description}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
+                              <span>{GROUP_TYPE_LABELS[org.group_type] ?? org.group_type ?? org.type}</span>
+                              {org.user_relationship && <span>You: {org.user_relationship}</span>}
+                              {org.location && <span>{org.location}</span>}
+                              {members.length > 0 && <span>People: {members.join(', ')}</span>}
+                              {places.length > 0 && <span>Places: {places.join(', ')}</span>}
+                              {org.last_seen && (
+                                <span>Seen: {new Date(org.last_seen).toLocaleDateString()}</span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex-1 grid gap-2 sm:gap-3 mb-4 sm:mb-6 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
+                    {paginatedOrganizations.map((org) => (
+                      <OrganizationProfileCard
+                        key={org.id}
+                        organization={org}
+                        selectionMode={selectionMode}
+                        selected={selectedForMerge.has(org.id)}
+                        highlighted={highlightOrgId === org.id}
+                        onClick={() => {
+                          if (selectionMode) toggleSelectedForMerge(org.id);
+                          else setSelectedOrganization(normalizeOrganization(org));
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </ErrorBoundary>
 
               {/* Page Footer with Navigation */}
@@ -1886,8 +1972,8 @@ export const OrganizationsBook: React.FC = () => {
           onSelectOrganization={setSelectedOrganization}
           onClose={() => setSelectedOrganization(null)}
           onUpdate={() => {
+            // Refresh the book list but keep the modal open while editing.
             void loadOrganizations();
-            setSelectedOrganization(null);
           }}
         />
       )}

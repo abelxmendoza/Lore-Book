@@ -17,6 +17,12 @@ import { LocationProfileCard, type LocationProfile } from './LocationProfileCard
 import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
+import { buildLocationBookClipboardText } from '../../lib/locationBookClipboard';
 import { fetchJson } from '../../lib/api';
 import { fetchLocationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
@@ -31,6 +37,8 @@ import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
 import { locationBookDemoLocations } from '../../mocks/locationBookDemo';
+
+const LOCATION_VIEW_STORAGE_KEY = 'lk_location_view';
 
 // Export for use in mock data service + tests
 export const dummyLocations = locationBookDemoLocations;
@@ -63,6 +71,9 @@ export const LocationBook = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(LOCATION_VIEW_STORAGE_KEY, 'grid'),
+  );
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -164,6 +175,10 @@ export const LocationBook = () => {
   const paginatedLocations = filteredLocations.slice(startIndex, endIndex);
   const visibleStart = filteredLocations.length === 0 ? 0 : startIndex + 1;
   const visibleEnd = Math.min(endIndex, filteredLocations.length);
+  const clipboardText = useMemo(
+    () => buildLocationBookClipboardText(filteredLocations),
+    [filteredLocations],
+  );
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -303,22 +318,31 @@ export const LocationBook = () => {
       />
 
       <OntologyCompliancePanel book="locations" />
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
             {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <GridListViewToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            copyText={clipboardText}
+            copyDisabled={filteredLocations.length === 0}
+            storageKey={LOCATION_VIEW_STORAGE_KEY}
+          />
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -524,21 +548,93 @@ export const LocationBook = () => {
                 </div>
               </div>
 
-              {/* Places Grid */}
-              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 mb-3 sm:mb-6 content-start min-h-0">
-                {paginatedLocations.map((location, index) => (
-                  <LocationProfileCard
-                    key={location.id || `loc-${index}`}
-                    location={location}
-                    allLocations={locations}
-                    selectionMode={selectionMode}
-                    selected={selectedForMerge.has(location.id)}
-                    onClick={() =>
-                      selectionMode ? toggleSelectedForMerge(location.id) : setSelectedLocation(location)
-                    }
-                  />
-                ))}
-              </div>
+              {/* Places grid / list */}
+              {viewMode === 'list' ? (
+                <div className="flex-1 mb-3 sm:mb-6 min-h-0 rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+                  {paginatedLocations.map((location, index) => {
+                    const placeLine = [location.city, location.region, location.country]
+                      .filter(Boolean)
+                      .join(', ');
+                    const people = (location.relatedPeople ?? [])
+                      .map((p) => p.name)
+                      .filter(Boolean)
+                      .slice(0, 4);
+                    const tags = (location.tagCounts ?? []).map((t) => t.tag).slice(0, 4);
+                    return (
+                      <button
+                        key={location.id || `loc-${index}`}
+                        type="button"
+                        onClick={() =>
+                          selectionMode
+                            ? toggleSelectedForMerge(location.id)
+                            : setSelectedLocation(location)
+                        }
+                        className={`w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left ${
+                          selectedForMerge.has(location.id) ? 'bg-teal-500/10' : ''
+                        }`}
+                      >
+                        {selectionMode && (
+                          <span
+                            className={`mt-1 h-5 w-5 rounded border flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                              selectedForMerge.has(location.id)
+                                ? 'border-teal-400 bg-teal-500 text-black'
+                                : 'border-white/30 text-transparent'
+                            }`}
+                          >
+                            ✓
+                          </span>
+                        )}
+                        <MapPin className="h-4 w-4 text-teal-300/70 mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">{location.name}</p>
+                            <span className="text-[10px] text-white/40 shrink-0">
+                              {location.visitCount} visit{location.visitCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          {(placeLine || location.address) && (
+                            <p className="text-xs text-white/50 truncate mt-0.5">
+                              {placeLine || location.address}
+                            </p>
+                          )}
+                          {location.description && (
+                            <p className="text-xs text-white/45 line-clamp-2 mt-0.5">
+                              {location.description}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
+                            {location.type && <span>Type: {location.type}</span>}
+                            {people.length > 0 && <span>People: {people.join(', ')}</span>}
+                            {tags.length > 0 && <span>Tags: {tags.join(', ')}</span>}
+                            {location.lastVisited && (
+                              <span>
+                                Last: {new Date(location.lastVisited).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 mb-3 sm:mb-6 content-start min-h-0">
+                  {paginatedLocations.map((location, index) => (
+                    <LocationProfileCard
+                      key={location.id || `loc-${index}`}
+                      location={location}
+                      allLocations={locations}
+                      selectionMode={selectionMode}
+                      selected={selectedForMerge.has(location.id)}
+                      onClick={() =>
+                        selectionMode
+                          ? toggleSelectedForMerge(location.id)
+                          : setSelectedLocation(location)
+                      }
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Page Footer with Navigation */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-4 border-t border-teal-800/20 mt-auto">

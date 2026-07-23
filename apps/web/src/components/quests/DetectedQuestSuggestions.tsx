@@ -3,15 +3,15 @@
  * Used on the Quest Board (quest-board-suggestions).
  */
 
-import { useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useToast } from '../ui/toast';
 import { useCreateQuest, useQuestSuggestions } from '../../hooks/useQuests';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
-import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
+import { SuggestionMergeHint } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
 import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -19,6 +19,8 @@ import { mockDataService } from '../../services/mockDataService';
 import { RescanChatsButton } from '../suggestions/RescanChatsButton';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { buildQuestSuggestionsClipboardText } from '../../lib/questSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import type { QuestSuggestion } from '../../types/quest';
 import { cn } from '../../lib/cn';
 
@@ -27,6 +29,13 @@ const TYPE_LABELS: Record<string, string> = {
   side: 'Side',
   daily: 'Daily',
   achievement: 'Achievement',
+  quest: 'Quest',
+  project: 'Project',
+  milestone: 'Milestone',
+  task: 'Task',
+  habit: 'Habit',
+  routine: 'Routine',
+  intention: 'Intention',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -34,7 +43,19 @@ const TYPE_COLORS: Record<string, string> = {
   side: 'border-blue-400/40 bg-blue-500/15 text-blue-200',
   daily: 'border-green-400/40 bg-green-500/15 text-green-200',
   achievement: 'border-purple-400/40 bg-purple-500/15 text-purple-200',
+  quest: 'border-amber-400/40 bg-amber-500/15 text-amber-200',
+  project: 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200',
+  milestone: 'border-purple-400/40 bg-purple-500/15 text-purple-200',
+  task: 'border-green-400/40 bg-green-500/15 text-green-200',
+  habit: 'border-blue-400/40 bg-blue-500/15 text-blue-200',
+  routine: 'border-blue-400/40 bg-blue-500/15 text-blue-200',
+  intention: 'border-white/30 bg-white/10 text-white/75',
 };
+
+function evidenceText(suggestion: QuestSuggestion): string | undefined {
+  const first = suggestion.evidence?.[0];
+  return typeof first === 'string' ? first : first?.text;
+}
 
 function suggestionKey(suggestion: QuestSuggestion): string {
   return suggestion.id ?? suggestion.title;
@@ -66,6 +87,12 @@ export function DetectedQuestSuggestions({
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const bookEntries = useMemo(() => {
     if (existingBookEntries.length > 0) return existingBookEntries;
@@ -132,6 +159,14 @@ export function DetectedQuestSuggestions({
     }
   };
 
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildQuestSuggestionsClipboardText(visible));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleDismiss = async (suggestion: QuestSuggestion) => {
     const key = suggestionKey(suggestion);
     setDismissed((prev) => new Set([...prev, key]));
@@ -189,6 +224,20 @@ export function DetectedQuestSuggestions({
                 onClick={() => void handleRescan()}
               />
             )}
+            {visible.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleCopyAll()}
+                className={cn(
+                  'h-8 w-8 flex items-center justify-center rounded transition-colors',
+                  copied ? 'text-emerald-300' : 'text-white/50 hover:text-primary hover:bg-primary/10',
+                )}
+                title="Copy all suggested quests as plain text"
+                aria-label="Copy all suggested quests"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setCollapsed((c) => !c)}
@@ -223,7 +272,8 @@ export function DetectedQuestSuggestions({
                 {visible.map((suggestion) => {
                   const key = suggestionKey(suggestion);
                   const isAdding = adding === key;
-                  const typeColor = TYPE_COLORS[suggestion.quest_type] ?? TYPE_COLORS.side;
+                  const displayType = suggestion.item_type ?? suggestion.quest_type;
+                  const typeColor = TYPE_COLORS[displayType] ?? TYPE_COLORS.side;
 
                   return (
                     <article
@@ -242,7 +292,7 @@ export function DetectedQuestSuggestions({
                               typeColor,
                             )}
                           >
-                            {TYPE_LABELS[suggestion.quest_type] ?? suggestion.quest_type}
+                            {TYPE_LABELS[displayType] ?? displayType}
                           </span>
                           <SuggestionMergeHint item={suggestion} bookLabel="Quest Board" className="shrink-0" />
                           <h3 className="truncate text-[11px] font-semibold text-white leading-tight sm:text-xs">
@@ -254,8 +304,38 @@ export function DetectedQuestSuggestions({
                             {suggestion.description}
                           </p>
                         )}
+                        {evidenceText(suggestion) && (
+                          <p className="line-clamp-2 text-[10px] leading-snug text-amber-100/65">
+                            “{evidenceText(suggestion)}”
+                          </p>
+                        )}
+                        {suggestion.reasoning && (
+                          <p className="line-clamp-2 text-[9px] leading-snug text-white/45">
+                            {suggestion.reasoning}
+                          </p>
+                        )}
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[9px] text-white/35">
                           <span>{Math.round((suggestion.confidence ?? 0) * 100)}%</span>
+                          {suggestion.cognition_status && (
+                            <>
+                              <span>·</span>
+                              <span>{suggestion.cognition_status.toLowerCase()}</span>
+                            </>
+                          )}
+                          {suggestion.domain && (
+                            <>
+                              <span>·</span>
+                              <span>{suggestion.domain.toLowerCase().replace(/_/g, ' ')}</span>
+                            </>
+                          )}
+                          {suggestion.last_supported_at && (
+                            <>
+                              <span>·</span>
+                              <span>
+                                supported {new Date(suggestion.last_supported_at).toLocaleDateString()}
+                              </span>
+                            </>
+                          )}
                           {suggestion.priority != null && (
                             <>
                               <span>·</span>
@@ -292,10 +372,12 @@ export function DetectedQuestSuggestions({
                         <button
                           type="button"
                           onClick={() => void handleDismiss(suggestion)}
-                          className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/5"
-                          aria-label="Dismiss"
+                          className="rounded px-1.5 py-1 text-[9px] text-white/45 hover:text-white/75 hover:bg-white/5"
+                          aria-label="Not a goal"
+                          title="Not a goal — LoreBook will remember this correction"
                         >
-                          <X className="h-3 w-3" />
+                          <span className="hidden sm:inline">Not a goal</span>
+                          <X className="h-3 w-3 sm:hidden" />
                         </button>
                       </div>
                     </article>

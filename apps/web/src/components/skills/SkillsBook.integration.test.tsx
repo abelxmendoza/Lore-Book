@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
+import { BrowserRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { SkillsBook } from './SkillsBook';
 import { MockDataProvider } from '../../contexts/MockDataContext';
-import { makeStore, type AppStore } from '../../store';
+import { fetchJson } from '../../lib/api';
 import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
+import { makeStore, type AppStore } from '../../store';
 import type { Skill } from '../../types/skill';
 
 vi.mock('../../lib/api', () => ({ fetchJson: vi.fn() }));
@@ -34,7 +34,8 @@ vi.mock('../trust/BookTrustSummary', () => ({
   BookTrustSummary: () => <div data-testid="book-trust-summary" />,
 }));
 
-import { fetchJson } from '../../lib/api';
+
+import { SkillsBook } from './SkillsBook';
 
 /** Build a complete Skill from the demo fixture's first entry + overrides. */
 function mkSkill(overrides: Partial<Skill>): Skill {
@@ -72,6 +73,7 @@ const queryCard = (name: string) => screen.queryByRole('heading', { name });
 describe('SkillsBook (Redux integration)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     // jsdom doesn't implement scrollIntoView; the book scrolls into view on page change.
     Element.prototype.scrollIntoView = vi.fn();
     // Keep the MockDataProvider backend health check deterministic (healthy).
@@ -203,5 +205,17 @@ describe('SkillsBook (Redux integration)', () => {
 
     const modal = await screen.findByTestId('skill-detail-modal');
     expect(within(modal).getByText('React Development')).toBeInTheDocument();
+  });
+
+  it('switches to the persisted list view and keeps the copy-all control available', async () => {
+    wrap(<SkillsBook />);
+    await findCard('React Development');
+
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+
+    expect(localStorage.getItem('lk_skills_view')).toBe('list');
+    expect(queryCard('React Development')).not.toBeInTheDocument();
+    expect(screen.getByText('React Development')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeEnabled();
   });
 });
