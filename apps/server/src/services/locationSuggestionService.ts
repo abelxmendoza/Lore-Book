@@ -38,6 +38,11 @@ import type { AlternativeCategory } from './suggestionCrossBookService';
 import { suggestionDismissalService } from './suggestionDismissalService';
 import { entityLearningService } from './entityLearningService';
 import { supabaseAdmin } from './supabaseClient';
+import {
+  placeCognitionEngine,
+  shouldSurfacePlaceSuggestion,
+  type PlaceCognitionResult,
+} from './place';
 
 export type LocationSuggestion = {
   id: string;
@@ -132,6 +137,56 @@ class LocationSuggestionService {
     return { exactKeys, entries };
   }
 
+  /**
+   * Place Cognition Engine v2 — normalize/reject candidates before they enter
+   * the suggestion book. Mentions stay mentions; fragments and narration die here.
+   */
+  private applyPlaceCognition(
+    draft: Omit<LocationSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'>,
+    knownPlaceNames: string[],
+  ): (Omit<LocationSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'> & {
+    cognition?: PlaceCognitionResult;
+  }) | null {
+    const result = placeCognitionEngine.evaluate({
+      span: draft.name,
+      evidenceText: draft.context ?? draft.description,
+      sourceType: draft.source === 'metadata' ? 'metadata' : 'chat',
+      proposedType: draft.type,
+      proposedConfidence: draft.confidence,
+      knownPlaceNames,
+    });
+
+    if (!shouldSurfacePlaceSuggestion(result)) {
+      return null;
+    }
+    // Generic worksite references stay off the Places suggestion rail.
+    if (result.decision === 'HOLD_GENERIC') {
+      return null;
+    }
+
+    return {
+      ...draft,
+      name: result.canonicalTitle,
+      type: result.subtype ?? draft.type,
+      description: result.description ?? undefined,
+      // Never dump whole evidence paragraphs into context once cognition rewrote it.
+      context:
+        result.description
+        ?? (draft.context && draft.context.length <= 180 ? draft.context : undefined),
+      confidence: result.confidence,
+      status:
+        result.decision === 'MERGE_EXISTING'
+          ? 'known'
+          : result.status === 'needs_review'
+            ? 'needs_review'
+            : draft.status === 'needs_review'
+              ? 'needs_review'
+              : result.status,
+      rejectionReason: result.rejectionReason,
+      cognition: result,
+    };
+  }
+
   private consolidateSuggestions(suggestions: LocationSuggestion[]): LocationSuggestion[] {
     const groups = new Map<string, LocationSuggestion[]>();
     for (const s of suggestions) {
@@ -165,10 +220,20 @@ class LocationSuggestionService {
     const { exactKeys: bookExact, entries: bookEntries } = await this.buildLocationBookIndex(userId);
     const knownPlaces = new Set<string>([...bookExact, ...bookEntries.map((e) => e.label)]);
 
+    const knownPlaceNameList = [
+      ...bookEntries.map((e) => e.label),
+      ...[...bookExact],
+    ];
+
     const add = (s: Omit<LocationSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'>) => {
       if (s.status === 'rejected') return;
-      const evidence = s.context ?? s.description ?? '';
-      const gated = gateSuggestionCandidate(s.name, 'locations', evidence, {
+      const cognized = this.applyPlaceCognition(s, knownPlaceNameList);
+      if (!cognized) return;
+      // Canonical already in book → absorb as alias, do not resurface.
+      if (cognized.cognition?.decision === 'MERGE_EXISTING') return;
+
+      const evidence = cognized.context ?? cognized.description ?? '';
+      const gated = gateSuggestionCandidate(cognized.name, 'locations', evidence, {
         ...qualityCtx,
         knownInBook: knownPlaces,
       });
@@ -181,22 +246,23 @@ class LocationSuggestionService {
       if (match.status === 'existing') return;
       seen.add(key);
 
+      const { cognition: _cognition, ...cognizedSuggestion } = cognized;
       const needsReview =
         gated.verdict.requiresReview ||
         gated.verdict.gate === 'review' ||
-        s.status === 'needs_review' ||
-        s.privacySensitive;
+        cognizedSuggestion.status === 'needs_review' ||
+        cognizedSuggestion.privacySensitive;
 
       suggestions.push({
-        ...s,
+        ...cognizedSuggestion,
         name: safeName,
-        id: locationSuggestionId({ ...s, name: safeName }),
+        id: locationSuggestionId({ ...cognizedSuggestion, name: safeName }),
         match_status: match.status,
         matched_book_id: match.matchedId ?? null,
         matched_book_name: match.matchedName ?? null,
-        status: needsReview ? 'needs_review' : s.status,
+        status: needsReview ? 'needs_review' : cognizedSuggestion.status,
         privacySensitive:
-          s.privacySensitive ||
+          cognizedSuggestion.privacySensitive ||
           gated.verdict.rejectionReason === 'private_residence' ||
           gated.verdict.rejectionReason === 'exact_street_address',
       });
@@ -542,11 +608,35 @@ class LocationSuggestionService {
       associatedWith?: string[];
     }
   ): Promise<{ id: string; name: string }> {
+    const { exactKeys, entries } = await this.buildLocationBookIndex(userId);
+    const cognition = placeCognitionEngine.evaluate({
+      span: suggestion.name,
+      evidenceText: suggestion.context ?? suggestion.description,
+      sourceType: 'chat',
+      proposedType: suggestion.type,
+      knownPlaceNames: [...entries.map((e) => e.label), ...exactKeys],
+      userConfirmed: true,
+    });
+
+    if (cognition.decision === 'REJECT' || cognition.entityKind === 'SYNTHETIC_NARRATION') {
+      throw new Error(
+        cognition.rejectionReason === 'synthetic_narration'
+          ? 'That suggestion is generated narration, not a place'
+          : 'That suggestion is not a valid place',
+      );
+    }
+    if (cognition.decision === 'HOLD_GENERIC') {
+      throw new Error('That location is too generic to save as a Place yet — add a more specific name');
+    }
+    if (cognition.decision === 'ROUTE_EVENT') {
+      throw new Error('That looks like an event, not a place — add it from Events instead');
+    }
+
     const created = await locationNicknameService.createLocationWithNickname(userId, {
-      name: suggestion.name,
-      type: suggestion.type,
+      name: cognition.canonicalTitle || suggestion.name,
+      type: cognition.subtype ?? suggestion.type,
       context: suggestion.context ?? 'Added from Places suggestion',
-      description: suggestion.description,
+      description: cognition.description ?? suggestion.description,
       associatedWith: suggestion.associatedWith,
       isNickname: false,
     });

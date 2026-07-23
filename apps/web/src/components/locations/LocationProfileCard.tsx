@@ -25,11 +25,27 @@ export type LocationProfile = {
   spatial_subcategory?: string | null;
   parent_location_id?: string | null;
   visitCount: number;
+  mentionCount?: number;
+  attendanceCount?: number;
+  sourceCount?: number;
   firstVisited?: string;
   lastVisited?: string;
+  firstMentioned?: string;
+  lastMentioned?: string;
   coordinates?: { lat: number; lng: number } | null;
-  relatedPeople: { id: string; character_id?: string; name: string; total_mentions: number; entryCount: number; relationship_type?: string }[];
+  relatedPeople: {
+    id: string;
+    character_id?: string;
+    name: string;
+    total_mentions: number;
+    entryCount: number;
+    relationship_type?: string;
+    link_kind?: 'verified' | 'participated' | 'co_mentioned';
+  }[];
   tagCounts: { tag: string; count: number }[];
+  intrinsicTags?: { tag: string; count: number }[];
+  visitContextTags?: { tag: string; count: number }[];
+  storyTags?: { tag: string; count: number }[];
   chapters: { id: string; title?: string; count: number }[];
   moods: { mood: string; count: number }[];
   entries: Array<{
@@ -139,10 +155,11 @@ function placeBlurb(location: LocationProfile): string | null {
   if (location.description?.trim()) return location.description.trim();
   const purposes = location.analytics?.primary_purpose;
   if (purposes?.length) return purposes.join(' · ');
-  const topMood = location.moods[0];
-  if (topMood) return `Often feels ${topMood.mood} here`;
-  const topTag = location.tagCounts[0];
-  if (topTag) return topTag.tag.replace(/-/g, ' ');
+  const intrinsic = location.intrinsicTags?.[0]?.tag;
+  if (intrinsic) return intrinsic.replace(/-/g, ' ');
+  const visitTag = location.visitContextTags?.[0]?.tag ?? location.tagCounts[0]?.tag;
+  if (visitTag) return visitTag.replace(/-/g, ' ');
+  // Moods are visit-context, not place identity — keep them out of the card blurb.
   return null;
 }
 
@@ -155,21 +172,33 @@ type Props = {
 };
 
 export const LocationProfileCard = ({ location, onClick, selectionMode, selected, allLocations = [] }: Props) => {
-  const ago = relativeTime(location.lastVisited);
+  const ago = relativeTime(location.lastVisited ?? location.lastMentioned);
   const accent = visualAccent(location);
   const trend = location.analytics?.trend;
   const importance = location.analytics?.importance_score;
-  const verifiedPeople = location.relatedPeople.filter((person) => person.character_id);
+  const verifiedPeople = location.relatedPeople.filter(
+    (person) => person.character_id && person.link_kind !== 'co_mentioned',
+  );
   const kindMeta = KIND_META[classifyLocation(location)];
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
   const nestedCount = allLocations.length > 0 ? countNestedPlaces(location, allLocations) : 0;
   const locationLine = placeLocationLine(location);
   const blurb = placeBlurb(location);
+  const intrinsic = (location.intrinsicTags ?? []).map((t) => t.tag);
+  const visitContext = (location.visitContextTags ?? location.tagCounts).map((t) => t.tag);
   const displayTags = [
     ...placeTags.slice(0, 2),
-    ...location.tagCounts.map((t) => t.tag).filter((tag) => !placeTags.includes(tag)),
+    ...intrinsic.filter((tag) => !placeTags.includes(tag)),
+    ...visitContext.filter((tag) => !placeTags.includes(tag) && !intrinsic.includes(tag)),
   ].slice(0, 3);
+  const mentionCount = location.mentionCount ?? 0;
+  const visitLabel =
+    location.visitCount > 0
+      ? `${location.visitCount} ${location.visitCount === 1 ? 'visit' : 'visits'}`
+      : mentionCount > 0
+        ? `${mentionCount} ${mentionCount === 1 ? 'mention' : 'mentions'}`
+        : '0 visits';
 
   return (
     <button
@@ -242,8 +271,15 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
         )}
 
         <div className="mt-auto flex items-center justify-between gap-2 text-[10px] text-white/40 pt-1">
-          <span className="font-medium text-white/55 tabular-nums">
-            {location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}
+          <span className="font-medium text-white/55 tabular-nums" title={
+            mentionCount > location.visitCount
+              ? `${mentionCount} mentions · ${location.visitCount} visits with presence language`
+              : undefined
+          }>
+            {visitLabel}
+            {location.visitCount > 0 && mentionCount > location.visitCount ? (
+              <span className="text-white/35"> · {mentionCount} mentions</span>
+            ) : null}
           </span>
           {ago && (
             <span className="inline-flex items-center gap-1 truncate">

@@ -142,6 +142,11 @@ function recordList(value: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
+function metadataCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
 function addUniqueString(list: string[], value: string): string[] {
   const key = normalizeNameKey(value);
   if (list.some((v) => normalizeNameKey(v) === key)) return list;
@@ -575,7 +580,13 @@ export class SlangPlaceAliasBinder {
     locations: LocationRow[],
   ): Promise<void> {
     const target = result.target!;
-    const cardMeta = card.metadata ?? {};
+    const cardMeta = { ...(card.metadata ?? {}) };
+    const legacyVisitCount = Math.max(
+      metadataCount(cardMeta.visitCount),
+      metadataCount(cardMeta.visit_count),
+    );
+    delete cardMeta.visitCount;
+    delete cardMeta.visit_count;
     const carriedSources = recordList(cardMeta.sources);
     const carriedMedia = recordList(cardMeta.media);
     const snapshot = {
@@ -589,6 +600,8 @@ export class SlangPlaceAliasBinder {
     };
 
     const apply = (metadata: Record<string, unknown>) => {
+      delete metadata.visitCount;
+      delete metadata.visit_count;
       metadata.aliases = addUniqueString(stringList(metadata.aliases), card.name);
       appendSourceRef(metadata, 'alias_sources', {
         alias: card.name,
@@ -616,6 +629,21 @@ export class SlangPlaceAliasBinder {
       }
       const folded = recordList(metadata.folded_cards);
       metadata.folded_cards = [...folded, snapshot].slice(-20);
+      if (target.kind === 'event') {
+        metadata.attendanceCount = Math.max(
+          metadataCount(metadata.attendanceCount),
+          legacyVisitCount,
+        );
+        metadata.eventOccurrenceCount = Math.max(
+          metadataCount(metadata.eventOccurrenceCount),
+          legacyVisitCount,
+        );
+        metadata.mentionCount = Math.max(
+          metadataCount(metadata.mentionCount),
+          carriedSources.length,
+          legacyVisitCount,
+        );
+      }
     };
 
     if (target.kind === 'event') {

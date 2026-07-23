@@ -30,11 +30,11 @@ describe('clientLexicalPreviewSpans — Oscar fixture', () => {
     expect(spans.some((s) => /go to shows in LA/i.test(s.text) && s.subtype === 'RECURRING_EVENT')).toBe(true);
   });
 
-  it('highlights Code Red as EVENT_OR_VENUE with review', () => {
+  it('highlights Code Red as a canonical afters-rave event series', () => {
     const spans = clientLexicalPreviewSpans(OSCAR_FIXTURE);
     const codeRed = spans.find((s) => s.text === 'Code Red');
-    expect(codeRed?.subtype).toBe('EVENT_OR_VENUE');
-    expect(codeRed?.needsReview).toBe(true);
+    expect(codeRed?.subtype).toBe('AFTERS_RAVE_EVENT_SERIES');
+    expect(codeRed?.needsReview).not.toBe(true);
   });
 
   it('highlights ska shows as INTEREST', () => {

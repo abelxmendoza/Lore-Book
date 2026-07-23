@@ -76,7 +76,7 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   L({ id: 'time_before_pandemic', literal: 'before the Pandemic', type: 'TIME_PERIOD', subtype: 'HISTORICAL_MARKER', colorKey: 'time', confidenceBase: 0.9, requiresReview: true, priority: 22 }),
   L({ id: 'time_before_covid', literal: 'before covid', literalVariants: ['before COVID', 'before Covid'], type: 'TIME_PERIOD', subtype: 'FUZZY_TIME_PERIOD', colorKey: 'time', confidenceBase: 0.88, requiresReview: true, priority: 22, contextRules: ['fuzzy_time_before_covid'] }),
   L({ id: 'event_shows_in_la', regex: /\b(?:used to )?go to shows in LA(?:\s+all the time)?\b/gi, type: 'EVENT', subtype: 'RECURRING_EVENT', colorKey: 'event', confidenceBase: 0.91, priority: 21 }),
-  L({ id: 'event_code_red', literal: 'Code Red', type: 'EVENT', subtype: 'EVENT_OR_VENUE', colorKey: 'event', confidenceBase: 0.92, requiresReview: true, caseSensitive: true, priority: 36 }),
+  L({ id: 'event_code_red', literal: 'Code Red', type: 'EVENT', subtype: 'AFTERS_RAVE_EVENT_SERIES', colorKey: 'event', confidenceBase: 0.97, caseSensitive: true, priority: 36 }),
   L({ id: 'music_ska_shows', literal: 'ska show', literalVariants: ['ska shows', 'a bunch of ska shows'], type: 'MUSIC_GENRE', subtype: 'SKA', colorKey: 'interest', confidenceBase: 0.88, priority: 19 }),
   L({ id: 'community_la_ska_scene', literal: 'LA ska scene', type: 'COMMUNITY', subtype: 'MUSIC_SCENE', colorKey: 'group', confidenceBase: 0.86, requiresReview: true, priority: 20, contextRules: ['music_scene_la_ska'] }),
 

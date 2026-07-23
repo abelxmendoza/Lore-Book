@@ -28,6 +28,12 @@ const TRAILING_WITH_PERSON = /\s+with\s+(?:my\s+|our\s+|the\s+)?[A-ZÀ-Ý]?[A-Za
 const TRAILING_CATEGORY_APPOSITIVE =
   /\s+the\s+(?:club|nightclub|bar|venue|spot|lounge|restaurant|shop|store|gym|cafe|house|place)\s*$/;
 
+/** "Catch One because I" / "Nova Hall when we" — discourse glue is not place name. */
+const TRAILING_DISCOURSE_GLUE =
+  /\s+(?:because|when|after|while|and\s+then|so|where|if|although|before|until|unless|since|that|which|who)\b.*$/i;
+
+const TRAILING_PRONOUN_ONLY = /\s+(?:i|we|they|he|she|it|you)\s*$/i;
+
 const LEADING_RELATIVE_CONTEXT = /^(?:here|there)\s+(?:at|in)\s+/i;
 
 export type BoundaryResolution = {
@@ -63,6 +69,8 @@ export function resolvePlaceBoundary(candidate: string): BoundaryResolution {
 
   apply(TRAILING_SENTENCE_PRONOUN, 'sentence_pronoun_bleed');
   apply(TRAILING_PRONOUN_CLAUSE, 'pronoun_clause_bleed');
+  apply(TRAILING_DISCOURSE_GLUE, 'discourse_glue');
+  apply(TRAILING_PRONOUN_ONLY, 'trailing_pronoun');
   apply(TRAILING_TIME, 'time_period');
   apply(TRAILING_WITH_PERSON, 'with_person_tail');
   apply(TRAILING_ROLE, 'role_phrase');

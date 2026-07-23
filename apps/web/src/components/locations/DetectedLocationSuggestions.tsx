@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, MapPin } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, MapPin, Copy, Check } from 'lucide-react';
 import { locationSuggestionsApi, type LocationSuggestion } from '../../api/entitySuggestions';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
@@ -13,6 +13,9 @@ import { mockDataService } from '../../services/mockDataService';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { buildLocationSuggestionsClipboardText } from '../../lib/locationSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/cn';
 
 type Props = {
   onLocationAdded?: () => void;
@@ -61,6 +64,12 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const fetchSuggestions = useCallback(async () => {
     if (showDemo) {
@@ -201,6 +210,14 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     }
   };
 
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildLocationSuggestionsClipboardText(visible));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
   if (hidePanel) {
     return RescanToastContainer ? <RescanToastContainer /> : null;
   }
@@ -230,6 +247,20 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
           >
             <RefreshCw className={`h-4 w-4 ${loading || rescanning ? 'animate-spin' : ''}`} />
           </button>
+          {visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCopyAll()}
+              className={cn(
+                'h-8 w-8 flex items-center justify-center rounded transition-colors',
+                copied ? 'text-emerald-300' : 'text-white/50 hover:text-teal-300 hover:bg-teal-500/10',
+              )}
+              title="Copy all suggested places as plain text"
+              aria-label="Copy all suggested places"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed(c => !c)}

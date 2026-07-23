@@ -5,6 +5,10 @@
 
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import {
+  detectCompoundPlaceNames,
+  stripVenueAliasTail,
+} from './locations/placePresenceSemantics';
 import { classifyPlace, reviewPlaceDuplicateCompatibility, type PlaceClass } from './ontology/placeIntelligence';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -65,6 +69,16 @@ export type LocationDomainAudit = {
   eventLike: string[];
   possessiveLocations: Array<{ name: string; owner: string; placePart: string }>;
   topLevelViolations: Array<{ id: string; name: string; issue: string }>;
+  /** Cards that encode two venues and should be split before merge/review. */
+  compoundSplits: Array<{ id: string; name: string; parts: string[]; reason: string }>;
+  /** Alias tails / family-home labels that should fold into an existing canon card. */
+  aliasCleanup: Array<{
+    sourceId: string;
+    sourceName: string;
+    suggestedCanonical: string;
+    targetId?: string;
+    reason: string;
+  }>;
 };
 
 type LocationRow = {
@@ -90,6 +104,8 @@ class LocationDomainAuditService {
       eventLike: [],
       possessiveLocations: [],
       topLevelViolations: [],
+      compoundSplits: [],
+      aliasCleanup: [],
     };
   }
 
@@ -200,6 +216,76 @@ class LocationDomainAuditService {
       })
       .map((row) => ({ id: row.id, name: row.name, reason: 'room without parent_location_id' }));
 
+    const byNormalized = new Map(rows.map((row) => [normalizeNameKey(row.name), row]));
+    const compoundSplits: LocationDomainAudit['compoundSplits'] = [];
+    const aliasCleanup: LocationDomainAudit['aliasCleanup'] = [];
+
+    for (const row of rows) {
+      const parts = detectCompoundPlaceNames(row.name);
+      if (parts) {
+        compoundSplits.push({
+          id: row.id,
+          name: row.name,
+          parts,
+          reason: 'compound_two_venues',
+        });
+      }
+
+      const stripped = stripVenueAliasTail(row.name);
+      if (stripped) {
+        const target = byNormalized.get(normalizeNameKey(stripped));
+        aliasCleanup.push({
+          sourceId: row.id,
+          sourceName: row.name,
+          suggestedCanonical: stripped,
+          targetId: target?.id,
+          reason: 'venue_alias_tail',
+        });
+        if (target && target.id !== row.id) {
+          mergeSuggestions.push({
+            sourceName: row.name,
+            targetName: target.name,
+            sourceId: row.id,
+            targetId: target.id,
+            confidence: 0.92,
+            reason: 'venue alias tail',
+            evidence: [`"${row.name}" is an alias form of "${target.name}"`],
+          });
+        }
+      }
+
+      // "X Family Home" → household of same city/family when an exact shorter household exists.
+      const familyHome = row.name.match(/^(.+?)\s+family\s+home$/i);
+      if (familyHome?.[1]) {
+        const cityKey = normalizeNameKey(familyHome[1]);
+        // Prefer an existing household that shares the city token or a known residence alias pattern.
+        const householdTarget = rows.find(
+          (candidate) =>
+            candidate.id !== row.id &&
+            /\b(?:house|home)\b/i.test(candidate.name) &&
+            normalizeNameKey(candidate.name).includes(cityKey),
+        );
+        if (householdTarget) {
+          aliasCleanup.push({
+            sourceId: row.id,
+            sourceName: row.name,
+            suggestedCanonical: householdTarget.name,
+            targetId: householdTarget.id,
+            reason: 'family_home_alias',
+          });
+          mergeSuggestions.push({
+            sourceName: row.name,
+            targetName: householdTarget.name,
+            sourceId: row.id,
+            targetId: householdTarget.id,
+            confidence: 0.8,
+            reason: 'family home alias of household',
+            evidence: [`"${row.name}" likely aliases household "${householdTarget.name}"`],
+          });
+        }
+      }
+    }
+
     return {
       userId,
       locationCount: rows.length,
@@ -212,6 +298,8 @@ class LocationDomainAuditService {
       eventLike,
       possessiveLocations,
       topLevelViolations,
+      compoundSplits,
+      aliasCleanup,
     };
   }
 

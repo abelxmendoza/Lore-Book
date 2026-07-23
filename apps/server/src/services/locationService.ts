@@ -13,9 +13,20 @@ import { normalizeNameKey, normalizeDuplicateKey } from '../utils/nameNormalizat
 import { chapterService } from './chapterService';
 import { entityDeletionRecoveryService } from './entityDeletionRecoveryService';
 import { locationAnalyticsService } from './locationAnalyticsService';
+import {
+  classifyPlacePresence,
+  classifyTagBucket,
+  entryTextBlob,
+  hasPlaceParticipation,
+} from './locations/placePresenceSemantics';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { supabaseAdmin } from './supabaseClient';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
+
+const toTagCounts = (counts: Map<string, number>) =>
+  Array.from(counts.entries())
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count);
 
 const stringFields = ['location', 'place', 'city', 'venue', 'location_tag'];
 
@@ -353,20 +364,61 @@ class LocationService {
           .map((id) => entryMap.get(id))
           .filter((entry): entry is MemoryEntry => Boolean(entry));
 
-        const visitCount = relatedEntries.length;
-        const firstVisited = visitCount
-          ? relatedEntries.reduce((current, entry) => (entry.date < current ? entry.date : current), relatedEntries[0].date)
-          : undefined;
-        const lastVisited = visitCount
-          ? relatedEntries.reduce((current, entry) => (entry.date > current ? entry.date : current), relatedEntries[0].date)
-          : undefined;
-
-        const tagCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
-          entry.tags.forEach((tag) => {
-            acc.set(tag, (acc.get(tag) ?? 0) + 1);
+        const presenceByEntry = relatedEntries.map((entry) => {
+          const kind = classifyPlacePresence(location.name, entryTextBlob(entry), {
+            source: entry.source,
+            hasCoordinates: Boolean(this.extractCoordinates((entry.metadata ?? {}) as Record<string, unknown>)),
           });
-          return acc;
-        }, new Map());
+          return { entry, kind };
+        });
+        const visitEntries = presenceByEntry
+          .filter((row) => row.kind === 'visit')
+          .map((row) => row.entry);
+        const attendanceEntries = presenceByEntry
+          .filter((row) => row.kind === 'attendance')
+          .map((row) => row.entry);
+
+        const mentionCount = relatedEntries.length;
+        const visitCount = visitEntries.length;
+        const attendanceCount = attendanceEntries.length;
+        const minDate = (rows: MemoryEntry[]) =>
+          rows.length
+            ? rows.reduce((current, entry) => (entry.date < current ? entry.date : current), rows[0].date)
+            : undefined;
+        const maxDate = (rows: MemoryEntry[]) =>
+          rows.length
+            ? rows.reduce((current, entry) => (entry.date > current ? entry.date : current), rows[0].date)
+            : undefined;
+
+        const firstMentioned = minDate(relatedEntries);
+        const lastMentioned = maxDate(relatedEntries);
+        const firstVisited = minDate(visitEntries);
+        const lastVisited = maxDate(visitEntries);
+
+        const intrinsicTagCounts = new Map<string, number>();
+        const visitContextTagCounts = new Map<string, number>();
+        const storyTagCounts = new Map<string, number>();
+        const placeTags = Array.isArray((location.record?.metadata as { place_tags?: unknown } | undefined)?.place_tags)
+          ? ((location.record?.metadata as { place_tags: string[] }).place_tags ?? [])
+          : [];
+        placeTags.forEach((tag) => {
+          if (typeof tag !== 'string' || !tag.trim()) return;
+          intrinsicTagCounts.set(tag, (intrinsicTagCounts.get(tag) ?? 0) + 1);
+        });
+
+        // Journal tags are situational — never promote them to intrinsic place identity.
+        relatedEntries.forEach((entry) => {
+          (entry.tags ?? []).forEach((tag) => {
+            const bucket = classifyTagBucket(tag);
+            const target =
+              bucket === 'intrinsic'
+                ? intrinsicTagCounts
+                : bucket === 'story'
+                  ? storyTagCounts
+                  : visitContextTagCounts;
+            target.set(tag, (target.get(tag) ?? 0) + 1);
+          });
+        });
 
         const chapterCounts = relatedEntries.reduce<Map<string, { id: string; title?: string; count: number }>>((acc, entry) => {
           if (!entry.chapter_id) return acc;
@@ -380,25 +432,55 @@ class LocationService {
           return acc;
         }, new Map());
 
-        const moodCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
+        // Moods describe visits/stories, not the place itself — only roll up on visit entries.
+        const moodCounts = visitEntries.reduce<Map<string, number>>((acc, entry) => {
           if (!entry.mood) return acc;
           acc.set(entry.mood, (acc.get(entry.mood) ?? 0) + 1);
           return acc;
         }, new Map());
 
-        const relatedPeople = relatedEntries.reduce<Map<string, { character: CharacterRecord; entryCount: number; relationship_type?: string }>>(
-          (acc, entry) => {
-            (personMentions.get(entry.id) ?? []).forEach((person) => {
-              const character = characterByMention.get(normalizeNameKey(person.name));
-              if (!character) return;
-              const current = acc.get(character.id) ?? { character, entryCount: 0 };
+        type RelatedPersonAgg = {
+          character: CharacterRecord;
+          entryCount: number;
+          relationship_type?: string;
+          link_kind: 'verified' | 'participated' | 'co_mentioned';
+        };
+        const relatedPeople = new Map<string, RelatedPersonAgg>();
+
+        relatedEntries.forEach((entry) => {
+          const blob = entryTextBlob(entry);
+          (personMentions.get(entry.id) ?? []).forEach((person) => {
+            const character = characterByMention.get(normalizeNameKey(person.name));
+            if (!character) return;
+            const participated = hasPlaceParticipation(person.name, location.name, blob);
+            const current = relatedPeople.get(character.id) ?? {
+              character,
+              entryCount: 0,
+              link_kind: 'co_mentioned' as const,
+            };
+            if (participated) {
+              current.link_kind = current.link_kind === 'verified' ? 'verified' : 'participated';
               current.entryCount += 1;
-              acc.set(character.id, current);
-            });
-            return acc;
-          },
-          new Map()
-        );
+            } else if (current.link_kind === 'co_mentioned') {
+              // Track co-mentions for diagnostics, but they do not inflate presence counts.
+              current.entryCount = Math.max(current.entryCount, 0);
+            }
+            relatedPeople.set(character.id, current);
+          });
+        });
+
+        (location.record?.associated_character_ids ?? []).forEach((characterId) => {
+          const character = characterById.get(characterId);
+          if (!character) return;
+          const current = relatedPeople.get(character.id) ?? {
+            character,
+            entryCount: 0,
+            link_kind: 'verified' as const,
+          };
+          current.link_kind = 'verified';
+          current.entryCount = Math.max(current.entryCount, 1);
+          relatedPeople.set(character.id, current);
+        });
 
         (verifiedLinksByLocation.get(location.id) ?? []).forEach((link) => {
           const character = characterById.get(link.character_id);
@@ -406,10 +488,12 @@ class LocationService {
           const current = relatedPeople.get(character.id) ?? {
             character,
             entryCount: 0,
-            relationship_type: link.relationship_type
+            relationship_type: link.relationship_type,
+            link_kind: 'verified' as const,
           };
           current.entryCount = Math.max(current.entryCount, link.evidence_count ?? 0);
           current.relationship_type = current.relationship_type ?? link.relationship_type;
+          current.link_kind = 'verified';
           relatedPeople.set(character.id, current);
         });
 
@@ -448,22 +532,31 @@ class LocationService {
           spatial_subcategory: location.record?.spatial_subcategory ?? null,
           parent_location_id: location.record?.parent_location_id ?? null,
           visitCount,
+          mentionCount,
+          attendanceCount,
+          sourceCount: location.sources.size,
           firstVisited,
           lastVisited,
+          firstMentioned,
+          lastMentioned,
           coordinates: location.coordinates,
           relatedPeople: Array.from(relatedPeople.values())
-            .map(({ character, entryCount, relationship_type }) => ({
+            .filter(({ link_kind, entryCount }) => link_kind !== 'co_mentioned' || entryCount > 0)
+            .filter(({ link_kind }) => link_kind === 'verified' || link_kind === 'participated')
+            .map(({ character, entryCount, relationship_type, link_kind }) => ({
               id: character.id,
               character_id: character.id,
               name: character.name,
               total_mentions: this.countCharacterMentions(character.metadata),
               entryCount,
-              relationship_type
+              relationship_type,
+              link_kind,
             }))
             .sort((a, b) => b.entryCount - a.entryCount),
-          tagCounts: Array.from(tagCounts.entries())
-            .map(([tag, count]) => ({ tag, count }))
-            .sort((a, b) => b.count - a.count),
+          tagCounts: toTagCounts(visitContextTagCounts),
+          intrinsicTags: toTagCounts(intrinsicTagCounts),
+          visitContextTags: toTagCounts(visitContextTagCounts),
+          storyTags: toTagCounts(storyTagCounts),
           chapters: Array.from(chapterCounts.values()).sort((a, b) => b.count - a.count),
           moods: Array.from(moodCounts.entries())
             .map(([mood, count]) => ({ mood, count }))
@@ -488,7 +581,9 @@ class LocationService {
       })
     );
 
-    return locations.sort((a, b) => (b.lastVisited ?? '').localeCompare(a.lastVisited ?? ''));
+    return locations.sort((a, b) =>
+      (b.lastVisited ?? b.lastMentioned ?? '').localeCompare(a.lastVisited ?? a.lastMentioned ?? ''),
+    );
   }
 
   async getLocationProfile(userId: string, id: string): Promise<LocationProfile | null> {

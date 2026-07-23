@@ -146,4 +146,27 @@ describe('place wrong-domain guard v2', () => {
     });
     expect(places[0].text).not.toBe('Bad Dogg Compound. It');
   });
+
+  it('rejects skills, scenes, event brands, and compound venue cards', async () => {
+    const { guardPlaceWrongDomain } = await import(
+      '../../../../src/services/lexical/places/placeWrongDomainGuard'
+    );
+
+    expect(guardPlaceWrongDomain('Electrical Engineering')).toMatchObject({
+      allowed: false,
+      rejectedAs: expect.stringMatching(/^(?:SKILL|ROLE)$/),
+    });
+    expect(guardPlaceWrongDomain('goth scene')).toMatchObject({
+      allowed: false,
+      rejectedAs: 'COMMUNITY',
+    });
+    expect(guardPlaceWrongDomain('AX')).toMatchObject({
+      allowed: false,
+      rejectedAs: 'EVENT',
+    });
+    expect(guardPlaceWrongDomain('Nova Hall and Echo Lounge')).toMatchObject({
+      allowed: false,
+      rejectedAs: 'COMPOUND_PLACE',
+    });
+  });
 });

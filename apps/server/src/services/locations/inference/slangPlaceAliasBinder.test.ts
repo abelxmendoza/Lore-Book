@@ -160,6 +160,7 @@ describe('reconcileExistingSlangPlaceCards', () => {
       metadata: {
         context: 'photographed in weeb city',
         first_seen_at: '2026-07-04T20:00:00Z',
+        visitCount: 2,
         sources: [{ source: 'x_post', url: 'https://x.com/abel/status/123', at: '2026-07-04T20:00:00Z' }],
         media: [{ url: 'https://pbs.twimg.com/media/ax.jpg', type: 'photo', source: 'x_post' }],
       },
@@ -175,6 +176,10 @@ describe('reconcileExistingSlangPlaceCards', () => {
 
     const meta = animeExpo.metadata as Record<string, unknown>;
     expect(meta.aliases).toContain('Weeb City');
+    expect(meta.visitCount).toBeUndefined();
+    expect(meta.attendanceCount).toBe(2);
+    expect(meta.eventOccurrenceCount).toBe(2);
+    expect(meta.mentionCount).toBeGreaterThanOrEqual(2);
     // Provenance and photos migrated to the event.
     const sources = meta.sources as Array<Record<string, unknown>>;
     expect(sources.some((s) => s.url === 'https://x.com/abel/status/123')).toBe(true);

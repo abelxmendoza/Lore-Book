@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, GitMerge, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Check, Copy, GitMerge, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
+import { buildLocationDuplicatesClipboardText } from '../../lib/locationDuplicatesClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/cn';
 import type { LocationProfile } from './LocationProfileCard';
 
 export type LocationDuplicateGroup = {
@@ -81,6 +84,12 @@ export const LocationMergePanel = ({
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const loadDuplicateGroups = useCallback(async () => {
     if (demoMode) {
@@ -117,6 +126,14 @@ export const LocationMergePanel = ({
     () => locations.filter(loc => selectedForMerge.has(loc.id)),
     [locations, selectedForMerge]
   );
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildLocationDuplicatesClipboardText(duplicateGroups));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   const cancelManualMerge = () => {
     onSelectionModeChange(false);
@@ -304,14 +321,30 @@ export const LocationMergePanel = ({
                 <h3 className="text-base font-semibold text-white">Review duplicate places</h3>
                 <p className="text-xs text-white/45">Pick the card to keep. Other names become aliases on the survivor.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowMergeDialog(false)}
-                className="rounded-lg p-2 text-white/40 hover:text-white hover:bg-white/5"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                {duplicateGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyAll()}
+                    className={cn(
+                      'rounded-lg p-2 transition-colors',
+                      copied ? 'text-emerald-300' : 'text-white/40 hover:text-white hover:bg-white/5',
+                    )}
+                    title="Copy all duplicate place groups as plain text"
+                    aria-label="Copy all duplicate places"
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowMergeDialog(false)}
+                  className="rounded-lg p-2 text-white/40 hover:text-white hover:bg-white/5"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="p-4 space-y-4">
               {mergeError && (

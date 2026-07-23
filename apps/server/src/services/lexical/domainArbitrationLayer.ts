@@ -40,7 +40,13 @@ const TEAM_NOUN =
   /\b(?:team|department|division|unit|group)\b/i;
 
 const COMMUNITY_NOUN =
-  /\b(?:coding|robotics|computer\s+science|football|band)\s+(?:club|crew|group|team)\b/i;
+  /\b(?:coding|robotics|computer\s+science|football|band)\s+(?:club|crew|group|team)\b|(?:goth\s+scene|.+?\s+scene|.+?\s+vibes|weeb\s+city)\b/i;
+
+const SKILL_DISCIPLINE =
+  /^(?:electrical|mechanical|software|computer)\s+engineering$|^computer\s+science$/i;
+
+const EVENT_BRAND =
+  /^(?:ax|anime\s+expo|code\s+red|weeb\s+city)$/i;
 
 const WORK_ORG_CONTEXT =
   /\b(?:work(?:ed|ing)?\s+at|employee|employer|manager|coworker|team|department|subsidiar(?:y|ies)|sub\s+compan(?:y|ies)|acquired|company|org(?:anization)?|startup|corporation|corp|inc|llc)\b/i;
@@ -127,6 +133,19 @@ export function arbitrateCandidateDomain(span: string, contextLine = ''): Domain
 
   if (TEAM_NOUN.test(text)) {
     return verdict('TEAM', 'team_or_group_span', 0.45, { allowedAsPlace: false });
+  }
+
+  if (SKILL_DISCIPLINE.test(text.trim())) {
+    return verdict('ROLE', 'skill_or_discipline_span', 0.45, { allowedAsPlace: false });
+  }
+
+  if (EVENT_BRAND.test(text.trim())) {
+    return verdict(
+      'EVENT',
+      normalizeNameKey(text) === 'weeb city' ? 'anime_expo_contextual_alias' : 'canonical_event_brand',
+      0.95,
+      { allowedAsPlace: false },
+    );
   }
 
   if (COMMUNITY_NOUN.test(text)) {

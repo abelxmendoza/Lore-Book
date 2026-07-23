@@ -28,12 +28,23 @@ const PROJECT_TASK =
 const MEDIA_CONCEPT = /^(?:media|social media|in the media|instagram|find my app)$/i;
 
 const PRODUCT_OBJECT =
-  /^(?:ring doorbell(?: product)?|amazon ring doorbell|phone|car|vape|wristband|(?:in and out\s+)?wristband|product|hardware|device|mom'?s car|my mom'?s car)$/i;
+  /^(?:ring doorbell(?: product)?|amazon ring doorbell|phone|car|vape|wristband|(?:in and out\s+)?wristband|product|hardware|device|mom'?s car|my mom'?s car|selfie\s+car)$/i;
 
 const PERSON_OR_PRONOUN =
-  /^(?:she|her|him|he|they|them|this girl|my mom|mom|abuela|abuelo|grandma|grandpa)$/i;
+  /^(?:she|her|him|he|they|them|this girl|my mom|mom|abuela|abuelo|grandma|grandpa|.+?\s+desk\s+neighbor|.+?'?s\s+doctor|.+?\s+doctor)$/i;
 
 const ORGANIZATION_ONLY = /^(?:amazon|antler|rlh|venture capital firm)$/i;
+
+const SKILL_OR_DISCIPLINE =
+  /^(?:electrical\s+engineering|computer\s+science|mechanical\s+engineering|software\s+engineering|ui(?:\s*\/\s*ux)?|ux\s+design)$/i;
+
+const COMMUNITY_OR_SCENE =
+  /^(?:goth\s+scene|.+?\s+scene|.+?\s+vibes|weeb\s+city)$/i;
+
+const EVENT_OR_BRAND =
+  /^(?:ax|anime\s+expo|code\s+red)$/i;
+
+const COMPOUND_TWO_VENUES = /^(.+)\s+and\s+(.+)$/i;
 
 const VENUE_SUBAREA =
   /^(?:pit|stage|bar area|parking lot|dance floor|near the stage)$/i;
@@ -56,6 +67,17 @@ export function guardPlaceWrongDomain(span: string, contextLine = ''): WrongDoma
 
   if (!text) {
     return { allowed: false, status: 'rejected', rejectedAs: 'OBJECT', placeType: 'unknown_place', confidence: 0.1, rulesFired: ['empty_span'] };
+  }
+
+  if (/^(?:user\s+mentioned|the\s+user\s+said|user\s+stated|the\s+assistant\s+noted|the\s+conversation\s+discussed|it\s+was\s+mentioned)\b/i.test(n)) {
+    return {
+      allowed: false,
+      status: 'rejected',
+      rejectedAs: 'SYNTHETIC_NARRATION',
+      placeType: 'unknown_place',
+      confidence: 0.05,
+      rulesFired: ['synthetic_narration_prefix'],
+    };
   }
 
   const arbitration = arbitrateCandidateDomain(text, contextLine);
@@ -119,8 +141,38 @@ export function guardPlaceWrongDomain(span: string, contextLine = ''): WrongDoma
     return { allowed: false, status: 'rejected', rejectedAs: 'MEDIA_CONCEPT', placeType: 'unknown_place', confidence: 0.25, rulesFired: ['wrong_domain_media_concept'] };
   }
 
-  if (PRODUCT_OBJECT.test(n) || /\b(?:doorbell product|wristband|phone|vape|device|hardware)\b/i.test(n)) {
+  if (PRODUCT_OBJECT.test(n) || /\b(?:doorbell product|wristband|phone|vape|device|hardware|selfie\s+car)\b/i.test(n)) {
     return { allowed: false, status: 'rejected', rejectedAs: 'PRODUCT_OBJECT', placeType: 'unknown_place', confidence: 0.25, rulesFired: ['wrong_domain_product_object'] };
+  }
+
+  if (SKILL_OR_DISCIPLINE.test(n)) {
+    return { allowed: false, status: 'rejected', rejectedAs: 'SKILL', placeType: 'unknown_place', confidence: 0.2, rulesFired: ['wrong_domain_skill_discipline'] };
+  }
+
+  if (COMMUNITY_OR_SCENE.test(n)) {
+    return { allowed: false, status: 'rejected', rejectedAs: 'COMMUNITY', placeType: 'unknown_place', confidence: 0.2, rulesFired: ['wrong_domain_community_scene'] };
+  }
+
+  if (EVENT_OR_BRAND.test(n)) {
+    return { allowed: false, status: 'rejected', rejectedAs: 'EVENT', placeType: 'unknown_place', confidence: 0.25, rulesFired: ['wrong_domain_event_or_brand'] };
+  }
+
+  const compound = n.match(COMPOUND_TWO_VENUES);
+  if (
+    compound &&
+    !/\b(?:mom|dad|abuela|abuelo|grandma|grandpa|t[ií]o|t[ií]a|uncle|aunt)\b/i.test(n) &&
+    compound[1].trim().length >= 3 &&
+    compound[2].trim().length >= 3 &&
+    /\b(?:club|hall|lounge|bar|park|house|home|venue|compound)\b/i.test(n)
+  ) {
+    return {
+      allowed: false,
+      status: 'rejected',
+      rejectedAs: 'COMPOUND_PLACE',
+      placeType: 'unknown_place',
+      confidence: 0.3,
+      rulesFired: ['compound_two_venues_split_required'],
+    };
   }
 
   if (PERSON_OR_PRONOUN.test(n)) {
