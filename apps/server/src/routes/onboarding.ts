@@ -8,14 +8,47 @@ import { logger } from '../logger';
 import { guardOpenAiRoute } from '../middleware/apiProtection';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkAiRequestLimit } from '../middleware/subscription';
-import { onboardingService } from '../services/onboardingService';
+import { chatGPTExportReminderService } from '../services/chatgptImport/chatGPTExportReminderService';
 import {
   onboardingIntelligenceService,
   type IdentityProfileDraft,
 } from '../services/onboardingIntelligenceService';
+import { onboardingService } from '../services/onboardingService';
 import { incrementAiRequestCount } from '../services/usageTracking';
 
 const router = Router();
+
+const chatGPTExportReminderSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('requested'), days: z.number().int().min(1).max(30).default(3) }),
+  z.object({ action: z.literal('remind_later'), days: z.number().int().min(1).max(30).default(3) }),
+  z.object({ action: z.literal('dismiss') }),
+]);
+
+router.get('/chatgpt-export-reminder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    res.json(await chatGPTExportReminderService.get(req.user!.id));
+  } catch (error) {
+    logger.warn({ error, userId: req.user!.id }, 'Failed to read ChatGPT export reminder');
+    res.status(500).json({ error: 'Failed to load export reminder.' });
+  }
+});
+
+router.patch('/chatgpt-export-reminder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = chatGPTExportReminderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try {
+    const state =
+      parsed.data.action === 'requested'
+        ? await chatGPTExportReminderService.markRequested(req.user!.id, parsed.data.days)
+        : parsed.data.action === 'remind_later'
+          ? await chatGPTExportReminderService.remindLater(req.user!.id, parsed.data.days)
+          : await chatGPTExportReminderService.dismiss(req.user!.id);
+    res.json(state);
+  } catch (error) {
+    logger.warn({ error, userId: req.user!.id }, 'Failed to update ChatGPT export reminder');
+    res.status(500).json({ error: 'Failed to update export reminder.' });
+  }
+});
 
 const chipSchema = z.object({
   label: z.string(),

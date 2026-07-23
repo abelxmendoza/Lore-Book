@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap, Loader2, Heart } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap, Loader2, Heart, FileArchive, BellRing } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '../ui/button';
-import { Textarea } from '../ui/textarea';
+
+import { updateChatGPTExportReminder } from '../../api/chatGPTExportReminder';
+import { config } from '../../config/env';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
-import { useAuth } from '../../lib/supabase';
-import { config } from '../../config/env';
+import { Button } from '../ui/button';
+import { Textarea } from '../ui/textarea';
 import { FirstMemoryStep } from './FirstMemoryStep';
 
 type Step = {
@@ -35,10 +36,26 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   const [firstMemoryLocation, setFirstMemoryLocation] = useState<string>('');
   const [firstMemoryPeople, setFirstMemoryPeople] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [exportSaving, setExportSaving] = useState(false);
+  const [chatGPTExportChoice, setChatGPTExportChoice] = useState<'requested' | 'later' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { createEntry } = useLoreKeeper();
-  const { user } = useAuth();
+
+  const chooseChatGPTExport = async (choice: 'requested' | 'later') => {
+    setError(null);
+    setChatGPTExportChoice(choice);
+    if (choice !== 'requested') return;
+    try {
+      setExportSaving(true);
+      await updateChatGPTExportReminder('requested', 3);
+    } catch (cause) {
+      console.warn('Failed to schedule ChatGPT export reminder:', cause);
+      setError('We could not save the reminder yet. You can still finish onboarding and import later from Account.');
+    } finally {
+      setExportSaving(false);
+    }
+  };
 
   const steps: Step[] = [
     {
@@ -105,6 +122,62 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">Creating your personalized experience...</span>
             </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'chatgpt-export',
+      title: 'Bring Your ChatGPT History Later',
+      description: 'The export can take days, so it never blocks setup',
+      icon: FileArchive,
+      content: (
+        <div className="space-y-6">
+          <div className="text-center">
+            <p className="text-lg text-white/75">
+              OpenAI may take several days to prepare your export. You can finish setting up Lore Book now.
+            </p>
+            <p className="mx-auto mt-2 max-w-2xl text-sm text-white/45">
+              When the ZIP arrives, upload it from Account → Data &amp; Export. Lore Book will propose profile lore for your review instead of adding it automatically.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={exportSaving}
+              onClick={() => void chooseChatGPTExport('requested')}
+              className={`rounded-xl border p-5 text-left transition-colors ${
+                chatGPTExportChoice === 'requested'
+                  ? 'border-primary bg-primary/15'
+                  : 'border-white/12 bg-white/[0.03] hover:border-primary/50'
+              }`}
+            >
+              <BellRing className="mb-3 h-6 w-6 text-primary" />
+              <span className="block font-medium text-white">I requested my export</span>
+              <span className="mt-1 block text-sm text-white/45">
+                Remind me in three days, then let me snooze it again if needed.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void chooseChatGPTExport('later')}
+              className={`rounded-xl border p-5 text-left transition-colors ${
+                chatGPTExportChoice === 'later'
+                  ? 'border-primary bg-primary/15'
+                  : 'border-white/12 bg-white/[0.03] hover:border-primary/50'
+              }`}
+            >
+              <FileArchive className="mb-3 h-6 w-6 text-white/60" />
+              <span className="block font-medium text-white">I’ll do this later</span>
+              <span className="mt-1 block text-sm text-white/45">
+                No reminder. The importer will always be available in your account.
+              </span>
+            </button>
+          </div>
+          {chatGPTExportChoice === 'requested' && !exportSaving && (
+            <p className="text-center text-sm text-emerald-300">
+              Reminder saved. You can continue without the file.
+            </p>
           )}
         </div>
       ),
@@ -318,9 +391,9 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   ];
 
   const handleNext = async () => {
+    const activeStepId = steps[currentStep]?.id;
     // Handle user description step - generate personalized response and detect personas
-    // Step 1 is "why-here" (index 1)
-    if (currentStep === 1 && userDescription.trim()) {
+    if (activeStepId === 'why-here' && userDescription.trim()) {
       try {
         setSaving(true);
         setDetectingPersonas(true);
@@ -360,8 +433,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     }
 
     // Handle first memory step - create entry
-    // Step 3 is "first-memory" (index 3)
-    if (currentStep === 3 && firstMemory.trim()) {
+    if (activeStepId === 'first-memory' && firstMemory.trim()) {
       try {
         setSaving(true);
         setDetectingPersonas(true);
@@ -544,8 +616,10 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               disabled={
                 saving || 
                 detectingPersonas || 
-                (currentStep === 1 && !userDescription.trim()) || 
-                (currentStep === 3 && !firstMemory.trim())
+                exportSaving ||
+                (steps[currentStep]?.id === 'why-here' && !userDescription.trim()) ||
+                (steps[currentStep]?.id === 'chatgpt-export' && !chatGPTExportChoice) ||
+                (steps[currentStep]?.id === 'first-memory' && !firstMemory.trim())
               }
               className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -567,4 +641,3 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     </div>
   );
 };
-
