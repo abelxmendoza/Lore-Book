@@ -48,6 +48,11 @@ import {
   buildIngestTextFromVision,
   summarizeChatImages,
 } from './chat/chatVisionSummaryService';
+import {
+  buildConversationLoreContextBlock,
+  linkChatPhotosToLore,
+  type ChatPhotoLoreContext,
+} from './chat/chatPhotoLoreLinker';
 import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 import { entityAmbiguityService } from './entityAmbiguityService';
@@ -750,7 +755,8 @@ When updating relationship analytics or emotional signals from this thread, weig
   }
 
   /**
-   * After durable upload: summarize attached photos, enrich chat_messages.content,
+   * After durable upload: summarize attached photos with thread cast/context,
+   * enrich chat_messages.content, link album rows into characters/locations,
    * then run interpretation + memory ingestion on the text projection.
    * Off the streaming critical path.
    */
@@ -759,10 +765,13 @@ When updating relationship analytics or emotional signals from this thread, weig
     sessionId: string;
     messageId: string;
     caption: string;
-    images: ChatImageAttachment[];
+    images: Array<
+      ChatImageAttachment & { photoId?: string; journalEntryId?: string; storagePath?: string; url?: string }
+    >;
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
     entityContext?: { type: string; id: string };
     previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[];
+    loreContext?: ChatPhotoLoreContext;
   }): Promise<void> {
     const {
       userId,
@@ -773,11 +782,34 @@ When updating relationship analytics or emotional signals from this thread, weig
       conversationHistory,
       entityContext,
       previewCorrections,
+      loreContext,
     } = params;
 
+    const priorMentionedNames = [
+      ...(loreContext?.threadEntities ?? []).map((e) => e.name),
+      loreContext?.chatFocus?.entityName,
+    ].filter((n): n is string => Boolean(n?.trim()));
+
     try {
-      const vision = await summarizeChatImages(images, { userId, caption });
-      const ingestText = buildIngestTextFromVision(caption, vision);
+      const vision = await summarizeChatImages(images, {
+        userId,
+        caption,
+        loreContext: {
+          cast: (loreContext?.threadEntities ?? []).map((e) => ({ name: e.name, type: e.type })),
+          focus: loreContext?.chatFocus
+            ? {
+                name: loreContext.chatFocus.entityName,
+                type: loreContext.chatFocus.entityType,
+              }
+            : undefined,
+          recentTurns: (loreContext?.recentTurns ?? conversationHistory).slice(-4),
+        },
+      });
+      const loreBlock = buildConversationLoreContextBlock({
+        ...loreContext,
+        recentTurns: loreContext?.recentTurns ?? conversationHistory.slice(-4),
+      });
+      const ingestText = buildIngestTextFromVision(caption, vision, loreBlock);
 
       const { data: existing } = await supabaseAdmin
         .from('chat_messages')
@@ -787,6 +819,16 @@ When updating relationship analytics or emotional signals from this thread, weig
         .maybeSingle();
 
       const prevMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
+      const attachmentRefs =
+        Array.isArray(prevMeta.attachments) && (prevMeta.attachments as unknown[]).length
+          ? (prevMeta.attachments as Array<{ photoId?: string; journalEntryId?: string; url?: string; storagePath?: string }>)
+          : images.map((img) => ({
+              photoId: img.photoId,
+              journalEntryId: img.journalEntryId,
+              url: img.url,
+              storagePath: img.storagePath,
+            }));
+
       await supabaseAdmin
         .from('chat_messages')
         .update({
@@ -802,22 +844,49 @@ When updating relationship analytics or emotional signals from this thread, weig
                   places: vision.places,
                   objects: vision.objects,
                   textInImage: vision.textInImage,
+                  mediaKinds: vision.mediaKinds,
+                  platforms: vision.platforms,
+                  transcripts: vision.transcripts,
                 }
               : null,
             vision_enriched_at: new Date().toISOString(),
+            lore_context: {
+              cast: (loreContext?.threadEntities ?? []).map((e) => ({
+                id: e.id,
+                name: e.name,
+                type: e.type,
+              })),
+              focus: loreContext?.chatFocus ?? null,
+            },
           },
         })
         .eq('id', messageId)
         .eq('user_id', userId);
 
-      // Interpretation on enriched text (entities, lore agents)
-      void runLoreInterpretationPipeline({
+      // Place album photos into cast / locations / session lore graph.
+      void linkChatPhotosToLore({
         userId,
-        messageId,
-        text: ingestText,
-        threadId: sessionId,
-        previewCorrections,
-      })
+        sessionId,
+        chatMessageId: messageId,
+        ingestText,
+        vision,
+        attachments: attachmentRefs,
+        loreContext,
+      }).catch((err) => {
+        logger.warn({ err, messageId }, 'Chat photo lore linking failed');
+      });
+
+      // Interpretation on enriched text (entities, lore agents) — with cast priors
+      void runLoreInterpretationPipeline(
+        {
+          userId,
+          messageId,
+          text: ingestText,
+          threadId: sessionId,
+          previewCorrections,
+        },
+        { priorMentionedNames },
+      )
         .then((interpretation) => {
           if (config.enableLoreAgents) {
             void runLoreAgents({
@@ -835,11 +904,28 @@ When updating relationship analytics or emotional signals from this thread, weig
           logger.warn({ err, messageId }, 'Interpretation after vision enrich failed');
         });
 
-      if (!entityContext) {
-        ingestionQueue.enqueue(
+      // Always durable-ingest the vision-enriched text (including focused character chats).
+      void ingestionQueue
+        .enqueueDurable(
           { userId, chatMessageId: messageId, sessionId, conversationHistory, force: true },
           'NORMAL',
-        );
+        )
+        .catch((err) => {
+          logger.warn({ err, messageId }, 'Vision durable ingest enqueue failed');
+        });
+
+      if (entityContext?.type === 'CHARACTER') {
+        void this.ingestMessageWithContext(
+          userId,
+          ingestText,
+          conversationHistory,
+          entityContext as {
+            type: 'CHARACTER';
+            id: string;
+          },
+        ).catch((err) => {
+          logger.warn({ err, messageId, entityContext }, 'Character-context ingest after vision failed');
+        });
       }
 
       logger.info(
@@ -849,18 +935,22 @@ When updating relationship analytics or emotional signals from this thread, weig
           imageCount: images.length,
           hasVisionSummary: Boolean(vision?.summary),
           ingestTextLen: ingestText.length,
+          castSize: loreContext?.threadEntities?.length ?? 0,
+          priorMentionedNames,
         },
         'Chat vision message enriched for memory ingestion',
       );
     } catch (err) {
       logger.warn({ err, userId, messageId }, 'Vision enrich/ingest failed — falling back to caption-only ingest');
       // Fallback: still ingest caption so memory is not lost
-      if (!entityContext) {
-        ingestionQueue.enqueue(
-          { userId, chatMessageId: messageId, sessionId, conversationHistory },
+      void ingestionQueue
+        .enqueueDurable(
+          { userId, chatMessageId: messageId, sessionId, conversationHistory, force: true },
           'NORMAL',
-        );
-      }
+        )
+        .catch((enqErr) => {
+          logger.warn({ err: enqErr, messageId }, 'Vision fallback durable ingest failed');
+        });
     }
   }
 
@@ -874,6 +964,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
     clientIdempotencyKey?: string,
+    loreContext?: ChatPhotoLoreContext,
   ): Promise<{
     messageId: string;
     ingestionJobId?: string;
@@ -938,7 +1029,12 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Durable upload into photos bucket (parallel); keep dataUrl for same-turn vision.
-    type ImageWithStorage = ChatImageAttachment & { storagePath?: string; url?: string };
+    type ImageWithStorage = ChatImageAttachment & {
+      storagePath?: string;
+      url?: string;
+      photoId?: string;
+      journalEntryId?: string;
+    };
     let storedImages: ImageWithStorage[] | undefined = images;
     if (images?.length) {
       try {
@@ -952,6 +1048,8 @@ When updating relationship analytics or emotional signals from this thread, weig
             mimeType: hit?.mimeType ?? orig.mimeType,
             detail: hit?.detail ?? orig.detail,
             storagePath: hit?.storagePath,
+            photoId: hit?.photoId,
+            journalEntryId: hit?.journalEntryId,
           };
         });
       } catch (err) {
@@ -1071,18 +1169,24 @@ When updating relationship analytics or emotional signals from this thread, weig
       .eq('user_id', userId);
     timer.mark('session_touch');
 
-    // Image turns: defer ingestion until vision summary enriches content.
-    // Text-only: enqueue immediately as before.
+    // Image turns: defer ingestion until vision summary enriches content
+    // with cast / location / conversation lore context.
     if (hasImages && images?.length) {
       void this.enrichAndIngestVisionMessage({
         userId,
         sessionId,
         messageId,
         caption: message,
-        images: (storedImages ?? images) as ChatImageAttachment[],
+        images: (storedImages ?? images) as Array<
+          ChatImageAttachment & { photoId?: string; journalEntryId?: string; storagePath?: string; url?: string }
+        >,
         conversationHistory,
         entityContext,
         previewCorrections,
+        loreContext: {
+          ...loreContext,
+          recentTurns: loreContext?.recentTurns ?? conversationHistory.slice(-4),
+        },
       }).catch((err) => {
         logger.warn({ err, messageId }, 'enrichAndIngestVisionMessage crashed');
       });
@@ -1281,6 +1385,17 @@ When updating relationship analytics or emotional signals from this thread, weig
         previewCorrections,
         images,
         clientIdempotencyKey,
+        {
+          threadEntities: threadEntities?.map((e) => ({ id: e.id, name: e.name, type: e.type })),
+          chatFocus: chatFocus
+            ? {
+                entityId: chatFocus.entityId,
+                entityName: chatFocus.entityName,
+                entityType: chatFocus.entityType,
+              }
+            : undefined,
+          recentTurns: conversationHistory.slice(-4),
+        },
       );
       entryId = earlyPersist?.messageId;
       ingestionJobId = earlyPersist?.ingestionJobId;
@@ -1382,7 +1497,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       );
     }
 
-    if (entityContext?.type === 'CHARACTER') {
+    // Image turns defer character-context ingest until vision enrichment (enriched text).
+    if (entityContext?.type === 'CHARACTER' && !(images?.length)) {
       void this.ingestMessageWithContext(userId, message, conversationHistory, entityContext).catch((err) =>
         logger.warn({ err, userId, entityContext }, 'Failed to ingest message with character context'),
       );

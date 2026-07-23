@@ -165,11 +165,13 @@ describe('POST /api/chat/stream — assistant durability', () => {
       metadata: { sessionId: SESSION_ID, messageId: 'user-msg-3' },
     } as never);
 
-    await request(app)
+    const res = await request(app)
       .post('/api/chat/stream')
       .send({ message: 'hi', threadId: SESSION_ID });
 
     expect(assistantUpdates).toHaveLength(0);
+    expect(res.text).toContain('"type":"error"');
+    expect(res.text).not.toContain('"type":"done"');
   });
 
   it('returns 500 JSON when chatStream setup fails before headers', async () => {

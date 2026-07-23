@@ -68,6 +68,8 @@ describe('chatImageInput', () => {
           mimeType: 'image/jpeg',
           url: 'https://cdn.example/a.jpg',
           storagePath: 'user/chat/sess/a.jpg',
+          photoId: 'photo-1',
+          journalEntryId: 'journal-1',
         },
       ]),
     ).toEqual([
@@ -77,12 +79,14 @@ describe('chatImageInput', () => {
         detail: 'high',
         url: 'https://cdn.example/a.jpg',
         storagePath: 'user/chat/sess/a.jpg',
+        photoId: 'photo-1',
+        journalEntryId: 'journal-1',
       },
     ]);
   });
 
   it('exports multi-image limit', () => {
-    expect(MAX_CHAT_IMAGES_PER_TURN).toBe(4);
+    expect(MAX_CHAT_IMAGES_PER_TURN).toBe(8);
   });
 });
 
@@ -106,5 +110,21 @@ describe('buildIngestTextFromVision', () => {
       perImage: [],
     });
     expect(text).toBe('[Photo description]: A red car parked on a street.');
+  });
+
+  it('includes DM/story transcripts and platforms for lore ingest', () => {
+    const text = buildIngestTextFromVision('[2 images attached]', {
+      summary: 'Instagram DM screenshots about weekend plans.',
+      perImage: ['Thread top', 'Thread bottom'],
+      mediaKinds: ['message_thread', 'message_thread'],
+      platforms: ['instagram'],
+      people: ['Jamie'],
+      transcripts: ['Me: You free Saturday?\nJamie: Yeah let’s go'],
+    });
+    expect(text).toContain('[Extracted text / conversation]');
+    expect(text).toContain('You free Saturday?');
+    expect(text).toContain('Platforms: instagram');
+    expect(text).toContain('Media kinds: message_thread');
+    expect(text).not.toContain('[2 images attached]');
   });
 });

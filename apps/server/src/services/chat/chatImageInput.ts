@@ -22,14 +22,18 @@ export type ChatAttachmentMeta = {
   detail?: ChatImageDetail;
   url?: string;
   storagePath?: string;
+  /** Photos-bucket id — used to re-link album/lore after vision. */
+  photoId?: string;
+  /** Journal album entry created at upload time. */
+  journalEntryId?: string;
 };
 
 export const IMAGE_ATTACHED_PLACEHOLDER = '[Image attached]';
 
 /** ~4.5MB base64 payload cap for a single data URL in the JSON body. */
 export const MAX_CHAT_IMAGE_DATA_URL_CHARS = 6_000_000;
-/** Max images per chat turn (product + token budget). */
-export const MAX_CHAT_IMAGES_PER_TURN = 4;
+/** Max images per chat turn (product + token budget). Screenshots / story dumps often need more than a few. */
+export const MAX_CHAT_IMAGES_PER_TURN = 8;
 
 const DATA_URL_RE = /^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,[A-Za-z0-9+/=\s]+$/i;
 
@@ -55,7 +59,12 @@ export function resolveUserMessageText(message: string, images?: ChatImageAttach
 
 export function attachmentMetaFromImages(
   images?: Array<
-    ChatImageAttachment & { storagePath?: string; url?: string }
+    ChatImageAttachment & {
+      storagePath?: string;
+      url?: string;
+      photoId?: string;
+      journalEntryId?: string;
+    }
   >,
 ): ChatAttachmentMeta[] | undefined {
   if (!images?.length) return undefined;
@@ -65,6 +74,8 @@ export function attachmentMetaFromImages(
     detail: img.detail ?? 'high',
     ...(img.url ? { url: img.url } : {}),
     ...(img.storagePath ? { storagePath: img.storagePath } : {}),
+    ...(img.photoId ? { photoId: img.photoId } : {}),
+    ...(img.journalEntryId ? { journalEntryId: img.journalEntryId } : {}),
   }));
 }
 

@@ -319,6 +319,8 @@ export const useChatStream = () => {
 
       let buffer = '';
       let capturedMessageId: string | undefined;
+      let latestDurability: ChatStreamDurability | undefined;
+      let receivedContent = false;
 
       let streamCompleted = false;
 
@@ -347,9 +349,15 @@ export const useChatStream = () => {
           if (data.type === 'metadata') {
             const meta = data.data ?? {};
             if (typeof meta.messageId === 'string') capturedMessageId = meta.messageId;
+            if (meta.durability && typeof meta.durability === 'object') {
+              latestDurability = meta.durability as ChatStreamDurability;
+            }
             onMetadata(meta);
           } else if (data.type === 'chunk') {
-            if (data.content) onChunk(data.content);
+            if (data.content) {
+              receivedContent = true;
+              onChunk(data.content);
+            }
           } else if (data.type === 'done') {
             streamCompleted = true;
             onComplete({
@@ -374,15 +382,17 @@ export const useChatStream = () => {
         }
       }
 
-      // Connection closed without explicit done — finalize so UI doesn't hang.
+      // A clean chat turn always ends with an explicit `done` frame. Treat an
+      // early EOF as retryable failure instead of finalizing an empty/partial
+      // assistant bubble as though the model answered successfully.
       if (!streamCompleted && !abortController.signal.aborted) {
-        onComplete();
-        if (onMemoryFeedback && capturedMessageId) {
-          pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
-        }
-        if (capturedMessageId && token) {
-          void pollLoreBookNotice(capturedMessageId, token, dispatchLoreBookNotice);
-        }
+        const streamErr = new Error(
+          receivedContent
+            ? 'The assistant response was interrupted before it finished. Retry this reply to continue.'
+            : 'The assistant stream ended before a response was received. Retry this reply.',
+        ) as Error & { durability?: ChatStreamDurability };
+        streamErr.durability = latestDurability;
+        throw streamErr;
       }
 
       setIsStreaming(false);
@@ -410,4 +420,3 @@ export const useChatStream = () => {
 
   return { streamChat, isStreaming, cancel };
 };
-

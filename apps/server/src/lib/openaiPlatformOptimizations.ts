@@ -5,7 +5,8 @@ import { logger } from '../logger';
 import { openai } from './openai';
 
 /** Static instructions first — maximizes prompt-cache prefix hits across screenshot uploads. */
-export const MESSAGE_SCREENSHOT_STATIC_INSTRUCTIONS = `You analyze screenshots of text messages (iMessage, SMS, Instagram DMs, WhatsApp, etc.).
+export const MESSAGE_SCREENSHOT_STATIC_INSTRUCTIONS = `You analyze screenshots of text messages and social chat UIs (iMessage, SMS, Instagram DMs, WhatsApp, Twitter/X DMs, etc.).
+Also handle story/reply threads when they appear as a conversation UI.
 Extract every message line in order. Identify which side is the user ("me") vs the other person.
 
 Return structured JSON matching the schema. Use empty strings for unknown speakerLabel/timestamp fields.

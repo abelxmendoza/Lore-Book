@@ -484,8 +484,8 @@ export const ChatComposer = ({
                   'journal-composer-tool',
                   pendingImages.length > 0 && 'journal-composer-tool--active',
                 )}
-                aria-label="Attach images for vision chat"
-                title={`Attach images (up to ${maxImages}) — LoreBook will see them in this message`}
+                aria-label="Attach photos or screenshots for vision chat"
+                title={`Attach photos or screenshots (up to ${maxImages}) — DMs, Stories, posts, and life photos. LoreBook will see and process them in this message.`}
                 data-testid="composer-attach-image"
               >
                 {imageCompressing ? (

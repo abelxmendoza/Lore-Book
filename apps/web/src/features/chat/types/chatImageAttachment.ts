@@ -12,7 +12,7 @@ export type ChatImageAttachment = {
 
 export const IMAGE_ATTACHED_PLACEHOLDER = '[Image attached]';
 /** Product limit — keep in sync with server MAX_CHAT_IMAGES_PER_TURN. */
-export const MAX_CHAT_IMAGES_PER_TURN = 4;
+export const MAX_CHAT_IMAGES_PER_TURN = 8;
 
 const MAX_DIM = 1400;
 const JPEG_QUALITY = 0.82;

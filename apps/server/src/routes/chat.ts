@@ -30,6 +30,7 @@ import {
   sanitizeComposerEntities,
 } from '../services/entities/entityMentionIndexService';
 import { writeChatSseEvent } from '../utils/sseWrite';
+import { MAX_CHAT_IMAGES_PER_TURN } from '../services/chat/chatImageInput';
 
 const personaRL = new ChatPersonaRL();
 
@@ -176,8 +177,8 @@ const chatSchema = z
       )
       .max(50)
       .optional(),
-    /** Inline vision attachments for this turn (max 4). Not re-sent on later turns. */
-    images: z.array(chatImageSchema).max(4).optional(),
+    /** Inline vision attachments for this turn. Not re-sent on later turns. */
+    images: z.array(chatImageSchema).max(MAX_CHAT_IMAGES_PER_TURN).optional(),
     /** Client send-attempt key for idempotent user-message acceptance. */
     clientIdempotencyKey: z.string().min(8).max(128).optional(),
   })
@@ -643,6 +644,11 @@ router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, chec
           sseWrite({ type: 'chunk', content: contentDelta });
         }
       }
+      if (!clientGone && fullResponse.trim().length === 0) {
+        throw new Error(
+          'The assistant response ended before any content was received. Please retry this reply.',
+        );
+      }
       await persistAssistant(clientGone ? 'partial' : 'complete');
       if (streamResponseId && req.user?.id && persistSessionId) {
         const { mergeOpenAiSessionState } = await import('../services/openaiPlatform/openaiSessionState');
@@ -710,7 +716,7 @@ router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, chec
       }
     } catch (streamError) {
       // Mid-stream failure: persist whatever we got so the assistant turn is never lost.
-      await persistAssistant('partial');
+      await persistAssistant(fullResponse.trim().length > 0 ? 'partial' : 'failed');
       // Mid-stream failure — headers committed, can only write an error event.
       if (isFallbackEnabled() && isFallbackError(streamError)) {
         writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
