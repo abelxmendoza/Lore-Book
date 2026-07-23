@@ -581,7 +581,16 @@ class LocationService {
       })
     );
 
-    return locations.sort((a, b) =>
+    const visible = locations.filter((loc) => {
+      const meta = (loc.metadata ?? {}) as Record<string, unknown>;
+      const status = String(meta.migration_status ?? '');
+      if (['archived', 'moved', 'demoted', 'split'].includes(status)) return false;
+      if (meta.place_book_visible === false) return false;
+      if (meta.spatial_hidden === true && status) return false;
+      return true;
+    });
+
+    return visible.sort((a, b) =>
       (b.lastVisited ?? b.lastMentioned ?? '').localeCompare(a.lastVisited ?? a.lastMentioned ?? ''),
     );
   }

@@ -13,6 +13,7 @@ export { formatPlaceDiagnostics } from './placeDiagnostics';
 export { resolvePlaceAliasTarget } from './placeAliasResolver';
 export { suggestPlaceParentHint } from './placeHierarchyResolver';
 export { buildPlaceEvidence } from './placeEvidenceService';
+export * from './migration';
 export type {
   PlaceCognitionInput,
   PlaceCognitionResult,

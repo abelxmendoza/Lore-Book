@@ -35,8 +35,32 @@ const CANONICAL_REGISTRY: CanonEntry[] = [
   },
   {
     aliases: ['dtla', 'downtown la', 'downtown los angeles'],
-    canonical: 'DTLA',
+    canonical: 'Downtown Los Angeles',
     subtype: 'district',
+    entityKind: 'PLACE',
+  },
+  {
+    aliases: ['stanford', 'stanford university'],
+    canonical: 'Stanford University',
+    subtype: 'university',
+    entityKind: 'PLACE',
+  },
+  {
+    aliases: ['catch one', 'catch one the club'],
+    canonical: 'Catch One',
+    subtype: 'nightclub',
+    entityKind: 'PLACE',
+  },
+  {
+    aliases: ['club metro'],
+    canonical: 'Club Metro',
+    subtype: 'nightclub',
+    entityKind: 'PLACE',
+  },
+  {
+    aliases: ['first street pool', 'first street pool & billiards', 'first street pool and billiards'],
+    canonical: 'First Street Pool & Billiards',
+    subtype: 'pool_hall',
     entityKind: 'PLACE',
   },
 ];

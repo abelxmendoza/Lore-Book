@@ -126,3 +126,6 @@ apps/web/.env.staging.local
 # Personal AI-agent configs (Codex, etc.) — never commit agent setups
 .codex/
 packages/api-contracts/node_modules
+
+# Generated migration / audit reports (may contain account-specific lore)
+artifacts/
