@@ -3,6 +3,7 @@
  * Delegates to existing services; does not duplicate business logic.
  */
 import { familyGraphService } from '../kinship/familyGraphService';
+import { familySurnameSuggestionService } from '../kinship/familySurnameSuggestionService';
 import { householdService } from '../kinship/householdService';
 import { familyTreeService } from '../familyTreeService';
 import { locationService } from '../locationService';
@@ -160,12 +161,13 @@ export async function loadSkillsBook(userId: string) {
 }
 
 export async function loadFamilyBook(userId: string) {
-  const [graph, households, analytics, tree, counts] = await Promise.all([
+  const [graph, households, analytics, tree, counts, possibleFamilyMatches] = await Promise.all([
     familyGraphService.getGraph(userId),
     householdService.listHouseholds(userId),
     familyGraphService.getAnalytics(userId),
     familyTreeService.getUserFamilyTree(userId),
     loadCounts(userId),
+    familySurnameSuggestionService.listPendingSuggestions(userId),
   ]);
 
   const { data: familyGroups } = await supabaseAdmin
@@ -185,6 +187,7 @@ export async function loadFamilyBook(userId: string) {
     familyGroups: groups,
     analytics: analytics.slice(0, 12),
     counts,
+    possibleFamilyMatches,
   };
 }
 

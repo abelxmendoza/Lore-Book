@@ -13,6 +13,7 @@ import {
   parseKinshipFromName,
   type KinshipRole,
 } from './kinshipGlossary';
+import { familySurnameSuggestionService } from './familySurnameSuggestionService';
 
 type CharacterRow = { id: string; name: string; metadata?: Record<string, unknown> | null };
 
@@ -69,7 +70,10 @@ export class FamilyGraphInferenceService {
           messageId,
           kin.confidence
         );
-        if (created) edges++;
+        if (created) {
+          edges++;
+          void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
+        }
       }
     }
 
@@ -86,7 +90,10 @@ export class FamilyGraphInferenceService {
         messageId,
         parsed.confidence
       );
-      if (created) edges++;
+      if (created) {
+        edges++;
+        void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
+      }
     }
 
     const uniqueKin = [...new Map(kinCharacters.map((c) => [c.id, c])).values()];

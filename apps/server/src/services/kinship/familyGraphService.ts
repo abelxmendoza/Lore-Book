@@ -84,6 +84,29 @@ const KINSHIP_TO_EDGE: Record<string, FamilyEdgeType> = {
   household: 'related',
 };
 
+export type FamilyRelationshipRowLike = {
+  relationship_category?: string | null;
+  relationship_type?: string | null;
+  relationship_role?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+/**
+ * Is this character_relationships row a family edge? Shared by the graph
+ * builder and the surname-match gate — a single definition so the two never
+ * drift apart. Chat-created kinship edges (assertProtagonistKinship) set
+ * relationship_type: 'family' but never relationship_category, so all three
+ * signals must be checked.
+ */
+export function isFamilyRelationshipRow(row: FamilyRelationshipRowLike): boolean {
+  const kinship = (row.metadata?.kinship as string | undefined) ?? row.relationship_role ?? undefined;
+  return (
+    row.relationship_category === 'family' ||
+    row.relationship_type === 'family' ||
+    Boolean(kinship)
+  );
+}
+
 function edgeTypeFromKinship(kinship?: string | null, relType?: string): FamilyEdgeType {
   if (!kinship) return relType === 'family' ? 'related' : 'related';
   const k = kinship.toLowerCase().replace(/[\s-]+/g, '_');
@@ -128,12 +151,8 @@ export class FamilyGraphService {
     for (const r of rels ?? []) {
       const meta = (r.metadata ?? {}) as Record<string, unknown>;
       const kinship = (meta.kinship as string | undefined) ?? r.relationship_role ?? undefined;
-      const isFamily =
-        r.relationship_category === 'family' ||
-        r.relationship_type === 'family' ||
-        Boolean(kinship);
 
-      if (!isFamily) continue;
+      if (!isFamilyRelationshipRow(r)) continue;
 
       const edgeType = edgeTypeFromKinship(kinship, r.relationship_type);
       const key = `${r.source_character_id}|${r.target_character_id}|${edgeType}`;

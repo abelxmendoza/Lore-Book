@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch } from 'lucide-react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
-import { booksApi } from '../../api/books';
+import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
@@ -25,6 +25,7 @@ type SummaryResponse = {
   households: HouseholdDTO[];
   familyGroups: Array<{ id: string; name: string; metadata?: Record<string, unknown> }>;
   analytics: RelationshipAnalyticDTO[];
+  possibleFamilyMatches?: PossibleFamilyMatch[];
 };
 
 export function FamilyBook() {
@@ -159,6 +160,26 @@ export function FamilyBook() {
       `Couldn't update ${member.name}`,
     ), [runEdit]);
 
+  const confirmFamilyMatch = useCallback((match: PossibleFamilyMatch) =>
+    runEdit(
+      () => fetchJson(`/api/relationships/character-links/${match.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ relationship_type: 'family', status: 'active' }),
+      }),
+      `Connected ${match.characterAName} and ${match.characterBName} as family`,
+      `Couldn't confirm this match`,
+    ), [runEdit]);
+
+  const dismissFamilyMatch = useCallback((match: PossibleFamilyMatch) =>
+    runEdit(
+      () => fetchJson(`/api/relationships/character-links/${match.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'dismissed' }),
+      }),
+      `Dismissed suggestion`,
+      `Couldn't dismiss this match`,
+    ), [runEdit]);
+
   const saveRelationship = useCallback(async (member: FamilyMember, edit: RelationshipEdit): Promise<void> => {
     if (shouldUseMock && demoTree) {
       const updatedMembers = demoTree.members.map(mem =>
@@ -248,6 +269,50 @@ export function FamilyBook() {
           Living family graphs inferred from your conversations — trees, households, groups, and relationship strength.
         </p>
       </header>
+
+      {!!summary?.possibleFamilyMatches?.length && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-white/70 flex items-center gap-2">
+            <Users className="h-4 w-4 text-amber-400" />
+            Possible Family Matches
+          </h2>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {summary.possibleFamilyMatches.map((match) => (
+              <article
+                key={match.id}
+                className="rounded-xl border border-amber-500/25 bg-amber-950/10 p-3 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-white truncate">
+                    {match.characterAName} &amp; {match.characterBName}
+                  </p>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    Both share the last name &quot;{match.sharedLastName}&quot; — possibly related
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void confirmFamilyMatch(match)}
+                    aria-label={`Confirm ${match.characterAName} and ${match.characterBName} as family`}
+                    className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void dismissFamilyMatch(match)}
+                    aria-label={`Dismiss possible match between ${match.characterAName} and ${match.characterBName}`}
+                    className="p-1.5 rounded-lg border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/5"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
 
       <nav className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
         {tabs.map(({ key, label, icon: Icon }) => (

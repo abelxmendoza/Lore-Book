@@ -833,6 +833,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
       });
 
+    // New card arrived with a last name already set — check for a possible-family match.
+    if (createResult.character.last_name) {
+      const { familySurnameSuggestionService } = await import('../services/kinship/familySurnameSuggestionService');
+      familySurnameSuggestionService.checkForSurnameMatches(userId, createResult.character.id).catch(err => {
+        logger.debug({ err, characterId: createResult.character.id }, 'Failed to check surname matches after create');
+      });
+    }
+
     await finalizeCharacterSuggestionAdd(userId, createResult.character, characterData);
 
     res.status(201).json({ character: createResult.character });
@@ -1035,7 +1043,7 @@ router.post('/questions/:id/resolve', requireAuth, async (req: AuthenticatedRequ
 
 /**
  * @swagger
- * /api/characters/list:
+ * /api/characters:
  *   get:
  *     summary: List all characters
  *     tags: [Characters]
@@ -1055,8 +1063,17 @@ router.post('/questions/:id/resolve', requireAuth, async (req: AuthenticatedRequ
  *                     $ref: '#/components/schemas/Character'
  *       500:
  *         description: Server error
+ * /api/characters/list:
+ *   get:
+ *     summary: List all characters (alias of GET /api/characters)
+ *     tags: [Characters]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of characters
  */
-router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     // Try to get from characters table first (new system)
     const { data: charactersData, error: charactersError } = await supabaseAdmin
@@ -1663,7 +1680,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const social_media = metadata.social_media as Record<string, string> | undefined;
-    const directRelationships = relationships?.map((rel) => {
+    const directRelationships = relationships?.filter((rel) => rel.relationship_type !== 'possible_family').map((rel) => {
       const relatedCharId = rel.source_character_id === character.id ? rel.target_character_id : rel.source_character_id;
       return {
         id: rel.id,
@@ -1949,6 +1966,15 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         .catch(err => {
           logger.debug({ err, characterId: updated.id }, 'Failed to recalculate importance after update');
         });
+    }
+
+    // A new/changed last name might match another family-role character's —
+    // surface a "possible family" suggestion (never auto-connect).
+    if (lastNameToUpdate !== undefined) {
+      const { familySurnameSuggestionService } = await import('../services/kinship/familySurnameSuggestionService');
+      familySurnameSuggestionService.checkForSurnameMatches(userId, updated.id).catch(err => {
+        logger.debug({ err, characterId: updated.id }, 'Failed to check surname matches after update');
+      });
     }
 
     if (metadataPatch.manual_archetype_correction && updateData.archetype !== undefined) {

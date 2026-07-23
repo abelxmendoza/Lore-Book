@@ -79,6 +79,14 @@ async function applyFieldPatch(
     logger.warn({ error, characterId, patch }, 'Character field correction failed');
     return [];
   }
+
+  if ('last_name' in patch) {
+    const { familySurnameSuggestionService } = await import('../kinship/familySurnameSuggestionService');
+    familySurnameSuggestionService.checkForSurnameMatches(userId, characterId).catch((err) => {
+      logger.debug({ err, characterId }, 'Failed to check surname matches after chat correction');
+    });
+  }
+
   return updates;
 }
 
