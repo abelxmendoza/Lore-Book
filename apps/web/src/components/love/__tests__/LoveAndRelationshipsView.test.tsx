@@ -156,7 +156,7 @@ describe('LoveAndRelationshipsView', () => {
     // A name guaranteed not to collide with any demo Character Book fixture.
     await user.click(screen.getByRole('button', { name: /add a new romantic interest/i }));
     await user.type(screen.getByRole('textbox', { name: /romantic interest name/i }), 'Priyanka Voss');
-    await user.click(screen.getByRole('button', { name: /introduce zephyrine okonkwo in chat/i }));
+    await user.click(screen.getByRole('button', { name: /introduce priyanka voss in chat/i }));
 
     expect(listener).toHaveBeenCalledTimes(1);
     const event = listener.mock.calls[0][0] as CustomEvent;
