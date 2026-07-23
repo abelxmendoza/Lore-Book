@@ -23,36 +23,36 @@ export class GoalStateCalculator {
         ? this.daysSince(goal.last_action_at)
         : inactivityDays;
 
-      // Determine status based on inactivity
+      // Silence is weak observability evidence, never abandonment evidence.
       let newStatus: Goal['status'] = goal.status || 'active';
       let insight: GoalInsight | null = null;
 
       if (inactivityDays > 45 || lastActionDays > 45) {
-        newStatus = 'abandoned';
         insight = {
           id: crypto.randomUUID(),
-          type: 'goal_state_change',
-          message: `Goal "${goal.title}" appears abandoned (no activity for ${Math.floor(inactivityDays)} days).`,
-          confidence: 0.9,
+          type: 'stagnation',
+          message: `LoreBook has not seen recent evidence about "${goal.title}". Its status is unchanged.`,
+          confidence: 0.35,
           timestamp: new Date().toISOString(),
           related_goal_id: goal.id,
           metadata: {
             inactivity_days: Math.floor(inactivityDays),
             previous_status: goal.status,
+            silence_only: true,
           },
         };
       } else if (inactivityDays > 20 || lastActionDays > 20) {
-        newStatus = 'paused';
         insight = {
           id: crypto.randomUUID(),
-          type: 'goal_state_change',
-          message: `Goal "${goal.title}" is paused due to inactivity (${Math.floor(inactivityDays)} days since last update).`,
-          confidence: 0.75,
+          type: 'stagnation',
+          message: `LoreBook has limited recent evidence about "${goal.title}". Its status is unchanged.`,
+          confidence: 0.25,
           timestamp: new Date().toISOString(),
           related_goal_id: goal.id,
           metadata: {
             inactivity_days: Math.floor(inactivityDays),
             previous_status: goal.status,
+            silence_only: true,
           },
         };
       } else {
@@ -63,7 +63,7 @@ export class GoalStateCalculator {
       goal.status = newStatus;
 
       // Add insight if status changed
-      if (insight && goal.status !== insight.metadata?.previous_status) {
+      if (insight) {
         insights.push(insight);
       }
 
@@ -152,4 +152,3 @@ export class GoalStateCalculator {
     return indicators;
   }
 }
-

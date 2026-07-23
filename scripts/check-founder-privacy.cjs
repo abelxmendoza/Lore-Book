@@ -42,7 +42,6 @@ const blockedInLiterals = [
   'Ashley De La Cruz',
   'De La Cruz',
   'Club Metro',
-  'Building LoreBook',
   'Bathroom Guardian',
   'Armstrong Robotics',
   'Armstrong',

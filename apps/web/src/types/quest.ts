@@ -130,6 +130,13 @@ export interface QuestSuggestion {
   confidence: number;
   source_entry_id?: string;
   reasoning?: string;
+  evidence?: Array<{ text: string } | string>;
+  item_type?: string;
+  cognition_status?: string;
+  domain?: string;
+  temporal_state?: string;
+  requires_review?: boolean;
+  last_supported_at?: string;
   source_message_id?: string | null;
   match_status?: 'new' | 'similar' | 'existing';
   matched_book_id?: string | null;

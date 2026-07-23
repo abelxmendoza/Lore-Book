@@ -11,7 +11,15 @@ export { DependencyAnalyzer } from './dependencyAnalyzer';
 export { SuccessPredictor } from './successPredictor';
 export { GoalRecommender } from './goalRecommender';
 export { GoalStorage } from './goalStorage';
+export { GoalCognitionEngine, goalCognitionEngine } from './goalCognitionEngine';
+export type {
+  GoalCandidate,
+  GoalCognitionInput,
+  GoalCognitionResult,
+  GoalDiagnosticTrace,
+  GoalEligibilityResult,
+  GoalKind,
+} from './goalTypes';
 
 // Default export
 export { GoalEngine as default } from './goalEngine';
-

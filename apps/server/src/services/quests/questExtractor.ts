@@ -28,8 +28,12 @@ export class QuestExtractor {
         messages: [
           {
             role: 'system',
-            content: `You are a quest extraction expert. Your job is to identify quest-like statements from journal entries.
-A quest is a goal, todo, or objective that the user wants to accomplish.
+            content: `You extract current user-authored intentions. Verbs are not goals.
+
+Reject fragments, completed/past actions, memories, feedback, negated desires, hypotheticals,
+passive phrases, third-party goals, quoted instructions, wishes, and waiting states.
+Keep tasks, habits, projects, milestones, and durable quests distinct. A candidate must express
+current or future user intent, user agency, an unresolved outcome, and a complete proposition.
 
 Quest types:
 - main: Primary, long-term objectives (e.g., "Get promoted", "Write a book", "Start a business")
@@ -53,7 +57,8 @@ Return JSON:
       "importance": 1-10,
       "impact": 1-10,
       "category": "career|health|relationships|creative|financial|personal_growth|other",
-      "source_entry_date": "YYYY-MM-DD"
+      "source_entry_date": "YYYY-MM-DD",
+      "source_quote": "exact user-authored sentence supporting this candidate"
     }
   ]
 }`
@@ -85,6 +90,7 @@ Return JSON:
         progress_percentage: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        metadata: { source_text: q.source_quote, source_entry_date: q.source_entry_date },
       })) as Quest[];
     } catch (error) {
       logger.error({ error, userId }, 'Failed to extract quests');
@@ -111,8 +117,12 @@ Return JSON:
         messages: [
           {
             role: 'system',
-            content: `You are a quest extraction expert. Your job is to identify quest-like statements from user messages in conversations.
-A quest is a goal, todo, or objective that the user wants to accomplish.
+            content: `You extract current user-authored intentions. Verbs are not goals.
+
+Reject fragments, completed/past actions, memories, feedback, negated desires, hypotheticals,
+passive phrases, third-party goals, assistant suggestions, wishes, and waiting states.
+Keep tasks, habits, projects, milestones, and durable quests distinct. A candidate must express
+current or future user intent, user agency, an unresolved outcome, and a complete proposition.
 
 Look for:
 - Explicit goals ("I want to...", "I need to...", "I should...", "I'm going to...")
@@ -143,7 +153,8 @@ Return JSON:
       "priority": 1-10,
       "importance": 1-10,
       "impact": 1-10,
-      "category": "career|health|relationships|creative|financial|personal_growth|other"
+      "category": "career|health|relationships|creative|financial|personal_growth|other",
+      "source_quote": "exact sentence from the current user message"
     }
   ]
 }
@@ -181,6 +192,7 @@ Only extract quests if they are clearly stated. Don't extract vague or uncertain
         progress_percentage: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        metadata: { source_text: q.source_quote || message },
       })) as Quest[];
     } catch (error) {
       logger.error({ error, userId, messagePreview: message.substring(0, 50) }, 'Failed to extract quests from message');

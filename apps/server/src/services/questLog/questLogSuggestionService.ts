@@ -32,12 +32,13 @@ class QuestLogSuggestionService {
     opts: {
       sourceMessageId?: string;
       source?: 'chat' | 'journal' | 'llm_scan';
+      sourceText?: string;
     } = {},
   ): Promise<boolean> {
     if (candidate.confidence < 0.45) return false;
 
     try {
-      await questSuggestionService.upsertFromExtraction(
+      const upserted = await questSuggestionService.upsertFromExtraction(
         userId,
         {
           title: candidate.displayName,
@@ -53,9 +54,11 @@ class QuestLogSuggestionService {
         {
           sourceMessageId: opts.sourceMessageId,
           source: opts.source ?? 'chat',
+          sourceText: opts.sourceText,
         },
       );
 
+      if (!upserted) return false;
       await this.enrichQuestLogMetadata(userId, candidate);
       return true;
     } catch (err) {

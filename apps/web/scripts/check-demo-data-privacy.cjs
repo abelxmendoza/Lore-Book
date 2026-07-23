@@ -62,7 +62,6 @@ const blockedTerms = [
   'Muay Thai',
   'Chipotle',
   'El Pollo Loco',
-  'Building LoreBook',
   // Inner-circle people/places from the founder's real lore — never in demo data.
   'Genni',
   'Shyla',

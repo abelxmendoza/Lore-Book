@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { LoveAndRelationshipsView } from '../LoveAndRelationshipsView';
 import { useMockData } from '../../../contexts/MockDataContext';
 import { getMockRomanticRelationshipsByFilter } from '../../../mocks/romanticRelationships';
+import { fetchJson } from '../../../lib/api';
 
 // Mock dependencies
 vi.mock('../../../contexts/MockDataContext', () => ({
@@ -64,6 +65,7 @@ describe('LoveAndRelationshipsView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     (useMockData as any).mockReturnValue({
       useMockData: true
     });
@@ -84,6 +86,96 @@ describe('LoveAndRelationshipsView', () => {
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
+  });
+
+  it('lets an ended relationship be re-selected as a romantic interest', async () => {
+    const user = userEvent.setup();
+    const listener = vi.fn();
+    window.addEventListener('lorebook:open-chat-focus', listener);
+
+    // Override the default 'active' fixture with an ended relationship for this
+    // test — exes should remain findable/re-selectable in the launcher.
+    (getMockRomanticRelationshipsByFilter as any).mockReturnValue([
+      { ...mockRelationships[0], status: 'ended', is_current: false },
+    ]);
+
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /add a new romantic interest/i }));
+    await user.type(screen.getByRole('textbox', { name: /romantic interest name/i }), 'Alex');
+    await user.click(screen.getByRole('button', { name: /chat about alex/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0][0] as CustomEvent;
+    // "Alex" exists in both the relationship list (id char-001) and the demo
+    // Character Book (id demo-character-alex) — the merge now prefers the
+    // richer Character Book entry, so that id wins.
+    expect(event.detail).toMatchObject({
+      entityId: 'demo-character-alex',
+      entityName: 'Alex',
+      entityType: 'character',
+      sourceSurface: 'love',
+      sourceLabel: 'Dating & Romance',
+    });
+
+    window.removeEventListener('lorebook:open-chat-focus', listener);
+  });
+
+  it('excludes an active romantic interest from the search', async () => {
+    const user = userEvent.setup();
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /add a new romantic interest/i }));
+    await user.type(screen.getByRole('textbox', { name: /romantic interest name/i }), 'Alex');
+
+    // Alex (status: active, from the default beforeEach fixture) is no longer
+    // an exact match — the submit button falls through to the new-person copy.
+    expect(screen.queryByRole('button', { name: /chat about alex/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /introduce alex in chat/i })).toBeInTheDocument();
+  });
+
+  it('introducing a brand-new person opens chat without pre-creating a character', async () => {
+    const user = userEvent.setup();
+    const listener = vi.fn();
+    window.addEventListener('lorebook:open-chat-focus', listener);
+
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    // A name guaranteed not to collide with any demo Character Book fixture.
+    await user.click(screen.getByRole('button', { name: /add a new romantic interest/i }));
+    await user.type(screen.getByRole('textbox', { name: /romantic interest name/i }), 'Priyanka Voss');
+    await user.click(screen.getByRole('button', { name: /introduce zephyrine okonkwo in chat/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0][0] as CustomEvent;
+    expect(event.detail).toMatchObject({
+      entityName: 'Priyanka Voss',
+      entityType: 'memory',
+      sourceSurface: 'love',
+      sourceLabel: 'Dating & Romance',
+    });
+    expect(event.detail.entityId).not.toBe('');
+    expect(event.detail.initialPrompt).toMatch(/priyanka/i);
+    expect(event.detail.initialPrompt).toMatch(/aliases|nicknames/i);
+
+    const characterPostCalls = (fetchJson as any).mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('/api/characters'),
+    );
+    expect(characterPostCalls).toHaveLength(0);
+
+    window.removeEventListener('lorebook:open-chat-focus', listener);
   });
 
   it('shows demo romantic character suggestions in mock mode', async () => {
@@ -184,5 +276,20 @@ describe('LoveAndRelationshipsView', () => {
     await waitFor(() => {
       expect(screen.getByText(/no relationships found/i)).toBeInTheDocument();
     });
+  });
+
+  it('switches to the persisted list view and keeps copy all available', async () => {
+    const user = userEvent.setup();
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /list view/i }));
+
+    expect(localStorage.getItem('lk_dating_romance_view')).toBe('list');
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeEnabled();
+    expect(screen.getByTestId('relationship-card-rel-001')).toBeInTheDocument();
   });
 });

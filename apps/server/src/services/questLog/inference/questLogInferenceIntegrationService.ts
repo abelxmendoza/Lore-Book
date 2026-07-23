@@ -36,6 +36,7 @@ export async function runQuestLogInferenceForMessage(
       const upserted = await questLogSuggestionService.upsertFromInference(userId, candidate, {
         sourceMessageId,
         source: 'chat',
+        sourceText: text,
       });
       if (upserted) suggestionsUpserted += 1;
     }
@@ -91,6 +92,7 @@ export async function rescanQuestLogInference(
       const upserted = await questLogSuggestionService.upsertFromInference(userId, promoted, {
         sourceMessageId: episode.id,
         source: 'llm_scan',
+        sourceText: episode.text,
       });
       if (upserted) suggestionsUpserted += 1;
     }

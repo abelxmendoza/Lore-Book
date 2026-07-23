@@ -197,7 +197,11 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
             confidence: 0.72,
             reasoning: 'Detected from your recent journals and chats',
           },
-          { source: 'llm_scan' }
+          {
+            source: 'llm_scan',
+            sourceText:
+              typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
+          }
         );
       }
     }
@@ -219,6 +223,14 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
           impact: clampQuestScore(row.impact),
           confidence: row.confidence,
           reasoning: row.reasoning ?? 'Detected from your story',
+          evidence: row.evidence ?? [],
+          item_type: row.item_type ?? undefined,
+          cognition_status: typeof row.context?.status === 'string' ? row.context.status : 'CANDIDATE',
+          domain: typeof row.context?.domain === 'string' ? row.context.domain : undefined,
+          temporal_state:
+            typeof row.context?.temporal_state === 'string' ? row.context.temporal_state : undefined,
+          requires_review: row.requires_review ?? false,
+          last_supported_at: row.created_at,
           match_status: match.match_status,
           matched_book_id: match.matched_book_id,
           matched_book_name: match.matched_book_name,

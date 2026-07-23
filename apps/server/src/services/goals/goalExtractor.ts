@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
 
-import type { Goal, GoalContext } from './types';
+import { goalCognitionEngine } from './goalCognitionEngine';
+import type { Goal, GoalContext, GoalStatus } from './types';
 
 /**
  * Extracts goals from journal entries, tasks, arcs, and timeline
@@ -44,22 +45,23 @@ export class GoalExtractor {
     const goals: Goal[] = [];
 
     for (const entry of entries) {
-      // Check if entry has goal tag
-      const hasGoalTag = entry.tags?.includes('goal') || 
-                        entry.tags?.some((tag: string) => tag.toLowerCase().includes('goal'));
+      const content = entry.content || '';
+      const cognition = goalCognitionEngine.evaluate({
+        ownerEntityId: entry.user_id ?? 'unknown-user',
+        sourceText: content,
+        proposedTitle: entry.title,
+        proposedKind: 'QUEST',
+        sourceMessageId: entry.id,
+        sourceType: 'journal',
+        authorRole: 'user',
+        now: new Date(entry.date || entry.created_at || Date.now()),
+      });
 
-      // Check for goal keywords in content
-      const goalKeywords = ['goal', 'want to', 'plan to', 'aim to', 'working on', 'trying to', 'hope to'];
-      const content = (entry.content || '').toLowerCase();
-      const hasGoalKeyword = goalKeywords.some(keyword => content.includes(keyword));
-
-      if (hasGoalTag || hasGoalKeyword) {
-        const title = entry.title || this.extractGoalName(entry.content || '');
-        
+      if (cognition.eligibility.eligible) {
         goals.push({
           id: `goal_entry_${entry.id}`,
-          title,
-          description: entry.content,
+          title: cognition.candidate.canonicalTitle,
+          description: content,
           created_at: entry.date || entry.created_at,
           updated_at: entry.date || entry.updated_at,
           last_action_at: entry.date || entry.updated_at,
@@ -69,6 +71,13 @@ export class GoalExtractor {
           metadata: {
             tags: entry.tags,
             sentiment: entry.sentiment,
+            cognition: {
+              kind: cognition.candidate.kind,
+              temporal_state: cognition.candidate.temporalState,
+              domain: cognition.candidate.domain,
+              confidence: cognition.candidate.confidence,
+              evidence: cognition.candidate.originalText,
+            },
           },
         });
       }
@@ -85,9 +94,7 @@ export class GoalExtractor {
 
     for (const task of tasks) {
       // Only include tasks that seem like goals (not simple todos)
-      const isGoal = task.isGoal || 
-                    task.type === 'goal' ||
-                    (task.title && task.title.length > 20); // Longer titles are more likely goals
+      const isGoal = task.isGoal || task.type === 'goal';
 
       if (isGoal) {
         goals.push({
@@ -181,17 +188,6 @@ export class GoalExtractor {
   }
 
   /**
-   * Extract goal name from text
-   */
-  private extractGoalName(text: string): string {
-    if (!text) return 'Untitled Goal';
-    
-    // Take first line or first 60 characters
-    const firstLine = text.split('\n')[0].trim();
-    return firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
-  }
-
-  /**
    * Map task status to goal status
    */
   private mapTaskStatus(taskStatus?: string): GoalStatus {
@@ -208,4 +204,3 @@ export class GoalExtractor {
     return statusMap[taskStatus.toLowerCase()] || 'active';
   }
 }
-

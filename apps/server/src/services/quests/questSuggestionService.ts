@@ -8,6 +8,9 @@ import { questStorage } from './questStorage';
 import type { CreateQuestInput, Quest, QuestType } from './types';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { goalCognitionEngine } from '../goals/goalCognitionEngine';
+import { explainGoalEvidence } from '../goals/goalEvidenceService';
+import type { GoalKind, GoalSourceType } from '../goals/goalTypes';
 
 export type QuestSuggestionRow = {
   id: string;
@@ -23,6 +26,10 @@ export type QuestSuggestionRow = {
   evidence?: Array<{ text: string } | string>;
   source?: string;
   source_message_id?: string | null;
+  item_type?: string | null;
+  context?: Record<string, unknown>;
+  requires_review?: boolean;
+  created_at?: string;
 };
 
 export type MaterializeQuestInput = {
@@ -64,18 +71,49 @@ class QuestSuggestionService {
       sourceMessageId?: string;
       sourceThreadId?: string | null;
       source?: 'chat' | 'journal' | 'llm_scan';
+      sourceText?: string;
+      authorRole?: 'user' | 'assistant' | 'system';
+      userConfirmed?: boolean;
     } = {}
-  ): Promise<void> {
+  ): Promise<boolean> {
     const title = extracted.title?.trim();
-    if (!title || (extracted.confidence ?? 0.72) < 0.45) return;
+    if (!title || (extracted.confidence ?? 0.72) < 0.45) return false;
+
+    const sourceText = opts.sourceText?.trim();
+    if (!sourceText) {
+      logger.debug({ userId, title }, 'Goal cognition rejected suggestion without direct source text');
+      return false;
+    }
+    const proposedKind: GoalKind =
+      extracted.quest_type === 'daily' ? 'TASK'
+        : extracted.quest_type === 'achievement' ? 'MILESTONE'
+          : extracted.quest_type === 'main' ? 'QUEST'
+            : 'INTENTION';
+    const cognition = goalCognitionEngine.evaluate({
+      ownerEntityId: userId,
+      sourceText,
+      proposedTitle: title,
+      proposedKind,
+      sourceMessageId: opts.sourceMessageId,
+      sourceType: (opts.source ?? 'chat') as GoalSourceType,
+      authorRole: opts.authorRole ?? 'user',
+      userConfirmed: opts.userConfirmed,
+    });
+    if (cognition.decision === 'REJECT' || !cognition.eligibility.eligible) {
+      logger.debug(
+        { userId, title, diagnostic: cognition.diagnostic },
+        'Goal cognition rejected quest suggestion',
+      );
+      return false;
+    }
 
     const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'quests', title, {
       sourceMessageId: opts.sourceMessageId,
       threadId: opts.sourceThreadId,
     });
-    if (suppressed.suppressed) return;
+    if (suppressed.suppressed) return false;
 
-    const evidenceText = extracted.description ?? extracted.reasoning ?? '';
+    const evidenceText = cognition.candidate.originalText;
     const quality = evaluateEntityQuality({
       name: title,
       domain: 'quests',
@@ -85,20 +123,24 @@ class QuestSuggestionService {
       sourceMessageId: opts.sourceMessageId,
       sourceThreadId: opts.sourceThreadId ?? undefined,
     });
-    if (!passesEntityQualityGate(quality)) return;
-    const safeTitle = resolveDisplayName({ name: title, domain: 'quests' }, quality);
+    if (!passesEntityQualityGate(quality)) return false;
+    const safeTitle = resolveDisplayName(
+      { name: cognition.candidate.canonicalTitle, domain: 'quests' },
+      quality,
+    );
 
     const payload = {
       user_id: userId,
       title: safeTitle,
-      description: extracted.description ?? null,
+      description: extracted.description ?? cognition.candidate.desiredOutcome ?? null,
       quest_type: normalizeQuestType(extracted.quest_type ?? 'side'),
       priority: clampQuestScore(extracted.priority),
       importance: clampQuestScore(extracted.importance),
       impact: clampQuestScore(extracted.impact),
       category: extracted.category ?? null,
-      confidence: Math.max(0, Math.min(1, Number(extracted.confidence ?? 0.72))),
-      reasoning: extracted.reasoning ?? null,
+      confidence: cognition.candidate.confidence,
+      reasoning: explainGoalEvidence(cognition.candidate.originalText, cognition.candidate.kind),
+      evidence: [{ text: cognition.candidate.originalText }],
       source_message_id: opts.sourceMessageId ?? null,
       source: opts.source ?? 'chat',
       status: 'pending',
@@ -111,7 +153,32 @@ class QuestSuggestionService {
 
     if (error && !isTableMissing(error)) {
       logger.warn({ error, userId, title }, 'Failed to upsert quest suggestion');
+      return false;
     }
+    const { error: metadataError } = await supabaseAdmin
+      .from('quest_suggestions')
+      .update({
+        item_type: cognition.candidate.kind.toLowerCase(),
+        context: {
+          domain: cognition.candidate.domain,
+          temporal_state: cognition.candidate.temporalState,
+          status: cognition.candidate.status,
+          decision: cognition.decision,
+        },
+        promotion_status:
+          cognition.decision === 'ACCEPT' ? 'suggested_quest_log_item' : 'candidate',
+        requires_review: cognition.decision === 'REVIEW',
+        normalized_title: normalizeTitle(safeTitle),
+      })
+      .eq('user_id', userId)
+      .eq('title', safeTitle);
+    if (metadataError && !isTableMissing(metadataError)) {
+      logger.debug(
+        { metadataError, userId, title: safeTitle },
+        'Quest cognition metadata unavailable; core suggestion was preserved',
+      );
+    }
+    return !error;
   }
 
   async getPendingSuggestions(userId: string): Promise<QuestSuggestionRow[]> {
@@ -135,6 +202,24 @@ class QuestSuggestionService {
   private async filterPendingRows(userId: string, rows: Array<Record<string, unknown>>): Promise<QuestSuggestionRow[]> {
     const filtered: QuestSuggestionRow[] = [];
     for (const row of rows) {
+      const evidence = (row.evidence as QuestSuggestionRow['evidence']) ?? [];
+      const firstEvidence = evidence[0];
+      const sourceText = typeof firstEvidence === 'string' ? firstEvidence : firstEvidence?.text;
+      const cognition = sourceText
+        ? goalCognitionEngine.evaluate({
+            ownerEntityId: userId,
+            sourceText,
+            proposedTitle: String(row.title ?? ''),
+            proposedKind: typeof row.item_type === 'string' ? row.item_type : undefined,
+            sourceMessageId: row.source_message_id as string | undefined,
+            sourceType: ((row.source as GoalSourceType) ?? 'chat'),
+            authorRole: 'user',
+          })
+        : null;
+      if (!cognition || cognition.decision === 'REJECT' || !cognition.eligibility.eligible) {
+        await this.archiveInvalidSuggestion(userId, row, sourceText, cognition);
+        continue;
+      }
       const suppressed = await suggestionDismissalService.shouldSuppress(userId, 'quests', String(row.title ?? ''), {
         sourceMessageId: row.source_message_id as string | null | undefined,
       });
@@ -150,19 +235,56 @@ class QuestSuggestionService {
         category: row.category as string | null | undefined,
         confidence: Number(row.confidence),
         reasoning: row.reasoning as string | null | undefined,
-        evidence: (row.evidence as QuestSuggestionRow['evidence']) ?? [],
+        evidence,
         source: (row.source as string) ?? 'chat',
         source_message_id: row.source_message_id as string | null | undefined,
+        item_type: row.item_type as string | null | undefined,
+        context: (row.context as Record<string, unknown>) ?? {},
+        requires_review: Boolean(row.requires_review),
+        created_at: row.created_at as string | undefined,
       });
     }
     return filtered;
+  }
+
+  private async archiveInvalidSuggestion(
+    userId: string,
+    row: Record<string, unknown>,
+    sourceText: string | undefined,
+    cognition: ReturnType<typeof goalCognitionEngine.evaluate> | null,
+  ): Promise<void> {
+    const reasons = cognition?.diagnostic.reasons ?? ['missing_direct_supporting_evidence'];
+    await supabaseAdmin
+      .from('quest_suggestions')
+      .update({
+        status: 'rejected',
+        reasoning: `Rejected by Goal Cognition Engine: ${reasons.join(', ')}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('id', row.id);
+
+    const { error } = await supabaseAdmin.from('goal_cognition_audit').insert({
+      user_id: userId,
+      suggestion_id: row.id,
+      prior_title: String(row.title ?? ''),
+      source_message_id: row.source_message_id ?? null,
+      source_text: sourceText ?? null,
+      prior_payload: row,
+      decision: cognition?.decision ?? 'REJECT',
+      reasons,
+    });
+    if (error && !isTableMissing(error)) {
+      logger.debug({ error, userId, suggestionId: row.id }, 'Goal cognition audit insert failed');
+    }
   }
 
   async hasAnySuggestions(userId: string): Promise<boolean> {
     const { count, error } = await supabaseAdmin
       .from('quest_suggestions')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('status', 'pending');
     if (error) {
       if (isTableMissing(error)) return false;
       return false;
@@ -338,7 +460,7 @@ class QuestSuggestionService {
     let saved = 0;
     for (const quest of extracted) {
       if (!quest.title?.trim() || have.has(normalizeTitle(quest.title))) continue;
-      await this.upsertFromExtraction(
+      const upserted = await this.upsertFromExtraction(
         userId,
         {
           title: quest.title,
@@ -351,9 +473,9 @@ class QuestSuggestionService {
           confidence: 0.72,
           reasoning: 'Detected from your conversation',
         },
-        { sourceMessageId: messageId, sourceThreadId, source: 'chat' }
+        { sourceMessageId: messageId, sourceThreadId, source: 'chat', sourceText: content }
       );
-      saved++;
+      if (upserted) saved++;
     }
     return saved;
   }
@@ -367,7 +489,7 @@ class QuestSuggestionService {
     let saved = 0;
     for (const quest of extracted) {
       if (!quest.title?.trim() || have.has(normalizeTitle(quest.title))) continue;
-      await this.upsertFromExtraction(
+      const upserted = await this.upsertFromExtraction(
         userId,
         {
           title: quest.title,
@@ -380,9 +502,9 @@ class QuestSuggestionService {
           confidence: 0.72,
           reasoning: 'Detected from your journal',
         },
-        { sourceMessageId: entryId, source: 'journal' }
+        { sourceMessageId: entryId, source: 'journal', sourceText: content }
       );
-      saved++;
+      if (upserted) saved++;
     }
     return saved;
   }
