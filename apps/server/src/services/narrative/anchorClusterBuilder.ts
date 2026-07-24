@@ -113,15 +113,102 @@ function buildRelationshipArcAnchor(
   return anchor;
 }
 
+const GENERIC_EVENT_TITLE =
+  /^(?:event on |captured conversation|untitled|unknown event|conversation)\b/i;
+
+/** Chat-ops / meta / non-life-story noise that should not become chapters */
+const JUNK_EVENT_TITLE =
+  /\b(?:recap everything|spam my tokens|stroke correctly|testing the chat|background check|self made|what we discussed|in this thread)\b/i;
+
+function isSpecificEventTitle(title: string): boolean {
+  const t = (title ?? '').trim();
+  if (t.length < 8) return false;
+  if (GENERIC_EVENT_TITLE.test(t)) return false;
+  if (JUNK_EVENT_TITLE.test(t)) return false;
+  // Prefer titles that look like chapter headings (not pure timestamps)
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return false;
+  // Bare person name only is not a chapter
+  if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}$/.test(t) && !/\b(show|party|era|summer|work|house|club)\b/i.test(t)) {
+    // Allow "Ex Lover Show" etc via keyword check above; bare "Abel Mendoza" fails
+    if (!/\b(show|party|festival|expo|graduation|interview|reflections)\b/i.test(t)) {
+      // If it's just 1–3 capitalized words without chapter cues, drop
+      const words = t.split(/\s+/);
+      if (words.length <= 3 && !/\b(with|at|and|the)\b/i.test(t)) return false;
+    }
+  }
+  return true;
+}
+
+/** Map TS pivot type onto DB-allowed anchor_type values */
+export function mapEventAnchorType(title: string): NarrativeAnchorType {
+  const t = title.toLowerCase();
+  if (/\b(lorebook|code|build|app|parser)\b/i.test(t)) return 'project_arc';
+  if (/\b(work|job|amazon|interview|office)\b/i.test(t)) return 'work_era';
+  if (/\b(family|abuela|t[ií]o|t[ií]a|cousin|graduation)\b/i.test(t)) return 'family_period';
+  if (/\b(club|goth|ska|show|festival|expo|nocturno|metro)\b/i.test(t)) return 'community';
+  if (/\b(travel|trip|vacation)\b/i.test(t)) return 'travel_period';
+  return 'life_era';
+}
+
 function buildEventAnchor(
   event: AnchorBuildContext['events'][number],
   ctx: AnchorBuildContext,
   gravity: Map<string, { gravityScore: number }>,
 ): NarrativeAnchor | null {
-  if (event.entityIds.length === 0) return null;
-  const significant = (event.significanceScore ?? 0) >= 60 ||
-    ['major', 'legendary'].includes((event.significanceLevel ?? '').toLowerCase());
-  if (!significant || !event.evidence?.length) return null;
+  if (!isSpecificEventTitle(event.title)) return null;
+
+  const level = (event.significanceLevel ?? '').toLowerCase();
+  const score = event.significanceScore ?? 0;
+  const significant =
+    score >= 40
+    || ['moderate', 'major', 'legendary', 'high'].includes(level)
+    || isSpecificEventTitle(event.title);
+
+  if (!significant) return null;
+
+  // Prefer real evidence; fall back to the title so empty summaries still qualify.
+  const evidence: AnchorEvidence[] =
+    event.evidence?.length
+      ? event.evidence
+      : [{
+          id: `event-title-${event.id}`,
+          label: event.title,
+          source: 'event',
+          sourceRef: event.id,
+          confidence: 0.7,
+        }];
+
+  const peopleNames = event.entityIds
+    .map((id) => ctx.entities.find((e) => e.entityId === id && e.entityType === 'character')?.name)
+    .filter(Boolean) as string[];
+  const placeNames = event.entityIds
+    .map((id) => ctx.entities.find((e) => e.entityId === id && e.entityType === 'location')?.name)
+    .filter(Boolean) as string[];
+
+  const cognition = narrativeAnchorEngine.evaluate({
+    title: event.title,
+    proposedType: 'pivotal_event',
+    peopleNames,
+    placeNames,
+    eventTitles: [event.title],
+    evidenceLabels: evidence.map((e) => e.label),
+    evidenceText: [event.summary, event.title].filter(Boolean).join(' '),
+    eventCount: 1,
+    significanceScore: Math.max(score, level === 'moderate' ? 50 : 0),
+    dates: event.startDate ? [event.startDate] : [],
+    membershipOnly: false,
+  });
+
+  // Keep strong specific events even when impact scoring is conservative.
+  if (
+    cognition.status === 'rejected'
+    || cognition.status === 'routed'
+  ) {
+    // Still allow chapter-worthy titles through as emerging anchors.
+    if (!isSpecificEventTitle(event.title) || cognition.decision === 'ROUTE_COMMUNITY') {
+      return null;
+    }
+  }
 
   const entities = event.entityIds
     .map((id) =>
@@ -133,34 +220,53 @@ function buildEventAnchor(
 
   const builtAt = new Date().toISOString();
   const consolidationKey = `event:${event.id}`;
+  const title = cognition.title && !/^(family|goth|work|social)\s+(period|community)$/i.test(cognition.title)
+    ? cognition.title
+    : event.title;
+
+  const places: AnchorMember[] = placeNames.map((name, i) => ({
+    id: event.entityIds.find((id) => ctx.entities.find((e) => e.entityId === id)?.name === name) ?? `place-${i}`,
+    kind: 'place' as const,
+    name,
+    evidence: [{ id: `ev-place-${i}`, label: name, source: 'event' as const, confidence: 0.75 }],
+  }));
 
   const anchor: NarrativeAnchor = {
     id: consolidationKey,
-    title: event.title,
-    anchorType: 'pivotal_event',
-    confidence: Math.min(0.95, 0.65 + (event.significanceScore ?? 60) / 300),
+    title,
+    // DB check constraint does not include pivotal_event — map to allowed types
+    anchorType: mapEventAnchorType(title),
+    confidence: Math.min(0.95, Math.max(0.55, cognition.confidence, 0.65 + score / 300)),
     gravityScore: 0,
     startDate: event.startDate,
-    entities,
+    entities: entities.filter((e) => !places.some((p) => p.id === e.id)),
     events: [
       {
         id: event.id,
         kind: 'event',
         name: event.title,
-        evidence: event.evidence,
+        evidence,
       },
     ],
     groups: [],
-    places: [],
-    evidence: event.evidence,
+    places,
+    evidence,
     provenance: {
       builtAt,
-      signals: ['pivotal_event', `significance:${event.significanceLevel ?? event.significanceScore}`],
+      signals: [
+        'pivotal_event',
+        `significance:${event.significanceLevel ?? event.significanceScore ?? 'inferred'}`,
+        `cognition:${cognition.decision}`,
+      ],
       consolidationKey,
     },
   };
 
   anchor.gravityScore = scoreAnchor(anchor, ctx);
+  // Boost specific named events so they clear the rank filter even with low entity gravity
+  if (isSpecificEventTitle(title)) {
+    anchor.gravityScore = Math.max(anchor.gravityScore, 0.35);
+  }
   return anchor;
 }
 
@@ -333,9 +439,9 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
     anchors.push(arc);
   }
 
-  // Event-introduced anchors (Leslie graduation party, Bad Dogg show)
+  // Event-introduced anchors (Leslie graduation party, Bad Dogg show, work chapters, etc.)
+  // Allow 0–N linked entities — a well-titled moment can stand alone as a chapter seed.
   for (const ev of ctx.events) {
-    if (ev.entityIds.length < 2) continue;
     const anchor = buildEventAnchor(ev, ctx, gravity);
     if (!anchor) continue;
     if (seenKeys.has(anchor.provenance.consolidationKey!)) continue;

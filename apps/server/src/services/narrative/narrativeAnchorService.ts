@@ -303,25 +303,38 @@ async function loadBuildContext(userId: string): Promise<AnchorBuildContext> {
   });
 
   const knownEntityIds = new Set(entities.map((entity) => entity.entityId));
-  const events = (eventsRes.data ?? []).map((event) => ({
-    id: event.id as string,
-    title: event.title as string,
-    entityIds: [
-      ...((event.people as string[] | null) ?? []),
-      ...((event.locations as string[] | null) ?? []),
-    ].filter((id) => knownEntityIds.has(id)),
-    startDate: event.start_time as string | undefined,
-    summary: event.summary as string | undefined,
-    significanceScore: Number(event.significance_score ?? 0),
-    significanceLevel: event.significance_level as string | undefined,
-    evidence: event.summary ? [{
-      id: `event-${event.id}`,
-      label: excerpt(event.summary as string),
-      source: 'event' as const,
-      sourceRef: event.id as string,
-      confidence: Math.max(0.7, Number(event.significance_score ?? 0) / 100),
-    }] : [],
-  }));
+  const events = (eventsRes.data ?? []).map((event) => {
+    const title = (event.title as string) || 'Untitled event';
+    const summary = event.summary as string | undefined;
+    const evidence = summary
+      ? [{
+          id: `event-${event.id}`,
+          label: excerpt(summary),
+          source: 'event' as const,
+          sourceRef: event.id as string,
+          confidence: Math.max(0.7, Number(event.significance_score ?? 0) / 100),
+        }]
+      : [{
+          id: `event-title-${event.id}`,
+          label: excerpt(title),
+          source: 'event' as const,
+          sourceRef: event.id as string,
+          confidence: 0.65,
+        }];
+    return {
+      id: event.id as string,
+      title,
+      entityIds: [
+        ...((event.people as string[] | null) ?? []),
+        ...((event.locations as string[] | null) ?? []),
+      ].filter((id) => knownEntityIds.has(id)),
+      startDate: event.start_time as string | undefined,
+      summary,
+      significanceScore: Number(event.significance_score ?? 0),
+      significanceLevel: event.significance_level as string | undefined,
+      evidence,
+    };
+  });
 
   for (const entity of entities) {
     const participationCount = events.filter((event) => event.entityIds.includes(entity.entityId)).length;
@@ -447,38 +460,43 @@ export const narrativeAnchorService = {
     await persistGravityScores(userId, ctx.entities);
     await persistAnchors(userId, anchors);
 
-    // Preserve rejected legacy rows for audit, but make them unpublishable.
-    const currentKeys = anchors
-      .map((anchor) => anchor.provenance.consolidationKey ?? anchor.id)
-      .filter(Boolean);
-    const { data: storedAnchors, error: storedError } = await supabaseAdmin
-      .from('narrative_anchors')
-      .select('id, consolidation_key, metadata')
-      .eq('user_id', userId);
-    if (storedError) throw storedError;
+    // Only quarantine stale rows when this rebuild actually produced anchors.
+    // An empty rebuild must not wipe the book (catastrophic empty state).
+    if (anchors.length > 0) {
+      const currentKeys = anchors
+        .map((anchor) => anchor.provenance.consolidationKey ?? anchor.id)
+        .filter(Boolean);
+      const { data: storedAnchors, error: storedError } = await supabaseAdmin
+        .from('narrative_anchors')
+        .select('id, consolidation_key, metadata')
+        .eq('user_id', userId);
+      if (storedError) throw storedError;
 
-    const currentKeySet = new Set(currentKeys);
-    const staleIds = (storedAnchors ?? [])
-      .filter((row) => !row.consolidation_key || !currentKeySet.has(row.consolidation_key))
-      .map((row) => row.id);
-    for (const staleId of staleIds) {
-      const stored = (storedAnchors ?? []).find((row) => row.id === staleId);
-      const metadata = (stored?.metadata ?? {}) as Record<string, unknown>;
-      const { error: quarantineError } = await supabaseAdmin.from('narrative_anchors').update({
-        metadata: {
-          ...metadata,
-          publication_status: 'quarantined',
-          quarantine_reason: 'unsupported_after_provenance_rebuild',
-          validation_version: 'provenance_v2',
-          quarantined_at: new Date().toISOString(),
-          anchor_book_visible: false,
-        },
-        updated_at: new Date().toISOString(),
-      }).eq('user_id', userId).eq('id', staleId);
-      if (quarantineError) {
-        logger.error({ error: quarantineError, userId, staleId }, 'narrativeAnchor: quarantine failed');
-        throw quarantineError;
+      const currentKeySet = new Set(currentKeys);
+      const staleIds = (storedAnchors ?? [])
+        .filter((row) => !row.consolidation_key || !currentKeySet.has(row.consolidation_key))
+        .map((row) => row.id);
+      for (const staleId of staleIds) {
+        const stored = (storedAnchors ?? []).find((row) => row.id === staleId);
+        const metadata = (stored?.metadata ?? {}) as Record<string, unknown>;
+        const { error: quarantineError } = await supabaseAdmin.from('narrative_anchors').update({
+          metadata: {
+            ...metadata,
+            publication_status: 'quarantined',
+            quarantine_reason: 'unsupported_after_provenance_rebuild',
+            validation_version: 'provenance_v2',
+            quarantined_at: new Date().toISOString(),
+            anchor_book_visible: false,
+          },
+          updated_at: new Date().toISOString(),
+        }).eq('user_id', userId).eq('id', staleId);
+        if (quarantineError) {
+          logger.error({ error: quarantineError, userId, staleId }, 'narrativeAnchor: quarantine failed');
+          throw quarantineError;
+        }
       }
+    } else {
+      logger.warn({ userId }, 'narrativeAnchor: rebuild produced 0 anchors — skipping quarantine wipe');
     }
 
     return anchors;
