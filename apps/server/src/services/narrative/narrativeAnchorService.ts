@@ -384,6 +384,11 @@ async function persistAnchors(userId: string, anchors: NarrativeAnchor[]): Promi
         ...((existing?.metadata ?? {}) as Record<string, unknown>),
         publication_status: 'published',
         validation_version: 'provenance_v2',
+        // Fresh rebuilds are real narrative anchors, not community routes.
+        anchor_book_visible: true,
+        archived: false,
+        routed_to_community: false,
+        cluster_type: 'NARRATIVE_ANCHOR',
       },
       consolidation_key: anchor.provenance.consolidationKey ?? anchor.id,
       updated_at: new Date().toISOString(),
@@ -466,6 +471,7 @@ export const narrativeAnchorService = {
           quarantine_reason: 'unsupported_after_provenance_rebuild',
           validation_version: 'provenance_v2',
           quarantined_at: new Date().toISOString(),
+          anchor_book_visible: false,
         },
         updated_at: new Date().toISOString(),
       }).eq('user_id', userId).eq('id', staleId);
@@ -493,13 +499,34 @@ export const narrativeAnchorService = {
     if (options.limit) query = query.limit(options.limit);
 
     const { data: rows, error } = await query;
-    if (error || !rows?.length) return [];
+    if (error) {
+      logger.error({ error, userId }, 'narrativeAnchor: listAnchors query failed');
+      throw error;
+    }
+    if (!rows?.length) return [];
 
-    const anchorIds = rows.map((r) => r.id);
-    const { data: members } = await supabaseAdmin
+    // Drop migration-routed / soft-hidden clusters even if still marked published.
+    const visibleRows = (rows as AnchorRow[]).filter((row) => {
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      if (meta.anchor_book_visible === false) return false;
+      if (meta.routed_to_community === true) return false;
+      if (meta.archived === true) return false;
+      if (typeof meta.cluster_type === 'string' && meta.cluster_type !== 'NARRATIVE_ANCHOR') {
+        return false;
+      }
+      return true;
+    });
+    if (!visibleRows.length) return [];
+
+    const anchorIds = visibleRows.map((r) => r.id);
+    const { data: members, error: membersError } = await supabaseAdmin
       .from('narrative_anchor_members')
       .select('*')
       .in('anchor_id', anchorIds);
+    if (membersError) {
+      logger.error({ error: membersError, userId }, 'narrativeAnchor: list members query failed');
+      throw membersError;
+    }
 
     const byAnchor = new Map<string, MemberRow[]>();
     for (const m of members ?? []) {
@@ -508,7 +535,7 @@ export const narrativeAnchorService = {
       byAnchor.set(m.anchor_id, list);
     }
 
-    return (rows as AnchorRow[]).map((r) => rowToAnchor(r, byAnchor.get(r.id) ?? []));
+    return visibleRows.map((r) => rowToAnchor(r, byAnchor.get(r.id) ?? []));
   },
 
   async getAnchor(userId: string, anchorId: string): Promise<NarrativeAnchor | null> {
