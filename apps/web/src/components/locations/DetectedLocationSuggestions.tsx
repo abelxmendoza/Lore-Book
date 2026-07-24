@@ -338,8 +338,10 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                       disabled={adding === k}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded bg-teal-500/20 text-teal-100 hover:bg-teal-500/30 border border-teal-500/30 disabled:opacity-50"
                     >
-                      <Plus className="h-3 w-3" />
-                      {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
+                      <Plus className="h-3 w-3 shrink-0" />
+                      <span className="truncate max-w-[5.5rem] sm:max-w-[12rem]">
+                        {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
+                      </span>
                     </button>
                     <button
                       type="button"

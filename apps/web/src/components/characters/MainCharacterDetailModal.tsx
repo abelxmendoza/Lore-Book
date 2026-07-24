@@ -704,7 +704,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
               style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
             >
               {/* Mobile stats — inside scroll area, not fixed header */}
-              <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+              <div className="mt-2 grid grid-cols-2 min-[420px]:grid-cols-4 gap-1.5 sm:hidden">
                 {statItems.map(({ label, shortLabel, value }) => (
                   <div
                     key={label}
@@ -729,7 +729,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
                 {/* Editable core identity - to solidify basic knowledge, attributes, name, occupation, aliases about self */}
                 <section className="rounded-xl border border-amber-500/20 bg-black/30 p-4">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-300/80">Core identity (editable)</h3>
                     {!editingIdentity ? (
                       <Button size="sm" variant="outline" className="border-amber-500/30 text-xs" onClick={() => setEditingIdentity(true)}>
@@ -787,7 +787,11 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     </div>
                   ) : (
                     <div className="text-xs text-white/70">
-                      <div>First: <span className="text-white">{editFirst || '—'}</span> Middle: <span className="text-white">{editMiddle || '—'}</span> Last: <span className="text-white">{editLast || '—'}</span></div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>First: <span className="text-white">{editFirst || '—'}</span></span>
+                        <span>Middle: <span className="text-white">{editMiddle || '—'}</span></span>
+                        <span>Last: <span className="text-white">{editLast || '—'}</span></span>
+                      </div>
                       <div>Occupation: <span className="text-white">{editOccupation || profile.character.role || '—'}</span></div>
                       {editAliases.length > 0 && <div>Aliases: <span className="text-white">{editAliases.join(', ')}</span></div>}
                       <p className="mt-1 text-[10px] text-amber-400/50">Click Edit to solidify your identity details.</p>
@@ -904,7 +908,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
               {/* People */}
               <TabsContent value="people" className={`${tabPanelClass} space-y-3`}>
                 <div className="flex items-center gap-2 px-1">
-                  <p className="text-xs text-white/50 flex-1">
+                  <p className="text-xs text-white/50 flex-1 min-w-0">
                     People in your life — tap someone to see their full character profile.
                   </p>
                   {canEditWorld && (
@@ -1079,7 +1083,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 {canEditWorld && (
                   <div className="pt-2 space-y-2">
                     <div className="flex items-center gap-2 px-1">
-                      <h3 className="flex-1 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex items-center gap-1.5">
+                      <h3 className="flex-1 min-w-0 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex flex-wrap items-center gap-1.5">
                         <Building2 className="h-3.5 w-3.5" />
                         Your Groups &amp; Organizations
                         <span className="font-normal normal-case text-white/30">
@@ -1290,8 +1294,8 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                       className="rounded-xl border border-amber-500/15 bg-black/35 p-3 sm:p-4 space-y-2"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-sm font-semibold text-white">{memory.title}</h4>
-                        <span className="text-[10px] text-white/40 whitespace-nowrap">
+                        <h4 className="text-sm font-semibold text-white min-w-0 flex-1">{memory.title}</h4>
+                        <span className="text-[10px] text-white/40 whitespace-nowrap shrink-0">
                           {formatMemoryDate(memory.date)}
                         </span>
                       </div>

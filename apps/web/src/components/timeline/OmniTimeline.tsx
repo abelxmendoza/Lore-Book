@@ -648,7 +648,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
             <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            <div className="flex flex-1 min-w-0 gap-1.5 overflow-x-auto scrollbar-hide">
               {lifeEras.map((era) => {
                 const startYear = new Date(era.start_date).getFullYear();
                 const endYear = new Date(era.end_date).getFullYear();

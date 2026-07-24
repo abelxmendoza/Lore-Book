@@ -720,14 +720,14 @@ export const Sidebar = ({
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 flex-col border-r border-border/60 bg-black/95 backdrop-blur-lg transform transition-transform duration-300 ease-in-out lg:hidden overflow-y-auto",
+          "fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-border/60 bg-black/95 backdrop-blur-lg transform transition-transform duration-300 ease-in-out lg:hidden",
           isMobileDrawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0)', paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
         aria-label="Navigation menu"
         aria-hidden={!isMobileDrawerOpen}
       >
-        <div className="flex items-center justify-between p-4 border-b border-border/60 lg:hidden">
+        <div className="flex shrink-0 items-center justify-between p-4 border-b border-border/60 lg:hidden">
           <Logo size="md" showText={true} />
           <Button
             variant="ghost"
@@ -739,7 +739,7 @@ export const Sidebar = ({
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="p-4 lg:hidden">
+        <div className="flex-1 min-h-0 p-4 lg:hidden">
           <SidebarContent
             activeSurface={activeSurface}
             onSurfaceChange={onSurfaceChange}

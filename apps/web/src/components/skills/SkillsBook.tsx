@@ -539,7 +539,7 @@ export const SkillsBook: React.FC = () => {
         </div>
 
         <div
-          className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 sm:gap-1.5"
+          className="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 sm:gap-1.5"
           role="group"
           aria-label="Filter by category"
         >

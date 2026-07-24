@@ -164,7 +164,7 @@ export function OnboardingDemoSimulator() {
   return (
     <>
       {!open && !dismissed && (
-        <aside className="fixed bottom-4 left-4 right-4 z-[64] rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]">
+        <aside className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-[64] rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]">
           <button type="button" onClick={restart} className="flex w-full items-start gap-3 text-left">
             <div className="rounded-lg bg-violet-400/10 p-2 text-violet-300">
               {completed ? <CheckCircle2 className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
@@ -198,7 +198,7 @@ export function OnboardingDemoSimulator() {
         >
           <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/12 bg-zinc-950 shadow-2xl">
             <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-zinc-950/95 p-5 backdrop-blur">
-              <div>
+              <div className="min-w-0">
                 <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-amber-200">
                   <Sparkles className="h-3 w-3" /> Synthetic onboarding
                 </div>

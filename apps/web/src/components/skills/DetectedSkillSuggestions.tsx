@@ -330,7 +330,7 @@ export const DetectedSkillSuggestions = ({
               rescanLabel={showDemo ? 'Rescan demo story' : 'Rescan for skills'}
             />
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 max-h-[min(24rem,52dvh)] sm:max-h-[min(28rem,50vh)] overflow-y-auto overscroll-contain pr-0.5 -mr-0.5">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 max-h-[min(24rem,52dvh)] sm:max-h-[min(28rem,50vh)] overflow-y-auto overscroll-contain pr-0.5 -mr-0.5">
               {visible.map(s => {
                 const k = keyFor(s);
                 const quote = evidenceQuote(s);
