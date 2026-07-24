@@ -4,10 +4,9 @@
 // =====================================================
 
 
-import { config } from '../../config';
-import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ExtractedUnitType, ExtractionResult } from '../../types/conversationCentered';
+import { completeFor } from '../llm';
 
 
 /**
@@ -323,8 +322,7 @@ Be precise. Split multiple events when appropriate. Preserve Spanish terms. Extr
       content: `Extract semantic units from: "${text}"`,
     });
 
-    const completion = await openai.chat.completions.create({
-      model: config.defaultModel,
+    const completion = await completeFor('extraction', {
       temperature: 0.3,
       messages,
       response_format: { type: 'json_object' },

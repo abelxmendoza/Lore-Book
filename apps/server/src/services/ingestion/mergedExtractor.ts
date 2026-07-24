@@ -10,9 +10,8 @@
 // shadow_extraction_log; production applies via mergedExtractionApplier.
 // =====================================================
 
-import { openai } from '../openaiClient';
 import { logger } from '../../logger';
-import { config } from '../../config';
+import { completeFor } from '../llm';
 import type {
   UnifiedExtractionPayload,
   UnifiedSemanticUnit,
@@ -546,8 +545,10 @@ class MergedExtractor {
       const today = input.today ?? new Date().toISOString().split('T')[0];
       const systemPrompt = buildSystemPrompt(today, input.knownEntityNames ?? []);
 
-      const completion = await openai.chat.completions.create({
-        model: config.extractionModel,
+      // Routed via ModelRouter capability "extraction" (default: OpenAI +
+      // OPENAI_EXTRACTION_MODEL). Override with LLM_EXTRACTION_PROVIDER / _MODEL;
+      // local failures fall back to OpenAI automatically.
+      const completion = await completeFor('extraction', {
         temperature: 0.1,
         response_format: {
           type: 'json_schema',

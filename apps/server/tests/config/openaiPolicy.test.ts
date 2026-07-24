@@ -27,4 +27,17 @@ describe('buildOpenAiPolicySnapshot', () => {
     expect(snapshot.costGuards.shadowExtraction).toBe(false);
     expect(snapshot.costGuards.mergedExtraction).toBe(true);
   });
+
+  it('includes ModelRouter routes defaulting to openai', async () => {
+    delete process.env.LLM_PROVIDER;
+    delete process.env.LLM_DEFAULT_PROVIDER;
+    delete process.env.LLM_EXTRACTION_PROVIDER;
+    const { buildOpenAiPolicySnapshot } = await import('../../src/config/openaiPolicy');
+    const snapshot = buildOpenAiPolicySnapshot();
+
+    expect(snapshot.modelRouter.fallbackToOpenai).toBe(true);
+    expect(snapshot.modelRouter.routes?.extraction?.provider).toBe('openai');
+    expect(snapshot.modelRouter.routes?.chat?.provider).toBe('openai');
+    expect(snapshot.modelRouter.routes?.embedding?.provider).toBe('openai');
+  });
 });

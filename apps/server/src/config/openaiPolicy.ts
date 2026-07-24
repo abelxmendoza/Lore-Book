@@ -1,8 +1,25 @@
 import { config } from '../config';
+import { describeModelRouterConfig, fallbackToOpenaiEnabled } from '../services/llm';
 
 /** Read-only snapshot of OpenAI integration + cost policy for runtime diagnostics. */
 export function buildOpenAiPolicySnapshot() {
   const manualState = !config.openAiResponseChaining && !config.openAiConversationsApi;
+
+  // Capability routes (default openai). Safe: config-only, no network.
+  let modelRouter: Record<string, { provider: string; model: string; fallbackToOpenai: boolean }> | undefined;
+  try {
+    const routes = describeModelRouterConfig();
+    modelRouter = {};
+    for (const [cap, route] of Object.entries(routes)) {
+      modelRouter[cap] = {
+        provider: route.provider,
+        model: route.model,
+        fallbackToOpenai: route.fallbackToOpenai,
+      };
+    }
+  } catch {
+    modelRouter = undefined;
+  }
 
   return {
     conversationState: manualState
@@ -19,6 +36,10 @@ export function buildOpenAiPolicySnapshot() {
       nano: config.nanoModel,
       embedding: config.embeddingModel,
       adminAgent: config.openAiAgentModel,
+    },
+    modelRouter: {
+      fallbackToOpenai: fallbackToOpenaiEnabled(),
+      routes: modelRouter,
     },
     responsesApi: {
       nonStreaming: config.useResponsesApi,

@@ -12,9 +12,8 @@
  * Do NOT retire without migrating ExtractedFact consumers.
  */
 
-import { config } from '../config';
-import { openai } from '../lib/openai';
 import { logger } from '../logger';
+import { completeFor } from './llm';
 
 export type ClaimType = 'date' | 'location' | 'character' | 'event' | 'relationship' | 'attribute' | 'other';
 
@@ -38,8 +37,7 @@ class FactExtractionService {
    */
   async extractFacts(content: string): Promise<FactExtractionResult> {
     try {
-      const completion = await openai.chat.completions.create({
-        model: config.defaultModel,
+      const completion = await completeFor('extraction', {
         temperature: 0.1, // Low temperature for consistent extraction
         response_format: { type: 'json_object' },
         messages: [
