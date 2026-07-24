@@ -43,6 +43,7 @@ Full mapping: [`docs/product/living-memory-and-life-chronicle.md`](docs/product/
 - Working Memory: `docs/working-memory-assembler.md`
 - Continuity maturation: `docs/runtime/continuity-maturation-roadmap.md`
 - LoreBook vs ChatGPT: `docs/lorebook-vs-chatgpt-v2.md`
+- **ModelRouter Phase 2 (incomplete):** `docs/model-router-phase2.md` — provider abstraction is on main; finish migrating extraction detectors / nano; do **not** switch chat to local without evals. Short pointer: `apps/server/src/services/llm/README.md`.
 
 ## Deploy reality
 
@@ -109,6 +110,8 @@ Local dev uses the Supabase local stack (Docker). `supabase start` is on 54321 (
 - No OpenAI key needed to exercise the pipeline: set `DEV_AI_FALLBACK=true`. The chat pipeline runs
   end-to-end (mode routing, entity detection, persistence) and only the final OpenAI call is replaced
   by a labelled `[DEV FALLBACK ...]` response. Entity *extraction/recall* need a real `OPENAI_API_KEY`.
+- Belief Cognition gate: `BELIEF_COGNITION_GATE=true|false` (default on outside production, off in
+  production). Dry-run queue audit: `npm run beliefs:audit --prefix apps/server -- --user-id <uuid>`.
 - The `/demo` route is client-only synthetic data — its `/api/*` calls are unauthenticated (401s are
   expected there); use a real logged-in session to test the authenticated app.
 
