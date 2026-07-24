@@ -540,7 +540,7 @@ export const PhotoAlbum: React.FC = () => {
           onClick={() => setSelectedPhoto(null)}
         >
           <div
-            className="relative max-w-4xl max-h-[90vh] bg-black/90 border border-border/60 rounded-2xl overflow-hidden"
+            className="relative w-full max-w-4xl max-h-[90vh] bg-black/90 border border-border/60 rounded-2xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button

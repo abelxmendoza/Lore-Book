@@ -175,7 +175,7 @@ export function RomanticInterestChatLauncher({
                 >
                   <span className="min-w-0 truncate">{character.name}</span>
                   <span className="flex shrink-0 items-center gap-1 text-[11px] text-pink-200/65">
-                    In Character Book
+                    <span className="hidden sm:inline">In Character Book</span>
                     <ArrowRight className="h-3 w-3" />
                   </span>
                 </button>
@@ -196,18 +196,20 @@ export function RomanticInterestChatLauncher({
             <Button
               type="submit"
               disabled={!name.trim() || busy}
-              className="shrink-0 bg-pink-600 text-white hover:bg-pink-500"
+              className="shrink-0 max-w-full bg-pink-600 text-white hover:bg-pink-500"
             >
               {exactMatch ? (
-                <MessageCircle className="mr-2 h-4 w-4" />
+                <MessageCircle className="mr-2 h-4 w-4 shrink-0" />
               ) : (
-                <UserPlus className="mr-2 h-4 w-4" />
+                <UserPlus className="mr-2 h-4 w-4 shrink-0" />
               )}
-              {busy
-                ? 'Opening chat…'
-                : exactMatch
-                  ? `Chat about ${exactMatch.name}`
-                  : `Introduce ${name.trim() || 'them'} in chat`}
+              <span className="truncate">
+                {busy
+                  ? 'Opening chat…'
+                  : exactMatch
+                    ? `Chat about ${exactMatch.name}`
+                    : `Introduce ${name.trim() || 'them'} in chat`}
+              </span>
             </Button>
           </div>
         </form>

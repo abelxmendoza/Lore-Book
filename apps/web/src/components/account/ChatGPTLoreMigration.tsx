@@ -313,7 +313,7 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
               >
                 Clear filtered
               </button>
-              <span className="ml-auto text-[11px] text-white/35">{selectedFilteredCount} filtered selected</span>
+              <span className="w-full sm:w-auto sm:ml-auto text-[11px] text-white/35">{selectedFilteredCount} filtered selected</span>
             </div>
 
             <button

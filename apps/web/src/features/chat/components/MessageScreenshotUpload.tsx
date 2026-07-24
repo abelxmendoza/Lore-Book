@@ -111,9 +111,11 @@ export function MessageScreenshotUpload({ characterId, characterName, onComplete
 
   return (
     <div className="rounded-lg border border-white/10 bg-black/30 p-3 space-y-2">
-      <p className="text-xs text-white/55 flex items-center gap-1.5">
-        <MessageSquare className="h-3.5 w-3.5 text-primary" />
-        Upload DM / chat screenshots (multi-select OK) — we extract the conversation and save it to the right person.
+      <p className="text-xs text-white/55 flex items-start gap-1.5">
+        <MessageSquare className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary" />
+        <span className="min-w-0">
+          Upload DM / chat screenshots (multi-select OK) — we extract the conversation and save it to the right person.
+        </span>
       </p>
       <input
         ref={fileRef}

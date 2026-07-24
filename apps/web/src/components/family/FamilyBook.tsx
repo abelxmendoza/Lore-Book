@@ -256,7 +256,7 @@ export function FamilyBook() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-white flex items-center gap-3">
+        <h1 className="text-2xl sm:text-3xl font-semibold text-white flex flex-wrap items-center gap-3">
           <TreePine className="h-7 w-7 text-emerald-400" />
           Family
           {shouldUseMock && (

@@ -2131,7 +2131,7 @@ User's message: ${currentInput}`;
 
             {/* Stories Tab */}
             <TabsContent value="stories" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className={TAB_HEADING}>Stories ({stories.length})</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddStory(v => !v)}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -2201,7 +2201,7 @@ User's message: ${currentInput}`;
 
             {/* Events Tab */}
             <TabsContent value="events" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className={TAB_HEADING}>Events ({events.length})</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddEvent(v => !v)}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -2346,7 +2346,7 @@ User's message: ${currentInput}`;
 
             {/* Locations Tab */}
             <TabsContent value="locations" className={TAB_PANEL}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-white">Locations</h3>
                 <Button variant="outline" size="sm" onClick={() => setShowAddLocation(v => !v)}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -2460,7 +2460,7 @@ User's message: ${currentInput}`;
             <TabsContent value="relationships" className={TAB_PANEL}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h3 className="text-lg font-semibold text-white">Relationships</h3>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"

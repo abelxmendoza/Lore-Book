@@ -325,7 +325,7 @@ export const LocationBook = () => {
             {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <GridListViewToolbar
             viewMode={viewMode}
             onViewModeChange={setViewMode}
@@ -649,9 +649,9 @@ export const LocationBook = () => {
                   Previous
                 </Button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-center gap-2 max-w-full">
                   {totalPages > 1 && (
-                    <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-teal-800/30">
+                    <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-teal-800/30 overflow-x-auto max-w-full">
                       {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                         let pageNum: number;
                         if (totalPages <= 7) pageNum = i + 1;

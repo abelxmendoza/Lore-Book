@@ -99,8 +99,8 @@ function ToggleRow({
   label: string; description?: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/6 last:border-0">
-      <div>
+    <div className="flex items-center justify-between gap-3 py-3 border-b border-white/6 last:border-0">
+      <div className="min-w-0 flex-1">
         <p className="text-sm text-white/80">{label}</p>
         {description && <p className="text-xs text-white/35 mt-0.5">{description}</p>}
       </div>
@@ -643,7 +643,7 @@ export default function AccountCenter() {
                         <select
                           value={privacy.profileVisibility}
                           onChange={e => setPrivacy(p => ({ ...p, profileVisibility: e.target.value as any }))}
-                          className="bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50"
+                          className="w-full sm:w-auto max-w-full bg-white/[0.05] border border-white/12 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50"
                         >
                           <option value="private">Private — only you</option>
                           <option value="friends">Friends only</option>
@@ -735,7 +735,7 @@ export default function AccountCenter() {
                       <p className="text-sm text-white/45 mb-4 leading-relaxed">
                         Download everything LoreBook has stored about you — memories, characters, timeline, conversations.
                       </p>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => handleExport('json')}
@@ -766,7 +766,7 @@ export default function AccountCenter() {
                         <div className="rounded-lg border border-red-500/30 bg-red-500/8 p-4 space-y-3">
                           <p className="text-sm text-red-300 font-medium">Are you absolutely sure?</p>
                           <p className="text-xs text-white/40">Your memories, characters, timeline, and all data will be permanently deleted.</p>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <button type="button" onClick={handleDeleteAccount} disabled={saving} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition">
                               Yes, delete everything
                             </button>

@@ -145,7 +145,7 @@ const isHighRiskRelationship = (relationship: RomanticRelationship) =>
   relationshipType(relationship) === 'obsession';
 
 const RELATIONSHIP_GRID_CLASS =
-  'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr';
+  'grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr';
 const LOVE_VIEW_STORAGE_KEY = 'lk_dating_romance_view';
 
 export const LoveAndRelationshipsView = () => {

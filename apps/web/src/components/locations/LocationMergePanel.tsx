@@ -390,7 +390,7 @@ export const LocationMergePanel = ({
                           key={location.id}
                           className="rounded-lg border border-white/10 bg-black/25 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
                         >
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-white">{location.name}</p>
                             <p className="text-xs text-white/45">
                               {aliases.length > 0 ? `Aliases: ${aliases.join(', ')}` : location.type ?? 'place'}
@@ -400,9 +400,10 @@ export const LocationMergePanel = ({
                             size="sm"
                             disabled={mergeBusy || group.locations.length < 2}
                             onClick={() => void mergeDuplicateGroup(group, location.id)}
-                            leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                            leftIcon={<GitMerge className="h-3.5 w-3.5 shrink-0" />}
+                            className="max-w-full shrink-0 sm:shrink"
                           >
-                            Keep {location.name}
+                            <span className="truncate">Keep {location.name}</span>
                           </Button>
                         </div>
                       );

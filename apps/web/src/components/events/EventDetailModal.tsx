@@ -1030,8 +1030,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
         {/* ── Tabs ── */}
         <Tabs value={activeTab} onValueChange={v => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-shrink-0 px-5 sm:px-6 pt-2 border-b border-white/8 bg-black/20">
-            <TabsList className="gap-0.5 bg-transparent">
+          <div className="flex-shrink-0 px-5 sm:px-6 pt-2 border-b border-white/8 bg-black/20 overflow-x-auto scrollbar-hide">
+            <TabsList className="gap-0.5 bg-transparent w-max min-w-full">
               <TabsTrigger value="overview"
                 className="flex items-center gap-1.5 text-xs data-[state=active]:bg-white/8 data-[state=active]:text-white data-[state=inactive]:text-white/40">
                 <Eye className="w-3.5 h-3.5" /> Overview
@@ -1337,7 +1337,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               {/* ── Talk About This Moment ── */}
               <section className="border-t border-white/8 pt-5">
                 {/* Section header with entity context */}
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <h3 className="text-xs font-bold text-white/65 uppercase tracking-widest flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5 text-primary/60" />
                     Talk About This Moment

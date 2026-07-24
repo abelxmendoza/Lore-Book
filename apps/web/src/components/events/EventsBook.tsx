@@ -771,7 +771,7 @@ export const EventsBook: React.FC = () => {
             className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={sortBy}
             title="Sort moments"
@@ -1151,11 +1151,11 @@ export const EventsBook: React.FC = () => {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
                 <Button type="button" variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="text-white/50">
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                  <ChevronLeft className="h-4 w-4 mr-1" /> <span className="hidden sm:inline">Previous</span><span className="sm:hidden">Prev</span>
                 </Button>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-x-auto max-w-full">
                   {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                     let pageNum: number;
                     if (totalPages <= 7) pageNum = i + 1;

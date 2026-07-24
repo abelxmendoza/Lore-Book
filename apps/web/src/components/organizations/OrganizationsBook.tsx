@@ -1554,13 +1554,13 @@ export const OrganizationsBook: React.FC = () => {
                   placeholder="Name *"
                   value={newOrg.name}
                   onChange={e => setNewOrg(v => ({ ...v, name: e.target.value }))}
-                  className="flex-1 min-w-[160px] bg-black/60 border-border/50 text-white"
+                  className="w-full sm:flex-1 sm:w-auto sm:min-w-[160px] bg-black/60 border-border/50 text-white"
                   onKeyDown={e => e.key === 'Enter' && void handleCreate()}
                 />
                 <select
                   value={newOrg.groupType}
                   onChange={e => setNewOrg(v => ({ ...v, groupType: e.target.value as Organization['group_type'], subcategory: '' }))}
-                  className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="w-full sm:w-auto max-w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   {GROUP_TYPES.map(t => (
                     <option key={t} value={t}>{GROUP_TYPE_LABELS[t]}</option>
@@ -1570,7 +1570,7 @@ export const OrganizationsBook: React.FC = () => {
                   <select
                     value={newOrg.subcategory}
                     onChange={e => setNewOrg(v => ({ ...v, subcategory: e.target.value }))}
-                    className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    className="w-full sm:w-auto max-w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="">Subcategory (optional)</option>
                     {(GROUP_SUBCATEGORIES[newOrg.groupType] ?? []).map(sc => (
@@ -1582,7 +1582,7 @@ export const OrganizationsBook: React.FC = () => {
                   placeholder="Description (optional)"
                   value={newOrg.description}
                   onChange={e => setNewOrg(v => ({ ...v, description: e.target.value }))}
-                  className="flex-1 min-w-[160px] bg-black/60 border-border/50 text-white"
+                  className="w-full sm:flex-1 sm:w-auto sm:min-w-[160px] bg-black/60 border-border/50 text-white"
                 />
                 <Button
                   size="sm"
@@ -1910,8 +1910,8 @@ export const OrganizationsBook: React.FC = () => {
                   Previous
                 </Button>
 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-purple-800/30">
+                <div className="flex flex-wrap items-center justify-center gap-2 max-w-full">
+                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-purple-800/30 overflow-x-auto max-w-full">
                     {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                       let pageNum: number;
                       if (totalPages <= 7) {
