@@ -750,12 +750,32 @@ Return JSON:
       const { data, error } = await query;
 
       if (error) {
+        // Missing insights table (or schema cache lag) should not 500 the Discovery Hub.
+        const code = (error as { code?: string }).code;
+        const message = String((error as { message?: string }).message ?? '');
+        if (
+          code === 'PGRST205'
+          || code === '42P01'
+          || /could not find the table|does not exist|schema cache/i.test(message)
+        ) {
+          logger.debug({ err: error, userId }, 'Insights table unavailable — returning empty list');
+          return [];
+        }
         logger.error({ err: error, userId }, 'Failed to get insights');
         throw error;
       }
 
       return data || [];
     } catch (error) {
+      const code = (error as { code?: string })?.code;
+      const message = String((error as { message?: string })?.message ?? error ?? '');
+      if (
+        code === 'PGRST205'
+        || code === '42P01'
+        || /could not find the table|does not exist|schema cache/i.test(message)
+      ) {
+        return [];
+      }
       logger.error({ err: error, userId }, 'Failed to get insights');
       throw error;
     }

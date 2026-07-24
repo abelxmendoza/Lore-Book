@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { correctionDashboardService } from '../services/correctionDashboardService';
 import { correctionService } from '../services/correctionService';
 import { applyPreviewCorrections } from '../services/corrections/correctionApplicationService';
 
@@ -63,6 +64,18 @@ router.post('/apply-preview', requireAuth, async (req: AuthenticatedRequest, res
   });
 
   res.json(result);
+});
+
+/**
+ * GET /api/corrections/contradictions
+ * Discovery Hub badge endpoint — open contradictions for the user.
+ * Mounted here (not only under /api/correction-dashboard) so discovery
+ * summary can call a stable public path. Missing tables → empty list.
+ */
+router.get('/contradictions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const contradictions = await correctionDashboardService.listOpenContradictions(userId);
+  res.json({ success: true, contradictions });
 });
 
 router.get('/:entryId', requireAuth, async (req: AuthenticatedRequest, res) => {

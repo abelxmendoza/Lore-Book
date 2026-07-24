@@ -42,6 +42,12 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const insights = await insightReflectionService.getInsights(req.user!.id, filters);
     res.json({ insights, count: insights.length });
   } catch (error) {
+    // Prefer empty payload over Discovery Hub red errors when storage is not provisioned.
+    const message = String((error as { message?: string })?.message ?? error ?? '');
+    if (/could not find the table|does not exist|schema cache|PGRST205|42P01/i.test(message)) {
+      logger.debug({ err: error }, 'Insights unavailable — returning empty list');
+      return res.json({ insights: [], count: 0 });
+    }
     logger.error({ err: error }, 'Failed to get insights');
     res.status(500).json({ error: 'Failed to get insights' });
   }
