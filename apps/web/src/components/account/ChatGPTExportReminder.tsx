@@ -50,7 +50,7 @@ export function ChatGPTExportReminder() {
   return (
     <aside
       aria-label="ChatGPT export reminder"
-      className="fixed bottom-4 left-4 right-4 z-[70] rounded-xl border border-primary/35 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[390px]"
+      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-[70] rounded-xl border border-primary/35 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[390px]"
     >
       <button
         type="button"

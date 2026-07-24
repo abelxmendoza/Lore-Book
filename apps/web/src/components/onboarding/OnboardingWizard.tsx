@@ -560,20 +560,20 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
         {/* Step Card */}
         <div className="rounded-2xl border border-border/60 bg-black/40 backdrop-blur-sm shadow-2xl overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 p-6 border-b border-border/60">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <StepIcon className="h-8 w-8 text-white" />
+          <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 p-4 sm:p-6 border-b border-border/60">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <StepIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-white mb-1">{steps[currentStep].title}</h1>
-                <p className="text-white/70">{steps[currentStep].description}</p>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">{steps[currentStep].title}</h1>
+                <p className="text-sm sm:text-base text-white/70">{steps[currentStep].description}</p>
               </div>
             </div>
           </div>
 
           {/* Content */}
-          <div className="p-8 min-h-[400px] flex items-center">
+          <div className="p-4 sm:p-8 sm:min-h-[400px] flex items-center">
             <div className="w-full transition-all duration-500 ease-in-out">
               {error && (
                 <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-200 text-sm">
@@ -585,7 +585,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
           </div>
 
           {/* Footer */}
-          <div className="bg-black/20 p-6 border-t border-border/60 flex items-center justify-between">
+          <div className="bg-black/20 p-4 sm:p-6 border-t border-border/60 flex flex-wrap items-center justify-between gap-3">
             <Button
               variant="outline"
               onClick={handleBack}
@@ -596,7 +596,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               Back
             </Button>
 
-            <div className="flex gap-2">
+            <div className="hidden sm:flex gap-2">
               {steps.map((_, idx) => (
                 <div
                   key={idx}
@@ -626,7 +626,14 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               {saving || detectingPersonas ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {detectingPersonas ? 'Creating your personalized experience...' : 'Saving...'}
+                  {detectingPersonas ? (
+                    <>
+                      <span className="hidden sm:inline">Creating your personalized experience...</span>
+                      <span className="sm:hidden">Personalizing...</span>
+                    </>
+                  ) : (
+                    'Saving...'
+                  )}
                 </>
               ) : (
                 <>

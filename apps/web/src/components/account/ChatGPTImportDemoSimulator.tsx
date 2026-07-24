@@ -88,7 +88,7 @@ export function ChatGPTImportDemoSimulator() {
         >
           <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/12 bg-zinc-950 shadow-2xl">
             <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-zinc-950/95 p-5 backdrop-blur">
-              <div>
+              <div className="min-w-0">
                 <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-amber-200">
                   <Sparkles className="h-3 w-3" />
                   Synthetic demo
@@ -169,7 +169,7 @@ export function ChatGPTImportDemoSimulator() {
 
               {step === 'upload' && (
                 <div className="space-y-5">
-                  <div className="rounded-xl border border-dashed border-cyan-400/30 bg-cyan-400/[0.04] p-7 text-center">
+                  <div className="rounded-xl border border-dashed border-cyan-400/30 bg-cyan-400/[0.04] p-4 sm:p-7 text-center">
                     <Upload className="mx-auto h-8 w-8 text-cyan-300" />
                     <h3 className="mt-3 font-semibold text-white">Synthetic export analyzed</h3>
                     <p className="mt-1 text-sm text-white/45">

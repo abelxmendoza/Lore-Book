@@ -3440,7 +3440,7 @@ export const CharacterBook = () => {
               data-testid="character-book-filter"
               value={importanceFilter}
               onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
-              className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
+              className="max-w-full bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
             >
               <option value="all">All Characters</option>
               <option value="archived">Archived only</option>
@@ -3460,7 +3460,7 @@ export const CharacterBook = () => {
               data-testid="character-book-sort"
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-              className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
+              className="max-w-full bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
             >
               <option value="role">By role in story</option>
               <option value="impact">By impact on me</option>
@@ -3640,7 +3640,7 @@ export const CharacterBook = () => {
             </p>
             <BookTrustSummary domain="characters" className="mt-1" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* My Family — always available: self card, family tree, same-name confirmation */}
             <button
               type="button"
@@ -3696,7 +3696,7 @@ export const CharacterBook = () => {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <CharacterCardSkeleton key={i} />
           ))}
@@ -3921,7 +3921,7 @@ export const CharacterBook = () => {
                       Your circle, closest first
                       <span className="text-xs font-normal text-white/40">({charactersByStanding.length})</span>
                     </h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {charactersByStanding.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
@@ -3955,7 +3955,7 @@ export const CharacterBook = () => {
                       People by impact on you
                       <span className="text-xs font-normal text-white/40">({charactersByImpact.length})</span>
                     </h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {charactersByImpact.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
@@ -4014,7 +4014,7 @@ export const CharacterBook = () => {
                             <span className="text-xs font-normal text-white/40">({chars.length})</span>
                           </button>
                           {!isCollapsed && (
-                            <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                               {chars.map((character, index) => {
                                 try {
                                   const isUpdated = character.id && recentlyUpdatedIds.has(character.id);

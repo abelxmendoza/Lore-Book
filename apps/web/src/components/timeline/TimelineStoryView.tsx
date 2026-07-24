@@ -230,8 +230,8 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="space-y-3 w-72">
+      <div className="h-full flex items-center justify-center px-4">
+        <div className="space-y-3 w-full max-w-72">
           {[1, 2, 3].map(i => (
             <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/6 bg-white/3 animate-pulse">
               <div className="w-2 h-2 rounded-full bg-white/20" />
