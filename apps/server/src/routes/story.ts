@@ -11,6 +11,7 @@ import { narrativeCompilerService } from '../services/narrative/narrativeCompile
 import { narrativeStoryChapterService } from '../services/narrative/narrativeStoryChapterService';
 import { narrativeLifeEraService } from '../services/narrative/narrativeLifeEraService';
 import { storyChapterReprocessService } from '../services/narrative/storyChapterReprocessService';
+import { lifeSagaService } from '../services/narrative/lifeSagaService';
 import { answerGoldenQuestions } from '../services/narrative/storyGoldenQuestions';
 import { computeStoryHealth } from '../services/narrative/storyHealthService';
 import type { BookOutline } from '../services/narrative/types';
@@ -89,6 +90,16 @@ router.post(
       success: true,
       ...result,
     });
+  }),
+);
+
+/** GET /api/story/life-saga — full Era → Chapter → Storyline tree for the Saga screen */
+router.get(
+  '/life-saga',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const saga = await lifeSagaService.build(req.user!.id);
+    res.json({ success: true, saga });
   }),
 );
 

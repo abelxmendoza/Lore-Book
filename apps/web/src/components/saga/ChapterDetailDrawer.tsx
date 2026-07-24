@@ -1,15 +1,17 @@
 import { X, MessageSquare, Users, MapPin, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
-import type { SagaChapter } from '../../api/saga';
+import type { SagaStoryline } from '../../api/saga';
 
 export interface ChapterContext {
   people: string[];
   places: string[];
 }
 
+const TURNING_POINT_STATUSES = new Set(['completed', 'resurfaced']);
+
 interface ChapterDetailDrawerProps {
-  chapter: SagaChapter;
+  chapter: SagaStoryline;
   chapterIndex: number;
   era: string;
   context?: ChapterContext;
@@ -24,10 +26,11 @@ export const ChapterDetailDrawer = ({
   onClose,
 }: ChapterDetailDrawerProps) => {
   const navigate = useNavigate();
+  const isTurningPoint = TURNING_POINT_STATUSES.has(chapter.status);
 
   const handleChatCTA = () => {
     navigate('/chat', {
-      state: { prefill: `Tell me more about "${chapter.title}" — a chapter from ${era}.` },
+      state: { prefill: `Tell me more about "${chapter.title}" — a storyline from ${era}.` },
     });
   };
 
@@ -56,13 +59,13 @@ export const ChapterDetailDrawer = ({
         <div className="flex items-start justify-between px-5 py-4 border-b border-white/8 shrink-0">
           <div className="flex-1 min-w-0 pr-3">
             <div className="flex items-center gap-2 mb-1.5">
-              {chapter.turningPoint ? (
+              {isTurningPoint ? (
                 <span className="inline-flex items-center gap-1 text-xs font-mono text-amber-400/70 uppercase tracking-wider">
                   <Star className="h-3 w-3" /> Turning Point
                 </span>
               ) : (
                 <span className="text-xs font-mono text-white/30 uppercase tracking-wider">
-                  Chapter {chapterIndex + 1}
+                  Storyline {chapterIndex + 1} · {chapter.status}
                 </span>
               )}
             </div>

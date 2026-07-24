@@ -17,6 +17,9 @@ import { buildNarrativeAnchorsClipboardText } from './narrativeAnchorsClipboard'
 import { buildSkillBookClipboardText } from './skillBookClipboard';
 import { buildSkillSuggestionsClipboardText } from './skillSuggestionsClipboard';
 import { buildPatternsClipboardText } from './patternsClipboard';
+import { buildSearchFactsClipboardText } from './searchFactsClipboard';
+import { buildMemoryReviewQueueClipboardText } from './memoryReviewQueueClipboard';
+import { buildLifeSagaClipboardText } from './sagaClipboard';
 
 describe('listClipboard', () => {
   it('formats fields and skips empties', () => {
@@ -519,5 +522,145 @@ describe('buildPatternsClipboardText', () => {
     expect(text).toContain('People: Maya, Jordan');
     expect(text).toContain('Activities: music, dancing');
     expect(text).toContain('Timeline candidate: yes');
+  });
+});
+
+describe('buildSearchFactsClipboardText', () => {
+  it('includes source, tags, people, and content', () => {
+    const text = buildSearchFactsClipboardText([
+      {
+        id: 'fact-1',
+        title: 'Late-night studio session',
+        content: 'Worked on the MemoVault mix until 2am with Jamie.',
+        date: '2026-06-01T20:00:00.000Z',
+        tags: ['music', 'studio'],
+        mood: 'focused',
+        source: 'chat',
+        sourceIcon: '💬',
+        characters: ['Jamie'],
+      },
+    ]);
+
+    expect(text).toContain('Search facts (1 item)');
+    expect(text).toContain('1. Late-night studio session');
+    expect(text).toContain('Source: chat');
+    expect(text).toContain('Tags: music, studio');
+    expect(text).toContain('People: Jamie');
+    expect(text).toContain('Worked on the MemoVault mix until 2am with Jamie.');
+  });
+});
+
+describe('buildMemoryReviewQueueClipboardText', () => {
+  it('includes belief, confidence, impact, mutation, and evidence', () => {
+    const text = buildMemoryReviewQueueClipboardText([
+      {
+        id: 'proposal-1',
+        user_id: 'user-1',
+        entity_id: 'vanguard',
+        claim_text: 'Jamie works at Vanguard Robotics as a QA technician.',
+        confidence: 0.92,
+        affected_claim_ids: [],
+        risk_level: 'MEDIUM',
+        status: 'PENDING',
+        created_at: '2026-07-01T00:00:00.000Z',
+        source_excerpt: 'I started at Vanguard Robotics through an agency for QA work.',
+        metadata: {
+          proposal_kind: 'occupation',
+          normalized_summary: 'Jamie works at Vanguard Robotics as a QA technician.',
+          proposed_mutation: 'Add the current occupation while preserving the agency arrangement.',
+          group_label: 'Starting at Vanguard',
+          evidence_count: 2,
+        },
+      },
+    ]);
+
+    expect(text).toContain('Memory proposals (1 item)');
+    expect(text).toContain('Jamie works at Vanguard Robotics as a QA technician.');
+    expect(text).toContain('Confidence: 92%');
+    expect(text).toContain('Impact: MEDIUM');
+    expect(text).toContain('Story group: Starting at Vanguard');
+    expect(text).toContain('Add the current occupation while preserving the agency arrangement.');
+    expect(text).toContain('Evidence: “I started at Vanguard Robotics through an agency for QA work.”');
+  });
+
+  it('prefers compiled cognition fields when present', () => {
+    const text = buildMemoryReviewQueueClipboardText([
+      {
+        id: 'proposal-2',
+        user_id: 'user-1',
+        entity_id: 'user-1',
+        claim_text: 'Cousin is stoked.',
+        confidence: 0.8,
+        affected_claim_ids: [],
+        risk_level: 'LOW',
+        status: 'PENDING',
+        created_at: '2026-07-01T00:00:00.000Z',
+        source_excerpt: 'yeah i’m stoked',
+        metadata: {
+          proposal_kind: 'emotional_state',
+          normalized_summary: 'Cousin is stoked.',
+          belief_cognition: {
+            rendered_proposition: 'Marcus felt excited.',
+            resolved_subject: 'Marcus',
+            predicate: 'felt',
+            domain: 'EMOTIONAL_STATE',
+            durability: 'TEMPORARY_STATE',
+            routing_target: 'TEMPORAL_STATE',
+            confirmation_requirement: 'PASSIVE_CONFIRMATION',
+          },
+        },
+      },
+    ]);
+
+    expect(text).toContain('Marcus felt excited.');
+    expect(text).toContain('Subject: Marcus');
+    expect(text).toContain('Domain: EMOTIONAL_STATE');
+    expect(text).toContain('Durability: TEMPORARY_STATE');
+  });
+});
+
+describe('buildLifeSagaClipboardText', () => {
+  it('includes era, current storylines, and chapters', () => {
+    const text = buildLifeSagaClipboardText({
+      era: 'Northwind years',
+      currentStorylines: [{ id: 'arc-1', label: 'Creative Growth', intensity: 80 }],
+      turningPoints: [],
+      eras: [
+        {
+          id: 'era-1',
+          title: 'Northwind years',
+          summary: '',
+          isCurrent: true,
+          chapters: [
+            {
+              id: 'ch-1',
+              title: 'Creative Work',
+              domain: 'creative',
+              summary: '',
+              storylines: [
+                {
+                  id: 'sl-1',
+                  title: 'The Leap',
+                  summary: 'Left the stable path for MemoVault.',
+                  domain: 'creative',
+                  status: 'completed',
+                  momentum: 'steady',
+                  intensity: 80,
+                  eventIds: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(text).toContain('Life Saga');
+    expect(text).toContain('Era: Northwind years');
+    expect(text).toContain('Creative Growth');
+    expect(text).toContain('Intensity: 80%');
+    expect(text).toContain('The Leap');
+    expect(text).toContain('Turning point: yes');
+    expect(text).toContain('Left the stable path for MemoVault.');
   });
 });

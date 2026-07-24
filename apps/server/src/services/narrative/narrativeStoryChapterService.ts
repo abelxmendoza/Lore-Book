@@ -31,6 +31,7 @@ export type NarrativeStoryChapterRow = {
   confidence: number;
   thread_id: string | null;
   era_id?: string | null;
+  life_chapter_id?: string | null;
   metadata: Record<string, unknown>;
 };
 

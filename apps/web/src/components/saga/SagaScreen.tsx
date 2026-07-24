@@ -1,64 +1,146 @@
-import { useState } from 'react';
-import { BookOpen, Sparkles, Zap, RotateCcw, Star, MessageSquare, ChevronRight, Menu } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, Check, Copy, Sparkles, Zap, RotateCcw, Star, MessageSquare, ChevronRight, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSaga } from '../../hooks/useSaga';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { buildLifeSagaClipboardText } from '../../lib/sagaClipboard';
 import { Button } from '../ui/button';
 import { ChapterDetailDrawer, type ChapterContext } from './ChapterDetailDrawer';
-import type { SagaChapter } from '../../api/saga';
+import type { SagaOverview, SagaStoryline } from '../../api/saga';
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
-const MOCK_SAGA = {
+const MOCK_SAGA: SagaOverview = {
   era: 'The Creative Renaissance',
-  arcs: [
-    { id: 'a1', label: 'Creative Growth', intensity: 87 },
-    { id: 'a2', label: 'Professional Evolution', intensity: 72 },
-    { id: 'a3', label: 'Relational Depth', intensity: 65 },
-    { id: 'a4', label: 'Personal Clarity', intensity: 54 },
+  currentStorylines: [
+    { id: 'c3', label: 'The Studio Year', intensity: 87 },
+    { id: 'c4', label: 'A Fork in the Road', intensity: 72 },
+    { id: 'c2', label: 'Falling for Sarah', intensity: 65 },
+    { id: 'c6', label: 'Finding Stillness', intensity: 54 },
   ],
-  chapters: [
+  turningPoints: [
+    { id: 'tp1', title: 'The Leap', date: null, kind: 'career_change', importance: 0.92 },
+    { id: 'tp2', title: 'A Fork in the Road', date: null, kind: 'job_offer', importance: 0.81 },
+  ],
+  eras: [
     {
-      id: 'c1',
-      title: 'The Leap',
-      summary: 'Left the stable career to pursue music production. The fear was real, but so was the pull.',
-      turningPoint: true,
-    },
-    {
-      id: 'c2',
-      title: 'Sarah',
-      summary: 'Met Sarah Chen at the coffee shop on Valencia. Within a month she was the person you called first.',
-      turningPoint: false,
-    },
-    {
-      id: 'c3',
-      title: 'The Studio Year',
-      summary: 'Twelve months of building something from nothing. Late nights. Breakthroughs. Doubt. Then: the first track.',
-      turningPoint: false,
-    },
-    {
-      id: 'c4',
-      title: 'A Fork in the Road',
-      summary: 'The offer from the agency came at exactly the wrong time. Or maybe the right time.',
-      turningPoint: true,
-    },
-    {
-      id: 'c5',
-      title: 'Barcelona',
-      summary: "Three weeks in a city that didn't know your name. Something reset.",
-      turningPoint: false,
-    },
-    {
-      id: 'c6',
-      title: 'Now',
-      summary: "The most uncertain chapter yet. But uncertainty feels different now — it feels like momentum.",
-      turningPoint: false,
+      id: 'e1',
+      title: 'The Creative Renaissance',
+      summary: 'Leaving a stable career to build something of your own.',
+      isCurrent: true,
+      chapters: [
+        {
+          id: 'ch-creative',
+          title: 'Creative Work',
+          domain: 'creative',
+          summary: 'Building something from nothing.',
+          storylines: [
+            {
+              id: 'c1',
+              title: 'The Leap',
+              summary:
+                'Left the stable career to pursue music production. The fear was real, but so was the pull.',
+              domain: 'creative',
+              status: 'completed',
+              momentum: 'steady',
+              intensity: 90,
+              eventIds: [],
+            },
+            {
+              id: 'c3',
+              title: 'The Studio Year',
+              summary:
+                'Twelve months of building something from nothing. Late nights. Breakthroughs. Doubt. Then: the first track.',
+              domain: 'creative',
+              status: 'active',
+              momentum: 'increasing',
+              intensity: 87,
+              eventIds: [],
+            },
+          ],
+        },
+        {
+          id: 'ch-romance',
+          title: 'Dating & Romance',
+          domain: 'romance',
+          summary: 'A new connection that became the person you called first.',
+          storylines: [
+            {
+              id: 'c2',
+              title: 'Falling for Sarah',
+              summary:
+                'Met Sarah Chen at the coffee shop on Valencia. Within a month she was the person you called first.',
+              domain: 'romance',
+              status: 'active',
+              momentum: 'steady',
+              intensity: 65,
+              eventIds: [],
+            },
+          ],
+        },
+        {
+          id: 'ch-career',
+          title: 'Career',
+          domain: 'career',
+          summary: 'An old world pulling you back at the wrong — or right — time.',
+          storylines: [
+            {
+              id: 'c4',
+              title: 'A Fork in the Road',
+              summary: 'The offer from the agency came at exactly the wrong time. Or maybe the right time.',
+              domain: 'career',
+              status: 'resurfaced',
+              momentum: 'increasing',
+              intensity: 72,
+              eventIds: [],
+            },
+          ],
+        },
+        {
+          id: 'ch-travel',
+          title: 'Travel',
+          domain: 'travel',
+          summary: 'Distance that reset something.',
+          storylines: [
+            {
+              id: 'c5',
+              title: 'Barcelona',
+              summary: "Three weeks in a city that didn't know your name. Something reset.",
+              domain: 'travel',
+              status: 'completed',
+              momentum: 'steady',
+              intensity: 40,
+              eventIds: [],
+            },
+          ],
+        },
+        {
+          id: 'ch-clarity',
+          title: 'Personal Growth',
+          domain: 'health',
+          summary: 'Uncertainty that started to feel like momentum.',
+          storylines: [
+            {
+              id: 'c6',
+              title: 'Finding Stillness',
+              summary:
+                'The most uncertain chapter yet. But uncertainty feels different now — it feels like momentum.',
+              domain: 'health',
+              status: 'emerging',
+              momentum: 'increasing',
+              intensity: 54,
+              eventIds: [],
+            },
+          ],
+        },
+      ],
     },
   ],
 };
 
-// Mock entity context per chapter (used in demo mode)
-const MOCK_CHAPTER_CONTEXT: Record<string, ChapterContext> = {
+// Mock entity context per storyline (used in demo mode)
+const MOCK_STORYLINE_CONTEXT: Record<string, ChapterContext> = {
   c1: { people: ['Marcus Webb', 'Joanna Park'], places: ['San Francisco', 'The Old Office'] },
   c2: { people: ['Sarah Chen'], places: ['Valencia Coffee Shop', 'Mission District'] },
   c3: { people: ['Marcus Webb', 'DJ Kira'], places: ['Home Studio', 'The Warehouse'] },
@@ -81,7 +163,7 @@ const ARC_COLORS = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface DrawerState {
-  chapter: SagaChapter;
+  chapter: SagaStoryline;
   chapterIndex: number;
   context?: ChapterContext;
 }
@@ -93,10 +175,28 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
   const isMobile = useIsMobile(1024);
 
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const openChapter = (chapter: SagaChapter, chapterIndex: number) => {
-    const context = isMock ? MOCK_CHAPTER_CONTEXT[chapter.id] : undefined;
-    setDrawer({ chapter, chapterIndex, context });
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  const clipboardText = useMemo(() => buildLifeSagaClipboardText(saga), [saga]);
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(clipboardText);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openStoryline = (storyline: SagaStoryline, storylineIndex: number) => {
+    const context = isMock ? MOCK_STORYLINE_CONTEXT[storyline.id] : undefined;
+    setDrawer({ chapter: storyline, chapterIndex: storylineIndex, context });
   };
 
   const handleChatEra = () => {
@@ -106,17 +206,27 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
     });
   };
 
-  const handleArcClick = (arcId: string) => {
-    navigate(`/timeline?arc=${arcId}`);
+  const handleStorylineClick = (storylineId: string) => {
+    navigate(`/timeline?arc=${storylineId}`);
   };
 
-  const turningPoints = saga?.chapters.filter((c) => c.turningPoint) ?? [];
-  const regularChapters = saga?.chapters.filter((c) => !c.turningPoint) ?? [];
+  // Most recent era first; number storylines within each chapter for drawer display
+  const orderedEras = useMemo(() => [...(saga?.eras ?? [])].reverse(), [saga]);
+  const storylineIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const era of saga?.eras ?? []) {
+      for (const chapter of era.chapters) {
+        chapter.storylines.forEach((s, i) => map.set(s.id, i));
+      }
+    }
+    return map;
+  }, [saga]);
 
-  // Map each chapter to its position in the full list for numbering
-  const chapterIndexMap = new Map<string, number>(
-    (saga?.chapters ?? []).map((c, i) => [c.id, i])
+  const totalStorylineCount = (saga?.eras ?? []).reduce(
+    (sum, era) => sum + era.chapters.reduce((cSum, c) => cSum + c.storylines.length, 0),
+    0,
   );
+  const copyDisabled = !saga || (!saga.currentStorylines.length && totalStorylineCount === 0);
 
   return (
     <>
@@ -144,14 +254,30 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
                 )}
               </div>
               {saga && (
-                <button
-                  type="button"
-                  onClick={handleChatEra}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
-                  aria-label="Chat about this era"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyAll()}
+                    disabled={copyDisabled}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border active:bg-white/10 disabled:opacity-40 ${
+                      copied
+                        ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                        : 'border-white/10 text-white/50'
+                    }`}
+                    title="Copy all Life Saga content as plain text"
+                    aria-label="Copy all Life Saga"
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleChatEra}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
+                    aria-label="Chat about this era"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </button>
+                </>
               )}
             </div>
           </header>
@@ -179,25 +305,41 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
                 {saga ? saga.era : 'Your Story'}
               </h1>
               <p className="text-white/40 text-sm mt-1.5 max-w-xs">
-                The arcs, chapters, and turning points that make up your life narrative.
+                The storylines, chapters, and turning points that make up your life narrative.
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0 mt-1">
-              {/* Chat about this era */}
               {saga && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleChatEra}
-                  className="text-white/50 hover:text-white hover:bg-primary/10 border border-white/10 hover:border-primary/30 gap-1.5 text-xs"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Chat about this era</span>
-                  <span className="sm:hidden">Chat</span>
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleCopyAll()}
+                    disabled={copyDisabled}
+                    className={`gap-1.5 text-xs border ${
+                      copied
+                        ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                        : 'text-white/50 hover:text-white hover:bg-white/5 border-white/10 hover:border-white/25'
+                    }`}
+                    title="Copy all Life Saga content as plain text"
+                    aria-label="Copy all Life Saga"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy all'}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleChatEra}
+                    className="text-white/50 hover:text-white hover:bg-primary/10 border border-white/10 hover:border-primary/30 gap-1.5 text-xs"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Chat about this era</span>
+                    <span className="sm:hidden">Chat</span>
+                  </Button>
+                </>
               )}
-              {/* Refresh */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -226,7 +368,7 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <BookOpen className="h-12 w-12 text-white/15 mb-4" />
               <p className="text-white/40 text-sm max-w-xs">
-                Your saga will appear here once you have life arcs and chapters. Start by chatting about your story.
+                Your saga will appear here once you have life storylines and chapters. Start by chatting about your story.
               </p>
               <Button
                 variant="ghost"
@@ -243,37 +385,37 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
           {saga && (
             <div className="space-y-10">
 
-              {/* Active Arcs — clickable, navigate to timeline */}
-              {saga.arcs.length > 0 && (
+              {/* Current Storylines — clickable, navigate to timeline */}
+              {saga.currentStorylines.length > 0 && (
                 <section>
                   <div className="flex items-center gap-2 mb-4">
                     <Zap className="h-4 w-4 text-primary/60" />
-                    <h2 className="text-xs font-mono uppercase tracking-widest text-white/40">Active Arcs</h2>
+                    <h2 className="text-xs font-mono uppercase tracking-widest text-white/40">Current Storylines</h2>
                     <span className="text-xs text-white/20 font-mono ml-auto">tap to explore in timeline →</span>
                   </div>
                   <div className="rounded-2xl border border-white/8 bg-white/3 p-4 sm:p-6 space-y-4">
-                    {saga.arcs.map((arc, i) => {
+                    {saga.currentStorylines.map((storyline, i) => {
                       const color = ARC_COLORS[i % ARC_COLORS.length];
                       return (
                         <button
-                          key={arc.id}
+                          key={storyline.id}
                           type="button"
-                          onClick={() => handleArcClick(arc.id)}
+                          onClick={() => handleStorylineClick(storyline.id)}
                           className="group w-full text-left"
                         >
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`text-sm font-medium ${color.text} ${color.hover} transition-colors group-hover:underline underline-offset-2 decoration-dotted`}>
-                              {arc.label}
+                              {storyline.label}
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs text-white/30 font-mono">{arc.intensity}%</span>
+                              <span className="text-xs text-white/30 font-mono">{storyline.intensity}%</span>
                               <ChevronRight className="h-3 w-3 text-white/15 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all" />
                             </div>
                           </div>
                           <div className="h-2 w-full rounded-full bg-white/8 overflow-hidden">
                             <div
                               className={`h-full rounded-full bg-gradient-to-r ${color.bar} transition-all duration-700`}
-                              style={{ width: `${arc.intensity}%` }}
+                              style={{ width: `${storyline.intensity}%` }}
                             />
                           </div>
                         </button>
@@ -284,85 +426,87 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
               )}
 
               {/* Turning Points */}
-              {turningPoints.length > 0 && (
+              {saga.turningPoints.length > 0 && (
                 <section>
                   <div className="flex items-center gap-2 mb-4">
                     <Star className="h-4 w-4 text-amber-400/60" />
                     <h2 className="text-xs font-mono uppercase tracking-widest text-white/40">Turning Points</h2>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {turningPoints.map((chapter) => {
-                      const idx = chapterIndexMap.get(chapter.id) ?? 0;
-                      return (
-                        <button
-                          key={chapter.id}
-                          type="button"
-                          onClick={() => openChapter(chapter, idx)}
-                          className="group relative text-left rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-950/40 via-orange-950/20 to-black/40 p-5 hover:border-amber-500/50 hover:from-amber-950/60 active:scale-[0.98] transition-all"
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <span className="text-xs font-mono text-amber-400/70 uppercase tracking-wider">Turning Point</span>
-                            <Star className="h-3.5 w-3.5 text-amber-400/50 shrink-0 mt-0.5" />
-                          </div>
-                          <h3
-                            className="text-lg font-bold text-white mb-2 leading-snug font-serif"
-                          >
-                            {chapter.title}
-                          </h3>
-                          <p className="text-sm text-white/55 leading-relaxed line-clamp-2">
-                            {chapter.summary}
-                          </p>
-                          <div className="mt-3 flex items-center gap-1 text-xs text-amber-400/40 group-hover:text-amber-400/70 transition-colors">
-                            <span>Open</span>
-                            <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {saga.turningPoints.map((tp) => (
+                      <div
+                        key={tp.id}
+                        className="group relative text-left rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-950/40 via-orange-950/20 to-black/40 p-5"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="text-xs font-mono text-amber-400/70 uppercase tracking-wider">
+                            {tp.kind.replace(/_/g, ' ')}
+                          </span>
+                          <Star className="h-3.5 w-3.5 text-amber-400/50 shrink-0 mt-0.5" />
+                        </div>
+                        <h3 className="text-lg font-bold text-white mb-1 leading-snug font-serif">{tp.title}</h3>
+                        {tp.date && (
+                          <p className="text-xs text-white/40">{new Date(tp.date).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </section>
               )}
 
-              {/* Regular Chapters */}
-              {regularChapters.length > 0 && (
-                <section>
+              {/* Eras → Chapters → Storylines */}
+              {orderedEras.map((era) => (
+                <section key={era.id}>
                   <div className="flex items-center gap-2 mb-4">
                     <BookOpen className="h-4 w-4 text-primary/60" />
-                    <h2 className="text-xs font-mono uppercase tracking-widest text-white/40">Chapters</h2>
+                    <h2 className="text-sm font-semibold text-white font-serif">{era.title}</h2>
+                    {era.isCurrent && (
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400/70 border border-emerald-500/25 rounded-full px-2 py-0.5">
+                        Current
+                      </span>
+                    )}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {regularChapters.map((chapter) => {
-                      const idx = chapterIndexMap.get(chapter.id) ?? 0;
-                      return (
-                        <button
-                          key={chapter.id}
-                          type="button"
-                          onClick={() => openChapter(chapter, idx)}
-                          className="group text-left rounded-2xl border border-white/8 bg-white/3 hover:bg-white/5 hover:border-primary/20 active:scale-[0.98] p-5 transition-all"
-                        >
-                          <span className="text-xs font-mono text-white/25 mb-2 block">
-                            Chapter {idx + 1}
-                          </span>
-                          <h3
-                            className="text-base font-semibold text-white mb-2 leading-snug font-serif"
-                          >
-                            {chapter.title}
-                          </h3>
-                          <p className="text-sm text-white/45 leading-relaxed line-clamp-3">
-                            {chapter.summary}
-                          </p>
-                          <div className="mt-3 flex items-center gap-1 text-xs text-white/20 group-hover:text-white/50 transition-colors">
-                            <span>Open</span>
-                            <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                          </div>
-                        </button>
-                      );
-                    })}
+
+                  <div className="space-y-6">
+                    {era.chapters.map((chapter) => (
+                      <div key={chapter.id}>
+                        <h3 className="text-xs font-mono uppercase tracking-widest text-white/35 mb-3">
+                          {chapter.title}
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {chapter.storylines.map((storyline) => {
+                            const idx = storylineIndexById.get(storyline.id) ?? 0;
+                            return (
+                              <button
+                                key={storyline.id}
+                                type="button"
+                                onClick={() => openStoryline(storyline, idx)}
+                                className="group text-left rounded-2xl border border-white/8 bg-white/3 hover:bg-white/5 hover:border-primary/20 active:scale-[0.98] p-5 transition-all"
+                              >
+                                <span className="text-xs font-mono text-white/25 mb-2 block capitalize">
+                                  {storyline.status} · {storyline.momentum}
+                                </span>
+                                <h4 className="text-base font-semibold text-white mb-2 leading-snug font-serif">
+                                  {storyline.title}
+                                </h4>
+                                <p className="text-sm text-white/45 leading-relaxed line-clamp-3">
+                                  {storyline.summary}
+                                </p>
+                                <div className="mt-3 flex items-center gap-1 text-xs text-white/20 group-hover:text-white/50 transition-colors">
+                                  <span>Open</span>
+                                  <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </section>
-              )}
+              ))}
 
-              {saga.chapters.length === 0 && (
+              {totalStorylineCount === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-white/8 bg-white/2 text-center">
                   <BookOpen className="h-10 w-10 text-white/15 mb-3" />
                   <p className="text-sm text-white/35">No chapters yet. Your story is still being written.</p>
@@ -375,7 +519,7 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
         </div>
       </div>
 
-      {/* Chapter detail drawer */}
+      {/* Storyline detail drawer */}
       {drawer && (
         <ChapterDetailDrawer
           chapter={drawer.chapter}

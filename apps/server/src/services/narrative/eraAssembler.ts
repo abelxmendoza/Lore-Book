@@ -392,3 +392,35 @@ export function chapterRowToEraInput(row: {
     dominantEmotion: row.dominant_emotion,
   };
 }
+
+/** Map a persisted life chapter (domain grouping) row into era assembler input. */
+export function lifeChapterRowToEraInput(row: {
+  id: string;
+  title: string;
+  summary: string;
+  time_start: string | null;
+  time_end: string | null;
+  location?: string | null;
+  participants?: string[];
+  themes?: string[];
+  scene_ids?: string[];
+  event_ids?: string[];
+  significance_score?: number;
+  dominant_emotion?: string | null;
+}): EraChapterInput {
+  return {
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    thesis: null,
+    timeStart: row.time_start,
+    timeEnd: row.time_end,
+    location: row.location,
+    participants: row.participants ?? [],
+    themes: row.themes ?? [],
+    sceneIds: row.scene_ids ?? [],
+    eventIds: row.event_ids ?? [],
+    significanceScore: row.significance_score,
+    dominantEmotion: row.dominant_emotion,
+  };
+}

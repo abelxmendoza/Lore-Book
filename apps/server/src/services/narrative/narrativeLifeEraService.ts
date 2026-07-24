@@ -164,10 +164,11 @@ export class NarrativeLifeEraService {
     }
   }
 
+  /** chapterIds are narrative_life_chapters ids (domain groupings), not raw Storylines. */
   async attachChapters(userId: string, eraId: string, chapterIds: string[]): Promise<void> {
     if (!chapterIds.length) return;
     const { error } = await supabaseAdmin
-      .from('narrative_story_chapters')
+      .from('narrative_life_chapters')
       .update({ era_id: eraId, updated_at: new Date().toISOString() })
       .eq('user_id', userId)
       .in('id', chapterIds);

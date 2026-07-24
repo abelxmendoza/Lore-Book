@@ -9,7 +9,12 @@ import { assembleChaptersFromScenes, type ChapterSceneInput } from './chapterAss
 import { mayPersistChapter } from './chapterSignificance';
 import { mayPublishOwnedChapter } from './narrativeValidation';
 import { narrativeStoryChapterService } from './narrativeStoryChapterService';
-import { assembleErasFromChapters, chapterRowToEraInput } from './eraAssembler';
+import {
+  assembleLifeChaptersFromStorylines,
+  storylineRowToLifeChapterInput,
+} from './lifeChapterAssembler';
+import { narrativeLifeChapterService } from './narrativeLifeChapterService';
+import { assembleErasFromChapters, lifeChapterRowToEraInput } from './eraAssembler';
 import { mayPersistEra } from './eraSignificance';
 import { narrativeLifeEraService } from './narrativeLifeEraService';
 
@@ -18,8 +23,10 @@ export type StoryChapterReprocessResult = {
   assembled: number;
   published: number;
   rejected: number;
+  lifeChaptersPublished: number;
   erasPublished: number;
   clearedChapters: number;
+  clearedLifeChapters: number;
   chapters: Awaited<ReturnType<typeof narrativeStoryChapterService.listChapters>>;
 };
 
@@ -61,6 +68,7 @@ export async function reprocessStoryChaptersForUser(
     logger.warn({ error: eraClearError, userId }, 'story chapter reprocess: era clear failed');
   }
 
+  const clearedLifeChapters = await narrativeLifeChapterService.clearChaptersForUser(userId);
   const clearedChapters = await narrativeStoryChapterService.clearChaptersForUser(userId);
   const assembled = assembleChaptersFromScenes(scenes);
 
@@ -98,7 +106,23 @@ export async function reprocessStoryChaptersForUser(
   }
 
   const chapters = await narrativeStoryChapterService.listChapters(userId, { limit: 100 });
-  const eras = assembleErasFromChapters(chapters.map(chapterRowToEraInput));
+
+  const lifeChapters = assembleLifeChaptersFromStorylines(
+    chapters.map(storylineRowToLifeChapterInput),
+  );
+  let lifeChaptersPublished = 0;
+  for (const lifeChapter of lifeChapters) {
+    const row = await narrativeLifeChapterService.upsertChapter({
+      userId,
+      chapter: lifeChapter,
+      significanceScore: Math.round(lifeChapter.confidence * 100),
+      metadata: { reprocessed: true },
+    });
+    if (row?.id) lifeChaptersPublished += 1;
+  }
+
+  const recentLifeChapters = await narrativeLifeChapterService.listChapters(userId, { limit: 100 });
+  const eras = assembleErasFromChapters(recentLifeChapters.map(lifeChapterRowToEraInput));
   let erasPublished = 0;
   for (const era of eras) {
     const eraScore = mayPersistEra(era);
@@ -117,8 +141,10 @@ export async function reprocessStoryChaptersForUser(
     assembled: assembled.length,
     published,
     rejected,
+    lifeChaptersPublished,
     erasPublished,
     clearedChapters,
+    clearedLifeChapters,
     chapters,
   };
 }

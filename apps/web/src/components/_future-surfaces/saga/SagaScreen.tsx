@@ -9,6 +9,8 @@ export const SagaScreen = () => {
 
   if (!saga) return <p className="text-white/60">Loading saga…</p>;
 
+  const storylines = saga.eras.flatMap((era) => era.chapters.flatMap((chapter) => chapter.storylines));
+
   return (
     <Card className="neon-surface border border-primary/30">
       <CardHeader>
@@ -16,15 +18,15 @@ export const SagaScreen = () => {
         <p className="text-xs text-white/60">High-level arc overview</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <ArcCurveCanvas arcs={saga.arcs} />
+        <ArcCurveCanvas arcs={saga.currentStorylines} />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {saga.chapters.map((chapter) => (
-            <CinematicChapter key={chapter.id} chapter={chapter} />
+          {storylines.map((storyline) => (
+            <CinematicChapter key={storyline.id} chapter={storyline} />
           ))}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          {saga.chapters.slice(0, 4).map((chapter) => (
-            <KeyMomentCard key={chapter.id} title={chapter.title} summary={chapter.summary} />
+          {storylines.slice(0, 4).map((storyline) => (
+            <KeyMomentCard key={storyline.id} title={storyline.title} summary={storyline.summary} />
           ))}
         </div>
       </CardContent>

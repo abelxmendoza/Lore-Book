@@ -48,8 +48,13 @@ import { mayPersistChapter } from '../narrative/chapterSignificance';
 import { mayPublishOwnedChapter } from '../narrative/narrativeValidation';
 import { narrativeStoryChapterService } from '../narrative/narrativeStoryChapterService';
 import {
+  assembleLifeChaptersFromStorylines,
+  storylineRowToLifeChapterInput,
+} from '../narrative/lifeChapterAssembler';
+import { narrativeLifeChapterService } from '../narrative/narrativeLifeChapterService';
+import {
   assembleErasFromChapters,
-  chapterRowToEraInput,
+  lifeChapterRowToEraInput,
 } from '../narrative/eraAssembler';
 import { mayPersistEra } from '../narrative/eraSignificance';
 import { narrativeLifeEraService } from '../narrative/narrativeLifeEraService';
@@ -376,12 +381,33 @@ export class EventAssemblyService {
         }
       }
 
-      // 6) Assemble Life Eras from Story Chapters (months-to-years containers)
+      // 5.5) Assemble Life Chapters from Storylines (domain groupings: Career, Family, ...)
+      let wroteLifeChapters = false;
       if (wroteChapters) {
-        const recentChapters = await narrativeStoryChapterService.listChapters(userId, {
+        const recentStorylines = await narrativeStoryChapterService.listChapters(userId, {
           limit: 100,
         });
-        const eraInputs = recentChapters.map(chapterRowToEraInput);
+        const lifeChapterInputs = recentStorylines.map(storylineRowToLifeChapterInput);
+        const lifeChapters = assembleLifeChaptersFromStorylines(lifeChapterInputs);
+        for (const assembledLifeChapter of lifeChapters) {
+          // Life Chapters are deterministic domain buckets over already-approved
+          // Storylines — always durable once assembled (no separate gate).
+          const lifeChapterRow = await narrativeLifeChapterService.upsertChapter({
+            userId,
+            chapter: assembledLifeChapter,
+            significanceScore: Math.round(assembledLifeChapter.confidence * 100),
+            threadId: threadId ?? null,
+          });
+          if (lifeChapterRow?.id) wroteLifeChapters = true;
+        }
+      }
+
+      // 6) Assemble Life Eras from Life Chapters (months-to-years containers)
+      if (wroteLifeChapters) {
+        const recentLifeChapters = await narrativeLifeChapterService.listChapters(userId, {
+          limit: 100,
+        });
+        const eraInputs = recentLifeChapters.map(lifeChapterRowToEraInput);
         const eras = assembleErasFromChapters(eraInputs);
         for (const assembledEra of eras) {
           const eraScore = mayPersistEra(assembledEra);
