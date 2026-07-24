@@ -54,6 +54,11 @@ import {
   type SkillDetailTabKey,
 } from './SkillDetailTabPanels';
 import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
+import {
+  capabilityEntityTypeLabel,
+  isPrimarySkillBookRecord,
+  readSkillOntologyMeta,
+} from '../../lib/skillOntology';
 import { formatSkillCertaintyDetail, levelLabel, skillCertaintyFieldLabel } from '../../lib/skillStory';
 import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
 import type { Achievement } from '../../types/achievement';
@@ -732,6 +737,12 @@ When the user provides information about who they learned from, where they pract
                 <h2 className="text-sm font-bold text-white truncate leading-tight">{skill.skill_name}</h2>
                 <p className="text-[10px] text-white/45 truncate mt-0.5">
                   {levelLabel(skill.current_level)} · {Math.round(levelProgress)}% · {skill.practice_count} conversations
+                  {!isPrimarySkillBookRecord(skill) && (
+                    <span className="text-amber-200/80">
+                      {' '}
+                      · {capabilityEntityTypeLabel(readSkillOntologyMeta(skill.metadata).capabilityEntityType)}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -750,6 +761,15 @@ When the user provides information about who they learned from, where they pract
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <Badge className={cn('text-xs capitalize border', theme.badge)}>{skill.skill_category}</Badge>
                   <Badge variant="outline" className={cn('text-xs border', theme.chip)}>Level {skill.current_level}</Badge>
+                  {!isPrimarySkillBookRecord(skill) && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-amber-500/40 bg-amber-500/10 text-amber-100"
+                      title={readSkillOntologyMeta(skill.metadata).migrationReason}
+                    >
+                      {capabilityEntityTypeLabel(readSkillOntologyMeta(skill.metadata).capabilityEntityType)}
+                    </Badge>
+                  )}
                   <span className="text-xs text-white/40">{skill.practice_count} sessions · Last {lastPracticedLabel}</span>
                   {skill.auto_detected && (
                     <Badge variant="outline" className="text-xs bg-purple-500/20 border-purple-500/50 text-purple-300">Auto-detected</Badge>

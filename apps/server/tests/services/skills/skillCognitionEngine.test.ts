@@ -235,6 +235,20 @@ describe('SkillCognitionEngine v1', () => {
       expect(plan.some((p) => p.decision === 'DEMOTE_TO_ACTIVITY')).toBe(true);
     });
 
+    it('merges Coding and Product iteration into one Software Product Development survivor', () => {
+      const plan = planSkillDuplicateMerges([
+        { id: 'c1', skill_name: 'Coding' },
+        { id: 'p1', skill_name: 'Product iteration' },
+      ]);
+      const merges = plan.filter((p) => p.decision === 'MERGE');
+      const renames = plan.filter((p) => p.decision === 'RENAME');
+      expect(renames.some((p) => p.targetName === 'Software Product Development')).toBe(true);
+      expect(merges.every((p) => p.targetName === 'Software Product Development')).toBe(true);
+      expect(merges).toHaveLength(1);
+      // Exactly one survivor rename, one merge — no A↔B mutual merge
+      expect(plan.filter((p) => p.skillId === 'c1' || p.skillId === 'p1')).toHaveLength(2);
+    });
+
     it('audit flags other-person Electrical Engineering', () => {
       const summary = auditSkillBook('user-1', [
         {

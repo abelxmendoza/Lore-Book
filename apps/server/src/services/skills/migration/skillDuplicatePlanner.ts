@@ -26,6 +26,16 @@ const MERGE_TARGETS: Array<{ target: string; aliases: string[] }> = [
     aliases: ['debugging', 'software debugging'],
   },
   {
+    target: 'Software Product Development',
+    aliases: [
+      'product development',
+      'software product development',
+      'product iteration',
+      'coding',
+      'software development',
+    ],
+  },
+  {
     target: 'Professional Self-Marketing',
     aliases: ['marketing myself', 'personal branding'],
   },
@@ -36,6 +46,7 @@ const MERGE_TARGETS: Array<{ target: string; aliases: string[] }> = [
       'family caregiving',
       'family caregiving / errand running',
       'driving and errand coordination',
+      'family support',
     ],
   },
   {
@@ -44,6 +55,8 @@ const MERGE_TARGETS: Array<{ target: string; aliases: string[] }> = [
       'socializing at goth clubs',
       'socializing in goth/underground scenes',
       'socializing in goth underground scenes',
+      'social interaction',
+      'socializing',
     ],
   },
 ];

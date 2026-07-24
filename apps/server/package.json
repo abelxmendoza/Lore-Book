@@ -39,6 +39,7 @@
     "places:migrate": "tsx src/scripts/placesOntologyMigrate.ts --execute",
     "skills:audit": "tsx src/scripts/skillsOntologyMigrate.ts",
     "skills:migrate": "tsx src/scripts/skillsOntologyMigrate.ts --execute",
+    "skills:repair-survivors": "tsx src/scripts/skillsRepairMergeSurvivors.ts",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
     "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts",
     "egress:simulate": "tsx scripts/simulate-egress.ts",

@@ -19,7 +19,8 @@ export function buildReclassifyMetadata(
   const entityType = String(item.targetEntityType ?? base.capability_entity_type ?? 'SKILL').toUpperCase();
   const hideFromSkillBook =
     ['ARCHIVE_OTHER_PERSON', 'ARCHIVE_FICTION', 'MERGE', 'DEMOTE_TO_PROJECT', 'DEMOTE_TO_ACTIVITY', 'DEMOTE_TO_RESPONSIBILITY', 'DEMOTE_TO_INTEREST'].includes(item.decision)
-    || (item.decision === 'RETYPE' && entityType !== 'SKILL' && entityType !== 'PROJECT_APPLICATION');
+    || (item.decision === 'RETYPE' && entityType !== 'SKILL')
+    || entityType === 'PROJECT_APPLICATION';
 
   return {
     ...base,

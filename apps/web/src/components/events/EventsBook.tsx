@@ -22,6 +22,7 @@ import {
   endOfDay,
 } from 'date-fns';
 import { buildEventsBookClipboardText } from '../../lib/eventsBookClipboard';
+import { buildPatternsClipboardText, patternContinuityLabel } from '../../lib/patternsClipboard';
 import { formatEventTime } from '../../lib/formatEventTime';
 import { fetchJson } from '../../lib/api';
 import { getDisplayTitle } from '../../utils/displayTitle';
@@ -43,6 +44,7 @@ import { EventProfileCard, type Event } from './EventProfileCard';
 
 const ITEMS_PER_PAGE = 18;
 const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
+const PATTERNS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.patternsViewMode';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -482,6 +484,9 @@ export const EventsBook: React.FC = () => {
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(EVENTS_CARD_VIEW_STORAGE_KEY, 'grid'),
   );
+  const [patternsViewMode, setPatternsViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(PATTERNS_CARD_VIEW_STORAGE_KEY, 'grid'),
+  );
   const {
     events: serverEvents,
     eventsSuccess,
@@ -686,6 +691,11 @@ export const EventsBook: React.FC = () => {
   const clipboardText = useMemo(
     () => buildEventsBookClipboardText(filteredEvents),
     [filteredEvents],
+  );
+
+  const patternsClipboardText = useMemo(
+    () => buildPatternsClipboardText(recurringScenes),
+    [recurringScenes],
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -1197,21 +1207,29 @@ export const EventsBook: React.FC = () => {
       {/* ══ PATTERNS ══ */}
       {viewMode === 'recurring' && (
         <div className="space-y-5">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <p className="text-xs text-white/40">
               Recurring rhythms LoreBook notices — Sunday calls, weekly rituals, familiar places.
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void loadRecurringScenes()}
-              disabled={scenesLoading}
-              className="flex-shrink-0"
-              aria-label="Refresh patterns"
-            >
-              <RefreshCw className={`h-4 w-4 ${scenesLoading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadRecurringScenes()}
+                disabled={scenesLoading}
+                aria-label="Refresh patterns"
+              >
+                <RefreshCw className={`h-4 w-4 ${scenesLoading ? 'animate-spin' : ''}`} />
+              </Button>
+              <GridListViewToolbar
+                viewMode={patternsViewMode}
+                onViewModeChange={setPatternsViewMode}
+                copyText={patternsClipboardText}
+                copyDisabled={recurringScenes.length === 0}
+                storageKey={PATTERNS_CARD_VIEW_STORAGE_KEY}
+              />
+            </div>
           </div>
 
           {/* Skeleton */}
@@ -1234,134 +1252,186 @@ export const EventsBook: React.FC = () => {
             </div>
           )}
 
-          {/* Scene cards */}
+          {/* Scene grid / list */}
           {!scenesLoading && recurringScenes.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recurringScenes.map(scene => {
-                const s = scene.continuity_strength;
-                const strengthLabel =
-                  s >= 0.85 ? 'Autobiographical' :
-                  s >= 0.60 ? 'Recurring' :
-                  s >= 0.40 ? 'Emerging' : 'Forming';
-                const labelColor =
-                  s >= 0.85 ? 'text-emerald-300 border-emerald-500/40' :
-                  s >= 0.60 ? 'text-blue-300 border-blue-500/40' :
-                  s >= 0.40 ? 'text-amber-300 border-amber-500/40' :
-                             'text-white/40 border-border/30';
-                const barColor =
-                  s >= 0.85 ? 'bg-emerald-400' :
-                  s >= 0.60 ? 'bg-blue-400' :
-                  s >= 0.40 ? 'bg-amber-400' : 'bg-white/25';
+            patternsViewMode === 'list' ? (
+              <div
+                className="overflow-hidden rounded-xl border border-white/10 bg-black/30 divide-y divide-white/[0.06]"
+                data-testid="patterns-book-list"
+              >
+                {recurringScenes.map((scene) => {
+                  const s = scene.continuity_strength;
+                  const strengthLabel = patternContinuityLabel(s);
+                  let lastSeen = '';
+                  try {
+                    lastSeen = formatDistanceToNow(dfParseISO(scene.last_seen_at), { addSuffix: true });
+                  } catch { /* noop */ }
 
-                let lastSeen = '';
-                try {
-                  lastSeen = formatDistanceToNow(dfParseISO(scene.last_seen_at), { addSuffix: true });
-                } catch { /* noop */ }
-
-                return (
-                  <Card
-                    key={scene.id}
-                    className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer"
-                    onClick={() => {
-                      // Filter Events view to show only events in this pattern
-                      setViewMode('events');
-                      setSearchTerm(scene.canonical_title.split(' ')[0]);
-                    }}
-                  >
-                    <CardContent className="p-5">
-                      {/* Title + badge */}
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Repeat2 className="h-4 w-4 text-primary/50 flex-shrink-0" />
-                          <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
-                            {scene.canonical_title}
-                          </h3>
+                  return (
+                    <button
+                      key={scene.id}
+                      type="button"
+                      onClick={() => {
+                        setViewMode('events');
+                        setSearchTerm(scene.canonical_title.split(' ')[0]);
+                      }}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5 sm:px-4"
+                    >
+                      <Repeat2 className="mt-0.5 h-4 w-4 shrink-0 text-primary/60" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-sm font-medium text-white">{scene.canonical_title}</p>
+                          <span className="shrink-0 text-[10px] text-white/40">
+                            {Math.round(s * 100)}%
+                          </span>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] flex-shrink-0 ${labelColor}`}
-                        >
-                          {strengthLabel}
-                        </Badge>
-                      </div>
-
-                      {/* Count + last seen */}
-                      <p className="text-xs text-white/45 mb-3">
-                        {scene.occurrence_count} {scene.occurrence_count === 1 ? 'time' : 'times'}
-                        {lastSeen ? ` · last ${lastSeen}` : ''}
-                      </p>
-
-                      {/* Continuity strength bar */}
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-                            style={{ width: `${Math.round(s * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-white/35 shrink-0 tabular-nums">
-                          {Math.round(s * 100)}%
-                        </span>
-                      </div>
-
-                      {/* Entity names */}
-                      {scene.dominant_entity_names && scene.dominant_entity_names.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          {scene.dominant_entity_names.slice(0, 3).map(name => (
-                            <span
-                              key={name}
-                              className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300/80 border border-blue-500/20"
-                            >
-                              {name}
-                            </span>
-                          ))}
-                          {scene.dominant_entity_names.length > 3 && (
-                            <span className="text-[10px] text-white/30 self-center">
-                              +{scene.dominant_entity_names.length - 3}
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                          <span>{strengthLabel}</span>
+                          <span>
+                            {scene.occurrence_count} {scene.occurrence_count === 1 ? 'time' : 'times'}
+                            {lastSeen ? ` · last ${lastSeen}` : ''}
+                          </span>
+                          {scene.dominant_entity_names && scene.dominant_entity_names.length > 0 && (
+                            <span>
+                              People: {scene.dominant_entity_names.slice(0, 3).join(', ')}
+                              {scene.dominant_entity_names.length > 3
+                                ? ` +${scene.dominant_entity_names.length - 3}`
+                                : ''}
                             </span>
                           )}
+                          {scene.recurring_activities && scene.recurring_activities.length > 0 && (
+                            <span>
+                              Activities: {scene.recurring_activities.slice(0, 3).join(', ')}
+                            </span>
+                          )}
+                          {scene.timeline_candidate && <span>Timeline candidate</span>}
                         </div>
-                      )}
-
-                      {/* Activities */}
-                      {scene.recurring_activities && scene.recurring_activities.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {scene.recurring_activities.slice(0, 4).map(a => (
-                            <Badge
-                              key={a}
-                              variant="outline"
-                              className="text-[10px] bg-primary/8 text-primary/70 border-primary/20 capitalize"
-                            >
-                              {a}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Footer */}
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/6 pt-3">
-                        <p className="text-[10px] text-white/20">
-                          {scene.source_event_ids?.length ?? scene.occurrence_count} moments in this pattern
-                        </p>
-                        {scene.timeline_candidate && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate('/timeline?view=events');
-                            }}
-                            className="inline-flex items-center gap-1 text-[10px] font-medium text-primary/70 transition-colors hover:text-primary"
-                          >
-                            View in Chronology
-                            <ArrowRight className="h-3 w-3" />
-                          </button>
-                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                data-testid="patterns-book-grid"
+              >
+                {recurringScenes.map(scene => {
+                  const s = scene.continuity_strength;
+                  const strengthLabel = patternContinuityLabel(s);
+                  const labelColor =
+                    s >= 0.85 ? 'text-emerald-300 border-emerald-500/40' :
+                    s >= 0.60 ? 'text-blue-300 border-blue-500/40' :
+                    s >= 0.40 ? 'text-amber-300 border-amber-500/40' :
+                               'text-white/40 border-border/30';
+                  const barColor =
+                    s >= 0.85 ? 'bg-emerald-400' :
+                    s >= 0.60 ? 'bg-blue-400' :
+                    s >= 0.40 ? 'bg-amber-400' : 'bg-white/25';
+
+                  let lastSeen = '';
+                  try {
+                    lastSeen = formatDistanceToNow(dfParseISO(scene.last_seen_at), { addSuffix: true });
+                  } catch { /* noop */ }
+
+                  return (
+                    <Card
+                      key={scene.id}
+                      className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer"
+                      onClick={() => {
+                        setViewMode('events');
+                        setSearchTerm(scene.canonical_title.split(' ')[0]);
+                      }}
+                    >
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Repeat2 className="h-4 w-4 text-primary/50 flex-shrink-0" />
+                            <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
+                              {scene.canonical_title}
+                            </h3>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] flex-shrink-0 ${labelColor}`}
+                          >
+                            {strengthLabel}
+                          </Badge>
+                        </div>
+
+                        <p className="text-xs text-white/45 mb-3">
+                          {scene.occurrence_count} {scene.occurrence_count === 1 ? 'time' : 'times'}
+                          {lastSeen ? ` · last ${lastSeen}` : ''}
+                        </p>
+
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                              style={{ width: `${Math.round(s * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-white/35 shrink-0 tabular-nums">
+                            {Math.round(s * 100)}%
+                          </span>
+                        </div>
+
+                        {scene.dominant_entity_names && scene.dominant_entity_names.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            {scene.dominant_entity_names.slice(0, 3).map(name => (
+                              <span
+                                key={name}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300/80 border border-blue-500/20"
+                              >
+                                {name}
+                              </span>
+                            ))}
+                            {scene.dominant_entity_names.length > 3 && (
+                              <span className="text-[10px] text-white/30 self-center">
+                                +{scene.dominant_entity_names.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {scene.recurring_activities && scene.recurring_activities.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {scene.recurring_activities.slice(0, 4).map(a => (
+                              <Badge
+                                key={a}
+                                variant="outline"
+                                className="text-[10px] bg-primary/8 text-primary/70 border-primary/20 capitalize"
+                              >
+                                {a}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/6 pt-3">
+                          <p className="text-[10px] text-white/20">
+                            {scene.source_event_ids?.length ?? scene.occurrence_count} moments in this pattern
+                          </p>
+                          {scene.timeline_candidate && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/timeline?view=events');
+                              }}
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary/70 transition-colors hover:text-primary"
+                            >
+                              View in Chronology
+                              <ArrowRight className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )
           )}
         </div>
       )}

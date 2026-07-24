@@ -10,6 +10,15 @@ describe('skillOntology', () => {
     expect(isPrimarySkillBookRecord({ is_active: true, metadata: {} })).toBe(true);
   });
 
+  it('keeps project applications out of the primary skill grid', () => {
+    expect(
+      isPrimarySkillBookRecord({
+        is_active: true,
+        metadata: { capability_entity_type: 'PROJECT_APPLICATION', skill_book_visible: true },
+      }),
+    ).toBe(false);
+  });
+
   it('hides demoted projects and activities from primary book', () => {
     expect(
       isPrimarySkillBookRecord({

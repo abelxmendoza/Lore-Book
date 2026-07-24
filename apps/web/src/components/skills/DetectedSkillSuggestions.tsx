@@ -3,8 +3,8 @@
 // Skills LoreBook detected in chats/journal — confirm before they become truth.
 // =====================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, Heart, GitBranch } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, Heart, GitBranch, Copy, Check } from 'lucide-react';
 import { skillsApi, type SkillSuggestion } from '../../api/skills';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
@@ -21,6 +21,9 @@ import { triggerCelebration } from '../../lib/celebrations';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 import { formatSkillCertaintyDetail } from '../../lib/skillStory';
+import { buildSkillSuggestionsClipboardText } from '../../lib/skillSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/cn';
 
 interface Props {
   onSkillAdded?: () => void;
@@ -68,8 +71,16 @@ export const DetectedSkillSuggestions = ({
   const [exiting, setExiting] = useState<Set<string>>(new Set());
   const [demoRescanning, setDemoRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scanning = rescanning || demoRescanning;
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
 
   const inBookSkillNames = useCallback((): string[] => {
     const fromBook = existingSkillNames.map((n) => n.trim()).filter(Boolean);
@@ -228,6 +239,14 @@ export const DetectedSkillSuggestions = ({
     }
   };
 
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildSkillSuggestionsClipboardText(visible));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
   if (hidePanel) {
     return RescanToastContainer ? <RescanToastContainer /> : null;
   }
@@ -262,6 +281,20 @@ export const DetectedSkillSuggestions = ({
           >
             <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
           </button>
+          {visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCopyAll()}
+              className={cn(
+                'h-8 w-8 flex items-center justify-center rounded transition-colors touch-manipulation',
+                copied ? 'text-emerald-300' : 'text-white/50 hover:text-primary hover:bg-primary/10',
+              )}
+              title="Copy all suggested skills as plain text"
+              aria-label="Copy all suggested skills"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed(c => !c)}

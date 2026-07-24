@@ -15,6 +15,8 @@ import { buildQuestSuggestionsClipboardText } from './questSuggestionsClipboard'
 import { buildEventsBookClipboardText } from './eventsBookClipboard';
 import { buildNarrativeAnchorsClipboardText } from './narrativeAnchorsClipboard';
 import { buildSkillBookClipboardText } from './skillBookClipboard';
+import { buildSkillSuggestionsClipboardText } from './skillSuggestionsClipboard';
+import { buildPatternsClipboardText } from './patternsClipboard';
 
 describe('listClipboard', () => {
   it('formats fields and skips empties', () => {
@@ -265,6 +267,37 @@ describe('buildQuestSuggestionsClipboardText', () => {
   });
 });
 
+describe('buildSkillSuggestionsClipboardText', () => {
+  it('includes category, confidence, match status, and evidence', () => {
+    const text = buildSkillSuggestionsClipboardText([
+      {
+        id: 'skill-sugg-1',
+        skill_name: 'TypeScript',
+        skill_category: 'technical',
+        skill_type: 'technical',
+        confidence: 0.92,
+        proficiency: 70,
+        match_status: 'new',
+        description: 'Building typed app surfaces across the product.',
+        evidence: ['Been writing a lot of TypeScript for MemoVault lately.'],
+      },
+    ]);
+
+    expect(text).toContain('Skills detected in your story (1 item)');
+    expect(text).toContain('1. TypeScript');
+    expect(text).toContain('Category: technical');
+    expect(text).toContain('Confidence: 92%');
+    expect(text).toContain('Match status: new');
+    expect(text).toContain('Been writing a lot of TypeScript for MemoVault lately.');
+  });
+
+  it('renders an empty-list placeholder when there are no suggestions', () => {
+    const text = buildSkillSuggestionsClipboardText([]);
+    expect(text).toContain('Skills detected in your story (0 items)');
+    expect(text).toContain('(empty)');
+  });
+});
+
 describe('buildProjectSuggestionsClipboardText', () => {
   it('includes project type, confidence, match status, and evidence', () => {
     const text = buildProjectSuggestionsClipboardText([
@@ -458,5 +491,33 @@ describe('buildEventsBookClipboardText', () => {
     expect(text).toContain('People: Jamie');
     expect(text).toContain('Locations: Downtown');
     expect(text).toContain('Caught up at a show');
+  });
+});
+
+describe('buildPatternsClipboardText', () => {
+  it('includes continuity, occurrences, people, and activities', () => {
+    const text = buildPatternsClipboardText([
+      {
+        id: 'scene-1',
+        canonical_title: 'Punk Shows',
+        dominant_entity_names: ['Maya', 'Jordan'],
+        recurring_activities: ['music', 'dancing'],
+        emotional_tone: 'positive',
+        occurrence_count: 6,
+        continuity_strength: 0.91,
+        first_seen_at: '2025-10-01T00:00:00.000Z',
+        last_seen_at: '2026-06-01T00:00:00.000Z',
+        source_event_ids: ['event-4', 'event-11'],
+        timeline_candidate: true,
+      },
+    ]);
+
+    expect(text).toContain('Life Log / Patterns (1 item)');
+    expect(text).toContain('1. Punk Shows');
+    expect(text).toContain('Occurrences: 6');
+    expect(text).toContain('Continuity: Autobiographical (91%)');
+    expect(text).toContain('People: Maya, Jordan');
+    expect(text).toContain('Activities: music, dancing');
+    expect(text).toContain('Timeline candidate: yes');
   });
 });

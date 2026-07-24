@@ -39,7 +39,7 @@ export function readSkillOntologyMeta(
   const skillBookVisible =
     typeof visibleFlag === 'boolean'
       ? visibleFlag
-      : !archived && (entity === 'SKILL' || entity === 'PROJECT_APPLICATION' || !m.capability_entity_type);
+      : !archived && (entity === 'SKILL' || !m.capability_entity_type);
 
   return {
     capabilityEntityType: entity,
@@ -60,21 +60,8 @@ export function isPrimarySkillBookRecord(
   if (meta.skillBookVisible === false) return false;
   if (skill.is_active === false && meta.migrationStatus) return false;
   const t = meta.capabilityEntityType;
-  if (
-    t === 'PROJECT'
-    || t === 'ACTIVITY'
-    || t === 'HOBBY'
-    || t === 'INTEREST'
-    || t === 'RESPONSIBILITY'
-    || t === 'ROLE'
-    || t === 'FIELD_OF_STUDY'
-    || t === 'KNOWLEDGE_AREA'
-    || t === 'PROCESS'
-    || t === 'SOCIAL_CONTEXT'
-    || t === 'OBSERVATION'
-  ) {
-    return false;
-  }
+  // Only durable SKILL records are primary peers in the Skills Book.
+  if (t && t !== 'SKILL') return false;
   return true;
 }
 

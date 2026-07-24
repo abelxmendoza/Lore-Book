@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from '../../test/utils';
+import { fetchJson } from '../../lib/api';
 import { EventsBook } from './EventsBook';
 
 const sampleEvent = {
@@ -17,6 +18,20 @@ const sampleEvent = {
   source_count: 2,
   created_at: '2026-06-02T00:00:00.000Z',
   updated_at: '2026-06-02T00:00:00.000Z',
+};
+
+const samplePattern = {
+  id: 'scene-1',
+  canonical_title: 'Punk Shows',
+  dominant_entity_names: ['Maya', 'Jordan'],
+  recurring_activities: ['music', 'dancing'],
+  emotional_tone: 'positive',
+  occurrence_count: 6,
+  continuity_strength: 0.91,
+  first_seen_at: '2025-10-01T00:00:00.000Z',
+  last_seen_at: '2026-06-01T00:00:00.000Z',
+  source_event_ids: ['event-4', 'event-11'],
+  timeline_candidate: true,
 };
 
 vi.mock('../../hooks/useShouldUseMockData', () => ({
@@ -70,6 +85,8 @@ describe('EventsBook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem('lorebook.eventsBook.cardViewMode');
+    localStorage.removeItem('lorebook.eventsBook.patternsViewMode');
+    vi.mocked(fetchJson).mockResolvedValue({ success: true, events: [] });
   });
 
   it('renders ChatFirstViewHint with chat-first messaging', async () => {
@@ -153,5 +170,37 @@ describe('EventsBook', () => {
     fireEvent.click(screen.getByRole('button', { name: /back to moments/i }));
     expect(await screen.findByTestId('events-book-grid')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
+  });
+
+  it('supports grid, list, and copy all on Patterns', async () => {
+    vi.mocked(fetchJson).mockResolvedValue({
+      success: true,
+      scenes: [samplePattern],
+    });
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<EventsBook />);
+    fireEvent.click(screen.getByRole('button', { name: /^Patterns$/i }));
+
+    expect(await screen.findByText('Punk Shows')).toBeInTheDocument();
+    expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+    expect(screen.getByTestId('patterns-book-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('patterns-book-grid')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
+    expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /copy all/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('Punk Shows');
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('Life Log / Patterns');
   });
 });

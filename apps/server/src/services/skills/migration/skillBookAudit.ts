@@ -3,6 +3,7 @@
  */
 
 import { skillCognitionEngine } from '../skillCognitionEngine';
+import { normalizeSkillKey } from '../skillIdentity';
 import { planSkillDuplicateMerges, type SkillRowLite } from './skillDuplicatePlanner';
 import {
   SKILL_MIGRATION_VERSION,
@@ -99,16 +100,38 @@ export function auditSkillBook(
     }
 
     if (cognition.decision === 'AUTO_MERGE' || cognition.decision === 'SUGGEST_MERGE') {
-      items.push({
-        skillId: row.id,
-        originalName: row.skill_name,
-        decision: 'MERGE',
-        targetName: cognition.matchExistingName,
-        reason: `cognition_${cognition.decision}`,
-        confidence: cognition.existenceConfidence,
-        reversible: true,
-      });
-      continue;
+      // Prefer canonical title as merge target to avoid A↔B mutual merges.
+      const targetName = cognition.canonicalTitle || cognition.matchExistingName;
+      if (
+        targetName
+        && normalizeSkillKey(targetName) !== normalizeSkillKey(row.skill_name)
+      ) {
+        items.push({
+          skillId: row.id,
+          originalName: row.skill_name,
+          decision: 'MERGE',
+          targetName,
+          reason: `cognition_${cognition.decision}`,
+          confidence: cognition.existenceConfidence,
+          reversible: true,
+        });
+        continue;
+      }
+      if (
+        cognition.matchExistingName
+        && normalizeSkillKey(cognition.matchExistingName) !== normalizeSkillKey(row.skill_name)
+      ) {
+        items.push({
+          skillId: row.id,
+          originalName: row.skill_name,
+          decision: 'MERGE',
+          targetName: cognition.matchExistingName,
+          reason: `cognition_${cognition.decision}`,
+          confidence: cognition.existenceConfidence,
+          reversible: true,
+        });
+        continue;
+      }
     }
 
     items.push({
