@@ -21,23 +21,29 @@ import { suggestionDismissalService } from '../suggestionDismissalService';
 
 export type ExtractedSkill = ExtractedSkillProfile;
 
-const EXTRACTION_SYSTEM = `You extract SKILLS from a user's life story text. Skills are dynamic identity assets — not tags.
+const EXTRACTION_SYSTEM = `You extract SKILLS from a user's life story text. Skills are durable reusable abilities demonstrated by the USER — not tags, topics, projects, hobbies-as-titles, or other people's expertise.
+
+HARD RULES:
+- Only extract skills the USER (first person / self) performed or practiced. Never attribute coworkers' degrees or specialties to the user.
+- Do NOT create skills for: pure projects (LoreBook), activities (clubbing), responsibilities (family caregiving labels), fiction/role-play, bare topic mentions, or single opinions.
+- Prefer fewer high-quality skills over many narrow phrase-skills. Merge near-duplicates (e.g. "AI Coding Tools" → "AI-Assisted Coding", "Frontend" → "Front-End Development").
+- proficiency / usage_frequency / trajectory must only be set when evidence supports them; otherwise use low confidence and trajectory "unknown", usage "rarely".
+- monetization: only "paid" if clearly compensated; do not mark everything "potentially_paid".
 
 Detect skills from:
 - direct claims ("I know C++", "I'm a line cook")
 - work history ("I fixed robots in the field")
-- projects ("building LoreBook in React")
-- hobbies ("I train Muay Thai")
+- demonstrated project work ("I built the React UI and debugged the API")
+- practiced hobbies ("I train Muay Thai twice a week")
 - repeated behavior ("keep debugging ROS nodes")
-- deep contextual talk about a capability even without "I am skilled at"
 
 For each skill return JSON fields:
 - skill_name (specific, e.g. "React", "Muay Thai", "Line Cooking")
 - skill_category: professional|creative|physical|social|intellectual|emotional|practical|artistic|technical|other
 - skill_type: professional|hobby|survival|creative|social|technical|physical
 - monetization: paid|potentially_paid|unpaid|hobby_only
-- proficiency: 1-100
-- confidence: 0.0-1.0
+- proficiency: 1-100 (omit precision if weak evidence — use ~40-60 mid when unsure)
+- confidence: 0.0-1.0 (existence confidence, not proficiency)
 - enjoyment: 1-100
 - usage_frequency: daily|weekly|monthly|rarely
 - trajectory: improving|stagnant|declining|unknown
@@ -45,18 +51,21 @@ For each skill return JSON fields:
 - origin_story: short story if mentioned
 - first_learned_context: how/where they picked it up
 - related_jobs: string[]
-- related_projects: string[]
+- related_projects: string[] (e.g. ["LoreBook"] when skills were applied there — do not invent a skill named LoreBook)
 - parent_skill_name: optional — if this is a subskill (e.g. "Armbar" → parent "Brazilian Jiu-Jitsu")
 - related_skill_names: optional string[] — peer skills (e.g. ["Muay Thai", "Wrestling"])
-- evidence: 1-3 short quotes from the text
+- evidence: 1-3 short quotes from the text proving USER practice
 - is_active: boolean
 
 Examples:
-"I worked as a line cook at Chipotle" → Cooking, Food prep, Kitchen operations (multiple skills ok)
-"I'm building LoreBook in React and Supabase" → React, TypeScript, Supabase, Product development
-"I'm 6-0 in Muay Thai and a BJJ blue belt" → Muay Thai, Brazilian Jiu-Jitsu
+"I worked as a line cook at Chipotle" → Cooking, Food prep, Kitchen operations
+"I'm building LoreBook in React and Supabase" → React, Product development (related_projects: LoreBook) — NOT a skill named LoreBook
+"Ravi earned a master's in Electrical Engineering" → [] (other person)
+"I took over Team Magma" → [] (fiction/role-play)
+"I train Muay Thai" → Muay Thai
+"muay thai" alone → [] or very low confidence
 
-Return ONLY JSON: {"skills":[...]}. Be conservative with confidence below 0.5.`;
+Return ONLY JSON: {"skills":[...]}. Prefer empty skills array over weak guesses.`;
 
 /**
  * Skill Extraction Service — derives skill lore from chat and journal context.

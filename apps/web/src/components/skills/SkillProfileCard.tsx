@@ -9,6 +9,10 @@ import { readSkillProfile } from '../../lib/skillProfile';
 import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
 import { cn } from '../../lib/cn';
 import {
+  capabilityEntityTypeLabel,
+  readSkillOntologyMeta,
+} from '../../lib/skillOntology';
+import {
   formatCategoryHierarchy,
   formatFirstSeen,
   formatLastUsed,
@@ -37,6 +41,7 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
   className,
 }) => {
   const profile = readSkillProfile(skill.metadata);
+  const ontology = readSkillOntologyMeta(skill.metadata);
   const theme = skillCategoryTheme(skill.skill_category);
   const categoryLine = formatCategoryHierarchy(
     skill.skill_category,
@@ -46,6 +51,10 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
   const status = skillStatus(skill, profile);
   const segments = levelProgressSegments(skill.current_level);
   const filled = Math.min(segments, Math.round(segments * 0.75));
+  const showEntityBadge =
+    ontology.capabilityEntityType
+    && ontology.capabilityEntityType !== 'SKILL'
+    && Boolean(skill.metadata?.capability_entity_type);
 
   return (
     <button
@@ -70,6 +79,11 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
               {skill.skill_name}
             </h3>
             <p className={cn('text-[9px] truncate mt-0.5', theme.accentText)}>{categoryLine}</p>
+            {showEntityBadge && (
+              <span className="inline-flex mt-1 text-[8px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-amber-500/35 bg-amber-500/10 text-amber-100/90">
+                {capabilityEntityTypeLabel(ontology.capabilityEntityType)}
+              </span>
+            )}
           </div>
           <ChevronRight className={cn('h-3.5 w-3.5 text-white/25 shrink-0 mt-1 transition-colors', theme.chevronHover)} />
         </div>

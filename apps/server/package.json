@@ -37,6 +37,8 @@
     "diagnose:chat": "tsx src/scripts/diagnose-chat.ts",
     "places:audit": "tsx src/scripts/placesOntologyMigrate.ts",
     "places:migrate": "tsx src/scripts/placesOntologyMigrate.ts --execute",
+    "skills:audit": "tsx src/scripts/skillsOntologyMigrate.ts",
+    "skills:migrate": "tsx src/scripts/skillsOntologyMigrate.ts --execute",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
     "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts",
     "egress:simulate": "tsx scripts/simulate-egress.ts",

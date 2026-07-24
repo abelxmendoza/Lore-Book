@@ -63,6 +63,11 @@ import {
 import { Input } from '../ui/input';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 
+import {
+  capabilityEntityTypeLabel,
+  isPrimarySkillBookRecord,
+  readSkillOntologyMeta,
+} from '../../lib/skillOntology';
 import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
 import { SkillDetailModal } from './SkillDetailModal';
 import { SkillProfileCard } from './SkillProfileCard';
@@ -242,8 +247,15 @@ export const SkillsBook: React.FC = () => {
     return categories;
   }, [skills]);
 
+  /** Demoted / non-skill ontology rows (projects, activities, archived merges) */
+  const contextRecords = useMemo(
+    () => skills.filter((s) => !isPrimarySkillBookRecord(s)),
+    [skills],
+  );
+
   const filteredSkills = useMemo(() => {
-    let filtered = [...skills];
+    // Default Skills Book = durable skills only (cognition ontology)
+    let filtered = skills.filter((s) => isPrimarySkillBookRecord(s));
 
     if (activeCategory !== 'all') {
       filtered = filtered.filter(skill => skillMatchesCategory(skill, activeCategory));
@@ -438,7 +450,12 @@ export const SkillsBook: React.FC = () => {
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Skills</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-            {sortedSkills.length} of {skills.length} skills
+            {sortedSkills.length} durable skill{sortedSkills.length === 1 ? '' : 's'}
+            {contextRecords.length > 0
+              ? ` · ${contextRecords.length} related (projects, activities, demoted)`
+              : skills.length !== sortedSkills.length
+                ? ` of ${skills.length} records`
+                : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -786,6 +803,45 @@ export const SkillsBook: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {contextRecords.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4 space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">
+              Related context (not Skills Book peers)
+            </h3>
+            <span className="text-[10px] text-white/35">{contextRecords.length}</span>
+          </div>
+          <p className="text-[11px] text-white/40">
+            Projects, activities, knowledge areas, responsibilities, and demoted or merged
+            records from skill cognition. These no longer inflate your durable skill list.
+          </p>
+          <ul className="divide-y divide-white/6 rounded-lg border border-white/8 overflow-hidden">
+            {contextRecords.map((skill) => {
+              const ont = readSkillOntologyMeta(skill.metadata);
+              return (
+                <li key={skill.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleSkillClick(skill)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors"
+                  >
+                    <span className="text-sm text-white/80 truncate flex-1">{skill.skill_name}</span>
+                    <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-100/90 shrink-0">
+                      {capabilityEntityTypeLabel(ont.capabilityEntityType)}
+                    </span>
+                    {ont.migrationStatus && (
+                      <span className="text-[9px] text-white/35 shrink-0 hidden sm:inline">
+                        {ont.migrationStatus.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

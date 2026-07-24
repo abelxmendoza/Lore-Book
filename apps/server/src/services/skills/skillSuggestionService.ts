@@ -15,6 +15,7 @@ import { normalizeSkillKey } from './skillIdentity';
 import { progressionTracker } from '../progression/progressionTracker';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { skillCognitionEngine } from './skillCognitionEngine';
 
 export type SkillSuggestionRow = {
   id: string;
@@ -93,27 +94,146 @@ class SkillSuggestionService {
     if (suppressed.suppressed) return;
 
     const evidenceText = (extracted.evidence ?? []).join(' ') || extracted.description || '';
+
+    // Skill Cognition gate — ownership, ontology, duplicates, calibrated scores
+    let knownSkills: Array<{ name: string }> = [];
+    let knownPersonNames: string[] = [];
+    try {
+      const existing = await skillService.getSkills(userId, { active_only: true });
+      knownSkills = existing.map((s) => ({ name: s.skill_name }));
+    } catch {
+      knownSkills = [];
+    }
+    try {
+      const { data: chars } = await supabaseAdmin
+        .from('characters')
+        .select('name, aliases, is_self, metadata')
+        .eq('user_id', userId)
+        .limit(300);
+      for (const row of chars ?? []) {
+        const meta = (row.metadata ?? {}) as Record<string, unknown>;
+        const isSelf = Boolean((row as { is_self?: boolean }).is_self) || meta.is_self === true;
+        if (isSelf) continue;
+        if (row.name) knownPersonNames.push(String(row.name));
+        if (Array.isArray(row.aliases)) {
+          for (const a of row.aliases) if (a) knownPersonNames.push(String(a));
+        }
+      }
+    } catch {
+      knownPersonNames = [];
+    }
+
+    const cognition = skillCognitionEngine.evaluate({
+      span: extracted.skill_name,
+      evidenceText,
+      sourceType: opts.source === 'journal' ? 'journal' : 'chat',
+      sourceMessageId: opts.sourceMessageId,
+      proposedConfidence: extracted.confidence,
+      proposedProficiency: extracted.proficiency,
+      proposedUsageFrequency: extracted.usage_frequency,
+      proposedTrajectory: extracted.trajectory,
+      proposedMonetization: extracted.monetization,
+      knownSkills,
+      knownPersonNames,
+      userNames: ['I'],
+    });
+
+    if (
+      cognition.decision === 'REJECT'
+      || cognition.status === 'rejected'
+      || cognition.decision === 'ROUTE_TO_OTHER_ONTOLOGY'
+    ) {
+      logger.info(
+        {
+          userId,
+          skill: extracted.skill_name,
+          decision: cognition.decision,
+          reason: cognition.rejectionReason,
+          entityType: cognition.entityType,
+          subject: cognition.subject.subjectType,
+        },
+        'Skill cognition blocked or routed suggestion',
+      );
+      return;
+    }
+
     const quality = evaluateEntityQuality({
-      name: extracted.skill_name,
+      name: cognition.canonicalTitle || extracted.skill_name,
       domain: 'skills',
       contextText: evidenceText,
       evidence: evidenceText,
-      confidence: extracted.confidence,
+      confidence: cognition.existenceConfidence,
       sourceMessageId: opts.sourceMessageId,
       sourceThreadId: opts.sourceThreadId ?? undefined,
     });
     if (!passesEntityQualityGate(quality)) return;
-    const safeName = resolveDisplayName({ name: extracted.skill_name, domain: 'skills' }, quality);
+    const safeName = resolveDisplayName(
+      { name: cognition.canonicalTitle || extracted.skill_name, domain: 'skills' },
+      quality,
+    );
 
-    const profile = extractedToProfile(extracted, opts.sourceMessageId);
+    // Map calibrated cognition fields into legacy suggestion columns carefully
+    const calibratedProficiency =
+      cognition.proficiency.score
+      ?? (cognition.proficiency.range
+        ? Math.round((cognition.proficiency.range.min + cognition.proficiency.range.max) / 2)
+        : undefined);
+    const usageMap: Record<string, string> = {
+      UNKNOWN: 'rarely',
+      OBSERVED_ONCE: 'rarely',
+      RARE: 'rarely',
+      MONTHLY: 'monthly',
+      WEEKLY: 'weekly',
+      MULTIPLE_TIMES_WEEKLY: 'weekly',
+      DAILY: 'daily',
+    };
+    const trajectoryMap: Record<string, string> = {
+      UNKNOWN: 'unknown',
+      EMERGING: 'improving',
+      IMPROVING: 'improving',
+      STABLE: 'stagnant',
+      DECLINING: 'declining',
+      DORMANT: 'declining',
+    };
+    const monetizationMap: Record<string, string> = {
+      currently_paid: 'paid',
+      previously_paid: 'paid',
+      directly_market_validated: 'potentially_paid',
+      career_relevant: 'potentially_paid',
+      possible_but_unvalidated: 'unpaid',
+      hobby_only: 'hobby_only',
+      not_applicable: 'unpaid',
+      unknown: 'unpaid',
+    };
+
+    const profile = extractedToProfile(
+      {
+        ...extracted,
+        skill_name: safeName.trim(),
+        proficiency: calibratedProficiency ?? 50,
+        confidence: cognition.existenceConfidence,
+        usage_frequency: (usageMap[cognition.usageFrequency] ?? 'rarely') as ExtractedSkillProfile['usage_frequency'],
+        trajectory: (trajectoryMap[cognition.trajectory] ?? 'unknown') as ExtractedSkillProfile['trajectory'],
+        monetization: (monetizationMap[cognition.monetization] ?? 'unpaid') as ExtractedSkillProfile['monetization'],
+        parent_skill_name: cognition.parentSkillName ?? extracted.parent_skill_name,
+        related_projects: [
+          ...new Set([...(extracted.related_projects ?? []), ...cognition.projectLinks]),
+        ],
+      },
+      opts.sourceMessageId,
+    );
+
     const payload = {
       user_id: userId,
       skill_name: safeName.trim(),
       skill_category: extracted.skill_category,
       skill_type: profile.skill_type,
       monetization: profile.monetization,
-      proficiency: profile.proficiency,
-      confidence: extracted.confidence,
+      // Prefer calibrated score; fall back to mid-range or omit inflation via 50 default only when unknown depth is weak
+      proficiency:
+        calibratedProficiency
+        ?? (cognition.proficiency.label === 'UNKNOWN' ? 50 : profile.proficiency),
+      confidence: Math.min(extracted.confidence, cognition.existenceConfidence + 0.1),
       enjoyment: profile.enjoyment,
       usage_frequency: profile.usage_frequency,
       trajectory: profile.trajectory,
@@ -122,7 +242,7 @@ class SkillSuggestionService {
       first_learned_context: profile.first_learned_context ?? null,
       related_jobs: profile.related_jobs ?? [],
       related_projects: profile.related_projects ?? [],
-      parent_skill_name: extracted.parent_skill_name ?? null,
+      parent_skill_name: cognition.parentSkillName ?? extracted.parent_skill_name ?? null,
       related_skill_names: extracted.related_skill_names ?? [],
       evidence: profile.evidence ?? [],
       source_message_id: opts.sourceMessageId ?? null,
