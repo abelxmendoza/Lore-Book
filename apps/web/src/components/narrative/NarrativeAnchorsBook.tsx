@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
 import { cn } from '../../lib/cn';
+import { isPrimaryNarrativeAnchor } from '../../lib/narrativeAnchorOntology';
 import { buildNarrativeAnchorsClipboardText } from '../../lib/narrativeAnchorsClipboard';
 import { MOCK_NARRATIVE_ANCHORS } from '../../mocks/narrativeAnchors';
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
@@ -81,7 +82,12 @@ export type NarrativeAnchor = {
   places: AnchorMember[];
   evidence: AnchorEvidence[];
   provenance: { builtAt: string; signals: string[] };
+  metadata?: Record<string, unknown> | null;
 };
+
+function filterPrimaryAnchors(list: NarrativeAnchor[]): NarrativeAnchor[] {
+  return list.filter((anchor) => isPrimaryNarrativeAnchor(anchor));
+}
 
 type TypeMeta = {
   label: string;
@@ -326,11 +332,11 @@ export function NarrativeAnchorsBook() {
     setError(null);
     try {
       if (isDemoMode) {
-        setAnchors(MOCK_NARRATIVE_ANCHORS);
+        setAnchors(filterPrimaryAnchors(MOCK_NARRATIVE_ANCHORS));
         return;
       }
       const response = await fetchJson<{ anchors: NarrativeAnchor[] }>('/api/narrative-anchors');
-      setAnchors(response.anchors ?? []);
+      setAnchors(filterPrimaryAnchors(response.anchors ?? []));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'We could not load your story map.');
     } finally {
@@ -344,14 +350,14 @@ export function NarrativeAnchorsBook() {
     try {
       if (isDemoMode) {
         await new Promise((resolve) => window.setTimeout(resolve, 550));
-        setAnchors(MOCK_NARRATIVE_ANCHORS.map((anchor) => ({
+        setAnchors(filterPrimaryAnchors(MOCK_NARRATIVE_ANCHORS.map((anchor) => ({
           ...anchor,
           provenance: { ...anchor.provenance, builtAt: new Date().toISOString() },
-        })));
+        }))));
         return;
       }
       const response = await fetchJson<{ anchors: NarrativeAnchor[] }>('/api/narrative-anchors/rebuild', { method: 'POST' });
-      setAnchors(response.anchors ?? []);
+      setAnchors(filterPrimaryAnchors(response.anchors ?? []));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'We could not refresh your story map.');
     } finally {

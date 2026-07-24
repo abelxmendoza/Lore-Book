@@ -1,5 +1,9 @@
 /**
- * Community anchors — organizations and inferred social clusters.
+ * Community clusters from organizations — NOT narrative anchors.
+ *
+ * Membership alone must never publish into Narrative Anchors.
+ * These records are retained only when cognition promotes them after
+ * event/theme enrichment (handled by narrativeAnchorEngine).
  */
 import type {
   AnchorBuildContext,
@@ -8,6 +12,8 @@ import type {
   NarrativeAnchor,
 } from './narrativeAnchorTypes';
 import { scoreAnchor } from './anchorScoringService';
+import { narrativeAnchorEngine } from '../narrativeAnchors/narrativeAnchorEngine';
+import { communitiesFromOrganizations } from '../communities/communityDetectionEngine';
 
 const COMMUNITY_TYPE_LABELS: Record<string, string> = {
   band: 'Band Community',
@@ -29,9 +35,25 @@ function communityTitle(org: { name: string; type?: string }): string {
   return `${org.name} Community`;
 }
 
+/**
+ * Build community-sourced candidates and only keep those that pass
+ * narrative-anchor cognition (almost never for pure membership).
+ */
 export function buildCommunityAnchors(ctx: AnchorBuildContext): NarrativeAnchor[] {
   const anchors: NarrativeAnchor[] = [];
   const builtAt = new Date().toISOString();
+
+  // Explicit community graph (side channel for future UI) — not returned as anchors.
+  void communitiesFromOrganizations(
+    ctx.organizations.map((org) => ({
+      id: org.id,
+      name: org.name,
+      type: org.type,
+      memberNames: org.memberIds
+        .map((id) => ctx.entities.find((e) => e.entityId === id)?.name)
+        .filter(Boolean) as string[],
+    })),
+  );
 
   for (const org of ctx.organizations) {
     if (org.memberIds.length < 2) continue;
@@ -87,11 +109,28 @@ export function buildCommunityAnchors(ctx: AnchorBuildContext): NarrativeAnchor[
       },
     ];
 
+    const draftTitle = communityTitle(org);
+    const cognition = narrativeAnchorEngine.evaluate({
+      title: draftTitle,
+      proposedType: 'community',
+      peopleNames: entities.map((e) => e.name),
+      groupNames: [org.name],
+      eventTitles: [],
+      evidenceLabels: evidence.map((e) => e.label),
+      signals: ['organization_membership', org.type ?? 'organization'],
+      membershipOnly: true,
+      memberCount: org.memberIds.length,
+      eventCount: 0,
+    });
+
+    // Pure membership communities are not narrative anchors.
+    if (cognition.status !== 'published') continue;
+
     const anchor: NarrativeAnchor = {
       id: `community-${org.id}`,
-      title: communityTitle(org),
+      title: cognition.title,
       anchorType: 'community',
-      confidence: 0.7,
+      confidence: cognition.confidence,
       gravityScore: 0,
       entities,
       events: [],
@@ -100,7 +139,7 @@ export function buildCommunityAnchors(ctx: AnchorBuildContext): NarrativeAnchor[
       evidence,
       provenance: {
         builtAt,
-        signals: ['organization_membership'],
+        signals: ['organization_membership', `cognition:${cognition.decision}`],
         consolidationKey: `community:${org.id}`,
       },
     };

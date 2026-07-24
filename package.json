@@ -14,6 +14,8 @@
     "places:migrate": "cd apps/server && npm run places:migrate --",
     "skills:audit": "cd apps/server && npm run skills:audit --",
     "skills:migrate": "cd apps/server && npm run skills:migrate --",
+    "anchors:audit": "cd apps/server && npm run anchors:audit --",
+    "anchors:migrate": "cd apps/server && npm run anchors:migrate --",
     "smoke:health:prod": "node scripts/smoke-health.mjs https://lore-book-production.up.railway.app --origin https://lorebookai.com",
     "smoke:supabase-ops": "node scripts/supabase-pre-upgrade-check.mjs",
     "prelaunch:smoke": "node scripts/prelaunch-smoke.mjs --base https://lorebookai.com",

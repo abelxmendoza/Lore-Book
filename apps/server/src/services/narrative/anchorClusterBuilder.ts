@@ -9,6 +9,7 @@ import type {
   AnchorMember,
   NarrativeAnchor,
 } from './narrativeAnchorTypes';
+import { narrativeAnchorEngine } from '../narrativeAnchors/narrativeAnchorEngine';
 import { buildCommunityAnchors } from './communityAnchorService';
 import { detectEraForCluster } from './eraDetectionService';
 import { computeGravityBatch, gravityByEntityId } from './entityGravityService';
@@ -226,11 +227,38 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
       organization.memberIds.some((id) => entityIds.includes(id)),
     );
 
+    const evidenceLabels = era.matchedSignals;
+    const cognition = narrativeAnchorEngine.evaluate({
+      title: era.title,
+      proposedType: era.anchorType,
+      peopleNames: entities.map((e) => e.name),
+      groupNames: relatedOrganizations.map((o) => o.name),
+      eventTitles: relatedEvents.map((e) => e.title),
+      placeNames: places.map((p) => p.name),
+      evidenceLabels,
+      signals: era.matchedSignals,
+      membershipOnly: relatedEvents.length === 0 && relatedOrganizations.length > 0,
+      memberCount: entityIds.length,
+      eventCount: relatedEvents.length,
+      dates: relatedEvents.map((e) => e.startDate).filter(Boolean) as string[],
+    });
+
+    // Route pure communities/households out of the published anchor set
+    if (cognition.status === 'routed' || cognition.status === 'rejected') {
+      continue;
+    }
+    if (cognition.status === 'event_only' && relatedEvents.length < 1) {
+      continue;
+    }
+    if (cognition.status === 'needs_review' && relatedEvents.length === 0) {
+      continue;
+    }
+
     const anchor: NarrativeAnchor = {
       id: consolidationKey,
-      title: era.title,
+      title: cognition.title || era.title,
       anchorType: era.anchorType,
-      confidence: era.confidence,
+      confidence: Math.min(era.confidence, cognition.confidence),
       gravityScore: 0,
       startDate: relatedEvents
         .map((event) => event.startDate)
@@ -241,7 +269,15 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
         .filter((date): date is string => Boolean(date))
         .sort()
         .at(-1),
-      entities: entities.filter((e) => !places.some((p) => p.id === e.id)),
+      entities: entities
+        .filter((e) => !places.some((p) => p.id === e.id))
+        .map((e) => {
+          // Boundary repair: strip trailing possessive person names
+          const cleaned = cognition.peopleNames.find(
+            (n) => n.toLowerCase() === e.name.replace(/['’]s$/i, '').toLowerCase(),
+          );
+          return cleaned && cleaned !== e.name ? { ...e, name: cleaned } : e;
+        }),
       events: relatedEvents.map((ev) => ({
         id: ev.id,
         kind: 'event' as const,
@@ -260,7 +296,17 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
           confidence: 0.85,
         }],
       })),
-      places,
+      places: [
+        ...places,
+        ...cognition.placeNames
+          .filter((n) => !places.some((p) => p.name.toLowerCase() === n.toLowerCase()))
+          .map((name, i) => ({
+            id: `repaired-place-${i}`,
+            kind: 'place' as const,
+            name,
+            evidence: [{ id: `rp-${i}`, label: name, source: 'mention' as const, confidence: 0.65 }],
+          })),
+      ],
       evidence: era.matchedSignals.map((s, i) => ({
         id: `sig-${i}`,
         label: s,
@@ -269,7 +315,7 @@ export function buildAnchorsFromContext(ctx: AnchorBuildContext): NarrativeAncho
       })),
       provenance: {
         builtAt,
-        signals: era.matchedSignals,
+        signals: [...era.matchedSignals, `cognition:${cognition.decision}`],
         consolidationKey,
       },
     };
