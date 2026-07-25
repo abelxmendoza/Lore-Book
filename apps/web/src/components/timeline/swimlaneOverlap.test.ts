@@ -198,5 +198,6 @@ describe('computeKnowledgeGaps', () => {
   it('labels long gaps in human units', () => {
     expect(knowledgeGapLabel(90)).toMatch(/month/);
     expect(knowledgeGapLabel(400)).toMatch(/year/);
+    expect(knowledgeGapLabel(90)).toMatch(/no dated items on this track/);
   });
 });

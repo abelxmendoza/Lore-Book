@@ -7,7 +7,7 @@ import {
 } from './unifiedTimeline';
 
 describe('stitchedItemsToChronology', () => {
-  it('preserves canonical identity and source provenance across Omni views', () => {
+  it('preserves canonical identity and honest temporal fields (no invented exact/1)', () => {
     const item: StitchedTimelineItem = {
       id: 'event:canonical',
       kind: 'event',
@@ -21,6 +21,9 @@ describe('stitchedItemsToChronology', () => {
       body: 'The product launched.',
       tags: ['career'],
       userPresence: 'attended',
+      timePrecision: 'date',
+      timeConfidence: 0.9,
+      temporalSource: 'user_stated',
     };
 
     expect(stitchedItemsToChronology([item], 'user-1')).toEqual([
@@ -37,8 +40,28 @@ describe('stitchedItemsToChronology', () => {
         timeline_names: ['calendar'],
         tags: ['career'],
         user_presence: 'attended',
+        time_precision: 'day',
+        time_confidence: 0.9,
       }),
     ]);
+  });
+
+  it('does not invent exact precision or confidence 1 when missing', () => {
+    const item: StitchedTimelineItem = {
+      id: 'event:x',
+      kind: 'event',
+      sourceId: 'x',
+      sourceIds: ['x'],
+      sourceKind: 'resolved_event',
+      sourceType: 'resolved_event',
+      sortTime: '2026-06-01T00:00:00.000Z',
+      userSortIndex: null,
+      title: 'Something',
+      body: 'Something',
+    };
+    const [entry] = stitchedItemsToChronology([item]);
+    expect(entry.time_precision).toBe('approximate');
+    expect(entry.time_confidence).toBe(0.5);
   });
 
   it('finds every canonical source on the selected calendar day', () => {

@@ -2,6 +2,7 @@ import { tracedCompletion } from '../../../lib/openai';
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
 
+import { guardTrackFromText } from '../../chronologyAuthority/domainRoutingGuards';
 import { arcMembershipService, type MembershipRole } from './arcMembershipService';
 import { arcRelationshipService } from './arcRelationshipService';
 import { arcService, type ArcType } from './arcService';
@@ -93,36 +94,40 @@ export function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType
     .map(value => value.toLowerCase())
     .join(' ');
 
-  if (arcType === 'work') return 'career';
-  if (arcType === 'skill') {
-    // Creative skills vs. analytical skills
+  let proposed: TrackType;
+  if (arcType === 'work') {
+    proposed = 'career';
+  } else if (arcType === 'skill') {
     const isCreative = ['photography', 'drawing', 'painting', 'music', 'recording', 'writing']
       .some(a => activities.has(a));
-    return isCreative ? 'creative' : 'career';
-  }
-  if (arcType === 'location') return 'inner';
+    proposed = isCreative ? 'creative' : 'career';
+  } else if (arcType === 'location') {
+    proposed = 'inner';
+  } else {
+    // life_era / custom: pick the strongest single domain (never dump everything into mixed).
+    const scores: Record<TrackType, number> = {
+      health: [...HEALTH_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
+      romance: ROMANCE_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
+      relationships: RELATIONSHIP_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
+      creative: ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a)) ? 1 : 0,
+      career: [...WORK_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
+      inner: 0,
+      mixed: 0,
+    };
 
-  // life_era / custom: pick the strongest single domain (never dump everything into mixed).
-  const scores: Record<TrackType, number> = {
-    health: [...HEALTH_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
-    romance: ROMANCE_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
-    relationships: RELATIONSHIP_SIGNALS.some(signal => containsPhrase(context, signal)) ? 1 : 0,
-    creative: ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a)) ? 1 : 0,
-    career: [...WORK_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
-    inner: 0,
-    mixed: 0,
-  };
-
-  const ranked: TrackType[] = ['romance', 'relationships', 'career', 'health', 'creative'];
-  let best: TrackType = 'inner';
-  let bestScore = 0;
-  for (const track of ranked) {
-    if (scores[track] > bestScore) {
-      bestScore = scores[track];
-      best = track;
+    const ranked: TrackType[] = ['romance', 'relationships', 'career', 'health', 'creative'];
+    let best: TrackType = 'inner';
+    let bestScore = 0;
+    for (const track of ranked) {
+      if (scores[track] > bestScore) {
+        bestScore = scores[track];
+        best = track;
+      }
     }
+    proposed = bestScore > 0 ? best : 'inner';
   }
-  return bestScore > 0 ? best : 'inner';
+
+  return guardTrackFromText(proposed, candidate.canonical_title, context);
 }
 
 /**

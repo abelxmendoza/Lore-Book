@@ -1,0 +1,16 @@
+{
+  "name": "@lorebook/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vendored mirror of packages/api-contracts for Vite/Vercel (keep in sync via mirrorParity.test.ts)",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "zod": ">=3.23.0"
+  }
+}

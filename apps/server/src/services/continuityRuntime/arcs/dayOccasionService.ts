@@ -7,6 +7,7 @@ import { tracedCompletion } from '../../../lib/openai';
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
 
+import { guardTrackFromText } from '../../chronologyAuthority/domainRoutingGuards';
 import { arcRelationshipService } from './arcRelationshipService';
 import { arcService, type ArcTrack } from './arcService';
 
@@ -101,25 +102,23 @@ function inferTemporalRole(
 
 function inferTrack(events: ResolvedEventRow[]): ArcTrack {
   const text = events.map(e => `${e.title} ${e.summary ?? ''}`).join(' ').toLowerCase();
+  let proposed: ArcTrack = 'inner';
   if (/\b(date night|romantic|romance|anniversary|proposal|engagement|honeymoon|breakup)\b/.test(text)) {
-    return 'romance';
+    proposed = 'romance';
+  } else if (/\b(graduation|wedding|party|birthday|funeral|reunion|celebration)\b/.test(text)) {
+    proposed = 'relationships';
+  } else if (/\b(work|meeting|office|interview|conference)\b/.test(text)) {
+    proposed = 'career';
+  } else if (/\b(concert|show|festival|game)\b/.test(text)) {
+    proposed = 'creative';
+  } else if (/\b(family|mom|dad|abuela|abuelo|grandma|grandpa|wedding|funeral|reunion)\b/.test(text)) {
+    proposed = 'relationships';
+  } else if (/\b(health|doctor|hospital|therapy|gym|workout)\b/.test(text)) {
+    proposed = 'health';
   }
-  if (/\b(graduation|wedding|party|birthday|funeral|reunion|celebration)\b/.test(text)) {
-    return 'relationships';
-  }
-  if (/\b(work|meeting|office|interview|conference)\b/.test(text)) {
-    return 'career';
-  }
-  if (/\b(concert|show|festival|game)\b/.test(text)) {
-    return 'creative';
-  }
-  if (/\b(family|mom|dad|abuela|abuelo|grandma|grandpa|wedding|funeral|reunion)\b/.test(text)) {
-    return 'relationships';
-  }
-  if (/\b(health|doctor|hospital|therapy|gym|workout)\b/.test(text)) {
-    return 'health';
-  }
-  return 'inner';
+  const title = events[0]?.title ?? '';
+  const summary = events.map((e) => e.summary ?? '').join(' ');
+  return guardTrackFromText(proposed, title, summary);
 }
 
 function weekendRange(day: string): [string, string] | null {
@@ -331,6 +330,9 @@ export class DayOccasionService {
       occasion_day: cluster.day,
       user_presence: cluster.presence,
       anchor_event_ids: cluster.anchorEventIds,
+      // Zero-day day clusters are sessions/events — not duration arcs on Omni.
+      render_as: 'event',
+      omni_draw_bar: false,
     };
     if (wr) metadata.weekend_range = wr;
 

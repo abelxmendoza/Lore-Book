@@ -77,6 +77,53 @@ export function buildMonthlyAxisTicks(
   });
 }
 
+/** Weekly ruler — Sunday starts; first week of each month marked major. */
+export function buildWeeklyAxisTicks(
+  start: Date,
+  end: Date,
+  xOf: (d: Date) => number,
+): RulerTick[] {
+  const ticks: RulerTick[] = [];
+  const cur = new Date(start);
+  cur.setHours(0, 0, 0, 0);
+  cur.setDate(cur.getDate() - cur.getDay());
+  while (cur <= end) {
+    if (cur >= start) {
+      const monthBoundary = cur.getDate() <= 7;
+      ticks.push({
+        x: xOf(cur),
+        label: monthBoundary
+          ? cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : String(cur.getDate()),
+        major: monthBoundary,
+      });
+    }
+    cur.setDate(cur.getDate() + 7);
+  }
+  return ticks;
+}
+
+/** Yearly ruler — Jan 1 labels as YYYY. */
+export function buildYearlyAxisTicks(
+  start: Date,
+  end: Date,
+  xOf: (d: Date) => number,
+): RulerTick[] {
+  const ticks: RulerTick[] = [];
+  let y = start.getFullYear();
+  if (start.getMonth() > 0 || start.getDate() > 1) y += 1;
+  for (; y <= end.getFullYear(); y += 1) {
+    const d = new Date(y, 0, 1);
+    if (d < start) continue;
+    ticks.push({
+      x: xOf(d),
+      label: String(y),
+      major: true,
+    });
+  }
+  return ticks;
+}
+
 export function buildSwimlaneAxisTicks(
   start: Date,
   end: Date,

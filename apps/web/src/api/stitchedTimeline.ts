@@ -25,6 +25,14 @@ export type StitchedTimelineItem = {
   mergedCount?: number;
   /** Titles of the merged-away duplicates (excludes the shown title). */
   mergedTitles?: string[];
+  /** Chronology Authority temporal honesty fields. */
+  timePrecision?: string;
+  timeConfidence?: number;
+  temporalSource?: string;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  projectionRole?: 'canonical' | 'evidence' | 'unresolved' | 'excluded';
+  canonicalEventType?: string;
+  speechAct?: string;
 };
 
 export type NarrativeChapterQuality = {
@@ -76,6 +84,9 @@ export type StitchedTimelineResult = {
   /** Duplicate-event merges applied before stitching (canonicalization). */
   merge_log?: MergeLogEntry[];
   chapter?: NarrativeChapter;
+  /** Temporally unresolved items for the Omni tray. */
+  unresolved_items?: StitchedTimelineItem[];
+  evidence_hidden_count?: number;
 };
 
 export const stitchedTimelineApi = {

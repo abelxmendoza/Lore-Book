@@ -188,8 +188,8 @@ class EventRecoveryService {
 
       const summary = snippetAround(corpus.text, pattern.re);
       const resolvedId = uuid();
-      const eventDate = fallbackDate;
-
+      // Recovery timestamps are ingestion artifacts — never promote corpus/now
+      // fallbacks to exact occurrence time for Omni chronology.
       const charIds = new Set<string>();
       if (protagonist) charIds.add(protagonist.id);
       for (const name of pattern.people ?? []) {
@@ -203,13 +203,19 @@ class EventRecoveryService {
         title: pattern.title,
         summary,
         type: pattern.eventType,
-        start_time: eventDate,
-        confidence: 0.72,
+        start_time: null,
+        confidence: 0.2,
         tags: ['recovered'],
+        temporal_precision: 'unknown',
+        temporal_source: 'recording_fallback',
+        temporal_status: 'unanchored',
+        temporal_confidence: 0.2,
         people: [...charIds],
         metadata: {
           generated_by: 'event_recovery',
           recovery_key: pattern.key,
+          recovery_fallback_date: fallbackDate,
+          needs_temporal_resolution: true,
         },
       });
 

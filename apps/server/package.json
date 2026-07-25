@@ -46,6 +46,7 @@
     "beliefs:migrate": "tsx src/scripts/beliefQueueMigrate.ts --execute",
     "contextual-lore:audit": "tsx src/scripts/founderContextualLoreBackfill.ts",
     "contextual-lore:apply": "tsx src/scripts/founderContextualLoreBackfill.ts --apply",
+    "timeline:repair-founder": "tsx src/scripts/repairOmniTimelineFounder.ts",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
     "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts",
     "egress:simulate": "tsx scripts/simulate-egress.ts",

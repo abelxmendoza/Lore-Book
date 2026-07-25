@@ -73,11 +73,17 @@ export interface EntryCluster {
   entries: ChronologyEntry[];
 }
 
+function monthKey(iso: string): string {
+  return iso.slice(0, 7); // YYYY-MM
+}
+
 /**
  * Merge chronologically-sorted entries whose markers would collide at the
  * current zoom into clusters. An entry joins the open cluster while it is
- * within `thresholdPx` of the cluster's latest member (chain rule), so a dense
- * run of memories collapses into one counted marker instead of a smear.
+ * within `thresholdPx` of the cluster's latest member (chain rule).
+ *
+ * Hard rule: never merge across calendar months — that was producing
+ * meaningless six-week mega-clusters at year scale.
  */
 export function clusterEntries(
   sortedEntries: ChronologyEntry[],
@@ -90,8 +96,11 @@ export function clusterEntries(
   for (const entry of sortedEntries) {
     const x = xOf(entry.start_time);
     const open = clusters[clusters.length - 1];
+    const sameMonth =
+      open != null &&
+      monthKey(open.entries[open.entries.length - 1].start_time) === monthKey(entry.start_time);
 
-    if (open && x - lastMemberX < thresholdPx) {
+    if (open && sameMonth && x - lastMemberX < thresholdPx) {
       open.entries.push(entry);
       open.x = (xOf(open.entries[0].start_time) + x) / 2;
     } else {
@@ -120,7 +129,7 @@ const DAY_MS = 86_400_000;
 /** Soft floor so short arcs stay tappable and can show a title. */
 export const ARC_READABLE_MIN_PX = 56;
 
-/** Calendar gaps longer than this (days) are treated as knowledge holes. */
+/** Calendar gaps longer than this (days) are treated as sparse track coverage. */
 export const KNOWLEDGE_GAP_MIN_DAYS = 21;
 
 export type KnowledgeGap = {
@@ -190,15 +199,15 @@ export function readableArcWidthPx(rawWidthPx: number, minPx = ARC_READABLE_MIN_
   return Math.max(minPx, Math.round(rawWidthPx));
 }
 
-/** Human label for a knowledge gap, e.g. "3 months with little lore". */
+/** Human label for sparse track coverage — not “forgotten life history”. */
 export function knowledgeGapLabel(days: number): string {
   if (days >= 365) {
     const years = Math.round(days / 365);
-    return `${years} year${years === 1 ? '' : 's'} with little lore`;
+    return `${years} year${years === 1 ? '' : 's'} with no dated items on this track`;
   }
   if (days >= 45) {
     const months = Math.round(days / 30.4);
-    return `${months} month${months === 1 ? '' : 's'} with little lore`;
+    return `${months} month${months === 1 ? '' : 's'} with no dated items on this track`;
   }
-  return `${days} days with little lore`;
+  return `${days} days with no dated items on this track`;
 }

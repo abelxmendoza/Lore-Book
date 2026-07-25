@@ -21,6 +21,8 @@ import {
   type TemporalEvidence,
   type TemporalPrecision,
 } from '../temporal/temporalEvidence';
+import { applyTemporalConfidenceCeiling } from '../chronologyAuthority/temporalConfidenceCeilings';
+import { detectTemporalContradiction } from '../chronologyAuthority/temporalContradiction';
 import { getUserTimezone } from '../temporal/userTimezoneService';
 import {
   autobiographicalClause,
@@ -1673,11 +1675,11 @@ export class EventAssemblyService {
   /** Canonical evidence record for an assembled when (or unanchored). */
   private whenToEvidence(when: AssembledWhen | null, timezone: string): TemporalEvidence {
     if (!when?.start) {
-      return {
+      return applyTemporalConfidenceCeiling({
         start: null, end: null, timezone,
         precision: 'unknown', source: 'recording_fallback', status: 'unanchored',
         confidence: 0, expression: null,
-      };
+      });
     }
     const cls = classifyTemporalExpression(when.label ?? null);
     const precision = when.precision ? this.toTemporalPrecision(when.precision) : cls.precision;
@@ -1690,7 +1692,42 @@ export class EventAssemblyService {
       confidence: typeof when.confidence === 'number' ? when.confidence : 0.5,
       expression: when.label ?? null,
     };
-    return { ...base, status: statusFor(base) };
+    let evidence = applyTemporalConfidenceCeiling({ ...base, status: statusFor(base) });
+
+    // Body/title contradictions (e.g. Jan 1 store vs July claim) demote to unresolved.
+    const contradiction = detectTemporalContradiction({
+      recordId: 'pending',
+      storedOccurrence: evidence.start,
+      title: when.label,
+      summary: when.label,
+      temporalSource: evidence.source,
+    });
+    if (contradiction && (contradiction.severity >= 0.85)) {
+      evidence = applyTemporalConfidenceCeiling({
+        ...evidence,
+        precision: contradiction.recommendedAction === 'AUTO_REPAIR' ? 'date' : 'unknown',
+        source:
+          contradiction.contradictionType === 'JANUARY_FIRST_FALLBACK' ||
+          contradiction.contradictionType === 'FALLBACK_DATE_USED'
+            ? 'recording_fallback'
+            : evidence.source,
+        status: 'ambiguous',
+        confidence: Math.min(evidence.confidence, 0.4),
+      });
+      if (
+        contradiction.recommendedAction === 'REMOVE_OCCURRENCE_DATE' ||
+        contradiction.contradictionType === 'FALLBACK_DATE_USED'
+      ) {
+        evidence = {
+          ...evidence,
+          start: null,
+          status: 'unanchored',
+          precision: 'unknown',
+          confidence: 0.2,
+        };
+      }
+    }
+    return evidence;
   }
 
   private getEarliestCreatedAt(units: ExtractedUnit[]): Date | null {

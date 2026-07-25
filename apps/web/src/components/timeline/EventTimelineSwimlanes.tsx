@@ -17,7 +17,7 @@
  * scheduling so pills never overlap.
  */
 
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, CalendarClock } from 'lucide-react';
 import {
   TIMELINE_RULER_AXIS_H,
@@ -26,6 +26,11 @@ import {
   TimelineRulerTick,
 } from './TimelineDateDisplay';
 import { buildSwimlaneAxisTicks } from './timelineRulerTicks';
+import {
+  PRESENT_VIEWPORT_ANCHOR,
+  presentYearZoomLevel,
+  scrollLeftForPresent,
+} from './timelinePresentViewport';
 
 export type LaneAccent = 'emerald' | 'sky' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate';
 
@@ -97,6 +102,8 @@ interface Placement { event: SwimlaneEvent; x: number; width: number; row: numbe
 
 export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emptyHint }: Props) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const didInitialScroll = useRef(false);
+  const pendingZoomAnchor = useRef<{ days: number; viewportX: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [hovered, setHovered] = useState<SwimlaneEvent | null>(null);
   const [selected, setSelected] = useState<SwimlaneEvent | null>(null);
@@ -171,6 +178,62 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
   const zoomOut = () => setZoom(z => Math.max(MIN_ZOOM, +(z / 1.6).toFixed(2)));
   const zoomReset = () => setZoom(1);
 
+  const todayX = xOf(today);
+  const todayDays = useMemo(
+    () => Math.max(0, daysBetween(timelineStart, today)),
+    [timelineStart, today],
+  );
+
+  useEffect(() => {
+    const anchor = pendingZoomAnchor.current;
+    const el = scrollRef.current;
+    if (!anchor || !el) return;
+    pendingZoomAnchor.current = null;
+    const prevBehavior = el.style.scrollBehavior;
+    el.style.scrollBehavior = 'auto';
+    el.scrollLeft = Math.max(0, anchor.days * ppd - anchor.viewportX);
+    el.style.scrollBehavior = prevBehavior;
+  }, [ppd]);
+
+  // Open on the present whenever this canvas mounts with events.
+  useEffect(() => {
+    if (loading || valid.length === 0) return;
+    if (didInitialScroll.current) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const apply = (): boolean => {
+      if (cancelled || didInitialScroll.current) return true;
+      const el = scrollRef.current;
+      if (!el || el.clientWidth <= 0 || totalWidth <= 0) return false;
+      const nextZoom = presentYearZoomLevel(el.clientWidth, BASE_PPD, MIN_ZOOM, MAX_ZOOM);
+      pendingZoomAnchor.current = {
+        days: todayDays,
+        viewportX: el.clientWidth * PRESENT_VIEWPORT_ANCHOR,
+      };
+      if (Math.abs(nextZoom - zoom) < 0.001) {
+        const prevBehavior = el.style.scrollBehavior;
+        el.style.scrollBehavior = 'auto';
+        el.scrollLeft = scrollLeftForPresent(todayX, el.clientWidth);
+        el.style.scrollBehavior = prevBehavior;
+        pendingZoomAnchor.current = null;
+      } else {
+        setZoom(nextZoom);
+      }
+      didInitialScroll.current = true;
+      return true;
+    };
+    const tick = () => {
+      if (apply()) return;
+      attempts += 1;
+      if (attempts < 12) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, valid.length, todayDays, todayX, totalWidth, zoom]);
+
   if (loading) {
     return (
       <div className="h-72 flex items-center justify-center">
@@ -202,7 +265,6 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     );
   }
 
-  const todayX = xOf(today);
   const accentFor = (laneKey: string): LaneAccent =>
     lanes.find(l => l.key === laneKey)?.accent ?? 'slate';
 

@@ -14,7 +14,9 @@
  */
 
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers, BookOpen } from 'lucide-react';
+import { ZoomIn, ZoomOut, Calendar, ExternalLink, Layers, BookOpen, Maximize2, LocateFixed, Copy, Check } from 'lucide-react';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { buildSwimlanesTimelineClipboardText } from '../../lib/swimlanesTimelineClipboard';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
@@ -39,7 +41,6 @@ import {
   TimelineRulerGridline,
   TimelineRulerTick,
 } from './TimelineDateDisplay';
-import { buildSwimlaneAxisTicks, getMonthsBetween } from './timelineRulerTicks';
 import {
   computeSubLanes,
   clusterEntries,
@@ -52,6 +53,31 @@ import {
   type KnowledgeGap,
   type SubLaneMap,
 } from './swimlaneOverlap';
+import {
+  PRESENT_VIEWPORT_ANCHOR,
+  animateScrollLeft,
+  isNearPresentScroll,
+  scrollLeftForPresent,
+  yearAtViewportCenter,
+} from './timelinePresentViewport';
+import {
+  DEFAULT_ZOOM_SCALE_ID,
+  TIMELINE_ZOOM_SCALES,
+  buildAxisTicksForScale,
+  getZoomScale,
+  gridlineDatesForScale,
+  scaleFromZoom,
+  zoomForScale,
+  type TimelineArcDetail,
+  type TimelineEntryDetail,
+  type TimelineZoomScaleId,
+} from './timelineZoomScale';
+import {
+  computeReliableTimelineSpan,
+  defaultScaleForSpanDays,
+  shouldDrawSwimlaneArcBar,
+} from './timelineRangeAuthority';
+import type { StitchedTimelineItem } from '../../api/stitchedTimeline';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -75,11 +101,25 @@ const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
 /** Soft floor so short eras stay readable / tappable (calendar truth preserved). */
 const ARC_MIN_W     = ARC_READABLE_MIN_PX;
-const CLUSTER_PX    = 52;   // px — memory markers closer than this merge into a cluster
 const MIN_ZOOM      = 0.3;
 const MAX_ZOOM      = 8;
-const DENSE_ZOOM    = 2.4;  // ~px/day ≈ 7 — good for months-ago storytelling
 const TRACK_ORDER: ArcTrack[] = ['career', 'romance', 'relationships', 'creative', 'health', 'inner', 'mixed'];
+
+const ERA_BAND_COLORS = [
+  'rgba(99, 102, 241, 0.07)',
+  'rgba(236, 72, 153, 0.06)',
+  'rgba(59, 130, 246, 0.07)',
+  'rgba(16, 185, 129, 0.06)',
+  'rgba(245, 158, 11, 0.06)',
+] as const;
+
+/** Life-stage era band for background LOD (from Omni lifeEras). */
+export type SwimlaneLifeEra = {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+};
 
 // Sub-lane layout + memory clustering live in ./swimlaneOverlap (unit-tested).
 
@@ -95,10 +135,6 @@ function arcBarTop(subLane: number): number {
 
 function daysBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / 86_400_000;
-}
-
-function getMonths(start: Date, end: Date): Date[] {
-  return getMonthsBetween(start, end);
 }
 
 // Assign an entry to the track of its best-matching arc by date range.
@@ -132,17 +168,20 @@ interface ArcBarProps {
   x: number;
   width: number;
   subLane: number;
+  arcDetail: TimelineArcDetail;
   onHover: (arc: LifeArc | null) => void;
   onClick: (arc: LifeArc) => void;
   onTouchSelect: (arc: LifeArc) => void;
 }
 
-const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: ArcBarProps) => {
+const ArcBar = ({ arc, x, width, subLane, arcDetail, onHover, onClick, onTouchSelect }: ArcBarProps) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c = TRACK_COLORS[track];
   const displayWidth = readableArcWidthPx(width, ARC_MIN_W);
   const isStoryArc = isNarrativeConsolidationArc(arc);
   const padded = displayWidth > width + 1;
+  const titleMinW = arcDetail === 'summary' ? 72 : ARC_MIN_W;
+  const barH = arcDetail === 'summary' ? ARC_BAR_H - 4 : ARC_BAR_H;
 
   return (
     <button
@@ -162,18 +201,16 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: Arc
         position: 'absolute',
         left: x,
         width: displayWidth,
-        top: arcBarTop(subLane),
-        height: ARC_BAR_H,
+        top: arcBarTop(subLane) + (arcDetail === 'summary' ? 2 : 0),
+        height: barH,
       }}
       className={`rounded-md border ${c.bg} ${isStoryArc ? 'border-dashed border-amber-400/50' : c.border} hover:brightness-125 transition-all group cursor-pointer`}
     >
-      {/* Arc title — only shown if bar is wide enough */}
-      {displayWidth >= ARC_MIN_W && (
-        <span className={`absolute inset-0 flex items-center px-2 text-[11px] font-medium truncate ${c.text} pointer-events-none`}>
+      {displayWidth >= titleMinW && (
+        <span className={`absolute inset-0 flex items-center px-2 text-[10px] sm:text-[11px] font-medium truncate ${c.text} pointer-events-none`}>
           {arc.title}
         </span>
       )}
-      {/* Active glow */}
       {arc.is_active && (
         <span className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/80 animate-pulse pointer-events-none" />
       )}
@@ -186,11 +223,13 @@ function KnowledgeGapBar({
   x,
   width,
   subLane,
+  showLabel,
 }: {
   gap: KnowledgeGap;
   x: number;
   width: number;
   subLane: number;
+  showLabel: boolean;
 }) {
   if (width < 10) return null;
   const label = knowledgeGapLabel(gap.days);
@@ -207,7 +246,7 @@ function KnowledgeGapBar({
       }}
       className="rounded-md border border-dashed border-white/15 bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(255,255,255,0.04)_4px,rgba(255,255,255,0.04)_8px)] pointer-events-auto"
     >
-      {width > 96 && (
+      {showLabel && width > 96 && (
         <span className="absolute inset-0 flex items-center justify-center px-2 text-[9px] sm:text-[10px] text-white/35 truncate font-medium tracking-wide">
           {label}
         </span>
@@ -221,14 +260,16 @@ interface MemEventProps {
   x: number;
   track: ArcTrack;
   selected: boolean;
+  entryDetail: TimelineEntryDetail;
   onHover: (entry: ChronologyEntry | null) => void;
   onClick: (entry: ChronologyEntry) => void;
   onTouchSelect: (entry: ChronologyEntry) => void;
 }
 
-const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }: MemEventProps) => {
+const MemEvent = ({ entry, x, track, selected, entryDetail, onHover, onClick, onTouchSelect }: MemEventProps) => {
   const c = TRACK_COLORS[track];
   const dateLabel = formatEventDateCompact(entry.start_time);
+  const showLabel = entryDetail === 'full' || entryDetail === 'compact';
 
   return (
     <button
@@ -242,19 +283,23 @@ const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }
         onTouchSelect(entry);
         onClick(entry);
       }}
-      style={{ position: 'absolute', left: x, transform: 'translateX(-50%)', top: 6 }}
+      style={{ position: 'absolute', left: x, transform: 'translateX(-50%)', top: showLabel ? 6 : 18 }}
       className="flex flex-col items-center gap-0.5 touch-manipulation z-[5]"
     >
-      <span
-        className={`text-[9px] sm:text-[10px] font-bold font-mono whitespace-nowrap px-1.5 py-0.5 rounded-md border shadow-[0_0_8px_rgba(99,102,241,0.2)] ${
-          selected
-            ? 'text-white border-primary/55 bg-primary/30'
-            : 'text-white border-primary/35 bg-primary/15'
-        }`}
-      >
-        {dateLabel}
-      </span>
-      <div className={`w-px h-3 ${selected ? 'bg-primary/70' : 'bg-white/25'}`} />
+      {showLabel && (
+        <>
+          <span
+            className={`text-[9px] sm:text-[10px] font-bold font-mono whitespace-nowrap px-1.5 py-0.5 rounded-md border shadow-[0_0_8px_rgba(99,102,241,0.2)] ${
+              selected
+                ? 'text-white border-primary/55 bg-primary/30'
+                : 'text-white border-primary/35 bg-primary/15'
+            }`}
+          >
+            {dateLabel}
+          </span>
+          <div className={`w-px h-3 ${selected ? 'bg-primary/70' : 'bg-white/25'}`} />
+        </>
+      )}
       <span
         className={`w-3 h-3 rounded-full border-2 border-black/50 transition-transform hover:scale-125 ${
           selected ? `${c.dotBg} ring-2 ring-primary/50 scale-110` : c.dotBg
@@ -354,6 +399,10 @@ interface TimelineSwimlanesProps {
   activeArcs: LifeArc[];
   entries: ChronologyEntry[];
   loading: boolean;
+  /** Birth-year life-stage eras for background bands at Year+ scales. */
+  lifeEras?: SwimlaneLifeEra[];
+  /** Temporally unresolved items (Chronology Authority tray). */
+  unresolvedItems?: StitchedTimelineItem[];
   onOpenArcTimeline?: (arc: LifeArc) => void;
   onCreateLorebook?: (arc: LifeArc, form?: LorebookForm) => void;
   /** Optional readiness gate — when false, Create LoreBook is shown disabled. */
@@ -369,6 +418,8 @@ export const TimelineSwimlanes = ({
   arcsByTrack,
   entries,
   loading,
+  lifeEras = [],
+  unresolvedItems = [],
   onOpenArcTimeline,
   onCreateLorebook,
   canCreateLorebookForArc,
@@ -380,7 +431,26 @@ export const TimelineSwimlanes = ({
   const pendingZoomAnchor = useRef<{ days: number; viewportX: number } | null>(null);
   const isMobile = useIsMobile();
   const { openMemory } = useEntityModal();
+  const reliableSpan = useMemo(
+    () => computeReliableTimelineSpan(entries, arcs),
+    [entries, arcs],
+  );
+  const initialScaleId = useMemo(
+    () => defaultScaleForSpanDays(reliableSpan.spanDays),
+    // Only seed once from first reliable span; user can still change chips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const [zoom, setZoom] = useState(1);
+  const [activeScale, setActiveScale] = useState<TimelineZoomScaleId>(
+    () => initialScaleId || DEFAULT_ZOOM_SCALE_ID,
+  );
+  const [viewportYear, setViewportYear] = useState(() => new Date().getFullYear());
+  const [atPresent, setAtPresent] = useState(true);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [showUnresolved, setShowUnresolved] = useState(false);
+  const cancelPresentScroll = useRef<(() => void) | null>(null);
+  const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hoveredArc, setHoveredArc]     = useState<LifeArc | null>(null);
   const [hoveredEntry, setHoveredEntry] = useState<ChronologyEntry | null>(null);
   const [selectedArc, setSelectedArc]   = useState<LifeArc | null>(null);
@@ -388,24 +458,26 @@ export const TimelineSwimlanes = ({
   const [selectedCluster, setSelectedCluster] = useState<EntryCluster | null>(null);
   const sortedEntries = useMemo(() => sortEntriesChronologically(entries), [entries]);
 
+  const scale = getZoomScale(activeScale);
   const ppd = BASE_PPD * zoom;
 
-  // ── Time range ──────────────────────────────────────────────────────────────
+  // ── Time range (reliable dates only — outliers must not stretch the canvas) ─
   const today        = useMemo(() => new Date(), []);
-  const timelineStart = useMemo(() => {
-    const arcDates = arcs
-      .filter(a => a.start_date)
-      .map(a => new Date(a.start_date!));
-    const entryDates = sortedEntries.slice(0, 50).map(e => new Date(e.start_time));
-    const allDates   = [...arcDates, ...entryDates];
-    const earliest   = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : today;
-    // Show at least 3 years back
-    const threeYearsAgo = new Date(today);
-    threeYearsAgo.setFullYear(today.getFullYear() - 3);
-    return new Date(Math.min(earliest.getTime(), threeYearsAgo.getTime()));
-  }, [arcs, sortedEntries, today]);
+  const timelineStart = useMemo(() => reliableSpan.start, [reliableSpan.start]);
 
-  const totalDays  = useMemo(() => daysBetween(timelineStart, today) + 30, [timelineStart, today]);
+  const totalDays  = useMemo(
+    () => Math.max(14, daysBetween(timelineStart, today) + 14),
+    [timelineStart, today],
+  );
+
+  // Bars: only multi-day non-occasion arcs (Chronology Authority arc gate).
+  const drawableArcsByTrack = useMemo(() => {
+    const result: Partial<Record<ArcTrack, LifeArc[]>> = {};
+    for (const track of Object.keys(arcsByTrack) as ArcTrack[]) {
+      result[track] = (arcsByTrack[track] ?? []).filter(shouldDrawSwimlaneArcBar);
+    }
+    return result;
+  }, [arcsByTrack]);
   const totalWidth = useMemo(() => Math.round(totalDays * ppd), [totalDays, ppd]);
 
   // x-position in pixels for a given date
@@ -414,10 +486,14 @@ export const TimelineSwimlanes = ({
     return Math.round(daysBetween(timelineStart, d) * ppd);
   }, [timelineStart, ppd]);
 
-  // ── Axis ticks: every month stays visible at every zoom level ────────────
+  // ── Axis ticks: density follows the active calendar scale ───────────────
   const axisTicks = useMemo(
-    () => buildSwimlaneAxisTicks(timelineStart, today, xOf),
-    [timelineStart, today, xOf],
+    () => buildAxisTicksForScale(scale, timelineStart, today, xOf),
+    [scale, timelineStart, today, xOf],
+  );
+  const gridlineDates = useMemo(
+    () => gridlineDatesForScale(scale, timelineStart, today),
+    [scale, timelineStart, today],
   );
 
   // User-created arcs can carry track 'custom'; that row appears only when
@@ -434,31 +510,51 @@ export const TimelineSwimlanes = ({
     const minSpanMs = (ARC_MIN_W / ppd) * 86_400_000;
     const result: Partial<Record<ArcTrack, { map: SubLaneMap; count: number }>> = {};
     for (const track of visibleTracks) {
-      result[track] = computeSubLanes(arcsByTrack[track] ?? [], minSpanMs);
+      result[track] = computeSubLanes(drawableArcsByTrack[track] ?? [], minSpanMs);
     }
     return result;
-  }, [arcsByTrack, ppd, visibleTracks]);
+  }, [drawableArcsByTrack, ppd, visibleTracks]);
 
-  // Calendar silences between arcs — rendered as knowledge-gap chrome.
+  // Sparse track coverage between drawable arcs (not “forgotten lore”).
   const gapsByTrack = useMemo(() => {
     const rangeStartMs = timelineStart.getTime();
     const rangeEndMs = today.getTime();
     const result: Partial<Record<ArcTrack, KnowledgeGap[]>> = {};
     for (const track of visibleTracks) {
-      result[track] = computeKnowledgeGaps(arcsByTrack[track] ?? [], {
+      result[track] = computeKnowledgeGaps(drawableArcsByTrack[track] ?? [], {
         rangeStartMs,
         rangeEndMs,
         now: rangeEndMs,
       });
     }
     return result;
-  }, [arcsByTrack, timelineStart, today, visibleTracks]);
+  }, [drawableArcsByTrack, timelineStart, today, visibleTracks]);
 
   // ── Memory marker clustering (overlap merging at current zoom) ──────────────
   const entryClusters = useMemo(
-    () => clusterEntries(sortedEntries, xOf, CLUSTER_PX),
-    [sortedEntries, xOf],
+    () => clusterEntries(sortedEntries, xOf, scale.clusterPx),
+    [sortedEntries, xOf, scale.clusterPx],
   );
+
+  const eraBands = useMemo(() => {
+    if (!scale.showEraBands || lifeEras.length === 0) return [];
+    return lifeEras
+      .map((era, i) => {
+        const start = new Date(era.startDate);
+        const end = new Date(era.endDate);
+        if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
+        const x = xOf(start);
+        const w = Math.max(8, xOf(end) - x);
+        return {
+          id: era.id,
+          label: era.label,
+          x,
+          width: w,
+          color: ERA_BAND_COLORS[i % ERA_BAND_COLORS.length],
+        };
+      })
+      .filter((b): b is NonNullable<typeof b> => Boolean(b));
+  }, [lifeEras, scale.showEraBands, xOf]);
 
   // Cumulative top-offset per track (since each track has dynamic height)
   const { trackTops, totalTracksHeight } = useMemo(() => {
@@ -474,6 +570,17 @@ export const TimelineSwimlanes = ({
   // ── Zoom helpers ─────────────────────────────────────────────────────────────
   // All zoom changes preserve an anchor point (cursor position for wheel-zoom,
   // viewport center for buttons) so the view doesn't jump when ppd changes.
+  const zoomContext = useCallback(() => {
+    const el = scrollRef.current;
+    return {
+      clientWidth: el?.clientWidth ?? 860,
+      basePpd: BASE_PPD,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
+      totalDays,
+    };
+  }, [totalDays]);
+
   const setZoomAnchored = useCallback((nextZoom: number, anchorClientX?: number) => {
     const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +nextZoom.toFixed(2)));
     const el = scrollRef.current;
@@ -488,30 +595,114 @@ export const TimelineSwimlanes = ({
       };
     }
     setZoom(clamped);
-  }, [ppd]);
+    setActiveScale(scaleFromZoom(clamped, zoomContext()));
+  }, [ppd, zoomContext]);
 
-  const zoomIn    = () => setZoomAnchored(zoom * 1.6);
-  const zoomOut   = () => setZoomAnchored(zoom / 1.6);
-  const zoomReset = () => setZoomAnchored(1);
-  const zoomFit   = () => {
-    const el = scrollRef.current;
-    if (!el || totalDays <= 0) return;
-    setZoomAnchored((el.clientWidth - 60) / (totalDays * BASE_PPD));
-  };
-  /** Zoom so ~1 year fills the viewport and scroll near today — good for months-ago stories. */
-  const zoomThisYear = () => {
+  const applyZoomScale = useCallback((scaleId: TimelineZoomScaleId) => {
     const el = scrollRef.current;
     if (!el) return;
-    const next = (el.clientWidth - 60) / (365 * BASE_PPD);
-    // Anchor near “today” so recent/past-year context is in view.
+    const nextScale = getZoomScale(scaleId);
+    const nextZoom = zoomForScale(nextScale, {
+      clientWidth: el.clientWidth,
+      basePpd: BASE_PPD,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
+      totalDays,
+    });
     pendingZoomAnchor.current = {
-      days: Math.max(0, totalDays - 40),
-      viewportX: el.clientWidth * 0.85,
+      days: Math.max(0, daysBetween(timelineStart, today)),
+      viewportX: el.clientWidth * PRESENT_VIEWPORT_ANCHOR,
     };
-    setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +next.toFixed(2))));
-  };
-  /** Dense zoom for reading short eras and spotting knowledge gaps. */
-  const zoomDense = () => setZoomAnchored(DENSE_ZOOM);
+    setActiveScale(scaleId);
+    if (Math.abs(nextZoom - zoom) < 0.001) {
+      const prevBehavior = el.style.scrollBehavior;
+      el.style.scrollBehavior = 'auto';
+      el.scrollLeft = scrollLeftForPresent(xOf(today), el.clientWidth);
+      el.style.scrollBehavior = prevBehavior;
+      pendingZoomAnchor.current = null;
+    } else {
+      setZoom(nextZoom);
+    }
+  }, [totalDays, timelineStart, today, zoom, xOf]);
+
+  const zoomIn  = () => setZoomAnchored(zoom * 1.6);
+  const zoomOut = () => setZoomAnchored(zoom / 1.6);
+
+  const syncViewportChrome = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || el.clientWidth <= 0 || ppd <= 0) return;
+    const next = yearAtViewportCenter(el.scrollLeft, el.clientWidth, timelineStart, ppd);
+    setViewportYear((prev) => (prev === next ? prev : next));
+    const near = isNearPresentScroll(el.scrollLeft, xOf(today), el.clientWidth);
+    setAtPresent((prev) => (prev === near ? prev : near));
+  }, [timelineStart, ppd, today, xOf]);
+
+  const goToPresent = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    cancelPresentScroll.current?.();
+    const target = scrollLeftForPresent(xOf(today), el.clientWidth);
+    cancelPresentScroll.current = animateScrollLeft(el, target, 280, () => {
+      cancelPresentScroll.current = null;
+      syncViewportChrome();
+    });
+  }, [today, xOf, syncViewportChrome]);
+
+  const handleCopyAll = useCallback(async () => {
+    const subLaneByTrack: Partial<Record<ArcTrack, SubLaneMap>> = {};
+    for (const track of visibleTracks) {
+      const map = subLaneData[track]?.map;
+      if (map) subLaneByTrack[track] = map;
+    }
+    const text = buildSwimlanesTimelineClipboardText({
+      scaleId: scale.id,
+      scaleLabel: scale.label,
+      zoom,
+      pixelsPerDay: ppd,
+      timelineStartIso: timelineStart.toISOString(),
+      todayIso: today.toISOString(),
+      totalDays,
+      totalWidthPx: totalWidth,
+      clusterPx: scale.clusterPx,
+      showEraBands: scale.showEraBands,
+      eras: lifeEras,
+      tracks: visibleTracks,
+      arcs,
+      arcsByTrack,
+      subLaneByTrack,
+      gapsByTrack,
+      entries: sortedEntries,
+      clusters: entryClusters,
+      xOf,
+    });
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    setCopiedAll(true);
+    if (copyAllTimer.current) clearTimeout(copyAllTimer.current);
+    copyAllTimer.current = setTimeout(() => setCopiedAll(false), 2000);
+  }, [
+    visibleTracks,
+    subLaneData,
+    scale,
+    zoom,
+    ppd,
+    timelineStart,
+    today,
+    totalDays,
+    totalWidth,
+    lifeEras,
+    arcs,
+    arcsByTrack,
+    gapsByTrack,
+    sortedEntries,
+    entryClusters,
+    xOf,
+  ]);
+
+  useEffect(() => () => {
+    cancelPresentScroll.current?.();
+    if (copyAllTimer.current) clearTimeout(copyAllTimer.current);
+  }, []);
 
   // Re-apply the anchor once the canvas has been laid out at the new zoom.
   useEffect(() => {
@@ -523,7 +714,8 @@ export const TimelineSwimlanes = ({
     el.style.scrollBehavior = 'auto'; // jump, don't animate, while re-anchoring
     el.scrollLeft = Math.max(0, anchor.days * ppd - anchor.viewportX);
     el.style.scrollBehavior = prevBehavior;
-  }, [ppd]);
+    syncViewportChrome();
+  }, [ppd, syncViewportChrome]);
 
   // Ctrl/Cmd + wheel zooms at the cursor. Native listener because React's
   // synthetic wheel handler is passive and can't preventDefault page zoom.
@@ -569,18 +761,69 @@ export const TimelineSwimlanes = ({
   }, []);
 
   const todayX = xOf(today);
+  const todayDays = useMemo(
+    () => Math.max(0, daysBetween(timelineStart, today)),
+    [timelineStart, today],
+  );
 
-  // Scroll to "today" on first load — must run before any early return (Rules of Hooks)
+  // Always open on the present: year-scale zoom with "today" near the right edge.
+  // Wait for a real clientWidth (loading → content swap can leave the ref unset).
   useEffect(() => {
     if (loading || (arcs.length === 0 && entries.length === 0)) return;
     if (didInitialScroll.current) return;
-    const el = scrollRef.current;
-    if (!el || totalWidth <= 0) return;
-    const labelOffset = window.innerWidth < 640 ? LABEL_W_MOBILE : LABEL_W;
-    const target = Math.max(0, todayX - el.clientWidth / 2 + labelOffset / 2);
-    el.scrollLeft = target;
-    didInitialScroll.current = true;
-  }, [loading, arcs.length, entries.length, todayX, totalWidth]);
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const applyPresentStart = (): boolean => {
+      if (cancelled || didInitialScroll.current) return true;
+      const el = scrollRef.current;
+      if (!el || el.clientWidth <= 0 || totalWidth <= 0) return false;
+
+      const openScale = defaultScaleForSpanDays(reliableSpan.spanDays);
+      const nextZoom = zoomForScale(openScale, {
+        clientWidth: el.clientWidth,
+        basePpd: BASE_PPD,
+        minZoom: MIN_ZOOM,
+        maxZoom: MAX_ZOOM,
+        totalDays,
+      });
+      pendingZoomAnchor.current = {
+        days: todayDays,
+        viewportX: el.clientWidth * PRESENT_VIEWPORT_ANCHOR,
+      };
+      setActiveScale(openScale);
+      // If zoom is already at the target, still pin scroll (anchor effect only
+      // runs when ppd changes).
+      if (Math.abs(nextZoom - zoomRef.current) < 0.001) {
+        const prevBehavior = el.style.scrollBehavior;
+        el.style.scrollBehavior = 'auto';
+        el.scrollLeft = scrollLeftForPresent(todayX, el.clientWidth);
+        el.style.scrollBehavior = prevBehavior;
+        pendingZoomAnchor.current = null;
+      } else {
+        setZoom(nextZoom);
+      }
+      didInitialScroll.current = true;
+      return true;
+    };
+
+    const tick = () => {
+      if (applyPresentStart()) return;
+      attempts += 1;
+      if (attempts < 12) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, arcs.length, entries.length, todayDays, todayX, totalWidth, totalDays, reliableSpan.spanDays]);
+
+  useEffect(() => {
+    if (loading || (arcs.length === 0 && entries.length === 0)) return;
+    const id = requestAnimationFrame(() => syncViewportChrome());
+    return () => cancelAnimationFrame(id);
+  }, [loading, arcs.length, entries.length, syncViewportChrome, totalWidth]);
 
   // ── Empty/loading states ─────────────────────────────────────────────────────
   if (loading) {
@@ -634,72 +877,149 @@ export const TimelineSwimlanes = ({
           </p>
         </div>
       )}
-      {/* ── Zoom controls — toolbar on desktop, FAB on mobile ─────────── */}
-      {isMobile ? (
-        <div className="absolute right-3 bottom-3 z-20 flex flex-col gap-1.5 pointer-events-none">
-          <div className="pointer-events-auto flex flex-col gap-1 rounded-2xl border border-white/12 bg-black/85 backdrop-blur-md p-1 shadow-lg">
-            <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
-              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 disabled:opacity-25 flex items-center justify-center touch-manipulation"
-              aria-label="Zoom in">
-              <ZoomIn className="h-4 w-4" />
-            </button>
-            <button type="button" onClick={zoomReset}
-              className="w-10 h-10 rounded-xl text-[10px] font-mono text-white/50 active:bg-white/10 touch-manipulation"
-              aria-label="Reset zoom">
+      {/* ── Time scale chrome ─────────────────────────────────────────── */}
+      <div
+        className="timeline-zoom-chrome flex-shrink-0 border-b border-white/8 px-3 sm:px-5 py-2 overflow-x-hidden"
+        data-testid="timeline-zoom-chrome"
+      >
+        <div className="flex items-center gap-2 min-w-0 max-w-full">
+          <span className="hidden sm:inline text-[10px] uppercase tracking-widest text-white/30 font-mono shrink-0">
+            Scale
+          </span>
+          <div
+            className="timeline-zoom-scale-chips flex items-center gap-0.5 overflow-x-auto scrollbar-hide min-w-0 flex-1"
+            role="radiogroup"
+            aria-label="Timeline time scale"
+          >
+            {TIMELINE_ZOOM_SCALES.map((s) => {
+              const active = activeScale === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={s.label}
+                  title={s.label}
+                  onClick={() => applyZoomScale(s.id)}
+                  className={`timeline-zoom-scale-chip shrink-0 ${active ? 'timeline-zoom-scale-chip--active' : ''}`}
+                >
+                  <span className="sm:hidden" aria-hidden="true">{s.shortLabel}</span>
+                  <span className="hidden sm:inline" aria-hidden="true">{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="timeline-zoom-chrome__steps flex items-center gap-1 shrink-0">
+            <span className="text-[10px] sm:text-xs text-white/30 font-mono tabular-nums mr-0.5">
               {zoom.toFixed(1)}×
+            </span>
+            <button
+              type="button"
+              onClick={zoomOut}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label="Zoom out"
+              title="Zoom out"
+              className="timeline-zoom-step-btn"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
             </button>
-            <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
-              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 disabled:opacity-25 flex items-center justify-center touch-manipulation"
-              aria-label="Zoom out">
-              <ZoomOut className="h-4 w-4" />
-            </button>
-            <button type="button" onClick={zoomFit}
-              className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 flex items-center justify-center touch-manipulation"
-              aria-label="Fit entire timeline" title="Fit life">
-              <Maximize2 className="h-4 w-4" />
-            </button>
-            <button type="button" onClick={zoomThisYear}
-              className="w-10 h-10 rounded-xl text-[9px] font-medium text-white/55 active:bg-white/10 touch-manipulation"
-              aria-label="This year" title="This year">
-              1Y
-            </button>
-            <button type="button" onClick={zoomDense}
-              className="w-10 h-10 rounded-xl text-[9px] font-medium text-white/55 active:bg-white/10 touch-manipulation"
-              aria-label="Dense zoom" title="Dense — better for short eras & gaps">
-              Dense
+            <button
+              type="button"
+              onClick={zoomIn}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label="Zoom in"
+              title="Zoom in"
+              className="timeline-zoom-step-btn"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-      ) : (
-        <div className="flex-shrink-0 flex items-center justify-end gap-1 px-4 py-2 border-b border-white/6">
-          <span className="text-[11px] text-white/20 mr-3 hidden lg:inline">⌘/Ctrl + scroll to zoom</span>
-          <div className="flex items-center gap-1 mr-2">
-            <button type="button" onClick={zoomFit} title="Fit life"
-              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
-              Fit life
-            </button>
-            <button type="button" onClick={zoomThisYear} title="Zoom to about one year near today"
-              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
-              This year
-            </button>
-            <button type="button" onClick={zoomDense} title="Dense zoom — short eras & knowledge gaps"
-              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
-              Dense
-            </button>
-          </div>
-          <span className="text-xs text-white/25 font-mono mr-2">{zoom.toFixed(1)}×</span>
-          <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out" title="Zoom out"
-            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
-            <ZoomOut className="h-3.5 w-3.5" />
+        <p className="hidden lg:block text-[10px] text-white/20 mt-1.5">
+          ⌘/Ctrl + scroll to zoom · eras show at Year and wider
+        </p>
+      </div>
+
+      {/* Centered year + Go to present (inset from edges) */}
+      <div
+        className="timeline-viewport-year-bar flex-shrink-0 border-b border-white/8 bg-gradient-to-b from-primary/10 to-transparent"
+        data-testid="swimlanes-viewport-year"
+        aria-live="polite"
+      >
+        <div className="timeline-viewport-year-bar__slot timeline-viewport-year-bar__slot--start">
+          <button
+            type="button"
+            onClick={() => void handleCopyAll()}
+            aria-label="Copy all swimlanes timeline"
+            title="Copy full swimlanes dump: architecture, nested arcs, moments, dates, pixel positions"
+            data-testid="swimlanes-copy-all"
+            className="timeline-copy-all"
+          >
+            {copiedAll ? <Check className="h-3.5 w-3.5 shrink-0" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+            <span>{copiedAll ? 'Copied' : 'Copy all'}</span>
           </button>
-          <button type="button" onClick={zoomReset} aria-label="Reset zoom" title="Reset zoom"
-            className="px-2.5 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono">
-            1×
+        </div>
+        <span
+          key={viewportYear}
+          className="timeline-viewport-year-bar__year text-xl sm:text-2xl font-bold tracking-tight text-white tabular-nums animate-in fade-in zoom-in-95 duration-200"
+        >
+          {viewportYear}
+        </span>
+        <div className="timeline-viewport-year-bar__slot timeline-viewport-year-bar__slot--end">
+          <button
+            type="button"
+            onClick={goToPresent}
+            disabled={atPresent}
+            aria-label="Go to present"
+            title="Jump the timeline to today"
+            data-testid="swimlanes-go-to-present"
+            className={`timeline-go-present ${atPresent ? 'timeline-go-present--idle' : 'timeline-go-present--active'}`}
+          >
+            <LocateFixed className="h-3.5 w-3.5 shrink-0" />
+            <span>Present</span>
           </button>
-          <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in"
-            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
-            <ZoomIn className="h-3.5 w-3.5" />
+        </div>
+      </div>
+
+      {unresolvedItems.length > 0 && (
+        <div
+          className="flex-shrink-0 border-b border-amber-500/20 bg-amber-500/5 px-3 sm:px-5 py-2"
+          data-testid="swimlanes-unresolved-tray"
+        >
+          <button
+            type="button"
+            className="flex items-center gap-2 text-left w-full"
+            onClick={() => setShowUnresolved((v) => !v)}
+            aria-expanded={showUnresolved}
+          >
+            <span className="text-[11px] font-semibold text-amber-200/90">
+              Memories with unresolved dates ({unresolvedItems.length})
+            </span>
+            <span className="text-[10px] text-amber-100/50">
+              {showUnresolved ? 'Hide' : 'Show'} — these do not stretch the canvas
+            </span>
           </button>
+          {showUnresolved && (
+            <ul className="mt-2 max-h-36 overflow-y-auto space-y-1.5 pr-1">
+              {unresolvedItems.slice(0, 40).map((item) => (
+                <li
+                  key={item.id}
+                  className="text-[11px] text-white/65 leading-snug border-l border-amber-500/30 pl-2"
+                >
+                  <span className="text-white/85 font-medium">{item.title}</span>
+                  {item.timeConfidence != null && (
+                    <span className="text-white/35 ml-1.5">
+                      conf {(item.timeConfidence * 100).toFixed(0)}%
+                    </span>
+                  )}
+                  {item.body?.trim() && (
+                    <p className="text-white/40 line-clamp-2 mt-0.5">{item.body.trim()}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -717,7 +1037,7 @@ export const TimelineSwimlanes = ({
             const c      = TRACK_COLORS[track];
             const lanes  = subLaneData[track]?.count ?? 1;
             const h      = trackHeight(lanes);
-            const count  = (arcsByTrack[track] ?? []).length;
+            const count  = (drawableArcsByTrack[track] ?? []).length;
             return (
               <div
                 key={track}
@@ -769,6 +1089,7 @@ export const TimelineSwimlanes = ({
           ref={scrollRef}
           className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain"
           style={{ scrollBehavior: 'smooth', touchAction: 'pan-x pan-y' }}
+          onScroll={syncViewportChrome}
         >
           <div
             className="relative"
@@ -780,27 +1101,44 @@ export const TimelineSwimlanes = ({
                 <TimelineRulerTick key={i} x={tick.x} label={tick.label} major={tick.major} />
               ))}
             </TimelineRulerAxis>
-            {getMonths(timelineStart, today).map((d, i) => (
-                <TimelineRulerGridline
-                  key={`grid-${i}`}
-                  x={xOf(d)}
-                  top={0}
-                  height={totalH}
-                  major={d.getMonth() === 0}
-                />
-              ))}
+            {gridlineDates.map((d, i) => (
+              <TimelineRulerGridline
+                key={`grid-${i}`}
+                x={xOf(d)}
+                top={0}
+                height={totalH}
+                major={scale.ruler === 'week' ? d.getDate() <= 7 : d.getMonth() === 0 || scale.ruler !== 'month'}
+              />
+            ))}
+
+            {/* ── Life-era background bands (Year+ scales) ─────────────── */}
+            {eraBands.map((band) => (
+              <div
+                key={band.id}
+                data-testid="swimlane-era-band"
+                title={band.label}
+                className="absolute top-0 bottom-0 pointer-events-none border-l border-white/[0.04]"
+                style={{ left: band.x, width: band.width, background: band.color, zIndex: 0 }}
+              >
+                {band.width > 64 && (
+                  <span className="absolute top-[58px] left-1.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-white/25 truncate max-w-[calc(100%-8px)]">
+                    {band.label}
+                  </span>
+                )}
+              </div>
+            ))}
 
             {/* ── Track rows — height expands with sub-lane count ─────── */}
             {visibleTracks.map((track, rowIdx) => {
               const rowTop  = trackTops[track] ?? AXIS_H;
               const lanes   = subLaneData[track]?.count ?? 1;
               const rowH    = trackHeight(lanes);
-              const trackArcs = arcsByTrack[track] ?? [];
+              const trackArcs = drawableArcsByTrack[track] ?? [];
               return (
                 <div
                   key={track}
                   className="absolute left-0 right-0 border-b border-white/4"
-                  style={{ top: rowTop, height: rowH }}
+                  style={{ top: rowTop, height: rowH, zIndex: 1 }}
                 >
                   <div className={`absolute inset-0 ${rowIdx % 2 === 0 ? 'bg-white/[0.015]' : ''}`} />
 
@@ -814,6 +1152,7 @@ export const TimelineSwimlanes = ({
                         x={x}
                         width={w}
                         subLane={0}
+                        showLabel={scale.arcDetail === 'labelled'}
                       />
                     );
                   })}
@@ -831,6 +1170,7 @@ export const TimelineSwimlanes = ({
                         x={x}
                         width={w}
                         subLane={subLane}
+                        arcDetail={scale.arcDetail}
                         onHover={setHoveredArc}
                         onClick={handleSelectArc}
                         onTouchSelect={handleSelectArc}
@@ -844,7 +1184,7 @@ export const TimelineSwimlanes = ({
             {/* ── Memory dots row ────────────────────────────────────── */}
             <div
               className="absolute left-0 right-0"
-              style={{ top: AXIS_H + totalTracksHeight, height: MEM_H }}
+              style={{ top: AXIS_H + totalTracksHeight, height: MEM_H, zIndex: 1 }}
             >
               <div className="absolute inset-0 border-t border-white/6" />
               {entryClusters.map(cluster => {
@@ -858,6 +1198,7 @@ export const TimelineSwimlanes = ({
                       x={cluster.x}
                       track={entryTrack(entry, arcs)}
                       selected={selectedEntry?.id === entry.id}
+                      entryDetail={scale.entryDetail}
                       onHover={setHoveredEntry}
                       onClick={handleSelectEntry}
                       onTouchSelect={handleSelectEntry}

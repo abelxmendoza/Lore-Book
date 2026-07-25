@@ -93,6 +93,7 @@ export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
   return {
     data,
     items,
+    unresolvedItems: data?.unresolved_items ?? [],
     loading,
     saving,
     error,

@@ -136,6 +136,10 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true, // Allow external connections
+    // Allow monorepo packages/ when alias points outside apps/web (local dev).
+    fs: {
+      allow: [path.resolve(__dirname, '../..')],
+    },
     hmr: {
       overlay: true, // Show error overlay
     },

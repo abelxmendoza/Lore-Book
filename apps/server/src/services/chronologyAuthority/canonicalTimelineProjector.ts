@@ -1,0 +1,283 @@
+/**
+ * Project stitch candidates into canonical Omni items.
+ * Collapses journal evidence under resolved events; marks unresolved dates.
+ */
+
+import {
+  applyTemporalConfidenceCeiling,
+  isImportOrRecoveryTag,
+  TEMPORAL_CONFIDENCE_CEILINGS,
+} from './temporalConfidenceCeilings';
+import { detectTemporalContradiction } from './temporalContradiction';
+import { evaluateTimelineEligibility } from './timelineSpeechActGate';
+import type { TemporalPrecision, TemporalSource } from '../temporal/temporalEvidence';
+
+export type ProjectionRole = 'canonical' | 'evidence' | 'unresolved' | 'excluded';
+export type OccurrenceStatus = 'confirmed' | 'range' | 'unresolved';
+
+export type CanonicalEventType =
+  | 'activity'
+  | 'social_event'
+  | 'nightlife_event'
+  | 'family_event'
+  | 'work_session'
+  | 'project_milestone'
+  | 'career_milestone'
+  | 'reflection'
+  | 'system_activity'
+  | 'external_context'
+  | 'unknown';
+
+export type ProjectableTimelineItem = {
+  id: string;
+  kind: 'moment' | 'event';
+  sourceId: string;
+  sortTime: string;
+  title: string;
+  body: string;
+  sourceKind: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceIds: string[];
+  sourceType: string;
+  tags?: string[];
+  confidence?: number;
+  timePrecision?: string;
+  timeConfidence?: number;
+  temporalSource?: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type ProjectedTimelineItem = ProjectableTimelineItem & {
+  timePrecision: string;
+  timeConfidence: number;
+  temporalSource: string;
+  occurrenceStatus: OccurrenceStatus;
+  projectionRole: ProjectionRole;
+  canonicalEventType: CanonicalEventType;
+  eligibilitySurface: string;
+  speechAct: string;
+};
+
+function dayKey(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80);
+}
+
+export function inferCanonicalEventType(title: string, body: string, tags?: string[]): CanonicalEventType {
+  const text = `${title} ${body}`;
+  if ((tags ?? []).some((t) => /recovered|import/i.test(t))) return 'system_activity';
+  if (/\b(?:recap|token|debug|testing the chat)\b/i.test(text)) return 'system_activity';
+  if (/\b(?:world cup|weather)\b/i.test(text)) return 'external_context';
+  if (/\b(?:interview|hired|onboarding|background[- ]?check|first day|job)\b/i.test(text)) {
+    return 'career_milestone';
+  }
+  if (/\b(?:lore\s*book|coding|coded|distrokid|feature)\b/i.test(text)) return 'project_milestone';
+  if (/\b(?:club|afters|rave|concert|show|dj)\b/i.test(text)) return 'nightlife_event';
+  if (/\b(?:graduation|cousin|abuela|family|t[ií]o)\b/i.test(text)) return 'family_event';
+  if (/\b(?:party|met |dinner|lunch)\b/i.test(text)) return 'social_event';
+  if (/\b(?:feel|reflect|thinking)\b/i.test(text)) return 'reflection';
+  if (/\b(?:went|visited|ran|gym|worked)\b/i.test(text)) return 'activity';
+  return 'unknown';
+}
+
+function honestTemporal(item: ProjectableTimelineItem): {
+  precision: string;
+  confidence: number;
+  source: string;
+  occurrenceStatus: OccurrenceStatus;
+} {
+  const tags = item.tags ?? [];
+  const recovered = isImportOrRecoveryTag(tags);
+  const rawSource = (item.temporalSource ??
+    (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
+  const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
+  const rawConf = item.timeConfidence ?? item.confidence ?? 0.5;
+
+  const capped = applyTemporalConfidenceCeiling({
+    start: item.sortTime || null,
+    end: null,
+    timezone: null,
+    precision: recovered ? 'unknown' : rawPrecision,
+    source: recovered ? 'recording_fallback' : rawSource,
+    status: 'approximate',
+    confidence: rawConf,
+    expression: null,
+  });
+
+  const contradiction = detectTemporalContradiction({
+    recordId: item.id,
+    storedOccurrence: item.sortTime,
+    title: item.title,
+    summary: item.body,
+    temporalSource: capped.source,
+    tags,
+  });
+
+  if (contradiction || recovered || capped.source === 'recording_fallback' || capped.precision === 'year') {
+    return {
+      precision: capped.precision === 'exact' ? 'unknown' : capped.precision,
+      confidence: Math.min(capped.confidence, TEMPORAL_CONFIDENCE_CEILINGS.IMPORT_RECOVERY),
+      source: capped.source,
+      occurrenceStatus: 'unresolved',
+    };
+  }
+
+  if (capped.precision === 'month' || capped.precision === 'season' || capped.status === 'approximate') {
+    return {
+      precision: capped.precision,
+      confidence: capped.confidence,
+      source: capped.source,
+      occurrenceStatus: 'range',
+    };
+  }
+
+  return {
+    precision: capped.precision,
+    confidence: capped.confidence,
+    source: capped.source,
+    occurrenceStatus: capped.confidence >= 0.6 ? 'confirmed' : 'unresolved',
+  };
+}
+
+/**
+ * Project raw stitch items for Omni global feed.
+ * - Prefer resolved_event over journal_entry for same day + similar title
+ * - Exclude non-autobiographical speech acts from canonical list
+ * - Mark temporally dishonest items as unresolved (still returned separately)
+ */
+export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
+  canonical: ProjectedTimelineItem[];
+  unresolved: ProjectedTimelineItem[];
+  excluded: ProjectedTimelineItem[];
+  evidenceHidden: number;
+} {
+  const excluded: ProjectedTimelineItem[] = [];
+  const unresolved: ProjectedTimelineItem[] = [];
+  const working: ProjectedTimelineItem[] = [];
+
+  const hardExcludeActs = new Set([
+    'RECAP_REQUEST',
+    'COMMAND',
+    'CORRECTION',
+    'QUESTION',
+    'PRODUCT_FEEDBACK',
+    'SYSTEM_DEBUGGING',
+    'EMPTY',
+    'EXTERNAL_CONTEXT',
+  ]);
+
+  for (const item of items) {
+    const temporal = honestTemporal(item);
+    const eligibility = evaluateTimelineEligibility({
+      text: item.body || item.title,
+      title: item.title,
+      tags: item.tags,
+      metadata: item.metadata ?? null,
+    });
+    const canonicalEventType = inferCanonicalEventType(item.title, item.body, item.tags);
+
+    const projected: ProjectedTimelineItem = {
+      ...item,
+      timePrecision: temporal.precision,
+      timeConfidence: temporal.confidence,
+      temporalSource: temporal.source,
+      occurrenceStatus: temporal.occurrenceStatus,
+      projectionRole: 'canonical',
+      canonicalEventType,
+      eligibilitySurface: eligibility.surface,
+      speechAct: eligibility.speechAct,
+      confidence: temporal.confidence,
+    };
+
+    // Hard speech-act rejects never appear on Omni (even as unresolved).
+    if (hardExcludeActs.has(eligibility.speechAct)) {
+      projected.projectionRole = 'excluded';
+      excluded.push(projected);
+      continue;
+    }
+
+    // Temporal honesty first: recovered / Jan-1 fallbacks / year-only → tray.
+    if (temporal.occurrenceStatus === 'unresolved' || eligibility.surface === 'NEEDS_REVIEW') {
+      projected.projectionRole = 'unresolved';
+      unresolved.push(projected);
+      continue;
+    }
+
+    if (!eligibility.eligible || eligibility.surface === 'EXCLUDED') {
+      projected.projectionRole = 'excluded';
+      excluded.push(projected);
+      continue;
+    }
+
+    if (eligibility.surface === 'REFLECTION_LAYER' || eligibility.surface === 'PROJECT_TIMELINE') {
+      if (canonicalEventType === 'system_activity' || canonicalEventType === 'external_context') {
+        projected.projectionRole = 'excluded';
+        excluded.push(projected);
+        continue;
+      }
+    }
+
+    working.push(projected);
+  }
+
+  // Collapse journal moments under resolved events same day + title similarity
+  const events = working.filter((i) => i.sourceKind === 'resolved_event');
+  const journals = working.filter((i) => i.sourceKind === 'journal_entry');
+  const others = working.filter((i) => i.sourceKind === 'timeline_event');
+
+  const significantTokens = (title: string) =>
+    normalizeTitle(title)
+      .split(' ')
+      .filter((w) => w.length >= 5 && !/^(about|after|before|during|with|from|their|there|these|those|would|could|should)$/.test(w));
+
+  let evidenceHidden = 0;
+  const keptJournals: ProjectedTimelineItem[] = [];
+  for (const j of journals) {
+    const jDay = dayKey(j.sortTime);
+    const jTokens = new Set(significantTokens(`${j.title} ${j.body}`));
+    const looseMatch = events.some((e) => {
+      if (dayKey(e.sortTime) !== jDay) return false;
+      const eTokens = significantTokens(`${e.title} ${e.body}`);
+      const overlap = eTokens.filter((w) => jTokens.has(w)).length;
+      return overlap >= 1 || normalizeTitle(e.title) === normalizeTitle(j.title);
+    });
+    const sharedSource = events.some(
+      (e) => e.sourceIds?.includes(j.sourceId) || j.sourceIds?.includes(e.sourceId),
+    );
+    if (looseMatch || sharedSource) {
+      evidenceHidden += 1;
+      continue;
+    }
+    keptJournals.push(j);
+  }
+
+  const canonical = sortByTime([...events, ...keptJournals, ...others]);
+  return { canonical, unresolved, excluded, evidenceHidden };
+}
+
+function sortByTime(items: ProjectedTimelineItem[]): ProjectedTimelineItem[] {
+  return [...items].sort(
+    (a, b) => new Date(a.sortTime).getTime() - new Date(b.sortTime).getTime(),
+  );
+}
+
+export function mapWebTimePrecision(
+  precision: string,
+): 'exact' | 'day' | 'month' | 'year' | 'approximate' {
+  switch (precision) {
+    case 'exact':
+    case 'time_of_day':
+      return 'exact';
+    case 'date':
+      return 'day';
+    case 'month':
+    case 'season':
+      return 'month';
+    case 'year':
+      return 'year';
+    default:
+      return 'approximate';
+  }
+}

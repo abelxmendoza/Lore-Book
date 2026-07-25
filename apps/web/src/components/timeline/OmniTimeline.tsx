@@ -89,10 +89,23 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const navigate = useNavigate();
   const urlQuery = searchParams.get('q') ?? '';
   const characterId = searchParams.get('characterId') ?? undefined;
+  const calendarDateParam =
+    searchParams.get('date') ??
+    (/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : null);
   const isMobile = useIsMobile();
   const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams));
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
   const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
+
+  const handleCalendarDateChange = useCallback(
+    (dateKey: string) => {
+      const params = new URLSearchParams(searchParams);
+      params.set('view', 'calendar');
+      params.set('date', dateKey);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // Keep view in sync with ?view= so Life Log / deep links share one calendar.
   useEffect(() => {
@@ -114,6 +127,21 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [genInput, setGenInput] = useState(urlQuery);
   const [dateInput, setDateInput] = useState(/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : '');
   const [genQuery, setGenQuery] = useState(urlQuery);
+
+  const handleOpenDayInTimeline = useCallback(
+    (dateKey: string) => {
+      const params = new URLSearchParams(searchParams);
+      params.set('view', 'events');
+      params.set('q', dateKey);
+      params.delete('date');
+      setSearchParams(params, { replace: true });
+      setDateInput(dateKey);
+      setGenInput(dateKey);
+      setGenQuery(dateKey);
+    },
+    [searchParams, setSearchParams],
+  );
+
   const [genPhase, setGenPhase] = useState<GenPhase>(urlQuery.trim() ? 'revealed' : 'idle');
   const [genSearchOpen, setGenSearchOpen] = useState(
     Boolean(urlQuery.trim()) || searchParams.get('view') === 'search',
@@ -143,6 +171,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const { arcs, activeArcs, arcsByTrack, loading: arcsLoading, error: arcsError, refresh: refreshArcs } = useLifeArcs();
   const {
     items: stitchedItems,
+    unresolvedItems,
     loading: entriesLoading,
     error: chronologyError,
     reload: refetchChronology,
@@ -538,6 +567,13 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             activeArcs={activeArcs}
             entries={displayEntries}
             loading={loading}
+            unresolvedItems={unresolvedItems}
+            lifeEras={lifeEras.map((era) => ({
+              id: era.id,
+              label: era.chapter_title,
+              startDate: era.start_date,
+              endDate: era.end_date,
+            }))}
             onOpenArcTimeline={handleOpenArcTimeline}
             onCreateLorebook={handleCreateLorebookFromArc}
             canCreateLorebookForArc={canCreateLorebookForArc}
@@ -546,7 +582,13 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       case 'events':
         return <TimelineStitchedView embedded newestFirst />;
       case 'calendar':
-        return <TimelineCalendarView />;
+        return (
+          <TimelineCalendarView
+            initialDate={calendarDateParam}
+            onDateChange={handleCalendarDateChange}
+            onOpenDayInTimeline={handleOpenDayInTimeline}
+          />
+        );
       case 'story':
         return (
           <TimelineStoryView
@@ -563,7 +605,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   return (
     <div
-      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}`}
+      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}`}
       data-testid="omni-timeline"
     >
       {/* ── Mobile header ──────────────────────────────────────────────── */}

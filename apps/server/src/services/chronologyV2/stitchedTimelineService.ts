@@ -13,6 +13,7 @@ import {
   classifyCandidate,
   type CohesionCandidate,
 } from './narrativeCohesion';
+import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
 
 export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
@@ -44,6 +45,14 @@ export type StitchedTimelineItem = {
   mergedCount?: number;
   /** Titles of the merged-away duplicates (excludes the shown title). */
   mergedTitles?: string[];
+  /** Honest temporal fields for Omni Chronology Authority. */
+  timePrecision?: string;
+  timeConfidence?: number;
+  temporalSource?: string;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  projectionRole?: 'canonical' | 'evidence' | 'unresolved' | 'excluded';
+  canonicalEventType?: string;
+  speechAct?: string;
 };
 
 export type NarrativeChapterData = {
@@ -77,6 +86,10 @@ export type StitchedTimelineResult = {
   merge_log?: MergeLogEntry[];
   /** Story identity generated before the title and used to gate scenes. */
   chapter?: NarrativeChapterData;
+  /** Temporally unresolved / low-trust items (Omni unresolved-date tray). */
+  unresolved_items?: StitchedTimelineItem[];
+  /** Journal evidence collapsed under canonical resolved events. */
+  evidence_hidden_count?: number;
 };
 
 function momentTitle(content: string): string {
@@ -403,11 +416,11 @@ export class StitchedTimelineService {
       (async () => {
         let query = supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags')
+          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence')
           .eq('user_id', userId);
         if (startTime) query = query.gte('start_time', `${startTime}T00:00:00.000Z`);
         if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
-        return query.order('start_time', { ascending: true });
+        return query.order('start_time', { ascending: true, nullsFirst: false });
       })(),
       loadUserOrder(userId, scopeType, scopeId),
     ]);
@@ -570,8 +583,41 @@ export class StitchedTimelineService {
       const scopedResolvedRows = characterId
         ? (resolvedRows ?? []).filter((e) => ((e.people as string[] | null) ?? []).includes(characterId))
         : (resolvedRows ?? []);
+      const datedResolved = scopedResolvedRows.filter(
+        (e) => typeof e.start_time === 'string' && e.start_time.length > 0,
+      );
+      const undatedResolved = scopedResolvedRows.filter(
+        (e) => !(typeof e.start_time === 'string' && e.start_time.length > 0),
+      );
+      // Undated / unanchored events go straight into items with a sentinel sort
+      // time; Chronology Authority will mark them unresolved and Omni will tray them.
+      for (const e of undatedResolved) {
+        const key = `event:${e.id}`;
+        const meta = (e.metadata ?? {}) as Record<string, unknown>;
+        items.push({
+          id: key,
+          kind: 'event',
+          sourceId: e.id as string,
+          sortTime: (meta.recovery_fallback_date as string) || new Date(0).toISOString(),
+          userSortIndex: orderMap.get(key) ?? null,
+          title: (e.title as string) ?? 'Event',
+          body: (e.summary as string) ?? '',
+          sourceKind: 'resolved_event',
+          sourceIds: [e.id as string],
+          sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
+          tags: (e.tags as string[]) ?? [],
+          confidence: Number(e.temporal_confidence ?? e.confidence ?? 0.2),
+          timePrecision: (e.temporal_precision as string) ?? 'unknown',
+          timeConfidence: Number(e.temporal_confidence ?? 0.2),
+          temporalSource: (e.temporal_source as string) ?? 'recording_fallback',
+          occurrenceStatus: 'unresolved',
+          projectionRole: 'unresolved',
+        });
+        seenEventIds.add(e.id as string);
+      }
+
       const clusters = clusterDuplicateEvents(
-        scopedResolvedRows.map((e) => ({
+        datedResolved.map((e) => ({
           id: e.id as string,
           title: (e.title as string) ?? 'Event',
           summary: (e.summary as string) ?? '',
@@ -589,8 +635,18 @@ export class StitchedTimelineService {
         const canonical = cluster.members.find((m) => m.id === cluster.canonicalId) ?? cluster.members[0];
         const meta = ((canonical.row as { metadata?: unknown }).metadata ?? {}) as Record<string, unknown>;
         const key = `event:${cluster.canonicalId}`;
+        const row = canonical.row as {
+          confidence?: number;
+          tags?: string[];
+          temporal_precision?: string;
+          temporal_source?: string;
+          temporal_confidence?: number;
+        };
         const confidence = Math.max(
-          ...cluster.members.map((m) => ((m.row as { confidence?: number }).confidence ?? 1)),
+          ...cluster.members.map((m) => {
+            const r = m.row as { temporal_confidence?: number; confidence?: number };
+            return r.temporal_confidence ?? r.confidence ?? 1;
+          }),
         );
         items.push({
           id: key,
@@ -604,10 +660,13 @@ export class StitchedTimelineService {
           sourceIds: cluster.members.map((member) => member.id),
           sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
           tags: [...new Set(cluster.members.flatMap((member) => {
-            const row = member.row as { tags?: string[] };
-            return row.tags ?? [];
+            const memberRow = member.row as { tags?: string[] };
+            return memberRow.tags ?? [];
           }))],
           confidence,
+          timePrecision: row.temporal_precision ?? 'date',
+          timeConfidence: row.temporal_confidence ?? confidence,
+          temporalSource: row.temporal_source ?? 'context_inferred',
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
@@ -673,6 +732,68 @@ export class StitchedTimelineService {
           };
         }
       }
+    }
+
+    // Global Omni feed: Chronology Authority projection (eligibility + temporal honesty).
+    if (scopeType === 'global') {
+      const projected = projectCanonicalTimeline(
+        items.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          sourceId: item.sourceId,
+          sortTime: item.sortTime,
+          title: item.title,
+          body: item.body,
+          sourceKind: item.sourceKind,
+          sourceIds: item.sourceIds,
+          sourceType: item.sourceType,
+          tags: item.tags,
+          confidence: item.confidence,
+          timePrecision: item.timePrecision,
+          timeConfidence: item.timeConfidence,
+          temporalSource: item.temporalSource,
+        })),
+      );
+      const toStitched = (p: (typeof projected.canonical)[number]): StitchedTimelineItem => ({
+        id: p.id,
+        kind: p.kind,
+        sourceId: p.sourceId,
+        sortTime: p.sortTime,
+        userSortIndex: items.find((i) => i.id === p.id)?.userSortIndex ?? null,
+        title: p.title,
+        body: p.body,
+        sourceKind: p.sourceKind,
+        sourceIds: p.sourceIds,
+        sourceType: p.sourceType,
+        tags: p.tags,
+        confidence: p.timeConfidence,
+        timePrecision: p.timePrecision,
+        timeConfidence: p.timeConfidence,
+        temporalSource: p.temporalSource,
+        occurrenceStatus: p.occurrenceStatus,
+        projectionRole: p.projectionRole,
+        canonicalEventType: p.canonicalEventType,
+        speechAct: p.speechAct,
+        userPresence: items.find((i) => i.id === p.id)?.userPresence,
+        temporalRole: items.find((i) => i.id === p.id)?.temporalRole,
+        mergedCount: items.find((i) => i.id === p.id)?.mergedCount,
+        mergedTitles: items.find((i) => i.id === p.id)?.mergedTitles,
+      });
+      const sorted = sortItems(projected.canonical.map(toStitched));
+      const unresolved = sortItems(projected.unresolved.map(toStitched));
+      return {
+        scope_type: scopeType,
+        scope_id: scopeId,
+        scope_label: scopeLabel,
+        items: sorted,
+        has_user_order: sorted.some((i) => i.userSortIndex != null),
+        unresolved_items: unresolved,
+        evidence_hidden_count: projected.evidenceHidden,
+        excluded_count: projected.excluded.length,
+        ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
+        ...(chapter ? { chapter } : {}),
+        ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
+      };
     }
 
     const sorted = sortItems(items);
