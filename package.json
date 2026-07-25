@@ -68,7 +68,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "concurrently": "^10.0.3",
+    "concurrently": "^10.0.4",
     "drizzle-kit": "^0.31.10",
     "husky": "^9.1.7",
     "pg": "^8.21.0"
