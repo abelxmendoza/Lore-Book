@@ -60,9 +60,23 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
       ? Math.min(100, Math.round(baselineAffection + stats.affectionDelta))
       : null;
 
+  const focusEntityType =
+    focus.entityType === 'organization'
+      ? 'organization'
+      : focus.entityType === 'location'
+        ? 'location'
+        : focus.entityType === 'project'
+          ? 'project'
+          : 'character';
   const focusChipClass = isLove
     ? `${chipColorForEntity({ type: 'character', characterVariant: 'romantic', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'animate-romantic-glow ring-1 ring-rose-500/30' : ''}`
-    : `${chipColorForEntity({ type: 'character', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'ring-1 ring-blue-500/25' : ''}`;
+    : `${chipColorForEntity({ type: focusEntityType, status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${
+        isArriving
+          ? focusEntityType === 'organization'
+            ? 'ring-1 ring-amber-500/30'
+            : 'ring-1 ring-blue-500/25'
+          : ''
+      }`;
 
   return (
     <div
@@ -123,7 +137,7 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
       </CompactChipStrip>
       {focus.entityType === 'character' && (
         <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
-          Their chip is attached — chat corrections like &ldquo;actually her name is Maya&rdquo; update their profile and knowledge base.
+          Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.
         </p>
       )}
     </div>

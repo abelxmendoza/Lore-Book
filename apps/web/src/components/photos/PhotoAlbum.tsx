@@ -9,6 +9,7 @@ import { useEntityModal } from '../../contexts/EntityModalContext';
 import { mockDataService, type PhotoEntry } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 import { buildPhotoAlbumClipboardText } from '../../lib/photoAlbumClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import {
   GridListViewToolbar,
   readStoredCardViewMode,
@@ -309,8 +310,14 @@ export const PhotoAlbum: React.FC = () => {
   }, [photos, searchQuery, filterBy]);
 
   const clipboardText = useMemo(
-    () => buildPhotoAlbumClipboardText(filteredPhotos),
-    [filteredPhotos],
+    () =>
+      buildPhotoAlbumClipboardText(filteredPhotos, {
+        filters: clipboardFilterLines([
+          searchQuery.trim() && `search="${searchQuery.trim()}"`,
+          filterBy !== 'all' && `view=${filterBy}`,
+        ]),
+      }),
+    [filteredPhotos, searchQuery, filterBy],
   );
 
   const groupedByLocation = useMemo(() => {

@@ -160,26 +160,68 @@ export async function getCharacterProfileBundle(
   userId: string,
   characterId: string,
 ): Promise<CharacterProfileBundle | null> {
-  const [detail, knowledgeBase, loreProfile] = await Promise.all([
-    loadCharacterDetailRow(userId, characterId),
-    getCharacterKnowledgeBase(userId, characterId),
-    characterLoreProfileService.compile(userId, characterId),
-  ]);
+  const detail = await loadCharacterDetailRow(userId, characterId);
+  if (!detail) return null;
 
-  if (!detail || !knowledgeBase || !loreProfile) return null;
+  const characterName = String(detail.name ?? 'Unknown');
+
+  const [knowledgeBase, loreProfile] = await Promise.all([
+    getCharacterKnowledgeBase(userId, characterId).catch((err) => {
+      logger.warn({ err, characterId }, 'Knowledge base failed for profile bundle');
+      return null;
+    }),
+    characterLoreProfileService.compile(userId, characterId).catch((err) => {
+      logger.warn({ err, characterId }, 'Lore profile failed for profile bundle');
+      return null;
+    }),
+  ]);
 
   let chatMentions: CharacterChatMention[] = [];
   try {
-    chatMentions = await loadChatMentions(userId, characterId, detail.name as string);
+    chatMentions = await loadChatMentions(userId, characterId, characterName);
   } catch (err) {
     logger.warn({ err, characterId }, 'Failed to load character chat mentions for bundle');
   }
 
+  // Detail alone is enough to open the modal. Knowledge/lore degrade gracefully.
   return {
     characterId,
     detail,
-    knowledgeBase,
-    loreProfile,
+    knowledgeBase: knowledgeBase ?? {
+      characterId,
+      name: characterName,
+      aliases: Array.isArray(detail.alias) ? (detail.alias as string[]) : [],
+      summary: typeof detail.summary === 'string' ? detail.summary : null,
+      identityMentions: [],
+      profile: {
+        relationshipToUser: null,
+        memoryCount: Number(detail.memory_count ?? 0),
+        timelineEventCount: 0,
+        timelineEvents: [],
+      },
+      facts: [],
+      knowledgeClaims: [],
+      sceneCandidates: [],
+      relatedEntities: [],
+      conversationLinks: [],
+      intelligence: {
+        totalEvidenceItems: 0,
+        lastUpdated: null,
+        learningScore: 0,
+      },
+    },
+    loreProfile: loreProfile ?? {
+      characterId,
+      characterName,
+      generatedAt: new Date().toISOString(),
+      skills: [],
+      hobbies: [],
+      interests: [],
+      groups: [],
+      people: [],
+      loreSnippets: [],
+      mentionOnly: false,
+    },
     chatMentions,
     generatedAt: new Date().toISOString(),
   };

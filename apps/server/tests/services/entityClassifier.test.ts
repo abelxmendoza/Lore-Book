@@ -56,6 +56,26 @@ describe('EntityClassifier — PERSON requires evidence (the core rule)', () => 
   });
 });
 
+describe('EntityClassifier — pet-context predicate → PET (not Person)', () => {
+  it('"my dog Max" → PET', () => {
+    expect(t('Max', 'my dog Max is the best')).toBe('PET');
+  });
+  it('"our cat Luna" → PET', () => {
+    expect(t('Luna', 'our cat Luna knocked over the plant again')).toBe('PET');
+  });
+  it('"NAME is my puppy" phrasing → PET', () => {
+    expect(t('Biscuit', 'Biscuit is my puppy and he never listens')).toBe('PET');
+  });
+  it('pet classification is not Character-eligible', () => {
+    expect(isCharacterEligible(classifyEntity('Max', 'my dog Max').type)).toBe(false);
+    expect(toStorageType('PET')).toBe('platform');
+  });
+  it('a plain human name near pet vocabulary elsewhere in context does not misfire', () => {
+    // "my dog" refers to Max, not Sarah — Sarah should not classify as PET.
+    expect(t('Sarah', 'Sarah walked my dog Max around the block')).not.toBe('PET');
+  });
+});
+
 describe('EntityClassifier — places, venues, companies', () => {
   it('venue suffix → LOCATION', () => {
     expect(t("Joe's Gym")).toBe('LOCATION');

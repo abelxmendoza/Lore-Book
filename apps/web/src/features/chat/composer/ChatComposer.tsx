@@ -150,16 +150,18 @@ export const ChatComposer = ({
   // value. `input` is intentionally NOT a dependency — previously it was, with a
   // `!input` guard, so clearing the field re-ran this effect and re-injected the
   // prompt on every delete (an endless "it keeps coming back" loop).
+  // `initialPrompt === ''` means "clear composer" (modal handoff with no prefill).
+  // `initialPrompt == null` means "leave composer alone".
   const appliedInitialPromptRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!initialPrompt) {
+    if (initialPrompt == null) {
       appliedInitialPromptRef.current = null;
       return;
     }
     if (appliedInitialPromptRef.current === initialPrompt) return;
     appliedInitialPromptRef.current = initialPrompt;
     setInput(initialPrompt);
-    if (isMobile && !embedded) setMobileCollapsed(false);
+    if (initialPrompt && isMobile && !embedded) setMobileCollapsed(false);
     const focusTimer = setTimeout(() => textareaRef.current?.focus(), 100);
     onInitialPromptApplied?.();
     return () => clearTimeout(focusTimer);

@@ -84,12 +84,15 @@ export const stitchedTimelineApi = {
     start_time?: string;
     end_time?: string;
     scope_type?: 'global' | 'life_arc';
+    /** Restrict the global scope to events involving this character. */
+    character_id?: string;
   }) => {
     const qs = new URLSearchParams();
     if (params?.life_arc_id) qs.set('life_arc_id', params.life_arc_id);
     if (params?.start_time) qs.set('start_time', params.start_time);
     if (params?.end_time) qs.set('end_time', params.end_time);
     if (params?.scope_type) qs.set('scope_type', params.scope_type);
+    if (params?.character_id) qs.set('character_id', params.character_id);
     const query = qs.toString();
     return fetchJson<StitchedTimelineResult>(
       `/api/chronology/stitched${query ? `?${query}` : ''}`

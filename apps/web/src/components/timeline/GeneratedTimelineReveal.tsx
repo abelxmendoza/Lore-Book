@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import {
-  BookOpen,
   ChevronDown,
   ChevronUp,
   X,
@@ -12,6 +11,10 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 import type { MockGeneratedTimelineEvent } from '../../mocks/timelineGenerationMock';
+import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
+import type { LorebookForm } from '../../lib/lorebookTiers';
+import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
+import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { buildRailGradient, getLaneColor } from './generatedTimelineColors';
 import {
   spreadTimelineLeftPercentages,
@@ -48,7 +51,12 @@ type Props = {
   onEventClick?: (event: GeneratedTimelineEvent) => void;
   onArcClick?: (arc: LifeArc) => void;
   /** Open the LoreBook creator prefilled with this timeline's range/query. */
-  onCreateLorebook?: () => void;
+  onCreateLorebook?: (form?: LorebookForm) => void;
+  /** When false, button stays visible but disabled with a readiness reason. */
+  canCreateLorebook?: boolean;
+  lorebookReason?: string;
+  /** Content buildup toward a LoreBook for this subject. */
+  lorebookMeter?: LorebookContentMeterModel | null;
 };
 
 function eventTime(e: GeneratedTimelineEvent): number {
@@ -135,6 +143,9 @@ export function GeneratedTimelineReveal({
   onEventClick,
   onArcClick,
   onCreateLorebook,
+  canCreateLorebook = true,
+  lorebookReason,
+  lorebookMeter,
 }: Props) {
   const isMobile = useIsMobile();
 
@@ -225,20 +236,54 @@ export function GeneratedTimelineReveal({
                   Simulated preview
                 </span>
               )}
+              {onCreateLorebook && lorebookReason && (
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                    canCreateLorebook
+                      ? 'text-amber-200/90 bg-amber-500/10 border-amber-500/25'
+                      : 'text-white/45 bg-white/5 border-white/10'
+                  }`}
+                  data-testid="timeline-lorebook-readiness"
+                >
+                  {lorebookReason}
+                </span>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
             {onCreateLorebook && (
-              <button
-                type="button"
-                onClick={onCreateLorebook}
-                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-amber-500/30 text-amber-300/90 text-xs hover:bg-amber-500/10 touch-manipulation"
-                title="Generate a LoreBook from this timeline"
+              <div
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 pl-2.5 pr-1.5 py-1.5"
+                data-testid="timeline-create-lorebook"
               >
-                <BookOpen className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Create LoreBook</span>
-              </button>
+                {lorebookMeter?.tierOffer ? (
+                  <LorebookTierMenu
+                    tierOffer={lorebookMeter.tierOffer}
+                    forceEnable={canCreateLorebook && !lorebookMeter.tierOffer.canCreateAny}
+                    onSelectForm={(form) => onCreateLorebook(form)}
+                    subjectLabel={query}
+                    testId="timeline-lorebook-tier-menu"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onCreateLorebook()}
+                    disabled={!canCreateLorebook}
+                    className="inline-flex items-center gap-1 text-amber-300/90 text-xs hover:text-amber-200 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={
+                      lorebookMeter?.detailLabel ||
+                      lorebookReason ||
+                      (canCreateLorebook
+                        ? 'Generate a LoreBook from this timeline subject'
+                        : 'Not enough content about this subject yet')
+                    }
+                  >
+                    <span>LoreBook</span>
+                  </button>
+                )}
+                {lorebookMeter && <LorebookContentMeter meter={lorebookMeter} />}
+              </div>
             )}
             {onRegenerate && (
               <button
@@ -255,12 +300,13 @@ export function GeneratedTimelineReveal({
               <button
                 type="button"
                 onClick={onToggleCollapse}
+                data-testid="timeline-collapse-toggle"
                 className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-white/10 text-white/60 text-xs hover:bg-white/5 touch-manipulation"
                 aria-expanded={!collapsed}
                 aria-label={collapsed ? 'Expand timeline' : 'Collapse timeline'}
               >
                 {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                <span className="hidden sm:inline">{collapsed ? 'Expand' : 'Collapse'}</span>
+                <span>{collapsed ? 'Expand' : 'Collapse'}</span>
               </button>
             )}
             {onClose && (

@@ -1,5 +1,7 @@
 import { createHash } from 'crypto';
 
+import { classifyBeliefSpeechAct } from './beliefs/beliefSpeechActClassifier';
+import { resolveBeliefSubject } from './beliefs/beliefSubjectResolver';
 import type { MemoryProposalInput, ProposalKind, RiskLevel, SensitivityLevel } from '../types/memoryReviewQueue';
 
 export type ProposalIntegrityDecision = {
@@ -28,7 +30,7 @@ export type ProposalIntegrityDecision = {
   };
 };
 
-const COMMAND_OR_META = /^(?:please\s+)?(?:show|tell|list|check|remember|recap|summari[sz]e|fix|update|delete|forget|can you|could you|do you|what do you|who (?:am|is|else)|did i|well i(?:'m| am) asking)\b/i;
+const COMMAND_OR_META = /^(?:please\s+)?(?:try again|retry|show|tell|list|check|remember|recap|summari[sz]e|fix|update|delete|forget|can you|could you|do you|what do you|who (?:am|is|else)|did i|well i(?:'m| am) asking)\b/i;
 const TEST_OR_UI = /\b(?:test(?:ing|ed)?|debug(?:ging)?|chat bubbles?|styling|ui|user interface|glow effect|api tokens?|something went wrong|memory can be saved)\b/i;
 const GREETING = /^(?:hi|hey|hello|yo|ok(?:ay)?)[!,.\s]*(?:there|again|here i am)?[!,.\s]*$/i;
 const GENERIC_SHELL = /^(?:(?:user|the user|person|they)\s+(?:has|uses|mentioned)\b.*\b(?:event|relationship|one professionally)\b|possible entity:)/i;
@@ -134,19 +136,46 @@ export function evaluateProposalIntegrity(input: {
   const metadata = input.metadata ?? {};
   const confidence = Math.max(0, Math.min(1, input.proposal.confidence ?? 0.6));
   const proposalKind = inferKind(claim, metadata);
-  const firstPerson = /^(?:i(?:'m| am)?|my)\b/i.test(claim);
-  const subject = String(metadata.subject_name ?? metadata.user_name ?? (firstPerson ? 'The user' : input.entityName ?? 'The user'));
+  const firstPerson = /^(?:(?:yeah|so|well|right now)\s+)?(?:i(?:'m| am)?|my)\b/i.test(claim)
+    || /^(?:(?:yeah|so|well|right now)\s+)?(?:i(?:'m| am)?|my)\b/i.test(source);
+  const subjectResolution = resolveBeliefSubject({
+    userId: input.userId,
+    userDisplayName: String(metadata.subject_name ?? metadata.user_name ?? 'The user'),
+    claimText: claim,
+    sourceText: source,
+    entityId: input.entityId,
+    entityName: input.entityName,
+    storyGroupLabel: String(metadata.group_label ?? metadata.story_title ?? ''),
+    metadata,
+  });
+  // Prefer resolved subject; never let story-group / entity label win over first-person.
+  const subject = firstPerson || subjectResolution.method === 'FIRST_PERSON'
+    ? subjectResolution.displayName
+    : String(metadata.subject_name ?? metadata.user_name ?? subjectResolution.displayName);
   const normalizedSummary = claim
     .replace(/^(?:user|the user)\s+/i, '')
     .replace(/^(?:(?:so|yeah|well|right now)\s+)?i(?:'m| am)\s+/i, `${subject} is `)
     .replace(/^(?:(?:so|yeah|well|right now)\s+)?i\s+/i, `${subject} `);
 
+  const speech = classifyBeliefSpeechAct(claim, source);
+
   let rejectionReason: string | undefined;
   if (!claim || claim.length < 8) rejectionReason = 'incomplete_fragment';
   else if (GREETING.test(source) || GREETING.test(claim)) rejectionReason = 'greeting';
-  else if (source.endsWith('?') || claim.endsWith('?')) rejectionReason = 'question_or_recall_request';
-  else if (COMMAND_OR_META.test(source) && !AUTOBIOGRAPHICAL_ACTION.test(claim)) rejectionReason = 'command_or_metaconversation';
-  else if (TEST_OR_UI.test(source) && !EVENT.test(claim)) rejectionReason = 'test_debug_or_ui_feedback';
+  else if (speech.speechAct === 'QUESTION' || source.endsWith('?') || claim.endsWith('?')) rejectionReason = 'question_or_recall_request';
+  else if (
+    speech.speechAct === 'COMMAND'
+    || speech.speechAct === 'REQUEST'
+    || speech.speechAct === 'CONVERSATIONAL_FILLER'
+    || (COMMAND_OR_META.test(source) && !AUTOBIOGRAPHICAL_ACTION.test(claim))
+  ) rejectionReason = 'command_or_metaconversation';
+  else if (
+    speech.speechAct === 'SYSTEM_FEEDBACK'
+    || speech.speechAct === 'PRODUCT_FEEDBACK'
+    || speech.speechAct === 'UI_FEEDBACK'
+    || speech.speechAct === 'ROLEPLAY'
+    || (TEST_OR_UI.test(source) && !EVENT.test(claim))
+  ) rejectionReason = 'test_debug_or_ui_feedback';
   else if (/^possible entity:\s*(?:tonight|today|tomorrow|yesterday)\s*\([^)]*\)/i.test(claim)) rejectionReason = 'invalid_temporal_entity';
   else if (GENERIC_SHELL.test(claim)) rejectionReason = 'generic_or_incomplete_proposal';
   else if ((RELATIONSHIP.test(claim) || /\b(?:met|saw|kissed|dated)\b/i.test(claim)) && UNRESOLVED_PRONOUN.test(claim) && !metadata.object_entity_id) rejectionReason = 'unresolved_relationship_endpoint';

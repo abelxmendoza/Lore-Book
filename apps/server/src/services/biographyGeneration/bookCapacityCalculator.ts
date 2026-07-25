@@ -2,6 +2,7 @@ import { logger } from '../../logger';
 import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
 import { contentAvailabilityService } from './contentAvailabilityService';
 import type { BiographySpec, BiographyDepth, Domain } from './types';
+import { constraintsForForm } from './lorebookForm';
 
 export interface BookCapacityEstimate {
   availableAtoms: number;
@@ -105,11 +106,12 @@ export class BookCapacityCalculator {
       // Estimate word count
       const estimatedWordCount = estimatedPages.recommended * wordsPerPage;
 
-      // Check if generation is possible
-      const canGenerate = availableAtoms >= this.MINIMUM_VIABLE.atoms;
+      // Check if generation is possible (form-aware floors for vignette/chapter/short_book)
+      const minAtoms = constraintsForForm(spec.form).minAtoms;
+      const canGenerate = availableAtoms >= minAtoms;
       const reason = canGenerate
         ? undefined
-        : `Insufficient content. Need at least ${this.MINIMUM_VIABLE.atoms} narrative atoms, but only have ${availableAtoms}.`;
+        : `Insufficient content. Need at least ${minAtoms} narrative atoms for this form, but only have ${availableAtoms}.`;
 
       // Generate recommendations
       const recommendations = this.generateRecommendations(
@@ -193,7 +195,8 @@ export class BookCapacityCalculator {
   async checkCanGenerate(userId: string, spec: BiographySpec): Promise<CapacityCheck> {
     try {
       const availableAtoms = await this.getAvailableAtomsForSpec(userId, spec);
-      const canGenerate = availableAtoms >= this.MINIMUM_VIABLE.atoms;
+      const minAtoms = constraintsForForm(spec.form).minAtoms;
+      const canGenerate = availableAtoms >= minAtoms;
       const atomsPerPage = this.ATOMS_PER_PAGE[spec.depth];
       const estimatedPages = this.estimatePages(availableAtoms, spec.depth);
 
@@ -208,7 +211,7 @@ export class BookCapacityCalculator {
         canGenerate,
         reason: canGenerate
           ? undefined
-          : `Need at least ${this.MINIMUM_VIABLE.atoms} atoms, but only have ${availableAtoms}`,
+          : `Need at least ${minAtoms} atoms for this form, but only have ${availableAtoms}`,
         estimatedPages,
         recommendations
       };

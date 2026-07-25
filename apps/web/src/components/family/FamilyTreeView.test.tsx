@@ -66,6 +66,18 @@ describe('inferEdges — explicit parent links', () => {
     const edges = inferEdges(members);
     expect(edges.some(e => e.from === 'ghost' || e.to === 'y' && e.from === 'y')).toBe(false);
   });
+
+  it('connects cousins to an aunt even when the aunt side is other', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'grace', generation: -1, relation: 'aunt', side: 'other' }),
+      m({ id: 'jerry', generation: 0, relation: 'cousin', side: 'maternal' }),
+      m({ id: 'james', generation: 0, relation: 'cousin', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'grace', to: 'jerry' });
+    expect(edges).toContainEqual({ from: 'grace', to: 'james' });
+  });
 });
 
 describe('FamilyTreeView — edit affordances', () => {
@@ -85,6 +97,17 @@ describe('FamilyTreeView — edit affordances', () => {
     expect(onExclude).toHaveBeenCalledTimes(1);
     expect(onExclude.mock.calls[0][0].id).toBe('char-1');
     expect(onEditRelationship).not.toHaveBeenCalled();
+  });
+
+  it('fires Move to Groups from the node menu', () => {
+    const onMoveToGroup = vi.fn();
+    render(<FamilyTreeView tree={tree} onMoveToGroup={onMoveToGroup} onExclude={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('node-menu-char-1'));
+    fireEvent.click(screen.getByTestId('move-to-group-char-1'));
+
+    expect(onMoveToGroup).toHaveBeenCalledTimes(1);
+    expect(onMoveToGroup.mock.calls[0][0].id).toBe('char-1');
   });
 
   it('does not render an edit menu for the self node', () => {

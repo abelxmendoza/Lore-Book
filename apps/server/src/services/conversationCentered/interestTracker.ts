@@ -5,6 +5,15 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { identityLedgerService } from '../identity/identityLedgerService';
+import {
+  mergeAttributionLinksIntoMetadata,
+  markCharacterDismissedInMetadata,
+  readDismissedCharacterIds,
+  restoreCharacterInMetadata,
+  readCharacterAttributions,
+} from './interestAttribution';
+import type { InterestSubjectLink, InterestSubjectResolution } from './interestSubjectResolver';
 
 import { interestDetector, type DetectedInterest, type InterestMention } from './interestDetector';
 
@@ -70,9 +79,18 @@ export class InterestTracker {
     entryId?: string,
     messageId?: string,
     relatedCharacterIds?: string[],
+    subjectResolution?: InterestSubjectResolution,
   ): Promise<string> {
     try {
       const normalizedName = interestDetector.normalizeInterestName(detected.interest_name);
+      const links: InterestSubjectLink[] = subjectResolution?.links ??
+        (relatedCharacterIds ?? []).map((characterId) => ({
+          characterId,
+          reason: 'explicit_attribution' as const,
+          stance: 'other_person' as const,
+          evidence: detected.evidence,
+        }));
+      const resolvedIds = subjectResolution?.relatedCharacterIds ?? relatedCharacterIds;
       
       // Check if interest already exists
       const { data: existing } = await supabaseAdmin
@@ -90,11 +108,35 @@ export class InterestTracker {
         // Update evidence quotes (keep last 10)
         const updatedQuotes = [...(existing.evidence_quotes || []), detected.evidence].slice(-10);
         const updatedSourceIds = [...new Set([...(existing.source_entry_ids || []), entryId].filter(Boolean))];
-        const mergedCharacterIds = [
-          ...new Set([...(existing.related_character_ids || []), ...(relatedCharacterIds ?? [])]),
-        ];
+        // First-person / about-user interests replace related_character_ids so family
+        // co-mentions cannot keep re-polluting the list. Third-person merges.
+        // Never re-attach characters the user explicitly dismissed from this interest.
+        const { isFirstPersonInterestText } = await import('./interestSubjectResolver');
+        const dismissedIds = new Set(readDismissedCharacterIds(existing.metadata));
+        const prevIds = (existing.related_character_ids as string[] | null) || [];
+        let nextCharacterIds = prevIds;
+        if (resolvedIds !== undefined) {
+          const replaceSubjects =
+            (subjectResolution
+              ? subjectResolution.isAboutUser &&
+                !subjectResolution.links.some((l) => l.stance === 'other_person')
+              : false) ||
+            isFirstPersonInterestText(detected.evidence, detected.context || '');
+          if (replaceSubjects) {
+            // Self / shared resolutions replace — never union ambient co-mentions.
+            nextCharacterIds = resolvedIds.filter((id) => !dismissedIds.has(id));
+          } else if (resolvedIds.length > 0) {
+            nextCharacterIds = [...new Set([...prevIds, ...resolvedIds])].filter(
+              (id) => !dismissedIds.has(id),
+            );
+          }
+        }
 
-        const { data: updated, error } = await supabaseAdmin
+        const nextMetadata = mergeAttributionLinksIntoMetadata(existing.metadata, links, {
+          sourceMessageId: messageId,
+        });
+
+        const { error } = await supabaseAdmin
           .from('interests')
           .update({
             mention_count: updatedMentionCount,
@@ -102,7 +144,8 @@ export class InterestTracker {
             last_mentioned_at: new Date().toISOString(),
             evidence_quotes: updatedQuotes,
             source_entry_ids: updatedSourceIds,
-            related_character_ids: mergedCharacterIds.length > 0 ? mergedCharacterIds : existing.related_character_ids,
+            related_character_ids: nextCharacterIds,
+            metadata: nextMetadata,
             updated_at: new Date().toISOString()
           })
           .eq('id', existing.id)
@@ -129,15 +172,36 @@ export class InterestTracker {
           influence_on_decision: detected.influence_on_decision || false,
           metadata: {
             knowledge_depth: detected.knowledge_depth,
-            context: detected.context
+            context: detected.context,
+            subject_links: links,
           }
         });
+
+        await this.auditInterestCharacterLinks(
+          userId,
+          existing.id,
+          normalizedName,
+          prevIds,
+          nextCharacterIds,
+          links,
+          messageId,
+        );
 
         // Recalculate interest level
         await this.updateInterestLevel(userId, existing.id);
 
         return existing.id;
       } else {
+        const initialIds = resolvedIds ?? [];
+        const initialMetadata = mergeAttributionLinksIntoMetadata(
+          {
+            initial_confidence: detected.confidence,
+            initial_sentiment: detected.sentiment,
+          },
+          links,
+          { sourceMessageId: messageId },
+        );
+
         // Create new interest
         const { data: newInterest, error } = await supabaseAdmin
           .from('interests')
@@ -158,13 +222,10 @@ export class InterestTracker {
             last_mentioned_at: new Date().toISOString(),
             evidence_quotes: [detected.evidence],
             source_entry_ids: entryId ? [entryId] : [],
-            related_character_ids: relatedCharacterIds ?? [],
+            related_character_ids: initialIds,
             description: detected.context,
             tags: detected.interest_category ? [detected.interest_category] : [],
-            metadata: {
-              initial_confidence: detected.confidence,
-              initial_sentiment: detected.sentiment
-            }
+            metadata: initialMetadata,
           })
           .select()
           .single();
@@ -189,9 +250,20 @@ export class InterestTracker {
           influence_on_decision: detected.influence_on_decision || false,
           metadata: {
             knowledge_depth: detected.knowledge_depth,
-            context: detected.context
+            context: detected.context,
+            subject_links: links,
           }
         });
+
+        await this.auditInterestCharacterLinks(
+          userId,
+          newInterest.id,
+          normalizedName,
+          [],
+          initialIds,
+          links,
+          messageId,
+        );
 
         // Calculate initial interest level
         await this.updateInterestLevel(userId, newInterest.id);
@@ -738,6 +810,177 @@ export class InterestTracker {
       confidence: row.confidence,
       evidence_count: row.evidence_count
     };
+  }
+
+  /**
+   * Remove a character from an interest's related_character_ids (does not delete
+   * the global interest — it remains in the user's growing hobby/interest list).
+   */
+  async unlinkCharacterFromInterest(
+    userId: string,
+    interestId: string,
+    characterId: string,
+    opts?: { reason?: string },
+  ): Promise<boolean> {
+    const { data: row, error } = await supabaseAdmin
+      .from('interests')
+      .select('id, interest_name, related_character_ids, metadata')
+      .eq('user_id', userId)
+      .eq('id', interestId)
+      .maybeSingle();
+    if (error || !row) return false;
+
+    const prev = (row.related_character_ids as string[] | null) ?? [];
+    const next = prev.filter((id) => id !== characterId);
+    const reason = opts?.reason ?? 'user_dismissed';
+    const nextMetadata = markCharacterDismissedInMetadata(row.metadata, characterId, reason);
+
+    if (next.length === prev.length) {
+      // Still persist dismissal so re-ingest cannot reattach.
+      const { error: metaError } = await supabaseAdmin
+        .from('interests')
+        .update({
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', interestId)
+        .eq('user_id', userId);
+      return !metaError;
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('interests')
+      .update({
+        related_character_ids: next,
+        metadata: nextMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', interestId)
+      .eq('user_id', userId);
+
+    if (!updateError) {
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: characterId,
+        entityType: 'character',
+        mutationType: 'ENTITY_UPDATED',
+        previousValue: { interestId, linked: true },
+        newValue: { interestId, linked: false },
+        reason: `Unlinked interest "${row.interest_name}" (${reason})`,
+        source: reason === 'user_dismissed' ? 'USER' : 'SYSTEM',
+        metadata: {
+          kind: 'interest_character_unlink',
+          interestId,
+          interestName: row.interest_name,
+          attributionReason: reason,
+          learned: true,
+        },
+      });
+    }
+
+    return !updateError;
+  }
+
+  /**
+   * Undo a dismiss: re-link the interest to the character and clear the
+   * "don't reattach" block so future chats can reinforce it again.
+   */
+  async relinkCharacterToInterest(
+    userId: string,
+    interestId: string,
+    characterId: string,
+  ): Promise<{ ok: boolean; interestName?: string }> {
+    const { data: row, error } = await supabaseAdmin
+      .from('interests')
+      .select('id, interest_name, related_character_ids, metadata')
+      .eq('user_id', userId)
+      .eq('id', interestId)
+      .maybeSingle();
+    if (error || !row) return { ok: false };
+
+    const prev = (row.related_character_ids as string[] | null) ?? [];
+    const next = prev.includes(characterId) ? prev : [...prev, characterId];
+    const prevAttr = readCharacterAttributions(row.metadata)[characterId];
+    const nextMetadata = restoreCharacterInMetadata(row.metadata, characterId, {
+      evidence: prevAttr?.evidence,
+      stance:
+        prevAttr?.stance && prevAttr.stance !== 'dismissed'
+          ? (prevAttr.stance as 'self' | 'other_person' | 'shared')
+          : 'other_person',
+      reason: 'user_restored',
+    });
+
+    const { error: updateError } = await supabaseAdmin
+      .from('interests')
+      .update({
+        related_character_ids: next,
+        metadata: nextMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', interestId)
+      .eq('user_id', userId);
+
+    if (!updateError) {
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: characterId,
+        entityType: 'character',
+        mutationType: 'ENTITY_UPDATED',
+        previousValue: { interestId, linked: false },
+        newValue: { interestId, linked: true, reason: 'user_restored' },
+        reason: `Restored interest "${row.interest_name}" on character`,
+        source: 'USER',
+        metadata: {
+          kind: 'interest_character_restore',
+          interestId,
+          interestName: row.interest_name,
+          attributionReason: 'user_restored',
+        },
+      });
+    }
+
+    return { ok: !updateError, interestName: row.interest_name as string };
+  }
+
+  private async auditInterestCharacterLinks(
+    userId: string,
+    interestId: string,
+    interestName: string,
+    prevIds: string[],
+    nextIds: string[],
+    links: InterestSubjectLink[],
+    messageId?: string,
+  ): Promise<void> {
+    const prev = new Set(prevIds);
+    const linkById = new Map(links.map((l) => [l.characterId, l]));
+    for (const characterId of nextIds) {
+      if (prev.has(characterId)) continue;
+      const link = linkById.get(characterId);
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: characterId,
+        entityType: 'character',
+        mutationType: 'ENTITY_UPDATED',
+        previousValue: { interestId, linked: false },
+        newValue: {
+          interestId,
+          linked: true,
+          stance: link?.stance ?? null,
+          reason: link?.reason ?? null,
+        },
+        reason: `Linked interest "${interestName}" (${link?.reason ?? 'attach'})`,
+        source: 'PIPELINE',
+        metadata: {
+          kind: 'interest_character_attach',
+          interestId,
+          interestName,
+          stance: link?.stance,
+          attributionReason: link?.reason,
+          evidence: link?.evidence,
+          sourceMessageId: messageId ?? null,
+        },
+      });
+    }
   }
 
   /**

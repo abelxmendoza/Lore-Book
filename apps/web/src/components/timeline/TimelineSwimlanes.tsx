@@ -15,6 +15,10 @@
 
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers, BookOpen } from 'lucide-react';
+import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
+import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
+import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
+import type { LorebookForm } from '../../lib/lorebookTiers';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
@@ -40,7 +44,12 @@ import {
   computeSubLanes,
   clusterEntries,
   clusterRangeLabel,
+  computeKnowledgeGaps,
+  knowledgeGapLabel,
+  readableArcWidthPx,
+  ARC_READABLE_MIN_PX,
   type EntryCluster,
+  type KnowledgeGap,
   type SubLaneMap,
 } from './swimlaneOverlap';
 
@@ -64,10 +73,12 @@ const TRACK_SHORT: Record<ArcTrack, string> = {
 };
 const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
-const ARC_MIN_W     = 6;    // px minimum rendered arc-bar width
+/** Soft floor so short eras stay readable / tappable (calendar truth preserved). */
+const ARC_MIN_W     = ARC_READABLE_MIN_PX;
 const CLUSTER_PX    = 52;   // px — memory markers closer than this merge into a cluster
 const MIN_ZOOM      = 0.3;
 const MAX_ZOOM      = 8;
+const DENSE_ZOOM    = 2.4;  // ~px/day ≈ 7 — good for months-ago storytelling
 const TRACK_ORDER: ArcTrack[] = ['career', 'romance', 'relationships', 'creative', 'health', 'inner', 'mixed'];
 
 // Sub-lane layout + memory clustering live in ./swimlaneOverlap (unit-tested).
@@ -129,13 +140,16 @@ interface ArcBarProps {
 const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: ArcBarProps) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c = TRACK_COLORS[track];
-  const displayWidth = Math.max(ARC_MIN_W, width);
+  const displayWidth = readableArcWidthPx(width, ARC_MIN_W);
   const isStoryArc = isNarrativeConsolidationArc(arc);
+  const padded = displayWidth > width + 1;
 
   return (
     <button
       type="button"
-      title={`${arc.title}${arc.summary ? `\n${arc.summary}` : ''}`}
+      title={`${arc.title}${arc.summary ? `\n${arc.summary}` : ''}${
+        padded ? '\n(Short span — shown larger for readability)' : ''
+      }`}
       onMouseEnter={() => onHover(arc)}
       onMouseLeave={() => onHover(null)}
       onClick={() => onClick(arc)}
@@ -154,7 +168,7 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: Arc
       className={`rounded-md border ${c.bg} ${isStoryArc ? 'border-dashed border-amber-400/50' : c.border} hover:brightness-125 transition-all group cursor-pointer`}
     >
       {/* Arc title — only shown if bar is wide enough */}
-      {displayWidth > 80 && (
+      {displayWidth >= ARC_MIN_W && (
         <span className={`absolute inset-0 flex items-center px-2 text-[11px] font-medium truncate ${c.text} pointer-events-none`}>
           {arc.title}
         </span>
@@ -166,6 +180,41 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: Arc
     </button>
   );
 };
+
+function KnowledgeGapBar({
+  gap,
+  x,
+  width,
+  subLane,
+}: {
+  gap: KnowledgeGap;
+  x: number;
+  width: number;
+  subLane: number;
+}) {
+  if (width < 10) return null;
+  const label = knowledgeGapLabel(gap.days);
+  return (
+    <div
+      data-testid="swimlane-knowledge-gap"
+      title={`${label} — a good place to tell stories from the past`}
+      style={{
+        position: 'absolute',
+        left: x,
+        width: Math.max(10, width),
+        top: arcBarTop(subLane) + 6,
+        height: ARC_BAR_H - 12,
+      }}
+      className="rounded-md border border-dashed border-white/15 bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(255,255,255,0.04)_4px,rgba(255,255,255,0.04)_8px)] pointer-events-auto"
+    >
+      {width > 96 && (
+        <span className="absolute inset-0 flex items-center justify-center px-2 text-[9px] sm:text-[10px] text-white/35 truncate font-medium tracking-wide">
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface MemEventProps {
   entry: ChronologyEntry;
@@ -306,7 +355,13 @@ interface TimelineSwimlanesProps {
   entries: ChronologyEntry[];
   loading: boolean;
   onOpenArcTimeline?: (arc: LifeArc) => void;
-  onCreateLorebook?: (arc: LifeArc) => void;
+  onCreateLorebook?: (arc: LifeArc, form?: LorebookForm) => void;
+  /** Optional readiness gate — when false, Create LoreBook is shown disabled. */
+  canCreateLorebookForArc?: (arc: LifeArc) => {
+    canCreate: boolean;
+    reason: string;
+    meter?: LorebookContentMeterModel;
+  };
 }
 
 export const TimelineSwimlanes = ({
@@ -316,6 +371,7 @@ export const TimelineSwimlanes = ({
   loading,
   onOpenArcTimeline,
   onCreateLorebook,
+  canCreateLorebookForArc,
 }: TimelineSwimlanesProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
@@ -383,6 +439,21 @@ export const TimelineSwimlanes = ({
     return result;
   }, [arcsByTrack, ppd, visibleTracks]);
 
+  // Calendar silences between arcs — rendered as knowledge-gap chrome.
+  const gapsByTrack = useMemo(() => {
+    const rangeStartMs = timelineStart.getTime();
+    const rangeEndMs = today.getTime();
+    const result: Partial<Record<ArcTrack, KnowledgeGap[]>> = {};
+    for (const track of visibleTracks) {
+      result[track] = computeKnowledgeGaps(arcsByTrack[track] ?? [], {
+        rangeStartMs,
+        rangeEndMs,
+        now: rangeEndMs,
+      });
+    }
+    return result;
+  }, [arcsByTrack, timelineStart, today, visibleTracks]);
+
   // ── Memory marker clustering (overlap merging at current zoom) ──────────────
   const entryClusters = useMemo(
     () => clusterEntries(sortedEntries, xOf, CLUSTER_PX),
@@ -427,6 +498,20 @@ export const TimelineSwimlanes = ({
     if (!el || totalDays <= 0) return;
     setZoomAnchored((el.clientWidth - 60) / (totalDays * BASE_PPD));
   };
+  /** Zoom so ~1 year fills the viewport and scroll near today — good for months-ago stories. */
+  const zoomThisYear = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const next = (el.clientWidth - 60) / (365 * BASE_PPD);
+    // Anchor near “today” so recent/past-year context is in view.
+    pendingZoomAnchor.current = {
+      days: Math.max(0, totalDays - 40),
+      viewportX: el.clientWidth * 0.85,
+    };
+    setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +next.toFixed(2))));
+  };
+  /** Dense zoom for reading short eras and spotting knowledge gaps. */
+  const zoomDense = () => setZoomAnchored(DENSE_ZOOM);
 
   // Re-apply the anchor once the canvas has been laid out at the new zoom.
   useEffect(() => {
@@ -536,6 +621,19 @@ export const TimelineSwimlanes = ({
 
   return (
     <div className="timeline-swimlanes-root flex flex-col bg-black relative w-full min-h-[280px]">
+      {onCreateLorebook && arcs.length > 0 && (
+        <div
+          className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-amber-500/20 bg-amber-500/5 text-[11px] sm:text-xs text-amber-100/80 flex items-start gap-2"
+          data-testid="swimlanes-lorebook-hint"
+        >
+          <BookOpen className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-300/90" />
+          <p>
+            Select a life arc to open its timeline or compile a{' '}
+            <span className="text-amber-200 font-medium">LoreBook</span> when there’s enough
+            content about that subject or domain.
+          </p>
+        </div>
+      )}
       {/* ── Zoom controls — toolbar on desktop, FAB on mobile ─────────── */}
       {isMobile ? (
         <div className="absolute right-3 bottom-3 z-20 flex flex-col gap-1.5 pointer-events-none">
@@ -557,14 +655,38 @@ export const TimelineSwimlanes = ({
             </button>
             <button type="button" onClick={zoomFit}
               className="w-10 h-10 rounded-xl text-white/60 active:bg-white/10 flex items-center justify-center touch-manipulation"
-              aria-label="Fit entire timeline">
+              aria-label="Fit entire timeline" title="Fit life">
               <Maximize2 className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={zoomThisYear}
+              className="w-10 h-10 rounded-xl text-[9px] font-medium text-white/55 active:bg-white/10 touch-manipulation"
+              aria-label="This year" title="This year">
+              1Y
+            </button>
+            <button type="button" onClick={zoomDense}
+              className="w-10 h-10 rounded-xl text-[9px] font-medium text-white/55 active:bg-white/10 touch-manipulation"
+              aria-label="Dense zoom" title="Dense — better for short eras & gaps">
+              Dense
             </button>
           </div>
         </div>
       ) : (
         <div className="flex-shrink-0 flex items-center justify-end gap-1 px-4 py-2 border-b border-white/6">
           <span className="text-[11px] text-white/20 mr-3 hidden lg:inline">⌘/Ctrl + scroll to zoom</span>
+          <div className="flex items-center gap-1 mr-2">
+            <button type="button" onClick={zoomFit} title="Fit life"
+              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
+              Fit life
+            </button>
+            <button type="button" onClick={zoomThisYear} title="Zoom to about one year near today"
+              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
+              This year
+            </button>
+            <button type="button" onClick={zoomDense} title="Dense zoom — short eras & knowledge gaps"
+              className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-[11px]">
+              Dense
+            </button>
+          </div>
           <span className="text-xs text-white/25 font-mono mr-2">{zoom.toFixed(1)}×</span>
           <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out" title="Zoom out"
             className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
@@ -577,10 +699,6 @@ export const TimelineSwimlanes = ({
           <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in"
             className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
             <ZoomIn className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={zoomFit} title="Fit entire timeline"
-            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition flex items-center justify-center">
-            <Maximize2 className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
@@ -685,6 +803,20 @@ export const TimelineSwimlanes = ({
                   style={{ top: rowTop, height: rowH }}
                 >
                   <div className={`absolute inset-0 ${rowIdx % 2 === 0 ? 'bg-white/[0.015]' : ''}`} />
+
+                  {(gapsByTrack[track] ?? []).map((gap) => {
+                    const x = xOf(new Date(gap.startMs));
+                    const w = xOf(new Date(gap.endMs)) - x;
+                    return (
+                      <KnowledgeGapBar
+                        key={gap.key}
+                        gap={gap}
+                        x={x}
+                        width={w}
+                        subLane={0}
+                      />
+                    );
+                  })}
 
                   {trackArcs.map(arc => {
                     if (!arc.start_date) return null;
@@ -842,17 +974,55 @@ export const TimelineSwimlanes = ({
                     </button>
                   )}
                   {onCreateLorebook && selectedArc.start_date && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateLorebook(selectedArc);
-                        setSelectedArc(null);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-sm font-semibold active:bg-amber-500/25"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      Create LoreBook
-                    </button>
+                    <div className="flex-1 flex flex-col gap-1.5 items-center">
+                      {canCreateLorebookForArc?.(selectedArc).meter?.tierOffer ? (
+                        <div className="w-full flex justify-center rounded-xl bg-amber-500/15 border border-amber-500/40 py-2.5 px-3">
+                          <LorebookTierMenu
+                            tierOffer={canCreateLorebookForArc(selectedArc).meter!.tierOffer!}
+                            buttonLabel="Create LoreBook"
+                            forceEnable={
+                              canCreateLorebookForArc(selectedArc).canCreate &&
+                              !canCreateLorebookForArc(selectedArc).meter!.tierOffer!.canCreateAny
+                            }
+                            onSelectForm={(form) => {
+                              onCreateLorebook(selectedArc, form);
+                              setSelectedArc(null);
+                            }}
+                            subjectLabel={selectedArc.title}
+                            testId="swimlane-mobile-lorebook-tier-menu"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={
+                            canCreateLorebookForArc
+                              ? !canCreateLorebookForArc(selectedArc).canCreate
+                              : false
+                          }
+                          onClick={() => {
+                            if (
+                              canCreateLorebookForArc &&
+                              !canCreateLorebookForArc(selectedArc).canCreate
+                            ) {
+                              return;
+                            }
+                            onCreateLorebook(selectedArc);
+                            setSelectedArc(null);
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-sm font-semibold active:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Create LoreBook
+                        </button>
+                      )}
+                      {canCreateLorebookForArc?.(selectedArc).meter && (
+                        <div className="flex justify-center">
+                          <LorebookContentMeter
+                            meter={canCreateLorebookForArc(selectedArc).meter!}
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : undefined
@@ -993,15 +1163,44 @@ export const TimelineSwimlanes = ({
               </button>
             )}
             {onCreateLorebook && selectedArc.start_date && (
-              <button
-                type="button"
-                onClick={() => onCreateLorebook(selectedArc)}
-                title="Generate a LoreBook covering this arc's time range"
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium hover:bg-amber-500/25 transition-colors min-h-[44px]"
-              >
-                <BookOpen className="h-3.5 w-3.5" />
-                Create LoreBook
-              </button>
+              <div className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 pl-3 pr-2 py-1.5 min-h-[44px]">
+                {canCreateLorebookForArc?.(selectedArc).meter?.tierOffer ? (
+                  <LorebookTierMenu
+                    tierOffer={canCreateLorebookForArc(selectedArc).meter!.tierOffer!}
+                    forceEnable={
+                      canCreateLorebookForArc(selectedArc).canCreate &&
+                      !canCreateLorebookForArc(selectedArc).meter!.tierOffer!.canCreateAny
+                    }
+                    onSelectForm={(form) => onCreateLorebook(selectedArc, form)}
+                    subjectLabel={selectedArc.title}
+                    testId="swimlane-lorebook-tier-menu"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      canCreateLorebookForArc
+                        ? !canCreateLorebookForArc(selectedArc).canCreate
+                        : false
+                    }
+                    onClick={() => {
+                      if (
+                        canCreateLorebookForArc &&
+                        !canCreateLorebookForArc(selectedArc).canCreate
+                      ) {
+                        return;
+                      }
+                      onCreateLorebook(selectedArc);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-amber-300 text-xs font-medium hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    LoreBook
+                  </button>
+                )}
+                {canCreateLorebookForArc?.(selectedArc).meter && (
+                  <LorebookContentMeter meter={canCreateLorebookForArc(selectedArc).meter!} />
+                )}
+              </div>
             )}
             <button
               type="button"

@@ -48,4 +48,27 @@ describe('ChatFocusChipBar', () => {
     const bar = screen.getByTestId('chat-focus-chip-bar');
     expect(bar.className).toMatch(/animate-romantic-enter/);
   });
+
+  it('renders an organization focus chip with groups source labeling', () => {
+    render(
+      <ChatFocusChipBar
+        focus={{
+          ...baseFocus,
+          entityId: 'org-1',
+          entityName: 'Northwind Crew',
+          entityType: 'organization',
+          sourceSurface: 'organizations',
+          sourceLabel: 'Groups & Organizations',
+          relationshipId: undefined,
+          knowledgeScope: 'what the group is, who is in it, and how it fits your life',
+          baseline: undefined,
+          sessionStats: emptyChatFocusSessionStats(),
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/Northwind Crew/)).toBeInTheDocument();
+    expect(screen.getByText(/Groups & Organizations/)).toBeInTheDocument();
+  });
 });

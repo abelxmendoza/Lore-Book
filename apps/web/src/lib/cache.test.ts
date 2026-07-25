@@ -43,6 +43,19 @@ describe('apiCache', () => {
     expect(apiCache.get('b')).toBeNull();
   });
 
+  it('deletePattern also drops matching in-flight GETs', async () => {
+    let resolveInflight!: (v: unknown) => void;
+    const pending = new Promise((resolve) => {
+      resolveInflight = resolve;
+    });
+    apiCache.trackInflight('GET:/api/organizations/by-character?character_id=1:', pending);
+    expect(apiCache.getInflight('GET:/api/organizations/by-character?character_id=1:')).toBe(pending);
+
+    apiCache.deletePattern(/\/api\/organizations\/by-character/);
+    expect(apiCache.getInflight('GET:/api/organizations/by-character?character_id=1:')).toBeNull();
+    resolveInflight({});
+  });
+
   it('deletePattern with string regex', () => {
     apiCache.set('GET:/api/a:1', 1);
     apiCache.set('GET:/api/b:2', 2);

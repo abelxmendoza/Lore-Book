@@ -32,6 +32,8 @@ export type Domain =
 export type BiographyTone = 'neutral' | 'dramatic' | 'reflective' | 'mythic' | 'professional';
 export type BiographyDepth = 'summary' | 'detailed' | 'epic';
 export type BiographyAudience = 'self' | 'public' | 'professional';
+/** Document shape tier — independent of prose depth. */
+export type BiographyForm = 'vignette' | 'chapter' | 'short_book' | 'book' | 'epic';
 
 /**
  * NarrativeAtom - Lowest-level narrative unit (AST node)
@@ -91,6 +93,11 @@ export interface BiographySpec {
   depth: BiographyDepth;
   audience: BiographyAudience;
   includeIntrospection: boolean;
+  /**
+   * Document shape tier (vignette / chapter / short_book / book / epic).
+   * Defaults to `book` when omitted for backward compatibility.
+   */
+  form?: BiographyForm;
   version?: 'main' | 'safe' | 'explicit' | 'private'; // Build flag for content filtering
   themes?: string[]; // Optional theme filters
   peopleIds?: string[]; // Optional people filters
@@ -362,6 +369,8 @@ export interface Biography {
     isCoreLorebook?: boolean; // Saved canonical edition vs ephemeral query
     lorebookName?: string; // User-given name for Core Lorebooks
     lorebookVersion?: number; // Version number for Core Lorebooks
+    /** Document shape tier used for this compile */
+    form?: BiographyForm;
     atomHashes?: string[]; // Reference hashes to NarrativeAtoms used
     memorySnapshotAt?: string; // When memory was queried (ISO date)
     // Enhanced metadata

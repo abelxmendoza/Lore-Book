@@ -68,4 +68,63 @@ describe('EntityResolutionService', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('findCandidates', () => {
+    const primaryEntities = [
+      {
+        entity_id: 'c1',
+        primary_name: 'Derrik Halvorsen',
+        aliases: [],
+        entity_type: 'CHARACTER' as const,
+        confidence: 1,
+        usage_count: 5,
+        last_seen: new Date().toISOString(),
+        source_table: 'characters',
+        is_user_visible: true,
+        resolution_tier: 'PRIMARY' as const,
+      },
+      {
+        entity_id: 'c2',
+        primary_name: 'Derrik Chen',
+        aliases: ['D.C.'],
+        entity_type: 'CHARACTER' as const,
+        confidence: 1,
+        usage_count: 1,
+        last_seen: new Date().toISOString(),
+        source_table: 'characters',
+        is_user_visible: true,
+        resolution_tier: 'PRIMARY' as const,
+      },
+    ];
+
+    beforeEach(() => {
+      vi.spyOn(entityResolutionService, 'listEntities').mockResolvedValue(primaryEntities);
+    });
+
+    it('ranks an exact name match first via the canonical resolver', async () => {
+      const result = await entityResolutionService.findCandidates('user-1', 'Derrik Halvorsen');
+
+      expect(result[0]?.entity_id).toBe('c1');
+    });
+
+    it('resolves an alias match', async () => {
+      const result = await entityResolutionService.findCandidates('user-1', 'D.C.');
+
+      expect(result.some((c) => c.entity_id === 'c2')).toBe(true);
+    });
+
+    it('respects the limit option', async () => {
+      const result = await entityResolutionService.findCandidates('user-1', 'Derrik', { limit: 1 });
+
+      expect(result.length).toBeLessThanOrEqual(1);
+    });
+
+    it('returns an empty array when no candidates are ambiguous enough to match', async () => {
+      vi.spyOn(entityResolutionService, 'listEntities').mockResolvedValue([]);
+
+      const result = await entityResolutionService.findCandidates('user-1', 'Nobody');
+
+      expect(result).toEqual([]);
+    });
+  });
 });

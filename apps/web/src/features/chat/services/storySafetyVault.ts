@@ -1,3 +1,5 @@
+import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
+
 const VAULT_KEY = 'lorekeeper.storySafetyVault.v1';
 const DRAFT_PREFIX = 'lorekeeper.composerDraft.v1';
 const RECOVERY_EVENT = 'lorekeeper:story-recovery-requested';
@@ -62,9 +64,26 @@ export function saveComposerDraft(ownerId: string, threadId: string | undefined,
 export function readComposerDraft(ownerId: string, threadId?: string): string {
   if (!storageAvailable()) return '';
   try {
-    return window.localStorage.getItem(draftKey(ownerId, threadId)) ?? '';
+    const key = draftKey(ownerId, threadId);
+    const raw = window.localStorage.getItem(key) ?? '';
+    const scrubbed = scrubLegacyComposerPrefill(raw);
+    if (scrubbed !== raw) {
+      if (scrubbed.trim()) window.localStorage.setItem(key, scrubbed);
+      else window.localStorage.removeItem(key);
+    }
+    return scrubbed;
   } catch {
     return '';
+  }
+}
+
+/** Drop a stuck draft for this thread (e.g. modal → chat with empty prefill). */
+export function clearComposerDraft(ownerId: string, threadId?: string): void {
+  if (!storageAvailable()) return;
+  try {
+    window.localStorage.removeItem(draftKey(ownerId, threadId));
+  } catch {
+    // best-effort
   }
 }
 

@@ -26,4 +26,20 @@ describe('UnknownField', () => {
     render(<UnknownField label="Role" compact />);
     expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
+
+  it('prefers onActivate over chat and stops card click bubbling', () => {
+    const onActivate = vi.fn();
+    const onAsk = vi.fn();
+    const parentClick = vi.fn();
+    render(
+      <div onClick={parentClick}>
+        <UnknownField label="Role" compact onActivate={onActivate} onAskInChat={onAsk} actionHint="click to set" />
+      </div>,
+    );
+    fireEvent.click(screen.getByTestId('unknown-field'));
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(onAsk).not.toHaveBeenCalled();
+    expect(parentClick).not.toHaveBeenCalled();
+    expect(screen.getByTitle(/Role is not in your record yet — click to set/i)).toBeInTheDocument();
+  });
 });

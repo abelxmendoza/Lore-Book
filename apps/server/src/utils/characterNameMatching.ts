@@ -55,19 +55,35 @@ const RELATIONAL_NOUNS = new Set<string>([
   'fling', 'crush', 'acquaintance', 'contact', 'associate', 'rival', 'enemy',
   'nemesis', 'fan', 'follower', 'guest', 'host', 'sponsor', 'coach', 'trainer',
   'doctor', 'therapist', 'lawyer', 'agent', 'driver', 'barber', 'stylist',
+  'worker', 'nurse', 'aide', 'caregiver', 'carer', 'counselor', 'counsellor',
+  'recruiter', 'social worker', 'case worker', 'care worker',
 ]);
 
+/** Multi-word professional roles matched before single-token heads. */
+const MULTI_WORD_RELATIONS = [
+  'social worker',
+  'case worker',
+  'care worker',
+] as const;
+
 export type RelationalPlaceholder = {
-  /** Head relational noun, e.g. "friend". */
+  /** Head relational noun, e.g. "friend" or "social worker". */
   relation: string;
   /** The named person referenced, e.g. "Shyla". */
   anchor: string;
 };
 
-/** True when the last token of a relation phrase is a known relational noun. */
+/** True when the relation phrase ends in a known relational noun (incl. multi-word). */
 function relationHead(phrase: string): string | null {
-  const tokens = phrase.toLowerCase().replace(PUNCTUATION_RE, ' ').split(/\s+/).filter(Boolean);
+  const normalized = phrase.toLowerCase().replace(PUNCTUATION_RE, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  for (const multi of MULTI_WORD_RELATIONS) {
+    if (normalized === multi || normalized.endsWith(` ${multi}`)) return multi;
+  }
+  const tokens = normalized.split(/\s+/).filter(Boolean);
   const head = tokens[tokens.length - 1];
+  // Bare "worker" alone is too generic — require a care/social qualifier token.
+  if (head === 'worker' && !/\b(?:social|case|care)\b/.test(normalized)) return null;
   return head && RELATIONAL_NOUNS.has(head) ? head : null;
 }
 

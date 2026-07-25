@@ -8,8 +8,10 @@ type Props = {
   viewMode: CardViewMode;
   onViewModeChange: (mode: CardViewMode) => void;
   /** Plain-text payload for "Copy all" (list + metadata). */
-  copyText: string;
+  copyText?: string;
   copyDisabled?: boolean;
+  /** When false, only grid/list toggles are shown. */
+  showCopy?: boolean;
   copyLabel?: string;
   className?: string;
   storageKey?: string;
@@ -18,8 +20,9 @@ type Props = {
 export function GridListViewToolbar({
   viewMode,
   onViewModeChange,
-  copyText,
+  copyText = '',
   copyDisabled,
+  showCopy = true,
   copyLabel = 'Copy all',
   className = '',
   storageKey,
@@ -81,20 +84,22 @@ export function GridListViewToolbar({
           <LayoutList className="h-3.5 w-3.5" />
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => void copyAll()}
-        disabled={copyDisabled || !copyText.trim()}
-        title="Copy the whole list and its metadata as plain text"
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-40 ${
-          copied
-            ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-            : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
-        }`}
-      >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied ? 'Copied' : copyLabel}
-      </button>
+      {showCopy && (
+        <button
+          type="button"
+          onClick={() => void copyAll()}
+          disabled={copyDisabled || !copyText.trim()}
+          title="Copy the current filtered list and its metadata as plain text"
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-40 ${
+            copied
+              ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+              : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
+          }`}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? 'Copied' : copyLabel}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Heart, User, MoreVertical, AlertTriangle, Pencil, UserMinus, Trash2, Check } from 'lucide-react';
+import { Heart, User, MoreVertical, AlertTriangle, Pencil, UserMinus, Trash2, Check, Building2 } from 'lucide-react';
 import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 
@@ -11,6 +11,8 @@ interface FamilyTreeViewProps {
   onEditRelationship?: (member: FamilyMember) => void;
   /** Remove from the tree but keep the character. */
   onExclude?: (member: FamilyMember) => void;
+  /** Move a mis-filed collective / non-kin into Groups & Organizations. */
+  onMoveToGroup?: (member: FamilyMember) => void;
   /** Delete the character entirely — it shouldn't be a character. */
   onDelete?: (member: FamilyMember) => void;
   /** Confirm a flagged member is really family (clears the review flag). */
@@ -228,9 +230,22 @@ export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: s
       );
       if (shared) edges.push({ from: shared.id, to: member.id });
     } else if (member.relation === 'cousin') {
-      const aunt = parents.find(
-        p => (p.relation === 'aunt' || p.relation === 'uncle') && p.side === member.side,
-      );
+      const aunt =
+        parents.find(
+          p =>
+            (p.relation === 'aunt' || p.relation === 'uncle') &&
+            p.side &&
+            member.side &&
+            p.side === member.side,
+        ) ??
+        // Aunt/uncle often land in side "other" while cousins are maternal —
+        // still connect when there's only one matching-generation aunt/uncle
+        // or the child's explicit parent_id already points at them.
+        parents.find(
+          p =>
+            (p.relation === 'aunt' || p.relation === 'uncle') &&
+            (!p.side || p.side === 'other' || !member.side || member.side === 'other'),
+        );
       if (aunt) edges.push({ from: aunt.id, to: member.id });
     } else if (member.relation !== 'related') {
       // Generic fallback: match by side
@@ -335,6 +350,7 @@ const NodeWithActions = ({
   onNodeRef,
   onEditRelationship,
   onExclude,
+  onMoveToGroup,
   onDelete,
   onKeep,
 }: {
@@ -344,11 +360,15 @@ const NodeWithActions = ({
   onNodeRef?: (id: string, el: HTMLButtonElement | null) => void;
   onEditRelationship?: (m: FamilyMember) => void;
   onExclude?: (m: FamilyMember) => void;
+  onMoveToGroup?: (m: FamilyMember) => void;
   onDelete?: (m: FamilyMember) => void;
   onKeep?: (m: FamilyMember) => void;
 }) => {
   const [open, setOpen] = useState(false);
-  const editable = !member.is_self && !member.is_placeholder && Boolean(onEditRelationship || onExclude || onDelete);
+  const editable =
+    !member.is_self &&
+    !member.is_placeholder &&
+    Boolean(onEditRelationship || onExclude || onMoveToGroup || onDelete);
   const flagged = Boolean(member.needs_review) && !member.is_self && !member.is_placeholder;
 
   return (
@@ -410,6 +430,17 @@ const NodeWithActions = ({
                 <UserMinus className="h-3.5 w-3.5" /> Remove from family
               </button>
             )}
+            {onMoveToGroup && (
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`move-to-group-${member.id}`}
+                onClick={() => { setOpen(false); onMoveToGroup(member); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-violet-200 hover:bg-violet-500/15"
+              >
+                <Building2 className="h-3.5 w-3.5" /> Move to Groups
+              </button>
+            )}
             {onDelete && (
               <button
                 type="button"
@@ -466,6 +497,7 @@ export const FamilyTreeView = ({
   compact = false,
   onEditRelationship,
   onExclude,
+  onMoveToGroup,
   onDelete,
   onKeep,
 }: FamilyTreeViewProps) => {
@@ -628,6 +660,7 @@ export const FamilyTreeView = ({
                   onNodeRef={handleNodeRef}
                   onEditRelationship={onEditRelationship}
                   onExclude={onExclude}
+                  onMoveToGroup={onMoveToGroup}
                   onDelete={onDelete}
                   onKeep={onKeep}
                 />

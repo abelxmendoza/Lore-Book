@@ -73,6 +73,31 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
     [runEdit],
   );
 
+  /** Mis-filed collective (e.g. "popular e girls") → Groups & Organizations book. */
+  const moveMemberToGroup = useCallback(
+    (member: FamilyMember) => {
+      const ok =
+        typeof window === 'undefined'
+          ? true
+          : window.confirm(
+              `Move "${member.name}" to Groups & Organizations? They leave the family tree and become a group card.`,
+            );
+      if (!ok) return;
+      void runEdit(
+        async () => {
+          await fetchJson(`/api/characters/${member.id}/reclassify`, {
+            method: 'POST',
+            body: JSON.stringify({ targetDomain: 'organization' }),
+          });
+          dispatchStoryDataUpdated({ scopes: ['family', 'organizations', 'characters'] });
+        },
+        `Moved ${member.name} to Groups & Organizations`,
+        `Couldn't move ${member.name} to Groups`,
+      );
+    },
+    [runEdit],
+  );
+
   const keepMember = useCallback(
     (member: FamilyMember) =>
       runEdit(
@@ -102,6 +127,7 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
     ? {
         onEditRelationship: (m: FamilyMember) => setEditorMember(m),
         onExclude: (m: FamilyMember) => void excludeMember(m),
+        onMoveToGroup: (m: FamilyMember) => void moveMemberToGroup(m),
         onDelete: (m: FamilyMember) => void deleteMember(m),
         onKeep: (m: FamilyMember) => void keepMember(m),
       }

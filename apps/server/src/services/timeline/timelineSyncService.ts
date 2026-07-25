@@ -257,11 +257,14 @@ export class TimelineSyncService {
       normalizeProjectEvent({
         id: project.id,
         name: project.name,
-        date: project.start_date || project.created_at,
-        type: project.type || 'custom',
-        description: project.description,
+        date: project.started_at || project.start_date || project.created_at,
+        type: project.status === 'completed' ? 'completion' : project.type || 'custom',
+        description: project.description || project.summary || undefined,
         tags: project.tags,
-        metadata: project.metadata
+        metadata: {
+          ...(project.metadata ?? {}),
+          project_status: project.status,
+        },
       })
     );
   }

@@ -51,6 +51,7 @@ import {
   buildDisplayTitleFromMention,
   shouldAllowCharacterCreation,
 } from './identity/dynamicCharacterTitleService';
+import { decomposePersonIntro } from './identity/personIntroDecomposition';
 import { filterSelfCandidatesForIncoming } from './identity/selfIdentityGuard';
 
 import { characterAuthorityService } from './characterAuthorityService';
@@ -127,9 +128,10 @@ class CharacterRegistry {
 
     // Strip descriptive clauses: "Dana who's handling onboarding" → "Dana"
     name = name.replace(/\s{1,40}(?:who(?:'s|’s|se)?|whom|that|which)\b.*$/i, '').trim();
-    // Strip comma appositives: "Adrian Patel, My Coding Mentor" → "Adrian Patel"
-    const commaIdx = name.indexOf(',');
-    if (commaIdx !== -1) name = name.slice(0, commaIdx).trim();
+    // Decompose intro contamination: "Jessica, Juan's Social Worker" → "Jessica"
+    // (role/anchor are not part of the canonical name — see personIntroDecomposition)
+    const decomp = decomposePersonIntro(name);
+    if (decomp.canonicalName) name = decomp.canonicalName;
     // Strip leading articles
     name = name.replace(/^(?:the|a|an)\s+/i, '').trim();
     // Strip trailing role descriptors: "Reese the Recruiter" → "Reese",

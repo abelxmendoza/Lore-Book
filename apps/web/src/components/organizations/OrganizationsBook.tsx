@@ -22,10 +22,14 @@ import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
 import { GroupMergePanel } from '../groups/GroupMergePanel';
+import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { buildOrganizationBookClipboardText } from '../../lib/organizationBookClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { fetchOrganizationById } from '../../lib/hydrateBookEntity';
@@ -50,6 +54,13 @@ import {
   formatSubcategory,
   type OrganizationCategory,
 } from '../../lib/groupTypes';
+import {
+  ORGANIZATION_STANCE_LABELS,
+  ORGANIZATION_STANCE_HINTS,
+  organizationMatchesStance,
+  countOrganizationsByStance,
+  type OrganizationStance,
+} from '../../lib/organizationStance';
 
 type SortOption =
   | 'importance_desc'
@@ -1020,7 +1031,11 @@ export const OrganizationsBook: React.FC = () => {
     refetch: refetchOrganizations,
   } = useOrganizationsBookData();
   const [error, setError] = useState<string | null>(null);
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  /** Your relationship lens — Mine / Close to / Their world / Mentioned. */
+  const [activeStance, setActiveStance] = useState<OrganizationStance | 'all'>('mine');
   const [activeCategory, setActiveCategory] = useState<OrganizationCategory>('all');
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1179,6 +1194,20 @@ export const OrganizationsBook: React.FC = () => {
   // Categories derived from canonical group_type field
   const availableCategories = useMemo((): OrganizationCategory[] => ORGANIZATION_CATEGORIES, []);
 
+  const stanceCounts = useMemo(() => {
+    const topLevel = organizations.filter((org) => isTopLevelGroup(org) && !isEventGroup(org));
+    return countOrganizationsByStance(topLevel);
+  }, [organizations]);
+
+  // First paint only: if Mine is empty, open All so the book isn't a blank page.
+  const didAutoStanceRef = useRef(false);
+  useEffect(() => {
+    if (didAutoStanceRef.current) return;
+    if (stanceCounts.all === 0) return;
+    didAutoStanceRef.current = true;
+    if (stanceCounts.mine === 0) setActiveStance('all');
+  }, [stanceCounts.all, stanceCounts.mine]);
+
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
 
@@ -1186,6 +1215,9 @@ export const OrganizationsBook: React.FC = () => {
     if (activeCategory === 'all') {
       filtered = filtered.filter((org) => isTopLevelGroup(org) && !isEventGroup(org));
     }
+
+    // Stance lens (your relationship) — primary filter above kind tabs.
+    filtered = filtered.filter((org) => organizationMatchesStance(org, activeStance));
 
     if (activeCategory !== 'all') {
       filtered = filtered.filter(org => {
@@ -1251,11 +1283,11 @@ export const OrganizationsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [organizations, searchTerm, activeCategory, sortBy]);
+  }, [organizations, searchTerm, activeStance, activeCategory, sortBy]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory, sortBy]);
+  }, [searchTerm, activeStance, activeCategory, sortBy]);
 
   useEffect(() => {
     if (!highlightOrgId) return;
@@ -1276,8 +1308,16 @@ export const OrganizationsBook: React.FC = () => {
   const visibleStart = filteredOrganizations.length === 0 ? 0 : startIndex + 1;
   const visibleEnd = Math.min(endIndex, filteredOrganizations.length);
   const clipboardText = useMemo(
-    () => buildOrganizationBookClipboardText(filteredOrganizations),
-    [filteredOrganizations],
+    () =>
+      buildOrganizationBookClipboardText(filteredOrganizations, {
+        filters: clipboardFilterLines([
+          activeStance !== 'all' && `stance=${activeStance}`,
+          activeCategory !== 'all' && `category=${activeCategory}`,
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          `sort=${sortBy}`,
+        ]),
+      }),
+    [filteredOrganizations, activeStance, activeCategory, searchTerm, sortBy],
   );
 
   // Auto-open modal when navigated here from an entity chip (chat → organizations).
@@ -1338,6 +1378,33 @@ export const OrganizationsBook: React.FC = () => {
     }
   };
 
+  const organizationChatOptions = useMemo(
+    () =>
+      organizations.map((org) => ({
+        id: org.id,
+        name: org.name,
+        aliases: org.aliases ?? [],
+      })),
+    [organizations],
+  );
+
+  const openOrganizationFocusedChat = useCallback(
+    async (selection: { name: string; entity?: { id: string; name: string; aliases?: string[] } }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.organizations, selection);
+      } catch (err) {
+        setFocusedChatError(
+          err instanceof Error ? err.message : 'Could not open a focused chat right now.',
+        );
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
+
   if (error) {
     return (
       <div className="p-6">
@@ -1362,6 +1429,16 @@ export const OrganizationsBook: React.FC = () => {
         selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-6' : ''
       }`}
     >
+      <FocusedEntityChatLauncher
+        options={organizationChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.organizations.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.organizations.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.organizations.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openOrganizationFocusedChat}
+      />
+
       {/* Group Suggestions — surfaces detected group candidates for review */}
       <GroupSuggestions
         categoryFilter={activeCategory}
@@ -1596,8 +1673,68 @@ export const OrganizationsBook: React.FC = () => {
           </Card>
         )}
 
-        {/* Category tabs — wrap/stack on all screen sizes (no horizontal scroll) */}
+        {/* Stance switcher — your relationship to the group (above kind tabs) */}
+        <div className="space-y-1.5" data-testid="org-stance-switcher">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
+              Your relationship
+            </p>
+            <p className="text-[10px] text-white/30 truncate">
+              {activeStance === 'all'
+                ? 'All groups in your book'
+                : ORGANIZATION_STANCE_HINTS[activeStance]}
+            </p>
+          </div>
+          <div
+            role="tablist"
+            aria-label="Filter groups by your relationship"
+            className="w-full rounded-xl border border-border/50 bg-black/50 p-1 grid grid-cols-2 sm:grid-cols-5 gap-1"
+          >
+            {(
+              [
+                'mine',
+                'close_to',
+                'their_world',
+                'mentioned',
+                'all',
+              ] as const
+            ).map((stance) => {
+              const selected = activeStance === stance;
+              const count = stance === 'all' ? stanceCounts.all : stanceCounts[stance];
+              const label = stance === 'all' ? 'All' : ORGANIZATION_STANCE_LABELS[stance];
+              return (
+                <button
+                  key={stance}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  data-testid={`org-stance-${stance}`}
+                  onClick={() => setActiveStance(stance)}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs sm:text-sm transition-colors ${
+                    selected
+                      ? 'bg-primary/20 text-primary border border-primary/30'
+                      : 'text-white/55 hover:text-white/85 hover:bg-white/[0.04] border border-transparent'
+                  }`}
+                >
+                  <span className="truncate">{label}</span>
+                  <span
+                    className={`text-[10px] tabular-nums ${
+                      selected ? 'text-primary/80' : 'text-white/30'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Category tabs — kind of group (company / band / family…) */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35 mb-1.5">
+            Group type
+          </p>
           <TabsList className="w-full bg-black/40 border border-border/50 p-1.5 h-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:flex lg:flex-wrap gap-1.5 sm:gap-2 justify-start [&_[role=tab]]:text-xs [&_[role=tab]]:sm:text-sm [&_[role=tab]]:px-2.5 [&_[role=tab]]:sm:px-3 [&_[role=tab]]:justify-center [&_[role=tab]]:w-full lg:[&_[role=tab]]:w-auto lg:[&_[role=tab]]:shrink-0">
             {availableCategories.includes('all') && (
               <TabsTrigger 
@@ -1605,7 +1742,7 @@ export const OrganizationsBook: React.FC = () => {
                 className="flex items-center gap-1.5 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
               >
                 <Hash className="h-4 w-4" />
-                All
+                All types
               </TabsTrigger>
             )}
             {availableCategories.includes('crews') && (
@@ -1765,10 +1902,23 @@ export const OrganizationsBook: React.FC = () => {
           ))}
         </div>
       ) : filteredOrganizations.length === 0 ? (
-        <div className="text-center py-12 text-white/60">
+        <div className="text-center py-12 text-white/60" data-testid="org-stance-empty">
           <Sparkles className="h-12 w-12 mx-auto mb-4 text-white/20" />
-          <p className="text-lg font-medium mb-2">No organizations found</p>
-          <p className="text-sm">Try adjusting your filters or search term</p>
+          <p className="text-lg font-medium mb-2">
+            {activeStance === 'all'
+              ? 'No organizations found'
+              : `No ${ORGANIZATION_STANCE_LABELS[activeStance].toLowerCase()} groups`}
+          </p>
+          <p className="text-sm mb-3">
+            {activeStance === 'all'
+              ? 'Try adjusting your filters or search term'
+              : ORGANIZATION_STANCE_HINTS[activeStance]}
+          </p>
+          {activeStance !== 'all' && (
+            <Button variant="outline" size="sm" onClick={() => setActiveStance('all')}>
+              Show all groups
+            </Button>
+          )}
         </div>
       ) : (
         <>

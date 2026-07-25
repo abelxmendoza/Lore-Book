@@ -247,7 +247,7 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
   }
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="timeline-story-root h-full min-h-0 flex overflow-hidden" data-testid="timeline-story-view">
       {/* ── Arc list ─────────────────────────────────────────────────── */}
       <div
         className={`w-full md:w-72 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50 ${

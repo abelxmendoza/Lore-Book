@@ -74,6 +74,9 @@ import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
 import { selectComposerDraft } from '../../../store/selectors/composerSelectors';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
+import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
+import { clearComposerDraft } from '../services/storySafetyVault';
+import { setComposerDraft } from '../../../store/slices/composerSlice';
 import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -288,21 +291,40 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     return () => { document.body.style.overflow = ''; };
   }, [isMobile, threadListMobileOpen]);
 
-  // Apply modal → chat prefill when focus is set from another surface
+  // Apply modal → chat prefill once per focus arrival.
+  // Empty / scrubbed handoffs (Groups) clear the composer so the retired
+  // Maya correction boilerplate cannot stick around in a saved draft.
   useEffect(() => {
-    if (!chatFocus?.initialPrompt) return;
-    setInitialPrompt(chatFocus.initialPrompt);
-  }, [chatFocus?.entityId, chatFocus?.sourceSurface, chatFocus?.initialPrompt]);
-
-  // Pulse composer when focus arrives from a modal (demo + live)
-  useEffect(() => {
-    if (!chatFocus?.arrivedAt) return;
+    if (!chatFocus?.arrivedAt) {
+      if (chatFocus?.initialPrompt) {
+        setInitialPrompt(scrubLegacyComposerPrefill(chatFocus.initialPrompt));
+      }
+      return;
+    }
     if (lastFocusArrivalRef.current === chatFocus.arrivedAt) return;
     lastFocusArrivalRef.current = chatFocus.arrivedAt;
+
+    const scrubbed = scrubLegacyComposerPrefill(chatFocus.initialPrompt ?? '');
+    if (scrubbed) {
+      setInitialPrompt(scrubbed);
+    } else {
+      const ownerId = user?.id ?? 'guest-or-anonymous';
+      clearComposerDraft(ownerId, activeThreadId);
+      dispatch(setComposerDraft(''));
+      setInitialPrompt('');
+    }
     setFocusComposerPulse(true);
     const timer = window.setTimeout(() => setFocusComposerPulse(false), 2600);
     return () => window.clearTimeout(timer);
-  }, [chatFocus?.arrivedAt, chatFocus?.entityId, chatFocus?.sourceSurface]);
+  }, [
+    chatFocus?.arrivedAt,
+    chatFocus?.entityId,
+    chatFocus?.sourceSurface,
+    chatFocus?.initialPrompt,
+    activeThreadId,
+    dispatch,
+    user?.id,
+  ]);
 
   // ── URL search param pre-fill (date / prompt) ─────────────────────────────────
   useEffect(() => {

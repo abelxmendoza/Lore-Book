@@ -44,8 +44,14 @@ const KINSHIP_TITLE_RE =
 const FAMILY_RELATION_RE =
   /\b(uncle|aunt|mother|father|mom|dad|brother|sister|cousin|grandparent|grandmother|grandfather|niece|nephew|step-?(parent|mom|dad|brother|sister)|family member|t[ií][oa]|prim[oa]|abuel[oa])\b/i;
 
-export function hasFamilySignal(name: string, relationLabels: string[] = []): boolean {
+export function hasFamilySignal(
+  name: string,
+  relationLabels: string[] = [],
+  aliases: string[] = [],
+): boolean {
   if (KINSHIP_TITLE_RE.test(name)) return true;
+  // Card stored as bare "Juan" with alias "Tío Juan" must still hard-block.
+  if (aliases.some((alias) => KINSHIP_TITLE_RE.test(alias ?? ''))) return true;
   return relationLabels.some((label) => FAMILY_RELATION_RE.test(label ?? ''));
 }
 
@@ -289,7 +295,7 @@ export type DatingEligibilityInput = {
 };
 
 export function evaluateDatingEligibility(input: DatingEligibilityInput): DatingEligibilityResult {
-  const family = hasFamilySignal(input.name, input.relationLabels ?? []);
+  const family = hasFamilySignal(input.name, input.relationLabels ?? [], input.aliases ?? []);
   const typing = classifyPersonType(input.canonicalType, input.isKnownOrganization);
   const evidence = assessRomanticEvidence(input.evidenceSnippets, input.name, input.aliases ?? []);
 
@@ -375,7 +381,7 @@ export function evaluateDatingEligibility(input: DatingEligibilityInput): Dating
 
 // ── Batch loader for existing romantic_relationships rows ────────────────────
 
-type RomanticRow = {
+export type RomanticEligibilityRow = {
   id: string;
   person_id: string;
   person_type: string;
@@ -384,9 +390,37 @@ type RomanticRow = {
   metadata: Record<string, unknown> | null;
 };
 
+/** True when integrity audit already excluded this row from Dating Book. */
+export function isDatingIntegrityExcluded(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  const integrity = metadata?.dating_integrity;
+  if (!integrity || typeof integrity !== 'object') return false;
+  return (integrity as { excluded?: unknown }).excluded === true;
+}
+
+/**
+ * Character ids that may wear the romantic heart chip — same trust floor as
+ * Dating & Romance visibility. Stale family / non-person / leaked-evidence rows
+ * must not heart composer chips.
+ */
+export function romanticChipCharacterIdsFromEligibility(
+  rows: RomanticEligibilityRow[],
+  eligibility: Map<string, DatingEligibilityResult>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (row.person_type !== 'character' || !row.person_id) continue;
+    if (isDatingIntegrityExcluded(row.metadata)) continue;
+    const verdict = eligibility.get(row.id);
+    if (verdict?.visibleInDatingBook) ids.add(row.person_id);
+  }
+  return ids;
+}
+
 export async function loadDatingEligibilityForRows(
   userId: string,
-  rows: RomanticRow[],
+  rows: RomanticEligibilityRow[],
 ): Promise<Map<string, DatingEligibilityResult>> {
   const out = new Map<string, DatingEligibilityResult>();
   if (rows.length === 0) return out;

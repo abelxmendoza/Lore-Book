@@ -18,6 +18,11 @@ import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
 import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
 import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
 import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
+import {
+  findInstructionalExampleRanges,
+  maskInstructionalExamples,
+  rangeInsideInstructionalExample,
+} from '../lib/maskInstructionalExamples';
 import { collapseOverlappingPersonComposerMatches } from '../lib/personComposerMatchCollapse';
 import { significantComposerCandidatesToMatches } from '../lib/significantComposerCandidates';
 import { supabase } from '../lib/supabase';
@@ -182,23 +187,36 @@ export const useEntityIndexer = () => {
       previewSpans?: LexicalPreviewSpan[],
       loreBookParse?: LoreBookParseResponse
     ) => {
-      const indexMatches = text.trim() ? matchCertifiedEntitiesWithIndex(text, matchIndex) : [];
-      const draftMatches = text.trim() ? detectDraftEntitiesInText(text, entities, indexMatches) : [];
+      // Prefill hints like (e.g. "actually her name is Maya") must not spawn chips.
+      const matchText = maskInstructionalExamples(text);
+      const exampleRanges = findInstructionalExampleRanges(text);
+      const usablePreviewSpans = (previewSpans ?? []).filter(
+        (span) => !rangeInsideInstructionalExample(span.start, span.end, exampleRanges),
+      );
+      const indexMatches = matchText.trim()
+        ? matchCertifiedEntitiesWithIndex(matchText, matchIndex)
+        : [];
+      const draftMatches = matchText.trim()
+        ? detectDraftEntitiesInText(matchText, entities, indexMatches)
+        : [];
       const lexicalDrafts =
-        previewSpans && previewSpans.length > 0
-          ? lexicalPreviewSpansToDraftMatches(previewSpans, entities, [...indexMatches, ...draftMatches])
+        usablePreviewSpans.length > 0
+          ? lexicalPreviewSpansToDraftMatches(usablePreviewSpans, entities, [
+              ...indexMatches,
+              ...draftMatches,
+            ])
           : [];
       const base = [...indexMatches, ...draftMatches, ...lexicalDrafts];
       const lorebookDrafts = loreBookParse
         ? loreBookParseToComposerMatches(loreBookParse, entities, base)
         : [];
       const promotedCandidates = significantComposerCandidatesToMatches(
-        text,
+        matchText,
         entities,
         [...base, ...lorebookDrafts]
       );
       const next = collapseOverlappingPersonComposerMatches(
-        text,
+        matchText,
         [...base, ...lorebookDrafts, ...promotedCandidates].sort(sortCertifiedMatches)
       );
       dispatch(setComposerMatches(next));

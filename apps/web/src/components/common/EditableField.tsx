@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Check, X, Pencil, Loader2 } from 'lucide-react';
 
 import { FieldSourceBadge, type FieldSource } from './FieldSourceBadge';
+import { cn } from '../../lib/cn';
 
 export type EditableFieldOption = { value: string; label: string };
 
@@ -23,6 +24,10 @@ type EditableFieldProps = {
   icon?: ReactNode;
   disabled?: boolean;
   maxLength?: number;
+  /** Open the editor automatically (e.g. deep-link from an Unknown chip). */
+  autoEdit?: boolean;
+  /** Temporary attention ring after a deep-link jump. */
+  highlighted?: boolean;
 };
 
 const normalizeMultiValue = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -76,6 +81,8 @@ export function EditableField({
   icon,
   disabled = false,
   maxLength = 200,
+  autoEdit = false,
+  highlighted = false,
 }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
@@ -92,6 +99,12 @@ export function EditableField({
     setError(null);
     setEditing(true);
   };
+
+  useEffect(() => {
+    if (!autoEdit || disabled || editing) return;
+    start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-open when autoEdit flips on
+  }, [autoEdit, disabled]);
   const cancel = () => {
     setEditing(false);
     setError(null);
@@ -115,8 +128,15 @@ export function EditableField({
   };
 
   return (
-    <div className="min-w-0">
-      <div className="mb-1 flex min-w-0 items-center gap-1.5">
+    <div
+      data-testid={`editable-field-${label.toLowerCase().replace(/\s+/g, '-')}`}
+      className={cn(
+        'min-w-0 rounded-xl transition-[box-shadow,background-color] duration-300',
+        highlighted &&
+          'bg-sky-500/10 ring-2 ring-sky-400/70 shadow-[0_0_0_6px_rgba(56,189,248,0.18)] animate-pulse',
+      )}
+    >
+      <div className="mb-1 flex min-w-0 items-center gap-1.5 px-0.5 pt-0.5">
         {icon}
         <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-white/45">{label}</span>
         <FieldSourceBadge source={source} showLabel={false} className="ml-auto" />

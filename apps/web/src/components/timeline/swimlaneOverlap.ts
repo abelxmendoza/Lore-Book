@@ -114,3 +114,91 @@ export function clusterRangeLabel(
   const b = formatDate(last.start_time);
   return a === b ? a : `${a} – ${b}`;
 }
+
+const DAY_MS = 86_400_000;
+
+/** Soft floor so short arcs stay tappable and can show a title. */
+export const ARC_READABLE_MIN_PX = 56;
+
+/** Calendar gaps longer than this (days) are treated as knowledge holes. */
+export const KNOWLEDGE_GAP_MIN_DAYS = 21;
+
+export type KnowledgeGap = {
+  key: string;
+  startMs: number;
+  endMs: number;
+  days: number;
+};
+
+/**
+ * Calendar gaps between consecutive arcs on one track (plus leading/trailing
+ * silence inside the visible range). Used to render "little lore here" chrome
+ * so empty time reads as a knowledge gap, not a broken UI.
+ */
+export function computeKnowledgeGaps(
+  arcs: LifeArc[],
+  opts?: {
+    minGapDays?: number;
+    now?: number;
+    rangeStartMs?: number;
+    rangeEndMs?: number;
+  },
+): KnowledgeGap[] {
+  const minGapDays = opts?.minGapDays ?? KNOWLEDGE_GAP_MIN_DAYS;
+  const now = opts?.now ?? Date.now();
+  const minGapMs = minGapDays * DAY_MS;
+
+  const intervals = [...arcs]
+    .filter((a) => a.start_date)
+    .map((a) => {
+      const start = new Date(a.start_date!).getTime();
+      const end = a.end_date ? new Date(a.end_date).getTime() : now;
+      return { id: a.id, start, end: Math.max(end, start) };
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const gaps: KnowledgeGap[] = [];
+  const pushGap = (startMs: number, endMs: number, key: string) => {
+    const days = Math.round((endMs - startMs) / DAY_MS);
+    if (endMs - startMs < minGapMs) return;
+    gaps.push({ key, startMs, endMs, days });
+  };
+
+  if (opts?.rangeStartMs != null && intervals.length > 0) {
+    pushGap(opts.rangeStartMs, intervals[0]!.start, `lead-${intervals[0]!.id}`);
+  }
+
+  for (let i = 0; i < intervals.length - 1; i++) {
+    const cur = intervals[i]!;
+    const next = intervals[i + 1]!;
+    // Overlaps / nested arcs don't create a gap.
+    if (next.start <= cur.end) continue;
+    pushGap(cur.end, next.start, `${cur.id}->${next.id}`);
+  }
+
+  if (opts?.rangeEndMs != null && intervals.length > 0) {
+    const last = intervals[intervals.length - 1]!;
+    pushGap(last.end, opts.rangeEndMs, `trail-${last.id}`);
+  }
+
+  return gaps;
+}
+
+/** Display width in px: calendar span, floored to a readable minimum. */
+export function readableArcWidthPx(rawWidthPx: number, minPx = ARC_READABLE_MIN_PX): number {
+  if (!Number.isFinite(rawWidthPx) || rawWidthPx <= 0) return minPx;
+  return Math.max(minPx, Math.round(rawWidthPx));
+}
+
+/** Human label for a knowledge gap, e.g. "3 months with little lore". */
+export function knowledgeGapLabel(days: number): string {
+  if (days >= 365) {
+    const years = Math.round(days / 365);
+    return `${years} year${years === 1 ? '' : 's'} with little lore`;
+  }
+  if (days >= 45) {
+    const months = Math.round(days / 30.4);
+    return `${months} month${months === 1 ? '' : 's'} with little lore`;
+  }
+  return `${days} days with little lore`;
+}

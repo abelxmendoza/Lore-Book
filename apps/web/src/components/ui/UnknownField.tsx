@@ -7,9 +7,8 @@ import { HelpCircle } from 'lucide-react';
  * omitted. Gray dashed styling extends the existing confidence color bands
  * (green/yellow/orange/red) with a "no data" tier.
  *
- * When `onAskInChat` is provided the chip is clickable and should jump to a
- * chat surface prefilled with `prompt` — filling in unknowns is chat-first,
- * matching the rest of the product.
+ * Prefer `onActivate` when the click should jump to an in-modal editor.
+ * Use `onAskInChat` when filling the gap is chat-first.
  */
 interface UnknownFieldProps {
   /** Field name shown in the chip, e.g. "Role", "Pronouns", "When" */
@@ -18,12 +17,26 @@ interface UnknownFieldProps {
   prompt?: string;
   /** Jump to chat with the prompt; omit to render a non-interactive chip */
   onAskInChat?: (prompt: string) => void;
+  /** Navigate to an in-app editor for this field (takes precedence over chat). */
+  onActivate?: () => void;
+  /** Override the interactive hint after the label (default depends on handler). */
+  actionHint?: string;
   /** Small badge variant for profile cards */
   compact?: boolean;
 }
 
-export const UnknownField = ({ label, prompt, onAskInChat, compact }: UnknownFieldProps) => {
-  const interactive = Boolean(onAskInChat);
+export const UnknownField = ({
+  label,
+  prompt,
+  onAskInChat,
+  onActivate,
+  actionHint,
+  compact,
+}: UnknownFieldProps) => {
+  const interactive = Boolean(onActivate || onAskInChat);
+  const hint =
+    actionHint ??
+    (onActivate ? 'click to set' : onAskInChat ? 'tell Lorebook in chat' : undefined);
   const baseClasses =
     'inline-flex items-center gap-1.5 rounded-md bg-gray-500/10 text-gray-400 border border-dashed border-gray-500/30';
   const sizeClasses = compact ? 'px-1.5 py-0 text-[9px]' : 'px-2.5 py-1 text-xs';
@@ -38,7 +51,7 @@ export const UnknownField = ({ label, prompt, onAskInChat, compact }: UnknownFie
         <span>Unknown</span>
       ) : (
         <span>
-          {label}: unknown{interactive ? ' — tell Lorebook in chat' : ''}
+          {label}: unknown{hint ? ` — ${hint}` : ''}
         </span>
       )}
     </>
@@ -56,9 +69,16 @@ export const UnknownField = ({ label, prompt, onAskInChat, compact }: UnknownFie
     <button
       type="button"
       data-testid="unknown-field"
-      onClick={() => onAskInChat!(prompt ?? `Let me tell you about ${label.toLowerCase()}: `)}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onActivate) {
+          onActivate();
+          return;
+        }
+        onAskInChat?.(prompt ?? `Let me tell you about ${label.toLowerCase()}: `);
+      }}
       className={`${baseClasses} ${sizeClasses}${hoverClasses}`}
-      title={`${label} is not in your record yet — click to tell Lorebook in chat`}
+      title={`${label} is not in your record yet${hint ? ` — ${hint}` : ''}`}
     >
       {content}
     </button>

@@ -1,5 +1,7 @@
 import type { LoreReadinessEvaluateRequest, LoreReadinessEvaluation } from './types';
 import { loreReadinessService } from './loreReadinessService';
+import { constraintsForForm, isBiographyForm } from '../biographyGeneration/lorebookForm';
+import type { BiographyForm } from '../biographyGeneration/types';
 
 export type CompileGateMode = 'ready' | 'soft_blocked' | 'hard_blocked';
 
@@ -12,7 +14,13 @@ export type CompileGateResult = {
   warning?: string;
 };
 
-const SOFT_GATE_PROGRESS = 0.45;
+const DEFAULT_SOFT_GATE_PROGRESS = 0.45;
+
+function resolveForm(request: LoreReadinessEvaluateRequest): BiographyForm {
+  if (isBiographyForm(request.form)) return request.form;
+  if (isBiographyForm(request.spec?.form)) return request.spec.form;
+  return 'book';
+}
 
 export async function checkCompileGate(
   userId: string,
@@ -21,6 +29,33 @@ export async function checkCompileGate(
 ): Promise<CompileGateResult> {
   const evaluation = await loreReadinessService.evaluate(userId, request);
   const force = options?.force === true;
+  const form = resolveForm(request);
+  const constraints = constraintsForForm(form);
+  const softProgress = constraints.softProgress ?? DEFAULT_SOFT_GATE_PROGRESS;
+
+  // Form-aware atom floor: vignette/chapter/short_book can compile below full topic readiness.
+  if (evaluation.atomCount >= constraints.minAtoms) {
+    const fullyReady = evaluation.canGenerate;
+    const formReady =
+      form === 'book' || form === 'epic'
+        ? fullyReady
+        : evaluation.progress >= softProgress || evaluation.atomCount >= constraints.minAtoms;
+
+    if (fullyReady || formReady) {
+      return {
+        allowed: true,
+        mode: fullyReady ? 'ready' : 'soft_blocked',
+        canForce: !fullyReady,
+        evaluation,
+        message: fullyReady
+          ? 'Ready to compile'
+          : `Ready to compile a ${form.replace('_', ' ')} with available knowledge`,
+        warning: fullyReady
+          ? undefined
+          : `Compiling as ${form.replace('_', ' ')} — add more stories to unlock a fuller LoreBook.`,
+      };
+    }
+  }
 
   if (evaluation.canGenerate) {
     return {
@@ -32,7 +67,7 @@ export async function checkCompileGate(
     };
   }
 
-  if (evaluation.progress >= SOFT_GATE_PROGRESS) {
+  if (evaluation.progress >= softProgress) {
     if (force) {
       return {
         allowed: true,
@@ -48,7 +83,7 @@ export async function checkCompileGate(
       mode: 'soft_blocked',
       canForce: true,
       evaluation,
-      message: `Not fully ready (${Math.round(evaluation.progress * 100)}%). Pass force=true to compile a thinner book.`,
+      message: `Not fully ready (${Math.round(evaluation.progress * 100)}%). Pass force=true to compile a thinner book, or choose a smaller form (vignette/chapter).`,
     };
   }
 
@@ -68,7 +103,9 @@ export async function checkCompileGate(
     mode: 'hard_blocked',
     canForce: true,
     evaluation,
-    message: evaluation.suggestions[0] ?? 'Not enough knowledge to compile this book yet.',
+    message:
+      evaluation.suggestions[0] ??
+      `Not enough knowledge to compile this ${form.replace('_', ' ')} yet.`,
   };
 }
 

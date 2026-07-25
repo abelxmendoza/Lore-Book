@@ -162,6 +162,8 @@ export type LoreReadinessEvaluateRequest = {
   threadId?: string;
   topicId?: LoreTopicId;
   depth?: 'summary' | 'detailed' | 'epic';
+  /** Document shape tier — lowers compile floors for vignette/chapter/short_book */
+  form?: BiographySpec['form'];
   timeRange?: { start: string; end: string };
   themes?: string[];
 };

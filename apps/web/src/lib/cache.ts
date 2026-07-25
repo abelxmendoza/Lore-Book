@@ -82,6 +82,13 @@ class APICache {
         this.cache.delete(key);
       }
     }
+    // Also drop in-flight GETs — otherwise a refetch after membership add can
+    // rejoin a stale empty by-character request and never show the new group.
+    for (const key of this.inflight.keys()) {
+      if (regex.test(key)) {
+        this.inflight.delete(key);
+      }
+    }
   }
 
   /**
@@ -89,6 +96,7 @@ class APICache {
    */
   clear(): void {
     this.cache.clear();
+    this.inflight.clear();
   }
 
   /**

@@ -104,6 +104,13 @@ export type WorkingMemoryAssembly = {
   };
   rejected: Array<WorkingMemoryItem & { rejectedReason: string }>;
   timing?: WmaAssemblyTiming;
+  /**
+   * Character ids whose entity_facts this assembly already loaded (via
+   * loadPersonCandidates). Lets other RAG-packet sections — entityDossierService,
+   * specifically — skip re-fetching/re-displaying the same facts under a
+   * different prompt header for the same character.
+   */
+  factsCoveredEntityIds: string[];
 };
 
 export type WorkingMemoryPacket = {
@@ -472,7 +479,7 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
   };
 }
 
-function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'intent' | 'entities' | 'confidence' | 'budget' | 'rejected'> {
+function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'intent' | 'entities' | 'confidence' | 'budget' | 'rejected' | 'factsCoveredEntityIds'> {
   return {
     episodes: items.filter((item) => item.type === 'episode'),
     events: items.filter((item) => item.type === 'event'),
@@ -2281,11 +2288,15 @@ export async function assembleWorkingMemory(
 
   const uncachedQueries = scope.queries.filter((query) => !query.cached);
 
+  const factsCoveredEntityIds =
+    !temporalQuery && isPersonish && personEntityId ? [personEntityId] : [];
+
   return {
     intent,
     intentSource: classified.intentSource,
     ...(classified.subject ? { subject: classified.subject } : {}),
     entities,
+    factsCoveredEntityIds,
     ...distributed,
     confidence: assemblyConfidence(intent, entities, selected),
     budget: {

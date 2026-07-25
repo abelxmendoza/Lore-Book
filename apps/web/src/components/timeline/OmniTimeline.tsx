@@ -33,6 +33,13 @@ import { KnowledgeBaseCreator, type LorebookCreatorPrefill } from '../lorebook/K
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
 import { filterChronologyByExactDate, stitchedItemsToChronology } from '../../lib/unifiedTimeline';
+import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import {
+  evaluateArcLorebookOffer,
+  evaluateTimelineSubjectLorebookOffer,
+} from '../../lib/timelineSubjectLorebook';
+import { meterFromTimelineOffer } from '../../lib/lorebookContentMeter';
+import type { LorebookForm } from '../../lib/lorebookTiers';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
@@ -81,6 +88,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const urlQuery = searchParams.get('q') ?? '';
+  const characterId = searchParams.get('characterId') ?? undefined;
   const isMobile = useIsMobile();
   const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams));
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
@@ -111,6 +119,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     Boolean(urlQuery.trim()) || searchParams.get('view') === 'search',
   );
   const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
+  /** Local collapse — library sync is best-effort; never block the button on a missing id. */
+  const [revealCollapsed, setRevealCollapsed] = useState(false);
   const shouldPersistRef = useRef(false);
   const demoLibrarySeededRef = useRef(false);
 
@@ -127,6 +137,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const { isGuest }                  = useGuest();
   const { useMockData: mockEnabled } = useMockData();
   const { openMemory }               = useEntityModal();
+  const { readiness }                = useLoreReadiness();
   const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
 
   const { arcs, activeArcs, arcsByTrack, loading: arcsLoading, error: arcsError, refresh: refreshArcs } = useLifeArcs();
@@ -135,7 +146,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     loading: entriesLoading,
     error: chronologyError,
     reload: refetchChronology,
-  } = useStitchedTimeline({ scope_type: 'global' });
+  } = useStitchedTimeline({ scope_type: 'global', character_id: characterId });
   const entries = useMemo(
     () => stitchedItemsToChronology(stitchedItems, user?.id),
     [stitchedItems, user?.id],
@@ -221,7 +232,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         .filter((e) => {
           if (exactDate) return true;
           if (terms.length === 0) return true;
-          const hay = `${e.content ?? ''} ${(e.timeline_names ?? []).join(' ')}`.toLowerCase();
+          const hay = [
+            e.title,
+            e.content,
+            e.source_type,
+            ...(e.timeline_names ?? []),
+            ...(e.tags ?? []),
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
           return terms.some((t) => hay.includes(t));
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -236,6 +256,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     setGenInput(saved.query);
     setGenQuery(saved.query);
     setActiveTimelineId(saved.id);
+    setRevealCollapsed(Boolean(saved.collapsed));
     setGenPhase('revealed');
     if (isMobile) setGenSearchOpen(false);
   }, [isMobile]);
@@ -258,6 +279,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     }
 
     setActiveTimelineId(null);
+    setRevealCollapsed(false);
     shouldPersistRef.current = true;
     setGenPhase(options?.instant ? 'revealed' : 'generating');
     if (isMobile) setGenSearchOpen(false);
@@ -267,37 +289,37 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     setStitchedArc(arc);
   }, []);
 
-  // ── LoreBook-from-timeline: open the creator prefilled with the arc's
-  // calendar window so its chapter is compiled from exactly that era. ─────────
-  const handleCreateLorebookFromArc = useCallback((arc: LifeArc) => {
-    if (!arc.start_date) return;
-    setLorebookPrefill({
-      scope: 'time_range',
-      timeRangeStart: arc.start_date.slice(0, 10),
-      timeRangeEnd: (arc.end_date ?? new Date().toISOString()).slice(0, 10),
-      lorebookName: arc.title,
-      saveAsCore: true,
-    });
-  }, []);
-
-  // Generated timelines: use the revealed events' date span when available,
-  // otherwise fall back to a thematic book built from the query itself.
-  const handleCreateLorebookFromReveal = useCallback((events: GeneratedTimelineEvent[], query: string) => {
-    const times = events
-      .map((e) => new Date(e.start_time).getTime())
-      .filter((t) => Number.isFinite(t));
-    if (times.length > 0) {
+  // ── LoreBook-from-timeline: progressive form tiers unlock with content. ─
+  const handleCreateLorebookFromArc = useCallback(
+    (arc: LifeArc, form?: LorebookForm) => {
+      const offer = evaluateArcLorebookOffer({ arc, entries: displayEntries, readiness });
+      const meter = meterFromTimelineOffer(offer);
+      const canAny = Boolean(meter.tierOffer?.canCreateAny) || isDemoMode;
+      if (!canAny) return;
+      const selected =
+        form ?? meter.tierOffer?.highestUnlocked ?? (isDemoMode ? 'vignette' : undefined);
+      if (!selected) return;
       setLorebookPrefill({
-        scope: 'time_range',
-        timeRangeStart: new Date(Math.min(...times)).toISOString().slice(0, 10),
-        timeRangeEnd: new Date(Math.max(...times)).toISOString().slice(0, 10),
-        lorebookName: query,
-        saveAsCore: true,
+        ...offer.prefill,
+        form: selected,
+        unlockedForms: meter.tierOffer?.unlocked,
       });
-    } else {
-      setLorebookPrefill({ scope: 'thematic', themes: query, lorebookName: query, saveAsCore: true });
-    }
-  }, []);
+    },
+    [displayEntries, readiness, isDemoMode],
+  );
+
+  const canCreateLorebookForArc = useCallback(
+    (arc: LifeArc) => {
+      const offer = evaluateArcLorebookOffer({ arc, entries: displayEntries, readiness });
+      const meter = meterFromTimelineOffer(offer);
+      return {
+        canCreate: Boolean(meter.tierOffer?.canCreateAny) || isDemoMode,
+        reason: offer.reason,
+        meter,
+      };
+    },
+    [displayEntries, readiness, isDemoMode],
+  );
 
   useEffect(() => {
     if (!isDemoMode || demoLibrarySeededRef.current || savedTimelines.length > 0) return;
@@ -322,8 +344,18 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     setGenInput('');
     setGenPhase('idle');
     setActiveTimelineId(null);
+    setRevealCollapsed(false);
     setDateInput('');
   };
+
+  const handleToggleRevealCollapse = useCallback(() => {
+    setRevealCollapsed((prev) => {
+      const next = !prev;
+      const id = activeTimelineId ?? findByQuery(genQuery)?.id;
+      if (id) setTimelineCollapsed(id, next);
+      return next;
+    });
+  }, [activeTimelineId, findByQuery, genQuery, setTimelineCollapsed]);
 
   const handleGenComplete = useCallback(() => {
     setGenPhase('revealed');
@@ -365,6 +397,51 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     return { ...fresh, fromLibrary: false, collapsed: false };
   }, [genQuery, genPhase, activeSaved, computeFreshReveal, isDemoMode]);
 
+  const revealLorebookOffer = useMemo(() => {
+    if (!genQuery.trim()) return null;
+    // Simulated previews don't count as real subject evidence.
+    const eventsForOffer = revealEvents.isMock ? [] : revealEvents.events;
+    const offer = evaluateTimelineSubjectLorebookOffer({
+      subject: genQuery,
+      events: eventsForOffer,
+      readiness,
+    });
+    if (revealEvents.isMock) {
+      return {
+        ...offer,
+        canCreate: false,
+        reason:
+          'Simulated preview — talk about this subject in chat so Omni can use real moments for a LoreBook.',
+      };
+    }
+    return offer;
+  }, [genQuery, revealEvents.events, revealEvents.isMock, readiness]);
+
+  const revealLorebookMeter = useMemo(
+    () => (revealLorebookOffer ? meterFromTimelineOffer(revealLorebookOffer) : null),
+    [revealLorebookOffer],
+  );
+
+  const handleCreateLorebookFromReveal = useCallback(
+    (form?: LorebookForm) => {
+      if (!revealLorebookOffer) return;
+      const canAny =
+        Boolean(revealLorebookMeter?.tierOffer?.canCreateAny) ||
+        (isDemoMode && revealLorebookOffer.eventCount > 0);
+      if (!canAny && revealLorebookOffer.eventCount === 0) return;
+      const selected =
+        form ??
+        revealLorebookMeter?.tierOffer?.highestUnlocked ??
+        (isDemoMode ? 'vignette' : 'short_book');
+      setLorebookPrefill({
+        ...revealLorebookOffer.prefill,
+        form: selected,
+        unlockedForms: revealLorebookMeter?.tierOffer?.unlocked,
+      });
+    },
+    [revealLorebookOffer, revealLorebookMeter, isDemoMode],
+  );
+
   useEffect(() => {
     if (genPhase !== 'revealed' || !genQuery.trim() || !shouldPersistRef.current) return;
     shouldPersistRef.current = false;
@@ -375,10 +452,19 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       isMock: fresh.isMock,
       arcTitles: matchingArcs.map((a) => a.title),
       existingId: activeTimelineId ?? activeSaved?.id,
-      preserveCollapsed: Boolean(activeSaved?.collapsed),
+      collapsed: revealCollapsed,
     });
     if (saved?.id) setActiveTimelineId(saved.id);
-  }, [genPhase, genQuery, computeFreshReveal, saveTimeline, matchingArcs, activeTimelineId, activeSaved]);
+  }, [
+    genPhase,
+    genQuery,
+    computeFreshReveal,
+    saveTimeline,
+    matchingArcs,
+    activeTimelineId,
+    activeSaved,
+    revealCollapsed,
+  ]);
 
   const handleRemoveSaved = (id: string) => {
     removeTimeline(id);
@@ -414,20 +500,21 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           events={revealEvents.events}
           arcs={matchingArcs}
           isMock={revealEvents.isMock}
-          collapsed={revealEvents.collapsed}
+          collapsed={revealCollapsed}
           fromLibrary={revealEvents.fromLibrary}
           savedAt={revealEvents.savedAt}
-          onToggleCollapse={() => {
-            const id = activeTimelineId ?? activeSaved?.id;
-            if (id) setTimelineCollapsed(id, !revealEvents.collapsed);
-          }}
+          onToggleCollapse={handleToggleRevealCollapse}
           onClose={closeGeneratedTimeline}
           onRegenerate={() => generateFor(genQuery, { forceRegenerate: true })}
           onCreateLorebook={
-            isDemoMode || revealEvents.isMock
-              ? undefined
-              : () => handleCreateLorebookFromReveal(revealEvents.events, genQuery)
+            revealLorebookOffer ? handleCreateLorebookFromReveal : undefined
           }
+          canCreateLorebook={
+            Boolean(revealLorebookMeter?.tierOffer?.canCreateAny) ||
+            (isDemoMode && Boolean(revealLorebookOffer))
+          }
+          lorebookReason={revealLorebookOffer?.reason}
+          lorebookMeter={revealLorebookMeter}
           onEventClick={(e) => {
             if (
               !revealEvents.isMock &&
@@ -452,7 +539,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             entries={displayEntries}
             loading={loading}
             onOpenArcTimeline={handleOpenArcTimeline}
-            onCreateLorebook={isDemoMode ? undefined : handleCreateLorebookFromArc}
+            onCreateLorebook={handleCreateLorebookFromArc}
+            canCreateLorebookForArc={canCreateLorebookForArc}
           />
         );
       case 'events':
@@ -474,7 +562,10 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   };
 
   return (
-    <div className="omni-timeline-root" data-testid="omni-timeline">
+    <div
+      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}`}
+      data-testid="omni-timeline"
+    >
       {/* ── Mobile header ──────────────────────────────────────────────── */}
       {isMobile ? (
         <header
@@ -586,7 +677,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           <OmniTimelineErrorBanner message={dataError} onRetry={handleRetryData} />
         )}
 
-        {!isMobile && (
+        {!isMobile && view !== 'story' && (
           <UniversalTimelineSearch
             genInput={genInput}
             genQuery={genQuery}
@@ -602,7 +693,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         )}
 
-        {!loading && !genQuery && activeArcs.length > 0 && (
+        {/* Story already lists arcs — hide competing chrome to free reading height */}
+        {view !== 'story' && !loading && !genQuery && activeArcs.length > 0 && (
           <div className="omni-timeline-active-arcs">
             <p className="omni-timeline-section-label">Active now</p>
             <div className="flex flex-wrap gap-2">
@@ -644,7 +736,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         )}
 
       {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
-      {!loading && !genQuery && lifeEras.length > 0 && (
+      {view !== 'story' && !loading && !genQuery && lifeEras.length > 0 && (
         <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
             <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>
@@ -685,7 +777,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       )}
 
       {/* ── Timelines library ─────────────────────────────────────────── */}
-      {libraryPanel}
+      {view !== 'story' && libraryPanel}
 
       <main className="omni-timeline-main">
         {renderContent()}

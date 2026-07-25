@@ -538,7 +538,10 @@ class RelationshipFoundationService {
                   : /grace/i.test(otherName)
                     ? 'aunt'
                     : /james|jerry|leslie/i.test(otherName)
-                      ? 'sibling'
+                      ? // These are known extended-family given names in founder lore —
+                        // cousins, not siblings. Prefer cousin so recovery doesn't fight
+                        // family_override / tree placement.
+                        'cousin'
                       : undefined)
         : undefined;
 

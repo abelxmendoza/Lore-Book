@@ -4,14 +4,13 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
   Music2, Building2, Briefcase, Plane, Heart,
   Repeat2, Star, TrendingUp, BookOpen, ArrowLeft, ArrowRight,
 } from 'lucide-react';
-import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import {
   formatDistanceToNow,
   isWithinInterval,
@@ -22,7 +21,8 @@ import {
   endOfDay,
 } from 'date-fns';
 import { buildEventsBookClipboardText } from '../../lib/eventsBookClipboard';
-import { buildPatternsClipboardText, patternContinuityLabel } from '../../lib/patternsClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
+import { patternContinuityLabel } from '../../lib/patternsClipboard';
 import { formatEventTime } from '../../lib/formatEventTime';
 import { fetchJson } from '../../lib/api';
 import { getDisplayTitle } from '../../utils/displayTitle';
@@ -479,6 +479,7 @@ const MOCK_SCENES: RecurringScene[] = [
 
 export const EventsBook: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
@@ -506,7 +507,13 @@ export const EventsBook: React.FC = () => {
 
   const loading = bookLoading || localLoading || isAssembling;
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const deepLinkQuery = (searchParams.get('q') || searchParams.get('person') || '').trim();
+  const [searchTerm, setSearchTerm] = useState(deepLinkQuery);
+
+  useEffect(() => {
+    if (!deepLinkQuery) return;
+    setSearchTerm(deepLinkQuery);
+  }, [deepLinkQuery]);
   const [recurringScenes, setRecurringScenes] = useState<RecurringScene[]>([]);
   const [scenesLoading, setScenesLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
@@ -689,13 +696,26 @@ export const EventsBook: React.FC = () => {
   };
 
   const clipboardText = useMemo(
-    () => buildEventsBookClipboardText(filteredEvents),
-    [filteredEvents],
-  );
-
-  const patternsClipboardText = useMemo(
-    () => buildPatternsClipboardText(recurringScenes),
-    [recurringScenes],
+    () =>
+      buildEventsBookClipboardText(filteredEvents, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          activeCategory !== 'all' && `category=${activeCategory}`,
+          impactFilter !== 'all' && `impact=${impactFilter}`,
+          significanceFilter !== 'all' && `significance=${significanceFilter}`,
+          activeFilterCount > 0 && `advanced_filters=${activeFilterCount}`,
+          `sort=${sortBy}`,
+        ]),
+      }),
+    [
+      filteredEvents,
+      searchTerm,
+      activeCategory,
+      impactFilter,
+      significanceFilter,
+      activeFilterCount,
+      sortBy,
+    ],
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -716,7 +736,36 @@ export const EventsBook: React.FC = () => {
             <p className="mt-1 max-w-2xl text-sm text-white/55">
               Scenes from your conversations — filter, search, and spot patterns.
             </p>
-            <StorySurfaceLinks current="moments" className="mt-3" />
+            <p className="mt-2 text-xs text-white/40">
+              {events.length} {events.length === 1 ? 'moment' : 'moments'}
+              {recurringScenes.length > 0 && (
+                <>
+                  {' · '}
+                  {recurringScenes.length} {recurringScenes.length === 1 ? 'pattern' : 'patterns'}
+                </>
+              )}
+            </p>
+            <nav
+              aria-label="Also see"
+              className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-white/40"
+            >
+              <span className="mr-1 text-white/30">Also see</span>
+              <button
+                type="button"
+                onClick={() => navigate('/narrative-anchors')}
+                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                Narrative Anchors
+              </button>
+              <span className="text-white/15" aria-hidden>·</span>
+              <button
+                type="button"
+                onClick={() => navigate('/timeline?view=calendar')}
+                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                Calendar
+              </button>
+            </nav>
           </div>
         </CardContent>
       </Card>
@@ -1192,11 +1241,14 @@ export const EventsBook: React.FC = () => {
               Back to moments
             </button>
           </div>
-          <div className="rounded-xl border border-border/50 bg-black/25 p-3 sm:p-4">
+          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-black/50 via-violet-950/15 to-black/40 p-3 sm:p-4">
             <div className="mb-3">
-              <p className="text-sm font-medium text-white">Search facts</p>
-              <p className="text-xs text-white/45 mt-0.5">
-                Atomic details extracted from your moments — journal entries, chat facts, and linked claims.
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">
+                Inside Moments
+              </p>
+              <p className="mt-1 text-sm font-semibold text-white sm:text-base">Search facts</p>
+              <p className="mt-1 text-xs text-white/45 max-w-2xl">
+                Atomic details from your moments — journal entries, chat facts, and linked claims.
               </p>
             </div>
             <MemoryExplorer />
@@ -1225,8 +1277,7 @@ export const EventsBook: React.FC = () => {
               <GridListViewToolbar
                 viewMode={patternsViewMode}
                 onViewModeChange={setPatternsViewMode}
-                copyText={patternsClipboardText}
-                copyDisabled={recurringScenes.length === 0}
+                showCopy={false}
                 storageKey={PATTERNS_CARD_VIEW_STORAGE_KEY}
               />
             </div>

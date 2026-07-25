@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { computeSubLanes, clusterEntries, clusterRangeLabel } from './swimlaneOverlap';
+import {
+  computeSubLanes,
+  clusterEntries,
+  clusterRangeLabel,
+  computeKnowledgeGaps,
+  knowledgeGapLabel,
+  readableArcWidthPx,
+} from './swimlaneOverlap';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
 
@@ -158,5 +165,38 @@ describe('clusterRangeLabel', () => {
       entries: [entry('a', '2024-01-01'), entry('b', '2024-01-05')],
     };
     expect(clusterRangeLabel(cluster, fmt)).toBe('2024-01-01 – 2024-01-05');
+  });
+});
+
+describe('readableArcWidthPx', () => {
+  it('floors short calendar spans to a readable minimum', () => {
+    expect(readableArcWidthPx(6)).toBe(56);
+    expect(readableArcWidthPx(120)).toBe(120);
+  });
+});
+
+describe('computeKnowledgeGaps', () => {
+  it('finds silences between consecutive arcs', () => {
+    const gaps = computeKnowledgeGaps(
+      [
+        arc('a', '2024-01-01', '2024-01-31'),
+        arc('b', '2024-06-01', '2024-06-30'),
+      ],
+      { now: new Date('2024-12-01').getTime() },
+    );
+    expect(gaps.some((g) => g.key === 'a->b' && g.days >= 100)).toBe(true);
+  });
+
+  it('ignores short gaps under the threshold', () => {
+    const gaps = computeKnowledgeGaps([
+      arc('a', '2024-01-01', '2024-01-10'),
+      arc('b', '2024-01-15', '2024-01-20'),
+    ]);
+    expect(gaps.find((g) => g.key === 'a->b')).toBeUndefined();
+  });
+
+  it('labels long gaps in human units', () => {
+    expect(knowledgeGapLabel(90)).toMatch(/month/);
+    expect(knowledgeGapLabel(400)).toMatch(/year/);
   });
 });

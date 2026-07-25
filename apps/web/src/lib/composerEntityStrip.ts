@@ -7,6 +7,10 @@ import type { EntityColorKey } from './entityColorMap';
 import { findEntityHighlightRanges } from './entityHighlightRanges';
 import { isVisibleEntityCandidate } from './lexicalCandidateKinds';
 import { isLexicalNoiseToken } from './lexicalNoiseTokens';
+import {
+  findInstructionalExampleRanges,
+  rangeInsideInstructionalExample,
+} from './maskInstructionalExamples';
 import { isSelfBleedLabel } from './selfChipLabel';
 
 function normalizeKey(s: string): string {
@@ -59,7 +63,12 @@ export function filterPreviewSpansForStrip(
   const chipCertified = dedupeCertifiedForStrip(certified);
   if (spans.length === 0) return spans;
 
-  const entityOnly = spans.filter((span) => isVisibleEntityCandidate(span.text));
+  const exampleRanges = findInstructionalExampleRanges(text);
+  const entityOnly = spans.filter(
+    (span) =>
+      isVisibleEntityCandidate(span.text) &&
+      !rangeInsideInstructionalExample(span.start, span.end, exampleRanges),
+  );
   if (chipCertified.length === 0) return dedupePreviewSpans(entityOnly);
 
   const ranges = findEntityHighlightRanges(text, chipCertified);

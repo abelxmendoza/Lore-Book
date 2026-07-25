@@ -8,19 +8,24 @@ import {
   Layers,
   Loader2,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   Users,
   UserX,
+  X,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
 import { fetchJson } from '../../lib/api';
-import type {
-  CharacterLoreProfile,
-  CharacterLoreItem,
-  CharacterPersonAssociation,
+import {
+  unlinkCharacterLoreItem,
+  restoreCharacterLoreItem,
+  repairCharacterLoreAttribution,
+  type CharacterLoreProfile,
+  type CharacterLoreItem,
+  type CharacterPersonAssociation,
 } from '../../api/characterLoreProfile';
 import type { Character } from './CharacterProfileCard';
 
@@ -94,34 +99,100 @@ type Props = {
   onDeletePerson?: (relationshipId: string) => Promise<void>;
 };
 
+function stanceHint(stance?: string): string | null {
+  if (stance === 'shared') return 'shared';
+  if (stance === 'self') return 'yours';
+  if (stance === 'other_person') return 'theirs';
+  return null;
+}
+
 function LoreChipList({
   items,
   emptyLabel,
   askPrompt,
   onAskInChat,
+  onDismiss,
+  dismissingId,
+  expandedId,
+  onToggleExpand,
 }: {
   items: CharacterLoreItem[];
   emptyLabel: string;
   askPrompt: string;
   onAskInChat: (prompt: string) => void;
+  onDismiss?: (item: CharacterLoreItem) => void;
+  dismissingId?: string | null;
+  expandedId?: string | null;
+  onToggleExpand?: (id: string) => void;
 }) {
   if (items.length === 0) {
     return <UnknownField label={emptyLabel} prompt={askPrompt} onAskInChat={onAskInChat} />;
   }
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((item) => (
-        <span
-          key={item.id}
-          className="text-xs px-2.5 py-1 rounded-full border border-white/15 bg-white/[0.04] text-white/85"
-          title={item.evidence ?? item.category}
-        >
-          {item.label}
-          {item.confidence != null && item.confidence >= 0.75 && (
-            <span className="ml-1 text-[9px] text-emerald-400/80">●</span>
-          )}
-        </span>
-      ))}
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => {
+          const hint = stanceHint(item.subjectStance);
+          const why = item.attributionLabel || item.evidence || item.category;
+          return (
+            <span
+              key={item.id}
+              className="inline-flex items-center gap-1 text-xs pl-2.5 pr-1 py-1 rounded-full border border-white/15 bg-white/[0.04] text-white/85"
+            >
+              <button
+                type="button"
+                data-testid={`lore-item-${item.id}`}
+                title={why}
+                onClick={() => onToggleExpand?.(item.id)}
+                className="inline-flex items-center gap-1 text-left hover:text-white"
+              >
+                <span>{item.label}</span>
+                {hint && (
+                  <span className="text-[9px] uppercase tracking-wide text-white/40">{hint}</span>
+                )}
+                {item.confidence != null && item.confidence >= 0.75 && (
+                  <span className="text-[9px] text-emerald-400/80">●</span>
+                )}
+              </button>
+              {onDismiss && (
+                <button
+                  type="button"
+                  data-testid={`dismiss-lore-item-${item.id}`}
+                  aria-label={`Remove ${item.label}`}
+                  disabled={dismissingId === item.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismiss(item);
+                  }}
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-white/35 hover:bg-white/10 hover:text-white/80 disabled:opacity-40"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      {expandedId &&
+        items
+          .filter((item) => item.id === expandedId)
+          .map((item) => (
+            <div
+              key={`why-${item.id}`}
+              data-testid={`lore-item-why-${item.id}`}
+              className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[11px] text-white/65 space-y-1"
+            >
+              <p className="text-white/80 font-medium">
+                {item.attributionLabel || 'From your chats'}
+              </p>
+              {item.evidence && (
+                <p className="italic text-white/55">“{item.evidence}”</p>
+              )}
+              {!item.evidence && (
+                <p className="text-white/40">No evidence quote stored for this link yet.</p>
+              )}
+            </div>
+          ))}
     </div>
   );
 }
@@ -164,7 +235,99 @@ export function CharacterLoreProfileSection({
   // doesn't reappear from the lore-derived side (state stays consistent until the
   // next reload, when the server no longer surfaces them).
   const [dismissedCharacterIds, setDismissedCharacterIds] = useState<Set<string>>(new Set());
+  const [dismissedLoreItemIds, setDismissedLoreItemIds] = useState<Set<string>>(new Set());
+  const [sessionRemovedItems, setSessionRemovedItems] = useState<CharacterLoreItem[]>([]);
+  const [restoredItemIds, setRestoredItemIds] = useState<Set<string>>(new Set());
+  const [dismissingLoreId, setDismissingLoreId] = useState<string | null>(null);
+  const [restoringLoreId, setRestoringLoreId] = useState<string | null>(null);
+  const [undoItem, setUndoItem] = useState<CharacterLoreItem | null>(null);
+  const [expandedLoreId, setExpandedLoreId] = useState<string | null>(null);
+  const [repairingAttribution, setRepairingAttribution] = useState(false);
+  const [repairNotice, setRepairNotice] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [learnNotice, setLearnNotice] = useState<string | null>(null);
+
+  const dismissLoreItem = async (item: CharacterLoreItem) => {
+    setDismissingLoreId(item.id);
+    setEditorError(null);
+    setLearnNotice(null);
+    try {
+      const result = await unlinkCharacterLoreItem(currentCharacterId, item);
+      if (!result.success) throw new Error('Unlink failed');
+      setDismissedLoreItemIds((prev) => new Set(prev).add(item.id));
+      setRestoredItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      setSessionRemovedItems((prev) =>
+        prev.some((p) => p.id === item.id) ? prev : [{ ...item, subjectStance: 'dismissed' }, ...prev],
+      );
+      setUndoItem(item);
+      setLearnNotice(
+        result.message ||
+          `Removed “${item.label}”. LoreBook learned not to put this on ${characterFirstName} from chats.`,
+      );
+      if (expandedLoreId === item.id) setExpandedLoreId(null);
+    } catch {
+      setEditorError(`Couldn't remove “${item.label}”. Try again.`);
+    } finally {
+      setDismissingLoreId(null);
+    }
+  };
+
+  const restoreLoreItem = async (item: CharacterLoreItem) => {
+    setRestoringLoreId(item.id);
+    setEditorError(null);
+    setLearnNotice(null);
+    try {
+      const ok = await restoreCharacterLoreItem(currentCharacterId, item);
+      if (!ok) throw new Error('Restore failed');
+      setDismissedLoreItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      setRestoredItemIds((prev) => new Set(prev).add(item.id));
+      setSessionRemovedItems((prev) => prev.filter((p) => p.id !== item.id));
+      if (undoItem?.id === item.id) setUndoItem(null);
+      setLearnNotice(`Restored “${item.label}” on ${characterFirstName}.`);
+    } catch {
+      setEditorError(`Couldn't restore “${item.label}”. Try again.`);
+    } finally {
+      setRestoringLoreId(null);
+    }
+  };
+
+  const repairWrongLinks = async () => {
+    setRepairingAttribution(true);
+    setEditorError(null);
+    setRepairNotice(null);
+    try {
+      const result = await repairCharacterLoreAttribution(currentCharacterId);
+      if (!result) throw new Error('Repair failed');
+      const removedIds = new Set(result.details.flatMap((d) => d.removedCharacterIds));
+      // Optimistic: hide hobbies that were unlinked from this character.
+      if (result.unlinkedPairs > 0 && profile) {
+        const wrongLabels = new Set(result.details.map((d) => d.interestName.toLowerCase()));
+        for (const item of [...profile.hobbies, ...profile.interests]) {
+          if (wrongLabels.has(item.label.toLowerCase())) {
+            setDismissedLoreItemIds((prev) => new Set(prev).add(item.id));
+          }
+        }
+      }
+      setRepairNotice(
+        result.unlinkedPairs === 0
+          ? 'No wrongly linked hobbies found.'
+          : `Removed ${result.unlinkedPairs} hobby/interest link${result.unlinkedPairs === 1 ? '' : 's'} that belonged to you, not them.`,
+      );
+      void removedIds;
+    } catch {
+      setEditorError('Couldn’t repair wrongly linked hobbies. Try again.');
+    } finally {
+      setRepairingAttribution(false);
+    }
+  };
 
   const mergedPeople = useMemo<EditablePerson[]>(() => {
     const byKey = new Map<string, EditablePerson>();
@@ -316,14 +479,40 @@ export function CharacterLoreProfileSection({
     characterId: currentCharacterId,
     characterName: characterFirstName,
     generatedAt: new Date(0).toISOString(),
+    loreSubject: 'other' as const,
     skills: [],
     hobbies: [],
     interests: [],
+    removedHobbies: [],
     groups: [],
     people: [],
     loreSnippets: [],
     mentionOnly: false,
   };
+  const isSelfLore = displayProfile.loreSubject === 'self';
+  const hobbyItems = [
+    ...displayProfile.hobbies,
+    ...displayProfile.interests,
+    ...[...sessionRemovedItems, ...(displayProfile.removedHobbies ?? [])]
+      .filter((item) => restoredItemIds.has(item.id))
+      .map((item) => ({
+        ...item,
+        subjectStance: item.subjectStance === 'dismissed' ? 'other_person' : item.subjectStance,
+      })),
+  ].filter((item) => !dismissedLoreItemIds.has(item.id));
+
+  const removedItems = (() => {
+    const byId = new Map<string, CharacterLoreItem>();
+    for (const item of displayProfile.removedHobbies ?? []) {
+      if (!restoredItemIds.has(item.id)) byId.set(item.id, item);
+    }
+    for (const item of sessionRemovedItems) {
+      if (!restoredItemIds.has(item.id) && dismissedLoreItemIds.has(item.id)) {
+        byId.set(item.id, item);
+      }
+    }
+    return Array.from(byId.values());
+  })();
 
   return (
     <div className="space-y-4">
@@ -335,6 +524,9 @@ export function CharacterLoreProfileSection({
             Details below come from your mentions, not assumptions.
           </p>
         </div>
+      )}
+      {editorError && (
+        <p className="text-[11px] text-red-300" role="alert">{editorError}</p>
       )}
 
       <div className="grid sm:grid-cols-2 gap-3">
@@ -351,15 +543,113 @@ export function CharacterLoreProfileSection({
         </section>
 
         <section className="rounded-xl border border-pink-500/20 bg-pink-950/15 p-3.5">
-          <h3 className="text-xs font-bold text-pink-200/90 flex items-center gap-1.5 mb-2">
-            <Heart className="h-3.5 w-3.5" /> Hobbies & interests
-          </h3>
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <h3 className="text-xs font-bold text-pink-200/90 flex items-center gap-1.5">
+                <Heart className="h-3.5 w-3.5" />
+                {isSelfLore ? 'Your hobbies & interests' : 'Hobbies & interests'}
+              </h3>
+              <p className="text-[10px] text-white/40 mt-0.5">
+                {isSelfLore
+                  ? 'Grows from what you say about yourself.'
+                  : `Their lore in your story — tap a chip to see why it’s on ${characterFirstName}.`}
+              </p>
+            </div>
+            {!isSelfLore && hobbyItems.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="repair-lore-attribution"
+                disabled={repairingAttribution}
+                onClick={() => void repairWrongLinks()}
+                className="h-7 px-2 text-[10px] text-pink-100/70 hover:text-pink-50 shrink-0"
+                title="Remove hobbies that were actually yours"
+              >
+                {repairingAttribution ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  'Fix wrong links'
+                )}
+              </Button>
+            )}
+          </div>
+          {repairNotice && (
+            <p className="text-[11px] text-emerald-200/80 mb-2" role="status">
+              {repairNotice}
+            </p>
+          )}
+          {learnNotice && (
+            <div
+              className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2"
+              role="status"
+            >
+              <p className="text-[11px] text-white/70">{learnNotice}</p>
+              {undoItem && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid="undo-dismiss-lore-item"
+                  disabled={restoringLoreId === undoItem.id}
+                  onClick={() => void restoreLoreItem(undoItem)}
+                  className="h-7 shrink-0 px-2 text-[10px] text-pink-100/80 hover:text-pink-50"
+                >
+                  {restoringLoreId === undoItem.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Undo
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
           <LoreChipList
-            items={[...displayProfile.hobbies, ...displayProfile.interests]}
+            items={hobbyItems}
             emptyLabel="Hobbies & interests"
-            askPrompt={`What are ${characterFirstName}'s hobbies and interests? `}
+            askPrompt={
+              isSelfLore
+                ? 'What hobbies and interests do I have? '
+                : `What are ${characterFirstName}'s hobbies and interests? `
+            }
             onAskInChat={onAskInChat}
+            onDismiss={dismissLoreItem}
+            dismissingId={dismissingLoreId}
+            expandedId={expandedLoreId}
+            onToggleExpand={(id) =>
+              setExpandedLoreId((prev) => (prev === id ? null : id))
+            }
           />
+          {removedItems.length > 0 && (
+            <div className="mt-3 border-t border-white/10 pt-2.5">
+              <p className="text-[10px] text-white/40 mb-1.5">
+                Removed from {characterFirstName} — LoreBook won’t re-add these from chats. Restore anytime.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {removedItems.map((item) => (
+                  <button
+                    key={`removed-${item.id}`}
+                    type="button"
+                    data-testid={`restore-lore-item-${item.id}`}
+                    disabled={restoringLoreId === item.id}
+                    onClick={() => void restoreLoreItem(item)}
+                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 bg-white/[0.02] px-2.5 py-1 text-[11px] text-white/55 hover:border-pink-400/40 hover:text-pink-100 disabled:opacity-40"
+                    title="Restore this hobby/interest"
+                  >
+                    {restoringLoreId === item.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3 w-3" />
+                    )}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -370,7 +660,8 @@ export function CharacterLoreProfileSection({
         {displayProfile.groups.length === 0 ? (
           <UnknownField
             label="Groups"
-            prompt={`What teams, companies, or groups is ${characterFirstName} part of? `}
+            prompt=""
+            actionHint="open chat to add"
             onAskInChat={onAskInChat}
           />
         ) : (
@@ -454,9 +745,6 @@ export function CharacterLoreProfileSection({
               <p className="text-[10px] text-white/35">No other Character Book people are available to add.</p>
             )}
           </div>
-        )}
-        {editorError && (
-          <p className="text-[11px] text-red-300 mb-2">{editorError}</p>
         )}
         {mergedPeople.length === 0 ? (
           <UnknownField

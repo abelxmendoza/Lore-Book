@@ -37,6 +37,7 @@ import { CharacterMediaPanel } from './CharacterMediaPanel';
 import type { Character } from './CharacterProfileCard';
 import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
 import type { Organization } from '../organizations/OrganizationProfileCard';
+import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { useMainCharacterProfile, type MainCharacterRelationship } from '../../hooks/useMainCharacterProfile';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
@@ -44,6 +45,8 @@ import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelf
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { format, parseISO } from 'date-fns';
 import { fetchJson } from '../../lib/api';
+import { dispatchStoryDataUpdated, onStoryDataUpdated } from '../../lib/storyRefresh';
+import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 
 type Props = {
   character: Character;
@@ -267,12 +270,15 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
   const [selfOrganizations, setSelfOrganizations] = useState<Organization[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
+  const [orgsReloadToken, setOrgsReloadToken] = useState(0);
   useEffect(() => {
-    if (!canEditWorld || orgsLoaded) return;
+    if (!canEditWorld) return;
     let cancelled = false;
     void (async () => {
+      invalidateOrganizationMembershipCaches({ characterIds: [selfId] });
       try {
         const params = new URLSearchParams({ character_id: selfId });
+        if (profile.character.name) params.set('character_name', profile.character.name);
         const res = await fetchJson<{ success: boolean; organizations: Organization[] }>(
           `/api/organizations/by-character?${params}`,
         );
@@ -287,13 +293,27 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     return () => {
       cancelled = true;
     };
-  }, [canEditWorld, orgsLoaded, selfId]);
+  }, [canEditWorld, selfId, orgsReloadToken, profile.character.name]);
+
+  useEffect(() => {
+    return onStoryDataUpdated((detail) => {
+      const scopes = detail.scopes ?? [];
+      const touchesOrgs =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('organizations') ||
+        scopes.includes('characters');
+      const touchesSelf =
+        !detail.characterIds?.length || detail.characterIds.includes(selfId);
+      if (touchesOrgs && touchesSelf) setOrgsReloadToken((n) => n + 1);
+    });
+  }, [selfId]);
 
   const [orgAddOpen, setOrgAddOpen] = useState(false);
   const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
   const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
   const [orgTargetId, setOrgTargetId] = useState('');
-  const [orgMemberRole, setOrgMemberRole] = useState('member');
+  const [orgMemberRole, setOrgMemberRole] = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
 
@@ -316,10 +336,13 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
   const addOrgMembership = async () => {
     if (!orgTargetId || orgSaving || !selfId) return;
+    const targetId = orgTargetId;
+    const role = orgMemberRole.trim() || 'member';
+    const selectedOrg = orgOptions.find((o) => o.id === targetId);
     setOrgSaving(true);
     setOrgMemberError(null);
     try {
-      await fetchJson(`/api/organizations/${orgTargetId}/members`, {
+      await fetchJson(`/api/organizations/${targetId}/members`, {
         method: 'POST',
         body: JSON.stringify({
           character_name: profile.character.name,
@@ -327,10 +350,42 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
           role: orgMemberRole.trim() || undefined,
         }),
       });
+      if (selectedOrg) {
+        const withMember = {
+          ...selectedOrg,
+          members: [
+            ...(selectedOrg.members ?? []).filter(
+              (m) => m.character_id !== selfId && m.character_name.toLowerCase() !== (profile.character.name ?? '').toLowerCase(),
+            ),
+            {
+              id: `local-${Date.now()}`,
+              character_id: selfId,
+              character_name: profile.character.name,
+              role,
+              status: 'active' as const,
+            },
+          ],
+        };
+        setSelfOrganizations((prev) => {
+          if (prev.some((o) => o.id === selectedOrg.id)) {
+            return prev.map((o) => (o.id === selectedOrg.id ? withMember : o));
+          }
+          return [...prev, withMember];
+        });
+      }
       setOrgTargetId('');
-      setOrgMemberRole('member');
+      setOrgMemberRole('');
       setOrgAddOpen(false);
-      setOrgsLoaded(false); // re-fetch memberships from the server
+      invalidateOrganizationMembershipCaches({
+        characterIds: [selfId],
+        organizationIds: [targetId],
+      });
+      setOrgsReloadToken((n) => n + 1);
+      dispatchStoryDataUpdated({
+        scopes: ['organizations', 'characters'],
+        organizationIds: [targetId],
+        characterIds: [selfId],
+      });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not join group.');
     } finally {
@@ -351,7 +406,17 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     if (!window.confirm(`Leave ${org.name}? The group stays in your book.`)) return;
     try {
       await fetchJson(`/api/organizations/${org.id}/members/${member.id}`, { method: 'DELETE' });
-      setOrgsLoaded(false);
+      setSelfOrganizations((prev) => prev.filter((o) => o.id !== org.id));
+      invalidateOrganizationMembershipCaches({
+        characterIds: [selfId],
+        organizationIds: [org.id],
+      });
+      setOrgsReloadToken((n) => n + 1);
+      dispatchStoryDataUpdated({
+        scopes: ['organizations', 'characters'],
+        organizationIds: [org.id],
+        characterIds: [selfId],
+      });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
     }
@@ -1122,19 +1187,12 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                                 </option>
                               ))}
                           </select>
-                          <input
-                            list="self-org-member-role-options"
+                          <OrganizationMemberRoleSelect
                             value={orgMemberRole}
-                            onChange={(e) => setOrgMemberRole(e.target.value)}
-                            placeholder="Role (e.g. member)"
-                            aria-label="Membership role"
-                            className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                            onChange={setOrgMemberRole}
+                            disabled={orgSaving}
+                            data-testid="self-add-membership-role"
                           />
-                          <datalist id="self-org-member-role-options">
-                            {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus'].map((r) => (
-                              <option key={r} value={r} />
-                            ))}
-                          </datalist>
                           <Button
                             type="button"
                             size="sm"

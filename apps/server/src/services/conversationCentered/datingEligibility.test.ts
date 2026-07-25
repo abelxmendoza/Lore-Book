@@ -5,7 +5,11 @@ import {
   assessRomanticEvidence,
   hasFamilySignal,
   classifyPersonType,
+  romanticChipCharacterIdsFromEligibility,
+  isDatingIntegrityExcluded,
   type DatingEligibilityInput,
+  type DatingEligibilityResult,
+  type RomanticEligibilityRow,
 } from './datingEligibilityService';
 
 const person = (
@@ -142,6 +146,29 @@ describe('dating eligibility — gates', () => {
     expect(hasFamilySignal('Juanita')).toBe(false);
   });
 
+  it('Juan with Tío alias or uncle role is family — never dating-eligible', () => {
+    expect(hasFamilySignal('Juan', [], ['Tío Marcus'])).toBe(true);
+    expect(hasFamilySignal('Juan', ['uncle'])).toBe(true);
+
+    const viaAlias = evaluateDatingEligibility(
+      person('Juan', {
+        aliases: ['Tío Marcus'],
+        evidenceSnippets: [LEAKED_SNIPPET],
+      }),
+    );
+    expect(viaAlias.visibleInDatingBook).toBe(false);
+    expect(viaAlias.eligibilityReason).toBe('ineligible_family');
+
+    const viaRole = evaluateDatingEligibility(
+      person('Juan', {
+        relationLabels: ['uncle'],
+        evidenceSnippets: [LEAKED_SNIPPET],
+      }),
+    );
+    expect(viaRole.visibleInDatingBook).toBe(false);
+    expect(viaRole.eligibilityReason).toBe('ineligible_family');
+  });
+
   it('person typing: bands/projects/places/pets are non-person; blank is unknown', () => {
     expect(classifyPersonType('band', false)).toBe('non_person');
     expect(classifyPersonType('software_tool', false)).toBe('non_person');
@@ -149,5 +176,65 @@ describe('dating eligibility — gates', () => {
     expect(classifyPersonType('person', false)).toBe('person');
     expect(classifyPersonType(null, false)).toBe('unknown');
     expect(classifyPersonType('person', true)).toBe('non_person');
+  });
+});
+
+describe('romantic chip character ids — composer heart trust floor', () => {
+  const row = (
+    id: string,
+    personId: string,
+    metadata: Record<string, unknown> | null = null,
+  ): RomanticEligibilityRow => ({
+    id,
+    person_id: personId,
+    person_type: 'character',
+    relationship_type: 'ex',
+    status: 'ended',
+    metadata,
+  });
+
+  const verdict = (
+    entityId: string,
+    visibleInDatingBook: boolean,
+  ): DatingEligibilityResult => ({
+    entityId,
+    name: entityId,
+    isEligible: visibleInDatingBook,
+    eligibilityReason: visibleInDatingBook
+      ? 'eligible_explicit_romantic_evidence'
+      : 'ineligible_family',
+    personConfidence: 0.9,
+    familyConflict: !visibleInDatingBook,
+    romanticEvidence: [],
+    romanticEvidenceStrength: 'none',
+    visibleInDatingBook,
+    reviewRequired: false,
+  });
+
+  it('hearts only characters visible in Dating Book', () => {
+    const rows = [row('rel-juan', 'char-juan'), row('rel-luz', 'char-luz')];
+    const eligibility = new Map([
+      ['rel-juan', verdict('char-juan', false)],
+      ['rel-luz', verdict('char-luz', true)],
+    ]);
+    expect([...romanticChipCharacterIdsFromEligibility(rows, eligibility)].sort()).toEqual([
+      'char-luz',
+    ]);
+  });
+
+  it('skips integrity-excluded rows even if somehow marked visible', () => {
+    expect(
+      isDatingIntegrityExcluded({
+        dating_integrity: { excluded: true, reason: 'ineligible_family' },
+      }),
+    ).toBe(true);
+
+    const rows = [
+      row('rel-juan', 'char-juan', {
+        dating_integrity: { excluded: true, reason: 'ineligible_family' },
+      }),
+    ];
+    const eligibility = new Map([['rel-juan', verdict('char-juan', true)]]);
+    expect(romanticChipCharacterIdsFromEligibility(rows, eligibility).size).toBe(0);
   });
 });

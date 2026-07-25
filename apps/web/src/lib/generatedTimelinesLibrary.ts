@@ -59,6 +59,8 @@ export function upsertGeneratedTimeline(
     isMock: boolean;
     arcTitles?: string[];
     preserveCollapsed?: boolean;
+    /** Explicit collapse state (wins over preserveCollapsed). */
+    collapsed?: boolean;
     existingId?: string;
   }
 ): { library: SavedGeneratedTimeline[]; saved: SavedGeneratedTimeline } {
@@ -68,6 +70,13 @@ export function upsertGeneratedTimeline(
     ? library.find((t) => t.id === input.existingId)
     : library.find((t) => t.queryKey === queryKey);
 
+  const collapsed =
+    typeof input.collapsed === 'boolean'
+      ? input.collapsed
+      : input.preserveCollapsed
+        ? (existing?.collapsed ?? false)
+        : false;
+
   const saved: SavedGeneratedTimeline = {
     id: existing?.id ?? crypto.randomUUID(),
     query: input.query.trim(),
@@ -75,7 +84,7 @@ export function upsertGeneratedTimeline(
     events: input.events.map(serializeTimelineEvent),
     arcTitles: input.arcTitles ?? existing?.arcTitles ?? [],
     isMock: input.isMock,
-    collapsed: input.preserveCollapsed ? (existing?.collapsed ?? false) : false,
+    collapsed,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

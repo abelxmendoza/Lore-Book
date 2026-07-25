@@ -44,4 +44,10 @@ describe('entityMentionClassifier', () => {
     expect(shouldDeferCharacterPromotion('Tío Rafa', 1)).toBe(false);
     expect(shouldDeferCharacterPromotion('Abuela', 1)).toBe(false);
   });
+
+  it('classifies pet-context mentions as pet, not person or unknown', () => {
+    expect(classifyMentionKind('Max', 'my dog Max is the best').kind).toBe('pet');
+    expect(classifyMentionKind('Luna', 'our cat Luna knocked over the plant').kind).toBe('pet');
+    expect(classifyMentionKind('Max', 'my dog Max is the best').kind).not.toBe('person');
+  });
 });

@@ -24,7 +24,7 @@ export function TheirConnectionsPanel({
   const openAnchorNetwork = () => {
     if (!anchorCharacterId) return;
     onCloseModal?.();
-    openCharacterBookModal({ characterId: anchorCharacterId, tab: 'network' });
+    openCharacterBookModal({ characterId: anchorCharacterId, tab: 'relationships' });
   };
 
   const openPeripheralInBook = (characterId: string) => {

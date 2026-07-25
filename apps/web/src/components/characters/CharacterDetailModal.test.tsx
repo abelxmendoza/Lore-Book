@@ -11,25 +11,22 @@ import type { Character } from './CharacterProfileCard';
 import { STORY_DATA_UPDATED, type StoryDataUpdatedDetail } from '../../lib/storyRefresh';
 
 // Mock dependencies
-vi.mock('../../features/chat/composer/ChatComposer', () => ({
-  ChatComposer: () => <div data-testid="chat-composer">Chat Composer</div>,
+const mockOpenChatWithFocus = vi.fn();
+vi.mock('../../lib/openChatWithFocus', () => ({
+  openChatWithFocus: (...args: unknown[]) => mockOpenChatWithFocus(...args),
 }));
 
-vi.mock('../../hooks/useChatStream', () => ({
-  useChatStream: () => ({
-    streamChat: vi.fn().mockResolvedValue(undefined),
-    isStreaming: false,
-    cancel: vi.fn(),
-  }),
+const profileBundleMock = vi.hoisted(() => ({
+  state: {
+    bundle: null as null | { detail: Record<string, unknown> },
+    loading: false,
+    error: null as string | null,
+    reload: vi.fn(),
+  },
 }));
 
 vi.mock('../../hooks/useCharacterProfileBundle', () => ({
-  useCharacterProfileBundle: () => ({
-    bundle: null,
-    loading: false,
-    error: null,
-    reload: vi.fn(),
-  }),
+  useCharacterProfileBundle: () => profileBundleMock.state,
 }));
 
 vi.mock('../../lib/api', () => ({
@@ -61,6 +58,12 @@ vi.mock('../../contexts/MockDataContext', () => ({
   setGlobalMockDataEnabled: vi.fn(),
   subscribeToMockDataState: vi.fn(() => vi.fn()),
   MockDataProvider: ({ children }: { children?: unknown }) => children,
+}));
+
+vi.mock('./RelationshipPeripheralsPanel', () => ({
+  RelationshipPeripheralsPanel: ({ title }: { title?: string }) => (
+    <div data-testid="relationship-peripherals-panel">{title ?? 'Wider network'}</div>
+  ),
 }));
 
 const { reclassifyTrigger } = vi.hoisted(() => ({
@@ -100,6 +103,44 @@ describe('CharacterDetailModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    profileBundleMock.state = {
+      bundle: null,
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+    };
+  });
+
+  it('falls back to character detail fetch when profile bundle fails', async () => {
+    const { fetchJson } = await import('../../lib/api');
+    profileBundleMock.state = {
+      bundle: null,
+      loading: false,
+      error: 'Failed to load character profile',
+      reload: vi.fn(),
+    };
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ...mockCharacter,
+      id: 'char-bundle-fail',
+      name: 'Jamie Fallback',
+      summary: 'Loaded via legacy detail',
+      shared_memories: [],
+      relationships: [],
+    });
+
+    render(
+      <CharacterDetailModal
+        character={{ ...mockCharacter, id: 'char-bundle-fail', name: 'Jamie Fallback' }}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Jamie Fallback').length).toBeGreaterThan(0);
+    expect(fetchJson).toHaveBeenCalledWith('/api/characters/char-bundle-fail');
   });
 
   it('should render character information', () => {
@@ -156,12 +197,56 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByText(/chat/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/^social$/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/^connections$/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^their network$/i })).not.toBeInTheDocument();
   });
 
-  it('should show chat composer when Chat tab is active', async () => {
+  it('maps legacy network initialTab to Connections and shows wider network', async () => {
     render(
       <CharacterDetailModal
-        character={{ ...mockCharacter, id: 'dummy-chat-character' }}
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        initialTab="network"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('relationship-peripherals-panel')).toBeInTheDocument();
+    expect(screen.getByText('Wider network')).toBeInTheDocument();
+    expect(screen.getAllByTestId('character-tab-connections').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+  });
+
+  it('Intelligence Chat tab redirects to main chat with the character focus chip, not an in-modal composer', async () => {
+    const user = userEvent.setup();
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: /intelligence chat/i })[0]!);
+
+    expect(mockOnClose).toHaveBeenCalled();
+    expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'char-1',
+        entityName: 'John Doe',
+        entityType: 'character',
+        sourceSurface: 'characters',
+      }),
+    );
+    expect(screen.queryByTestId('chat-composer')).not.toBeInTheDocument();
+  });
+
+  it('deep-linking with initialTab="chat" lands on Info instead of a blank redirect-only pane', async () => {
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
         onClose={mockOnClose}
         onUpdate={mockOnUpdate}
         initialTab="chat"
@@ -169,8 +254,11 @@ describe('CharacterDetailModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
     });
+
+    expect(mockOpenChatWithFocus).not.toHaveBeenCalled();
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
   it('should handle character with no data gracefully', () => {
@@ -524,12 +612,16 @@ describe('CharacterDetailModal', () => {
       vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.url;
         if (url === '/api/organizations') {
-          return { success: true, organizations: [{ id: 'org-1', name: 'Ska Collective' }] } as never;
+          return {
+            success: true,
+            organizations: [{ id: 'org-1', name: 'Ska Collective', user_relationship: 'member', members: [] }],
+          } as never;
         }
         if (url === '/api/organizations/org-1/members' && init?.method === 'POST') {
           return { success: true, member: { id: 'm-1' } } as never;
         }
         if (url.startsWith('/api/organizations/by-character')) {
+          // Simulate laggy/empty refetch — optimistic UI must still show the group.
           return { success: true, organizations: [] } as never;
         }
         throw new Error('Not found');
@@ -548,14 +640,62 @@ describe('CharacterDetailModal', () => {
       const select = await screen.findByLabelText('Existing group or organization');
       await waitFor(() => expect(screen.getByRole('option', { name: 'Ska Collective' })).toBeInTheDocument());
       await userEvent.selectOptions(select, 'org-1');
+      const roleSelect = screen.getByTestId('add-membership-role');
+      expect(screen.getByRole('option', { name: 'Leader' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Founder' })).toBeInTheDocument();
+      await userEvent.selectOptions(roleSelect, 'leader');
       await userEvent.click(screen.getByTestId('add-membership-submit'));
 
       await waitFor(() =>
         expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
           '/api/organizations/org-1/members',
-          expect.objectContaining({ method: 'POST' }),
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.stringContaining('"role":"leader"'),
+          }),
         ),
       );
+      expect(await screen.findByText('Ska Collective')).toBeInTheDocument();
+      expect(screen.getByTestId('character-groups-section')).toBeInTheDocument();
+    });
+
+    it('loads Groups & Organizations with both character_id and character_name', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      const byCharacterUrls: string[] = [];
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.startsWith('/api/organizations/by-character')) {
+          byCharacterUrls.push(url);
+          return {
+            success: true,
+            organizations: [
+              {
+                id: 'org-amazon',
+                name: 'Amazon',
+                user_relationship: 'aware_of',
+                members: [{ character_id: baseCharacter.id, character_name: baseCharacter.name, role: 'employee' }],
+              },
+            ],
+          } as never;
+        }
+        throw new Error('Not found');
+      });
+
+      render(
+        <CharacterDetailModal
+          character={baseCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />
+      );
+
+      await waitFor(() => {
+        expect(byCharacterUrls.some((u) => u.includes('character_id=') && u.includes('character_name='))).toBe(
+          true,
+        );
+      });
+      expect(await screen.findByText('Amazon')).toBeInTheDocument();
     });
   });
 });

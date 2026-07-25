@@ -26,6 +26,11 @@ import { voidAwarenessService } from './voidAwarenessService';
 import { atomPrioritizer } from './atomPrioritizer';
 import { fallbackGenerator } from './fallbackGenerator';
 import { qualityValidator } from './qualityValidator';
+import {
+  constraintsForForm,
+  formNarrativeHint,
+  maxChaptersForForm,
+} from './lorebookForm';
 import type {
   NarrativeAtom,
   NarrativeGraph,
@@ -45,7 +50,8 @@ export class BiographyGenerationEngine {
    */
   async generateBiography(userId: string, spec: BiographySpec): Promise<Biography> {
     try {
-      logger.info({ userId, spec }, 'Generating biography');
+      const formConstraints = constraintsForForm(spec.form);
+      logger.info({ userId, spec, form: formConstraints.form }, 'Generating biography');
 
       // 1. Load or build NarrativeGraph
       const graph = await this.loadOrBuildNarrativeGraph(userId);
@@ -74,17 +80,22 @@ export class BiographyGenerationEngine {
         spec
       );
 
-      // 4a. Create void chapters for significant gaps
-      const voidChapters = voidAwarenessService.createVoidChapters(
-        voidPeriods.filter(v => v.significance !== 'low'),
-        spec
-      );
+      // 4a. Create void chapters for significant gaps (skipped for vignette/chapter)
+      const voidChapters = formConstraints.includeVoidChapters
+        ? voidAwarenessService.createVoidChapters(
+            voidPeriods.filter(v => v.significance !== 'low'),
+            spec
+          )
+        : [];
 
       // Merge void chapters into chapter clusters
       const allChapters = [...chapterClusters, ...voidChapters];
 
-      // 5. Order chapters (including void chapters)
-      const orderedChapters = this.orderChapters(allChapters, spec);
+      // 5. Order chapters (including void chapters), then cap by form tier
+      const orderedChapters = this.applyFormChapterCap(
+        this.orderChapters(allChapters, spec),
+        spec,
+      );
 
       // 6. Generate chapter titles from timeline chapters
       const chaptersWithTitles = await this.generateChapterTitlesFromTimeline(
@@ -1493,6 +1504,8 @@ This gap in my story represents a period I haven't yet captured. What memories f
                   role: 'system',
                   content: `You are a skilled biographer writing a ${spec.depth} biography chapter in ${spec.tone} tone for ${spec.audience} audience.
 
+${formNarrativeHint(spec.form)}
+
 ${toneInstructions}
 ${audienceInstructions}
 ${introspection}
@@ -1728,6 +1741,7 @@ ${openingPreservedContent ? 'First, include the opening preserved content EXACTL
         isCoreLorebook: (spec as any).isCoreLorebook || false,
         lorebookName: (spec as any).lorebookName,
         lorebookVersion: (spec as any).lorebookVersion || 1,
+        form: spec.form ?? 'book',
         atomHashes: finalAtomHashes, // Reference hashes to NarrativeAtoms used
         memorySnapshotAt: new Date().toISOString(), // When memory was queried
         timePeriods: timePeriods || [], // Time periods detected
@@ -1736,6 +1750,49 @@ ${openingPreservedContent ? 'First, include the opening preserved content EXACTL
         voidCount: voidCount || 0 // Number of void chapters
       }
     };
+  }
+
+  /**
+   * Cap chapter clusters for vignette / chapter / short_book forms.
+   * Prefer non-void, higher-significance clusters; merge leftover atoms into the keeper when capped to 1.
+   */
+  private applyFormChapterCap<T extends ChapterCluster>(
+    chapters: T[],
+    spec: BiographySpec,
+  ): T[] {
+    const max = maxChaptersForForm(spec.form);
+    if (max == null || chapters.length <= max) return chapters;
+
+    const ranked = [...chapters].sort((a, b) => {
+      const aVoid = (a as ChapterCluster & { isVoidChapter?: boolean }).isVoidChapter ? 0 : 1;
+      const bVoid = (b as ChapterCluster & { isVoidChapter?: boolean }).isVoidChapter ? 0 : 1;
+      if (aVoid !== bVoid) return bVoid - aVoid;
+      return (b.significance ?? 0) - (a.significance ?? 0);
+    });
+
+    const keep = ranked.slice(0, max);
+    if (max === 1 && keep[0]) {
+      const leftover = ranked.slice(1);
+      for (const extra of leftover) {
+        keep[0].atoms.push(...extra.atoms);
+        for (const theme of extra.dominantThemes ?? []) {
+          if (!keep[0].dominantThemes.includes(theme)) {
+            keep[0].dominantThemes.push(theme);
+          }
+        }
+        if (extra.timeSpan?.start < keep[0].timeSpan.start) {
+          keep[0].timeSpan.start = extra.timeSpan.start;
+        }
+        if (extra.timeSpan?.end > keep[0].timeSpan.end) {
+          keep[0].timeSpan.end = extra.timeSpan.end;
+        }
+      }
+      if (keep[0].atoms.length > 0) {
+        keep[0].significance =
+          keep[0].atoms.reduce((sum, a) => sum + a.significance, 0) / keep[0].atoms.length;
+      }
+    }
+    return keep;
   }
 
   /**

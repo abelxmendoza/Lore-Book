@@ -19,6 +19,21 @@ describe('relational placeholders', () => {
     expect(parseRelationalPlaceholder("Shana's best friend")).toEqual({ relation: 'friend', anchor: 'Shana' });
   });
 
+  it('parses professional care roles like social worker', () => {
+    expect(parseRelationalPlaceholder("Marcus's Social Worker")).toEqual({
+      relation: 'social worker',
+      anchor: 'Marcus',
+    });
+    expect(parseRelationalPlaceholder("Juan's social worker")).toEqual({
+      relation: 'social worker',
+      anchor: 'Juan',
+    });
+    expect(parseRelationalPlaceholder('a social worker of Marcus')).toEqual({
+      relation: 'social worker',
+      anchor: 'Marcus',
+    });
+  });
+
   it('does not treat a kinship-titled person as a placeholder', () => {
     expect(parseRelationalPlaceholder('Tío Rafa')).toBeNull();
     expect(isRelationalPlaceholder('Shana')).toBe(false);

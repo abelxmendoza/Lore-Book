@@ -1,13 +1,17 @@
 import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../../lib/api';
 import { fetchProjectById } from '../../lib/hydrateBookEntity';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { buildProjectBookClipboardText } from '../../lib/projectBookClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useProjectsBookData } from '../../store/hooks/useEntityBooks';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { Button } from '../ui/button';
@@ -165,6 +169,8 @@ export const ProjectBook = () => {
   const [active, setActive] = useState<ProjectCardData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [demoProjects, setDemoProjects] = useState<ProjectCardData[]>(() => [...DEMO_PROJECTS]);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
@@ -227,8 +233,15 @@ export const ProjectBook = () => {
   }, [projects, search, statusFilter, typeFilter]);
 
   const clipboardText = useMemo(
-    () => buildProjectBookClipboardText(filtered),
-    [filtered],
+    () =>
+      buildProjectBookClipboardText(filtered, {
+        filters: clipboardFilterLines([
+          search.trim() && `search="${search.trim()}"`,
+          statusFilter !== 'all' && `status=${statusFilter}`,
+          typeFilter !== 'all' && `type=${typeFilter}`,
+        ]),
+      }),
+    [filtered, search, statusFilter, typeFilter],
   );
 
   useEffect(() => {
@@ -422,8 +435,41 @@ export const ProjectBook = () => {
     });
   };
 
+  const projectChatOptions = useMemo(
+    () => projects.map((p) => ({ id: p.id, name: p.name })),
+    [projects],
+  );
+
+  const openProjectFocusedChat = useCallback(
+    async (selection: { name: string; entity?: { id: string; name: string; aliases?: string[] } }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.projects, selection);
+      } catch (e) {
+        setFocusedChatError(
+          e instanceof Error ? e.message : 'Could not open a focused chat right now.',
+        );
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
+
   return (
     <div className={`max-w-6xl mx-auto w-full min-w-0 ${selectionMode && selected.size >= 2 ? 'pb-28 sm:pb-4' : 'pb-4 sm:pb-0'}`}>
+      <div className="mb-5 sm:mb-6">
+        <FocusedEntityChatLauncher
+          options={projectChatOptions}
+          copy={FOCUSED_ENTITY_CHAT_PRESETS.projects.copy}
+          theme={FOCUSED_ENTITY_CHAT_PRESETS.projects.theme}
+          icon={FOCUSED_ENTITY_CHAT_PRESETS.projects.icon}
+          busy={focusedChatBusy}
+          error={focusedChatError}
+          onContinue={openProjectFocusedChat}
+        />
+      </div>
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-5 sm:mb-8">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-primary/15 border border-primary/30 shrink-0">

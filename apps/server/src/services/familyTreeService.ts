@@ -143,7 +143,9 @@ type CharacterKinshipRow = {
 
 function isFamilyType(type: string): boolean {
   const t = (type ?? '').toLowerCase();
-  return FAMILY_TYPES.has(t) || t.includes('parent') || t.includes('sibling') || t.includes('family');
+  // possible_family is suggest-only and must not enter tree edge walks.
+  if (t === 'possible_family') return false;
+  return FAMILY_TYPES.has(t) || t.includes('parent') || t.includes('sibling') || t === 'family';
 }
 
 function normalizeRelationshipType(type: string): string {
@@ -400,6 +402,17 @@ class FamilyTreeService {
 
   /** User's personal family tree (centered on the user character). */
   async getUserFamilyTree(userId: string): Promise<FamilyTreeDTO | null> {
+    // Sync surname + shared-parent cousins (e.g. Jerry/James Medina under Tía Grace)
+    // before reading so connectors and character trees stay bidirectional.
+    // Also soft-fill sex from kinship titles (Mom → female, Dad → male, …).
+    try {
+      const { familySurnameSuggestionService } = await import('./kinship/familySurnameSuggestionService');
+      await familySurnameSuggestionService.reconcileTreePlacedSurnameLinks(userId);
+      const { reconcileKinshipSexForUser } = await import('./kinship/reconcileKinshipSex');
+      await reconcileKinshipSexForUser(userId);
+    } catch {
+      // non-fatal
+    }
     const selfId = await this.findUserCharacterId(userId);
     const tree = await this.buildUserCenteredFamilyTree(userId, selfId);
     const enriched = tree ? this.enrichRelationsFromNames(tree) : tree;
@@ -451,6 +464,9 @@ class FamilyTreeService {
       }
 
       const edges = await this.loadFamilyEdges(userId, characterId);
+      // Include user-asserted tree placements (family_override.connects_to_id)
+      // so a cousin's tree shows their aunt even before a parent_of row exists.
+      edges.push(...(await this.loadOverridePlacementEdges(userId, characterId)));
       if (edges.length === 0) {
         // Fallback: relationship tree builder
         const built = await relationshipTreeBuilder.buildTree(userId, characterId, 'character', 'family', 4);
@@ -1109,6 +1125,7 @@ class FamilyTreeService {
 
     for (const r of (out ?? []) as Array<{ source_character_id: string; target_character_id: string; relationship_type: string; relationship_category?: string | null; relationship_role?: string | null; closeness_score?: number; metadata?: Record<string, unknown>; summary?: string }>) {
       const rawType = r.relationship_role ?? r.relationship_type;
+      if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
       if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type)) continue;
       const type = normalizeRelationshipType(rawType);
       const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
@@ -1121,6 +1138,101 @@ class FamilyTreeService {
         confidence: 0.75,
         evidence: (r.metadata?.evidence as string) ?? r.summary,
       });
+    }
+
+    // 2-hop: include family edges among people already linked to the root
+    // (cousin↔cousin, aunt→other cousin) so character trees aren't a self-star.
+    const neighborIds = [...new Set(edges.flatMap((e) => [e.fromId, e.toId]).filter((id) => id !== rootId))];
+    if (neighborIds.length > 0) {
+      const { data: among } = await supabaseAdmin
+        .from('character_relationships')
+        .select('source_character_id, target_character_id, relationship_type, relationship_category, relationship_role, metadata, summary')
+        .eq('user_id', userId)
+        .in('source_character_id', neighborIds)
+        .in('target_character_id', neighborIds);
+      for (const r of (among ?? []) as Array<{
+        source_character_id: string;
+        target_character_id: string;
+        relationship_type: string;
+        relationship_category?: string | null;
+        relationship_role?: string | null;
+        metadata?: Record<string, unknown>;
+        summary?: string;
+      }>) {
+        if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
+        const rawType = r.relationship_role ?? r.relationship_type;
+        if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type)) continue;
+        const type = normalizeRelationshipType(rawType);
+        const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push({
+          fromId: r.source_character_id,
+          toId: r.target_character_id,
+          type,
+          confidence: 0.7,
+          evidence: (r.metadata?.evidence as string) ?? r.summary,
+        });
+      }
+    }
+
+    return edges;
+  }
+
+  /** Edges implied by family_override.connects_to_id for this character and peers. */
+  private async loadOverridePlacementEdges(
+    userId: string,
+    characterId: string,
+  ): Promise<Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }>> {
+    const { data: selfRow } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    const selfOverride = (selfRow?.metadata as Record<string, unknown> | null)?.family_override as
+      | { connects_to_id?: string | null }
+      | undefined;
+    const edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }> = [];
+    if (selfOverride?.connects_to_id) {
+      edges.push({
+        fromId: selfOverride.connects_to_id,
+        toId: characterId,
+        type: 'parent_of',
+        confidence: 0.95,
+        evidence: 'family_override',
+      });
+    }
+
+    // Peers who connect to the same parent (shared surname cousins under one aunt).
+    const parentId = selfOverride?.connects_to_id;
+    if (parentId) {
+      const { data: peers } = await supabaseAdmin
+        .from('characters')
+        .select('id, metadata')
+        .eq('user_id', userId)
+        .neq('id', characterId)
+        .limit(250);
+      for (const peer of peers ?? []) {
+        const ov = (peer.metadata as Record<string, unknown> | null)?.family_override as
+          | { connects_to_id?: string | null }
+          | undefined;
+        if (ov?.connects_to_id !== parentId) continue;
+        edges.push({
+          fromId: parentId,
+          toId: peer.id as string,
+          type: 'parent_of',
+          confidence: 0.9,
+          evidence: 'family_override',
+        });
+        edges.push({
+          fromId: characterId,
+          toId: peer.id as string,
+          type: 'cousin_of',
+          confidence: 0.85,
+          evidence: 'shared_tree_parent',
+        });
+      }
     }
     return edges;
   }
@@ -1200,7 +1312,24 @@ class FamilyTreeService {
         return member;
       });
 
-    return { ...tree, members };
+    // Align aunt/uncle branch side with their placed children (cousins under
+    // Tía Grace should pull Grace into the maternal column, not "other").
+    const sideByParent = new Map<string, 'maternal' | 'paternal' | 'both' | 'other'>();
+    for (const m of members) {
+      if (m.parent_id && m.side && m.side !== 'other') {
+        if (!sideByParent.has(m.parent_id)) sideByParent.set(m.parent_id, m.side);
+      }
+    }
+    const aligned = members.map((m) => {
+      const childSide = sideByParent.get(m.id);
+      if (!childSide) return m;
+      if (m.relation === 'aunt' || m.relation === 'uncle' || m.relation === 'parent' || m.relation === 'step_parent') {
+        if (!m.side || m.side === 'other') return { ...m, side: childSide };
+      }
+      return m;
+    });
+
+    return { ...tree, members: aligned };
   }
 
   private buildTreeFromEdges(

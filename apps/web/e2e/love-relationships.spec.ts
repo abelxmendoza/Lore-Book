@@ -86,12 +86,12 @@ test.describe('Dating & Romance — connected lore', () => {
     await expect(page.getByText(/suspected side partner|Sam's suspected/i).first()).toBeVisible();
   });
 
-  test('character detail their network tab shows multi-domain periphery', async ({ page }) => {
+  test('character detail connections tab shows multi-domain periphery', async ({ page }) => {
     await page.goto('/?mockData=true');
     await page.waitForSelector('[data-testid="app-content"]', { timeout: 15000 }).catch(() => {});
     await page.getByRole('button', { name: /characters/i }).click();
     await page.getByText('Sam', { exact: false }).first().click();
-    await page.getByTestId('character-tab-network').click();
+    await page.getByTestId('character-tab-connections').first().click();
     await expect(page.getByTestId('relationship-peripherals-panel')).toBeVisible({ timeout: 8000 });
     await expect(page.getByTestId('peripheral-card-periph-sam-roommate')).toBeVisible();
     await expect(page.getByText('Drew')).toBeVisible();

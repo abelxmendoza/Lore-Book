@@ -5,18 +5,35 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  Copy,
   FileCheck2,
   Fingerprint,
   Quote,
   ShieldAlert,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMemoryReviewQueue, type MemoryProposal } from '../../hooks/useMemoryReviewQueue';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { buildMemoryReviewQueueClipboardText } from '../../lib/memoryReviewQueueClipboard';
+import { cn } from '../../lib/cn';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
+
+type BeliefCognitionMeta = {
+  rendered_proposition?: string;
+  resolved_subject?: string;
+  predicate?: string;
+  domain?: string;
+  durability?: string;
+  temporal_scope?: { referenceExpression?: string; validUntil?: string; occurredAt?: string };
+  attribution?: { status?: string; attributionText?: string };
+  routing_target?: string;
+  confirmation_requirement?: string;
+  diagnostic_reasons?: string[];
+};
 
 type ProposalMeta = {
   proposal_kind?: string;
@@ -31,6 +48,7 @@ type ProposalMeta = {
   source_conversation_title?: string;
   source_message_created_at?: string | null;
   authority?: string;
+  belief_cognition?: BeliefCognitionMeta;
 };
 
 function metadataFor(proposal: MemoryProposal): ProposalMeta {
@@ -68,8 +86,12 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
   const [busy, setBusy] = useState<'approve' | 'reject' | 'defer' | null>(null);
   const [actionMessage, setActionMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const meta = metadataFor(proposal);
-  const belief = meta.normalized_summary || proposal.claim_text;
+  const cognition = meta.belief_cognition;
+  const belief = cognition?.rendered_proposition || meta.normalized_summary || proposal.claim_text;
   const confidence = Math.round(proposal.confidence * 100);
+  const confirmationWhy = cognition?.confirmation_requirement
+    ? `Confirmation: ${cognition.confirmation_requirement.replace(/_/g, ' ').toLowerCase()}`
+    : meta.risk_reason;
 
   const act = async (action: 'approve' | 'reject' | 'defer') => {
     setBusy(action);
@@ -115,9 +137,28 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
-                What LoreBook wants to believe
+                Compiled proposition
               </p>
               <h4 className="mt-1 text-base font-medium leading-relaxed text-white">{belief}</h4>
+              {(cognition?.resolved_subject || cognition?.domain || cognition?.durability) && (
+                <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
+                  {cognition.resolved_subject && (
+                    <div><dt className="inline text-white/35">Subject </dt><dd className="inline text-white/70">{cognition.resolved_subject}</dd></div>
+                  )}
+                  {cognition.predicate && (
+                    <div><dt className="inline text-white/35">Predicate </dt><dd className="inline text-white/70">{cognition.predicate}</dd></div>
+                  )}
+                  {cognition.domain && (
+                    <div><dt className="inline text-white/35">Domain </dt><dd className="inline text-white/70">{cognition.domain.replace(/_/g, ' ').toLowerCase()}</dd></div>
+                  )}
+                  {cognition.durability && (
+                    <div><dt className="inline text-white/35">Durability </dt><dd className="inline text-white/70">{cognition.durability.replace(/_/g, ' ').toLowerCase()}</dd></div>
+                  )}
+                  {cognition.routing_target && (
+                    <div><dt className="inline text-white/35">Route </dt><dd className="inline text-white/70">{cognition.routing_target.replace(/_/g, ' ').toLowerCase()}</dd></div>
+                  )}
+                </dl>
+              )}
             </div>
           </div>
           <button
@@ -144,7 +185,7 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
           </div>
           <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-white/35">Impact</p>
-            <p className="mt-0.5 line-clamp-2 text-sm text-white/75">{meta.risk_reason || 'Reversible memory update'}</p>
+            <p className="mt-0.5 line-clamp-2 text-sm text-white/75">{confirmationWhy || 'Reversible memory update'}</p>
           </div>
         </div>
 
@@ -153,10 +194,31 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
             <div className="flex gap-3 rounded-lg border border-primary/15 bg-primary/[0.06] p-3">
               <FileCheck2 className="mt-0.5 h-4 w-4 flex-none text-primary" />
               <div>
-                <p className="text-xs font-medium text-white">Approve will</p>
+                <p className="text-xs font-medium text-white">Proposed mutation</p>
                 <p className="mt-0.5 text-sm leading-relaxed text-white/60">
-                  {meta.proposed_mutation || `Add this belief to LoreBook: ${belief}`}
+                  {meta.proposed_mutation || `Add this memory proposal to LoreBook: ${belief}`}
                 </p>
+                {cognition?.attribution?.attributionText && (
+                  <p className="mt-2 text-xs leading-relaxed text-amber-200/80">
+                    Attribution: {cognition.attribution.attributionText}
+                  </p>
+                )}
+                {(cognition?.temporal_scope?.referenceExpression || cognition?.temporal_scope?.validUntil) && (
+                  <p className="mt-1 text-xs text-white/45">
+                    Temporal
+                    {cognition.temporal_scope.referenceExpression
+                      ? `: ${cognition.temporal_scope.referenceExpression}`
+                      : ''}
+                    {cognition.temporal_scope.validUntil
+                      ? ` · until ${new Date(cognition.temporal_scope.validUntil).toLocaleString()}`
+                      : ''}
+                  </p>
+                )}
+                {cognition?.confirmation_requirement && (
+                  <p className="mt-1 text-xs text-white/45">
+                    Why confirmation: {cognition.confirmation_requirement.replace(/_/g, ' ').toLowerCase()}
+                  </p>
+                )}
               </div>
             </div>
             {proposal.source_excerpt && (
@@ -216,6 +278,15 @@ type ProposalGroup = { key: string; label: string; proposals: MemoryProposal[]; 
 
 export function MemoryReviewQueuePanel() {
   const { proposals, loading, error, refetch, approveProposal, rejectProposal, deferProposal } = useMemoryReviewQueue();
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
   const visibleProposals = useMemo(
     () => proposals.filter(proposal => proposal.metadata?.proposal_integrity?.valid !== false),
     [proposals]
@@ -238,6 +309,14 @@ export function MemoryReviewQueuePanel() {
     }
     return [...grouped.values()].sort((a, b) => b.proposals.length - a.proposals.length || a.label.localeCompare(b.label));
   }, [visibleProposals]);
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildMemoryReviewQueueClipboardText(visibleProposals));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   if (loading) {
     return <div className="py-16 text-center text-sm text-white/45">Checking proposed beliefs…</div>;
@@ -273,20 +352,37 @@ export function MemoryReviewQueuePanel() {
   return (
     <section className="space-y-5" aria-labelledby="memory-review-heading">
       <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/[0.04] to-transparent p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <Fingerprint className="mt-0.5 h-5 w-5 flex-none text-primary" />
-          <div>
-            <h3 id="memory-review-heading" className="font-semibold text-white">Beliefs awaiting confirmation</h3>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/55">
-              Each item is one normalized belief. Related evidence is merged, confidence and impact are separate,
-              and every card explains the exact mutation before you approve it.
-            </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <Fingerprint className="mt-0.5 h-5 w-5 flex-none text-primary" />
+            <div className="min-w-0">
+              <h3 id="memory-review-heading" className="font-semibold text-white">Memory proposals</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/55">
+                Compiled propositions awaiting confirmation. Related evidence is merged, confidence and impact are separate,
+                and every card shows subject, domain, durability, and the exact mutation before you approve it.
+              </p>
+            </div>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleCopyAll()}
+            className={cn(
+              'shrink-0 self-start',
+              copied && 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10',
+            )}
+            title="Copy all memory proposals as plain text"
+            aria-label="Copy all memory proposals"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}
+            {copied ? 'Copied' : 'Copy all'}
+          </Button>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs text-white/45">
-        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{visibleProposals.length} beliefs</span>
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{visibleProposals.length} proposals</span>
         <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{groups.length} story groups</span>
         <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
           {groups.reduce((sum, group) => sum + group.evidenceCount, 0)} evidence passages

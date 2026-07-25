@@ -16,6 +16,7 @@ import {
   filterQualityCandidates,
   gateSuggestionCandidate,
 } from './lorebook/quality/entityQualityGateService';
+import { hasFamilySignal } from './conversationCentered/datingEligibilityService';
 import { suggestionDismissalService } from './suggestionDismissalService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -35,6 +36,8 @@ export type CharacterSuggestion = {
   matched_book_id?: string | null;
   matched_book_name?: string | null;
   alternative_categories?: AlternativeCategory[];
+  /** 'pet' when classifyMentionKind detected pet-context evidence (e.g. "my dog Max"). */
+  kind?: 'person' | 'pet';
 };
 
 export type CharacterSuggestionContext = 'general' | 'romantic';
@@ -89,7 +92,8 @@ class CharacterSuggestionService {
       const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
       if (!isIndividualPersonName(safeName)) return;
-      if (classifyMentionKind(safeName).kind !== 'person') return;
+      const mentionKind = classifyMentionKind(safeName).kind;
+      if (mentionKind !== 'person' && mentionKind !== 'pet') return;
       const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
       if (match.status === 'existing') return;
       seen.add(key);
@@ -100,6 +104,7 @@ class CharacterSuggestionService {
         match_status: match.status,
         matched_book_id: match.matchedId ?? null,
         matched_book_name: match.matchedName ?? null,
+        kind: mentionKind === 'pet' ? 'pet' : 'person',
       });
     };
 
@@ -265,6 +270,9 @@ class CharacterSuggestionService {
 
     for (const s of [...suggestions, ...romanticFromChat, ...fromRelationships]) {
       if (!this.looksRomanticSuggestion(s)) continue;
+      if (hasFamilySignal(s.name, [s.role, s.relationship, s.archetype].filter(Boolean) as string[])) {
+        continue;
+      }
       const key = normalizeNameKey(s.name);
       const existing = merged.get(key);
       if (!existing || s.confidence > existing.confidence) {
@@ -306,6 +314,7 @@ class CharacterSuggestionService {
 
     for (const name of names) {
       if (!isIndividualPersonName(name)) continue;
+      if (hasFamilySignal(name)) continue;
       const gate = characterRegistry.gateName(name);
       if (!gate.ok) continue;
 
@@ -346,18 +355,37 @@ class CharacterSuggestionService {
   ): Promise<CharacterSuggestion[]> {
     const { data: relationships } = await supabaseAdmin
       .from('romantic_relationships')
-      .select('person_id, person_type, relationship_type, metadata')
+      .select('id, person_id, person_type, relationship_type, status, metadata')
       .eq('user_id', userId)
       .limit(40);
 
     if (!relationships?.length) return [];
 
-    const characterIds = relationships
-      .filter((r) => r.person_type === 'character')
-      .map((r) => r.person_id);
-    const entityIds = relationships
-      .filter((r) => r.person_type === 'omega_entity')
-      .map((r) => r.person_id);
+    const {
+      loadDatingEligibilityForRows,
+      romanticChipCharacterIdsFromEligibility,
+      isDatingIntegrityExcluded,
+    } = await import('./conversationCentered/datingEligibilityService');
+
+    const eligibleRows = relationships.filter(
+      (r) => !isDatingIntegrityExcluded((r.metadata ?? null) as Record<string, unknown> | null),
+    );
+    const eligibility = await loadDatingEligibilityForRows(userId, eligibleRows as never);
+    const visibleCharacterIds = romanticChipCharacterIdsFromEligibility(
+      eligibleRows as never,
+      eligibility,
+    );
+    const visibleOmegaIds = new Set(
+      eligibleRows
+        .filter((r) => {
+          if (r.person_type !== 'omega_entity') return false;
+          return eligibility.get(r.id)?.visibleInDatingBook === true;
+        })
+        .map((r) => r.person_id),
+    );
+
+    const characterIds = [...visibleCharacterIds];
+    const entityIds = [...visibleOmegaIds];
 
     const [{ data: characters }, { data: entities }, { data: bookChars }] = await Promise.all([
       characterIds.length
@@ -374,12 +402,18 @@ class CharacterSuggestionService {
     );
 
     const out: CharacterSuggestion[] = [];
-    for (const rel of relationships) {
+    for (const rel of eligibleRows) {
+      const allowed =
+        rel.person_type === 'character'
+          ? visibleCharacterIds.has(rel.person_id)
+          : visibleOmegaIds.has(rel.person_id);
+      if (!allowed) continue;
       const name =
         rel.person_type === 'character'
           ? characters?.find((c) => c.id === rel.person_id)?.name
           : entities?.find((e) => e.id === rel.person_id)?.primary_name;
       if (!name || !isIndividualPersonName(name)) continue;
+      if (hasFamilySignal(name)) continue;
       if (resolveBookNameMatch(name, book.exactKeys, book.entries).status === 'existing') continue;
       const gated = gateSuggestionCandidate(
         name,

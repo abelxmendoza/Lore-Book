@@ -3,7 +3,13 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS, type BiographySpec } from '../services/biographyGeneration';
+import {
+  biographyGenerationEngine,
+  biographyRecommendationEngine,
+  BIOGRAPHY_VERSIONS,
+  defaultDepthForForm,
+  type BiographySpec,
+} from '../services/biographyGeneration';
 import { bookCapacityCalculator } from '../services/biographyGeneration/bookCapacityCalculator';
 import { contentAvailabilityService } from '../services/biographyGeneration/contentAvailabilityService';
 import { bookVersionManager } from '../services/biographyGeneration/bookVersionManager';
@@ -312,7 +318,8 @@ const generateBiographySchema = z
       .optional(),
     themes: z.array(z.string()).optional(),
     tone: z.enum(['neutral', 'dramatic', 'reflective', 'mythic', 'professional']).default('neutral'),
-    depth: z.enum(['summary', 'detailed', 'epic']).default('detailed'),
+    depth: z.enum(['summary', 'detailed', 'epic']).optional(),
+    form: z.enum(['vignette', 'chapter', 'short_book', 'book', 'epic']).optional(),
     audience: z.enum(['self', 'public', 'professional']).default('self'),
     version: z.enum(['main', 'safe', 'explicit', 'private']).default('main'),
     includeIntrospection: z.boolean().optional(),
@@ -364,11 +371,15 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
       timeRange,
       themes,
       tone,
-      depth,
+      depth: depthIn,
+      form: formIn,
       audience,
       version,
       includeIntrospection,
     } = parsed.data;
+
+    const form = formIn ?? 'book';
+    const depth = depthIn ?? defaultDepthForForm(form);
 
     let spec: BiographySpec & {
       characterIds?: string[];
@@ -392,9 +403,12 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
         timeRange,
         themes,
         depth,
+        form,
       });
       spec = {
         ...target.spec,
+        form,
+        depth,
         characterIds: characterIds ?? target.spec.characterIds,
         locationIds: locationIds ?? target.spec.locationIds,
         skillIds: skillIds ?? target.spec.skillIds,
@@ -422,6 +436,7 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
         timeRange: spec.timeRange,
         themes: spec.themes,
         depth: spec.depth,
+        form,
       };
     } else {
       if (!scope) {
@@ -434,6 +449,7 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
         themes,
         tone,
         depth,
+        form,
         audience,
         version,
         includeIntrospection,
@@ -442,7 +458,7 @@ router.post('/generate', requireAuth, async (req: AuthenticatedRequest, res) => 
         skillIds,
         organizationIds,
       };
-      gateRequest = { spec, depth: spec.depth };
+      gateRequest = { spec, depth: spec.depth, form };
     }
 
     const gate = await checkCompileGate(req.user!.id, gateRequest, { force });

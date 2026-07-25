@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Sparkles, RefreshCw, ChevronLeft, ChevronRight, BookOpen, LayoutGrid, Tag, Heart, FileText, Clock, ClipboardCheck } from 'lucide-react';
+import { Search, Sparkles, RefreshCw, ChevronLeft, ChevronRight, Tag, Heart, FileText, Clock, ClipboardCheck } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from './MemoryCard';
 import { MemoryDetailModal } from './MemoryDetailModal';
@@ -7,6 +7,11 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import {
+  GridListViewToolbar,
+  readStoredCardViewMode,
+  type CardViewMode,
+} from '../ui/GridListViewToolbar';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard, type MemorySearchResult } from '../../types/memory';
 import type { HQIResult } from '../hqi/HQIResultCard';
@@ -15,9 +20,13 @@ import { mockDataService } from '../../services/mockDataService';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { MOCK_MEMORY_PROPOSALS } from '../../mocks/memoryProposals';
 import { MemoryReviewQueuePanel } from '../discovery/MemoryReviewQueuePanel';
+import { buildSearchFactsClipboardText } from '../../lib/searchFactsClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 const DEBOUNCE_DELAY = 300;
-const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
+const ITEMS_PER_PAGE = 18;
+const SEARCH_FACTS_VIEW_STORAGE_KEY = 'lorebook.searchFacts.cardViewMode';
 
 // Comprehensive mock memory data showcasing all app capabilities
 // Export for use in mock data service
@@ -475,11 +484,11 @@ export const MemoryExplorer = () => {
   const [loading, setLoading] = useState(false);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewMode, setViewMode] = useState<'grid' | 'book'>('book');
+  const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
+    readStoredCardViewMode(SEARCH_FACTS_VIEW_STORAGE_KEY, 'grid'),
+  );
   const [selectedTab, setSelectedTab] = useState('all');
-  const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
-
-  // Memory Review Queue hook
+  const { entries = [] } = useLoreKeeper();
 
   // Register mock data with service on mount
   useEffect(() => {
@@ -613,12 +622,23 @@ export const MemoryExplorer = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, viewMode, selectedTab]);
+  }, [searchTerm, cardViewMode, selectedTab]);
 
   const totalPages = Math.ceil(filteredMemories.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedMemories = filteredMemories.slice(startIndex, endIndex);
+
+  const clipboardText = useMemo(
+    () =>
+      buildSearchFactsClipboardText(filteredMemories, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          selectedTab !== 'all' && `tab=${selectedTab}`,
+        ]),
+      }),
+    [filteredMemories, searchTerm, selectedTab],
+  );
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -815,54 +835,50 @@ export const MemoryExplorer = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Search Results Section - Only show when searching */}
+    <div className="space-y-4" data-testid="memory-explorer">
       {isSearchMode && searchResults.length > 0 && (
-        <div className="space-y-8 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
-              <Search className="h-6 w-6 text-primary" />
-              Search Results
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <Search className="h-4 w-4 text-primary" />
+              Deep search results
             </h2>
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
               {searchResults.reduce((sum, r) => sum + r.memories.length, 0)} results
             </Badge>
           </div>
-          
+
           {searchResults.map((result, idx) => (
-            <div key={idx} className="space-y-4">
-              {/* Section Header */}
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold text-white">
+            <div key={idx} className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-white">
                   {result.type === 'semantic' && (
                     <>
-                      <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
-                      Semantic Matches
+                      <Sparkles className="h-4 w-4 inline-block mr-1.5 text-primary" />
+                      Semantic matches
                     </>
                   )}
                   {result.type === 'keyword' && (
                     <>
-                      <Search className="h-5 w-5 inline-block mr-2 text-primary" />
-                      Keyword Matches
+                      <Search className="h-4 w-4 inline-block mr-1.5 text-primary" />
+                      Keyword matches
                     </>
                   )}
                   {result.type === 'cluster' && (
                     <>
-                      <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
-                      {result.clusterLabel || 'Related Clusters'}
+                      <Sparkles className="h-4 w-4 inline-block mr-1.5 text-primary" />
+                      {result.clusterLabel || 'Related clusters'}
                     </>
                   )}
                 </h3>
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px]">
                   {result.memories.length}
                 </Badge>
                 {result.clusterReason && (
-                  <span className="text-xs text-white/50">{result.clusterReason}</span>
+                  <span className="text-xs text-white/45">{result.clusterReason}</span>
                 )}
               </div>
-
-              {/* Memory Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {result.memories.map((memory) => (
                   <MemoryCardComponent
                     key={memory.id}
@@ -881,234 +897,232 @@ export const MemoryExplorer = () => {
       )}
 
       {isSearchMode && searchResults.length === 0 && !searchLoading && (
-        <div className="text-center py-12 text-white/60 mb-8">
-          <p className="text-lg font-medium mb-2">No results found</p>
-          <p className="text-sm">Try rephrasing your search or use different keywords</p>
+        <div className="text-center py-10 text-white/55">
+          <p className="text-sm font-medium mb-1">No deep-search results</p>
+          <p className="text-xs text-white/40">Try different keywords, or browse facts below.</p>
         </div>
       )}
 
-      {/* Memory Explorer - Always visible as the main view, styled like CharacterBook/LocationBook */}
       {!isSearchMode && (
-        <div className="space-y-6">
-          {/* Memory Search Bar and Controls */}
-          <div className="space-y-4">
-            <div className="relative">
+        <div className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 type="text"
-                placeholder="Search memories by content, tags, characters, or date..."
+                placeholder="Search facts by content, tags, people…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
+                className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
               />
             </div>
-            
-            {/* Navigation Tabs */}
-            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-              <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
-                <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <FileText className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
-                </TabsTrigger>
-                <TabsTrigger value="recent" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <Clock className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Recent</span>
-                </TabsTrigger>
-                <TabsTrigger value="by-tag" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <Tag className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Tag</span><span className="sm:hidden">Tag</span>
-                </TabsTrigger>
-                <TabsTrigger value="by-mood" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Mood</span><span className="sm:hidden">Mood</span>
-                </TabsTrigger>
-                <TabsTrigger value="by-source" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Source</span><span className="sm:hidden">Source</span>
-                </TabsTrigger>
-                <TabsTrigger value="favorites" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Favorites</span><span className="sm:hidden">Fav</span>
-                </TabsTrigger>
-                <TabsTrigger value="pending-review" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-                  <ClipboardCheck className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Pending Review</span><span className="sm:hidden">Review</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={selectedTab} className="mt-4">
-                {selectedTab === 'pending-review' ? (
-                  // Memory Review Queue Tab
-                  <MemoryReviewQueuePanel />
-                ) : (
-                  // Regular Memory Display Tabs
-                  <>
-                    {loading ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <Card key={i} className="bg-black/40 border-border/50 h-48 animate-pulse" />
-                        ))}
-                      </div>
-                    ) : filteredMemories.length === 0 ? (
-                      <div className="text-center py-8 sm:py-12 text-white/60 px-4">
-                        <FileText className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
-                        <p className="text-base sm:text-lg font-medium mb-2">No memories found</p>
-                        <p className="text-xs sm:text-sm">Try a different search term or create new journal entries</p>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Book Page Container with Grid Inside */}
-                        <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden flex flex-col">
-                          {/* Page Content */}
-                          <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-1 min-h-0">
-                            {/* Page Header */}
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
-                              <div className="flex items-center gap-2 sm:gap-3">
-                                <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600/60 flex-shrink-0" />
-                                <div className="min-w-0">
-                                  <h3 className="text-xs sm:text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
-                                    Memory Explorer
-                                  </h3>
-                                  <p className="text-[10px] sm:text-xs text-amber-700/50 mt-0.5">
-                                    Page {currentPage}/{totalPages} · {filteredMemories.length} memories
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="text-[10px] sm:text-xs text-amber-700/40 font-mono flex-shrink-0">
-                                {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                              </div>
-                            </div>
-
-                            {/* Memory Grid */}
-                            <div className="flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
-                              {paginatedMemories.map((memory, index) => {
-                                try {
-                                  return (
-                                    <MemoryCardComponent
-                                      key={memory.id || `mem-${index}`}
-                                      memory={memory}
-                                      showLinked={true}
-                                      expanded={false}
-                                      onToggleExpand={() => {}}
-                                      onSelect={() => setSelectedMemory(memory)}
-                                      onToggleFavorite={handleToggleFavorite}
-                                    />
-                                  );
-                                } catch {
-                                  return null;
-                                }
-                              })}
-                            </div>
-
-                            {/* Page Footer with Navigation - Pushed to bottom */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20 mt-auto">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={goToPrevious}
-                                disabled={currentPage === 1}
-                                className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
-                              >
-                                <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                Previous
-                              </Button>
-
-                              <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
-                                {/* Page indicators */}
-                                <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30 overflow-x-auto">
-                                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                                    let pageNum: number;
-                                    if (totalPages <= 7) {
-                                      pageNum = i + 1;
-                                    } else if (currentPage <= 4) {
-                                      pageNum = i + 1;
-                                    } else if (currentPage >= totalPages - 3) {
-                                      pageNum = totalPages - 6 + i;
-                                    } else {
-                                      pageNum = currentPage - 3 + i;
-                                    }
-
-                                    return (
-                                      <button
-                                        key={pageNum}
-                                        onClick={() => goToPage(pageNum)}
-                                        className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
-                                          currentPage === pageNum
-                                            ? 'bg-amber-600 text-white'
-                                            : 'text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10'
-                                        }`}
-                                      >
-                                        {pageNum}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                <span className="text-xs sm:text-sm text-amber-700/50 whitespace-nowrap">
-                                  {startIndex + 1}-{Math.min(endIndex, filteredMemories.length)} of {filteredMemories.length}
-                                </span>
-                              </div>
-
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={goToNext}
-                                disabled={currentPage === totalPages}
-                                className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
-                              >
-                                Next
-                                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* Book Binding Effect */}
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
-                          <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </TabsContent>
-            </Tabs>
-            
-            <div className="flex items-center justify-between mt-4">
-              <div>
-                <h2 className="text-xl font-semibold text-white">Memory Explorer</h2>
-                <p className="text-sm text-white/60 mt-1">
-                  {selectedTab === 'pending-review' 
-                    ? `${proposals.length} proposal${proposals.length !== 1 ? 's' : ''} pending review`
-                    : `${filteredMemories.length} memories · ${filteredMemories.length} shown${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ''}${loading ? ' · Loading...' : ''}`
-                  }
-                </p>
-              </div>
+            <div className="flex items-center gap-2 shrink-0">
               {selectedTab !== 'pending-review' && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={viewMode === 'book' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('book')}
-                    leftIcon={<BookOpen className="h-4 w-4" />}
-                  >
-                    Book
-                  </Button>
-                  <Button
-                    variant={viewMode === 'grid' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('grid')}
-                    leftIcon={<LayoutGrid className="h-4 w-4" />}
-                  >
-                    Grid
-                  </Button>
-                  <Button 
-                    leftIcon={<RefreshCw className="h-4 w-4" />} 
-                    onClick={() => void loadMemories()}
-                    disabled={loading}
-                  >
-                    {loading ? 'Loading...' : 'Refresh'}
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadMemories()}
+                  disabled={loading}
+                  aria-label="Refresh facts"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
+              {selectedTab !== 'pending-review' && (
+                <GridListViewToolbar
+                  viewMode={cardViewMode}
+                  onViewModeChange={setCardViewMode}
+                  copyText={clipboardText}
+                  copyDisabled={filteredMemories.length === 0}
+                  storageKey={SEARCH_FACTS_VIEW_STORAGE_KEY}
+                />
               )}
             </div>
           </div>
 
+          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
+            <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
+              <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <FileText className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
+              </TabsTrigger>
+              <TabsTrigger value="recent" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Recent</span>
+              </TabsTrigger>
+              <TabsTrigger value="by-tag" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <Tag className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Tag</span><span className="sm:hidden">Tag</span>
+              </TabsTrigger>
+              <TabsTrigger value="by-mood" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Mood</span><span className="sm:hidden">Mood</span>
+              </TabsTrigger>
+              <TabsTrigger value="by-source" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">By Source</span><span className="sm:hidden">Source</span>
+              </TabsTrigger>
+              <TabsTrigger value="favorites" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Favorites</span><span className="sm:hidden">Fav</span>
+              </TabsTrigger>
+              <TabsTrigger value="pending-review" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+                <ClipboardCheck className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Pending Review</span><span className="sm:hidden">Review</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value={selectedTab} className="mt-3 space-y-3">
+              {selectedTab === 'pending-review' ? (
+                <MemoryReviewQueuePanel />
+              ) : loading ? (
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <Card key={i} className="bg-black/40 border-border/50 h-40 animate-pulse" />
+                  ))}
+                </div>
+              ) : filteredMemories.length === 0 ? (
+                <div className="text-center py-12 text-white/50 px-4">
+                  <FileText className="h-10 w-10 mx-auto mb-3 text-white/15" />
+                  <p className="text-base font-medium text-white/60 mb-1">No facts found</p>
+                  <p className="text-xs text-white/35 max-w-sm mx-auto">
+                    Share scenes in chat or journal — they show up as Moments first, then as searchable facts here.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2 text-xs text-white/40">
+                    <span>
+                      {filteredMemories.length === 0
+                        ? 'No facts'
+                        : `${startIndex + 1}–${Math.min(endIndex, filteredMemories.length)} of ${filteredMemories.length}`}
+                      {totalPages > 1 && <span className="ml-2">Page {currentPage} of {totalPages}</span>}
+                    </span>
+                  </div>
+
+                  {cardViewMode === 'list' ? (
+                    <div
+                      className="overflow-hidden rounded-xl border border-white/10 bg-black/30 divide-y divide-white/[0.06]"
+                      data-testid="search-facts-list"
+                    >
+                      {paginatedMemories.map((memory, index) => {
+                        const title = getDisplayTitle({
+                          title: memory.title,
+                          summary: memory.content,
+                          people: memory.characters,
+                          fallbackNoun: 'Fact',
+                        });
+                        let when = '';
+                        try {
+                          when = new Date(memory.date).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          });
+                        } catch { /* noop */ }
+                        return (
+                          <button
+                            key={memory.id || `mem-${index}`}
+                            type="button"
+                            onClick={() => setSelectedMemory(memory)}
+                            className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5 sm:px-4"
+                          >
+                            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-violet-300/70" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="truncate text-sm font-medium text-white">{title}</p>
+                                {memory.source && (
+                                  <span className="shrink-0 text-[10px] capitalize text-white/35">{memory.source}</span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                                {when && <span>{when}</span>}
+                                {memory.mood && <span className="capitalize">{memory.mood}</span>}
+                                {memory.characters?.length > 0 && (
+                                  <span>
+                                    People: {memory.characters.slice(0, 3).join(', ')}
+                                    {memory.characters.length > 3 ? ` +${memory.characters.length - 3}` : ''}
+                                  </span>
+                                )}
+                                {memory.tags.length > 0 && (
+                                  <span>Tags: {memory.tags.slice(0, 3).join(', ')}</span>
+                                )}
+                              </div>
+                              {memory.content && (
+                                <p className="mt-1 line-clamp-1 text-[11px] text-white/35">{memory.content}</p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div
+                      className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4"
+                      data-testid="search-facts-grid"
+                    >
+                      {paginatedMemories.map((memory, index) => (
+                        <MemoryCardComponent
+                          key={memory.id || `mem-${index}`}
+                          memory={memory}
+                          showLinked={true}
+                          expanded={false}
+                          onToggleExpand={() => {}}
+                          onSelect={() => setSelectedMemory(memory)}
+                          onToggleFavorite={handleToggleFavorite}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={goToPrevious}
+                        disabled={currentPage === 1}
+                        className="w-full sm:w-auto text-xs text-white/55"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-1 overflow-x-auto">
+                        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                          let pageNum: number;
+                          if (totalPages <= 7) pageNum = i + 1;
+                          else if (currentPage <= 4) pageNum = i + 1;
+                          else if (currentPage >= totalPages - 3) pageNum = totalPages - 6 + i;
+                          else pageNum = currentPage - 3 + i;
+                          return (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => goToPage(pageNum)}
+                              className={`px-2 py-1 rounded text-xs transition ${
+                                currentPage === pageNum
+                                  ? 'bg-primary/25 text-primary'
+                                  : 'text-white/45 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={goToNext}
+                        disabled={currentPage === totalPages}
+                        className="w-full sm:w-auto text-xs text-white/55"
+                      >
+                        Next
+                        <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 
-      {/* Memory Detail Modal */}
       {selectedMemory && (
         <MemoryDetailModal
           memory={selectedMemory}

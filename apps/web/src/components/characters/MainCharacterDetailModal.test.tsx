@@ -232,6 +232,7 @@ describe('MainCharacterDetailModal', () => {
         await screen.findByLabelText('Existing group or organization'),
         'org-1',
       );
+      await user.selectOptions(screen.getByTestId('self-add-membership-role'), 'member');
       await user.click(screen.getByTestId('self-add-membership-submit'));
 
       await waitFor(() => {

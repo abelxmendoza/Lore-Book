@@ -4,6 +4,11 @@
  */
 import { logger } from '../../logger';
 import { entityAttributeDetector } from '../conversationCentered/entityAttributeDetector';
+import {
+  readCharacterAttributions,
+  type CharacterInterestAttribution,
+} from '../conversationCentered/interestAttribution';
+import { attributionReasonLabel } from '../conversationCentered/interestSubjectResolver';
 import { entityFactsService } from '../entityFactsService';
 import { listPeripheralsForCharacter } from '../relationshipPeripheralService';
 import { organizationService } from '../organizationService';
@@ -17,6 +22,10 @@ export type CharacterLoreItem = {
   evidence?: string;
   source: 'chat' | 'inferred' | 'user';
   lastMentionedAt?: string;
+  /** Why this chip is on this person (self lore vs their lore vs shared). */
+  attributionReason?: string;
+  attributionLabel?: string;
+  subjectStance?: 'self' | 'other_person' | 'shared' | 'dismissed' | string;
 };
 
 export type CharacterPersonAssociation = {
@@ -44,9 +53,13 @@ export type CharacterLoreProfile = {
   characterId: string;
   characterName: string;
   generatedAt: string;
+  /** self = user's own card; other = someone else's lore as it pertains to the user */
+  loreSubject: 'self' | 'other';
   skills: CharacterLoreItem[];
   hobbies: CharacterLoreItem[];
   interests: CharacterLoreItem[];
+  /** Interests the user removed from this person — restorable; app will not re-add from chat. */
+  removedHobbies: CharacterLoreItem[];
   groups: CharacterGroupAssociation[];
   people: CharacterPersonAssociation[];
   loreSnippets: CharacterLoreItem[];
@@ -86,6 +99,7 @@ export async function compileCharacterLoreProfile(
   const skills: CharacterLoreItem[] = [];
   const hobbies: CharacterLoreItem[] = [];
   const interests: CharacterLoreItem[] = [];
+  const removedHobbies: CharacterLoreItem[] = [];
   const loreSnippets: CharacterLoreItem[] = [];
 
   const attributes = await entityAttributeDetector.getEntityAttributes(
@@ -117,7 +131,7 @@ export async function compileCharacterLoreProfile(
   const { data: linkedInterests } = await supabaseAdmin
     .from('interests')
     .select(
-      'id, interest_name, interest_category, interest_level, evidence_quotes, last_mentioned_at, description',
+      'id, interest_name, interest_category, interest_level, evidence_quotes, last_mentioned_at, description, metadata',
     )
     .eq('user_id', userId)
     .contains('related_character_ids', [characterId])
@@ -126,14 +140,24 @@ export async function compileCharacterLoreProfile(
 
   for (const row of linkedInterests ?? []) {
     const cat = row.interest_category ?? 'other';
+    const attr = readCharacterAttributions(row.metadata as Record<string, unknown> | null)[
+      characterId
+    ] as CharacterInterestAttribution | undefined;
     const item: CharacterLoreItem = {
       id: row.id,
       label: row.interest_name,
       category: cat,
       confidence: row.interest_level,
-      evidence: row.evidence_quotes?.[0] ?? row.description ?? undefined,
+      evidence:
+        attr?.evidence ||
+        row.evidence_quotes?.[0] ||
+        row.description ||
+        undefined,
       source: 'chat',
       lastMentionedAt: row.last_mentioned_at,
+      attributionReason: attr?.reason,
+      attributionLabel: attributionReasonLabel(attr?.reason),
+      subjectStance: attr?.stance,
     };
     if (HOBBY_CATEGORIES.has(cat) || cat === 'hobby') {
       pushUnique(hobbies, item);
@@ -142,7 +166,41 @@ export async function compileCharacterLoreProfile(
     }
   }
 
+  // Previously dismissed from this person — restorable; blocked from silent re-attach.
+  const { data: dismissedInterests } = await supabaseAdmin
+    .from('interests')
+    .select(
+      'id, interest_name, interest_category, interest_level, evidence_quotes, last_mentioned_at, description, metadata, related_character_ids',
+    )
+    .eq('user_id', userId)
+    .contains('metadata', { dismissed_character_ids: [characterId] })
+    .order('updated_at', { ascending: false })
+    .limit(40);
+
+  for (const row of dismissedInterests ?? []) {
+    const related = (row.related_character_ids as string[] | null) ?? [];
+    if (related.includes(characterId)) continue; // still active
+    const cat = row.interest_category ?? 'other';
+    const attr = readCharacterAttributions(row.metadata as Record<string, unknown> | null)[
+      characterId
+    ] as CharacterInterestAttribution | undefined;
+    pushUnique(removedHobbies, {
+      id: row.id,
+      label: row.interest_name,
+      category: cat,
+      confidence: row.interest_level,
+      evidence: attr?.evidence || row.evidence_quotes?.[0] || row.description || undefined,
+      source: 'user',
+      lastMentionedAt: row.last_mentioned_at,
+      attributionReason: attr?.reason ?? 'user_dismissed',
+      attributionLabel: attributionReasonLabel(attr?.reason ?? 'user_dismissed'),
+      subjectStance: 'dismissed',
+    });
+  }
+
   const meta = (character.metadata ?? {}) as Record<string, unknown>;
+  const loreSubject: 'self' | 'other' =
+    meta.is_self === true || meta.is_user === true ? 'self' : 'other';
   const metaSkills = meta.skills as Record<string, { level?: number; evidence?: string }> | undefined;
   if (metaSkills && typeof metaSkills === 'object') {
     for (const [name, detail] of Object.entries(metaSkills)) {
@@ -199,7 +257,11 @@ export async function compileCharacterLoreProfile(
   const groups: CharacterGroupAssociation[] = [];
   const orgs = await organizationService.getOrganizationsByCharacter(userId, characterId, character.name);
   for (const org of orgs) {
-    const member = org.members?.find((m) => m.character_id === characterId);
+    const member = org.members?.find(
+      (m) =>
+        m.character_id === characterId ||
+        (!!character.name && m.character_name?.toLowerCase() === character.name.toLowerCase()),
+    );
     groups.push({
       organizationId: org.id,
       name: org.name,
@@ -350,9 +412,11 @@ export async function compileCharacterLoreProfile(
     characterId,
     characterName: character.name,
     generatedAt: new Date().toISOString(),
+    loreSubject,
     skills: skills.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)),
     hobbies: hobbies.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)),
     interests: interests.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)),
+    removedHobbies,
     groups,
     people: people.sort((a, b) => (b.closenessScore ?? 0) - (a.closenessScore ?? 0)),
     loreSnippets,

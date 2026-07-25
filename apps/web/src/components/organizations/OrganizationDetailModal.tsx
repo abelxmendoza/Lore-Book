@@ -1,11 +1,11 @@
 // =====================================================
 // ORGANIZATION DETAIL MODAL
 // Purpose: Comprehensive organization profile with chatbot editing
-// Features: Info, Chat, Members, Stories, Events, Locations, Timeline
+// Features: Info, Members, Stories, Activity, Locations, … — Chat opens main chat with group focus chip
 // =====================================================
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine, AlertTriangle, Search } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, TreePine, AlertTriangle, Search } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -16,12 +16,14 @@ import { Tabs, TabsContent } from '../ui/tabs';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
-import { booksApi } from '../../api/books';
+import { fetchCharacterList } from '../../api/characterList';
 import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
-import { useChatStream } from '../../hooks/useChatStream';
-import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
+import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
+import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import {
   useAddOrganizationEventMutation,
   useAddOrganizationLocationMutation,
@@ -36,22 +38,26 @@ import {
   useRemoveOrganizationStoryMutation,
   useUpdateOrganizationMutation,
 } from '../../store/api/entitiesApi';
-import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { OrganizationModalHeader } from './OrganizationModalHeader';
-import { OrganizationModalNav, ORG_MODAL_BASE_TABS, type OrgModalTabKey } from './OrganizationModalNav';
+import {
+  OrganizationModalNav,
+  ORG_MODAL_BASE_TABS,
+  normalizeOrgModalTab,
+  type OrgModalTabKey,
+} from './OrganizationModalNav';
 import {
   OrganizationInfluencePanel,
   OrganizationInsightsPanel,
   OrganizationLorePanel,
 } from './OrganizationLorePanels';
 import { OrganizationModalOverview } from './OrganizationModalOverview';
-import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
+import { OrganizationActivityPanel } from './OrganizationActivityPanel';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { getMockOrganizationDerivedEvents } from '../../mocks/organizationTimeline';
 import {
-  getMockOrganizationFacts,
   getMockOrganizationMentionTrace,
   getMockMemberAffiliations,
   getMockOrganizationRelationships,
@@ -113,13 +119,6 @@ type DerivedLocation = {
   source: 'conversation';
 };
 
-type ChatMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-};
-
 type OrganizationMentionTrace = {
   labels: string[];
   total_mentions: number;
@@ -147,18 +146,6 @@ const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
   collaborated_with: 'Collaborated with',
   succeeded_by: 'Succeeded by',
   merged_with: 'Merged with',
-};
-
-const AUDIENCE_LABELS: Record<NonNullable<DerivedEvent['audience']>, string> = {
-  with_user: 'With you',
-  without_user: 'Without you',
-  group_wide: 'Group-wide',
-};
-
-const AUDIENCE_BADGE: Record<NonNullable<DerivedEvent['audience']>, string> = {
-  with_user: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  without_user: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
-  group_wide: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
 };
 
 const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
@@ -223,21 +210,44 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     list.push({ key: 'danger', label: 'Delete', shortLabel: 'Delete', icon: Trash2 });
     return list;
   }, [editedOrg.group_type]);
-  const [activeTab, setActiveTab] = useState<TabKey>('info');
+  const [activeTab, setActiveTabState] = useState<TabKey>('info');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaved, setIdentitySaved] = useState<string | null>(null);
-  
-  // Chat state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const { streamChat, isStreaming, cancel } = useChatStream();
+
+  /** Close modal and open main chat focused on this group (composer chip + context). */
+  const openOrgMainChat = useCallback(
+    (prompt?: string) => {
+      const preset = FOCUSED_ENTITY_CHAT_PRESETS.organizations;
+      onClose();
+      openChatWithFocus({
+        entityId: editedOrg.id,
+        entityName: editedOrg.name,
+        entityType: 'organization',
+        sourceSurface: 'organizations',
+        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
+        knowledgeScope: preset.knowledgeScope,
+        initialPrompt: prompt ?? preset.existingPrompt(editedOrg.name),
+        arrivedAt: Date.now(),
+      });
+    },
+    [editedOrg.id, editedOrg.name, onClose],
+  );
+
+  const setActiveTab = useCallback(
+    (tab: TabKey) => {
+      const next = normalizeOrgModalTab(tab);
+      if (next === 'chat') {
+        openOrgMainChat();
+        return;
+      }
+      setActiveTabState(next);
+    },
+    [openOrgMainChat],
+  );
+
   const [updateOrganization] = useUpdateOrganizationMutation();
   const [deleteOrganization] = useDeleteOrganizationMutation();
   const [addOrganizationMember] = useAddOrganizationMemberMutation();
@@ -256,7 +266,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMember, setNewMember] = useState({ character_name: '', role: '', status: 'active' as const });
   /** Character Book picker — preferred path (creates official character_id link). */
-  const [characterBookOptions, setCharacterBookOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [characterBookOptions, setCharacterBookOptions] = useState<
+    Array<{ id: string; name: string; aliases?: string[] }>
+  >([]);
   const [characterBookLoading, setCharacterBookLoading] = useState(false);
   const [selectedBookCharacterId, setSelectedBookCharacterId] = useState('');
   const [characterBookSearch, setCharacterBookSearch] = useState('');
@@ -265,16 +277,31 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [memberSaving, setMemberSaving] = useState(false);
   const [showNameOnlyAdd, setShowNameOnlyAdd] = useState(false);
 
+  const notifyMembershipChanged = useCallback(
+    (characterIds: string[]) => {
+      const ids = characterIds.filter(Boolean);
+      invalidateOrganizationMembershipCaches({
+        characterIds: ids,
+        organizationIds: [organization.id],
+      });
+      dispatchStoryDataUpdated({
+        scopes: ['organizations', 'characters'],
+        organizationIds: [organization.id],
+        characterIds: ids,
+      });
+      onUpdate?.();
+    },
+    [organization.id, onUpdate],
+  );
+
   // Stories state
   const [stories, setStories] = useState<OrganizationStory[]>(resolvedOrganization.stories || []);
   const [showAddStory, setShowAddStory] = useState(false);
   const [newStory, setNewStory] = useState({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
   const [storyLoading, setStoryLoading] = useState(false);
 
-  // Events state
+  // Events state (recorded on the Activity tab)
   const [events, setEvents] = useState<OrganizationEvent[]>(resolvedOrganization.events || []);
-  const [showAddEvent, setShowAddEvent] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' as OrganizationEvent['type'] });
   const [eventLoading, setEventLoading] = useState(false);
 
   // Locations state
@@ -315,10 +342,6 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Knowledge / entity facts state
-  const [orgFacts, setOrgFacts] = useState<any[]>([]);
-  const [factsLoading, setFactsLoading] = useState(false);
-  const [factsLoaded, setFactsLoaded] = useState(false);
   const [mentionTrace, setMentionTrace] = useState<OrganizationMentionTrace | null>(null);
   const [mentionsLoading, setMentionsLoading] = useState(false);
   const [mentionsLoaded, setMentionsLoaded] = useState(false);
@@ -361,29 +384,22 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   }, [organization.id, isMockDataEnabled]);
 
   useEffect(() => {
-    if (activeTab === 'chat' && chatMessages.length === 0) {
-      const welcomeMessage: ChatMessage = {
-        id: 'welcome',
-        role: 'assistant',
-        content: `Hi! I'm here to help you discuss **${resolvedOrganization.name}** using what LoreBook already knows.\n\nYou can ask about known facts, correct details, add members, record stories/events, link locations, or explain how this group fits into your life.\n\nWhat should we focus on?`,
-        timestamp: new Date()
-      };
-      setChatMessages([welcomeMessage]);
-    }
-  }, [activeTab, resolvedOrganization.name, chatMessages.length]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, streamingMessageId]);
-
-  useEffect(() => {
     if (activeTab === 'relationships' && !relationshipsLoaded) {
       void loadRelationships();
     }
   }, [activeTab, relationshipsLoaded]);
 
   useEffect(() => {
-    if ((activeTab !== 'events' && activeTab !== 'locations' && activeTab !== 'timeline' && activeTab !== 'relationships') || derivedLoaded || !organization.id) return;
+    if (
+      (activeTab !== 'activity' &&
+        activeTab !== 'locations' &&
+        activeTab !== 'relationships' &&
+        activeTab !== 'info') ||
+      derivedLoaded ||
+      !organization.id
+    ) {
+      return;
+    }
     if (isMockDataEnabled) {
       setDerivedEvents(getMockOrganizationDerivedEvents(organization));
       setDerivedLocations(
@@ -408,27 +424,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
           // .involved.length (production crash: 'involved' undefined).
           setDerivedEvents((r.events || []).map((e) => ({ ...e, involved: e.involved ?? [] })));
           setDerivedLocations((r.locations || []).map((l) => ({ ...l, involved: l.involved ?? [] })));
-          setDerivedHierarchy(r.hierarchy ?? { subgroups: [], related: [] });
+          setDerivedHierarchy({
+            parent: r.hierarchy?.parent,
+            subgroups: r.hierarchy?.subgroups ?? [],
+            related: r.hierarchy?.related ?? [],
+          });
         }
       })
       .catch(() => {})
       .finally(() => { setDerivedLoading(false); setDerivedLoaded(true); });
   }, [activeTab, organization, derivedLoaded, isMockDataEnabled]);
-
-  useEffect(() => {
-    if (factsLoaded || !organization.id) return;
-    if (isMockDataEnabled) {
-      setOrgFacts(getMockOrganizationFacts(organization));
-      setFactsLoaded(true);
-      return;
-    }
-    if (activeTab !== 'chat') return;
-    setFactsLoading(true);
-    fetchJson<{ success: boolean; facts: any[] }>(`/api/organizations/${organization.id}/facts`)
-      .then(r => { if (r.success) setOrgFacts(r.facts); })
-      .catch(() => {})
-      .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
-  }, [activeTab, organization, factsLoaded, isMockDataEnabled]);
 
   useEffect(() => {
     if (mentionsLoaded || !organization.id || isMockDataEnabled) return;
@@ -481,14 +486,39 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   }, [activeTab, organization.id, members.length]);
 
   useEffect(() => {
-    return onStoryDataUpdated(() => {
+    return onStoryDataUpdated((detail) => {
       setDerivedLoaded(false);
       setMentionsLoaded(false);
       setFamilyRefreshKey(k => k + 1);
       setRelationshipsLoaded(false);
       void loadMemberAffiliations();
+      const scopes = detail.scopes ?? [];
+      const touchesOrgs =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('organizations') ||
+        scopes.includes('characters');
+      const touchesThisOrg =
+        !detail.organizationIds?.length || detail.organizationIds.includes(organization.id);
+      if (
+        touchesOrgs &&
+        touchesThisOrg &&
+        !isMockDataEnabled &&
+        !isEphemeralEntityId(organization.id)
+      ) {
+        invalidateOrganizationMembershipCaches({
+          organizationIds: [organization.id],
+          characterIds: detail.characterIds ?? [],
+        });
+        void fetchOrganizationById(organization.id)
+          .then((full) => {
+            setMembers(full.members || []);
+            setEditedOrg((prev) => ({ ...prev, members: full.members || prev.members }));
+          })
+          .catch(() => {});
+      }
     });
-  }, [organization.id]);
+  }, [organization.id, isMockDataEnabled]);
 
   const loadRelationships = async () => {
     setRelationshipsLoading(true);
@@ -871,221 +901,41 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
-  const openOrgMainChat = (prompt?: string) => {
-    onClose();
-    openChatWithFocus({
-      entityId: editedOrg.id,
-      entityName: editedOrg.name,
-      entityType: 'organization',
-      sourceSurface: 'organizations',
-      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
-      knowledgeScope: 'group membership, culture, and dynamics',
-      initialPrompt:
-        prompt ??
-        `Tell me about ${editedOrg.name} — who belongs, how it works, and what I should know.`,
-    });
-  };
-
-  const handleChatSubmit = async () => {
-    if (!chatInput.trim() || chatLoading || isStreaming) return;
-
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: chatInput,
-      timestamp: new Date()
-    };
-
-    setChatMessages(prev => [...prev, userMessage]);
-    const currentInput = chatInput;
-    setChatInput('');
-    setChatLoading(true);
-
+  const loadCharacterBookOptions = async () => {
+    setCharacterBookLoading(true);
+    setMemberAddError(null);
     try {
-      const assistantMessageId = `assistant-${Date.now()}`;
-      const assistantMessage: ChatMessage = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date()
-      };
-      setChatMessages(prev => [...prev, assistantMessage]);
-      setStreamingMessageId(assistantMessageId);
-
-      // Build organization context with analytics
-      const analyticsContext = editedOrg.analytics ? `
-GROUP ANALYTICS (calculated from conversations, journal entries, and events):
-- Your Involvement: ${editedOrg.analytics.user_involvement_score}/100 (how involved you are)
-- Your Ranking: #${editedOrg.analytics.user_ranking} (your position in the group)
-- Your Role Importance: ${editedOrg.analytics.user_role_importance}/100 (importance of your role)
-- Relevance Score: ${editedOrg.analytics.relevance_score}/100 (how relevant the group is to you)
-- Priority Score: ${editedOrg.analytics.priority_score}/100 (priority level)
-- Importance Score: ${editedOrg.analytics.importance_score}/100 (overall importance to you)
-- Value Score: ${editedOrg.analytics.value_score}/100 (value the group provides)
-- Group Influence on You: ${editedOrg.analytics.group_influence_on_user}/100
-- Your Influence Over Group: ${editedOrg.analytics.user_influence_over_group}/100
-- Cohesion Score: ${editedOrg.analytics.cohesion_score}/100 (how tight-knit the group is)
-- Activity Level: ${editedOrg.analytics.activity_level}/100 (how active the group is)
-- Engagement Score: ${editedOrg.analytics.engagement_score}/100
-- Recency Score: ${editedOrg.analytics.recency_score}/100 (how recently active)
-- Frequency Score: ${editedOrg.analytics.frequency_score}/100 (how frequently mentioned)
-- Group Trend: ${editedOrg.analytics.trend} (increasing/stable/decreasing)
-${editedOrg.analytics.strengths && editedOrg.analytics.strengths.length > 0 ? `- Strengths: ${editedOrg.analytics.strengths.join(', ')}` : ''}
-${editedOrg.analytics.weaknesses && editedOrg.analytics.weaknesses.length > 0 ? `- Weaknesses: ${editedOrg.analytics.weaknesses.join(', ')}` : ''}
-${editedOrg.analytics.opportunities && editedOrg.analytics.opportunities.length > 0 ? `- Opportunities: ${editedOrg.analytics.opportunities.join(', ')}` : ''}
-${editedOrg.analytics.threats && editedOrg.analytics.threats.length > 0 ? `- Threats: ${editedOrg.analytics.threats.join(', ')}` : ''}
-
-You can explain these analytics to the user when asked. For example:
-- "Your involvement score of ${editedOrg.analytics.user_involvement_score}% indicates ${editedOrg.analytics.user_involvement_score >= 70 ? 'you are very actively involved' : editedOrg.analytics.user_involvement_score >= 40 ? 'you have moderate involvement' : 'your involvement is developing'}"
-- "As ranking #${editedOrg.analytics.user_ranking}, you are ${editedOrg.analytics.user_ranking === 1 ? 'the most active member' : editedOrg.analytics.user_ranking <= 3 ? 'among the top active members' : 'a contributing member'}"
-- "The group trend is ${editedOrg.analytics.trend}, meaning ${editedOrg.analytics.trend === 'increasing' ? 'the group is becoming more active' : editedOrg.analytics.trend === 'decreasing' ? 'the group activity may be declining' : 'the group activity is stable'}"
-- "With a cohesion score of ${editedOrg.analytics.cohesion_score}%, this group ${editedOrg.analytics.cohesion_score >= 70 ? 'is very tight-knit' : editedOrg.analytics.cohesion_score >= 40 ? 'has moderate cohesion' : 'may have lower cohesion'}"
-` : '';
-
-      // Build organization context
-      const knownFactsContext = orgFacts.length > 0
-        ? `
-KNOWN FACTS ABOUT THIS ORGANIZATION:
-${orgFacts.slice(0, 30).map((fact: any) => {
-  const confidence = Math.round((fact.confidence ?? 0.7) * 100);
-  const category = fact.category ? `[${fact.category}] ` : '';
-  return `- ${category}${fact.fact} (${confidence}% confidence${fact.status ? `, ${fact.status}` : ''})`;
-}).join('\n')}
-`
-        : '\nKNOWN FACTS ABOUT THIS ORGANIZATION: No extracted facts yet. Use the conversation to clarify and build them.\n';
-
-      const orgContext = `You are helping the user discuss and update information about an organization in their personal journal system.
-
-ORGANIZATION CONTEXT:
-- Name: ${editedOrg.name}
-- Type: ${getTypeLabel(editedOrg.type)}
-- Description: ${editedOrg.description || 'No description'}
-- Status: ${editedOrg.status}
-- Location: ${editedOrg.location || 'Not specified'}
-- Founded: ${editedOrg.founded_date ? formatDate(editedOrg.founded_date) : 'Unknown'}
-- Members: ${members.map(m => `${m.character_name}${m.role ? ` (${m.role})` : ''}`).join(', ') || 'None'}
-${derivedHierarchy.parent ? `- Part of (parent group): ${derivedHierarchy.parent.name}` : ''}
-${derivedHierarchy.subgroups.length > 0 ? `- Subgroups: ${derivedHierarchy.subgroups.map(s => s.name).join(', ')}` : ''}
-${derivedHierarchy.related.length > 0 ? `- Related groups: ${derivedHierarchy.related.map(r => `${r.name} (${REL_TYPE_LABELS[r.relationship_type ?? 'affiliated_with']})`).join(', ')}` : ''}
-- Stories: ${stories.length} recorded
-- Events: ${events.length} recorded
-- Locations: ${locations.map(l => l.location_name).join(', ') || 'None'}
-${knownFactsContext}
-${analyticsContext}
-INSTRUCTIONS:
-1. Answer questions about this organization naturally
-2. Use the known facts as context, but call out uncertainty when confidence is low or a fact may be stale
-3. If user mentions new members, offer to add them: "I can add [name] as a member. What role should they have?"
-4. If user shares stories/events, acknowledge and offer to record them
-5. If user wants to update info (description, location, etc.), extract the update and confirm
-6. Be conversational and helpful
-7. When updates are needed, format them as JSON in your response: {"updates": {"description": "...", "members": [...]}}
-8. If the user asks about analytics, explain what the scores mean and why they might be at that level
-9. Use analytics to provide insights about involvement, importance, and group dynamics
-
-User's message: ${currentInput}`;
-
-      const conversationHistory = chatMessages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-
-      // Prepend context to the message for the backend to use
-      const contextualMessage = `${orgContext}\n\nUser's message: ${currentInput}`;
-      
-      let accumulatedContent = '';
-
-      await streamChat(
-        contextualMessage,
-        conversationHistory,
-        (chunk: string) => {
-          accumulatedContent += chunk;
-          setChatMessages(prev =>
-            prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: accumulatedContent }
-                : msg
-            )
-          );
-        },
-        () => {},
-        async () => {
-          setStreamingMessageId(null);
-          setChatLoading(false);
-          
-          // Extract JSON updates from the response and PERSIST them (not just
-          // local state) so the chatbot can actually CRUD the organization.
-          try {
-            const jsonMatch = accumulatedContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              if (parsed.updates) {
-                const { members: newMembers, ...scalars } = parsed.updates as Record<string, any>;
-                const persistable = Boolean(organization.id) && !organization.id.startsWith('org-');
-
-                // Scalar fields → optimistic local update + PATCH.
-                if (Object.keys(scalars).length > 0) {
-                  setEditedOrg(prev => ({ ...prev, ...scalars }));
-                  const allowed = ['name', 'description', 'location', 'founded_date', 'status', 'aliases', 'type', 'group_type'];
-                  const patch: Record<string, any> = {};
-                  for (const k of allowed) if (k in scalars) patch[k] = scalars[k];
-                  if (persistable && Object.keys(patch).length > 0) {
-                    try {
-                      await updateOrganization({ id: organization.id, values: patch }).unwrap();
-                    } catch (err) {
-                      console.error('Failed to persist org updates from chat:', err);
-                    }
-                  }
-                }
-
-                // New members → optimistic add + POST (skip existing by name).
-                if (Array.isArray(newMembers)) {
-                  for (const raw of newMembers) {
-                    const name = typeof raw === 'string' ? raw : (raw?.character_name || raw?.name);
-                    if (!name?.trim()) continue;
-                    if (members.some(m => m.character_name.toLowerCase() === name.toLowerCase())) continue;
-                    const member: OrganizationMember = {
-                      id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                      character_name: name,
-                      role: typeof raw === 'object' ? raw?.role : undefined,
-                      status: 'active',
-                    };
-                    setMembers(prev => [...prev, member]);
-                    if (persistable) {
-                      try {
-                        await addOrganizationMember({ organizationId: organization.id, member }).unwrap();
-                      } catch (err) {
-                        console.error('Failed to persist member from chat:', err);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } catch {
-            // No parseable updates in the response — nothing to persist.
-          }
-          schedulePostChatRefresh({
-            scopes: ['all'],
-            organizationIds: organization.id ? [organization.id] : undefined,
-          });
-        },
-        (error: string) => {
-          setStreamingMessageId(null);
-          setChatLoading(false);
-          setChatMessages(prev =>
-            prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: `Error: ${error}` }
-                : msg
-            )
-          );
-        }
+      type BookChar = { id: string; name?: string; alias?: string[]; aliases?: string[] };
+      let list: BookChar[] = [];
+      try {
+        list = await fetchCharacterList<BookChar>();
+      } catch {
+        const res = await fetchJson<{ characters?: BookChar[] } | BookChar[]>('/api/characters');
+        list = Array.isArray(res)
+          ? res
+          : Array.isArray((res as { characters?: BookChar[] }).characters)
+            ? ((res as { characters: BookChar[] }).characters ?? [])
+            : [];
+      }
+      setCharacterBookOptions(
+        list
+          .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
+          .map((c) => ({
+            id: c.id,
+            name: String(c.name),
+            aliases: Array.isArray(c.alias)
+              ? c.alias.map(String)
+              : Array.isArray(c.aliases)
+                ? c.aliases.map(String)
+                : [],
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
       );
-    } catch (error) {
-      console.error('Failed to send chat message:', error);
-      setChatLoading(false);
-      setStreamingMessageId(null);
+    } catch {
+      setMemberAddError('Could not load your Character Book.');
+      setCharacterBookOptions([]);
+    } finally {
+      setCharacterBookLoading(false);
     }
   };
 
@@ -1098,35 +948,8 @@ User's message: ${currentInput}`;
     setSelectedBookCharacterId('');
     setCharacterBookSearch('');
     setNewMember({ character_name: '', role: '', status: 'active' });
-    if (next && characterBookOptions.length === 0 && !characterBookLoading) {
-      setCharacterBookLoading(true);
-      try {
-        // Prefer books BFF (same source as Character Book page); fall back to list aliases.
-        let list: Character[] = [];
-        try {
-          const book = await booksApi.loadCharacters();
-          list = (book.characters ?? []) as Character[];
-        } catch {
-          const res = await fetchJson<{ characters?: Character[]; success?: boolean } | Character[]>(
-            '/api/characters',
-          );
-          list = Array.isArray(res)
-            ? res
-            : Array.isArray((res as { characters?: Character[] }).characters)
-              ? (res as { characters: Character[] }).characters
-              : [];
-        }
-        setCharacterBookOptions(
-          list
-            .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
-            .map((c) => ({ id: c.id, name: c.name }))
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      } catch {
-        setMemberAddError('Could not load your Character Book.');
-      } finally {
-        setCharacterBookLoading(false);
-      }
+    if (next) {
+      await loadCharacterBookOptions();
     }
   };
 
@@ -1204,7 +1027,7 @@ User's message: ${currentInput}`;
       setMemberAddSuccess(
         `${chosen.name} linked to this group and saved in your knowledge base.`,
       );
-      onUpdate?.();
+      notifyMembershipChanged([saved?.character_id || chosen.id]);
     } catch (error) {
       console.error('Failed to add member from Character Book:', error);
       setMemberAddError(
@@ -1258,7 +1081,7 @@ User's message: ${currentInput}`;
           ? `${linkedName} matched Character Book and was linked in your knowledge base.`
           : `${linkedName} added by name (unlinked). Add them to Character Book to solidify.`,
       );
-      onUpdate?.();
+      notifyMembershipChanged(saved?.character_id ? [saved.character_id] : []);
     } catch (error) {
       console.error('Failed to add member:', error);
       setMemberAddError(error instanceof Error ? error.message : 'Could not add member.');
@@ -1269,10 +1092,15 @@ User's message: ${currentInput}`;
 
   const handleRemoveMember = async (memberId: string) => {
     const previous = members;
+    const removed = previous.find((m) => m.id === memberId);
     setMembers((prev) => prev.filter((m) => m.id !== memberId));
     try {
-      await removeOrganizationMember({ organizationId: organization.id, itemId: memberId }).unwrap();
-      onUpdate?.();
+      await removeOrganizationMember({
+        organizationId: organization.id,
+        itemId: memberId,
+        characterId: removed?.character_id,
+      }).unwrap();
+      notifyMembershipChanged(removed?.character_id ? [removed.character_id] : []);
     } catch (error) {
       console.error('Failed to remove member:', error);
       setMembers(previous);
@@ -1280,18 +1108,101 @@ User's message: ${currentInput}`;
     }
   };
 
-  const handleAddEvent = async () => {
-    if (!newEvent.title.trim() || !newEvent.date) return;
+  /** Open a roster person's Character modal (Key people + People tab). */
+  const openMemberCharacter = useCallback(
+    async (member: OrganizationMember) => {
+      if (member.character_id) {
+        try {
+          const char = await fetchJson<Character>(`/api/characters/${member.character_id}`);
+          setSelectedCharacter(char);
+        } catch {
+          setSelectedCharacter({
+            id: member.character_id,
+            name: member.character_name,
+          } as Character);
+        }
+        return;
+      }
+      if (!member.character_name) return;
+      try {
+        const chars = await fetchJson<Character[]>(
+          `/api/characters/search?name=${encodeURIComponent(member.character_name)}`,
+        );
+        const match = chars?.[0];
+        if (!match?.id) {
+          setSelectedCharacter({
+            id: `temp-${member.character_name}`,
+            name: member.character_name,
+          } as Character);
+          return;
+        }
+        // Upgrade name-only roster row → durable Character Book link
+        // so their Connections → Groups shows this organization.
+        if (!isEphemeralEntityId(organization.id)) {
+          try {
+            const result = (await addOrganizationMember({
+              organizationId: organization.id,
+              member: {
+                character_id: match.id,
+                character_name: match.name,
+                role: member.role,
+                status: member.status || 'active',
+              },
+            }).unwrap()) as { member?: OrganizationMember };
+            const saved = result?.member;
+            if (saved?.id) {
+              setMembers((prev) => {
+                const without = prev.filter(
+                  (m) =>
+                    m.id !== member.id &&
+                    m.id !== saved.id &&
+                    m.character_id !== saved.character_id,
+                );
+                return [...without, saved];
+              });
+            } else {
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.id === member.id
+                    ? {
+                        ...m,
+                        character_id: match.id,
+                        character_name: match.name,
+                      }
+                    : m,
+                ),
+              );
+            }
+            notifyMembershipChanged([match.id]);
+          } catch {
+            // Still open the character even if link upgrade fails.
+          }
+        }
+        setSelectedCharacter(match);
+      } catch {
+        setSelectedCharacter({
+          id: `temp-${member.character_name}`,
+          name: member.character_name,
+        } as Character);
+      }
+    },
+    [addOrganizationMember, notifyMembershipChanged, organization.id],
+  );
+
+  const handleAddEvent = async (event: {
+    title: string;
+    date: string;
+    type: OrganizationEvent['type'];
+  }) => {
+    if (!event.title.trim() || !event.date) return;
     setEventLoading(true);
     try {
       const result = await addOrganizationEvent({
         organizationId: organization.id,
-        event: newEvent,
+        event,
       }).unwrap() as { success: boolean; event: OrganizationEvent };
       if (result.success) {
-        setEvents(prev => [result.event, ...prev]);
-        setNewEvent({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' });
-        setShowAddEvent(false);
+        setEvents((prev) => [result.event, ...prev]);
       }
     } catch (error) {
       console.error('Failed to add event:', error);
@@ -1411,10 +1322,7 @@ User's message: ${currentInput}`;
               Boolean(editedOrg.metadata?.group_candidate_id)) &&
             !isMockDataEnabled
           }
-          onOpenChat={() => {
-            setActiveTab('chat');
-            openOrgMainChat();
-          }}
+          onOpenChat={() => openOrgMainChat()}
         />
 
         <OrganizationModalNav
@@ -1425,7 +1333,7 @@ User's message: ${currentInput}`;
           showFamilyTab={editedOrg.group_type === 'family'}
         />
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(normalizeOrgModalTab(v as TabKey))} className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 sm:py-4 min-h-0">
             {/* Overview Tab */}
             <TabsContent value="info" className="mt-0 space-y-3">
@@ -1702,138 +1610,19 @@ User's message: ${currentInput}`;
                 members={members}
                 stories={stories}
                 events={events}
+                derivedEvents={derivedEvents}
+                derivedLoading={derivedLoading}
                 locationCount={locations.length}
                 onSelectOrganization={onSelectOrganization}
                 onTabChange={setActiveTab}
+                onMemberClick={(member) => void openMemberCharacter(member)}
                 onOpenChat={(prompt) => {
-                  setActiveTab('chat');
                   openOrgMainChat(prompt);
                 }}
               />
             </TabsContent>
 
-            {/* Knowledge Chat Tab */}
-            <TabsContent value="chat" className={TAB_PANEL}>
-              <div className="space-y-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 border-violet-500/30 text-violet-200 hover:bg-violet-500/10 sm:hidden"
-                  onClick={() => openOrgMainChat()}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  Open main chat
-                </Button>
-                <Card className="bg-violet-500/10 border-violet-500/25">
-                  <CardContent className="p-3 sm:pt-4 sm:pb-4">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div>
-                        <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                          <Brain className="h-4 w-4 text-violet-300" />
-                          What LoreBook knows
-                        </h3>
-                        <p className="text-xs text-white/45 mt-1">
-                          These facts are loaded into this conversation. Ask questions, correct them, or add missing context.
-                        </p>
-                      </div>
-                      {factsLoading && <Loader2 className="h-4 w-4 animate-spin text-violet-300 flex-shrink-0" />}
-                    </div>
-
-                    {!factsLoading && orgFacts.length === 0 && (
-                      <div className="rounded-lg border border-white/8 bg-black/25 p-3 text-sm text-white/45">
-                        No extracted facts yet. Use the chat below to explain what {organization.name} is, who belongs, and why it matters.
-                      </div>
-                    )}
-
-                    {!factsLoading && orgFacts.length > 0 && (
-                      <div className="max-h-56 overflow-y-auto pr-1 space-y-3">
-                        {Object.entries(
-                          orgFacts.reduce((acc: Record<string, any[]>, fact: any) => {
-                            const category = fact.category || 'general';
-                            if (!acc[category]) acc[category] = [];
-                            acc[category].push(fact);
-                            return acc;
-                          }, {})
-                        ).map(([category, facts]) => {
-                          const catLabel: Record<string, string> = {
-                            role: 'Your Role', purpose: 'Purpose', dynamics: 'Dynamics',
-                            people: 'People', status: 'Status', history: 'History', general: 'General',
-                          };
-                          const statusBadge: Record<string, { label: string; cls: string }> = {
-                            updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-                            corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-                            contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
-                          };
-                          return (
-                            <div key={category}>
-                              <p className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2">
-                                {catLabel[category] ?? category}
-                              </p>
-                              <div className="space-y-2">
-                                {(facts as any[]).map((fact: any) => {
-                                  const pct = Math.round((fact.confidence ?? 0.7) * 100);
-                                  const badge = statusBadge[fact.status as string];
-                                  return (
-                                    <div key={fact.id} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-white/6 bg-black/25">
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
-                                        {fact.previous_value && (
-                                          <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                        {badge && (
-                                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
-                                            {badge.label}
-                                          </span>
-                                        )}
-                                        <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                                          {pct}%
-                                        </span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {chatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-lg p-4 ${
-                        msg.role === 'user'
-                          ? 'bg-primary/20 text-white'
-                          : 'bg-black/40 text-white border border-border/50'
-                      }`}
-                    >
-                      {msg.role === 'assistant' ? (
-                        <MarkdownRenderer content={msg.content} />
-                      ) : (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {streamingMessageId && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[80%] rounded-lg p-4 bg-black/40 text-white border border-border/50">
-                      <Sparkles className="h-4 w-4 animate-pulse text-primary" />
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </TabsContent>
+            {/* Chat tab is intercepted in setActiveTab → openOrgMainChat (main chat + focus chip) */}
 
             {/* Members Tab */}
             <TabsContent value="members" className={TAB_PANEL}>
@@ -1865,57 +1654,71 @@ User's message: ${currentInput}`;
               {showAddMember && (
                 <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
                     <p className="text-[12px] text-white/55 leading-relaxed">
-                      Pick someone who already exists in your Character Book. LoreBook saves an official
-                      membership link in your knowledge base (person ↔ group).
+                      Type a name from your Character Book, pick them from the list, then add.
+                      LoreBook saves an official membership link (person ↔ group) in your knowledge base.
                     </p>
-                    <Input
+                    <SearchWithAutocomplete
                       value={characterBookSearch}
-                      onChange={(e) => setCharacterBookSearch(e.target.value)}
-                      placeholder="Search Character Book…"
-                      aria-label="Search Character Book people"
-                      data-testid="org-add-member-character-search"
+                      onChange={(next) => {
+                        setCharacterBookSearch(next);
+                        // Typing clears a prior pick unless the text still matches that person.
+                        if (selectedBookCharacterId) {
+                          const selected = characterBookOptions.find((c) => c.id === selectedBookCharacterId);
+                          if (!selected || selected.name.toLowerCase() !== next.trim().toLowerCase()) {
+                            setSelectedBookCharacterId('');
+                          }
+                        }
+                      }}
+                      onSelectItem={(item) => {
+                        setSelectedBookCharacterId(item.id);
+                        setCharacterBookSearch(item.name);
+                      }}
+                      placeholder={
+                        characterBookLoading
+                          ? 'Loading Character Book…'
+                          : 'Type a name to find someone…'
+                      }
+                      items={availableBookCharacters}
+                      getSearchableText={(c) => [c.name, ...(c.aliases ?? [])].join(' ')}
+                      getDisplayLabel={(c) => c.name}
+                      getItemKey={(c) => c.id}
+                      minCharsToSuggest={0}
+                      maxSuggestions={12}
+                      emptyHint={
+                        characterBookLoading
+                          ? 'Loading…'
+                          : characterBookOptions.length === 0
+                            ? 'No people in Character Book yet'
+                            : 'No matching characters'
+                      }
                       disabled={characterBookLoading || memberSaving}
-                      className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
+                      data-testid="org-add-member-character-search"
+                      inputProps={{ 'aria-label': 'Search Character Book people' }}
+                      inputClassName="h-10 bg-black/55 border-white/12 text-white rounded-xl"
                     />
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto]">
-                      <select
-                        value={selectedBookCharacterId}
-                        onChange={(e) => setSelectedBookCharacterId(e.target.value)}
-                        disabled={characterBookLoading || memberSaving}
-                        aria-label="Existing character from Character Book"
-                        data-testid="org-add-member-character-select"
-                        className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white focus:border-violet-400/50 focus:outline-none"
+                    {selectedBookCharacterId && (
+                      <div
+                        className="flex items-center gap-2 rounded-xl border border-violet-400/25 bg-violet-500/10 px-3 py-2"
+                        data-testid="org-add-member-selected"
                       >
-                        <option value="">
-                          {characterBookLoading
-                            ? 'Loading Character Book…'
-                            : availableBookCharacters.length === 0
-                              ? characterBookSearch.trim()
-                                ? 'No matching characters'
-                                : 'No available characters'
-                              : 'Choose a person…'}
-                        </option>
-                        {availableBookCharacters.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        list="org-member-role-options"
+                        <Users className="h-3.5 w-3.5 text-violet-300 shrink-0" />
+                        <span className="text-sm text-violet-100 truncate">
+                          {characterBookOptions.find((c) => c.id === selectedBookCharacterId)?.name ||
+                            characterBookSearch}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] border-violet-400/30 text-violet-200">
+                          Selected
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <OrganizationMemberRoleSelect
                         value={newMember.role}
-                        onChange={(e) => setNewMember((prev) => ({ ...prev, role: e.target.value }))}
-                        placeholder="Role (optional)"
-                        aria-label="Membership role"
-                        className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white placeholder:text-white/30 focus:border-violet-400/50 focus:outline-none"
+                        onChange={(role) => setNewMember((prev) => ({ ...prev, role }))}
+                        disabled={memberSaving}
+                        data-testid="org-add-member-role"
+                        className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white focus:border-violet-400/50 focus:outline-none"
                       />
-                      <datalist id="org-member-role-options">
-                        {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus', 'captain', 'coach'].map(
-                          (r) => (
-                            <option key={r} value={r} />
-                          ),
-                        )}
-                      </datalist>
                       <Button
                         size="sm"
                         className="h-10 px-4 text-sm"
@@ -2015,36 +1818,7 @@ User's message: ${currentInput}`;
                       type="button"
                       key={member.id}
                       className="group w-full text-left rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2.5 sm:px-3.5 transition hover:border-violet-400/30 hover:bg-violet-500/[0.08] active:scale-[0.995]"
-                      onClick={async () => {
-                        if (member.character_id) {
-                          try {
-                            const char = await fetchJson<Character>(`/api/characters/${member.character_id}`);
-                            setSelectedCharacter(char);
-                          } catch {
-                            setSelectedCharacter({
-                              id: member.character_id,
-                              name: member.character_name,
-                            } as Character);
-                          }
-                        } else if (member.character_name) {
-                          try {
-                            const chars = await fetchJson<Character[]>(`/api/characters/search?name=${encodeURIComponent(member.character_name)}`);
-                            if (chars && chars.length > 0) {
-                              setSelectedCharacter(chars[0]);
-                            } else {
-                              setSelectedCharacter({
-                                id: `temp-${member.character_name}`,
-                                name: member.character_name,
-                              } as Character);
-                            }
-                          } catch {
-                            setSelectedCharacter({
-                              id: `temp-${member.character_name}`,
-                              name: member.character_name,
-                            } as Character);
-                          }
-                        }
-                      }}
+                      onClick={() => void openMemberCharacter(member)}
                     >
                         <div className="flex items-center gap-3">
                           <div className="shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-violet-500/25 to-fuchsia-500/15 border border-violet-400/25 flex items-center justify-center text-sm font-bold text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
@@ -2199,149 +1973,20 @@ User's message: ${currentInput}`;
               )}
             </TabsContent>
 
-            {/* Events Tab */}
-            <TabsContent value="events" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className={TAB_HEADING}>Events ({events.length})</h3>
-                <Button variant="outline" size="sm" onClick={() => setShowAddEvent(v => !v)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Event
-                </Button>
-              </div>
-
-              {showAddEvent && (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 space-y-3">
-                    <Input
-                      placeholder="Event title *"
-                      value={newEvent.title}
-                      onChange={e => setNewEvent(v => ({ ...v, title: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
-                    />
-                    <div className="flex gap-2">
-                      <Input
-                        type="date"
-                        value={newEvent.date}
-                        onChange={e => setNewEvent(v => ({ ...v, date: e.target.value }))}
-                        className="flex-1 bg-black/60 border-border/50 text-white"
-                      />
-                      <select
-                        value={newEvent.type}
-                        onChange={e => setNewEvent(v => ({ ...v, type: e.target.value as OrganizationEvent['type'] }))}
-                        aria-label="Event type"
-                        className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
-                      >
-                        <option value="meeting">Meeting</option>
-                        <option value="game">Game</option>
-                        <option value="social">Social</option>
-                        <option value="work">Work</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button onClick={() => void handleAddEvent()} disabled={eventLoading} className="flex-1">
-                        {eventLoading ? 'Saving...' : 'Save Event'}
-                      </Button>
-                      <Button variant="outline" onClick={() => setShowAddEvent(false)}>Cancel</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {events.length === 0 && !showAddEvent ? (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 text-center text-white/60">
-                    No events yet. Add one above.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <Card key={event.id} className="bg-black/40 border-border/50">
-                      <CardContent className="pt-4 pb-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-semibold text-white">{event.title}</div>
-                            <div className="text-xs text-white/50 mt-1">{formatDate(event.date)}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{event.type}</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => void handleRemoveEvent(event.id)}>
-                              <Trash2 className="h-4 w-4 text-red-400" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-              {/* Conversation-derived events */}
-              <div className="pt-2">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="h-4 w-4 text-purple-400" />
-                  <h4 className="text-sm font-semibold text-white/80">From your conversations</h4>
-                  {derivedEvents.length > 0 && (
-                    <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
-                      {derivedEvents.length}
-                    </Badge>
-                  )}
-                </div>
-                {derivedLoading ? (
-                  <div className="flex items-center gap-2 text-white/50 text-sm py-4">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Scanning chat threads…
-                  </div>
-                ) : derivedEvents.length === 0 ? (
-                  <p className="text-xs text-white/40 py-2">
-                    No events involving these members were found in your conversations yet.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {derivedEvents.map((event) => (
-                      <Card key={event.id} className="bg-purple-500/5 border-purple-500/20">
-                        <CardContent className="pt-4 pb-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-semibold text-white">{event.title}</div>
-                              {event.summary && (
-                                <p className="text-sm text-white/60 mt-1 line-clamp-2">{event.summary}</p>
-                              )}
-                              <div className="flex flex-wrap items-center gap-2 mt-2">
-                                {event.date && (
-                                  <span className="text-xs text-white/40">{formatDate(event.date)}</span>
-                                )}
-                                {event.involved.length > 0 && (
-                                  <span className="text-xs text-white/50">
-                                    with {event.involved.slice(0, 4).join(', ')}
-                                    {event.involved.length > 4 ? ` +${event.involved.length - 4}` : ''}
-                                  </span>
-                                )}
-                                {event.user_was_present && (
-                                  <Badge variant="outline" className="bg-green-500/15 text-green-300 border-green-500/30 text-[10px]">
-                                    You were there
-                                  </Badge>
-                                )}
-                                {event.audience && (
-                                  <Badge variant="outline" className={`text-[10px] ${AUDIENCE_BADGE[event.audience]}`}>
-                                    {AUDIENCE_LABELS[event.audience]}
-                                  </Badge>
-                                )}
-                                {event.subgroup_names && event.subgroup_names.length > 0 && (
-                                  <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-300/80">
-                                    {event.subgroup_names.join(', ')}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="shrink-0">{event.type}</Badge>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* Activity Tab — conversation timeline + recorded events */}
+            <TabsContent value="activity" className={TAB_PANEL}>
+              <OrganizationActivityPanel
+                organization={resolvedOrganization}
+                mockMode={isMockDataEnabled}
+                active={activeTab === 'activity'}
+                derivedEvents={derivedEvents}
+                derivedLoading={derivedLoading}
+                recordedEvents={events}
+                onAddEvent={handleAddEvent}
+                onRemoveEvent={handleRemoveEvent}
+                formatDate={formatDate}
+                eventSaving={eventLoading}
+              />
             </TabsContent>
 
             {/* Locations Tab */}
@@ -2481,7 +2126,7 @@ User's message: ${currentInput}`;
               </div>
 
               {/* Hierarchy learned from chat */}
-              {(derivedHierarchy.parent || derivedHierarchy.subgroups.length > 0) && (
+              {(derivedHierarchy.parent || (derivedHierarchy.subgroups?.length ?? 0) > 0) && (
                 <Card className="bg-indigo-500/5 border-indigo-500/25">
                   <CardContent className="pt-4 pb-4 space-y-3">
                     <div className="flex items-center gap-2">
@@ -2830,15 +2475,6 @@ User's message: ${currentInput}`;
               />
             </TabsContent>
 
-            {/* Timeline Tab */}
-            <TabsContent value="timeline" className={TAB_PANEL}>
-              <OrganizationTimelinePanel
-                organization={resolvedOrganization}
-                mockMode={isMockDataEnabled}
-                active={activeTab === 'timeline'}
-              />
-            </TabsContent>
-
             {/* Influence Tab — how this group changed the user */}
             <TabsContent value="influence" className={TAB_PANEL}>
               <OrganizationInfluencePanel organization={resolvedOrganization} />
@@ -2934,36 +2570,6 @@ User's message: ${currentInput}`;
           showFamilyTab={editedOrg.group_type === 'family'}
         />
 
-        {/* Sticky chatbox — desktop quick input; mobile uses Chat tab */}
-        <div className="hidden sm:block sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
-          <div className="flex gap-2 items-end">
-            <Textarea
-              ref={chatInputRef}
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleChatSubmit();
-                }
-              }}
-              placeholder={`Ask about ${editedOrg.name}...`}
-              className="flex-1 bg-black/60 border-white/20 text-white resize-none min-h-[60px] max-h-[120px]"
-              rows={2}
-            />
-            <Button
-              onClick={handleChatSubmit}
-              disabled={!chatInput.trim() || chatLoading || isStreaming}
-              className="h-[60px] px-6"
-            >
-              {chatLoading || isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
       </div>
     </Modal>
     
@@ -2973,7 +2579,16 @@ User's message: ${currentInput}`;
         character={selectedCharacter}
         onClose={() => setSelectedCharacter(null)}
         onUpdate={() => {
-          // Refresh if needed
+          // Refresh this group's roster without rebroadcasting a full story reload loop.
+          if (!isEphemeralEntityId(organization.id)) {
+            void fetchOrganizationById(organization.id)
+              .then((full) => {
+                setMembers(full.members || []);
+                setEditedOrg((prev) => ({ ...prev, members: full.members || prev.members }));
+              })
+              .catch(() => {});
+          }
+          onUpdate?.();
         }}
       />
     )}

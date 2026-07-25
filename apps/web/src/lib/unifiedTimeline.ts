@@ -19,9 +19,11 @@ export function stitchedItemsToChronology(
     end_time: null,
     time_precision: 'exact',
     time_confidence: item.confidence ?? 1,
-    content: item.body || item.title,
+    // Keep title + body so Omni search can match project/event names even when
+    // a longer description is present.
+    content: [item.title, item.body].filter((part) => typeof part === 'string' && part.trim()).join('\n'),
     timeline_memberships: [],
-    timeline_names: [],
+    timeline_names: item.sourceType ? [item.sourceType] : [],
     source_kind: item.sourceKind,
     source_id: item.sourceId,
     source_ids: item.sourceIds,

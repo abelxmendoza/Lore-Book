@@ -9,6 +9,7 @@ import { characterSuggestionService } from '../characterSuggestionService';
 import { locationSuggestionService } from '../locationSuggestionService';
 import { skillSuggestionService } from '../skills/skillSuggestionService';
 import { groupCandidateService } from '../groupCandidateService';
+import { hasFamilySignal } from '../conversationCentered/datingEligibilityService';
 import {
   listCertifiedEntities,
   matchCertifiedEntitiesInText,
@@ -71,7 +72,10 @@ export async function listMentionableEntities(userId: string): Promise<Mentionab
   for (const s of charSuggestions) {
     if (isNameCoveredByConfirmed(s.name, confirmed)) continue;
     const id = characterSuggestionId(s);
-    const isRomantic = s.archetype === 'romantic' || s.relationship === 'romantic';
+    const relationLabel = typeof s.relationship === 'string' ? s.relationship : '';
+    const familyBlocked = hasFamilySignal(s.name, [relationLabel, s.archetype].filter(Boolean));
+    const isRomantic =
+      !familyBlocked && (s.archetype === 'romantic' || s.relationship === 'romantic');
     pushUnique(map, {
       id,
       name: s.name,

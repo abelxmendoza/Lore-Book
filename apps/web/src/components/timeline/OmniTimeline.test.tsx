@@ -39,6 +39,17 @@ vi.mock('../../hooks/useGeneratedTimelinesLibrary', () => ({
   })),
 }));
 
+vi.mock('../../hooks/useLoreReadiness', () => ({
+  useLoreReadiness: vi.fn(() => ({
+    readiness: null,
+    compiledBooks: [],
+    loading: false,
+    refresh: vi.fn(),
+    hasCompiledBook: false,
+    isSimulated: false,
+  })),
+}));
+
 vi.mock('../../store/api/loreApi', () => ({
   useGetChaptersQuery: vi.fn(() => ({ data: { candidates: [] } })),
 }));

@@ -1,0 +1,503 @@
+/* LoreBook tier picker — amber archive sheet */
+
+.lorebook-tier-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(251, 191, 36, 0.12), transparent 45%),
+    rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: lorebook-tier-fade-in 160ms ease-out;
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-backdrop {
+    align-items: center;
+    padding: 1rem;
+  }
+}
+
+.lorebook-tier-modal-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 32rem;
+  height: min(92dvh, 100%);
+  max-height: 92dvh;
+  overflow: hidden;
+  border-radius: 1.25rem 1.25rem 0 0;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-bottom: none;
+  background:
+    linear-gradient(165deg, rgba(69, 26, 3, 0.55) 0%, rgba(0, 0, 0, 0.92) 38%, #050308 100%);
+  box-shadow:
+    0 -8px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(251, 191, 36, 0.08) inset,
+    0 0 48px rgba(251, 191, 36, 0.12);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: lorebook-tier-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-shell {
+    height: auto;
+    max-height: min(85dvh, 640px);
+    border-radius: 1.25rem;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.28);
+    box-shadow:
+      0 24px 80px rgba(0, 0, 0, 0.65),
+      0 0 0 1px rgba(251, 191, 36, 0.08) inset,
+      0 0 56px rgba(251, 191, 36, 0.14);
+  }
+}
+
+.lorebook-tier-modal-glow {
+  pointer-events: none;
+  position: absolute;
+  top: -5rem;
+  right: -4rem;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 9999px;
+  background: rgba(251, 191, 36, 0.14);
+  filter: blur(48px);
+}
+
+.lorebook-tier-modal-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #d97706, #fbbf24, #f59e0b, #b45309);
+  opacity: 0.95;
+}
+
+.lorebook-tier-modal-handle {
+  display: flex;
+  justify-content: center;
+  padding: 0.55rem 0 0.15rem;
+}
+
+.lorebook-tier-modal-handle span {
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: rgba(251, 191, 36, 0.28);
+}
+
+.lorebook-tier-modal-header {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0.75rem 1rem 0.85rem;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.18);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.1), transparent);
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-header {
+    padding: 1.1rem 1.25rem 1rem;
+  }
+}
+
+.lorebook-tier-modal-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(145deg, #d97706, #92400e);
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.35);
+}
+
+.lorebook-tier-modal-eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.7);
+  margin-bottom: 0.15rem;
+}
+
+.lorebook-tier-modal-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #fffbeb;
+  letter-spacing: -0.01em;
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-title {
+    font-size: 1.35rem;
+  }
+}
+
+.lorebook-tier-modal-subtitle {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(255, 251, 235, 0.55);
+}
+
+.lorebook-tier-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(254, 243, 199, 0.55);
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.lorebook-tier-modal-close:hover {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.lorebook-tier-modal-progress {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.lorebook-tier-modal-list {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-list {
+    padding: 0.75rem 1rem;
+    gap: 0.45rem;
+  }
+}
+
+.lorebook-tier-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 0.75rem 2.25rem minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.65rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  animation: lorebook-tier-card-in 280ms ease-out both;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-card {
+    padding: 0.8rem 0.75rem;
+    gap: 0.65rem;
+  }
+}
+
+.lorebook-tier-card.is-unlocked {
+  border-color: rgba(245, 158, 11, 0.22);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.lorebook-tier-card.is-best {
+  border-color: rgba(251, 191, 36, 0.5);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.04));
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.08) inset;
+}
+
+.lorebook-tier-card.is-locked {
+  opacity: 0.78;
+}
+
+.lorebook-tier-card.is-next {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lorebook-tier-card.is-unlocked:hover {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.lorebook-tier-card-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+  padding-top: 0.55rem;
+}
+
+.lorebook-tier-card-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+
+.lorebook-tier-card.is-unlocked .lorebook-tier-card-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+}
+
+.lorebook-tier-card.is-next .lorebook-tier-card-dot {
+  background: rgba(251, 191, 36, 0.45);
+}
+
+.lorebook-tier-card-line {
+  flex: 1;
+  width: 1px;
+  margin-top: 0.35rem;
+  min-height: 1.25rem;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.35), rgba(255, 255, 255, 0.06));
+}
+
+.lorebook-tier-card.is-locked .lorebook-tier-card-line {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+}
+
+.lorebook-tier-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.lorebook-tier-card.is-unlocked .lorebook-tier-card-icon {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+}
+
+.lorebook-tier-card-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fffbeb;
+  letter-spacing: -0.01em;
+}
+
+.lorebook-tier-card-blurb {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(255, 251, 235, 0.55);
+}
+
+.lorebook-tier-card-meta {
+  margin-top: 0.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: rgba(251, 191, 36, 0.45);
+}
+
+.lorebook-tier-card-need {
+  margin-top: 0.4rem;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(253, 230, 138, 0.75);
+  word-break: break-word;
+}
+
+.lorebook-tier-card-bar {
+  margin-top: 0.4rem;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.lorebook-tier-card-bar > div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(217, 119, 6, 0.7), #fbbf24);
+  transition: width 300ms ease;
+}
+
+.lorebook-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.lorebook-tier-badge--ready {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(52, 211, 153, 0.25);
+}
+
+.lorebook-tier-badge--locked {
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.lorebook-tier-badge--best {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.lorebook-tier-badge--next {
+  color: rgba(254, 243, 199, 0.65);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lorebook-tier-compile {
+  align-self: center;
+  height: 2rem;
+  padding: 0 0.7rem;
+  border-radius: 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fffbeb;
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+.lorebook-tier-compile:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.32);
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+.lorebook-tier-compile:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.lorebook-tier-compile--disabled,
+.lorebook-tier-compile:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.lorebook-tier-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid rgba(245, 158, 11, 0.16);
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.25));
+}
+
+.lorebook-tier-modal-footer p {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(255, 251, 235, 0.35);
+}
+
+@media (min-width: 640px) {
+  .lorebook-tier-modal-footer {
+    padding: 0.8rem 1.25rem;
+  }
+
+  .lorebook-tier-modal-footer p {
+    font-size: 11px;
+  }
+}
+
+.lorebook-tier-modal-dismiss {
+  flex-shrink: 0;
+  height: 2.15rem;
+  padding: 0 0.85rem;
+  border-radius: 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(254, 243, 199, 0.55);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  background: transparent;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.lorebook-tier-modal-dismiss:hover {
+  color: #fef3c7;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+@keyframes lorebook-tier-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lorebook-tier-rise {
+  from {
+    opacity: 0.6;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lorebook-tier-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lorebook-tier-modal-backdrop,
+  .lorebook-tier-modal-shell,
+  .lorebook-tier-card {
+    animation: none;
+  }
+}

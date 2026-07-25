@@ -30,8 +30,10 @@ export const normalizeProjectEvent: Normalizer<ProjectEvent> = (project: Project
     title,
     description: project.description,
     eventDate,
-    tags: ['project', project.type, ...(project.tags || [])],
+    // Include project id so Omni / timeline presets can filter by projectId.
+    tags: ['project', project.type, project.id, ...(project.tags || [])].filter(Boolean),
     metadata: {
+      project_id: project.id,
       project_name: project.name,
       event_type: project.type,
       ...project.metadata

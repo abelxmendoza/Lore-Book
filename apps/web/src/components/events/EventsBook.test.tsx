@@ -111,18 +111,21 @@ describe('EventsBook', () => {
     expect(searchInput).toBeInTheDocument();
   });
 
-  it('keeps Moments and Patterns as the only primary tabs and interconnects story surfaces', async () => {
+  it('keeps Moments and Patterns as the only primary tabs with quiet Also see links', async () => {
     render(<EventsBook />);
     await screen.findByText('Night out with Jamie');
 
     expect(screen.getByRole('button', { name: /^Moments$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Patterns$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Browse$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Search facts$/i })).toBeInTheDocument();
     expect(screen.getByText(/Scenes from your conversations/i)).toBeInTheDocument();
     expect(screen.queryByText(/Timeline puts them in order/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Connected story views/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Connected story views/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Also see/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Narrative Anchors/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Calendar$/i })).toBeInTheDocument();
+    expect(screen.getByText(/1 moment/i)).toBeInTheDocument();
   });
 
   it('keeps Scale chips inside Filters rather than always visible', async () => {
@@ -164,6 +167,7 @@ describe('EventsBook', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /search facts/i }));
     expect(await screen.findByTestId('memory-explorer')).toBeInTheDocument();
+    expect(screen.getByText(/Atomic details from your moments/i)).toBeInTheDocument();
     expect(screen.queryByTestId('events-book-grid')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /copy all/i })).not.toBeInTheDocument();
 
@@ -172,16 +176,10 @@ describe('EventsBook', () => {
     expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
   });
 
-  it('supports grid, list, and copy all on Patterns', async () => {
+  it('supports grid and list on Patterns without Copy all', async () => {
     vi.mocked(fetchJson).mockResolvedValue({
       success: true,
       scenes: [samplePattern],
-    });
-
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
     });
 
     render(<EventsBook />);
@@ -189,7 +187,7 @@ describe('EventsBook', () => {
 
     expect(await screen.findByText('Punk Shows')).toBeInTheDocument();
     expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy all/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /list view/i }));
     expect(screen.getByTestId('patterns-book-list')).toBeInTheDocument();
@@ -197,10 +195,6 @@ describe('EventsBook', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
     expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /copy all/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalled());
-    expect(String(writeText.mock.calls[0]?.[0])).toContain('Punk Shows');
-    expect(String(writeText.mock.calls[0]?.[0])).toContain('Life Log / Patterns');
+    expect(screen.queryByRole('button', { name: /copy all/i })).not.toBeInTheDocument();
   });
 });

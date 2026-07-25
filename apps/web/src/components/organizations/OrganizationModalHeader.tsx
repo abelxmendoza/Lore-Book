@@ -144,6 +144,7 @@ export function OrganizationModalHeader({
         <button
           type="button"
           onClick={onOpenChat}
+          aria-label="Chat about this group"
           className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-primary/35 bg-primary/20 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-primary/30 touch-manipulation"
         >
           <MessageSquare className="h-3.5 w-3.5" />

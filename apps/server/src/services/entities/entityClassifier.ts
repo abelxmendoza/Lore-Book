@@ -116,6 +116,20 @@ function personContextEvidence(name: string, context?: string): boolean {
   return false;
 }
 
+// Same vocabulary as apps/web/src/lib/significantComposerCandidates.ts's
+// PET_KIND_WORDS, so client-side chip detection and server-side classification
+// agree on what counts as a pet mention.
+const PET_KIND_WORDS = 'dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten';
+
+function petContextEvidence(name: string, context?: string): boolean {
+  if (!context) return false;
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ctx = context;
+  if (new RegExp(`\\b(?:my|our)\\s+(?:${PET_KIND_WORDS})\\s+${n}\\b`, 'i').test(ctx)) return true;
+  if (new RegExp(`\\b${n}\\s+(?:is|was)\\s+(?:my|our)\\s+(?:${PET_KIND_WORDS})\\b`, 'i').test(ctx)) return true;
+  return false;
+}
+
 export function classifyEntity(name: string, context?: string): Classification {
   const raw = name.trim();
   if (!raw || raw.length < 2) return result('UNKNOWN', 0, 'empty/too-short');
@@ -235,6 +249,8 @@ export function classifyEntity(name: string, context?: string): Classification {
   if (HONORIFIC_WITH_NAME_RE.test(raw) || titleGuard.hasAttachedName) {
     return result('PERSON', 0.88, 'honorific/kinship with attached name');
   }
+
+  if (petContextEvidence(raw, context)) return result('PET', 0.85, 'pet-context predicate');
 
   if (personContextEvidence(raw, context)) return result('PERSON', 0.75, 'person-context predicate');
 

@@ -48,12 +48,18 @@ const chatGPTExportUpload = createMemoryUpload({
   },
   fileFilter: (_req, file, cb) => {
     if (
-      ['application/json', 'application/zip', 'application/x-zip-compressed'].includes(file.mimetype) ||
-      /\.(json|zip)$/i.test(file.originalname)
+      [
+        'application/json',
+        'application/zip',
+        'application/x-zip-compressed',
+        'text/plain',
+        'text/markdown',
+      ].includes(file.mimetype) ||
+      /\.(json|zip|txt|md)$/i.test(file.originalname)
     ) {
       cb(null, true);
     } else {
-      cb(new Error('Choose the ChatGPT export ZIP or a conversations JSON file.'));
+      cb(new Error('Choose a ChatGPT export ZIP, conversations JSON, or LoreBook memory handoff.'));
     }
   },
 });
@@ -96,6 +102,7 @@ router.post(
         messageCount: parsed.inventory.messageCount,
         userMessageCount: parsed.inventory.userMessageCount,
         assistantMessageCount: parsed.inventory.assistantMessageCount,
+        candidateClaimCount: parsed.inventory.candidateClaimCount,
         earliestAt: parsed.inventory.earliestAt,
         latestAt: parsed.inventory.latestAt,
         sourceFiles: parsed.inventory.sourceFiles,

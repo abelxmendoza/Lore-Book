@@ -1169,6 +1169,36 @@ export class ConversationIngestionPipeline {
         splitEvents?: any[];
       }> = [];
 
+      // Contextual lore bundle — multi-thread day decomposition for logging / MRQ metadata.
+      let contextualBundleSummary: {
+        threads: string[];
+        dayMomentTitle: string | null;
+        introducedNames: string[];
+        groupNames: string[];
+        milestoneTitles: string[];
+      } | null = null;
+      try {
+        const { buildContextualKnowledgeBundle } = await import('../contextualLore');
+        const joined = utteranceTexts.join('\n');
+        const bundle = buildContextualKnowledgeBundle(joined);
+        if (bundle.threads.length > 0) {
+          contextualBundleSummary = {
+            threads: bundle.threads,
+            dayMomentTitle: bundle.dayMomentTitle,
+            introducedNames: bundle.introducedEntities.map((e) => e.canonicalName),
+            groupNames: bundle.groupProposals.map((g) => g.canonicalName),
+            milestoneTitles: bundle.eventProposals.filter((e) => e.isMilestone).map((e) => e.title),
+          };
+          logger.info(
+            { userId, messageId, threads: bundle.threads, dayMomentTitle: bundle.dayMomentTitle },
+            '[ContextualLore] multi-knowledge turn detected',
+          );
+        }
+      } catch (contextualErr) {
+        logger.warn({ err: contextualErr, userId, messageId }, '[ContextualLore] ingest bundle skipped');
+      }
+      void contextualBundleSummary;
+
       for (let i = 0; i < normalizedUtterances.length; i++) {
         const normalized = normalizedUtterances[i];
         const original = utteranceTexts[i];
@@ -2278,15 +2308,23 @@ export class ConversationIngestionPipeline {
           .then(async (detectedInterests) => {
             if (detectedInterests.length > 0) {
               const { findCoMentionedCharacterIds } = await import('../characters/characterLoreProfileService');
+              const { resolveInterestSubjects } = await import('./interestSubjectResolver');
               const coMentionedIds = await findCoMentionedCharacterIds(userId, rawText);
               for (const detected of detectedInterests) {
                 try {
+                  const subjectResolution = await resolveInterestSubjects(
+                    userId,
+                    rawText,
+                    detected.evidence || '',
+                    coMentionedIds,
+                  );
                   const interestId = await interestTracker.saveInterest(
                     userId,
                     detected,
                     undefined,
                     messageId,
-                    coMentionedIds,
+                    subjectResolution.relatedCharacterIds,
+                    subjectResolution,
                   );
 
                   // Add to scope if category is provided

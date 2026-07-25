@@ -10,13 +10,22 @@ import {
 
 describe('mentionClassifier', () => {
   it('marks indefinite and vague phrases as GENERIC', () => {
-    for (const text of ['one girl', 'people in the scene', 'popular egirls', 'people in', 'other girls']) {
+    for (const text of ['one girl', 'people in the scene', 'people in', 'other girls']) {
       const m = classifyMention({ text });
       expect(m.status).toBe('GENERIC');
       expect(mayAppearOnCast(m)).toBe(false);
       expect(mayAppearAsTranscriptMention(m)).toBe(false);
       expect(mayAppearAsBuildingOn(m)).toBe(false);
       expect(mayPromoteMentionToCharacter(m)).toBe(false);
+    }
+  });
+
+  it('marks popular e-girl social categories as GROUP', () => {
+    for (const text of ['popular egirls', 'popular e girls']) {
+      const m = classifyMention({ text });
+      expect(m.status).toBe('GROUP');
+      expect(mayPromoteMentionToCharacter(m)).toBe(false);
+      expect(mayAppearOnCast(m)).toBe(false);
     }
   });
 

@@ -1,11 +1,46 @@
-import { describe, it, expect, vi } from 'vitest';
-import { evaluationToQuestPrompts } from './compileGate';
-import type { LoreReadinessSummary } from './types';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { checkCompileGate, evaluationToQuestPrompts } from './compileGate';
+import type { LoreReadinessEvaluation, LoreReadinessSummary } from './types';
 import { LORE_TOPICS } from './topics';
 
+const evaluateMock = vi.fn();
+
 vi.mock('./loreReadinessService', () => ({
-  loreReadinessService: {},
+  loreReadinessService: {
+    evaluate: (...args: unknown[]) => evaluateMock(...args),
+  },
 }));
+
+function mockEval(partial: Partial<LoreReadinessEvaluation>): LoreReadinessEvaluation {
+  return {
+    label: 'Test',
+    spec: {
+      scope: 'domain',
+      domain: 'professional',
+      tone: 'neutral',
+      depth: 'detailed',
+      audience: 'self',
+      includeIntrospection: true,
+    },
+    level: 'building',
+    progress: 0.3,
+    canGenerate: false,
+    atomCount: 3,
+    entryCount: 2,
+    wordCount: 100,
+    atomsNeeded: 5,
+    entriesNeeded: 3,
+    estimatedPages: 1,
+    gaps: [],
+    suggestions: ['Share more stories.'],
+    dimensionScores: { volume: 0.3, diversity: 0.5, anchoring: 0.5, temporal: 0.5, evidence: 0.5 },
+    ...partial,
+  };
+}
+
+beforeEach(() => {
+  evaluateMock.mockReset();
+});
 
 function mockSummary(topics: LoreReadinessSummary['topics']): LoreReadinessSummary {
   return {
@@ -59,5 +94,33 @@ describe('compileGate quests', () => {
     expect(quests).toHaveLength(1);
     expect(quests[0].topicId).toBe('professional');
     expect(quests[0].prompt).toContain('career');
+  });
+});
+
+describe('checkCompileGate form tiers', () => {
+  it('allows vignette when atom floor is met even if topic is not fully ready', async () => {
+    evaluateMock.mockResolvedValue(
+      mockEval({ atomCount: 2, progress: 0.2, canGenerate: false }),
+    );
+    const gate = await checkCompileGate('user-1', { form: 'vignette', topicId: 'professional' });
+    expect(gate.allowed).toBe(true);
+    expect(gate.mode).toBe('soft_blocked');
+  });
+
+  it('blocks full book when below readiness and atom floor', async () => {
+    evaluateMock.mockResolvedValue(
+      mockEval({ atomCount: 3, progress: 0.2, canGenerate: false }),
+    );
+    const gate = await checkCompileGate('user-1', { form: 'book', topicId: 'professional' });
+    expect(gate.allowed).toBe(false);
+    expect(gate.mode).toBe('hard_blocked');
+  });
+
+  it('allows chapter at 3 atoms', async () => {
+    evaluateMock.mockResolvedValue(
+      mockEval({ atomCount: 3, progress: 0.25, canGenerate: false }),
+    );
+    const gate = await checkCompileGate('user-1', { form: 'chapter', topicId: 'creative' });
+    expect(gate.allowed).toBe(true);
   });
 });

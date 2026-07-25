@@ -2,9 +2,8 @@ import { useState } from 'react';
 import {
   FileText,
   Users,
-  Brain,
+  MessageSquare,
   BookOpen,
-  Calendar,
   MapPin,
   Link2,
   Clock,
@@ -25,10 +24,13 @@ export type OrgModalTabKey =
   | 'chat'
   | 'members'
   | 'stories'
+  | 'activity'
+  /** @deprecated aliased to activity */
   | 'events'
   | 'locations'
   | 'relationships'
   | 'sources'
+  /** @deprecated aliased to activity */
   | 'timeline'
   | 'influence'
   | 'insights'
@@ -41,9 +43,15 @@ type TabDef = { key: OrgModalTabKey; label: string; shortLabel: string; icon: Lu
 const PRIMARY_MOBILE: TabDef[] = [
   { key: 'info', label: 'Overview', shortLabel: 'Overview', icon: FileText },
   { key: 'members', label: 'People', shortLabel: 'People', icon: Users },
-  { key: 'chat', label: 'Knowledge Chat', shortLabel: 'Chat', icon: Brain },
-  { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
+  { key: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
+  { key: 'activity', label: 'Activity', shortLabel: 'Activity', icon: Clock },
 ];
+
+/** Map legacy Events / Timeline tab keys onto the unified Activity tab. */
+export function normalizeOrgModalTab(tab: OrgModalTabKey): OrgModalTabKey {
+  if (tab === 'events' || tab === 'timeline') return 'activity';
+  return tab;
+}
 
 type Props = {
   tabs: TabDef[];
@@ -209,14 +217,13 @@ export function OrganizationModalNav({
 
 export const ORG_MODAL_BASE_TABS: TabDef[] = [
   { key: 'info', label: 'Overview', shortLabel: 'Overview', icon: FileText },
-  { key: 'chat', label: 'Knowledge Chat', shortLabel: 'Chat', icon: Brain },
+  { key: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
   { key: 'members', label: 'People', shortLabel: 'People', icon: Users },
+  { key: 'activity', label: 'Activity', shortLabel: 'Activity', icon: Clock },
   { key: 'stories', label: 'Stories', shortLabel: 'Stories', icon: BookOpen },
-  { key: 'events', label: 'Events', shortLabel: 'Events', icon: Calendar },
   { key: 'locations', label: 'Places', shortLabel: 'Places', icon: MapPin },
   { key: 'relationships', label: 'Relationships', shortLabel: 'Links', icon: Link2 },
   { key: 'sources', label: 'Sources', shortLabel: 'Sources', icon: Search },
-  { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
   { key: 'influence', label: 'Influence', shortLabel: 'Influence', icon: Zap },
   { key: 'insights', label: 'Insights', shortLabel: 'Insights', icon: Wand2 },
   { key: 'lore', label: 'Lore', shortLabel: 'Lore', icon: Sparkles },

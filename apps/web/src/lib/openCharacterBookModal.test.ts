@@ -26,4 +26,11 @@ describe('openCharacterBookModal', () => {
     openCharacterBookModal({ characterId: 'char-002' });
     expect(sessionStorage.getItem('characterModalTab')).toBeNull();
   });
+
+  it('stores focus field and defaults tab to info', () => {
+    openCharacterBookModal({ characterId: 'char-003', focusField: 'role' });
+    expect(sessionStorage.getItem('highlightItem')).toBe('char-003');
+    expect(sessionStorage.getItem('characterModalTab')).toBe('info');
+    expect(sessionStorage.getItem('characterModalFocusField')).toBe('role');
+  });
 });

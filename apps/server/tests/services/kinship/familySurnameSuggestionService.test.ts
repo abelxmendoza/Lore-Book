@@ -139,6 +139,33 @@ describe('familySurnameSuggestionService.checkForSurnameMatches', () => {
     expect((row.metadata as Row).inference_source).toBe('surname_match');
   });
 
+  it('auto-syncs cousins who share a surname and the same tree parent', async () => {
+    seedCharacters([
+      {
+        id: 'jerry',
+        user_id: USER,
+        name: 'Jerry',
+        last_name: 'Medina',
+        metadata: { family_override: { relation: 'cousin', connects_to_id: 'grace' } },
+      },
+      {
+        id: 'james',
+        user_id: USER,
+        name: 'James',
+        last_name: 'Medina',
+        metadata: { family_override: { relation: 'cousin', connects_to_id: 'grace' } },
+      },
+      { id: 'grace', user_id: USER, name: 'Tía Grace', last_name: null, metadata: {} },
+    ]);
+
+    await familySurnameSuggestionService.checkForSurnameMatches(USER, 'jerry');
+
+    const types = tables.character_relationships.map((r) => r.relationship_type).sort();
+    expect(types).toContain('family');
+    expect(types.filter((t) => t === 'parent_of')).toHaveLength(2);
+    expect(tables.character_relationships.some((r) => r.relationship_type === 'possible_family')).toBe(false);
+  });
+
   it('does not suggest a match when the other character is not family-role', async () => {
     seedCharacters([
       { id: 'jerry', user_id: USER, name: 'Cousin Jerry', last_name: 'Smith' },

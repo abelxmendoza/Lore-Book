@@ -549,14 +549,6 @@ export async function buildRAGPacket(
     logger.debug({ e }, 'RAGBuilder: continuityAlive selection failed');
   }
 
-  // ── Entity dossier — verified facts + recurring moments for entities the
-  //    user just mentioned. Grounding layer for accurate recall.
-  let entityDossierBlock: string | null = null;
-  try {
-    const { buildEntityDossierBlock } = await import('./entityDossierService');
-    entityDossierBlock = await buildEntityDossierBlock(userId, message, allCharacters, allLocations);
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: entity dossier build failed'); }
-
   // ── Relationship context — per-request, NOT cached ────────────────────────
   let romanticContext: RelationshipContinuitySummary[] = [];
   try {
@@ -608,6 +600,19 @@ export async function buildRAGPacket(
       }, 'RAGBuilder: working memory assembled');
     }
   } catch (e) { logger.debug({ e }, 'RAGBuilder: working memory assembly failed'); }
+
+  // ── Entity dossier — verified facts + recurring moments for entities the
+  //    user just mentioned. Grounding layer for accurate recall. Runs after
+  //    Working Memory so it can skip re-fetching facts for the character WMA
+  //    already loaded (loadPersonCandidates) — moments stay dossier-exclusive.
+  let entityDossierBlock: string | null = null;
+  try {
+    const { buildEntityDossierBlock } = await import('./entityDossierService');
+    entityDossierBlock = await buildEntityDossierBlock(
+      userId, message, allCharacters, allLocations,
+      workingMemory?.factsCoveredEntityIds ?? [],
+    );
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: entity dossier build failed'); }
 
   let lifeArcSynthesisBlock = '';
   let lifeArcSynthesis: Awaited<ReturnType<typeof import('../continuityRuntime/arcs/lifeArcSynthesisService').synthesizeLifeArcs>> | null = null;

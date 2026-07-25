@@ -1,10 +1,14 @@
 import type { ProjectCardData } from '../components/projects/ProjectProfileCard';
 
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 
-export function buildProjectBookClipboardText(projects: ProjectCardData[]): string {
+export function buildProjectBookClipboardText(
+  projects: ProjectCardData[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Projects Book',
+    filters: options?.filters,
     items: projects.map((project) => ({
       heading: project.name,
       fields: [

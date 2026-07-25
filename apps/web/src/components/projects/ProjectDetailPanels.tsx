@@ -1,9 +1,12 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
   Calendar,
   CalendarClock,
+  Check,
   CheckCircle2,
+  Copy,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -12,6 +15,7 @@ import {
   MapPin,
   MessageSquare,
   PauseCircle,
+  Search,
   Sparkles,
   Target,
   TrendingUp,
@@ -25,10 +29,20 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Textarea } from '../ui/textarea';
 import { formatMilestoneKind } from '../../mocks/projectModalDemoData';
+import {
+  buildProjectOmniTimelineSearchQuery,
+  buildProjectTimelineClipboardText,
+  projectHasEnoughTimelineForLorebook,
+} from '../../lib/projectTimelineClipboard';
+import { meterFromProjectProfile } from '../../lib/lorebookContentMeter';
+import type { LorebookForm } from '../../lib/lorebookTiers';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import type { ProjectCardData } from './ProjectProfileCard';
 import type { ProjectDetailProfile, ProjectStatus } from './projectModalTypes';
 import { LoreEntityLegend } from '../lore/LoreEntityLegend';
 import { LoreEntityChip } from '../lore/LoreEntityChip';
+import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
+import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import type { LoreEntityKind } from '../../lib/loreEntities';
 
 export const STATUS_CONFIG: Record<
@@ -252,33 +266,164 @@ export function ProjectOverviewTab({
   );
 }
 
-export function ProjectTimelineTab({ profile }: { profile: ProjectDetailProfile }) {
-  const sorted = [...profile.milestones].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+type TimelineTabProps = {
+  project: ProjectCardData;
+  profile: ProjectDetailProfile;
+  onOpenInOmniTimeline?: (query: string) => void;
+  onCreateLorebook?: (form?: LorebookForm) => void;
+};
+
+export function ProjectTimelineTab({
+  project,
+  profile,
+  onOpenInOmniTimeline,
+  onCreateLorebook,
+}: TimelineTabProps) {
+  const [query, setQuery] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lorebookMeter = useMemo(() => meterFromProjectProfile(profile), [profile]);
+  const canMakeLorebook =
+    Boolean(lorebookMeter.tierOffer?.canCreateAny) ||
+    projectHasEnoughTimelineForLorebook(profile);
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
   );
+
+  const sorted = useMemo(
+    () =>
+      [...profile.milestones].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      ),
+    [profile.milestones],
+  );
+
+  const filtered = useMemo(() => {
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return sorted;
+    return sorted.filter((m) => {
+      const hay = `${m.title} ${m.summary ?? ''} ${m.kind} ${formatMilestoneKind(m.kind)}`.toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [sorted, query]);
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildProjectTimelineClipboardText(project, profile));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-white/45">
-        Milestones inferred from chat — ★ milestone · ↻ pivot · ⏸ pause · ✦ breakthrough
-      </p>
-      <div className="relative pl-4 border-l-2 border-primary/30 space-y-4">
-        {sorted.map((m) => (
-          <div key={m.id} className="relative pl-4">
-            <span className="absolute -left-[1.35rem] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
-            <div className="rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4 hover:border-primary/30 transition-colors">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className="text-[10px] uppercase tracking-wide text-primary/80 font-semibold">
-                  {formatMilestoneKind(m.kind)}
-                </span>
-                <span className="text-[11px] text-white/40">{fmtDate(m.date)}</span>
-              </div>
-              <h4 className="text-sm font-semibold text-white">{m.title}</h4>
-              {m.summary && <p className="text-xs text-white/55 mt-1 leading-relaxed">{m.summary}</p>}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <p className="text-xs text-white/45">
+          Milestones inferred from chat — ★ milestone · ↻ pivot · ⏸ pause · ✦ breakthrough
+        </p>
+        <div className="flex flex-wrap gap-1.5 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid="project-timeline-copy-all"
+            onClick={() => void handleCopyAll()}
+            disabled={profile.milestones.length === 0 && !profile.storyBeats.length}
+            className="text-[11px] h-8"
+            leftIcon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          >
+            {copied ? 'Copied' : 'Copy all'}
+          </Button>
+          {onOpenInOmniTimeline && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid="project-timeline-open-omni"
+              onClick={() =>
+                onOpenInOmniTimeline(buildProjectOmniTimelineSearchQuery(project))
+              }
+              className="text-[11px] h-8"
+              leftIcon={<CalendarClock className="h-3.5 w-3.5" />}
+            >
+              Omni Timeline
+            </Button>
+          )}
+          {onCreateLorebook && (
+            <div
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 pl-2 pr-2 py-1"
+              data-testid="project-timeline-make-lorebook"
+            >
+              {lorebookMeter.tierOffer ? (
+                <LorebookTierMenu
+                  tierOffer={lorebookMeter.tierOffer}
+                  forceEnable={canMakeLorebook && !lorebookMeter.tierOffer.canCreateAny}
+                  onSelectForm={(form) => onCreateLorebook(form)}
+                  subjectLabel={project.name}
+                  testId="project-lorebook-tier-menu"
+                />
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={!canMakeLorebook}
+                  title={lorebookMeter.detailLabel}
+                  onClick={() => onCreateLorebook()}
+                  className="text-[11px] h-7 px-2 text-amber-200 hover:text-amber-100"
+                >
+                  LoreBook
+                </Button>
+              )}
+              <LorebookContentMeter meter={lorebookMeter} />
             </div>
-          </div>
-        ))}
+          )}
+        </div>
       </div>
+
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/35" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Search ${project.name} timeline…`}
+          data-testid="project-timeline-search"
+          className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-3 py-2 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-primary/40"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-white/45">
+          {sorted.length === 0
+            ? 'No milestones yet — talk about this project in chat to grow its timeline.'
+            : 'No milestones match that search.'}
+        </p>
+      ) : (
+        <div className="relative pl-4 border-l-2 border-primary/30 space-y-4">
+          {filtered.map((m) => (
+            <div key={m.id} className="relative pl-4">
+              <span className="absolute -left-[1.35rem] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
+              <div className="rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4 hover:border-primary/30 transition-colors">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="text-[10px] uppercase tracking-wide text-primary/80 font-semibold">
+                    {formatMilestoneKind(m.kind)}
+                  </span>
+                  <span className="text-[11px] text-white/40">{fmtDate(m.date)}</span>
+                </div>
+                <h4 className="text-sm font-semibold text-white">{m.title}</h4>
+                {m.summary && (
+                  <p className="text-xs text-white/55 mt-1 leading-relaxed">{m.summary}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

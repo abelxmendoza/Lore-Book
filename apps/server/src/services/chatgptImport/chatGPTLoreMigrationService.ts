@@ -4,7 +4,10 @@ import { logger } from '../../logger';
 import { memoryReviewQueueService } from '../memoryReviewQueueService';
 import { selfCharacterService } from '../selfCharacterService';
 
-import type { ChatGPTExportConversation } from './chatGPTExportParser';
+import type {
+  ChatGPTExportConversation,
+  ChatGPTMemoryHandoffClaim,
+} from './chatGPTExportParser';
 
 export type ChatGPTLoreCategory =
   | 'identity'
@@ -20,6 +23,7 @@ export type ChatGPTLoreCategory =
 export type ChatGPTLoreMigrationStats = {
   conversationsProcessed: number;
   userMessagesConsidered: number;
+  handoffClaimsConsidered: number;
   assistantMessagesExcluded: number;
   hypotheticalMessagesExcluded: number;
   sensitiveClaimsExcluded: number;
@@ -52,6 +56,7 @@ function emptyStats(): ChatGPTLoreMigrationStats {
   return {
     conversationsProcessed: 0,
     userMessagesConsidered: 0,
+    handoffClaimsConsidered: 0,
     assistantMessagesExcluded: 0,
     hypotheticalMessagesExcluded: 0,
     sensitiveClaimsExcluded: 0,
@@ -127,10 +132,35 @@ export function classifyChatGPTLoreCategory(text: string): ChatGPTLoreCategory {
   return 'other';
 }
 
+function classifyHandoffCategory(
+  handoff: ChatGPTMemoryHandoffClaim | undefined,
+  text: string,
+): ChatGPTLoreCategory {
+  const category = handoff?.category.toLowerCase().replace(/[_-]+/g, ' ') ?? '';
+  if (/\b(?:identity|creative identity)\b/.test(category)) return 'identity';
+  if (/\b(?:relationship|family|social|personal history)\b/.test(category)) return 'relationships';
+  if (/\b(?:project|software)\b/.test(category)) return 'projects';
+  if (/\b(?:interest|skill|education|learning|creative work|activit)\b/.test(category)) {
+    return 'skills_interests';
+  }
+  if (/\b(?:goal|value)\b/.test(category)) return 'goals_values';
+  if (/\b(?:career|employment)\b/.test(category)) return 'places_organizations';
+  if (/\b(?:preference|habit|communication)\b/.test(category)) return 'preferences_habits';
+  return classifyChatGPTLoreCategory(text);
+}
+
+function handoffConfidence(handoff: ChatGPTMemoryHandoffClaim | undefined): number {
+  if (handoff?.confidence === 'high') return 0.72;
+  if (handoff?.confidence === 'medium') return 0.55;
+  if (handoff?.confidence === 'low') return 0.4;
+  return 0.5;
+}
+
 function mergeStats(target: ChatGPTLoreMigrationStats, source: ChatGPTLoreMigrationStats): void {
   for (const key of [
     'conversationsProcessed',
     'userMessagesConsidered',
+    'handoffClaimsConsidered',
     'assistantMessagesExcluded',
     'hypotheticalMessagesExcluded',
     'sensitiveClaimsExcluded',
@@ -171,35 +201,81 @@ export class ChatGPTLoreMigrationService {
           stats.assistantMessagesExcluded += 1;
           continue;
         }
-        if (message.role !== 'user') continue;
-        stats.userMessagesConsidered += 1;
-        const authority = extractUserAuthoredChatGPTClaims(message.text, {
-          includeSensitive: params.includeSensitive,
-        });
-        if (authority.excludedAsHypothetical) {
-          stats.hypotheticalMessagesExcluded += 1;
+        const candidates: Array<{
+          text: string;
+          category: ChatGPTLoreCategory;
+          confidence: number;
+          source: 'chatgpt_export' | 'chatgpt_memory_handoff';
+          authority: 'user_authored' | 'assistant_recalled_review_required';
+          metadata?: Record<string, unknown>;
+        }> = [];
+
+        if (message.role === 'handoff') {
+          stats.handoffClaimsConsidered += 1;
+          if (message.handoffClaim?.sensitive && !params.includeSensitive) {
+            stats.sensitiveClaimsExcluded += 1;
+            continue;
+          }
+          candidates.push({
+            text: message.text,
+            category: classifyHandoffCategory(message.handoffClaim, message.text),
+            confidence: handoffConfidence(message.handoffClaim),
+            source: 'chatgpt_memory_handoff',
+            authority: 'assistant_recalled_review_required',
+            metadata: {
+              handoff_category: message.handoffClaim?.category ?? null,
+              handoff_confidence: message.handoffClaim?.confidence ?? 'unknown',
+              handoff_source_type: message.handoffClaim?.sourceType ?? 'unclear',
+              handoff_approximate_period: message.handoffClaim?.approximatePeriod ?? null,
+              handoff_related_entities: message.handoffClaim?.relatedEntities ?? null,
+              handoff_evidence: message.handoffClaim?.evidence ?? null,
+              handoff_sensitive: message.handoffClaim?.sensitive ?? false,
+            },
+          });
+        } else if (message.role === 'user') {
+          stats.userMessagesConsidered += 1;
+          const extraction = extractUserAuthoredChatGPTClaims(message.text, {
+            includeSensitive: params.includeSensitive,
+          });
+          if (extraction.excludedAsHypothetical) {
+            stats.hypotheticalMessagesExcluded += 1;
+            continue;
+          }
+          stats.sensitiveClaimsExcluded += extraction.sensitiveClaimsExcluded;
+          candidates.push(
+            ...extraction.claims.map((text) => ({
+              text,
+              category: classifyChatGPTLoreCategory(text),
+              confidence: 0.82,
+              source: 'chatgpt_export' as const,
+              authority: 'user_authored' as const,
+            })),
+          );
+        } else {
           continue;
         }
-        stats.sensitiveClaimsExcluded += authority.sensitiveClaimsExcluded;
-        for (const claimText of authority.claims) {
-          const category = classifyChatGPTLoreCategory(claimText);
+
+        for (const candidate of candidates) {
+          const claimText = candidate.text;
+          const category = candidate.category;
           const evidenceId = `chatgpt:${params.sourceFileId}:${conversation.id}:${message.id}`;
           const claim = {
             text: claimText,
-            confidence: 0.82,
+            confidence: candidate.confidence,
             metadata: {
               force_review: true,
-              source: 'chatgpt_export',
+              source: candidate.source,
               source_file_id: params.sourceFileId,
               source_conversation_id: conversation.id,
               source_conversation_title: conversation.title,
               source_message_id: message.id,
               source_message_created_at: message.createdAt,
               extracted_unit_id: evidenceId,
-              authority: 'user_authored',
+              authority: candidate.authority,
               category,
               group_label: `ChatGPT import · ${CATEGORY_LABELS[category]}`,
               import_fingerprint: createHash('sha256').update(evidenceId).digest('hex'),
+              ...candidate.metadata,
             },
           };
 

@@ -1,10 +1,12 @@
 /**
  * Character timeline — events with you / without you, in chronological order.
+ * Bridges into Life Log (event detail) and Omni Timeline deep links.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
-import { Clock, List, RefreshCw, Loader2, Waves } from 'lucide-react';
+import { Clock, List, RefreshCw, Loader2, Waves, ExternalLink, CalendarRange, Search, X, Copy, Check, BookOpen } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -12,7 +14,11 @@ import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
 import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { EventDetailModal } from '../events/EventDetailModal';
+import type { Event } from '../events/EventProfileCard';
 import { getMockCharacterTimeline } from '../../mocks/characterIntelligence';
+import { buildCharacterTimelineClipboardText } from '../../lib/characterTimelineClipboard';
+import { clipboardFilterLines, copyTextToClipboard } from '../../lib/listClipboard';
 import type { Character } from './CharacterProfileCard';
 
 export type CharTimelineEvent = {
@@ -29,6 +35,9 @@ export type CharTimelineEvent = {
 };
 
 type ViewMode = 'list' | 'swimlanes';
+
+/** Light client-side signal only — the real "enough content" gate is server-side (loreReadiness). */
+const MIN_EVENTS_FOR_LOREBOOK_LINK = 3;
 
 interface Props {
   characterId: string;
@@ -92,6 +101,35 @@ export function CharacterTimelinePanel({
   const [loaded, setLoaded] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [loadingEvent, setLoadingEvent] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
+  const lifeLogHref = `/events?q=${encodeURIComponent(characterName)}`;
+  const omniHref = `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`;
+  /** Bridges into the existing "?focus=" auto-generate flow on the Lorebook page — the
+   * backend's own loreReadiness gate decides whether there's actually enough content. */
+  const lorebookHref = `/lorebook?focus=${encodeURIComponent(characterName)}`;
+
+  const openEventDetail = useCallback(async (eventId?: string) => {
+    if (!eventId || mockMode) return;
+    setLoadingEvent(true);
+    try {
+      const result = await fetchJson<{ success: boolean; event: Event }>(
+        `/api/conversation/events/${eventId}`,
+      );
+      if (result.success && result.event) setSelectedEvent(result.event);
+    } catch {
+      // keep panel usable if detail fetch fails
+    } finally {
+      setLoadingEvent(false);
+    }
+  }, [mockMode]);
 
   const loadTimelines = useCallback(async () => {
     if (!characterId) return;
@@ -155,13 +193,36 @@ export function CharacterTimelinePanel({
     );
   }, [sortedShared, sortedLore]);
 
+  const filteredList = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return chronologicalList;
+    return chronologicalList.filter((event) =>
+      [event.eventTitle, event.eventSummary, event.eventType, event.characterRole, event.connectionCharacter, event.emotionalImpact]
+        .filter(Boolean)
+        .some((field) => field!.toLowerCase().includes(term)),
+    );
+  }, [chronologicalList, searchTerm]);
+
   const swimEvents = useMemo(
-    () => [
-      ...sortedShared.map(e => toSwim(e, 'with')),
-      ...sortedLore.map(e => toSwim(e, 'without')),
-    ],
-    [sortedShared, sortedLore],
+    () => filteredList.map((event) => toSwim(event, event.lane)),
+    [filteredList],
   );
+
+  const clipboardText = useMemo(
+    () =>
+      buildCharacterTimelineClipboardText(characterName, filteredList, {
+        filters: clipboardFilterLines([searchTerm.trim() && `search="${searchTerm.trim()}"`]),
+      }),
+    [characterName, filteredList, searchTerm],
+  );
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(clipboardText);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleRescan = () => {
     if (mockMode) return;
@@ -220,6 +281,23 @@ export function CharacterTimelinePanel({
               Swimlanes
             </button>
           </div>
+          {chronologicalList.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleCopyAll}
+              title="Copy the whole timeline as plain text"
+              aria-label="Copy all timeline events"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {copied ? 'Copied' : 'Copy all'}
+            </Button>
+          )}
           {!mockMode && (
             <Button
               variant="outline"
@@ -239,6 +317,29 @@ export function CharacterTimelinePanel({
         </div>
       </div>
 
+      {chronologicalList.length > 0 && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder={`Search ${firstName}'s timeline…`}
+            className="w-full rounded-lg border border-white/10 bg-black/25 pl-8 pr-8 py-1.5 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-primary/40"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {viewMode === 'list' ? (
         loading ? (
           <div className="h-48 flex items-center justify-center text-white/50 text-sm">
@@ -252,9 +353,14 @@ export function CharacterTimelinePanel({
               {emptyHint}
             </p>
           </div>
+        ) : filteredList.length === 0 ? (
+          <div className="h-32 flex flex-col items-center justify-center gap-2 px-6 text-center">
+            <Search className="h-6 w-6 text-white/20" />
+            <p className="text-white/50 text-sm">No timeline events match &quot;{searchTerm}&quot;</p>
+          </div>
         ) : (
           <ol className="relative border-l border-white/10 ml-3 space-y-0">
-            {chronologicalList.map((event, idx) => {
+            {filteredList.map((event, idx) => {
               const isWith = event.lane === 'with';
               return (
                 <li key={event.id} className="relative pl-6 pb-6 last:pb-0">
@@ -263,7 +369,13 @@ export function CharacterTimelinePanel({
                       isWith ? 'bg-emerald-400' : 'bg-sky-400'
                     }`}
                   />
-                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors">
+                  <button
+                    type="button"
+                    data-testid={`character-timeline-event-${event.id}`}
+                    disabled={!event.eventId || loadingEvent}
+                    onClick={() => void openEventDetail(event.eventId)}
+                    className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
+                  >
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.eventDate)}</time>
                       <Badge
@@ -280,6 +392,9 @@ export function CharacterTimelinePanel({
                         <Badge variant="outline" className="text-[10px] text-white/50">
                           {event.eventType}
                         </Badge>
+                      )}
+                      {event.eventId && (
+                        <span className="text-[10px] text-white/35 ml-auto">Open in Life Log</span>
                       )}
                     </div>
                     <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>
@@ -299,8 +414,8 @@ export function CharacterTimelinePanel({
                         )}
                       </div>
                     )}
-                  </div>
-                  {idx < chronologicalList.length - 1 && (
+                  </button>
+                  {idx < filteredList.length - 1 && (
                     <span className="sr-only">then</span>
                   )}
                 </li>
@@ -316,12 +431,16 @@ export function CharacterTimelinePanel({
             { key: 'without', label: withoutLabel, accent: 'sky' },
           ]}
           events={swimEvents}
-          emptyTitle={emptyTitle}
-          emptyHint={swimEmptyHint}
+          emptyTitle={searchTerm && chronologicalList.length > 0 ? 'No matches' : emptyTitle}
+          emptyHint={
+            searchTerm && chronologicalList.length > 0
+              ? `No timeline events match "${searchTerm}".`
+              : swimEmptyHint
+          }
         />
       )}
 
-      <div className="flex items-center gap-4 text-xs text-white/40 pt-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/40 pt-1">
         <span>
           <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span> {countWithLabel}
         </span>
@@ -333,7 +452,40 @@ export function CharacterTimelinePanel({
             {fmtEventDate(chronologicalList[0].eventDate)} → {fmtEventDate(chronologicalList[chronologicalList.length - 1].eventDate)}
           </span>
         )}
+        <span className="flex items-center gap-3 ml-auto">
+          <Link
+            to={lifeLogHref}
+            data-testid="character-timeline-open-life-log"
+            className="inline-flex items-center gap-1 text-emerald-300/80 hover:text-emerald-200"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Life Log
+          </Link>
+          <Link
+            to={omniHref}
+            data-testid="character-timeline-open-omni"
+            className="inline-flex items-center gap-1 text-sky-300/80 hover:text-sky-200"
+          >
+            <CalendarRange className="h-3 w-3" />
+            Omni Timeline
+          </Link>
+          {chronologicalList.length >= MIN_EVENTS_FOR_LOREBOOK_LINK && (
+            <Link
+              to={lorebookHref}
+              data-testid="character-timeline-create-lorebook"
+              className="inline-flex items-center gap-1 text-amber-300/80 hover:text-amber-200"
+              title={`Turn ${firstName}'s timeline into a Lorebook`}
+            >
+              <BookOpen className="h-3 w-3" />
+              Create a Lorebook
+            </Link>
+          )}
+        </span>
       </div>
+
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
     </div>
   );
 }

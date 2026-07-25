@@ -426,6 +426,9 @@ export type CharacterInfoPanelProps = {
   onAddWorldPerson?: (targetCharacterId: string, relationshipType: string, status: string) => Promise<void>;
   onUpdateWorldPerson?: (relationshipId: string, patch: { relationship_type?: string; status?: string }) => Promise<void>;
   onDeleteWorldPerson?: (relationshipId: string) => Promise<void>;
+  /** Deep-link target when opened from an Unknown chip (e.g. Role on a profile card). */
+  focusField?: 'role' | null;
+  onFocusFieldHandled?: () => void;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -502,8 +505,33 @@ export function CharacterInfoPanel({
   onAddWorldPerson,
   onUpdateWorldPerson,
   onDeleteWorldPerson,
+  focusField = null,
+  onFocusFieldHandled,
 }: CharacterInfoPanelProps) {
   const [updateCharacter] = useUpdateCharacterMutation();
+  const roleFieldRef = useRef<HTMLDivElement | null>(null);
+  const [roleFieldHighlight, setRoleFieldHighlight] = useState(false);
+  const [roleAutoEdit, setRoleAutoEdit] = useState(false);
+
+  useEffect(() => {
+    if (focusField !== 'role') return;
+    setRoleFieldHighlight(true);
+    setRoleAutoEdit(true);
+    const scrollTimer = window.setTimeout(() => {
+      roleFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    const clearTimer = window.setTimeout(() => {
+      setRoleFieldHighlight(false);
+      setRoleAutoEdit(false);
+      onFocusFieldHandled?.();
+    }, 2800);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+    // Intentionally omit onFocusFieldHandled — parent often passes an inline lambda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusField, characterId]);
   const meta = (editedCharacter.metadata ?? {}) as Record<string, unknown>;
   const standingOverride = (meta.standing_override as { tier?: string } | null)?.tier ?? null;
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
@@ -1254,7 +1282,11 @@ export function CharacterInfoPanel({
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="min-w-0 rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2 sm:p-3.5">
+              <div
+                ref={roleFieldRef}
+                data-testid="character-role-field"
+                className="min-w-0 rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2 sm:p-3.5"
+              >
                 <div className="mb-3 flex items-start gap-2">
                   <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/80" />
                   <p className="min-w-0 text-xs leading-relaxed text-white/60">
@@ -1273,6 +1305,8 @@ export function CharacterInfoPanel({
                   emptyHint="Click to set role"
                   icon={<User className="h-3.5 w-3.5 text-sky-300" />}
                   onSave={persistRole}
+                  autoEdit={roleAutoEdit}
+                  highlighted={roleFieldHighlight}
                 />
                 <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">

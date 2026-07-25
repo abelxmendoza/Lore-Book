@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -83,10 +83,60 @@ describe('MemoryReviewQueuePanel', () => {
     render(<MemoryReviewQueuePanel />);
 
     expect(screen.getByText('Starting at Amazon/Ring')).toBeInTheDocument();
-    expect(screen.getByText('2 beliefs')).toBeInTheDocument();
+    expect(screen.getByText('2 proposals')).toBeInTheDocument();
     expect(screen.getByText('1 story groups')).toBeInTheDocument();
     expect(screen.getByText('3 evidence passages')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Approve belief' })).toHaveLength(2);
+  });
+
+  it('shows memory proposals heading and compiled cognition fields', () => {
+    vi.mocked(useMemoryReviewQueue).mockReturnValue(state({
+      proposals: [
+        proposal({
+          claim_text: 'Cousin is stoked.',
+          metadata: {
+            proposal_kind: 'emotional_state',
+            normalized_summary: 'Cousin is stoked.',
+            group_label: 'Cousin',
+            belief_cognition: {
+              rendered_proposition: 'Marcus felt excited.',
+              resolved_subject: 'Marcus',
+              predicate: 'felt',
+              domain: 'EMOTIONAL_STATE',
+              durability: 'TEMPORARY_STATE',
+              routing_target: 'TEMPORAL_STATE',
+              confirmation_requirement: 'PASSIVE_CONFIRMATION',
+            },
+          },
+        }),
+      ],
+    }));
+
+    render(<MemoryReviewQueuePanel />);
+
+    expect(screen.getByRole('heading', { name: 'Memory proposals' })).toBeInTheDocument();
+    expect(screen.getByText('Marcus felt excited.')).toBeInTheDocument();
+    expect(screen.getByText('Compiled proposition')).toBeInTheDocument();
+    expect(screen.getAllByText('Marcus').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/emotional state/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/temporary state/i).length).toBeGreaterThan(0);
+  });
+
+  it('copies all pending beliefs as plain text', async () => {
+    vi.mocked(useMemoryReviewQueue).mockReturnValue(state());
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<MemoryReviewQueuePanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: /copy all memory proposals/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('Memory proposals');
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('Quality Assurance Technician');
+    expect(await screen.findByRole('button', { name: /copy all memory proposals/i })).toHaveTextContent('Copied');
   });
 
   it('approves with the keyboard and announces completion', async () => {

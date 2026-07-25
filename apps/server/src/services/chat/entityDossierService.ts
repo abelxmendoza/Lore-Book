@@ -117,23 +117,31 @@ function formatMoments(moments: MomentRow[]): string {
  * Build the dossier block for entities mentioned in this message.
  * Returns null when no known entity is mentioned or nothing is on record —
  * the block is simply omitted from the prompt (sparse > fabricated).
+ *
+ * `skipFactsForEntityIds` — characters whose entity_facts the Working Memory
+ * block already loaded and displayed this turn (person/relationship-intent
+ * questions). Facts are skipped for those ids so the same rows don't show up
+ * twice under two different headers; recurring moments (event_candidates) are
+ * still dossier-exclusive and always run.
  */
 export async function buildEntityDossierBlock(
   userId: string,
   message: string,
   allCharacters: DossierCharacter[],
-  allLocations: DossierLocation[]
+  allLocations: DossierLocation[],
+  skipFactsForEntityIds: string[] = []
 ): Promise<string | null> {
   try {
     const mentioned = detectMentionedEntities(message, allCharacters, allLocations)
       .slice(0, MAX_ENTITIES_PER_MESSAGE);
     if (mentioned.length === 0) return null;
 
+    const skipFacts = new Set(skipFactsForEntityIds);
     const sections: string[] = [];
 
     for (const entity of mentioned) {
       const [facts, moments] = await Promise.all([
-        loadFacts(userId, entity.id, entity.type),
+        skipFacts.has(entity.id) ? Promise.resolve([]) : loadFacts(userId, entity.id, entity.type),
         loadMomentsByName(userId, entity.name),
       ]);
 

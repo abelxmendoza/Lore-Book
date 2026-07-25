@@ -6,6 +6,7 @@ import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ComposingIndicator } from '../components/ComposingIndicator';
 import { parseConnections } from '../../../utils/parseConnections';
 import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPanel';
+import { WhatLoreBookUnderstood } from '../../../components/chat/WhatLoreBookUnderstood';
 import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
 import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
 import { PersonaChip } from './PersonaChip';
@@ -695,6 +696,9 @@ export const ChatMessage = ({
               </>
             )}
 
+            {isUser && (
+              <WhatLoreBookUnderstood messageContent={message.content} visible />
+            )}
             {isUser && showCognitiveTrace && (
               <HowLoreBookUnderstoodThis
                 messageId={message.id}

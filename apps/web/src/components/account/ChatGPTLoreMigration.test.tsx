@@ -1,16 +1,17 @@
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { render, screen, waitFor } from '../../test/utils';
+import {
+  getChatGPTExportReminder,
+  updateChatGPTExportReminder,
+} from '../../api/chatGPTExportReminder';
 import {
   analyzeChatGPTExport,
   deleteChatGPTExportSource,
   processChatGPTExport,
 } from '../../api/chatGPTLoreMigration';
-import {
-  getChatGPTExportReminder,
-  updateChatGPTExportReminder,
-} from '../../api/chatGPTExportReminder';
+import { render, screen, waitFor } from '../../test/utils';
+
 import { ChatGPTLoreMigration } from './ChatGPTLoreMigration';
 
 vi.mock('../../api/chatGPTLoreMigration', () => ({
@@ -40,6 +41,7 @@ const inventory = {
   messageCount: 4,
   userMessageCount: 2,
   assistantMessageCount: 2,
+  candidateClaimCount: 0,
   earliestAt: '2025-01-01T00:00:00.000Z',
   latestAt: '2025-01-02T00:00:00.000Z',
   sourceFiles: ['conversations.json'],
@@ -64,6 +66,7 @@ describe('ChatGPTLoreMigration', () => {
       stats: {
         conversationsProcessed: 1,
         userMessagesConsidered: 2,
+        handoffClaimsConsidered: 0,
         assistantMessagesExcluded: 2,
         hypotheticalMessagesExcluded: 0,
         sensitiveClaimsExcluded: 0,
@@ -140,5 +143,44 @@ describe('ChatGPTLoreMigration', () => {
       expect(updateChatGPTExportReminder).toHaveBeenCalledWith('requested', 3);
     });
     expect(await screen.findByText(/waiting for your openai export/i)).toBeInTheDocument();
+  });
+
+  it('presents Markdown handoffs as candidate claims rather than user-authored messages', async () => {
+    const user = userEvent.setup();
+    vi.mocked(analyzeChatGPTExport).mockResolvedValueOnce({
+      success: true,
+      sourceFileId: 'handoff-source',
+      reused: false,
+      inventory: {
+        ...inventory,
+        conversations: [
+          {
+            ...inventory.conversations[0],
+            title: 'LoreBook Memory Handoff',
+            messageCount: 2,
+            userMessageCount: 0,
+            assistantMessageCount: 0,
+            preview: 'You are building MemoVault.',
+          },
+        ],
+        messageCount: 2,
+        userMessageCount: 0,
+        assistantMessageCount: 0,
+        candidateClaimCount: 2,
+        earliestAt: null,
+        latestAt: null,
+        sourceFiles: ['memory-handoff.md'],
+      },
+    });
+
+    render(<ChatGPTLoreMigration onOpenMemoryReview={vi.fn()} />);
+
+    await user.upload(
+      screen.getByTestId('chatgpt-export-file'),
+      new File(['# LoreBook Memory Handoff'], 'memory-handoff.md', { type: 'text/markdown' }),
+    );
+
+    expect(await screen.findByText('Candidate claims')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 candidate claims/i })).toBeInTheDocument();
   });
 });

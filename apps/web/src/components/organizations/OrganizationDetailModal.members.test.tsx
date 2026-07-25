@@ -3,12 +3,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
 
 const mockAddOrganizationMember = vi.fn();
 const mockRemoveOrganizationMember = vi.fn();
+const mockDispatchStoryDataUpdated = vi.fn();
+const mockFetchCharacterList = vi.fn();
 
 vi.mock('../../store/api/entitiesApi', () => ({
   useUpdateOrganizationMutation: () => [vi.fn()],
@@ -46,6 +49,19 @@ vi.mock('../../hooks/useShouldUseMockData', () => ({
 vi.mock('../../lib/storyRefresh', () => ({
   schedulePostChatRefresh: vi.fn(),
   onStoryDataUpdated: vi.fn(() => () => {}),
+  dispatchStoryDataUpdated: (...args: unknown[]) => mockDispatchStoryDataUpdated(...args),
+}));
+
+vi.mock('../../lib/requestCache', () => ({
+  invalidateCache: vi.fn(),
+}));
+
+vi.mock('../../lib/invalidateOrganizationMembershipCaches', () => ({
+  invalidateOrganizationMembershipCaches: vi.fn(),
+}));
+
+vi.mock('../../api/characterList', () => ({
+  fetchCharacterList: (...args: unknown[]) => mockFetchCharacterList(...args),
 }));
 
 const seedOrg = {
@@ -81,26 +97,6 @@ vi.mock('../../lib/hydrateBookEntity', async () => {
   };
 });
 
-vi.mock('../../api/books', () => ({
-  booksApi: {
-    loadCharacters: vi.fn(async () => ({
-      characters: [
-        { id: 'char-mina', name: 'Mina' },
-        { id: 'char-owen', name: 'Owen' },
-      ],
-      duplicate_groups: [],
-      counts: {
-        characters: 2,
-        locations: 0,
-        events: 0,
-        organizations: 0,
-        skills: 0,
-        projects: 0,
-      },
-    })),
-  },
-}));
-
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(async (url: string) => {
     if (url === '/api/characters' || url === '/api/books/characters') {
@@ -112,7 +108,12 @@ vi.mock('../../lib/api', () => ({
       };
     }
     if (url.includes('/derived-context')) {
-      return { success: true, events: [], locations: [], hierarchy: {} };
+      return {
+        success: true,
+        events: [],
+        locations: [],
+        hierarchy: { subgroups: [], related: [] },
+      };
     }
     if (url.includes('/member-affiliations')) {
       return { success: true, affiliations: {} };
@@ -133,8 +134,8 @@ vi.mock('../family/FamilyTreePanel', () => ({
 vi.mock('./OrganizationGroupNetwork', () => ({
   OrganizationGroupNetwork: () => null,
 }));
-vi.mock('./OrganizationTimelinePanel', () => ({
-  OrganizationTimelinePanel: () => null,
+vi.mock('./OrganizationActivityPanel', () => ({
+  OrganizationActivityPanel: () => null,
 }));
 
 function renderModal() {
@@ -155,6 +156,10 @@ function renderModal() {
 describe('OrganizationDetailModal — People / Character Book link', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetchCharacterList.mockResolvedValue([
+      { id: 'char-mina', name: 'Mina', alias: ['Min'] },
+      { id: 'char-owen', name: 'Owen' },
+    ]);
     mockAddOrganizationMember.mockResolvedValue({
       success: true,
       member: {
@@ -168,22 +173,32 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
   });
 
   it('links an existing Character Book person with character_id', async () => {
+    const user = userEvent.setup();
     renderModal();
 
-    // Switch to People section (desktop + mobile nav both render "People")
     const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
     fireEvent.click(peopleTabs[0]!);
 
     fireEvent.click(screen.getByTestId('org-add-member-toggle'));
 
-    const select = await screen.findByTestId('org-add-member-character-select');
     await waitFor(() => {
-      expect(select.querySelectorAll('option').length).toBeGreaterThan(1);
+      expect(mockFetchCharacterList).toHaveBeenCalled();
     });
 
-    fireEvent.change(select, { target: { value: 'char-mina' } });
-    const roleInput = screen.getByLabelText(/membership role/i);
-    fireEvent.change(roleInput, { target: { value: 'vocalist' } });
+    const search = await screen.findByTestId('org-add-member-character-search');
+    await user.click(search);
+    await user.type(search, 'Min');
+
+    const suggestion = await screen.findByRole('option', { name: 'Mina' });
+    fireEvent.mouseDown(suggestion);
+
+    expect(await screen.findByTestId('org-add-member-selected')).toHaveTextContent('Mina');
+
+    const roleSelect = screen.getByTestId('org-add-member-role');
+    await user.selectOptions(roleSelect, '__custom__');
+    const customRole = await screen.findByTestId('org-add-member-role-custom');
+    await user.clear(customRole);
+    await user.type(customRole, 'vocalist');
     fireEvent.click(screen.getByTestId('org-add-member-submit'));
 
     await waitFor(() => {
@@ -203,27 +218,32 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
     expect(await screen.findByTestId('org-add-member-success')).toHaveTextContent(
       /linked to this group and saved in your knowledge base/i,
     );
+    expect(mockDispatchStoryDataUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scopes: ['organizations', 'characters'],
+        organizationIds: ['org-1'],
+        characterIds: ['char-mina'],
+      }),
+    );
   });
 
-  it('filters Character Book options by search', async () => {
+  it('filters Character Book options by typed search', async () => {
+    const user = userEvent.setup();
     renderModal();
     const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
     fireEvent.click(peopleTabs[0]!);
     fireEvent.click(screen.getByTestId('org-add-member-toggle'));
 
-    const select = await screen.findByTestId('org-add-member-character-select');
-    await waitFor(() => {
-      expect(select.querySelectorAll('option').length).toBeGreaterThan(1);
-    });
+    const search = await screen.findByTestId('org-add-member-character-search');
+    await waitFor(() => expect(mockFetchCharacterList).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByTestId('org-add-member-character-search'), {
-      target: { value: 'owe' },
-    });
+    await user.click(search);
+    await user.type(search, 'owe');
 
     await waitFor(() => {
-      const options = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
-      expect(options.some((t) => t?.includes('Owen'))).toBe(true);
-      expect(options.some((t) => t?.includes('Mina'))).toBe(false);
+      const options = screen.getAllByRole('option').map((el) => el.textContent);
+      expect(options).toContain('Owen');
+      expect(options).not.toContain('Mina');
     });
   });
 });

@@ -6,6 +6,7 @@ import type {
 } from '../../api/books';
 
 import { invalidateCache } from '../../lib/requestCache';
+import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { baseApi } from './baseApi';
 
 /** Server response envelopes vary; the books BFF returns `{ success, data }` or the payload directly. */
@@ -68,6 +69,8 @@ type OrganizationMemberCreateInput = {
 type OrganizationNestedDeleteInput = {
   organizationId: string;
   itemId: string;
+  /** When removing a member, pass character_id so Character Book caches bust too. */
+  characterId?: string;
 };
 
 type OrganizationEventCreateInput = {
@@ -339,8 +342,14 @@ export const entitiesApi = baseApi.injectEndpoints({
         body: member,
       }),
       invalidatesTags: ['Organization', 'Character'],
-      async onQueryStarted({ organizationId }, { queryFulfilled }) {
+      async onQueryStarted({ organizationId, member }, { queryFulfilled }) {
         await invalidateOrganizationCaches(organizationId, queryFulfilled);
+        const characterId =
+          typeof member?.character_id === 'string' ? member.character_id.trim() : '';
+        invalidateOrganizationMembershipCaches({
+          characterIds: characterId ? [characterId] : [],
+          organizationIds: [organizationId],
+        });
       },
     }),
 
@@ -350,8 +359,12 @@ export const entitiesApi = baseApi.injectEndpoints({
         method: 'DELETE',
       }),
       invalidatesTags: ['Organization', 'Character'],
-      async onQueryStarted({ organizationId }, { queryFulfilled }) {
+      async onQueryStarted({ organizationId, characterId }, { queryFulfilled }) {
         await invalidateOrganizationCaches(organizationId, queryFulfilled);
+        invalidateOrganizationMembershipCaches({
+          organizationIds: [organizationId],
+          characterIds: characterId ? [characterId] : [],
+        });
       },
     }),
 

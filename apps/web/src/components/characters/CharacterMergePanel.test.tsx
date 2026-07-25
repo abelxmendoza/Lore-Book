@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import type { Character } from './CharacterProfileCard';
 
@@ -73,5 +73,38 @@ describe('CharacterMergePanel', () => {
     expect(screen.getByText(/Manual consolidation/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Keep Alex Rivera/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Archive selected/i })).toBeInTheDocument();
+  });
+
+  it('copies all duplicate groups from the consolidate hub', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <CharacterMergePanel
+        characters={[
+          baseCharacter({ id: 'char-1', name: 'Alex Rivera', alias: ['Alex'] }),
+          baseCharacter({ id: 'char-2', name: 'Alex Rivera', alias: ['A. Rivera'] }),
+        ]}
+        demoMode
+        onConsolidated={vi.fn()}
+        selectionMode={false}
+        onSelectionModeChange={vi.fn()}
+        selectedForMerge={new Set()}
+        onToggleSelected={vi.fn()}
+        onClearSelection={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Consolidate characters/i }));
+    const copyBtn = await screen.findByRole('button', { name: /copy all duplicate characters/i });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+    });
+    const payload = String(writeText.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('Consolidate Characters — Duplicate Groups');
+    expect(payload).toContain('Alex Rivera');
+    expect(payload).toContain('Match type: exact');
   });
 });

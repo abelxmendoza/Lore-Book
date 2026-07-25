@@ -144,6 +144,8 @@ type LexicalGroupType =
   | 'military_unit'
   | 'religious_group'
   | 'online_community'
+  | 'care_team'
+  | 'support_network'
   | 'unknown';
 
 type StructuralGroupCandidate = {
@@ -610,6 +612,30 @@ export class GroupDetectionService {
         confidence: 0.88,
         anchorName: base,
         rulesFired: ['explicit_organization_name'],
+      });
+    }
+
+    // User-authored care / support team naming:
+    // "yeah thats Marcus's Social Worker Support Team"
+    for (const match of text.matchAll(
+      /\b(?:(?:that(?:'|’)s|thats|called|named)\s+)([A-ZÀ-Ý][^.\n]{3,90}?(?:Support Team|Care Team|Support Network))\b/gi,
+    )) {
+      const name = this.titleCaseGroupName(match[1]);
+      if (!name || name.length < 6) continue;
+      const central = name.match(/^(.+?)['’]s\s+/i)?.[1] ?? undefined;
+      const isCare =
+        /\b(?:social worker|care team|support (?:team|network)|case (?:worker|manager))\b/i.test(name) ||
+        /\b(?:social worker|care team|support (?:team|network))\b/i.test(match[0]);
+      add({
+        name,
+        groupType: isCare ? 'care_team' : 'support_network',
+        lexicalGroupType: isCare ? 'care_team' : 'support_network',
+        membershipModel: 'fuzzy',
+        userRelationship: 'adjacent',
+        confidence: 0.93,
+        anchorName: central,
+        rulesFired: ['explicit_user_authored_care_support_team'],
+        includeMembers: false,
       });
     }
 

@@ -13,6 +13,8 @@ type UseStitchedTimelineOptions = {
   scope_type?: 'global' | 'life_arc';
   scope_label?: string | null;
   enabled?: boolean;
+  /** Restrict the global scope to events involving this character. */
+  character_id?: string;
 };
 
 export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
@@ -44,6 +46,7 @@ export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
       const result = await stitchedTimelineApi.get({
         life_arc_id: opts.life_arc_id,
         scope_type: opts.scope_type ?? (opts.life_arc_id ? 'life_arc' : 'global'),
+        character_id: opts.character_id,
       });
       setData(result);
       setItems(result.items);
@@ -53,7 +56,7 @@ export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [opts.enabled, opts.life_arc_id, opts.scope_type, opts.scope_label, isDemoMode]);
+  }, [opts.enabled, opts.life_arc_id, opts.scope_type, opts.scope_label, opts.character_id, isDemoMode]);
 
   useEffect(() => {
     void load();

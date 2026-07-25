@@ -24,6 +24,24 @@ describe('EditableField', () => {
     expect(screen.getByText('Ask in chat')).toBeInTheDocument();
   });
 
+  it('opens the editor and shows a highlight when deep-linked', () => {
+    render(
+      <EditableField
+        label="Role"
+        value=""
+        source="unknown"
+        emptyHint="Click to set role"
+        onSave={vi.fn()}
+        autoEdit
+        highlighted
+        variant="multi-select"
+        options={[{ value: 'coworker', label: 'Coworker' }]}
+      />,
+    );
+    expect(screen.getByTestId('editable-field-role')).toHaveClass('animate-pulse');
+    expect(screen.getByText('coworker', { exact: false })).toBeInTheDocument();
+  });
+
   it('edits and saves a text value', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<EditableField label="Work" value="Engineer" source="auto" onSave={onSave} />);

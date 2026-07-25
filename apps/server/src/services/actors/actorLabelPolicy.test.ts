@@ -25,11 +25,20 @@ describe('actorLabelPolicy', () => {
       'people in',
       'friends',
       'coworkers',
-      'popular egirls',
       'people',
     ]) {
       expect(isVagueActorLabel(label)).toBe(true);
       expect(classifyActorLabel(label).action).toBe('reject');
+      expect(mayPromoteToCharacter(label)).toBe(false);
+    }
+  });
+
+  it('routes named social categories into Groups (not family/person)', () => {
+    for (const label of ['popular egirls', 'popular e girls', 'popular e-girls', 'egirls', 'e girls']) {
+      const c = classifyActorLabel(label);
+      expect(c.action).toBe('group');
+      expect(c.actorType).toBe('GROUP');
+      expect(c.reason).toBe('social_category_group');
       expect(mayPromoteToCharacter(label)).toBe(false);
     }
   });

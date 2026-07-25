@@ -1,5 +1,5 @@
 import type { NarrativeAnchor } from '../components/narrative/NarrativeAnchorsBook';
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 
 const TYPE_LABELS: Record<string, string> = {
   life_era: 'Life era',
@@ -24,9 +24,13 @@ function formatYears(startDate?: string, endDate?: string): string | null {
   return `Until ${end}`;
 }
 
-export function buildNarrativeAnchorsClipboardText(anchors: NarrativeAnchor[]): string {
+export function buildNarrativeAnchorsClipboardText(
+  anchors: NarrativeAnchor[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Narrative Anchors',
+    filters: options?.filters,
     items: anchors.map((anchor) => {
       const people = anchor.entities.map((m) => m.name).filter(Boolean);
       const places = anchor.places.map((m) => m.name).filter(Boolean);

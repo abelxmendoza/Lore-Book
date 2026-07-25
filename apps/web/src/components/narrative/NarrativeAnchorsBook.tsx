@@ -29,6 +29,7 @@ import { fetchJson } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { isPrimaryNarrativeAnchor } from '../../lib/narrativeAnchorOntology';
 import { buildNarrativeAnchorsClipboardText } from '../../lib/narrativeAnchorsClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { MOCK_NARRATIVE_ANCHORS } from '../../mocks/narrativeAnchors';
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { Button } from '../ui/button';
@@ -392,8 +393,15 @@ export function NarrativeAnchorsBook() {
   };
 
   const clipboardText = useMemo(
-    () => buildNarrativeAnchorsClipboardText(filtered),
-    [filtered],
+    () =>
+      buildNarrativeAnchorsClipboardText(filtered, {
+        filters: clipboardFilterLines([
+          search.trim() && `search="${search.trim()}"`,
+          activeType !== 'all' && `type=${activeType}`,
+          'sort=gravity_desc',
+        ]),
+      }),
+    [filtered, search, activeType],
   );
 
   return (

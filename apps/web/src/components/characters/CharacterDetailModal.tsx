@@ -12,20 +12,21 @@ import { Tooltip } from '../ui/tooltip';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
-import { FamilyTreePanel, CharacterAffiliationsPanel } from '../family/FamilyTreePanel';
+import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { RelationshipEditor } from '../family/RelationshipEditor';
 import { useFamilyTreeEditing } from '../family/useFamilyTreeEditing';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
-import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { apiCache } from '../../lib/cache';
 import { invalidateCache } from '../../lib/requestCache';
+import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
+import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
-import { schedulePostChatRefresh, onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { UnknownField } from '../ui/UnknownField';
 import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -48,6 +49,7 @@ import {
 import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
@@ -71,7 +73,6 @@ import {
 } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
-import { useChatStream } from '../../hooks/useChatStream';
 import { useCharacterProfileBundle } from '../../hooks/useCharacterProfileBundle';
 import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
 
@@ -175,10 +176,21 @@ type CharacterDetailModalProps = {
   /** Protagonist / self profile — amber styling, no delete, synthetic-id safe. */
   isMainCharacter?: boolean;
   /** Open directly on a tab (e.g. from Dating & Romance → Character Book link). */
-  initialTab?: TabKey;
+  initialTab?: TabKey | 'network';
+  /** Deep-link into a specific Info-tab field (e.g. Role from an Unknown chip). */
+  initialFocusField?: 'role' | null;
+  onInitialFocusFieldHandled?: () => void;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'network' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
+
+/** Legacy `network` deep-links land on Connections (periphery lives there now). */
+function resolveInitialTab(tab: TabKey | 'network' | undefined): TabKey {
+  if (tab === 'network') return 'relationships';
+  // Chat is a redirect to main chat, not an in-modal panel — never a landing tab.
+  if (tab === 'chat') return 'info';
+  return tab ?? 'info';
+}
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'info',          label: 'Info',              shortLabel: 'Info',       icon: FileText },
@@ -187,7 +199,6 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'relationships', label: 'Connections',       shortLabel: 'Links',      icon: Network },
   { key: 'timeline',      label: 'Timeline',          shortLabel: 'Time',       icon: Clock },
   { key: 'history',       label: 'History',           shortLabel: 'History',    icon: Calendar },
-  { key: 'network',       label: 'Their network',     shortLabel: 'Network',    icon: Link2 },
   { key: 'insights',      label: 'Insights',          shortLabel: 'Insights',   icon: BarChart3 },
   { key: 'perceptions',   label: 'Perceptions',       shortLabel: 'Views',      icon: Eye },
   { key: 'photos',        label: 'Photo Gallery',     shortLabel: 'Photos',     icon: ImageIcon },
@@ -310,7 +321,16 @@ const EntityTypeSwitcher = ({
   );
 };
 
-export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp, initialTab }: CharacterDetailModalProps) => {
+export const CharacterDetailModal = ({
+  character,
+  onClose,
+  onUpdate,
+  relationship,
+  isMainCharacter: isMainCharacterProp,
+  initialTab,
+  initialFocusField = null,
+  onInitialFocusFieldHandled,
+}: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [updateCharacter] = useUpdateCharacterMutation();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
@@ -319,7 +339,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     !isSyntheticSelfId(character.id) &&
     !character.id.startsWith('dummy-') &&
     !isMainCharacter;
-  const { bundle: profileBundle } = useCharacterProfileBundle(
+  const {
+    bundle: profileBundle,
+    loading: profileBundleLoading,
+    error: profileBundleError,
+  } = useCharacterProfileBundle(
     character.id,
     profileBundleEnabled,
   );
@@ -1199,24 +1223,29 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   const [loading, setLoading] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(true);
+  // Start false — seed from the character prop immediately; enrich in background.
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  /** Once details have rendered, background profile-bundle refreshes must not blank the modal. */
+  const detailsReadyRef = useRef(false);
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [sharedMemoryCards, setSharedMemoryCards] = useState<MemoryCard[]>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'info');
+  const [activeTab, setActiveTabState] = useState<TabKey>(() =>
+    resolveInitialTab(initialFocusField ? 'info' : initialTab),
+  );
 
   useEffect(() => {
-    if (initialTab) setActiveTab(initialTab);
-  }, [initialTab, character.id]);
-  // Unknown-field flow: clicking an Unknown chip jumps to the Chat tab with a
-  // prefilled prompt — filling in unknowns is chat-first.
-  const [chatPrefill, setChatPrefill] = useState<string | null>(null);
-  const [chatIntelOpen, setChatIntelOpen] = useState(false);
+    if (initialFocusField) {
+      setActiveTabState('info');
+      return;
+    }
+    if (initialTab) setActiveTabState(resolveInitialTab(initialTab));
+  }, [initialTab, initialFocusField, character.id]);
   const askInChat = (prompt: string) => {
-    const correctionHint =
-      'If anything in their profile is wrong, say it plainly (e.g. "actually her name is Maya" or "they are my coworker, not my friend").';
-    const fullPrompt = prompt.includes('actually') ? prompt : `${prompt}\n\n${correctionHint}`;
+    // Never re-inject the retired Maya/correction boilerplate. Empty prompt =
+    // focus chip only (Groups / affiliations). Other fields may still prefill.
+    const trimmed = prompt.trim();
     const romantic =
       relationship ??
       (isMockDataEnabled
@@ -1232,7 +1261,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         sourceSurface: 'love',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
         knowledgeScope: 'romantic relationship from character profile',
-        initialPrompt: fullPrompt,
+        ...(trimmed ? { initialPrompt: trimmed } : {}),
+        arrivedAt: Date.now(),
         baseline: {
           affectionScore: Math.round((romantic.affection_score ?? 0.5) * 100),
           healthScore: Math.round((romantic.relationship_health ?? 0.5) * 100),
@@ -1245,15 +1275,35 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         entityType: 'character',
         sourceSurface: 'characters',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
-        knowledgeScope: 'character profile and connections',
-        initialPrompt: fullPrompt,
+        knowledgeScope: FOCUSED_ENTITY_CHAT_PRESETS.characters.knowledgeScope,
+        initialPrompt: trimmed || FOCUSED_ENTITY_CHAT_PRESETS.characters.existingPrompt(editedCharacter.name),
+        arrivedAt: Date.now(),
       });
     }
     onClose();
   };
+  /**
+   * Intelligence Chat is a redirect, not an in-modal panel: it hands off to
+   * main chat with this character's focus chip + context (loadEntityArc /
+   * workingMemoryAssembler pick it up from there) instead of running a second,
+   * disconnected chat surface inside the modal.
+   */
+  const setActiveTab = (tab: TabKey) => {
+    if (tab === 'chat') {
+      askInChat('');
+      return;
+    }
+    setActiveTabState(tab);
+  };
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string; character_member_notes?: string }>>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
+  /** Bumped to force Groups & Organizations to refetch after membership changes. */
+  const [orgsReloadToken, setOrgsReloadToken] = useState(0);
+  /** Keeps just-added groups visible if a laggy by-character refetch still returns []. */
+  const pendingOptimisticOrgsRef = useRef<
+    Array<Organization & { user_is_member: boolean; character_role?: string; character_member_notes?: string }>
+  >([]);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   const [selectedPerception, setSelectedPerception] = useState<PerceptionEntry | null>(null);
   const [selectedCharacterForModal, setSelectedCharacterForModal] = useState<Character | null>(null);
@@ -1391,11 +1441,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     sourceIcon: memory.source === 'chat' ? '💬' : '📖',
     characters: [characterName],
   });
-  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const { streamChat, isStreaming } = useChatStream();
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1505,6 +1550,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   useEffect(() => {
+    detailsReadyRef.current = false;
+    // Seed from the card/list payload immediately so the modal never blanks
+    // while profile-bundle / detail fetches run.
+    setEditedCharacter(character as CharacterDetail);
+    setLoadingDetails(false);
+  }, [character.id]);
+
+  useEffect(() => {
     if (!profileBundle?.detail) return;
     const detail = profileBundle.detail as CharacterDetail & {
       witty_tagline?: string | null;
@@ -1522,6 +1575,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     } else {
       setSharedMemoryCards([]);
     }
+    detailsReadyRef.current = true;
     setLoadingDetails(false);
   }, [profileBundle]);
 
@@ -1576,12 +1630,64 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       setProfileRealName(profile.realName ?? getCharacterRealName(profile.character));
     };
 
+    const markDetailsReady = () => {
+      if (!cancelled) {
+        detailsReadyRef.current = true;
+        setLoadingDetails(false);
+      }
+    };
+
+    const loadLegacyCharacterDetail = async () => {
+      try {
+        const response = await fetchJson<CharacterDetail & {
+          witty_tagline?: string | null;
+          real_name?: string | null;
+          context_hooks?: string[];
+        }>(`/api/characters/${character.id}`);
+
+        if (cancelled) return;
+
+        setEditedCharacter(response);
+        setProfileWittyTagline(response.witty_tagline ?? getCharacterWittyTagline(response));
+        setProfileContextHooks(response.context_hooks ?? getCharacterContextHooks(response));
+        setProfileRealName(response.real_name ?? getCharacterRealName(response));
+
+        if (response.shared_memories && response.shared_memories.length > 0) {
+          await loadSharedMemories(response.shared_memories);
+        } else {
+          setSharedMemoryCards([]);
+        }
+      } catch (error) {
+        console.error('Failed to load character details:', error);
+        if (!cancelled) {
+          setEditedCharacter(character as CharacterDetail);
+          setSharedMemoryCards([]);
+        }
+      } finally {
+        markDetailsReady();
+      }
+    };
+
     const loadFullDetails = async () => {
+      // Profile-bundle path: enrich in the background. Never blank the modal —
+      // the character card payload is already on screen.
       if (profileBundleEnabled) {
-        if (!profileBundle) setLoadingDetails(true);
+        if (profileBundleLoading) {
+          return;
+        }
+        if (profileBundle?.detail) {
+          markDetailsReady();
+          return;
+        }
+        if (detailsReadyRef.current) {
+          return;
+        }
+        if (profileBundleError) {
+          console.warn('Character profile bundle failed; falling back to detail fetch', profileBundleError);
+        }
+        await loadLegacyCharacterDetail();
         return;
       }
-      setLoadingDetails(true);
       if (isMainCharacter && !isMockDataEnabled) {
         try {
           if (isSyntheticSelfId(character.id)) {
@@ -1600,7 +1706,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             setSharedMemoryCards([]);
           }
         } finally {
-          if (!cancelled) setLoadingDetails(false);
+          markDetailsReady();
         }
         return;
       }
@@ -1611,7 +1717,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             importance_level: 'protagonist',
           } as CharacterDetail);
           setSharedMemoryCards([]);
-          setLoadingDetails(false);
+          markDetailsReady();
         }
         return;
       }
@@ -1634,44 +1740,27 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         if (!cancelled) {
           setEditedCharacter(demoCharacter);
           setSharedMemoryCards(mockMemories);
-          setLoadingDetails(false);
+          markDetailsReady();
         }
         return;
       }
 
-      try {
-        const response = await fetchJson<CharacterDetail & {
-          witty_tagline?: string | null;
-          real_name?: string | null;
-          context_hooks?: string[];
-        }>(`/api/characters/${character.id}`);
-
-        if (cancelled) return;
-
-        setEditedCharacter(response);
-        setProfileWittyTagline(response.witty_tagline ?? getCharacterWittyTagline(response));
-        setProfileContextHooks(response.context_hooks ?? getCharacterContextHooks(response));
-        setProfileRealName(response.real_name ?? getCharacterRealName(response));
-        
-        // Load full entry details for shared memories
-        if (response.shared_memories && response.shared_memories.length > 0) {
-          await loadSharedMemories(response.shared_memories);
-        } else {
-          setSharedMemoryCards([]);
-        }
-      } catch (error) {
-        console.error('Failed to load character details:', error);
-        setEditedCharacter(character as CharacterDetail);
-        setSharedMemoryCards([]);
-      } finally {
-        if (!cancelled) setLoadingDetails(false);
-      }
+      await loadLegacyCharacterDetail();
     };
     void loadFullDetails();
     return () => {
       cancelled = true;
     };
-  }, [character.id, character.name, isMockDataEnabled, isMainCharacter, profileBundleEnabled, profileBundle]);
+  }, [
+    character.id,
+    character.name,
+    isMockDataEnabled,
+    isMainCharacter,
+    profileBundleEnabled,
+    profileBundle,
+    profileBundleLoading,
+    profileBundleError,
+  ]);
 
   // Load character attributes
   useEffect(() => {
@@ -1720,9 +1809,23 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
     let cancelled = false;
     setLoreProfileLoading(true);
+    // Bust only lore-profile (not by-character / profile-bundle) so Info groups stay in sync.
+    apiCache.deletePattern(
+      new RegExp(`/api/characters/${character.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/lore-profile`),
+    );
+    invalidateCache(`/api/characters/${character.id}/lore-profile`);
     fetchCharacterLoreProfile(character.id)
       .then((profile) => {
-        if (!cancelled) setLoreProfile(profile);
+        if (cancelled) return;
+        if (!profile) {
+          setLoreProfile(null);
+          return;
+        }
+        // Keep Connections-synced groups if they already landed; otherwise use lore-profile.
+        setLoreProfile((prev) => ({
+          ...profile,
+          groups: prev?.groups?.length ? prev.groups : profile.groups,
+        }));
       })
       .catch(() => {
         if (!cancelled) setLoreProfile(null);
@@ -1733,7 +1836,25 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     return () => {
       cancelled = true;
     };
-  }, [character.id, isMockDataEnabled]);
+  }, [character.id, isMockDataEnabled, orgsReloadToken]);
+
+  // Keep Info-tab group chips aligned with Connections memberships (same durable links).
+  useEffect(() => {
+    if (isMockDataEnabled) return;
+    setLoreProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        groups: characterOrganizations.map((o) => ({
+          organizationId: o.id,
+          name: o.name,
+          type: o.group_type ?? o.type,
+          role: o.character_role,
+          userRelationship: o.user_relationship,
+        })),
+      };
+    });
+  }, [characterOrganizations, isMockDataEnabled]);
 
   // Load insights when Insights tab is active and ensure analytics exist
   useEffect(() => {
@@ -1789,9 +1910,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
 
-  // ── Load intelligence (dynamics + influence) for Info and Chat tabs ────
+  // ── Load intelligence (dynamics + influence) for the Info tab ───────────
   useEffect(() => {
-    if ((activeTab !== 'chat' && activeTab !== 'info') || dynamicsLoaded) return;
+    if (activeTab !== 'info' || dynamicsLoaded) return;
     const name = encodeURIComponent(character.name);
 
     if (isMockDataEnabled) {
@@ -1829,8 +1950,20 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   }, [activeTab, character.name, character.id, dynamicsLoaded, isMockDataEnabled]);
 
   useEffect(() => {
-    return onStoryDataUpdated(() => {
+    return onStoryDataUpdated((detail) => {
       setFamilyRefreshKey(k => k + 1);
+      const scopes = detail.scopes ?? [];
+      const touchesOrgs =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('organizations') ||
+        scopes.includes('characters');
+      const touchesThisCharacter =
+        !detail.characterIds?.length || detail.characterIds.includes(character.id);
+      if (touchesOrgs && touchesThisCharacter) {
+        // Force a fresh membership fetch (bypass stale apiCache from earlier empty loads).
+        setOrgsReloadToken((n) => n + 1);
+      }
     });
   }, [character.id]);
 
@@ -1943,77 +2076,66 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Restore per-character chat history from localStorage
+
+  // Drop optimistic rows when switching characters so they never leak across modals.
   useEffect(() => {
-    if (!character.id || character.id.startsWith('dummy-')) return;
-    try {
-      const raw = localStorage.getItem(`lk:character-chat:${character.id}`);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: string }>;
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setChatMessages(parsed.map((m) => ({ ...m, timestamp: new Date(m.timestamp) })));
-        }
-      }
-    } catch {
-      // ignore corrupt storage
-    }
+    pendingOptimisticOrgsRef.current = [];
   }, [character.id]);
 
+  // Fetch real organizations for this character (re-runs on membership story updates).
   useEffect(() => {
-    if (!character.id || character.id.startsWith('dummy-') || chatMessages.length === 0) return;
-    try {
-      localStorage.setItem(
-        `lk:character-chat:${character.id}`,
-        JSON.stringify(chatMessages.map((m) => ({ ...m, timestamp: m.timestamp.toISOString() })))
-      );
-    } catch {
-      // storage full — non-fatal
-    }
-  }, [chatMessages, character.id]);
-
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, chatLoading, streamingMessageId]);
-
-  // Fetch real organizations for this character
-  useEffect(() => {
-    if (orgsLoaded || isMockDataEnabled) return;
+    if (isMockDataEnabled) return;
+    let cancelled = false;
     const load = async () => {
+      invalidateOrganizationMembershipCaches({
+        characterIds: character.id ? [character.id] : [],
+      });
       try {
-        const params = character.id
-          ? `character_id=${encodeURIComponent(character.id)}`
-          : `character_name=${encodeURIComponent(character.name)}`;
-        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>(
-          `/api/organizations/by-character?${params}`
+        // Send both id and name so legacy name-only roster rows still resolve.
+        const params = new URLSearchParams();
+        if (character.id) params.set('character_id', character.id);
+        if (character.name) params.set('character_name', character.name);
+        const res = await fetchJson<{ success: boolean; organizations?: Organization[] }>(
+          `/api/organizations/by-character?${params.toString()}`,
         );
-        if (res.success) {
-          // Mark each org: user_is_member = true when user_relationship is an active role
-          const activeRels = new Set(['founder','leader','member','collaborator','adjacent','alumnus']);
-          const withMeta = res.organizations.map(org => {
-            const member = org.members?.find(m =>
-              m.character_id === character.id ||
-              m.character_name.toLowerCase() === character.name.toLowerCase()
-            );
-            return {
-              ...org,
-              user_is_member: activeRels.has(org.user_relationship),
-              character_role: member?.role,
-              character_member_notes: member?.notes,
-            };
-          });
-          setCharacterOrganizations(withMeta);
+        if (cancelled) return;
+        const list = Array.isArray(res.organizations) ? res.organizations : [];
+        // Mark each org: user_is_member = true when *you* also have an active role there.
+        const activeRels = new Set(['founder', 'leader', 'member', 'collaborator', 'adjacent', 'alumnus']);
+        const withMeta = list.map((org) => {
+          const member = org.members?.find(
+            (m) =>
+              (character.id && m.character_id === character.id) ||
+              m.character_name.toLowerCase() === character.name.toLowerCase(),
+          );
+          return {
+            ...org,
+            user_is_member: activeRels.has(org.user_relationship),
+            character_role: member?.role,
+            character_member_notes: member?.notes,
+          };
+        });
+        // Drop optimistic rows once the server confirms them; keep the rest if refetch is still empty/stale.
+        const confirmedIds = new Set(withMeta.map((o) => o.id));
+        pendingOptimisticOrgsRef.current = pendingOptimisticOrgsRef.current.filter(
+          (o) => !confirmedIds.has(o.id),
+        );
+        const merged = [...withMeta];
+        for (const pending of pendingOptimisticOrgsRef.current) {
+          if (!merged.some((o) => o.id === pending.id)) merged.push(pending);
         }
+        setCharacterOrganizations(merged);
       } catch {
-        // Non-fatal — falls back to mock
+        // Non-fatal — keep prior list
       } finally {
-        setOrgsLoaded(true);
+        if (!cancelled) setOrgsLoaded(true);
       }
     };
     void load();
-  }, [character.id, character.name, isMockDataEnabled, orgsLoaded]);
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id, character.name, isMockDataEnabled, orgsReloadToken]);
 
   // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
   const [connectionAddOpen, setConnectionAddOpen] = useState(false);
@@ -2028,9 +2150,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
   const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
   const [orgTargetId, setOrgTargetId] = useState('');
-  const [orgMemberRole, setOrgMemberRole] = useState('member');
+  const [orgMemberRole, setOrgMemberRole] = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
+  const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
 
   const toggleConnectionAdd = async () => {
     const next = !connectionAddOpen;
@@ -2124,10 +2247,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
   const addOrgMembership = async () => {
     if (!orgTargetId || orgSaving) return;
+    const targetId = orgTargetId;
+    const role = orgMemberRole.trim() || 'member';
+    const selectedOrg = orgOptions.find((o) => o.id === targetId);
     setOrgSaving(true);
     setOrgMemberError(null);
     try {
-      await fetchJson(`/api/organizations/${orgTargetId}/members`, {
+      await fetchJson(`/api/organizations/${targetId}/members`, {
         method: 'POST',
         body: JSON.stringify({
           character_name: editedCharacter.name,
@@ -2135,20 +2261,88 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           role: orgMemberRole.trim() || undefined,
         }),
       });
+      // Optimistic: show the group in Connections immediately (don't wait on refetch).
+      if (selectedOrg) {
+        const activeRels = new Set(['founder', 'leader', 'member', 'collaborator', 'adjacent', 'alumnus']);
+        const optimistic = {
+          ...selectedOrg,
+          user_is_member: activeRels.has(selectedOrg.user_relationship),
+          character_role: role,
+          members: [
+            ...(selectedOrg.members ?? []),
+            {
+              id: `local-${Date.now()}`,
+              character_id: editedCharacter.id,
+              character_name: editedCharacter.name,
+              role,
+              status: 'active' as const,
+            },
+          ],
+        };
+        pendingOptimisticOrgsRef.current = [
+          ...pendingOptimisticOrgsRef.current.filter((o) => o.id !== optimistic.id),
+          optimistic,
+        ];
+        setCharacterOrganizations((prev) => {
+          if (prev.some((o) => o.id === selectedOrg.id)) {
+            return prev.map((o) =>
+              o.id === selectedOrg.id ? { ...o, character_role: role } : o,
+            );
+          }
+          return [...prev, optimistic];
+        });
+      }
       setOrgTargetId('');
-      setOrgMemberRole('member');
+      setOrgMemberRole('');
       setOrgAddOpen(false);
-      setOrgsLoaded(false); // re-fetch memberships from the server
-      invalidateCache(character.id);
+      invalidateOrganizationMembershipCaches({
+        characterIds: [character.id],
+        organizationIds: [targetId],
+      });
+      setOrgsReloadToken((n) => n + 1);
       dispatchStoryDataUpdated({
         scopes: ['characters', 'organizations'],
         characterIds: [character.id],
-        organizationIds: [orgTargetId],
+        organizationIds: [targetId],
       });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not add to group.');
     } finally {
       setOrgSaving(false);
+    }
+  };
+
+  /** Update role on an existing membership (POST is idempotent by character_id). */
+  const updateOrgMembershipRole = async (org: Organization, role: string) => {
+    const nextRole = role.trim();
+    if (!nextRole || roleSavingOrgId) return;
+    setRoleSavingOrgId(org.id);
+    setOrgMemberError(null);
+    try {
+      await fetchJson(`/api/organizations/${org.id}/members`, {
+        method: 'POST',
+        body: JSON.stringify({
+          character_name: editedCharacter.name,
+          character_id: editedCharacter.id,
+          role: nextRole,
+        }),
+      });
+      setCharacterOrganizations((prev) =>
+        prev.map((o) => (o.id === org.id ? { ...o, character_role: nextRole } : o)),
+      );
+      invalidateOrganizationMembershipCaches({
+        characterIds: [character.id],
+        organizationIds: [org.id],
+      });
+      dispatchStoryDataUpdated({
+        scopes: ['characters', 'organizations'],
+        characterIds: [character.id],
+        organizationIds: [org.id],
+      });
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not update role.');
+    } finally {
+      setRoleSavingOrgId(null);
     }
   };
 
@@ -2166,8 +2360,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     if (!window.confirm(`Remove ${firstName} from ${org.name}? The group stays in your book.`)) return;
     try {
       await fetchJson(`/api/organizations/${org.id}/members/${member.id}`, { method: 'DELETE' });
-      setOrgsLoaded(false);
-      invalidateCache(character.id);
+      pendingOptimisticOrgsRef.current = pendingOptimisticOrgsRef.current.filter((o) => o.id !== org.id);
+      setCharacterOrganizations((prev) => prev.filter((o) => o.id !== org.id));
+      invalidateOrganizationMembershipCaches({
+        characterIds: [character.id],
+        organizationIds: [org.id],
+      });
+      setOrgsReloadToken((n) => n + 1);
       dispatchStoryDataUpdated({
         scopes: ['characters', 'organizations'],
         characterIds: [character.id],
@@ -2175,161 +2374,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       });
     } catch (error) {
       setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
-    }
-  };
-
-  const buildThreadEntities = () => {
-    const entities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> = [
-      { id: character.id, name: editedCharacter.name, type: 'character' },
-    ];
-    for (const rel of editedCharacter.relationships ?? []) {
-      if (rel.character_id && rel.character_name) {
-        entities.push({ id: rel.character_id, name: rel.character_name, type: 'character' });
-      }
-    }
-    for (const org of characterOrganizations) {
-      if (org.id && org.name) {
-        entities.push({ id: org.id, name: org.name, type: 'organization' });
-      }
-    }
-    const seen = new Set<string>();
-    return entities.filter((e) => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    });
-  };
-
-  const handleChatSubmit = async (message: string) => {
-    if (!message.trim() || chatLoading || isStreaming) return;
-
-    const userMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user' as const,
-      content: message,
-      timestamp: new Date(),
-    };
-    setChatMessages((prev) => [...prev, userMessage]);
-    setChatLoading(true);
-
-    const assistantMessageId = `assistant-${Date.now()}`;
-    setChatMessages((prev) => [
-      ...prev,
-      { id: assistantMessageId, role: 'assistant', content: '', timestamp: new Date() },
-    ]);
-    setStreamingMessageId(assistantMessageId);
-
-    const conversationHistory = chatMessages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-
-    const threadEntities = buildThreadEntities();
-    const composerEntities = [
-      {
-        id: character.id,
-        name: editedCharacter.name,
-        type: 'character',
-        aliases: editedCharacter.alias ?? [],
-      },
-      ...(editedCharacter.relationships ?? [])
-        .filter((rel) => rel.character_id && rel.character_name)
-        .map((rel) => ({
-          id: rel.character_id,
-          name: rel.character_name!,
-          type: 'character',
-        })),
-    ];
-
-    let accumulatedContent = '';
-
-    try {
-      await streamChat(
-        message,
-        conversationHistory,
-        (chunk: string) => {
-          accumulatedContent += chunk;
-          setChatMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId ? { ...msg, content: accumulatedContent } : msg
-            )
-          );
-        },
-        () => {},
-        async () => {
-          setStreamingMessageId(null);
-          setChatLoading(false);
-
-          schedulePostChatRefresh({
-            scopes: ['all'],
-            characterIds: character.id ? [character.id] : undefined,
-          });
-
-          // Refresh knowledge after chat enriches the entity
-          setKnowledgeLoaded(false);
-          setFactsLoaded(false);
-          setScenesLoaded(false);
-
-          try {
-            const jsonMatch = accumulatedContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              const updates = parsed.updates;
-              if (updates) {
-                setEditedCharacter((prev) => ({
-                  ...prev,
-                  ...updates,
-                  tags: updates.tags || prev.tags,
-                  alias: updates.alias || prev.alias,
-                  social_media: updates.social_media || prev.social_media,
-                }));
-                await updateCharacter({ id: character.id, values: updates }).unwrap();
-                setChatMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `sys-${Date.now()}`,
-                    role: 'assistant',
-                    content: '✓ Character information updated successfully!',
-                    timestamp: new Date(),
-                  },
-                ]);
-                onUpdate();
-              }
-            }
-          } catch {
-            // non-fatal parse error
-          }
-        },
-        (error: string) => {
-          setStreamingMessageId(null);
-          setChatLoading(false);
-          setChatMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: error || 'Sorry, something went wrong.' }
-                : msg
-            )
-          );
-        },
-        { type: 'CHARACTER', id: character.id },
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        threadEntities,
-        composerEntities
-      );
-    } catch (error) {
-      console.error('Chat error:', error);
-      setStreamingMessageId(null);
-      setChatLoading(false);
-      setChatMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: 'Sorry, I encountered an error. Please try again.' }
-            : msg
-        )
-      );
     }
   };
 
@@ -2991,6 +3035,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
+                    data-testid={tab.key === 'relationships' ? 'character-tab-connections' : undefined}
                   >
                     <Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="max-w-[3.5rem] text-center truncate">{tab.shortLabel}</span>
@@ -3023,7 +3068,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
-                    data-testid={tab.key === 'network' ? 'character-tab-network' : undefined}
+                    data-testid={tab.key === 'relationships' ? 'character-tab-connections' : undefined}
                   >
                     <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                     <span className="truncate">{tab.label}</span>
@@ -3053,14 +3098,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
           <div
             ref={contentRef}
-            className={`flex-1 min-h-0 bg-black/40 touch-pan-y [-webkit-overflow-scrolling:touch] ${
-              activeTab === 'chat'
-                ? 'flex flex-col overflow-hidden'
-                : 'overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 lg:space-y-8 pb-8 sm:pb-12 lg:pb-16'
-            }`}
+            className="flex-1 min-h-0 bg-black/40 touch-pan-y [-webkit-overflow-scrolling:touch] overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 lg:space-y-8 pb-8 sm:pb-12 lg:pb-16"
           >
             {/* Mobile: profile context lives in scroll body, not fixed header */}
-            {!loadingDetails && activeTab !== 'chat' && (
+            {!loadingDetails && (
               <div className="sm:hidden space-y-2 pb-3 border-b border-white/10 shrink-0">
                 {wittyTagline && (
                   <p className="text-xs text-white/70 italic leading-snug line-clamp-2">{wittyTagline}</p>
@@ -3150,6 +3191,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 onAddWorldPerson={addWorldPerson}
                 onUpdateWorldPerson={updateWorldPerson}
                 onDeleteWorldPerson={deleteWorldPerson}
+                focusField={initialFocusField}
+                onFocusFieldHandled={onInitialFocusFieldHandled}
               />
             )}
 
@@ -3265,24 +3308,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
             {!loadingDetails && activeTab === 'relationships' && (
               <div className="space-y-6">
-                {/* Groups & affiliations (teams, cliques, employers — can be many) */}
-                {!isMockDataEnabled && editedCharacter.id && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-purple-400" />
-                      Groups & Affiliations
-                    </h3>
-                    <p className="text-xs text-white/40 mb-3">
-                      Teams, cliques, workplaces, and scenes this person belongs to — including opposing sides in the same story.
-                    </p>
-                    <CharacterAffiliationsPanel
-                      characterId={editedCharacter.id}
-                      characterName={editedCharacter.name}
-                      onOrgClick={(org) => setSelectedOrganization(org as Organization)}
-                    />
-                  </div>
-                )}
-
                 {/* Relationship to You */}
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
@@ -3537,6 +3562,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   </div>
                 )}
 
+                {/* Wider network (inferred periphery — formerly its own tab) */}
+                {editedCharacter.id && (
+                  <RelationshipPeripheralsPanel
+                    anchorKind="character"
+                    anchorId={editedCharacter.id}
+                    anchorName={editedCharacter.name}
+                    title="Wider network"
+                    description={`People LoreBook has inferred around ${shortDisplayName(editedCharacter.name)} — confirm, dismiss, or promote them into Character Book.`}
+                    onUpdate={onUpdate}
+                  />
+                )}
+
                 {/* Groups & Organizations */}
                 {(() => {
                   const orgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
@@ -3545,61 +3582,80 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (
                     <div
                       key={org.id}
-                      onClick={() => setSelectedOrganization(org)}
-                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-3 ${
+                      className={`p-3 rounded-lg border transition-all flex flex-col gap-2 ${
                         isShared
                           ? 'bg-green-500/8 border-green-500/25 hover:bg-green-500/15 hover:border-green-500/40'
                           : 'bg-white/4 border-white/10 hover:bg-white/8 hover:border-white/20'
                       }`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
-                          <Badge variant="outline" className={`text-[10px] py-0 ${
-                            org.group_type === 'community' ? 'border-emerald-500/25 text-emerald-300' :
-                            org.group_type === 'club' ? 'border-blue-500/25 text-blue-300' :
-                            org.group_type === 'institution' ? 'border-purple-500/25 text-purple-300' :
-                            org.group_type === 'company' ? 'border-orange-500/25 text-orange-300' :
-                            org.group_type === 'sports_team' ? 'border-cyan-500/25 text-cyan-300' :
-                            'border-white/15 text-white/45'
-                          }`}>{(org.group_type ?? org.type)?.replace(/_/g, ' ')}</Badge>
-                        </div>
-                        {org.description && <p className="text-xs text-white/45 mt-0.5 truncate">{org.description}</p>}
-                        <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
-                          {org.character_role && <span className="text-white/50">{org.character_role}</span>}
-                          {org.member_count > 0 && <span>{org.member_count} members</span>}
-                          {org.confidence != null && <span>{formatEpistemicPercent(org.confidence)}</span>}
-                        </div>
-                        {org.character_member_notes && (
-                          <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{org.character_member_notes}</p>
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrganization(org)}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
+                            <Badge variant="outline" className={`text-[10px] py-0 ${
+                              org.group_type === 'community' ? 'border-emerald-500/25 text-emerald-300' :
+                              org.group_type === 'club' ? 'border-blue-500/25 text-blue-300' :
+                              org.group_type === 'institution' ? 'border-purple-500/25 text-purple-300' :
+                              org.group_type === 'company' ? 'border-orange-500/25 text-orange-300' :
+                              org.group_type === 'sports_team' ? 'border-cyan-500/25 text-cyan-300' :
+                              'border-white/15 text-white/45'
+                            }`}>{(org.group_type ?? org.type)?.replace(/_/g, ' ')}</Badge>
+                          </div>
+                          {org.description && <p className="text-xs text-white/45 mt-0.5 truncate">{org.description}</p>}
+                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
+                            {org.member_count > 0 && <span>{org.member_count} members</span>}
+                            {org.confidence != null && <span>{formatEpistemicPercent(org.confidence)}</span>}
+                          </div>
+                          {org.character_member_notes && (
+                            <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{org.character_member_notes}</p>
+                          )}
+                        </button>
+                        <Badge variant="outline" className={`flex-shrink-0 text-[10px] py-0 mt-0.5 ${
+                          isShared
+                            ? 'bg-green-500/15 text-green-300 border-green-500/30'
+                            : 'bg-white/5 text-white/35 border-white/15'
+                        }`}>
+                          {isShared ? 'Shared' : 'Theirs'}
+                        </Badge>
+                        {!isMockDataEnabled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-shrink-0 h-6 w-6 p-0 mt-0.5 text-white/25 hover:text-red-400"
+                            aria-label={`Remove ${shortDisplayName(editedCharacter.name)} from ${org.name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void removeOrgMembership(org);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         )}
                       </div>
-                      <Badge variant="outline" className={`flex-shrink-0 text-[10px] py-0 mt-0.5 ${
-                        isShared
-                          ? 'bg-green-500/15 text-green-300 border-green-500/30'
-                          : 'bg-white/5 text-white/35 border-white/15'
-                      }`}>
-                        {isShared ? 'Shared' : 'Theirs'}
-                      </Badge>
                       {!isMockDataEnabled && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="flex-shrink-0 h-6 w-6 p-0 mt-0.5 text-white/25 hover:text-red-400"
-                          aria-label={`Remove ${shortDisplayName(editedCharacter.name)} from ${org.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void removeOrgMembership(org);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <div onClick={(e) => e.stopPropagation()} className="max-w-xs">
+                          <OrganizationMemberRoleSelect
+                            value={org.character_role || ''}
+                            disabled={roleSavingOrgId === org.id}
+                            data-testid={`org-role-select-${org.id}`}
+                            onChange={(role) => {
+                              if (role && role !== (org.character_role || '')) {
+                                void updateOrgMembershipRole(org, role);
+                              }
+                            }}
+                            className="h-8 rounded-lg border border-white/10 bg-black/50 px-2 text-[11px] text-white focus:border-primary/60 focus:outline-none"
+                          />
+                        </div>
                       )}
                     </div>
                   );
                   return (
-                    <div>
-                      <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
+                    <div data-testid="character-groups-section">
+                      <h3 className="text-sm font-semibold text-white/70 mb-1 flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-primary" />
                         Groups &amp; Organizations
                         <span className="ml-auto text-[10px] text-white/30">{orgs.length} total</span>
@@ -3616,6 +3672,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           </Button>
                         )}
                       </h3>
+                      <p className="text-[10px] text-white/35 mb-3">
+                        Same links as the Groups &amp; Organizations book — add or remove here and both sides stay in sync.
+                      </p>
                       {orgAddOpen && !isMockDataEnabled && (
                         <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.035] p-3">
                           <p className="text-[10px] text-white/35 mb-2">
@@ -3640,19 +3699,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                                   </option>
                                 ))}
                             </select>
-                            <input
-                              list="org-member-role-options"
+                            <OrganizationMemberRoleSelect
                               value={orgMemberRole}
-                              onChange={(e) => setOrgMemberRole(e.target.value)}
-                              placeholder="Role (e.g. member)"
-                              aria-label="Membership role"
-                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
+                              onChange={setOrgMemberRole}
+                              disabled={orgSaving}
+                              data-testid="add-membership-role"
                             />
-                            <datalist id="org-member-role-options">
-                              {['member', 'leader', 'founder', 'organizer', 'regular', 'alumnus'].map((r) => (
-                                <option key={r} value={r} />
-                              ))}
-                            </datalist>
                             <Button
                               size="sm"
                               className="h-8 text-xs"
@@ -3741,15 +3793,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   </div>
                 )}
               </div>
-            )}
-
-            {!loadingDetails && activeTab === 'network' && editedCharacter.id && (
-              <RelationshipPeripheralsPanel
-                anchorKind="character"
-                anchorId={editedCharacter.id}
-                anchorName={editedCharacter.name}
-                onUpdate={onUpdate}
-              />
             )}
 
             {!loadingDetails && activeTab === 'perceptions' && (
@@ -3924,157 +3967,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'timeline'}
               />
-            )}
-
-            {/* Chat Tab */}
-            {!loadingDetails && activeTab === 'chat' && (
-              <div className="flex flex-col flex-1 min-h-0 h-full" data-testid="character-chat-panel">
-                <div className="flex-shrink-0 overflow-y-auto overscroll-contain sm:max-h-none px-3 sm:px-6 lg:px-8 pt-2 sm:pt-6 pb-2 space-y-2 sm:space-y-3 border-b border-white/10">
-                  <div className="hidden sm:block">
-                    <h3 className="text-base sm:text-xl font-bold text-white mb-1 flex items-center gap-2 min-w-0">
-                      <MessageSquare className="h-5 w-5 text-primary shrink-0" />
-                      <span className="truncate">Chat about {displayName}</span>
-                    </h3>
-                    <p className="text-xs sm:text-sm text-white/60">
-                      Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
-                    </p>
-                  </div>
-
-                  <Card className="bg-yellow-500/10 border-yellow-500/25">
-                    <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-yellow-300 shrink-0" />
-                            Relationship Intelligence
-                          </h4>
-                          <p className="text-xs text-white/45 mt-1 hidden sm:block">
-                            These signals are loaded into the conversation so you can ask why they matter or correct them.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {(dynamicsLoading || influenceLoading) && (
-                            <Loader2 className="h-4 w-4 animate-spin text-yellow-300" />
-                          )}
-                          <button
-                            type="button"
-                            className="sm:hidden text-[11px] text-yellow-300/90 px-2 py-1 rounded border border-yellow-500/25"
-                            onClick={() => setChatIntelOpen((open) => !open)}
-                          >
-                            {chatIntelOpen ? 'Hide' : 'Signals'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className={`${chatIntelOpen ? 'block' : 'hidden'} sm:block space-y-2 sm:space-y-3`}>
-                        {!dynamicsLoading && !influenceLoading && !influenceProfile && !dynamics && (
-                          <p className="text-xs sm:text-sm text-white/45 rounded-lg border border-white/8 bg-black/25 p-3">
-                            LoreBook is still learning how {firstName} affects your life. Add context in this chat to build influence, trust, health, and dynamic signals.
-                          </p>
-                        )}
-
-                        {!dynamicsLoading && !influenceLoading && (influenceProfile || dynamics) && (
-                          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                            {influenceProfile && (
-                              <Tooltip content={`Net influence estimates how strongly ${displayName} affects your emotions, behavior, and decisions.`}>
-                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
-                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Influence</p>
-                                  <p className="text-sm sm:text-lg font-semibold text-yellow-300">{Math.round((influenceProfile.net_influence ?? 0) * 100)}%</p>
-                                </div>
-                              </Tooltip>
-                            )}
-                            {dynamics?.health && (
-                              <Tooltip content="Relationship health combines support, trust, conflict, sentiment, and consistency.">
-                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
-                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Health</p>
-                                  <p className="text-sm sm:text-lg font-semibold text-white">{dynamics.health.health_score ?? 0}<span className="text-[10px] text-white/40">/100</span></p>
-                                </div>
-                              </Tooltip>
-                            )}
-                            {dynamics?.metrics && (
-                              <Tooltip content="Interaction frequency from mentions, shared memories, and timeline activity.">
-                                <div className="p-2 sm:p-3 rounded-lg bg-black/25 border border-white/8 cursor-help min-w-0">
-                                  <p className="text-[9px] sm:text-[10px] text-white/40 mb-0.5 truncate">Freq/mo</p>
-                                  <p className="text-sm sm:text-lg font-semibold text-white">{dynamics.metrics.interaction_frequency?.toFixed(1) ?? '—'}</p>
-                                </div>
-                              </Tooltip>
-                            )}
-                          </div>
-                        )}
-
-                        {!dynamicsLoading && !influenceLoading && influenceInsights.length > 0 && (
-                          <div className="space-y-2">
-                            {influenceInsights.slice(0, 2).map((insight: { message?: string }, index: number) => (
-                              <p key={index} className="text-xs text-white/70 rounded-lg border border-yellow-500/15 bg-yellow-950/10 p-2">
-                                {insight.message}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div
-                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 lg:px-8 py-3 space-y-3 sm:space-y-4"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                  {chatMessages.length === 0 ? (
-                    <div className="text-center py-8 sm:py-12 text-white/60 px-2">
-                      <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-3 sm:mb-4 opacity-50 text-primary" />
-                      <p className="text-base sm:text-lg mb-2">Start a conversation about {editedCharacter.name}</p>
-                      <div className="mt-3 space-y-1.5 text-xs sm:text-sm text-white/50 text-left max-w-sm mx-auto">
-                        <p className="font-semibold text-white/70 text-center">Try asking:</p>
-                        <p>&quot;Tell me more about {editedCharacter.name}&quot;</p>
-                        <p>&quot;What do I know about {editedCharacter.name}?&quot;</p>
-                        <p>&quot;Update {editedCharacter.name}&apos;s role to...&quot;</p>
-                      </div>
-                    </div>
-                  ) : (
-                    chatMessages.map((msg) => {
-                      const message: Message = {
-                        id: msg.id,
-                        role: msg.role,
-                        content: msg.content,
-                        timestamp: msg.timestamp,
-                      };
-                      return (
-                        <div key={msg.id} className="max-w-full min-w-0 overflow-hidden">
-                          <ChatMessage
-                            message={message}
-                            onCopy={() => navigator.clipboard.writeText(msg.content)}
-                          />
-                        </div>
-                      );
-                    })
-                  )}
-                  {(chatLoading || isStreaming) && !streamingMessageId && (
-                    <div className="flex justify-start max-w-full">
-                      <Card className="bg-black/40 border-border/50 max-w-[min(100%,20rem)] sm:max-w-[80%]">
-                        <CardContent className="p-3 sm:p-4">
-                          <div className="flex items-center gap-2 text-white/60 text-sm">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-                            <span>Thinking...</span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                <div className="flex-shrink-0 border-t border-white/10">
-                  <ChatComposer
-                    variant="embedded"
-                    placeholder={`Ask about ${firstName}...`}
-                    onSubmit={handleChatSubmit}
-                    loading={chatLoading || isStreaming}
-                    initialPrompt={chatPrefill}
-                    threadId={`character-chat:${character.id}`}
-                  />
-                </div>
-              </div>
             )}
 
             {/* Insights Tab */}

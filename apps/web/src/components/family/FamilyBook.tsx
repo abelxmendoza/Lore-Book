@@ -153,6 +153,26 @@ export function FamilyBook() {
     );
   }, [runEdit]);
 
+  const moveMemberToGroup = useCallback((member: FamilyMember) => {
+    const ok = typeof window === 'undefined'
+      ? true
+      : window.confirm(
+          `Move "${member.name}" to Groups & Organizations? They leave the family tree and become a group card.`,
+        );
+    if (!ok) return;
+    void runEdit(
+      async () => {
+        await fetchJson(`/api/characters/${member.id}/reclassify`, {
+          method: 'POST',
+          body: JSON.stringify({ targetDomain: 'organization' }),
+        });
+        dispatchStoryDataUpdated({ scopes: ['family', 'organizations', 'characters'] });
+      },
+      `Moved ${member.name} to Groups & Organizations`,
+      `Couldn't move ${member.name} to Groups`,
+    );
+  }, [runEdit]);
+
   const keepMember = useCallback((member: FamilyMember) =>
     runEdit(
       () => fetchJson(`/api/family-trees/member/${member.id}/keep`, { method: 'POST', body: JSON.stringify({}) }),
@@ -224,6 +244,14 @@ export function FamilyBook() {
       if (summary) setSummary({ ...summary, tree: updatedTree });
       success(`Deleted ${m.name} (demo)`);
     },
+    onMoveToGroup: (m: FamilyMember) => {
+      if (!demoTree) return;
+      const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Moved ${m.name} to Groups (demo)`);
+    },
     onKeep: (m: FamilyMember) => {
       if (!demoTree) return;
       const updatedMembers = demoTree.members.map(mem =>
@@ -241,6 +269,7 @@ export function FamilyBook() {
     : {
         onEditRelationship: (m: FamilyMember) => setEditorMember(m),
         onExclude: (m: FamilyMember) => void excludeMember(m),
+        onMoveToGroup: (m: FamilyMember) => void moveMemberToGroup(m),
         onDelete: (m: FamilyMember) => void deleteMember(m),
         onKeep: (m: FamilyMember) => void keepMember(m),
       };

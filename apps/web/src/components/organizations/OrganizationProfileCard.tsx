@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
 import { readOrganizationWorld, importanceStars } from '../../lib/organizationLore';
+import { resolveOrganizationStance } from '../../lib/organizationStance';
 
 // ── G1 canonical types ────────────────────────────────────────────────
 export type GroupType =
@@ -294,11 +295,26 @@ function relBadgeCls(rel: UserRelationship): string {
   return 'bg-white/10 text-white/40 border-white/20';
 }
 
+const STANCE_BADGE_CLS: Record<string, string> = {
+  mine: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  close_to: 'bg-teal-500/15 text-teal-300 border-teal-500/30',
+  their_world: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+  mentioned: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+};
+
+const STANCE_BADGE_LABEL: Record<string, string> = {
+  mine: "You're in",
+  close_to: 'Close to',
+  their_world: 'Their group',
+  mentioned: 'Mentioned',
+};
+
 export const OrganizationProfileCard = ({ organization, onClick, selectionMode, selected, highlighted }: OrganizationProfileCardProps) => {
   const gt = organization.group_type ?? 'other';
   const visual = TYPE_VISUALS[gt] ?? TYPE_VISUALS.other;
   const Icon = visual.icon;
   const rel = organization.user_relationship;
+  const stance = resolveOrganizationStance(organization);
 
   const formatDate = (dateString: string) => {
     try { return format(parseISO(dateString), 'MMM d, yyyy'); }
@@ -408,11 +424,17 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               )}
             </div>
 
-            {/* Group type + relationship badges — visible on all breakpoints */}
+            {/* Group type + stance + relationship badges — visible on all breakpoints */}
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <p className="text-[10px] text-white/50 truncate capitalize">
                 {gt.replace(/_/g, ' ')}
               </p>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded border ${STANCE_BADGE_CLS[stance]}`}
+                data-testid="org-stance-badge"
+              >
+                {STANCE_BADGE_LABEL[stance]}
+              </span>
               {rel && rel !== 'member' && (
                 <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
                   {REL_LABELS[rel]}

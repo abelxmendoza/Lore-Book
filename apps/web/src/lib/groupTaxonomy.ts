@@ -26,6 +26,7 @@ export function getSocialCategory(org: SocialOrg): SocialGroupCategory {
     company: 'COMPANY', institution: 'INSTITUTION', community: 'COMMUNITY', scene: 'SCENE',
     family: 'FAMILY', household: 'HOUSEHOLD', band: 'BAND', sports_team: 'TEAM', team: 'TEAM',
     friend_group: 'FRIEND_GROUP', project: 'PROJECT', event_group: 'EVENT_GROUP',
+    care_team: 'COMMUNITY', support_network: 'COMMUNITY',
   };
   if (map[gt]) return map[gt]!;
   if (HOUSEHOLD_RE.test(org.name)) return 'HOUSEHOLD';

@@ -1,11 +1,15 @@
 import type { Skill } from '../types/skill';
 
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import { readSkillProfile } from './skillProfile';
 
-export function buildSkillBookClipboardText(skills: Skill[]): string {
+export function buildSkillBookClipboardText(
+  skills: Skill[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Skills Book',
+    filters: options?.filters,
     items: skills.map((skill) => {
       const profile = readSkillProfile(skill.metadata);
       const learnedFrom = skill.metadata.skill_details?.learned_from

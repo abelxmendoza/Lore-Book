@@ -56,6 +56,23 @@ describe('composerEntityStrip', () => {
     expect(filtered).toHaveLength(1);
   });
 
+  it('drops preview spans that only appear inside e.g. instructional quotes', () => {
+    const text =
+      'What groups is Jerry part of? (e.g. "actually her name is Maya" or "they are my coworker").';
+    const mayaStart = text.indexOf('Maya');
+    const span: LexicalPreviewSpan = {
+      text: 'Maya',
+      start: mayaStart,
+      end: mayaStart + 4,
+      type: 'PERSON',
+      colorKey: 'person',
+      confidence: 0.9,
+      temporary: true,
+    };
+    const filtered = filterPreviewSpansForStrip(text, [], [span]);
+    expect(filtered).toHaveLength(0);
+  });
+
   it('dedupes certified entities with the same name', () => {
     const dup: CertifiedEntityMatch = {
       ...alex,

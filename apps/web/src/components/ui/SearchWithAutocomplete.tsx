@@ -10,15 +10,26 @@ import { cn } from '../../lib/cn';
 export interface SearchWithAutocompleteProps<T> {
   value: string;
   onChange: (value: string) => void;
+  /** Called when a suggestion is chosen (preferred over relying on label text alone). */
+  onSelectItem?: (item: T) => void;
   placeholder: string;
   items: T[];
   getSearchableText: (item: T) => string;
   getDisplayLabel: (item: T) => string;
+  getItemKey?: (item: T, index: number) => string | number;
   maxSuggestions?: number;
+  /** When 0, focusing with an empty query shows the top matches. Default 1. */
+  minCharsToSuggest?: number;
   className?: string;
   inputClassName?: string;
   emptyHint?: string;
   autoComplete?: 'on' | 'off';
+  disabled?: boolean;
+  'data-testid'?: string;
+  inputProps?: {
+    'aria-label'?: string;
+    id?: string;
+  };
 }
 
 const MAX_SUGGESTIONS_DEFAULT = 8;
@@ -26,15 +37,21 @@ const MAX_SUGGESTIONS_DEFAULT = 8;
 export function SearchWithAutocomplete<T>({
   value,
   onChange,
+  onSelectItem,
   placeholder,
   items,
   getSearchableText,
   getDisplayLabel,
+  getItemKey,
   maxSuggestions = MAX_SUGGESTIONS_DEFAULT,
+  minCharsToSuggest = 1,
   className,
   inputClassName,
   emptyHint = 'Type to search…',
   autoComplete = 'off',
+  disabled = false,
+  'data-testid': dataTestId,
+  inputProps,
 }: SearchWithAutocompleteProps<T>) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -43,11 +60,16 @@ export function SearchWithAutocomplete<T>({
 
   const suggestions = useMemo(() => {
     const term = value.trim().toLowerCase();
-    if (!term) return [];
+    if (term.length < minCharsToSuggest) {
+      if (minCharsToSuggest === 0 && term.length === 0) {
+        return items.slice(0, maxSuggestions);
+      }
+      return [];
+    }
     return items
       .filter((item) => getSearchableText(item).toLowerCase().includes(term))
       .slice(0, maxSuggestions);
-  }, [items, value, getSearchableText, maxSuggestions]);
+  }, [items, value, getSearchableText, maxSuggestions, minCharsToSuggest]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -60,12 +82,12 @@ export function SearchWithAutocomplete<T>({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Keep selectedIndex in bounds when suggestions change
   useEffect(() => {
     if (selectedIndex >= suggestions.length) setSelectedIndex(Math.max(-1, suggestions.length - 1));
   }, [suggestions.length, selectedIndex]);
 
   const handleSelect = (item: T) => {
+    onSelectItem?.(item);
     onChange(getDisplayLabel(item));
     setShowSuggestions(false);
     setSelectedIndex(-1);
@@ -91,7 +113,12 @@ export function SearchWithAutocomplete<T>({
     }
   };
 
-  const open = showSuggestions && (suggestions.length > 0 || (value.trim().length > 0 && suggestions.length === 0));
+  const open =
+    showSuggestions &&
+    !disabled &&
+    (suggestions.length > 0 ||
+      (value.trim().length >= Math.max(minCharsToSuggest, 1) && suggestions.length === 0) ||
+      (minCharsToSuggest === 0 && value.trim().length === 0 && items.length === 0));
 
   return (
     <div ref={wrapperRef} className={cn('relative w-full min-w-0', className)}>
@@ -106,9 +133,13 @@ export function SearchWithAutocomplete<T>({
         aria-autocomplete="list"
         aria-controls="search-autocomplete-list"
         aria-activedescendant={selectedIndex >= 0 ? `search-suggestion-${selectedIndex}` : undefined}
+        aria-label={inputProps?.['aria-label']}
+        id={inputProps?.id}
+        data-testid={dataTestId}
         autoComplete={autoComplete}
         placeholder={placeholder}
         value={value}
+        disabled={disabled}
         onChange={(e) => {
           onChange(e.target.value);
           setShowSuggestions(true);
@@ -125,12 +156,13 @@ export function SearchWithAutocomplete<T>({
           ref={listRef}
           className="absolute top-full left-0 right-0 mt-1 z-50 w-full min-w-0 rounded-lg border border-border/60 bg-black/95 shadow-xl overflow-hidden max-h-[min(16rem,60vh)] overflow-y-auto"
           role="listbox"
+          data-testid={dataTestId ? `${dataTestId}-list` : undefined}
         >
           {suggestions.length > 0 ? (
             <div className="py-1">
               {suggestions.map((item, index) => (
                 <button
-                  key={index}
+                  key={getItemKey?.(item, index) ?? index}
                   id={`search-suggestion-${index}`}
                   role="option"
                   aria-selected={index === selectedIndex}
@@ -140,7 +172,7 @@ export function SearchWithAutocomplete<T>({
                     'min-h-[44px] sm:min-h-0 sm:py-2 flex items-center',
                     index === selectedIndex
                       ? 'bg-primary/20 border-primary text-primary'
-                      : 'border-transparent hover:bg-white/10'
+                      : 'border-transparent hover:bg-white/10',
                   )}
                   onMouseDown={(e) => {
                     e.preventDefault();

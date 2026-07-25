@@ -1,9 +1,13 @@
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import type { Organization } from '../components/organizations/OrganizationProfileCard';
 
-export function buildOrganizationBookClipboardText(organizations: Organization[]): string {
+export function buildOrganizationBookClipboardText(
+  organizations: Organization[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Groups and Organizations',
+    filters: options?.filters,
     items: organizations.map((org) => {
       const members = (org.members ?? [])
         .map((m) => (m.role ? `${m.character_name} (${m.role})` : m.character_name))

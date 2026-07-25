@@ -1,11 +1,15 @@
 import type { Event } from '../components/events/EventProfileCard';
 import { formatEventTime } from './formatEventTime';
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import { getDisplayTitle } from '../utils/displayTitle';
 
-export function buildEventsBookClipboardText(events: Event[]): string {
+export function buildEventsBookClipboardText(
+  events: Event[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Life Log / Moments',
+    filters: options?.filters,
     items: events.map((event) => ({
       heading: getDisplayTitle({
         title: event.title,

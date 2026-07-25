@@ -68,6 +68,9 @@ export async function applyMergedExtractionPayload(
 
   if (payload.interests.length > 0) {
     const { findCoMentionedCharacterIds } = await import('../characters/characterLoreProfileService');
+    const { resolveInterestSubjects } = await import(
+      '../conversationCentered/interestSubjectResolver'
+    );
     const coMentionedIds = await findCoMentionedCharacterIds(userId, rawText);
     for (const interest of payload.interests) {
       try {
@@ -84,7 +87,20 @@ export async function applyMergedExtractionPayload(
           knowledge_depth: interest.knowledge_depth,
           time_investment_minutes: interest.time_investment_minutes,
         };
-        await interestTracker.saveInterest(userId, detected, undefined, messageId, coMentionedIds);
+        const subjectResolution = await resolveInterestSubjects(
+          userId,
+          rawText,
+          interest.evidence || '',
+          coMentionedIds,
+        );
+        await interestTracker.saveInterest(
+          userId,
+          detected,
+          undefined,
+          messageId,
+          subjectResolution.relatedCharacterIds,
+          subjectResolution,
+        );
         result.interests += 1;
       } catch (err) {
         logger.warn({ err, interest: interest.name }, 'Merged extraction: interest apply failed');

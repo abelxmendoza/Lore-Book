@@ -8,6 +8,7 @@ import {
   ChevronRight,
   FileArchive,
   FileText,
+  Layers,
   MessageCircle,
   RotateCcw,
   Sparkles,
@@ -72,6 +73,9 @@ export function OnboardingDemoSimulator() {
   const [selectedAi, setSelectedAi] = useState<'Claude' | 'Grok' | 'Another assistant' | null>(null);
   const [materials, setMaterials] = useState<Set<string>>(new Set());
   const [freshGoals, setFreshGoals] = useState<Set<string>>(new Set());
+  // "Both" path: walk the AI-history stage, then chain into the materials
+  // stage instead of finishing, and combine the two into one profile.
+  const [bothMode, setBothMode] = useState(false);
   const [completed, setCompleted] = useState(() => readFlag(ONBOARDING_DEMO_COMPLETED_KEY));
   const [dismissed, setDismissed] = useState(() => readFlag(ONBOARDING_DEMO_DISMISSED_KEY));
 
@@ -81,6 +85,7 @@ export function OnboardingDemoSimulator() {
     setSelectedAi(null);
     setMaterials(new Set());
     setFreshGoals(new Set());
+    setBothMode(false);
     setDismissed(false);
     writeFlag(ONBOARDING_DEMO_DISMISSED_KEY, false);
     setOpen(true);
@@ -90,7 +95,7 @@ export function OnboardingDemoSimulator() {
     const handleOpen = () => restart();
     const handleChatGPTReturn = () => {
       setBranch('chatgpt');
-      setStage('profile');
+      setStage(bothMode ? 'materials' : 'profile');
       setOpen(true);
     };
     window.addEventListener(ONBOARDING_DEMO_OPEN_EVENT, handleOpen);
@@ -99,9 +104,26 @@ export function OnboardingDemoSimulator() {
       window.removeEventListener(ONBOARDING_DEMO_OPEN_EVENT, handleOpen);
       window.removeEventListener(CHATGPT_IMPORT_DEMO_RETURN_EVENT, handleChatGPTReturn);
     };
-  }, []);
+  }, [bothMode]);
 
   const profile = useMemo(() => {
+    if (bothMode) {
+      const aiSource = branch === 'chatgpt' ? 'ChatGPT history' : (selectedAi ?? 'AI conversation history');
+      return {
+        source: `${aiSource} + personal archives`,
+        summary: 'Conversations and personal materials were combined into one starting profile.',
+        facts: [
+          'Marcus is building MemoVault.',
+          'Jamie is an important collaborator.',
+          'A journal chapter was detected.',
+        ],
+        counts: [
+          branch === 'chatgpt' ? '12 conversations scanned' : 'Conversation text accepted',
+          `${materials.size || 1} source types selected`,
+          '24 moments proposed',
+        ],
+      };
+    }
     if (branch === 'chatgpt') {
       return {
         source: 'ChatGPT history',
@@ -132,7 +154,7 @@ export function OnboardingDemoSimulator() {
       facts: ['Jamie is someone important.', 'MemoVault is an active project.', 'Marcus wants to understand recurring patterns.'],
       counts: [`${freshGoals.size || 1} priorities selected`, '3 starter beliefs', '5 next questions'],
     };
-  }, [branch, freshGoals.size, materials.size, selectedAi]);
+  }, [branch, bothMode, freshGoals.size, materials.size, selectedAi]);
 
   if (!isDemo) return null;
 
@@ -157,8 +179,11 @@ export function OnboardingDemoSimulator() {
 
   const goBack = () => {
     if (stage === 'source') setStage('welcome');
+    else if (stage === 'materials' && bothMode) setStage('ai');
     else if (['ai', 'materials', 'fresh'].includes(stage)) setStage('source');
-    else if (stage === 'profile') setStage(branch === 'materials' ? 'materials' : branch === 'fresh' ? 'fresh' : 'ai');
+    else if (stage === 'profile') {
+      setStage(bothMode ? 'materials' : branch === 'materials' ? 'materials' : branch === 'fresh' ? 'fresh' : 'ai');
+    }
   };
 
   return (
@@ -240,31 +265,44 @@ export function OnboardingDemoSimulator() {
               )}
 
               {stage === 'source' && (
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {[
                     {
                       title: 'AI conversation history',
                       description: 'ChatGPT, Claude, Grok, or another assistant.',
                       icon: Bot,
                       next: 'ai' as Stage,
+                      both: false,
                     },
                     {
                       title: 'Journals, photos, or documents',
                       description: 'Bring personal material you already have.',
                       icon: FileArchive,
                       next: 'materials' as Stage,
+                      both: false,
+                    },
+                    {
+                      title: 'Both',
+                      description: 'Combine chat history with journals, photos, or documents.',
+                      icon: Layers,
+                      next: 'ai' as Stage,
+                      both: true,
                     },
                     {
                       title: 'I’m starting fresh',
                       description: 'Build a Life Snapshot through conversation.',
                       icon: MessageCircle,
                       next: 'fresh' as Stage,
+                      both: false,
                     },
                   ].map((option) => (
                     <button
                       key={option.title}
                       type="button"
-                      onClick={() => setStage(option.next)}
+                      onClick={() => {
+                        setBothMode(option.both);
+                        setStage(option.next);
+                      }}
                       className="rounded-xl border border-white/10 bg-white/[0.025] p-5 text-left transition hover:border-primary/40 hover:bg-primary/[0.06]"
                     >
                       <option.icon className="h-7 w-7 text-primary" />
@@ -278,6 +316,11 @@ export function OnboardingDemoSimulator() {
               {stage === 'ai' && (
                 <div className="space-y-5">
                   <div>
+                    {bothMode && (
+                      <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-400/10 px-2.5 py-1 text-[11px] font-medium text-violet-200">
+                        <Layers className="h-3 w-3" /> Step 1 of 2 — AI history
+                      </p>
+                    )}
                     <h3 className="text-lg font-semibold text-white">Which assistant holds your history?</h3>
                     <p className="mt-1 text-sm text-white/45">
                       ChatGPT has a full simulated export flow. Other assistants demonstrate the portable-history path without claiming unsupported native imports.
@@ -320,7 +363,7 @@ export function OnboardingDemoSimulator() {
                   {selectedAi && (
                     <button
                       type="button"
-                      onClick={() => setStage('profile')}
+                      onClick={() => setStage(bothMode ? 'materials' : 'profile')}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white"
                     >
                       Continue with {selectedAi} <ChevronRight className="h-4 w-4" />
@@ -332,8 +375,17 @@ export function OnboardingDemoSimulator() {
               {stage === 'materials' && (
                 <div className="space-y-5">
                   <div>
+                    {bothMode && (
+                      <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-400/10 px-2.5 py-1 text-[11px] font-medium text-violet-200">
+                        <Layers className="h-3 w-3" /> Step 2 of 2 — personal materials
+                      </p>
+                    )}
                     <h3 className="text-lg font-semibold text-white">Choose synthetic source material</h3>
-                    <p className="mt-1 text-sm text-white/45">Select one or more. Nothing leaves the demo.</p>
+                    <p className="mt-1 text-sm text-white/45">
+                      {bothMode
+                        ? 'Now add any journals, photos, or documents to combine with your AI history.'
+                        : 'Select one or more. Nothing leaves the demo.'}
+                    </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     {MATERIAL_OPTIONS.map((option) => {
@@ -361,12 +413,14 @@ export function OnboardingDemoSimulator() {
                     type="button"
                     disabled={materials.size === 0}
                     onClick={() => {
-                      setBranch('materials');
+                      // In both-mode, branch already holds 'chatgpt'/'other-ai' from
+                      // step 1 — don't overwrite it, the combined profile needs it.
+                      if (!bothMode) setBranch('materials');
                       setStage('profile');
                     }}
                     className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40"
                   >
-                    Build a profile from these sources
+                    {bothMode ? 'Combine into one profile' : 'Build a profile from these sources'}
                   </button>
                 </div>
               )}

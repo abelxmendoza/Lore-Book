@@ -147,6 +147,8 @@ type RomanticRelationship = {
 type CharacterProfileCardProps = {
   character: Character;
   onClick?: () => void;
+  /** Open the character modal focused on the Role editor. */
+  onSetRoleClick?: () => void;
   relationship?: RomanticRelationship;
   selectionMode?: boolean;
   selected?: boolean;
@@ -171,6 +173,7 @@ const primaryCharacterLabel = (value?: string | null) => splitCharacterLabels(va
 export const CharacterProfileCard = ({
   character,
   onClick,
+  onSetRoleClick,
   relationship,
   selectionMode = false,
   selected = false,
@@ -465,8 +468,23 @@ export const CharacterProfileCard = ({
                 {character.role.length > 60 ? `${character.role.slice(0, 60).trim()}…` : character.role}
               </p>
             ) : (
-              <div className="mt-0.5 hidden sm:block">
-                <UnknownField compact label="Role" />
+              <div className="mt-0.5">
+                <UnknownField
+                  compact
+                  label="Role"
+                  actionHint="click to set"
+                  onActivate={
+                    onSetRoleClick
+                      ? () => {
+                          onSetRoleClick();
+                        }
+                      : onClick
+                        ? () => {
+                            onClick();
+                          }
+                        : undefined
+                  }
+                />
               </div>
             )}
             {character.first_name && character.last_name && character.name !== displayName && (

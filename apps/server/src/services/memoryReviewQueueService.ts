@@ -24,6 +24,11 @@ import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { essenceProfileService } from './essenceProfileService';
 import { memoirService } from './memoirService';
+import {
+  beliefCognitionEngine,
+  isBeliefCognitionGateEnabled,
+  serializeBeliefCognitionMetadata,
+} from './beliefs';
 import { canAutoApproveProposal, evaluateProposalIntegrity } from './memoryProposalPolicy';
 import { memoryService } from './memoryService';
 import { omegaMemoryService } from './omegaMemoryService';
@@ -152,6 +157,25 @@ Identity-affecting claims include:
   ): Promise<{ proposal: MemoryProposal; auto_approved: boolean; claim?: Claim }> {
     try {
       const claimMetadata = (claim.metadata ?? {}) as Record<string, unknown>;
+      const evidenceId = [claimMetadata.extracted_unit_id, claimMetadata.message_id, claimMetadata.utterance_id]
+        .find((value): value is string => typeof value === 'string' && value.length > 0);
+
+      const cognition = beliefCognitionEngine.evaluate({
+        userId,
+        userDisplayName: String(claimMetadata.subject_name ?? claimMetadata.user_name ?? 'The user'),
+        claimText: String(claim.text ?? ''),
+        sourceText,
+        entityId: entity.id,
+        entityName: entity.primary_name,
+        storyGroupLabel: String(claimMetadata.group_label ?? claimMetadata.story_title ?? ''),
+        evidenceIds: evidenceId ? [evidenceId] : [],
+        sourceMessageId: typeof claimMetadata.message_id === 'string' ? claimMetadata.message_id : undefined,
+        extractionConfidence: typeof claim.confidence === 'number' ? claim.confidence : 0.6,
+        metadata: { ...claimMetadata, entity_name: entity.primary_name },
+      });
+      const cognitionMeta = serializeBeliefCognitionMetadata(cognition);
+      const gateOn = isBeliefCognitionGateEnabled();
+
       const integrity = evaluateProposalIntegrity({
         userId,
         entityId: entity.id,
@@ -166,10 +190,15 @@ Identity-affecting claims include:
         metadata: { ...claimMetadata, entity_name: entity.primary_name },
       });
 
+      // Prefer cognition-compiled summary / kind when available.
+      const normalizedSummary = cognition.proposition.renderedText || integrity.normalizedSummary;
+      const proposalKind = cognition.proposalKindHint || integrity.proposalKind;
+      const proposedMutation = cognition.mutationPlan.reason || integrity.proposedMutation;
+
       // Find only claims the proposed mutation can actually affect. The old
       // implementation returned every active claim for the entity.
-      const mutatesExistingClaims = integrity.proposalKind === 'correction' || integrity.proposalKind === 'retraction';
-      const affectedClaimIds = integrity.valid && mutatesExistingClaims
+      const mutatesExistingClaims = proposalKind === 'correction' || proposalKind === 'retraction';
+      let affectedClaimIds = integrity.valid && mutatesExistingClaims
         ? await this.findAffectedClaims(
             entity.id,
             claim,
@@ -177,6 +206,9 @@ Identity-affecting claims include:
             integrity.fingerprintInputs.subjectScope === 'self'
           )
         : [];
+      if (cognition.correctionTarget.selectedBeliefId) {
+        affectedClaimIds = [...new Set([cognition.correctionTarget.selectedBeliefId, ...affectedClaimIds])];
+      }
 
       // Generate reasoning
       const reasoning = await this.generateReasoning(claim, entity, sourceText);
@@ -184,7 +216,7 @@ Identity-affecting claims include:
       // Create proposal
       const proposalInput: MemoryProposalInput = {
         entity_id: entity.id,
-        claim_text: integrity.normalizedSummary,
+        claim_text: normalizedSummary,
         perspective_id: perspectiveId || undefined,
         confidence: claim.confidence || 0.6,
         temporal_context: claim.metadata?.temporal_context || {},
@@ -193,63 +225,83 @@ Identity-affecting claims include:
         affected_claim_ids: affectedClaimIds,
       };
 
-      const evidenceId = [claimMetadata.extracted_unit_id, claimMetadata.message_id, claimMetadata.utterance_id]
-        .find((value): value is string => typeof value === 'string' && value.length > 0);
-
       // Stage contract: atomic memory_proposal / correction / retraction before insert.
       const { validateMemoryProposalBeforePersist, validateCorrectionBeforeApply, validateRetractionBeforeApply, recordPersisted } =
         await import('./ingestion/stageContractGate');
       const evidenceIds = evidenceId ? [evidenceId] : ['mrq'];
       let contractOk = integrity.valid;
       let contractReason: string | null = integrity.rejectionReason ?? null;
-      if (integrity.proposalKind === 'retraction') {
+
+      // Hard gate: reject conversational noise / ineligible speech acts when enabled.
+      if (gateOn && (cognition.decision === 'REJECT' || cognition.routingTarget === 'ASSISTANT_FEEDBACK')) {
+        contractOk = false;
+        contractReason = `belief_cognition:${cognition.speechAct}:${cognition.decision}`;
+      }
+
+      if (proposalKind === 'retraction') {
         const ret = validateRetractionBeforeApply({
           targetClaimIds: affectedClaimIds,
-          reason: integrity.proposedMutation || integrity.normalizedSummary,
+          reason: proposedMutation || normalizedSummary,
           authority: 'user_explicit',
           note: sourceText.slice(0, 500),
         });
-        contractOk = ret.accepted && integrity.valid;
-        if (!ret.accepted) contractReason = ret.reason;
-      } else if (integrity.proposalKind === 'correction') {
+        // Unresolved retraction targets remain reviewable (constraint path) when cognition says so.
+        if (gateOn && cognition.decision === 'ADD_NEGATIVE_CONSTRAINT') {
+          contractOk = integrity.valid;
+          contractReason = null;
+        } else {
+          contractOk = ret.accepted && integrity.valid && contractOk;
+          if (!ret.accepted) contractReason = ret.reason;
+        }
+      } else if (proposalKind === 'correction') {
         const corr = validateCorrectionBeforeApply({
           targetClaimIds: affectedClaimIds,
-          replacementClaim: integrity.normalizedSummary,
+          replacementClaim: normalizedSummary,
           correctionAuthority: 'user_explicit',
           evidenceIds,
           note: sourceText.slice(0, 500),
           supersessionBehavior: affectedClaimIds.length ? 'replace_claims' : 'annotate_only',
         });
-        contractOk = corr.accepted && integrity.valid;
-        if (!corr.accepted) contractReason = corr.reason;
+        if (gateOn && cognition.decision === 'ADD_NEGATIVE_CONSTRAINT') {
+          contractOk = integrity.valid;
+          contractReason = null;
+        } else {
+          contractOk = corr.accepted && integrity.valid && contractOk;
+          if (!corr.accepted) contractReason = corr.reason;
+        }
       } else {
         const mem = validateMemoryProposalBeforePersist({
-          proposalKind: integrity.proposalKind,
+          proposalKind,
           subjectEntityId: entity.id,
-          predicate: integrity.predicate,
+          predicate: cognition.proposition.predicate || integrity.predicate,
           objectEntityId: typeof claimMetadata.object_entity_id === 'string'
             ? claimMetadata.object_entity_id
             : undefined,
-          typedValue: integrity.typedValue,
+          typedValue: normalizedSummary,
           confidence: integrity.confidence,
           risk: integrity.riskLevel,
           sensitivity: integrity.sensitivity,
           evidenceIds,
           temporalScope: { kind: 'UNKNOWN' },
-          proposedMutation: integrity.proposedMutation,
-          claimText: integrity.normalizedSummary,
+          proposedMutation,
+          claimText: normalizedSummary,
         });
-        contractOk = mem.accepted && integrity.valid;
+        contractOk = mem.accepted && integrity.valid && contractOk;
         if (!mem.accepted) contractReason = mem.reason;
       }
 
+      // Never auto-approve routed non-truth items as durable claims.
+      const routedNonTruth = ['EVENT', 'TEMPORAL_STATE', 'PLAN', 'PROJECT_GOAL', 'PROJECT_REQUIREMENT', 'UI_PREFERENCE'].includes(
+        cognition.routingTarget,
+      );
+
       const proposalMetadata = {
         ...claimMetadata,
-        proposal_kind: integrity.proposalKind,
-        normalized_summary: integrity.normalizedSummary,
-        proposed_mutation: integrity.proposedMutation,
-        normalized_predicate: integrity.predicate,
-        typed_value: integrity.typedValue,
+        proposal_kind: proposalKind,
+        normalized_summary: normalizedSummary,
+        proposed_mutation: proposedMutation,
+        normalized_predicate: cognition.proposition.predicate || integrity.predicate,
+        typed_value: normalizedSummary,
         proposal_fingerprint: integrity.fingerprint,
         fingerprint_inputs: integrity.fingerprintInputs,
         group_key: integrity.groupKey,
@@ -258,13 +310,31 @@ Identity-affecting claims include:
         sensitivity: integrity.sensitivity,
         source_evidence_ids: evidenceId ? [evidenceId] : [],
         evidence_count: evidenceId ? 1 : 0,
+        belief_cognition: cognitionMeta,
+        belief_cognition_gate: gateOn ? 'enforced' : 'shadow',
         proposal_integrity: {
           valid: integrity.valid && contractOk,
           rejection_reason: contractReason ?? integrity.rejectionReason ?? null,
-          policy_version: 'v1',
+          policy_version: 'v2',
           stage_contract: contractOk ? 'accepted' : 'rejected',
         },
       };
+
+      // Best-effort cognition audit (shadow + enforced).
+      void supabaseAdmin.from('belief_cognition_audit').insert({
+        user_id: userId,
+        claim_text: String(claim.text ?? ''),
+        source_text: sourceText.slice(0, 2000),
+        source_message_id: evidenceId ?? null,
+        decision: cognition.decision,
+        speech_act: cognition.speechAct,
+        routing_target: cognition.routingTarget,
+        reasons: cognition.diagnostic.reasons,
+        payload: cognitionMeta,
+        gate_enforced: gateOn,
+      }).then(({ error }) => {
+        if (error) logger.debug({ err: error, userId }, 'belief_cognition_audit insert skipped');
+      });
 
       // Contract/policy failure → REJECTED row (no auto-approve, no additive memory).
       if (!contractOk) {
@@ -345,8 +415,12 @@ Identity-affecting claims include:
         throw error;
       }
 
-      // Auto-approve if low risk — claim is persisted inside autoApprove
-      if (!claimMetadata.force_review && canAutoApproveProposal(integrity)) {
+      // Auto-approve if low risk — never for routed non-truth or blocked confirmations.
+      const allowAuto = !routedNonTruth
+        && cognition.confirmationRequirement !== 'BLOCK_UNTIL_CONFIRMED'
+        && cognition.decision !== 'ROUTE'
+        && canAutoApproveProposal(integrity);
+      if (!claimMetadata.force_review && allowAuto) {
         const storedClaim = await this.autoApprove(proposal);
         return { proposal, auto_approved: true, claim: storedClaim };
       }

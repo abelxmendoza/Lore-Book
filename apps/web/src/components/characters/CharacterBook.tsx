@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
@@ -19,6 +19,7 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { GridListViewToolbar, type CardViewMode } from '../ui/GridListViewToolbar';
 import { buildCharacterBookClipboardText } from '../../lib/characterBookClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
@@ -41,6 +42,9 @@ import { useGuest } from '../../contexts/GuestContext';
 import { getGuestCharacters } from '../../services/guestLoreStore';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
+import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import { CharacterAuditPanel } from './CharacterAuditPanel';
@@ -2680,6 +2684,21 @@ export const CharacterBook = () => {
   const [characterModalInitialTab, setCharacterModalInitialTab] = useState<
     import('../../lib/openCharacterBookModal').CharacterBookModalTab | undefined
   >(undefined);
+  const [characterModalFocusField, setCharacterModalFocusField] = useState<'role' | null>(null);
+  const openCharacterDetail = useCallback(
+    (
+      character: Character,
+      opts?: {
+        tab?: import('../../lib/openCharacterBookModal').CharacterBookModalTab;
+        focusField?: 'role';
+      },
+    ) => {
+      setCharacterModalInitialTab(opts?.focusField ? 'info' : opts?.tab);
+      setCharacterModalFocusField(opts?.focusField ?? null);
+      setSelectedCharacter(character);
+    },
+    [],
+  );
   const [mainCharacterModalOpen, setMainCharacterModalOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -2699,6 +2718,8 @@ export const CharacterBook = () => {
   const [restoringCast, setRestoringCast] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [mockRegistryTick, setMockRegistryTick] = useState(0);
@@ -2944,12 +2965,17 @@ export const CharacterBook = () => {
     if (!id) return;
     const tabRaw = sessionStorage.getItem('characterModalTab');
     sessionStorage.removeItem('characterModalTab');
+    const focusRaw = sessionStorage.getItem('characterModalFocusField');
+    sessionStorage.removeItem('characterModalFocusField');
+    const focusField = focusRaw === 'role' ? ('role' as const) : undefined;
 
     const openCharacterModal = (character: Character) => {
-      if (tabRaw) {
-        setCharacterModalInitialTab(tabRaw as import('../../lib/openCharacterBookModal').CharacterBookModalTab);
-      }
-      setSelectedCharacter(character);
+      openCharacterDetail(character, {
+        tab: tabRaw
+          ? (tabRaw as import('../../lib/openCharacterBookModal').CharacterBookModalTab)
+          : undefined,
+        focusField,
+      });
     };
 
     let cancelled = false;
@@ -2965,7 +2991,7 @@ export const CharacterBook = () => {
     return () => {
       cancelled = true;
     };
-  }, [bookLoading, characters]);
+  }, [bookLoading, characters, openCharacterDetail]);
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
@@ -3120,6 +3146,27 @@ export const CharacterBook = () => {
     return [...filteredCharacters].sort((a, b) => (rank(b) - rank(a)) || (score(b) - score(a)));
   }, [filteredCharacters]);
 
+  /** Same ordered set the grid shows — Copy all must match current filters + sort. */
+  const clipboardCharacters = useMemo(() => {
+    if (sortOrder === 'standing') return charactersByStanding;
+    if (sortOrder === 'impact') return charactersByImpact;
+    const order = ['protagonist', 'major', 'supporting', 'public_figure', 'minor', 'background'];
+    return order.flatMap((level) => groupedByImportance[level] ?? []);
+  }, [sortOrder, charactersByStanding, charactersByImpact, groupedByImportance]);
+
+  const clipboardText = useMemo(
+    () =>
+      buildCharacterBookClipboardText(clipboardCharacters, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          activeCategory !== 'all' && `category=${activeCategory}`,
+          importanceFilter !== 'all' && `importance=${importanceFilter}`,
+          `sort=${sortOrder}`,
+        ]),
+      }),
+    [clipboardCharacters, searchTerm, activeCategory, importanceFilter, sortOrder],
+  );
+
   const levelLabels: Record<string, string> = {
     protagonist: 'Protagonist',
     major: 'Major Characters',
@@ -3179,6 +3226,38 @@ export const CharacterBook = () => {
     }
   };
 
+  const characterChatOptions = useMemo(
+    () =>
+      characters
+        .filter(
+          (c) =>
+            c.archetype !== 'place' &&
+            !isSelfCharacter(c) &&
+            c.status !== 'archived' &&
+            c.status !== 'pending_deletion' &&
+            c.status !== 'reclassified',
+        )
+        .map((c) => ({ id: c.id, name: c.name, aliases: c.alias ?? [] })),
+    [characters],
+  );
+
+  const openCharacterFocusedChat = useCallback(
+    async (selection: { name: string; entity?: { id: string; name: string; aliases?: string[] } }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.characters, selection);
+      } catch (error) {
+        setFocusedChatError(
+          error instanceof Error ? error.message : 'Could not open a focused chat right now.',
+        );
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
+
   return (
     <div
       className={`space-y-4 sm:space-y-6 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}
@@ -3186,6 +3265,15 @@ export const CharacterBook = () => {
     >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
       <ChatFirstViewHint />
+      <FocusedEntityChatLauncher
+        options={characterChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.characters.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.characters.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openCharacterFocusedChat}
+      />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
         existingBookEntries={
@@ -3576,8 +3664,8 @@ export const CharacterBook = () => {
             <GridListViewToolbar
               viewMode={viewMode}
               onViewModeChange={setViewMode}
-              copyText={buildCharacterBookClipboardText(filteredCharacters)}
-              copyDisabled={filteredCharacters.length === 0}
+              copyText={clipboardText}
+              copyDisabled={clipboardCharacters.length === 0}
               storageKey="lk_char_view"
             />
             <Button
@@ -3832,9 +3920,8 @@ export const CharacterBook = () => {
                                 selectionMode={selectionMode}
                                 selected={selectedForMerge.has(character.id)}
                                 onToggleSelected={() => toggleSelectedForMerge(character.id)}
-                                onClick={() => {
-                                  setSelectedCharacter(character);
-                                }}
+                                onClick={() => openCharacterDetail(character)}
+                                onSetRoleClick={() => openCharacterDetail(character, { focusField: 'role' })}
                               />
                             </div>
                           );
@@ -3867,9 +3954,8 @@ export const CharacterBook = () => {
                                 selectionMode={selectionMode}
                                 selected={selectedForMerge.has(character.id)}
                                 onToggleSelected={() => toggleSelectedForMerge(character.id)}
-                                onClick={() => {
-                                  setSelectedCharacter(character);
-                                }}
+                                onClick={() => openCharacterDetail(character)}
+                                onSetRoleClick={() => openCharacterDetail(character, { focusField: 'role' })}
                               />
                             </div>
                           );
@@ -3927,9 +4013,8 @@ export const CharacterBook = () => {
                                         selectionMode={selectionMode}
                                         selected={selectedForMerge.has(character.id)}
                                         onToggleSelected={() => toggleSelectedForMerge(character.id)}
-                                        onClick={() => {
-                                          setSelectedCharacter(character);
-                                        }}
+                                        onClick={() => openCharacterDetail(character)}
+                                        onSetRoleClick={() => openCharacterDetail(character, { focusField: 'role' })}
                                       />
                                     </div>
                                   );
@@ -4030,9 +4115,12 @@ export const CharacterBook = () => {
           character={selectedCharacter}
           relationship={relationships.get(selectedCharacter.id)}
           initialTab={characterModalInitialTab}
+          initialFocusField={characterModalFocusField}
+          onInitialFocusFieldHandled={() => setCharacterModalFocusField(null)}
           onClose={() => {
             setSelectedCharacter(null);
             setCharacterModalInitialTab(undefined);
+            setCharacterModalFocusField(null);
           }}
           onUpdate={() => {
             // Refresh book data without closing the detail modal.

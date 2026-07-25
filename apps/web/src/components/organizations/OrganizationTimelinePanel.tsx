@@ -19,6 +19,11 @@ interface Props {
   organization: Organization;
   mockMode?: boolean;
   active?: boolean;
+  /** When provided, use these instead of fetching derived-context. */
+  events?: OrgDerivedEvent[];
+  loading?: boolean;
+  title?: string;
+  description?: string;
 }
 
 const AUDIENCE_LABELS: Record<NonNullable<OrgDerivedEvent['audience']>, string> = {
@@ -70,14 +75,19 @@ export function OrganizationTimelinePanel({
   organization,
   mockMode = false,
   active = true,
+  events: externalEvents,
+  loading: externalLoading,
+  title = 'From your conversations',
+  description,
 }: Props) {
+  const controlled = externalEvents !== undefined;
   const [derivedEvents, setDerivedEvents] = useState<OrgDerivedEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('swimlanes');
 
   const loadTimeline = useCallback(async () => {
-    if (!organization.id) return;
+    if (!organization.id || controlled) return;
     setLoading(true);
     try {
       if (mockMode) {
@@ -104,52 +114,65 @@ export function OrganizationTimelinePanel({
       setLoading(false);
       setLoaded(true);
     }
-  }, [organization, mockMode]);
+  }, [organization, mockMode, controlled]);
 
   useEffect(() => {
+    if (controlled) return;
     setLoaded(false);
     setDerivedEvents([]);
-  }, [organization.id]);
+  }, [organization.id, controlled]);
 
   useEffect(() => {
-    if (!active || loaded) return;
+    if (controlled || !active || loaded) return;
     void loadTimeline();
-  }, [active, loaded, loadTimeline]);
+  }, [active, loaded, loadTimeline, controlled]);
 
   useEffect(() => {
+    if (controlled) return;
     return onStoryDataUpdated(() => {
       setLoaded(false);
     });
-  }, [organization.id]);
+  }, [organization.id, controlled]);
+
+  const events = controlled
+    ? (externalEvents ?? []).map((e) => ({
+        ...e,
+        involved: e.involved ?? [],
+        subgroup_names: e.subgroup_names ?? [],
+      }))
+    : derivedEvents;
+  const isLoading = controlled ? Boolean(externalLoading) : loading;
 
   const sortedEvents = useMemo(
     () =>
       sortTimelineEventsChronologically(
-        derivedEvents.map(e => ({ ...e, eventDate: e.date ?? '' })),
+        events.map(e => ({ ...e, eventDate: e.date ?? '' })),
         'asc',
       ),
-    [derivedEvents],
+    [events],
   );
 
-  const swimEvents = useMemo(() => derivedEvents.map(toSwim), [derivedEvents]);
+  const swimEvents = useMemo(() => events.map(toSwim), [events]);
 
   const laneCounts = useMemo(() => ({
-    with: derivedEvents.filter(e => laneKeyForEvent(e) === 'with').length,
-    without: derivedEvents.filter(e => laneKeyForEvent(e) === 'without').length,
-    group_wide: derivedEvents.filter(e => laneKeyForEvent(e) === 'group_wide').length,
-  }), [derivedEvents]);
+    with: events.filter(e => laneKeyForEvent(e) === 'with').length,
+    without: events.filter(e => laneKeyForEvent(e) === 'without').length,
+    group_wide: events.filter(e => laneKeyForEvent(e) === 'group_wide').length,
+  }), [events]);
+
+  const subtitle =
+    description ??
+    `Events involving ${organization.name}'s members (including subgroups), split by your involvement and group-wide impact.`;
 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Clock className="h-5 w-5 text-purple-400" />
-            Event Timeline
+          <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
+            <Clock className="h-4 w-4 text-purple-400" />
+            {title}
           </h3>
-          <p className="text-xs text-white/45 mt-1">
-            Events involving {organization.name}&apos;s members (including subgroups), split by your involvement and group-wide impact.
-          </p>
+          <p className="text-xs text-white/45 mt-1">{subtitle}</p>
         </div>
         <div className="flex rounded-lg border border-white/10 overflow-hidden shrink-0">
           <button
@@ -180,7 +203,7 @@ export function OrganizationTimelinePanel({
       </div>
 
       {viewMode === 'list' ? (
-        loading ? (
+        isLoading ? (
           <div className="h-48 flex items-center justify-center text-white/50 text-sm">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
             Loading timeline…
@@ -236,7 +259,7 @@ export function OrganizationTimelinePanel({
         )
       ) : (
         <EventTimelineSwimlanes
-          loading={loading}
+          loading={isLoading}
           lanes={[
             { key: 'with', label: 'With you', accent: 'emerald', hint: 'You were there' },
             { key: 'without', label: 'Without you', accent: 'violet', hint: "Member-only — you weren't present" },

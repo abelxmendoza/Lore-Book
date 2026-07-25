@@ -2,13 +2,30 @@ import { createHash } from 'crypto';
 
 import JSZip from 'jszip';
 
-export type ChatGPTExportRole = 'user' | 'assistant' | 'system' | 'tool' | 'unknown';
+export type ChatGPTExportRole =
+  | 'user'
+  | 'assistant'
+  | 'system'
+  | 'tool'
+  | 'handoff'
+  | 'unknown';
+
+export type ChatGPTMemoryHandoffClaim = {
+  category: string;
+  confidence: 'high' | 'medium' | 'low' | 'unknown';
+  sourceType: 'saved_memory' | 'chat_history_recall' | 'unclear';
+  approximatePeriod: string | null;
+  relatedEntities: string | null;
+  evidence: string | null;
+  sensitive: boolean;
+};
 
 export type ChatGPTExportMessage = {
   id: string;
   role: ChatGPTExportRole;
   text: string;
   createdAt: string | null;
+  handoffClaim?: ChatGPTMemoryHandoffClaim;
 };
 
 export type ChatGPTExportConversation = {
@@ -36,6 +53,7 @@ export type ChatGPTExportInventory = {
   messageCount: number;
   userMessageCount: number;
   assistantMessageCount: number;
+  candidateClaimCount: number;
   earliestAt: string | null;
   latestAt: string | null;
   sourceFiles: string[];
@@ -173,6 +191,151 @@ function conversationArrays(value: unknown): RawConversation[] {
   return [];
 }
 
+function stripMarkdown(value: string): string {
+  return value
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeHandoffSource(value: string | undefined): ChatGPTMemoryHandoffClaim['sourceType'] {
+  const normalized = stripMarkdown(value ?? '').toLowerCase().replace(/[-\s]+/g, '_');
+  if (normalized === 'saved_memory') return 'saved_memory';
+  if (normalized === 'chat_history_recall') return 'chat_history_recall';
+  return 'unclear';
+}
+
+function normalizeHandoffConfidence(value: string | undefined): ChatGPTMemoryHandoffClaim['confidence'] {
+  const normalized = stripMarkdown(value ?? '').toLowerCase();
+  if (normalized === 'high' || normalized === 'medium' || normalized === 'low') return normalized;
+  return 'unknown';
+}
+
+function isLoreBookMemoryHandoff(text: string): boolean {
+  return /#\s+LoreBook Memory Handoff\b/i.test(text) && /###\s+Claim\b/i.test(text);
+}
+
+function parseLoreBookMemoryHandoff(
+  text: string,
+  filename: string,
+): { conversations: ChatGPTExportConversation[]; inventory: ChatGPTExportInventory } {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const messages: ChatGPTExportMessage[] = [];
+  let section = '';
+  let subsection = '';
+  let collectingClaim = false;
+  let claimLines: string[] = [];
+  let metadata: Record<string, string> = {};
+
+  const flush = () => {
+    if (!collectingClaim) return;
+    collectingClaim = false;
+    const claimText = stripMarkdown(claimLines.join(' '));
+    claimLines = [];
+    if (!claimText || !['Stable Memories', 'Sensitive Information'].includes(section)) {
+      metadata = {};
+      return;
+    }
+
+    const sensitive =
+      section === 'Sensitive Information' ||
+      stripMarkdown(metadata.sensitive ?? '').toLowerCase() === 'yes';
+    const claim: ChatGPTMemoryHandoffClaim = {
+      category: stripMarkdown(metadata.category || subsection || 'Other'),
+      confidence: normalizeHandoffConfidence(metadata.confidence),
+      sourceType: normalizeHandoffSource(metadata['source type']),
+      approximatePeriod: stripMarkdown(metadata['approximate period'] ?? '') || null,
+      relatedEntities: stripMarkdown(metadata['people/places/projects'] ?? '') || null,
+      evidence: stripMarkdown(metadata.evidence ?? '') || null,
+      sensitive,
+    };
+    const id = createHash('sha256')
+      .update(`${filename}:${messages.length}:${claimText}`)
+      .digest('hex')
+      .slice(0, 24);
+    messages.push({
+      id: `handoff-${id}`,
+      role: 'handoff',
+      text: claimText,
+      createdAt: null,
+      handoffClaim: claim,
+    });
+    metadata = {};
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const primaryHeading = line.match(/^#\s+(.+)$/);
+    if (primaryHeading) {
+      flush();
+      const heading = stripMarkdown(primaryHeading[1]);
+      section = ['Stable Memories', 'Sensitive Information'].includes(heading) ? heading : '';
+      subsection = '';
+      continue;
+    }
+    const secondaryHeading = line.match(/^##\s+(.+)$/);
+    if (secondaryHeading) {
+      flush();
+      subsection = stripMarkdown(secondaryHeading[1]);
+      continue;
+    }
+    if (/^###\s+Claim\b/i.test(line)) {
+      flush();
+      collectingClaim = true;
+      claimLines = [];
+      metadata = {};
+      continue;
+    }
+    if (!collectingClaim) continue;
+
+    const field = line.match(/^\*\s+\*\*([^*]+):\*\*\s*(.*)$/);
+    if (field) {
+      metadata[field[1].trim().toLowerCase()] = field[2].trim();
+      continue;
+    }
+    if (line && line !== '---' && !line.startsWith('#')) claimLines.push(line);
+  }
+  flush();
+
+  if (messages.length === 0) {
+    throw new Error('This LoreBook memory handoff does not contain any importable Claim sections.');
+  }
+
+  const conversationId = `handoff-${createHash('sha256').update(text).digest('hex').slice(0, 24)}`;
+  const conversation: ChatGPTExportConversation = {
+    id: conversationId,
+    title: 'LoreBook Memory Handoff',
+    createdAt: null,
+    updatedAt: null,
+    messages,
+  };
+  const summary: ChatGPTExportConversationSummary = {
+    id: conversation.id,
+    title: conversation.title,
+    createdAt: null,
+    updatedAt: null,
+    messageCount: messages.length,
+    userMessageCount: 0,
+    assistantMessageCount: 0,
+    preview: messages[0]?.text.slice(0, 180) ?? '',
+  };
+  return {
+    conversations: [conversation],
+    inventory: {
+      conversations: [summary],
+      conversationCount: 1,
+      messageCount: messages.length,
+      userMessageCount: 0,
+      assistantMessageCount: 0,
+      candidateClaimCount: messages.length,
+      earliestAt: null,
+      latestAt: null,
+      sourceFiles: [filename],
+    },
+  };
+}
+
 async function jsonSources(
   buffer: Buffer,
   filename: string,
@@ -205,6 +368,12 @@ export async function parseChatGPTExport(
   buffer: Buffer,
   filename: string,
 ): Promise<{ conversations: ChatGPTExportConversation[]; inventory: ChatGPTExportInventory }> {
+  const isZip = filename.toLowerCase().endsWith('.zip') || buffer.subarray(0, 2).toString() === 'PK';
+  if (!isZip) {
+    const text = buffer.toString('utf8');
+    if (isLoreBookMemoryHandoff(text)) return parseLoreBookMemoryHandoff(text, filename);
+  }
+
   const sources = await jsonSources(buffer, filename);
   const byId = new Map<string, ChatGPTExportConversation>();
   let index = 0;
@@ -246,6 +415,11 @@ export async function parseChatGPTExport(
       messageCount: summaries.reduce((sum, item) => sum + item.messageCount, 0),
       userMessageCount: summaries.reduce((sum, item) => sum + item.userMessageCount, 0),
       assistantMessageCount: summaries.reduce((sum, item) => sum + item.assistantMessageCount, 0),
+      candidateClaimCount: conversations.reduce(
+        (sum, conversation) =>
+          sum + conversation.messages.filter((message) => message.role === 'handoff').length,
+        0,
+      ),
       earliestAt: timestamps[0] ?? null,
       latestAt: timestamps.at(-1) ?? null,
       sourceFiles: sources.map((source) => source.filename),

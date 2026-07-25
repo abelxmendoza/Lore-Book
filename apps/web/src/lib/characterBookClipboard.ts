@@ -1,9 +1,13 @@
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import type { Character } from '../components/characters/CharacterProfileCard';
 
-export function buildCharacterBookClipboardText(characters: Character[]): string {
+export function buildCharacterBookClipboardText(
+  characters: Character[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Character Book',
+    filters: options?.filters,
     items: characters.map((c) => {
       const analytics = c.analytics as
         | { closeness_score?: number; recency_score?: number; mention_count?: number }

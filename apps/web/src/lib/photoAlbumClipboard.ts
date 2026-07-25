@@ -1,4 +1,4 @@
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import type { PhotoEntry } from '../services/mockDataService';
 
 function metaRecord(photo: PhotoEntry): Record<string, unknown> {
@@ -11,9 +11,13 @@ function asStringArray(value: unknown): string[] | undefined {
   return out.length ? out : undefined;
 }
 
-export function buildPhotoAlbumClipboardText(photos: PhotoEntry[]): string {
+export function buildPhotoAlbumClipboardText(
+  photos: PhotoEntry[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Photo Album',
+    filters: options?.filters,
     items: photos.map((photo) => {
       const meta = metaRecord(photo);
       const people =

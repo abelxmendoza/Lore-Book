@@ -329,6 +329,15 @@ export class StitchedTimelineService {
       life_arc_id?: string;
       start_time?: string;
       end_time?: string;
+      /**
+       * Restrict the global scope to events involving this character (matched
+       * against resolved_events.people, the same field character_timeline_events
+       * is built from). Journal moments and timeline_events carry no character
+       * linkage today, so they're excluded rather than guessed at — better an
+       * honest subset than the old free-text "?q=" search this replaces, which
+       * could silently fall back to fabricated mock results.
+       */
+      character_id?: string;
     } = {}
   ): Promise<StitchedTimelineResult> {
     const scopeType: ChronologyScopeType =
@@ -527,8 +536,9 @@ export class StitchedTimelineService {
       }
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
+      const characterId = opts.character_id;
 
-      for (const m of moments) {
+      for (const m of characterId ? [] : moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
         items.push({
@@ -557,8 +567,11 @@ export class StitchedTimelineService {
       // same occurrence collapse to one item; the stitcher never sees
       // duplicate paraphrases. Identity comes from structured properties
       // (who/where/what/when), not from generated wording.
+      const scopedResolvedRows = characterId
+        ? (resolvedRows ?? []).filter((e) => ((e.people as string[] | null) ?? []).includes(characterId))
+        : (resolvedRows ?? []);
       const clusters = clusterDuplicateEvents(
-        (resolvedRows ?? []).map((e) => ({
+        scopedResolvedRows.map((e) => ({
           id: e.id as string,
           title: (e.title as string) ?? 'Event',
           summary: (e.summary as string) ?? '',
@@ -611,7 +624,7 @@ export class StitchedTimelineService {
         });
       }
 
-      for (const e of eventRows ?? []) {
+      for (const e of characterId ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
         const sortTime = e.event_date ?? e.occurred_at ?? new Date().toISOString();
         const key = `event:${e.id}`;

@@ -172,6 +172,55 @@ describe('Characters API Routes', () => {
       expect(response.body).toHaveProperty('error');
       expect(response.body).toHaveProperty('details');
     });
+
+    it('should persist species on a pet character', async () => {
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      let insertedPayload: Record<string, unknown> | undefined;
+      const petCharacter = { ...mockCharacter, name: 'Max', species: 'dog' };
+
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: petCharacter, error: null });
+        chain.insert = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+          insertedPayload = payload;
+          return {
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: petCharacter, error: null }),
+            }),
+          };
+        });
+        Object.assign(chain, {
+          then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+            const data = table === 'characters' ? [] : [];
+            return Promise.resolve(onFulfilled({ data, error: null }));
+          },
+        });
+        return chain as never;
+      });
+
+      const { characterAvatarUrl, avatarStyleFor } = await import('../../src/utils/avatar');
+      const { cacheAvatar } = await import('../../src/utils/cacheAvatar');
+      vi.mocked(characterAvatarUrl).mockReturnValue('https://avatar.url');
+      vi.mocked(avatarStyleFor).mockReturnValue('adventurer');
+      vi.mocked(cacheAvatar).mockResolvedValue('https://cached.avatar.url');
+
+      const response = await request(app)
+        .post('/api/characters')
+        .send({ name: 'Max', species: 'dog' })
+        .expect(201);
+
+      expect(insertedPayload?.species).toBe('dog');
+      expect(response.body.character.species).toBe('dog');
+    });
   });
 });
 

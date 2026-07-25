@@ -168,8 +168,8 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
           <div>
             <p className="text-sm font-medium text-white">Private, review-first migration</p>
             <p className="mt-1 text-xs leading-relaxed text-white/45">
-              LoreBook treats your messages as evidence, excludes assistant claims from canon,
-              detects likely hypotheticals, and sends every proposed memory to review.
+              LoreBook treats export messages as evidence and handoff claims as lower-confidence
+              AI recall. Every proposed memory goes to review before becoming canon.
             </p>
           </div>
         </div>
@@ -216,13 +216,13 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
           <FileArchive className="mx-auto h-8 w-8 text-white/30" />
           <p className="mt-3 text-sm font-medium text-white/80">Upload your ChatGPT data export</p>
           <p className="mx-auto mt-1 max-w-lg text-xs text-white/40">
-            Choose the ZIP from OpenAI, a conversations.json file, or numbered conversation JSON files packaged in the ZIP.
+            Choose the ZIP from OpenAI, a conversations JSON file, or a reviewed LoreBook memory handoff in Markdown or text.
           </p>
           <input
             ref={inputRef}
             data-testid="chatgpt-export-file"
             type="file"
-            accept=".zip,.json,application/zip,application/json"
+            accept=".zip,.json,.md,.txt,application/zip,application/json,text/markdown,text/plain"
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -236,7 +236,7 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
           >
             {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {analyzing ? 'Reading export…' : 'Choose ChatGPT export'}
+            {analyzing ? 'Reading import…' : 'Choose ChatGPT export or handoff'}
           </button>
         </div>
         </>
@@ -247,7 +247,10 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               ['Conversations', inventory.conversationCount],
-              ['Your messages', inventory.userMessageCount],
+              [
+                inventory.candidateClaimCount > 0 ? 'Candidate claims' : 'Your messages',
+                inventory.candidateClaimCount || inventory.userMessageCount,
+              ],
               ['Assistant excluded', inventory.assistantMessageCount],
               ['Selected', selectedIds.size],
             ].map(([label, value]) => (
@@ -348,7 +351,11 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
                     <span className="min-w-0">
                       <span className="block truncate text-sm text-white/75">{conversation.title}</span>
                       <span className="block truncate text-[11px] text-white/35">
-                        {conversation.userMessageCount} of your messages · {conversation.preview}
+                        {inventory.candidateClaimCount > 0
+                          ? `${conversation.messageCount} candidate claims`
+                          : `${conversation.userMessageCount} of your messages`}
+                        {' · '}
+                        {conversation.preview}
                       </span>
                     </span>
                   </label>
@@ -361,7 +368,10 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
             <label className="flex items-start justify-between gap-4">
               <span>
                 <span className="block text-sm text-white/70">Include potentially sensitive claims</span>
-                <span className="block text-xs text-white/35">Health, sexuality, finances, politics, religion, trauma, and legal topics.</span>
+                <span className="block text-xs text-white/35">
+                  Identity, employment, family or social conflict, health, sexuality, finances,
+                  politics, religion, trauma, and legal topics.
+                </span>
               </span>
               <input
                 type="checkbox"
@@ -395,7 +405,9 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
               ? `Building profile proposals… ${progress?.progress ?? 0}%`
               : progress?.completed
                 ? 'Extraction complete'
-                : `Create review proposals from ${effectiveSelectedIds.length} conversations`}
+                : inventory.candidateClaimCount > 0
+                  ? `Create review proposals from ${inventory.candidateClaimCount} candidate claims`
+                  : `Create review proposals from ${effectiveSelectedIds.length} conversations`}
           </button>
 
           {progress && (

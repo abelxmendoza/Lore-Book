@@ -11,6 +11,7 @@ import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
 import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
 import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
+import { resolveMention, type ResolutionCandidate } from './entities/entityResolutionCore';
 
 export type EntityType = 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ORG' | 'CONCEPT' | 'PERSON';
 export type ConflictReason =
@@ -800,7 +801,6 @@ export class EntityResolutionService {
     } = {}
   ): Promise<EntityCandidate[]> {
     const { tier = 'PRIMARY', limit = 3 } = options;
-    const normalizedMention = mentionText.toLowerCase().trim();
 
     try {
       // Get all PRIMARY tier entities
@@ -811,57 +811,24 @@ export class EntityResolutionService {
 
       // Filter to only PRIMARY tier (user-visible)
       const primaryEntities = allEntities.filter(e => e.resolution_tier === 'PRIMARY');
+      const byId = new Map(primaryEntities.map(e => [e.entity_id, e]));
 
-      // Score candidates by name/alias similarity
-      const candidates: Array<EntityCandidate & { similarityScore: number }> = [];
+      // Score/rank via the canonical resolver (lexical + context ranking) instead
+      // of a bespoke substring/JW-style heuristic — one scoring brain, not two.
+      const resolutionCandidates: ResolutionCandidate[] = primaryEntities.map(e => ({
+        id: e.entity_id,
+        name: e.primary_name,
+        aliases: e.aliases,
+        type: e.entity_type,
+        mentions: e.usage_count,
+        lastMentionedAt: e.last_seen,
+      }));
+      const { ranked } = resolveMention(mentionText, resolutionCandidates);
 
-      for (const entity of primaryEntities) {
-        let score = 0;
-
-        // Exact name match
-        if (entity.primary_name.toLowerCase() === normalizedMention) {
-          score = 1.0;
-        }
-        // Name contains mention or vice versa
-        else if (
-          entity.primary_name.toLowerCase().includes(normalizedMention) ||
-          normalizedMention.includes(entity.primary_name.toLowerCase())
-        ) {
-          score = 0.8;
-        }
-        // Alias match
-        else if (entity.aliases.some(alias => alias.toLowerCase() === normalizedMention)) {
-          score = 0.9;
-        }
-        // Alias contains mention
-        else if (entity.aliases.some(alias => alias.toLowerCase().includes(normalizedMention))) {
-          score = 0.7;
-        }
-        // Fuzzy match (first name, last name, etc.)
-        else {
-          const nameParts = entity.primary_name.toLowerCase().split(/\s+/);
-          const mentionParts = normalizedMention.split(/\s+/);
-          const matchingParts = nameParts.filter(part => mentionParts.some(m => part.includes(m) || m.includes(part)));
-          if (matchingParts.length > 0) {
-            score = 0.5 + (matchingParts.length / nameParts.length) * 0.2;
-          }
-        }
-
-        if (score > 0) {
-          candidates.push({ ...entity, similarityScore: score });
-        }
-      }
-
-      // Sort by similarity score, then by usage count
-      candidates.sort((a, b) => {
-        if (b.similarityScore !== a.similarityScore) {
-          return b.similarityScore - a.similarityScore;
-        }
-        return b.usage_count - a.usage_count;
-      });
-
-      // Return top candidates without similarityScore
-      return candidates.slice(0, limit).map(({ similarityScore, ...entity }) => entity);
+      return ranked
+        .slice(0, limit)
+        .map(r => byId.get(r.id))
+        .filter((e): e is EntityCandidate => Boolean(e));
     } catch (error) {
       logger.error({ error, userId, mentionText }, 'Failed to find entity candidates');
       return [];

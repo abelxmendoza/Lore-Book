@@ -109,6 +109,8 @@ const createCharacterSchema = z.object({
   lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
+  /** Non-null marks this as a pet (dog, cat, etc.) rather than a person. */
+  species: z.string().optional(),
   archetype: z.string().optional(),
   role: z.string().optional(),
   status: z.string().optional(),
@@ -145,6 +147,8 @@ const updateCharacterSchema = z.object({
   lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
+  /** Non-null marks this as a pet (dog, cat, etc.) rather than a person. */
+  species: z.string().optional(),
   archetype: z.string().optional(),
   role: z.string().optional(),
   status: z.string().optional(),
@@ -485,6 +489,7 @@ async function mergeExtractedCharacterData(
 
   if (!existing.role && characterData.role) payload.role = characterData.role;
   if (!existing.pronouns && characterData.pronouns) payload.pronouns = characterData.pronouns;
+  if (!existing.species && characterData.species) payload.species = characterData.species;
   if (!existing.archetype && characterData.archetype) payload.archetype = characterData.archetype;
   if (!existing.summary && characterData.summary) {
     payload.summary = characterData.summary;
@@ -596,7 +601,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const characterData = parsed.data;
     const userId = req.user!.id;
     const createResult = await characterRegistry.runExclusive(userId, async () => {
-      if (looksLikeNonPersonName(characterData.name)) {
+      // An explicit species (e.g. "dog") is unambiguous user-asserted evidence
+      // that this row is a pet, not a person — skip the person-shape gate,
+      // which has no pet awareness (it never receives message context here).
+      if (!characterData.species && looksLikeNonPersonName(characterData.name)) {
         return { type: 'reject' as const, reason: 'non_person_name' };
       }
       const hasExplicitAlias = (characterData.alias ?? []).length > 0;
@@ -742,6 +750,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           last_name: nameParts.lastName || null,
           alias: filterValidAliases(decision.cleanName, characterData.alias ?? []),
           pronouns: characterData.pronouns || null,
+          species: characterData.species || null,
           archetype: characterData.archetype || null,
           role: characterData.role || null,
           status: characterData.status || 'active',
@@ -1235,6 +1244,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
           name: char.name,
           alias: char.alias || [],
           pronouns: char.pronouns,
+          species: char.species,
           archetype: char.archetype,
           role: char.role,
           status: char.status || 'active',
@@ -1336,6 +1346,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         name: person.name,
         alias: person.corrected_names || [],
         pronouns: undefined,
+        species: undefined,
         archetype: undefined,
         role: undefined,
         status: 'active',
@@ -1732,6 +1743,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       name: character.name,
       alias: character.alias || [],
       pronouns: character.pronouns,
+      species: character.species,
       archetype: character.archetype,
       role: character.role,
       status: character.status || 'active',
@@ -1909,6 +1921,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (lastNameToUpdate !== undefined) payload.last_name = lastNameToUpdate;
     if (updateData.alias !== undefined || aliasToUpdate !== existingChar?.alias) payload.alias = aliasToUpdate;
     if (updateData.pronouns !== undefined) payload.pronouns = updateData.pronouns;
+    if (updateData.species !== undefined) payload.species = updateData.species;
     if (updateData.archetype !== undefined) payload.archetype = updateData.archetype;
     if (updateData.role !== undefined) payload.role = updateData.role;
     if (updateData.status !== undefined) payload.status = updateData.status;
@@ -2929,6 +2942,154 @@ router.get('/:id/lore-profile', requireAuth, async (req: AuthenticatedRequest, r
   } catch (error) {
     logger.error({ error, characterId }, 'Failed to get character lore profile');
     res.status(500).json({ error: 'Failed to get character lore profile' });
+  }
+});
+
+// POST /api/characters/:id/lore-items/repair-attribution
+// Unlink first-person interests wrongly attached via co-mention (Mom-got-Duolingo).
+router.post('/:id/lore-items/repair-attribution', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const dryRun = req.body?.dryRun === true;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    const { repairFirstPersonCoMentionPollution } = await import(
+      '../services/conversationCentered/interestCoMentionCleanupService'
+    );
+    const result = await repairFirstPersonCoMentionPollution(userId, { characterId, dryRun });
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to repair lore attribution');
+    res.status(500).json({ error: 'Failed to repair lore attribution' });
+  }
+});
+
+// DELETE /api/characters/:id/lore-items/:itemId
+// Unlink a hobby/interest (or dismiss an entity attribute) from this character.
+// Global interest rows stay in the user's growing knowledge list.
+// Learns: dismissed characters are blocked from silent re-attach on ingest.
+router.delete('/:id/lore-items/:itemId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const itemId = String(req.params.itemId);
+  const label = typeof req.query.label === 'string' ? req.query.label : undefined;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    // Interest UUID → unlink from related_character_ids
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) {
+      const { interestTracker } = await import('../services/conversationCentered/interestTracker');
+      const ok = await interestTracker.unlinkCharacterFromInterest(userId, itemId, characterId);
+      if (!ok) return res.status(404).json({ error: 'Interest not found' });
+      return res.json({
+        success: true,
+        unlinked: 'interest',
+        learned: true,
+        message: 'Removed. LoreBook will not re-add this from chats unless you restore it.',
+      });
+    }
+
+    // Attribute chip id: attr-<type>-<value>
+    if (itemId.startsWith('attr-')) {
+      const rest = itemId.slice('attr-'.length);
+      const dash = rest.indexOf('-');
+      const attrType = dash >= 0 ? rest.slice(0, dash) : rest;
+      const attrValue = label || (dash >= 0 ? rest.slice(dash + 1) : '');
+      let query = supabaseAdmin
+        .from('entity_attributes')
+        .update({ is_current: false, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('entity_id', characterId)
+        .eq('entity_type', 'character')
+        .eq('attribute_type', attrType);
+      if (attrValue) query = query.ilike('attribute_value', attrValue);
+      const { error } = await query;
+      if (error) {
+        logger.warn({ error, characterId, itemId }, 'Failed to dismiss entity attribute');
+        return res.status(500).json({ error: 'Failed to dismiss attribute' });
+      }
+      return res.json({ success: true, unlinked: 'attribute', learned: true });
+    }
+
+    return res.status(400).json({ error: 'Unsupported lore item id' });
+  } catch (error) {
+    logger.error({ error, characterId, itemId }, 'Failed to unlink lore item');
+    res.status(500).json({ error: 'Failed to unlink lore item' });
+  }
+});
+
+// POST /api/characters/:id/lore-items/:itemId/restore
+// Undo a dismiss — re-link hobby/interest and clear the learn-not-to-reattach block.
+router.post('/:id/lore-items/:itemId/restore', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const itemId = String(req.params.itemId);
+  const label = typeof req.body?.label === 'string' ? req.body.label : undefined;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) {
+      const { interestTracker } = await import('../services/conversationCentered/interestTracker');
+      const result = await interestTracker.relinkCharacterToInterest(userId, itemId, characterId);
+      if (!result.ok) return res.status(404).json({ error: 'Interest not found' });
+      return res.json({
+        success: true,
+        restored: 'interest',
+        interestName: result.interestName,
+        message: 'Restored. LoreBook can link this again from your chats.',
+      });
+    }
+
+    if (itemId.startsWith('attr-')) {
+      const rest = itemId.slice('attr-'.length);
+      const dash = rest.indexOf('-');
+      const attrType = dash >= 0 ? rest.slice(0, dash) : rest;
+      const attrValue = label || (dash >= 0 ? rest.slice(dash + 1) : '');
+      let query = supabaseAdmin
+        .from('entity_attributes')
+        .update({ is_current: true, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('entity_id', characterId)
+        .eq('entity_type', 'character')
+        .eq('attribute_type', attrType);
+      if (attrValue) query = query.ilike('attribute_value', attrValue);
+      const { error } = await query;
+      if (error) {
+        logger.warn({ error, characterId, itemId }, 'Failed to restore entity attribute');
+        return res.status(500).json({ error: 'Failed to restore attribute' });
+      }
+      return res.json({ success: true, restored: 'attribute' });
+    }
+
+    return res.status(400).json({ error: 'Unsupported lore item id' });
+  } catch (error) {
+    logger.error({ error, characterId, itemId }, 'Failed to restore lore item');
+    res.status(500).json({ error: 'Failed to restore lore item' });
   }
 });
 

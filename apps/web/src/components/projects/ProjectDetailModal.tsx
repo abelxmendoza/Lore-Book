@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Briefcase,
   X,
@@ -19,6 +20,15 @@ import {
   enrichProjectForDemo,
   getProjectDetailProfile,
 } from '../../mocks/projectModalDemoData';
+import { projectHasEnoughTimelineForLorebook } from '../../lib/projectTimelineClipboard';
+import {
+  evaluateProjectTierOffer,
+  type LorebookForm,
+} from '../../lib/lorebookTiers';
+import {
+  KnowledgeBaseCreator,
+  type LorebookCreatorPrefill,
+} from '../lorebook/KnowledgeBaseCreator';
 import type { ProjectCardData } from './ProjectProfileCard';
 import {
   ProjectOverviewTab,
@@ -54,7 +64,9 @@ type Props = {
 };
 
 export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskInChat }: Props) {
+  const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
+  const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
   const demo = useShouldUseMockData();
   const enriched = useMemo(
     () => (demo ? enrichProjectForDemo(project) : project),
@@ -67,6 +79,44 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
 
   const [local, setLocal] = useState(enriched);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+
+  const openInOmniTimeline = (query: string) => {
+    onClose();
+    navigate(`/timeline?view=search&q=${encodeURIComponent(query)}`);
+  };
+
+  const openProjectLorebookCreator = (form?: LorebookForm) => {
+    const tierOffer = evaluateProjectTierOffer(profile, local.name);
+    if (!tierOffer.canCreateAny && !projectHasEnoughTimelineForLorebook(profile)) return;
+    const selected = form ?? tierOffer.highestUnlocked ?? 'vignette';
+    const times = profile.milestones
+      .map((m) => new Date(m.date).getTime())
+      .filter((t) => Number.isFinite(t));
+    const themes = [local.name, local.type, ...(local.tags ?? [])]
+      .filter(Boolean)
+      .join(', ');
+    const base = {
+      lorebookName: `${local.name} LoreBook`,
+      saveAsCore: true as const,
+      form: selected,
+      unlockedForms: tierOffer.unlocked,
+    };
+    if (times.length >= 2) {
+      setLorebookPrefill({
+        ...base,
+        scope: 'time_range',
+        timeRangeStart: new Date(Math.min(...times)).toISOString().slice(0, 10),
+        timeRangeEnd: new Date(Math.max(...times)).toISOString().slice(0, 10),
+        themes,
+      });
+    } else {
+      setLorebookPrefill({
+        ...base,
+        scope: 'thematic',
+        themes: themes || local.name,
+      });
+    }
+  };
 
   useEffect(() => {
     setLocal(demo ? enrichProjectForDemo(project) : project);
@@ -120,6 +170,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
   };
 
   return (
+    <>
     <Modal isOpen onClose={onClose} maxWidth="3xl">
       <div
         className="flex flex-col min-h-0 h-full sm:max-h-[90vh]"
@@ -252,7 +303,12 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
             </TabsContent>
 
             <TabsContent value="timeline" className="mt-0 focus-visible:outline-none">
-              <ProjectTimelineTab profile={profile} />
+              <ProjectTimelineTab
+                project={local}
+                profile={profile}
+                onOpenInOmniTimeline={openInOmniTimeline}
+                onCreateLorebook={openProjectLorebookCreator}
+              />
             </TabsContent>
 
             <TabsContent value="people" className="mt-0 focus-visible:outline-none">
@@ -274,5 +330,14 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
         </Tabs>
       </div>
     </Modal>
+
+      {lorebookPrefill && (
+        <KnowledgeBaseCreator
+          prefill={lorebookPrefill}
+          onClose={() => setLorebookPrefill(null)}
+          onGenerated={() => setLorebookPrefill(null)}
+        />
+      )}
+    </>
   );
 }

@@ -15,12 +15,20 @@ import { Label } from '../ui/label';
 // Using native select for now - can upgrade to proper Select component later
 import { Textarea } from '../ui/textarea';
 import { fetchJson } from '../../lib/api';
-import type { BiographySpec, Domain, BiographyTone, BiographyDepth, BiographyAudience } from '../../../server/src/services/biographyGeneration/types';
+import type { BiographySpec, Domain, BiographyTone, BiographyDepth, BiographyAudience, BiographyForm } from '../../../server/src/services/biographyGeneration/types';
+import {
+  LOREBOOK_TIER_ORDER,
+  LOREBOOK_TIERS,
+  defaultDepthForForm,
+  type LorebookForm,
+} from '../../lib/lorebookTiers';
 import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
 
 /** Prefill for launching the creator from another surface (e.g. a timeline arc). */
 export interface LorebookCreatorPrefill {
   scope?: 'full_life' | 'domain' | 'time_range' | 'thematic';
+  /** Biography domain, used when scope is domain */
+  domain?: Domain;
   /** YYYY-MM-DD, used when scope is time_range */
   timeRangeStart?: string;
   timeRangeEnd?: string;
@@ -28,6 +36,10 @@ export interface LorebookCreatorPrefill {
   themes?: string;
   lorebookName?: string;
   saveAsCore?: boolean;
+  /** Document shape tier */
+  form?: LorebookForm;
+  /** Forms unlocked on the launching surface (for UI hints) */
+  unlockedForms?: LorebookForm[];
 }
 
 interface KnowledgeBaseCreatorProps {
@@ -78,19 +90,26 @@ const VERSIONS: { value: 'main' | 'safe' | 'explicit' | 'private'; label: string
 ];
 
 export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: KnowledgeBaseCreatorProps) => {
+  const initialForm: LorebookForm = prefill?.form ?? 'book';
   const [scope, setScope] = useState<'full_life' | 'domain' | 'time_range' | 'thematic'>(prefill?.scope ?? 'full_life');
-  const [domain, setDomain] = useState<Domain | undefined>(undefined);
+  const [domain, setDomain] = useState<Domain | undefined>(prefill?.domain);
   const [timeRangeStart, setTimeRangeStart] = useState(prefill?.timeRangeStart ?? '');
   const [timeRangeEnd, setTimeRangeEnd] = useState(prefill?.timeRangeEnd ?? '');
   const [themes, setThemes] = useState(prefill?.themes ?? '');
+  const [form, setForm] = useState<LorebookForm>(initialForm);
   const [tone, setTone] = useState<BiographyTone>('neutral');
-  const [depth, setDepth] = useState<BiographyDepth>('detailed');
+  const [depth, setDepth] = useState<BiographyDepth>(defaultDepthForForm(initialForm));
   const [audience, setAudience] = useState<BiographyAudience>('self');
   const [version, setVersion] = useState<'main' | 'safe' | 'explicit' | 'private'>('main');
   const [lorebookName, setLorebookName] = useState(prefill?.lorebookName ?? '');
   const [saveAsCore, setSaveAsCore] = useState(prefill?.saveAsCore ?? false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectForm = (next: LorebookForm) => {
+    setForm(next);
+    setDepth(defaultDepthForForm(next));
+  };
 
   const handleGenerate = async () => {
     setError(null);
@@ -99,10 +118,11 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
 
     try {
       // Build spec based on scope
-      const spec: BiographySpec & { version?: string; lorebookName?: string } = {
+      const spec: BiographySpec & { version?: string; lorebookName?: string; form?: BiographyForm } = {
         scope,
         tone,
         depth,
+        form,
         audience,
         version: version as any, // API expects version field
         includeIntrospection: version !== 'safe',
@@ -237,6 +257,46 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
             </div>
           )}
 
+          {/* Form tier */}
+          <div className="space-y-3">
+            <Label className="text-white font-semibold flex items-center gap-2">
+              <BookOpen className="h-4 w-4" />
+              Form
+            </Label>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {LOREBOOK_TIER_ORDER.map((tier) => {
+                const def = LOREBOOK_TIERS[tier];
+                const hinted =
+                  !prefill?.unlockedForms ||
+                  prefill.unlockedForms.length === 0 ||
+                  prefill.unlockedForms.includes(tier);
+                return (
+                  <button
+                    key={tier}
+                    type="button"
+                    onClick={() => selectForm(tier)}
+                    data-testid={`lorebook-form-${tier}`}
+                    className={`p-2.5 rounded-lg border transition-all text-left ${
+                      form === tier
+                        ? 'border-amber-400/60 bg-amber-500/15 text-amber-50'
+                        : hinted
+                          ? 'border-border/50 bg-black/40 text-white/70 hover:border-amber-500/40'
+                          : 'border-border/30 bg-black/20 text-white/35 hover:border-white/20'
+                    }`}
+                    title={def.description}
+                  >
+                    <div className="font-medium text-sm mb-0.5">{def.label}</div>
+                    <div className="text-[10px] text-white/45 leading-snug">{def.description}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-white/50 flex items-start gap-2">
+              <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+              Smaller forms unlock earlier as you gather memories. Depth still controls prose density.
+            </p>
+          </div>
+
           {/* Scope Selection */}
           <div className="space-y-3">
             <Label className="text-white font-semibold flex items-center gap-2">
@@ -364,9 +424,11 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
                 </select>
               </div>
 
-              {/* Depth */}
+              {/* Depth — secondary for short forms; still available for polish */}
               <div className="space-y-2">
-                <Label className="text-white/70 text-sm">Depth</Label>
+                <Label className="text-white/70 text-sm">
+                  Depth{form === 'vignette' || form === 'chapter' ? ' (optional)' : ''}
+                </Label>
                 <select
                   value={depth}
                   onChange={(e) => setDepth(e.target.value as BiographyDepth)}

@@ -1,6 +1,6 @@
 import type { RomanticRelationship } from '../components/love/LoveAndRelationshipsView';
 
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 
 function percent(value: number | null | undefined): string | null {
   return value == null ? null : `${Math.round(value * 100)}%`;
@@ -8,9 +8,11 @@ function percent(value: number | null | undefined): string | null {
 
 export function buildDatingRomanceClipboardText(
   relationships: RomanticRelationship[],
+  options?: ListClipboardFilterOptions,
 ): string {
   return buildListClipboardText({
     title: 'Dating and Romance',
+    filters: options?.filters,
     items: relationships.map((relationship) => {
       const signals = relationship.metadata?.signals;
       return {

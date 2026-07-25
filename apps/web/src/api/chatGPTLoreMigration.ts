@@ -11,6 +11,7 @@ export type ChatGPTConversationSummary = {
   messageCount: number;
   userMessageCount: number;
   assistantMessageCount: number;
+  candidateClaimCount: number;
   preview: string;
 };
 
@@ -28,6 +29,7 @@ export type ChatGPTExportInventory = {
 export type ChatGPTLoreMigrationStats = {
   conversationsProcessed: number;
   userMessagesConsidered: number;
+  handoffClaimsConsidered: number;
   assistantMessagesExcluded: number;
   hypotheticalMessagesExcluded: number;
   sensitiveClaimsExcluded: number;

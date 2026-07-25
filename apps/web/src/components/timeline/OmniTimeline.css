@@ -406,6 +406,51 @@
   min-height: 280px;
 }
 
+/* Story reading needs a tall split pane — fill remaining viewport, not the 560px cap */
+.omni-timeline-main > .timeline-story-root {
+  height: max(520px, calc(100dvh - var(--omni-timeline-chrome) - 6rem));
+  min-height: max(520px, calc(100dvh - var(--omni-timeline-chrome) - 6rem));
+  max-height: none;
+  border-radius: inherit;
+}
+
+/* When Story is active, lock the shell and give main the leftover viewport */
+.omni-timeline-root--story {
+  --omni-timeline-chrome: 9.5rem;
+}
+
+.omni-timeline-root--story .omni-timeline-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.omni-timeline-root--story .omni-timeline-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.omni-timeline-root--story .omni-timeline-main > .timeline-story-root {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
+@media (max-width: 640px) {
+  .omni-timeline-root--story {
+    --omni-timeline-chrome: 11.5rem;
+  }
+
+  .omni-timeline-root--story .omni-timeline-main {
+    margin-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .omni-timeline-main .timeline-gen-screen {
   min-height: min(360px, calc(100dvh - var(--omni-timeline-chrome)));
   height: min(420px, calc(100dvh - var(--omni-timeline-chrome)));

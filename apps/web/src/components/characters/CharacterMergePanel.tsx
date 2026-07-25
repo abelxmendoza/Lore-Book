@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Archive,
+  Check,
+  Copy,
   GitMerge,
   Info,
   RefreshCw,
@@ -14,6 +16,9 @@ import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKee
 import { invalidateCache } from '../../lib/requestCache';
 import { apiCache } from '../../lib/cache';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
+import { buildCharacterConsolidateClipboardText } from '../../lib/characterConsolidateClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/utils';
 import {
   useDeleteCharacterMutation,
   useGetCharactersBookQuery,
@@ -106,6 +111,8 @@ export const CharacterMergePanel = ({
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
@@ -178,6 +185,21 @@ export const CharacterMergePanel = ({
     setDeleteConfirmName('');
     setDeleteReason('wrong_person_or_not_real');
     setDeleteReasonNote('');
+  };
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildCharacterConsolidateClipboardText(duplicateGroups));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const afterConsolidation = async (notice: string, result?: { demoCharacters?: Character[] }) => {
@@ -694,14 +716,32 @@ export const CharacterMergePanel = ({
                   Choose the right action for duplicate or incorrect cards. Your cast stays unified in the database.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowHub(false)}
-                className="rounded-lg p-2 text-white/40 hover:text-white hover:bg-white/5"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyAll()}
+                  disabled={duplicateGroups.length === 0}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40',
+                    copied
+                      ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                      : 'border-white/10 text-white/60 hover:text-white hover:border-white/25',
+                  )}
+                  title="Copy all duplicate character groups as plain text"
+                  aria-label="Copy all duplicate characters"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? 'Copied' : 'Copy all'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHub(false)}
+                  className="rounded-lg p-2 text-white/40 hover:text-white hover:bg-white/5"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-5 space-y-5 overflow-y-auto">

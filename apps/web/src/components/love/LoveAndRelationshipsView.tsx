@@ -15,6 +15,7 @@ import {
 import { fetchCharacterList } from '../../api/characterList';
 import { useMockData } from '../../contexts/MockDataContext';
 import { buildDatingRomanceClipboardText } from '../../lib/datingRomanceClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { 
@@ -495,7 +496,14 @@ export const LoveAndRelationshipsView = () => {
   })();
   const clipboardRelationships =
     activeFilter === 'rankings' ? filteredRelationships : visibleRelationships;
-  const clipboardText = buildDatingRomanceClipboardText(clipboardRelationships);
+  const clipboardText = buildDatingRomanceClipboardText(clipboardRelationships, {
+    filters: clipboardFilterLines([
+      searchTerm.trim() && `search="${searchTerm.trim()}"`,
+      `tab=${activeFilter}`,
+      activeFilter === 'rankings' &&
+        'note=rankings_view_order_not_exported_using_filtered_relationships',
+    ]),
+  });
 
   const renderRelationshipCard = (rel: RomanticRelationship) => (
     <RelationshipCard
@@ -736,6 +744,7 @@ export const LoveAndRelationshipsView = () => {
           onViewModeChange={setViewMode}
           copyText={clipboardText}
           copyDisabled={clipboardRelationships.length === 0}
+          showCopy={activeFilter !== 'rankings'}
           storageKey={LOVE_VIEW_STORAGE_KEY}
         />
       </div>

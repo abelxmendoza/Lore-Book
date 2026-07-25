@@ -3,8 +3,6 @@
 // Purpose: Manage organizations with members, stories, events, locations
 // =====================================================
 
-import { logger } from '../logger';
-
 import {
   ORG_COLS,
   ORG_MEMBER_COLS,
@@ -12,7 +10,13 @@ import {
   ORG_EVENT_COLS,
   ORG_LOCATION_COLS,
 } from '../db/organizationColumns';
-import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
+import { logger } from '../logger';
+import {
+  normalizeNameKey,
+  namesOverlapByContainment,
+  splitPersonName,
+} from '../utils/nameNormalization';
+
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -38,6 +42,8 @@ export type GroupType =
   | 'team'
   | 'project'
   | 'event_group'
+  | 'care_team'
+  | 'support_network'
   | 'other';
 
 // ── Membership model ──────────────────────────────────────────────────
@@ -589,12 +595,16 @@ export class OrganizationService {
       const org = (orgData as unknown) as Organization | null;
       if (!org) return null;
 
-      const [members, stories, events, locations] = await Promise.all([
+      const [rawMembers, stories, events, locations] = await Promise.all([
         this.getMembers(org.id),
         this.getStories(org.id),
         this.getEvents(org.id),
         this.getLocations(org.id),
       ]);
+
+      // Upgrade name-only roster rows to Character Book ids when uniquely matched
+      // so Character modal Groups ↔ org People stay bidirectional for everyone.
+      const members = await this.linkNameOnlyMembers(userId, org.id, rawMembers);
 
       // Calculate analytics
       let analytics: GroupAnalytics | undefined;
@@ -859,18 +869,34 @@ export class OrganizationService {
       }
 
       // If this character is already on the roster, treat as idempotent update (role/status).
+      // Also upgrade legacy name-only rows (character_id null) when we now have a Character Book id.
       if (characterId) {
-        const { data: existing } = await supabaseAdmin
+        const { data: existingById } = await supabaseAdmin
           .from('organization_members')
           .select(ORG_MEMBER_COLS)
           .eq('user_id', userId)
           .eq('organization_id', organizationId)
           .eq('character_id', characterId)
           .maybeSingle();
+
+        let existing = existingById;
+        if (!existing && characterName) {
+          const { data: existingByName } = await supabaseAdmin
+            .from('organization_members')
+            .select(ORG_MEMBER_COLS)
+            .eq('user_id', userId)
+            .eq('organization_id', organizationId)
+            .is('character_id', null)
+            .ilike('character_name', characterName)
+            .maybeSingle();
+          existing = existingByName;
+        }
+
         if (existing) {
           const { data: updated, error: updErr } = await supabaseAdmin
             .from('organization_members')
             .update({
+              character_id: characterId,
               character_name: characterName,
               role: member.role ?? existing.role,
               joined_date: member.joined_date ?? existing.joined_date,
@@ -931,13 +957,128 @@ export class OrganizationService {
     if (!trimmed) return null;
     const { data, error } = await supabaseAdmin
       .from('characters')
-      .select('id, name')
+      .select('id, name, alias')
       .eq('user_id', userId)
       .ilike('name', trimmed)
       .limit(2);
-    if (error || !data?.length) return null;
-    if (data.length !== 1) return null;
-    return { id: data[0].id, name: data[0].name || trimmed };
+    if (!error && data?.length === 1) {
+      return { id: data[0].id, name: data[0].name || trimmed };
+    }
+
+    // Fallback: roster first-name / short label uniquely matches one Character Book card
+    // via containment (e.g. roster "Wiriya" ↔ book "Wiriya S.").
+    const needle = normalizeNameKey(trimmed);
+    if (!needle || needle.length < 2) return null;
+    const { data: pool, error: poolErr } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias')
+      .eq('user_id', userId)
+      .limit(500);
+    if (poolErr || !pool?.length) return null;
+
+    const matches = pool.filter((row) => {
+      const labels = [row.name, ...((row.alias as string[] | null) ?? [])].filter(Boolean) as string[];
+      return labels.some((label) => {
+        const norm = normalizeNameKey(label);
+        if (!norm) return false;
+        if (norm === needle) return true;
+        return namesOverlapByContainment(needle, norm);
+      });
+    });
+    if (matches.length !== 1) return null;
+    return { id: matches[0].id, name: matches[0].name || trimmed };
+  }
+
+  /**
+   * Persist Character Book ids onto name-only roster rows when the match is unique.
+   * Makes org People → Character Groups a true two-way link for every roster member.
+   */
+  private async linkNameOnlyMembers(
+    userId: string,
+    organizationId: string,
+    members: OrganizationMember[],
+  ): Promise<OrganizationMember[]> {
+    if (!members.length) return members;
+    const out: OrganizationMember[] = [];
+    let changed = false;
+
+    for (const member of members) {
+      if (member.character_id) {
+        out.push(member);
+        continue;
+      }
+      const resolved = await this.resolveUniqueCharacterByName(userId, member.character_name);
+      if (!resolved) {
+        out.push(member);
+        continue;
+      }
+
+      // Prefer existing durable row for this character_id over a parallel name-only row.
+      const { data: existingById } = await supabaseAdmin
+        .from('organization_members')
+        .select(ORG_MEMBER_COLS)
+        .eq('user_id', userId)
+        .eq('organization_id', organizationId)
+        .eq('character_id', resolved.id)
+        .maybeSingle();
+
+      if (existingById && existingById.id !== member.id) {
+        await supabaseAdmin
+          .from('organization_members')
+          .delete()
+          .eq('id', member.id)
+          .eq('user_id', userId);
+        out.push(existingById as OrganizationMember);
+        changed = true;
+        continue;
+      }
+
+      const { data: updated, error } = await supabaseAdmin
+        .from('organization_members')
+        .update({
+          character_id: resolved.id,
+          character_name: resolved.name,
+        })
+        .eq('id', member.id)
+        .eq('user_id', userId)
+        .select(ORG_MEMBER_COLS)
+        .maybeSingle();
+
+      if (error || !updated) {
+        out.push(member);
+        continue;
+      }
+      changed = true;
+      out.push(updated as OrganizationMember);
+      void this.solidifyMembershipKnowledge(userId, organizationId, {
+        characterId: resolved.id,
+        characterName: resolved.name,
+        role: updated.role ?? member.role,
+      });
+    }
+
+    if (changed) this.invalidateOrganizations(userId);
+    return out;
+  }
+
+  /** Name strings that may appear on legacy name-only roster rows for this person. */
+  private collectMembershipNameCandidates(
+    fullName: string,
+    aliases: string[] = [],
+  ): string[] {
+    const out: string[] = [];
+    const push = (value: string | undefined) => {
+      const trimmed = value?.trim();
+      if (!trimmed) return;
+      if (!out.some((v) => v.toLowerCase() === trimmed.toLowerCase())) out.push(trimmed);
+    };
+    push(fullName);
+    for (const alias of aliases) push(alias);
+    const { firstName } = splitPersonName(fullName);
+    if (firstName && firstName.length >= 2 && firstName.toLowerCase() !== fullName.trim().toLowerCase()) {
+      push(firstName);
+    }
+    return out;
   }
 
   /**
@@ -1626,7 +1767,11 @@ export class OrganizationService {
 
   /**
    * Get all organizations that contain a given character as a member.
-   * Searches by character_id (if available) or character_name (fuzzy).
+   * Matches durable `character_id` links and legacy name-only roster rows so
+   * Character modal ↔ Groups modal stay bidirectional.
+   *
+   * Uses separate queries (not PostgREST `or`) so names with spaces/punctuation
+   * cannot break the whole lookup and return an empty Groups section.
    */
   async getOrganizationsByCharacter(
     userId: string,
@@ -1634,25 +1779,52 @@ export class OrganizationService {
     characterName?: string
   ): Promise<Organization[]> {
     try {
-      let memberQuery = supabaseAdmin
-        .from('organization_members')
-        .select('organization_id')
-        .eq('user_id', userId);
-
+      let resolvedName = characterName?.trim() || '';
+      let aliases: string[] = [];
       if (characterId) {
-        memberQuery = memberQuery.eq('character_id', characterId);
-      } else if (characterName) {
-        memberQuery = memberQuery.ilike('character_name', `%${characterName}%`);
-      } else {
-        return [];
+        const { data: character } = await supabaseAdmin
+          .from('characters')
+          .select('name, alias')
+          .eq('id', characterId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (character?.name?.trim()) resolvedName = character.name.trim();
+        else if (!resolvedName) resolvedName = '';
+        aliases = Array.isArray(character?.alias) ? (character.alias as string[]) : [];
       }
 
-      const { data: memberships, error } = await memberQuery;
-      if (error) throw error;
-      if (!memberships || memberships.length === 0) return [];
+      const orgIds = new Set<string>();
 
-      const orgIds = [...new Set(memberships.map(m => m.organization_id))];
-      const orgs = await this.getOrganizationsChunked(userId, orgIds);
+      if (characterId) {
+        const { data: byId, error: byIdErr } = await supabaseAdmin
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .eq('character_id', characterId);
+        if (byIdErr) throw byIdErr;
+        for (const row of byId ?? []) {
+          if (row.organization_id) orgIds.add(row.organization_id);
+        }
+      }
+
+      // Legacy name-only roster rows: match full name, aliases, and first name.
+      const nameCandidates = this.collectMembershipNameCandidates(resolvedName, aliases);
+      for (const candidate of nameCandidates) {
+        const { data: byName, error: byNameErr } = await supabaseAdmin
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .ilike('character_name', candidate);
+        if (byNameErr) throw byNameErr;
+        for (const row of byName ?? []) {
+          if (row.organization_id) orgIds.add(row.organization_id);
+        }
+      }
+
+      if (orgIds.size === 0) return [];
+
+      // getOrganizationsChunked → getOrganization also auto-links name-only rows.
+      const orgs = await this.getOrganizationsChunked(userId, [...orgIds]);
       return orgs.filter((o): o is Organization => o !== null);
     } catch (error) {
       logger.error({ error, userId, characterId, characterName }, 'Failed to get organizations by character');
@@ -1674,7 +1846,18 @@ export class OrganizationService {
     const out: Array<Organization | null> = [];
     for (let i = 0; i < orgIds.length; i += chunkSize) {
       const batch = orgIds.slice(i, i + chunkSize);
-      out.push(...await Promise.all(batch.map(id => this.getOrganization(userId, id))));
+      // Isolate failures so one bad org does not wipe the whole Groups section.
+      const batchResult = await Promise.all(
+        batch.map(async (id) => {
+          try {
+            return await this.getOrganization(userId, id);
+          } catch (error) {
+            logger.warn({ error, userId, organizationId: id }, 'Skipping org in by-character batch');
+            return null;
+          }
+        }),
+      );
+      out.push(...batchResult);
     }
     return out;
   }

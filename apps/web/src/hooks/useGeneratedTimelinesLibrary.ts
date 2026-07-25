@@ -33,6 +33,7 @@ export function useGeneratedTimelinesLibrary() {
       arcTitles?: string[];
       existingId?: string;
       preserveCollapsed?: boolean;
+      collapsed?: boolean;
     }): SavedGeneratedTimeline | undefined => {
       let saved: SavedGeneratedTimeline | undefined;
       setLibrary((prev) => {

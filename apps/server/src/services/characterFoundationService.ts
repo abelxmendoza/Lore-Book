@@ -21,6 +21,7 @@ import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { mayCreateCharacterFromLifecycle } from './actors/identityLifecycleService';
 import { parseKinshipFromName } from './kinship/kinshipGlossary';
+import { sexFromKinship } from './kinship/sexFromKinship';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { characterRegistry } from './characterRegistry';
 import { characterAuthorityService } from './characterAuthorityService';
@@ -43,10 +44,17 @@ function parseNameParts(fullName: string): { firstName: string; lastName: string
 function kinshipMetadata(name: string): Record<string, string> {
   const parsed = parseKinshipFromName(name);
   if (!parsed) return {};
+  const sex = sexFromKinship(parsed.role, parsed.sourcePhrase);
   return {
     kinship_role: parsed.role.toLowerCase(),
     kinship_label: parsed.canonicalLabel,
     relationship_type: 'family',
+    ...(sex
+      ? {
+          sex,
+          sex_source: 'kinship_inferred',
+        }
+      : {}),
   };
 }
 

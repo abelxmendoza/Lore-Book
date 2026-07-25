@@ -83,4 +83,79 @@ describe('parseChatGPTExport', () => {
     ]);
     expect(result.inventory.conversationCount).toBe(1);
   });
+
+  it('parses a reviewed LoreBook memory handoff without importing uncertainty or biography summaries', async () => {
+    const handoff = `# LoreBook Memory Handoff (Grounded Recall Only)
+
+# Stable Memories
+
+## Software Project
+
+### Claim
+
+You are building a personal knowledge system called MemoVault.
+
+* **Category:** Software project
+* **Confidence:** High
+* **Source type:** Saved memory
+* **Approximate period:** Ongoing
+* **People/Places/Projects:** MemoVault
+* **Evidence:** Discussed repeatedly.
+* **Sensitive:** No
+
+# Sensitive Information
+
+### Claim
+
+You reported private employment feedback.
+
+* **Category:** Employment feedback
+* **Confidence:** Medium
+* **Source type:** Chat-history recall
+* **Approximate period:** 2026
+* **People/Places/Projects:** Vanguard Robotics
+* **Evidence:** Discussed in one conversation.
+* **Sensitive:** Yes
+
+# Contradictions or Uncertain Claims Requiring Review
+
+* Your exact job title may have changed.
+
+# Stable Biography (High Confidence Only)
+
+This summary must not be imported as another claim.
+`;
+
+    const result = await parseChatGPTExport(Buffer.from(handoff), 'memory-handoff.md');
+
+    expect(result.inventory).toMatchObject({
+      conversationCount: 1,
+      messageCount: 2,
+      userMessageCount: 0,
+      assistantMessageCount: 0,
+      candidateClaimCount: 2,
+      sourceFiles: ['memory-handoff.md'],
+    });
+    expect(result.conversations[0].messages).toEqual([
+      expect.objectContaining({
+        role: 'handoff',
+        text: 'You are building a personal knowledge system called MemoVault.',
+        handoffClaim: expect.objectContaining({
+          category: 'Software project',
+          confidence: 'high',
+          sourceType: 'saved_memory',
+          sensitive: false,
+        }),
+      }),
+      expect.objectContaining({
+        role: 'handoff',
+        text: 'You reported private employment feedback.',
+        handoffClaim: expect.objectContaining({
+          confidence: 'medium',
+          sourceType: 'chat_history_recall',
+          sensitive: true,
+        }),
+      }),
+    ]);
+  });
 });

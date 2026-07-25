@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
@@ -321,28 +322,43 @@ export function CharacterAffiliationsPanel({
 }) {
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; group_type?: string; type?: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    // Bust stale GET cache so membership adds show up immediately.
+    invalidateOrganizationMembershipCaches({ characterIds: [characterId] });
     fetchJson<{ success: boolean; organizations: typeof orgs }>(
-      `/api/family-trees/character/${characterId}/affiliations?name=${encodeURIComponent(characterName)}`
+      `/api/family-trees/character/${characterId}/affiliations?name=${encodeURIComponent(characterName)}`,
     )
-      .then(r => { if (r.success) setOrgs(r.organizations ?? []); })
-      .catch(() => setOrgs([]))
-      .finally(() => setLoading(false));
-  }, [characterId, characterName]);
+      .then((r) => {
+        if (!cancelled && r.success) setOrgs(r.organizations ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrgs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [characterId, characterName, reloadToken]);
 
   useEffect(() => {
-    return onStoryDataUpdated(() => {
-      setLoading(true);
-      fetchJson<{ success: boolean; organizations: typeof orgs }>(
-        `/api/family-trees/character/${characterId}/affiliations?name=${encodeURIComponent(characterName)}`
-      )
-        .then(r => { if (r.success) setOrgs(r.organizations ?? []); })
-        .catch(() => setOrgs([]))
-        .finally(() => setLoading(false));
-    }, 'organizations');
-  }, [characterId, characterName]);
+    return onStoryDataUpdated((detail) => {
+      const scopes = detail.scopes ?? [];
+      const touches =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('organizations') ||
+        scopes.includes('characters');
+      const touchesThis =
+        !detail.characterIds?.length || detail.characterIds.includes(characterId);
+      if (touches && touchesThis) setReloadToken((n) => n + 1);
+    });
+  }, [characterId]);
 
   if (loading) {
     return <p className="text-xs text-white/40 py-2">Loading groups…</p>;

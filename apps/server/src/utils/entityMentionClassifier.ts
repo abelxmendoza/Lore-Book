@@ -10,6 +10,7 @@ import { hasKinshipTitle } from '../services/kinship/kinshipGlossary';
 
 export type MentionKind =
   | 'person'
+  | 'pet'
   | 'holiday'
   | 'event'
   | 'game'
@@ -155,6 +156,7 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
 
   const classification = classifyEntity(trimmed, rawContext);
   if (isCharacterEligible(classification.type)) return { kind: 'person', reason: classification.reason };
+  if (classification.type === 'PET') return { kind: 'pet', canonicalName: trimmed, reason: classification.reason };
   if (!isUnknownEntity(classification.type)) {
     const omegaType = toOmegaType(classification.type);
     return {

@@ -1,9 +1,13 @@
-import { buildListClipboardText } from './listClipboard';
+import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
 import type { LocationProfile } from '../components/locations/LocationProfileCard';
 
-export function buildLocationBookClipboardText(locations: LocationProfile[]): string {
+export function buildLocationBookClipboardText(
+  locations: LocationProfile[],
+  options?: ListClipboardFilterOptions,
+): string {
   return buildListClipboardText({
     title: 'Places / Locations',
+    filters: options?.filters,
     items: locations.map((loc) => {
       const people = (loc.relatedPeople ?? [])
         .map((p) => p.name)

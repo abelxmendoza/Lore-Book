@@ -132,10 +132,6 @@ export class LorebookRecommendationEngine {
         .eq('user_id', userId)
         .in('id', topCharIds);
 
-      if (error || !characterStats) {
-        return [];
-      }
-
       if (error || !characters) {
         return [];
       }

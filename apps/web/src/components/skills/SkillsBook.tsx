@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
 import { buildSkillBookClipboardText } from '../../lib/skillBookClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
 import { epistemicFieldLabel } from '../../lib/epistemicLabels';
 import { cn } from '../../lib/cn';
@@ -326,8 +327,15 @@ export const SkillsBook: React.FC = () => {
   }, [filteredSkills, sortBy]);
 
   const clipboardText = useMemo(
-    () => buildSkillBookClipboardText(sortedSkills),
-    [sortedSkills],
+    () =>
+      buildSkillBookClipboardText(sortedSkills, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          activeCategory !== 'all' && `category=${activeCategory}`,
+          `sort=${sortBy}`,
+        ]),
+      }),
+    [sortedSkills, searchTerm, activeCategory, sortBy],
   );
 
   const paginatedSkills = useMemo(() => {

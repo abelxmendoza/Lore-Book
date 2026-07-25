@@ -65,7 +65,7 @@ vi.mock('../characters/CharacterDetailModal', () => ({ CharacterDetailModal: () 
 vi.mock('../locations/LocationDetailModal', () => ({ LocationDetailModal: () => null }));
 vi.mock('../family/FamilyTreePanel', () => ({ FamilyTreePanel: () => null }));
 vi.mock('./OrganizationGroupNetwork', () => ({ OrganizationGroupNetwork: () => null }));
-vi.mock('./OrganizationTimelinePanel', () => ({ OrganizationTimelinePanel: () => null }));
+vi.mock('./OrganizationActivityPanel', () => ({ OrganizationActivityPanel: () => null }));
 
 const seedOrg = {
   id: 'org-1',

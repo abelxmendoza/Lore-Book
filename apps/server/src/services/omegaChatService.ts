@@ -2395,6 +2395,20 @@ When updating relationship analytics or emotional signals from this thread, weig
       systemPrompt += chatFocusContext;
     }
 
+    // Multi-knowledge turn plan — person intro, milestones, reflections, groups.
+    try {
+      const { buildContextualKnowledgeBundle } = await import('./contextualLore');
+      const contextualBundle = buildContextualKnowledgeBundle(message);
+      if (
+        contextualBundle.threads.length > 0 &&
+        contextualBundle.responsePlan.promptBlock
+      ) {
+        systemPrompt += `\n\n${contextualBundle.responsePlan.promptBlock}\n`;
+      }
+    } catch (contextualErr) {
+      logger.warn({ err: contextualErr, userId }, '[ContextualLore] bundle/planner skipped');
+    }
+
     if (refinementClarificationRequest) {
       systemPrompt += `\n\n**REFINEMENT CLARIFICATION**: The user may be correcting something in their Soul Profile. If your reply is about that, first ask them: "${refinementClarificationRequest}"`;
     }
@@ -3261,6 +3275,19 @@ When updating relationship analytics or emotional signals from this thread, weig
       agentEvidenceBlock,
       selfModelBlockChat
     );
+
+    try {
+      const { buildContextualKnowledgeBundle } = await import('./contextualLore');
+      const contextualBundle = buildContextualKnowledgeBundle(message);
+      if (
+        contextualBundle.threads.length > 0 &&
+        contextualBundle.responsePlan.promptBlock
+      ) {
+        systemPrompt += `\n\n${contextualBundle.responsePlan.promptBlock}\n`;
+      }
+    } catch (contextualErr) {
+      logger.warn({ err: contextualErr, userId }, '[ContextualLore] bundle/planner skipped');
+    }
 
     if (refinementClarificationChat) {
       systemPrompt += `\n\n**REFINEMENT CLARIFICATION**: The user may be correcting something in their Soul Profile. If your reply is about that, first ask them: "${refinementClarificationChat}"`;

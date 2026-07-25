@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen } from 'lucide-react';
 import { classifyLocation, KIND_META, isTopLevelPlace, type LocationKind } from '../../lib/locationTaxonomy';
 import {
@@ -23,6 +23,7 @@ import {
   type CardViewMode,
 } from '../ui/GridListViewToolbar';
 import { buildLocationBookClipboardText } from '../../lib/locationBookClipboard';
+import { clipboardFilterLines } from '../../lib/listClipboard';
 import { fetchJson } from '../../lib/api';
 import { fetchLocationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
@@ -32,6 +33,9 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
+import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
 import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
@@ -71,6 +75,8 @@ export const LocationBook = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOCATION_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -176,8 +182,24 @@ export const LocationBook = () => {
   const visibleStart = filteredLocations.length === 0 ? 0 : startIndex + 1;
   const visibleEnd = Math.min(endIndex, filteredLocations.length);
   const clipboardText = useMemo(
-    () => buildLocationBookClipboardText(filteredLocations),
-    [filteredLocations],
+    () =>
+      buildLocationBookClipboardText(filteredLocations, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          selectedLifestyle !== 'all' && `lifestyle=${selectedLifestyle}`,
+          selectedAdvancedFilter && `advanced=${selectedAdvancedFilter}`,
+          selectedSubType && `subtype=${selectedSubType}`,
+          selectedKind && `kind=${selectedKind}`,
+        ]),
+      }),
+    [
+      filteredLocations,
+      searchTerm,
+      selectedLifestyle,
+      selectedAdvancedFilter,
+      selectedSubType,
+      selectedKind,
+    ],
   );
 
   const goToPage = (page: number) => {
@@ -288,9 +310,47 @@ export const LocationBook = () => {
       .map(k => ({ kind: k, count: counts.get(k)!, meta: KIND_META[k] }));
   }, [topLevelLocations]);
 
+  const locationChatOptions = useMemo(
+    () =>
+      locations.map((loc) => ({
+        id: loc.id,
+        name: loc.name,
+        aliases: Array.isArray(loc.metadata?.aliases)
+          ? (loc.metadata!.aliases as string[])
+          : [],
+      })),
+    [locations],
+  );
+
+  const openLocationFocusedChat = useCallback(
+    async (selection: { name: string; entity?: { id: string; name: string; aliases?: string[] } }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.locations, selection);
+      } catch (error) {
+        setFocusedChatError(
+          error instanceof Error ? error.message : 'Could not open a focused chat right now.',
+        );
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
+
   return (
     <div className={`space-y-5 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}>
       <ChatFirstViewHint />
+      <FocusedEntityChatLauncher
+        options={locationChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.locations.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.locations.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.locations.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openLocationFocusedChat}
+      />
 
       <DetectedLocationSuggestions
         demoMode={isMockDataEnabled}

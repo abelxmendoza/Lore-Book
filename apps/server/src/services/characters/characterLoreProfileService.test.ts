@@ -103,6 +103,8 @@ describe('characterLoreProfileService', () => {
               interest_level: 0.7,
               evidence_quotes: ['She loves chess'],
               last_mentioned_at: '2024-06-01',
+              related_character_ids: ['char-1'],
+              metadata: {},
             },
           ],
           error: null,
@@ -119,6 +121,7 @@ describe('characterLoreProfileService', () => {
 
     const profile = await compileCharacterLoreProfile('user-1', 'char-1');
     expect(profile).not.toBeNull();
+    expect(profile!.loreSubject).toBe('other');
     expect(profile!.skills.some((s) => s.label === 'Python')).toBe(true);
     expect(profile!.hobbies.some((h) => h.label === 'Rock climbing' || h.label === 'Chess')).toBe(true);
     expect(profile!.groups.some((g) => g.name === 'Design Team')).toBe(true);

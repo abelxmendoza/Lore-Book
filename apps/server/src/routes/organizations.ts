@@ -17,7 +17,7 @@ import { organizationNormalizationService } from '../services/organizationNormal
 const router = Router();
 
 // Legacy type column values
-const ORG_TYPES = ['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'family', 'martial_arts', 'other'] as const;
+const ORG_TYPES = ['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'family', 'martial_arts', 'care_team', 'support_network', 'other'] as const;
 
 import { CANONICAL_GROUP_TYPES } from '../constants/groupTypes';
 

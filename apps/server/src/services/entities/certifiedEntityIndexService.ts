@@ -143,7 +143,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     Promise.resolve(
       supabaseAdmin
         .from('romantic_relationships')
-        .select('person_id, person_type')
+        .select('id, person_id, person_type, relationship_type, status, metadata')
         .eq('user_id', userId)
         .eq('person_type', 'character')
     )
@@ -151,9 +151,29 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
       .catch(() => []),
   ]);
 
-  const romanticCharacterIds = new Set(
-    (romanticRes as Array<{ person_id: string }>).map((row) => row.person_id).filter(Boolean)
-  );
+  // Heart chips must match Dating & Romance visibility — not every stale row.
+  const romanticRows = (romanticRes ?? []) as Array<{
+    id: string;
+    person_id: string;
+    person_type: string;
+    relationship_type: string;
+    status: string;
+    metadata: Record<string, unknown> | null;
+  }>;
+  let romanticCharacterIds = new Set<string>();
+  if (romanticRows.length > 0) {
+    try {
+      const {
+        loadDatingEligibilityForRows,
+        romanticChipCharacterIdsFromEligibility,
+      } = await import('../conversationCentered/datingEligibilityService');
+      const eligibility = await loadDatingEligibilityForRows(userId, romanticRows);
+      romanticCharacterIds = romanticChipCharacterIdsFromEligibility(romanticRows, eligibility);
+    } catch {
+      // Fail closed: never heart chips from unvalidated romantic rows.
+      romanticCharacterIds = new Set();
+    }
+  }
 
   // Characters — prefer identity index (canonical mentions)
   const charAliases = new Map<string, Set<string>>();

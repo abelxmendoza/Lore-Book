@@ -114,8 +114,9 @@ const PEOPLE_IN_SCENE_RE =
 const TRUNCATED_COLLECTIVE_RE =
   /^(?:(?:the|some|other|those|these)\s+)?(?:people|folks|girls|guys|fans|egirls|e-girls)\s+in(?:\s+the)?$/i;
 
+/** Named social-category collectives — belong in Groups, not Character/Family. */
 const POPULAR_CATEGORY_RE =
-  /^(?:popular\s+)?(?:egirls?|e-girls?|influencers?|creators?)$/i;
+  /^(?:popular\s+)?(?:e\s*girls?|egirls?|e-girls?|influencers?|creators?)$/i;
 
 /**
  * Cues that a label has enough narrative context for future recall.
@@ -207,6 +208,13 @@ export function classifyActorLabel(name: string | null | undefined): ActorLabelC
     return { actorType: 'PERSON', action: 'reject', reason: 'indefinite_reference' };
   }
 
+  // "popular e girls" / "popular egirls" / "influencers" — durable social categories
+  // should become Groups & Organizations, not family/person cards.
+  // Must run before BARE_GENERIC_EXACT: bare "egirls" is also in that set.
+  if (POPULAR_CATEGORY_RE.test(normalizePersonNameKey(trimmed))) {
+    return { actorType: 'GROUP', action: 'group', reason: 'social_category_group' };
+  }
+
   if (BARE_GENERIC_EXACT.has(normalizePersonNameKey(trimmed))) {
     // Bare plurals / crowd words → group if we keep them; else reject for PERSON path
     if (isCollectivePersonName(trimmed) || /s$/.test(normalizePersonNameKey(trimmed))) {
@@ -231,10 +239,6 @@ export function classifyActorLabel(name: string | null | undefined): ActorLabelC
       return { actorType: 'GROUP', action: 'reject', reason: 'vague_collective' };
     }
     return { actorType: 'GROUP', action: 'group', reason: 'collective' };
-  }
-
-  if (POPULAR_CATEGORY_RE.test(normalizePersonNameKey(trimmed))) {
-    return { actorType: 'GROUP', action: 'reject', reason: 'social_category' };
   }
 
   if (PEOPLE_IN_SCENE_RE.test(normalizePersonNameKey(trimmed))) {

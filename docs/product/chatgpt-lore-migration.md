@@ -28,9 +28,16 @@ Entry point: **Account → Data & Export → Import My ChatGPT Lore**.
 - The ZIP produced by ChatGPT data export.
 - `conversations.json`.
 - Numbered `conversations-N.json` files inside the export ZIP.
+- A reviewed `LoreBook Memory Handoff` Markdown or text file generated from
+  ChatGPT's saved-memory / chat-history recall.
 
 The parser follows each conversation's active branch using `current_node`; abandoned
 alternate assistant branches are not imported.
+
+Memory handoffs are intentionally lower-authority than user-authored export messages:
+their claims retain `assistant_recalled_review_required` provenance, receive reduced
+confidence, exclude sensitive sections by default, and can never bypass Memory Review.
+Contradiction lists, gap lists, and generated biography summaries are not imported.
 
 ## Import flow
 

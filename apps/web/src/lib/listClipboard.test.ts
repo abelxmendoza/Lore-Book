@@ -3,13 +3,22 @@ import { describe, expect, it } from 'vitest';
 import type { Skill } from '../types/skill';
 
 import { buildDatingRomanceClipboardText } from './datingRomanceClipboard';
-import { buildListClipboardText, formatClipboardFields } from './listClipboard';
+import {
+  buildListClipboardText,
+  clipboardFilterLines,
+  formatClipboardFields,
+} from './listClipboard';
 import { buildLocationBookClipboardText } from './locationBookClipboard';
+import { buildCharacterConsolidateClipboardText } from './characterConsolidateClipboard';
 import { buildLocationDuplicatesClipboardText } from './locationDuplicatesClipboard';
 import { buildLocationSuggestionsClipboardText } from './locationSuggestionsClipboard';
 import { buildOrganizationBookClipboardText } from './organizationBookClipboard';
 import { buildPhotoAlbumClipboardText } from './photoAlbumClipboard';
 import { buildProjectBookClipboardText } from './projectBookClipboard';
+import {
+  buildProjectTimelineClipboardText,
+  projectHasEnoughTimelineForLorebook,
+} from './projectTimelineClipboard';
 import { buildProjectSuggestionsClipboardText } from './projectSuggestionsClipboard';
 import { buildQuestSuggestionsClipboardText } from './questSuggestionsClipboard';
 import { buildEventsBookClipboardText } from './eventsBookClipboard';
@@ -48,6 +57,33 @@ describe('listClipboard', () => {
     expect(text).toContain('1. First');
     expect(text).toContain('Role: friend');
     expect(text).toContain('Met at school');
+  });
+
+  it('includes active filter constraints in the header', () => {
+    const text = buildListClipboardText({
+      title: 'Character Book',
+      filters: clipboardFilterLines([
+        'search="jamie"',
+        false,
+        'category=friends',
+        `sort=impact`,
+      ]),
+      items: [{ heading: 'Jamie', fields: [{ label: 'Id', value: 'c1' }] }],
+    });
+    expect(text).toContain('Character Book (1 item)');
+    expect(text).toContain('Filters: search="jamie"; category=friends; sort=impact');
+    expect(text).toContain('1. Jamie');
+  });
+
+  it('keeps Filters line when the filtered set is empty', () => {
+    const text = buildListClipboardText({
+      title: 'Groups and Organizations',
+      filters: ['stance=mine', 'category=company'],
+      items: [],
+    });
+    expect(text).toContain('Groups and Organizations (0 items)');
+    expect(text).toContain('Filters: stance=mine; category=company');
+    expect(text).toContain('(empty)');
   });
 });
 
@@ -237,6 +273,92 @@ describe('buildProjectBookClipboardText', () => {
   });
 });
 
+describe('buildProjectTimelineClipboardText', () => {
+  const project = {
+    id: 'project-1',
+    name: 'MemoVault',
+    type: 'software',
+    status: 'active' as const,
+    description: 'Personal knowledge graph',
+    tags: ['memory'],
+    started_at: '2026-01-01T00:00:00.000Z',
+  };
+
+  const profile = {
+    purpose: 'Remember life across chats',
+    tagline: 'Living memory',
+    currentPhase: 'Shipping',
+    brief: {
+      what: 'A memory app',
+      why: 'Chats forget',
+      currentState: 'Active build',
+      lastActivity: 'Today',
+      nextStep: 'Timeline export',
+    },
+    stats: { momentCount: 12, threadCount: 3, dayCount: 40, lastActiveLabel: 'today' },
+    milestones: [
+      {
+        id: 'm1',
+        title: 'Kickoff',
+        date: '2026-01-01T00:00:00.000Z',
+        kind: 'start' as const,
+        summary: 'Named the project',
+      },
+      {
+        id: 'm2',
+        title: 'First users',
+        date: '2026-03-01T00:00:00.000Z',
+        kind: 'breakthrough' as const,
+        summary: 'Dogfooding daily',
+      },
+      {
+        id: 'm3',
+        title: 'Timeline tab',
+        date: '2026-07-01T00:00:00.000Z',
+        kind: 'milestone' as const,
+      },
+    ],
+    contributors: [{ id: 'c1', name: 'Jamie', role: 'Partner', momentCount: 4 }],
+    skills: [{ id: 's1', name: 'TypeScript', level: 'Advanced' }],
+    resources: [],
+    decisions: [],
+    storyBeats: [
+      {
+        id: 'st1',
+        title: 'Why it exists',
+        body: 'Tired of forgetting context between sessions.',
+        date: '2026-01-02T00:00:00.000Z',
+      },
+    ],
+    locations: [],
+    openLoops: ['Wire Omni search'],
+  };
+
+  it('exports the full project timeline for paste into another LLM', () => {
+    const text = buildProjectTimelineClipboardText(project, profile);
+    expect(text).toContain('Project Timeline — MemoVault');
+    expect(text).toContain('Timeline (3 milestones)');
+    expect(text).toContain('1. Kickoff');
+    expect(text).toContain('Named the project');
+    expect(text).toContain('Story beats (1)');
+    expect(text).toContain('Jamie (Partner)');
+    expect(text).toContain('Open loops');
+  });
+
+  it('gates lorebook creation on enough timeline content', () => {
+    expect(projectHasEnoughTimelineForLorebook(profile)).toBe(true);
+    expect(
+      projectHasEnoughTimelineForLorebook({
+        ...profile,
+        milestones: profile.milestones.slice(0, 1),
+        storyBeats: [],
+        decisions: [],
+        stats: { ...profile.stats, momentCount: 1 },
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('buildQuestSuggestionsClipboardText', () => {
   it('includes quest type, priority, confidence, and reasoning', () => {
     const text = buildQuestSuggestionsClipboardText([
@@ -391,6 +513,50 @@ describe('buildLocationDuplicatesClipboardText', () => {
   it('renders an empty-list placeholder when there are no groups', () => {
     const text = buildLocationDuplicatesClipboardText([]);
     expect(text).toContain('Duplicate Places (0 items)');
+    expect(text).toContain('(empty)');
+  });
+});
+
+describe('buildCharacterConsolidateClipboardText', () => {
+  it('includes match type, confidence, and card names for each group', () => {
+    const text = buildCharacterConsolidateClipboardText([
+      {
+        match_type: 'exact',
+        canonical_name: 'Alex Rivera',
+        confidence: 0.95,
+        recommendation: 'merge',
+        reason: 'same display name',
+        characters: [
+          {
+            id: 'char-1',
+            name: 'Alex Rivera',
+            status: 'active',
+            importance_level: 'supporting',
+            alias: ['Alex'],
+          },
+          {
+            id: 'char-2',
+            name: 'Alex Rivera',
+            status: 'active',
+            importance_level: 'supporting',
+            alias: ['A. Rivera'],
+          },
+        ],
+      },
+    ]);
+
+    expect(text).toContain('Consolidate Characters — Duplicate Groups (1 item)');
+    expect(text).toContain('1. Alex Rivera');
+    expect(text).toContain('Match type: exact');
+    expect(text).toContain('Confidence: 95%');
+    expect(text).toContain('Cards: Alex Rivera, Alex Rivera');
+    expect(text).toContain('Aliases: Alex, A. Rivera');
+    expect(text).toContain('Recommendation: merge');
+  });
+
+  it('renders an empty-list placeholder when there are no groups', () => {
+    const text = buildCharacterConsolidateClipboardText([]);
+    expect(text).toContain('Consolidate Characters — Duplicate Groups (0 items)');
     expect(text).toContain('(empty)');
   });
 });
