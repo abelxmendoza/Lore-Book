@@ -77,6 +77,7 @@ const TOOL_NAME_KEYS = new Set([
   'slack', 'discord', 'notion', 'figma', 'photoshop', 'illustrator',
   'supabase', 'postgres', 'postgresql', 'mysql', 'mongodb', 'redis',
   'docker', 'kubernetes', 'playwright', 'vitest', 'terraform',
+  'suno', 'bandlab', 'band lab',
 ]);
 
 /** Media / fandom titles (anime, franchises) that read like proper names. */

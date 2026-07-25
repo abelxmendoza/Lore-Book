@@ -41,6 +41,8 @@ export interface ChatSource {
   /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
   relevanceScore?: number;
   relevanceReasons?: string[];
+  usage?: 'supporting' | 'background' | 'rejected';
+  rejectionReason?: string;
 }
 
 /**
@@ -64,4 +66,3 @@ export interface StreamingChatResponse {
     entryId?: string;
   };
 }
-

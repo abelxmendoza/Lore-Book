@@ -86,6 +86,23 @@ describe('scoreEvidence', () => {
 });
 
 describe('enforceEvidenceContract', () => {
+  it('rejects unrelated general-pass context for an explicit subject timeline', () => {
+    const contract = buildEvidenceContract('Show me my Midnight Harb0r timeline', {
+      primaryEntities: [{ name: 'Midnight Harb0r' }],
+      maxEvidenceItems: 12,
+    });
+    const verdict = enforceEvidenceContract(
+      [
+        src('entry', 'music', 'Midnight Harb0r recordings', 'Recorded two new songs.'),
+        src('entry', 'food', 'Lunch', 'Ate a burrito after work.'),
+      ],
+      contract,
+    );
+    expect(verdict.accepted.map((source) => source.id)).toContain('music');
+    expect(verdict.rejected.find((source) => source.id === 'food')?.relevanceReasons)
+      .toContain('timeline_subject_mismatch');
+    expect(contract.expectedAnswerShape).toBe('timeline');
+  });
   it('forwards only defensible evidence for a conflict question', () => {
     const contract = buildEvidenceContract('Who am I having conflict with?');
     const verdict = enforceEvidenceContract(CONFLICT_POOL, contract);

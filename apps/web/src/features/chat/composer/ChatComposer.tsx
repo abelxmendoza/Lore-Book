@@ -19,6 +19,23 @@ import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import { persistConfirmedPreviewSpan } from '../../../lib/persistConfirmedPreviewSpan';
 import type { ChatImageAttachment } from '../types/chatImageAttachment';
 
+export type ComposerChipDebugPayload = {
+  certifiedEntities: CertifiedEntityMatch[];
+  previewSpans: Array<{
+    text: string;
+    type: string;
+    subtype?: string;
+    start: number;
+    end: number;
+    entityStatus?: string;
+    matchedEntityId?: string;
+    matchedEntityName?: string;
+    confidence?: number;
+  }>;
+  confirmingSlots: string[];
+  includedSlots: string[];
+};
+
 type ChatComposerProps = {
   onSubmit: (
     message: string,
@@ -41,6 +58,8 @@ type ChatComposerProps = {
   defaultCollapsed?: boolean;
   focusCharacterId?: string;
   focusCharacterName?: string;
+  /** Latest composer chip strip snapshot for copy-conversation diagnostics. */
+  onChipDebugChange?: (snapshot: ComposerChipDebugPayload) => void;
 };
 
 const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
@@ -63,6 +82,7 @@ export const ChatComposer = ({
   defaultCollapsed = false,
   focusCharacterId,
   focusCharacterName,
+  onChipDebugChange,
 }: ChatComposerProps) => {
   const embedded = variant === 'embedded';
   const isMobile = useIsMobile();
@@ -97,6 +117,32 @@ export const ChatComposer = ({
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
   const correction = useEntityCorrectionState(input, threadId, visibleMatches);
+
+  useEffect(() => {
+    if (!onChipDebugChange) return;
+    onChipDebugChange({
+      certifiedEntities: visibleMatches,
+      previewSpans: correction.visibleSpans.map((span) => ({
+        text: span.text,
+        type: span.type,
+        subtype: span.subtype,
+        start: span.start,
+        end: span.end,
+        entityStatus: span.entityStatus,
+        matchedEntityId: span.matchedEntityId,
+        matchedEntityName: span.matchedEntityName,
+        confidence: span.confidence,
+      })),
+      confirmingSlots,
+      includedSlots,
+    });
+  }, [
+    onChipDebugChange,
+    visibleMatches,
+    correction.visibleSpans,
+    confirmingSlots,
+    includedSlots,
+  ]);
 
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);

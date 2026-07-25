@@ -26,6 +26,11 @@ vi.mock('../../../lib/api', () => ({
   fetchJson: vi.fn()
 }));
 
+const mockOpenChatWithFocus = vi.fn();
+vi.mock('../../../lib/openChatWithFocus', () => ({
+  openChatWithFocus: (...args: unknown[]) => mockOpenChatWithFocus(...args),
+}));
+
 describe('RelationshipDetailModal', () => {
   const mockRelationship = {
     id: 'rel-001',
@@ -93,6 +98,7 @@ describe('RelationshipDetailModal', () => {
     (getMockRomanticRelationshipById as any).mockReturnValue(mockRelationship);
     (getMockDateEvents as any).mockReturnValue(mockDates);
     (getMockRelationshipAnalytics as any).mockReturnValue(mockAnalytics);
+    mockOpenChatWithFocus.mockClear();
   });
 
   it('renders modal when relationshipId is provided', async () => {
@@ -112,19 +118,19 @@ describe('RelationshipDetailModal', () => {
     expect(screen.getByText(/loading relationship details/i)).toBeInTheDocument();
   });
 
-  it('displays relationship tabs', async () => {
+  it('displays relationship tabs with Chat second after Overview', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
     
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument();
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent ?? '');
+    expect(tabs[0]).toMatch(/overview/i);
+    expect(tabs[1]).toMatch(/chat/i);
     expect(screen.getByRole('tab', { name: /timeline/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /pros & cons/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /analytics/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /chat/i })).toBeInTheDocument();
   });
 
   it('displays relationship scores in overview', async () => {
@@ -155,6 +161,35 @@ describe('RelationshipDetailModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
     });
+  });
+
+  it('chat tab hands off to main chat with Dating & Romance focus', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /chat/i }));
+
+    expect(screen.getByTestId('relationship-chat-panel')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/message about this relationship/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('relationship-open-main-chat'));
+
+    expect(onClose).toHaveBeenCalled();
+    expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'char-001',
+        entityName: 'Alex',
+        entityType: 'character',
+        relationshipId: 'rel-001',
+        sourceSurface: 'love',
+        sourceLabel: 'Dating & Romance',
+      }),
+    );
   });
 
   it('displays dates in timeline tab', async () => {

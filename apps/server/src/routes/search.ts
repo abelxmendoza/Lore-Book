@@ -7,9 +7,10 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { TimelineEngine } from '../services/timeline';
-import { UniversalSearchService } from '../services/timeline/universalSearchService';
 import { memoryRecallEngine } from '../services/memoryRecall/memoryRecallEngine';
+import { TimelineEngine } from '../services/timeline';
+import { compileSubjectTimelineForUser } from '../services/timeline/subjectTimelineCompiler';
+import { UniversalSearchService } from '../services/timeline/universalSearchService';
 
 const router = Router();
 
@@ -31,6 +32,25 @@ const recallBodySchema = z.object({
 const universalBodySchema = z.object({
   mode: z.literal('universal').optional(),
   query: z.string().min(1),
+});
+
+const subjectTimelineBodySchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  subject: z
+    .object({
+      entityId: z.string().uuid(),
+      entityType: z.enum([
+        'person',
+        'organization',
+        'place',
+        'group',
+        'community',
+        'skill',
+        'event',
+        'project',
+      ]),
+    })
+    .optional(),
 });
 
 /**
@@ -101,5 +121,33 @@ router.post('/universal', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 });
 
-export const searchRouter = router;
+/**
+ * POST /api/search/timeline
+ * Compile a subject-centered timeline from the canonical stitched feed.
+ * This is generation, not the legacy grouped entity/evidence search above.
+ */
+router.post('/timeline', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = subjectTimelineBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid timeline request',
+        details: parsed.error.flatten(),
+      });
+    }
 
+    const compilation = await compileSubjectTimelineForUser({
+      userId: req.user!.id,
+      query: parsed.data.query,
+      subject: parsed.data.subject,
+    });
+    return res.json(compilation);
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to compile subject timeline');
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to compile timeline',
+    });
+  }
+});
+
+export const searchRouter = router;

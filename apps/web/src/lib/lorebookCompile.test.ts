@@ -101,4 +101,30 @@ describe('lorebookCompile topic path', () => {
       expect.anything(),
     );
   });
+
+  it('sends the stable focus entity with an @ query', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ biography: { id: 'b5' } }),
+    } as Response);
+    const focusEntity = {
+      id: '22222222-2222-4222-8222-222222222222',
+      type: 'person' as const,
+      name: 'Marcus',
+    };
+
+    await compileLorebookFromQuery('my story with @Marcus', false, undefined, focusEntity);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api.test/api/biography/search',
+      expect.objectContaining({
+        body: JSON.stringify({
+          query: 'my story with @Marcus',
+          force: false,
+          focusEntity,
+        }),
+      }),
+    );
+  });
 });

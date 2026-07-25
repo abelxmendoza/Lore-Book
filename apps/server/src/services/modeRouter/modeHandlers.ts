@@ -48,6 +48,9 @@ class ModeHandlers {
 
       case 'FOUNDATION_RECALL':
         return await this.handleFoundationRecall(userId, message, options?.conversationHistory, options?.threadId);
+
+      case 'SUBJECT_TIMELINE':
+        return await this.handleSubjectTimeline(userId, message, options?.threadId, options?.messageId);
       
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
@@ -121,7 +124,7 @@ class ModeHandlers {
         userId,
         message,
         conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
-        { threadId: options?.threadId }
+        { threadId }
       );
 
       return {
@@ -158,7 +161,7 @@ class ModeHandlers {
           userId,
           message,
           conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
-          { threadId: options?.threadId }
+          { threadId }
         );
         if (foundation.response_mode !== 'SILENCE') {
           return {
@@ -251,6 +254,30 @@ class ModeHandlers {
         content: "Something went wrong pulling that up — what were you trying to recall?",
         response_mode: 'SILENCE',
         confidence: 0.5,
+      };
+    }
+  }
+
+  private async handleSubjectTimeline(
+    userId: string,
+    message: string,
+    threadId?: string,
+    messageId?: string,
+  ): Promise<ModeHandlerResponse> {
+    try {
+      const { buildSubjectTimelineChatResponse } = await import('../chat/subjectTimelineChatService');
+      return await buildSubjectTimelineChatResponse({ userId, message, threadId, messageId });
+    } catch (error) {
+      logger.error({ err: error, userId, threadId }, 'Failed to handle subject timeline mode');
+      return {
+        content:
+          'I recognized this as a timeline request, but the timeline compiler could not complete it.',
+        response_mode: 'TIMELINE_FAILED',
+        confidence: 0,
+        metadata: {
+          timeline_status: 'failed',
+          error_code: 'TIMELINE_COMPILER_FAILED',
+        },
       };
     }
   }

@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 
 import { makeStore } from '../../../store';
 import { setComposerMatches } from '../../../store/slices/composerSlice';
+import { preserveStoryAttempt } from '../services/storySafetyVault';
 import { useChatComposer } from './useChatComposer';
 
 const analyze = vi.fn();
@@ -127,6 +128,38 @@ describe('useChatComposer', () => {
     expect(onSubmit).toHaveBeenCalledWith('Tell me about Abel', [match], [], undefined);
     expect(result.current.input).toBe('');
     expect(store.getState().composer.draftText).toBe('');
+  });
+
+  it('keeps the composer empty after submit even if a vault attempt still exists when threadId changes', () => {
+    // Regression: send clears the box, then activeThreadId updates while the
+    // vault still holds the in-flight attempt — that must not re-fill the field.
+    const onSubmit = vi.fn();
+    const story =
+      'I bought a mic and recorded two songs for the show. This is a repeated story.';
+
+    preserveStoryAttempt({
+      id: 'attempt-inflight',
+      ownerId: 'guest-or-anonymous',
+      threadId: 'thread-after-send',
+      text: story,
+      createdAt: new Date().toISOString(),
+    });
+
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId?: string }) => useChatComposer(onSubmit, null, { threadId }),
+      { wrapper, initialProps: { threadId: 'thread-before-send' } },
+    );
+
+    act(() => {
+      result.current.setInput(story);
+    });
+    act(() => {
+      result.current.handleSubmit();
+    });
+    expect(result.current.input).toBe('');
+
+    rerender({ threadId: 'thread-after-send' });
+    expect(result.current.input).toBe('');
   });
 
   it('omits dismissed matches from submit payload', () => {

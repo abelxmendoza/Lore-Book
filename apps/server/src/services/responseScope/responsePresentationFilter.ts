@@ -33,6 +33,20 @@ const WORK_SIGNAL_RE =
 const JUNK_ENTITY_RE =
   /^(?:also\s+you|also\s+me|you|me|also|and|but|the|this|that|someone|everyone|unknown)$/i;
 
+const JUNK_MEMORY_TITLE_RE =
+  /^(?:untitled(?:\s+(?:entry|chapter|era|saga|arc|memory))?|unknown(?:\s+location)?|n\/a|none|null|entry|memory|journal|chat)$/i;
+
+const ENTITY_SOURCE_TYPES = new Set([
+  'character',
+  'person',
+  'location',
+  'place',
+  'organization',
+  'org',
+  'project',
+  'task',
+]);
+
 export function isPresentableEntityName(name: string): boolean {
   const clean = name.trim().replace(/\s+/g, ' ');
   if (clean.length < 2 || clean.split(' ').length > 5) return false;
@@ -42,6 +56,31 @@ export function isPresentableEntityName(name: string): boolean {
   const mention = classifyMention({ text: clean });
   if (!mayAppearAsTranscriptMention(mention)) return false;
   return true;
+}
+
+/**
+ * Titles for journal/chat/timeline evidence — allow longer descriptive titles
+ * but reject untitled stubs and mid-sentence fragments that crowd the Sources bar.
+ */
+export function isPresentableMemoryTitle(title: string): boolean {
+  const clean = title.trim().replace(/\s+/g, ' ');
+  if (clean.length < 4 || clean.length > 120) return false;
+  if (JUNK_MEMORY_TITLE_RE.test(clean)) return false;
+  if (JUNK_ENTITY_RE.test(clean)) return false;
+  if (/^(?:also|and|but|so|then|well|yeah|ok|okay)\b/i.test(clean)) return false;
+  if (/\.\.\.|…$/.test(clean) && clean.length < 24) return false;
+  // Truncated mid-word dumps from content.slice (e.g. "went to th")
+  const words = clean.split(/\s+/);
+  const lastWord = words[words.length - 1] ?? '';
+  if (words.length <= 3 && lastWord.length <= 2) return false;
+  return true;
+}
+
+export function isPresentableSourceTitle(source: PresentableSource): boolean {
+  const type = (source.type ?? '').toLowerCase();
+  if (type === 'knowledge') return Boolean(source.title?.trim());
+  if (ENTITY_SOURCE_TYPES.has(type)) return isPresentableEntityName(source.title);
+  return isPresentableMemoryTitle(source.title);
 }
 
 /** Intents where WM relationship/community titles may invent focus people. */
@@ -140,9 +179,9 @@ export function filterSourcesForPresentation<T extends PresentableSource>(
 ): T[] {
   const names = relevantNames(plan, workingMemory);
   const eligible = sources.filter((source) => {
-    // Crystallized knowledge claims are sentences, not entity chips — they
-    // skip the name-shape gate but still face scope + evidence-contract checks.
-    if ((source.type ?? '') !== 'knowledge' && !isPresentableEntityName(source.title)) return false;
+    // Entity chips stay strict; memory/entry titles may be longer sentences.
+    // Knowledge claims skip the name-shape gate but still face scope checks.
+    if (!isPresentableSourceTitle(source)) return false;
     return sourceIsInScope(source, plan, names);
   });
 

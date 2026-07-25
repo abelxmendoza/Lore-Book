@@ -7,6 +7,9 @@ describe('isLexicalNoiseToken', () => {
     expect(isLexicalNoiseToken('you')).toBe(true);
     expect(isLexicalNoiseToken('What')).toBe(true);
     expect(isLexicalNoiseToken('Tell')).toBe(true);
+    expect(isLexicalNoiseToken('Also')).toBe(true);
+    expect(isLexicalNoiseToken('also')).toBe(true);
+    expect(isLexicalNoiseToken('However')).toBe(true);
   });
 
   it('keeps proper entities', () => {

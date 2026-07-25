@@ -1,9 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   BookOpen, BookMarked, Search, Sparkles, User, Briefcase, Clock,
-  Heart, Zap, MapPin, Calendar, Loader2, ChevronRight, Edit3,
+  Heart, Zap, MapPin, Calendar, Loader2, ChevronRight, Edit3, AtSign,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ENTITY_SEARCH_TYPE_LABELS,
+  type EntitySearchResult,
+  type EntitySearchType,
+} from '../../api/entitySearch';
+import { getGlobalMockDataEnabled } from '../../contexts/MockDataContext';
+import { useEntitySearch } from '../../hooks/useEntitySearch';
+import { buildDemoCertifiedIndex } from '../../lib/demoCertifiedIndex';
+import { demoLorebookFocusReadiness } from '../../lib/demoLorebookFocusReadiness';
+import {
+  findActiveLorebookMention,
+  replaceLorebookMention,
+} from '../../lib/lorebookEntityMentions';
+import type { LorebookFocusEntity } from '../../lib/lorebookCompile';
 import { Button } from '../ui/button';
 import { LorebookEvidenceReview } from './LorebookEvidenceReview';
 
@@ -14,17 +28,28 @@ interface BookCategory {
   prompt: string;
   gradient: string;
   description: string;
+  mentionTypes?: EntitySearchType[];
 }
 
 const CATEGORIES: BookCategory[] = [
   { id: 'biography',    label: 'Full Biography',  icon: BookOpen,   prompt: 'my complete life story',       gradient: 'from-purple-600 to-indigo-700',  description: 'Everything, start to finish' },
-  { id: 'person',       label: 'A Person',         icon: User,       prompt: 'my story with ',               gradient: 'from-pink-600 to-rose-700',       description: 'One relationship, in full' },
-  { id: 'career',       label: 'Career',           icon: Briefcase,  prompt: 'my professional journey',      gradient: 'from-blue-600 to-cyan-700',       description: 'Work, skills, and growth' },
-  { id: 'era',          label: 'An Era',           icon: Clock,      prompt: 'my life in ',                  gradient: 'from-amber-600 to-orange-700',    description: 'A chapter by year or period' },
-  { id: 'relationship', label: 'Relationship',     icon: Heart,      prompt: 'my relationship history',      gradient: 'from-red-500 to-pink-700',        description: 'Love and connection' },
-  { id: 'skill',        label: 'A Skill',          icon: Zap,        prompt: 'my journey learning ',         gradient: 'from-green-600 to-emerald-700',   description: 'How you built something' },
-  { id: 'place',        label: 'A Place',          icon: MapPin,     prompt: 'my story at ',                 gradient: 'from-teal-600 to-cyan-700',       description: 'A location and its meaning' },
-  { id: 'event',        label: 'An Event',         icon: Calendar,   prompt: 'the story of ',                gradient: 'from-violet-600 to-purple-700',   description: 'One moment, zoomed in' },
+  { id: 'person',       label: 'A Person',         icon: User,       prompt: 'my story with @',              gradient: 'from-pink-600 to-rose-700',       description: 'One relationship, in full', mentionTypes: ['person'] },
+  { id: 'career',       label: 'Career',           icon: Briefcase,  prompt: 'my career with @',             gradient: 'from-blue-600 to-cyan-700',       description: 'Work, skills, and growth', mentionTypes: ['organization', 'group', 'skill'] },
+  { id: 'era',          label: 'An Era',           icon: Clock,      prompt: 'the era around @',             gradient: 'from-amber-600 to-orange-700',    description: 'A chapter by year or period', mentionTypes: ['event'] },
+  { id: 'relationship', label: 'Relationship',     icon: Heart,      prompt: 'my relationship with @',       gradient: 'from-red-500 to-pink-700',        description: 'Love and connection', mentionTypes: ['person'] },
+  { id: 'skill',        label: 'A Skill',          icon: Zap,        prompt: 'my journey learning @',        gradient: 'from-green-600 to-emerald-700',   description: 'How you built something', mentionTypes: ['skill'] },
+  { id: 'place',        label: 'A Place',          icon: MapPin,     prompt: 'my story at @',                gradient: 'from-teal-600 to-cyan-700',       description: 'A location and its meaning', mentionTypes: ['place'] },
+  { id: 'event',        label: 'An Event',         icon: Calendar,   prompt: 'the story of @',               gradient: 'from-violet-600 to-purple-700',   description: 'One moment, zoomed in', mentionTypes: ['event'] },
+];
+
+const DEFAULT_MENTION_TYPES: EntitySearchType[] = [
+  'person',
+  'organization',
+  'group',
+  'community',
+  'place',
+  'skill',
+  'event',
 ];
 
 import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
@@ -33,11 +58,14 @@ import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 import { LorebookGeneratorSectionTitle, LorebookLibraryHero } from './LorebookSectionTitles';
 import { LoreReadinessPanel } from './LoreReadinessPanel';
 import { useLorebookShell } from './LorebookShell';
-import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { useLoreReadiness, type CompiledLorebook } from '../../hooks/useLoreReadiness';
 import { useQueryReadiness } from '../../hooks/useQueryReadiness';
 import { READINESS_COLORS, READINESS_LABELS } from '../../lib/loreReadiness';
-import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
-import { evaluateQueryTierOffer, type LorebookForm } from '../../lib/lorebookTiers';
+import {
+  evaluateQueryTierOffer,
+  LOREBOOK_TIERS,
+  type LorebookForm,
+} from '../../lib/lorebookTiers';
 import { LorebookTierMenu } from './LorebookTierMenu';
 
 const LIBRARY_BOOK_STYLES = [
@@ -63,7 +91,10 @@ function libraryBookPresentation(book: CompiledLorebook, index: number) {
 }
 
 interface LibraryLandingProps {
-  onGenerate: (query: string, options?: { force?: boolean; form?: LorebookForm }) => void;
+  onGenerate: (
+    query: string,
+    options?: { force?: boolean; form?: LorebookForm; focusEntity?: LorebookFocusEntity },
+  ) => void;
   onGenerateTopic?: (
     topicId: string,
     options?: {
@@ -99,11 +130,87 @@ export const LibraryLanding = ({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [showEvidenceReview, setShowEvidenceReview] = useState(false);
   const [selectedForm, setSelectedForm] = useState<LorebookForm | undefined>(undefined);
+  const [selectedFocusEntity, setSelectedFocusEntity] = useState<EntitySearchResult | null>(null);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
-  const { evaluation: queryEvaluation, loading: queryEvaluating } = useQueryReadiness(query);
+  const activeCategoryConfig = CATEGORIES.find((category) => category.id === activeCategory);
+  const activeMention = useMemo(
+    () => findActiveLorebookMention(query),
+    [query],
+  );
+  const mentionTypes = activeCategoryConfig?.mentionTypes ?? DEFAULT_MENTION_TYPES;
+  const mentionSearch = activeMention?.search.trim() ?? '';
+  const demoMode = getGlobalMockDataEnabled();
+  const entitySearch = useEntitySearch({
+    query: mentionSearch,
+    types: mentionTypes,
+    limit: 8,
+    enabled: !demoMode && Boolean(activeMention) && !selectedFocusEntity && !mentionDismissed,
+    debounceMs: 150,
+  });
+  const demoSuggestions = useMemo(() => {
+    if (!demoMode || !activeMention || selectedFocusEntity || mentionDismissed || !mentionSearch) return [];
+    const allowed = new Set<EntitySearchType>(mentionTypes);
+    const normalized = mentionSearch.toLocaleLowerCase();
+    return buildDemoCertifiedIndex()
+      .map((entity): EntitySearchResult | null => {
+        const type: EntitySearchType | null =
+          entity.type === 'character' ? 'person'
+            : entity.type === 'location' ? 'place'
+              : entity.type === 'skill' ? 'skill'
+                : null;
+        if (!type || (allowed.size > 0 && !allowed.has(type))) return null;
+        const labels = [entity.name, ...entity.aliases];
+        if (!labels.some((label) => label.toLocaleLowerCase().includes(normalized))) return null;
+        return {
+          entityId: entity.id,
+          entityType: type,
+          displayName: entity.name,
+          aliases: entity.aliases,
+          knownStatus: 'known',
+          confidence: 1,
+          source: 'demo',
+          matchKind: entity.name.toLocaleLowerCase() === normalized ? 'exact' : 'fuzzy',
+        };
+      })
+      .filter((entity): entity is EntitySearchResult => Boolean(entity))
+      .slice(0, 8);
+  }, [activeMention, demoMode, mentionDismissed, mentionSearch, mentionTypes, selectedFocusEntity]);
+  const mentionSuggestions = (demoMode ? demoSuggestions : entitySearch.results)
+    .filter((entity) => entity.knownStatus === 'known' && entity.source !== 'glossary');
+  const showMentionMenu = Boolean(
+    activeMention
+      && !selectedFocusEntity
+      && !mentionDismissed
+      && mentionTypes?.length,
+  );
+  const selectedFocusRef = useMemo(
+    () => selectedFocusEntity
+      ? {
+          id: selectedFocusEntity.entityId,
+          type: selectedFocusEntity.entityType,
+          name: selectedFocusEntity.displayName,
+        }
+      : null,
+    [selectedFocusEntity],
+  );
+  const { evaluation: queryEvaluation, loading: queryEvaluating } = useQueryReadiness(
+    query,
+    true,
+    selectedFocusRef,
+  );
+  const displayedEvaluation = useMemo(
+    () => queryEvaluation
+      ?? (demoMode && selectedFocusRef
+        ? demoLorebookFocusReadiness(selectedFocusRef)
+        : null),
+    [demoMode, queryEvaluation, selectedFocusRef],
+  );
   const queryTierOffer = useMemo(
-    () => (queryEvaluation ? evaluateQueryTierOffer(queryEvaluation, query.trim()) : null),
-    [queryEvaluation, query],
+    () => (displayedEvaluation ? evaluateQueryTierOffer(displayedEvaluation, query.trim()) : null),
+    [displayedEvaluation, query],
   );
 
   const handleCategoryClick = (cat: BookCategory) => {
@@ -111,12 +218,15 @@ export const LibraryLanding = ({
     setQuery(cat.prompt);
     setShowEvidenceReview(false);
     setSelectedForm(undefined);
+    setSelectedFocusEntity(null);
+    setMentionDismissed(false);
+    setHighlightedSuggestion(0);
     // Focus the input after selecting a category
     setTimeout(() => {
-      const input = document.getElementById('library-search-input');
+      const input = inputRef.current;
       if (input) {
         input.focus();
-        (input as HTMLInputElement).setSelectionRange(cat.prompt.length, cat.prompt.length);
+        input.setSelectionRange(cat.prompt.length, cat.prompt.length);
       }
     }, 50);
   };
@@ -134,10 +244,32 @@ export const LibraryLanding = ({
 
   const handleConfirmCompile = (force = false) => {
     if (!query.trim() || generating) return;
-    const options: { force?: boolean; form?: LorebookForm } = {};
+    const options: { force?: boolean; form?: LorebookForm; focusEntity?: LorebookFocusEntity } = {};
     if (force) options.force = true;
     if (selectedForm) options.form = selectedForm;
+    if (selectedFocusEntity) {
+      options.focusEntity = {
+        id: selectedFocusEntity.entityId,
+        type: selectedFocusEntity.entityType,
+        name: selectedFocusEntity.displayName,
+      };
+    }
     onGenerate(query.trim(), Object.keys(options).length ? options : undefined);
+  };
+
+  const selectMentionEntity = (entity: EntitySearchResult) => {
+    if (!activeMention) return;
+    const next = replaceLorebookMention(query, activeMention, entity.displayName);
+    setQuery(next.value);
+    setSelectedFocusEntity(entity);
+    setMentionDismissed(true);
+    setHighlightedSuggestion(0);
+    setShowEvidenceReview(false);
+    setSelectedForm(undefined);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.caret, next.caret);
+    });
   };
 
   return (
@@ -160,6 +292,7 @@ export const LibraryLanding = ({
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/25 pointer-events-none" />
               <input
+                ref={inputRef}
                 id="library-search-input"
                 type="text"
                 value={query}
@@ -167,12 +300,101 @@ export const LibraryLanding = ({
                   setQuery(e.target.value);
                   setShowEvidenceReview(false);
                   setSelectedForm(undefined);
+                  setMentionDismissed(false);
+                  setHighlightedSuggestion(0);
+                  if (
+                    selectedFocusEntity
+                    && !e.target.value.includes(`@${selectedFocusEntity.displayName}`)
+                  ) {
+                    setSelectedFocusEntity(null);
+                  }
                 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                placeholder="e.g. 'my 2020 story', 'Sarah', 'my music journey'…"
+                onKeyDown={(e) => {
+                  if (showMentionMenu && mentionSuggestions.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHighlightedSuggestion((index) => (index + 1) % mentionSuggestions.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHighlightedSuggestion((index) =>
+                        (index - 1 + mentionSuggestions.length) % mentionSuggestions.length
+                      );
+                      return;
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      selectMentionEntity(mentionSuggestions[highlightedSuggestion] ?? mentionSuggestions[0]);
+                      return;
+                    }
+                  }
+                  if (e.key === 'Escape' && showMentionMenu) {
+                    e.preventDefault();
+                    setMentionDismissed(true);
+                    return;
+                  }
+                  if (e.key === 'Enter') handleSubmit();
+                }}
+                placeholder="Try “my story with @” and type a person, place, skill, or event…"
+                aria-autocomplete="list"
+                aria-controls={showMentionMenu ? 'lorebook-entity-suggestions' : undefined}
+                aria-expanded={showMentionMenu}
                 className="w-full h-14 pl-12 pr-4 rounded-2xl bg-white/5 border border-white/10 text-white text-base placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-all"
                 style={{ fontFamily: 'Georgia, serif' }}
               />
+              {showMentionMenu && (
+                <div
+                  id="lorebook-entity-suggestions"
+                  role="listbox"
+                  className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-white/15 bg-[#110d18] p-2 shadow-2xl"
+                >
+                  {!mentionSearch ? (
+                    <div className="flex items-center gap-2 px-3 py-3 text-sm text-white/45">
+                      <AtSign className="h-4 w-4 text-primary" />
+                      Type after @ to search this part of your LoreBook.
+                    </div>
+                  ) : entitySearch.loading && !demoMode ? (
+                    <div className="flex items-center gap-2 px-3 py-3 text-sm text-white/45">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching your LoreBook…
+                    </div>
+                  ) : mentionSuggestions.length > 0 ? (
+                    mentionSuggestions.map((entity, index) => (
+                      <button
+                        key={`${entity.entityType}:${entity.entityId}`}
+                        type="button"
+                        role="option"
+                        aria-selected={index === highlightedSuggestion}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectMentionEntity(entity)}
+                        className={cn(
+                          'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
+                          index === highlightedSuggestion
+                            ? 'bg-primary/20 text-white'
+                            : 'text-white/75 hover:bg-white/5 hover:text-white',
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">@{entity.displayName}</span>
+                          {entity.aliases.length > 0 && (
+                            <span className="block truncate text-[11px] text-white/35">
+                              Also known as {entity.aliases.slice(0, 2).join(', ')}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/45">
+                          {ENTITY_SEARCH_TYPE_LABELS[entity.entityType]}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-3 text-sm text-white/45">
+                      No confirmed LoreBook item matches “{mentionSearch}”.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <Button
               onClick={() => handleSubmit()}
@@ -189,20 +411,75 @@ export const LibraryLanding = ({
               )}
             </Button>
           </div>
-          {query.trim().length >= 3 && !showEvidenceReview && (
+          {selectedFocusEntity && (
+            <div
+              className="mt-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2.5 text-xs"
+              data-testid="lorebook-focus-capacity"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-primary">
+                  <AtSign className="h-3 w-3" />
+                  Focused on {selectedFocusEntity.displayName}
+                </span>
+                <span className="text-white/35">
+                  Exact {ENTITY_SEARCH_TYPE_LABELS[selectedFocusEntity.entityType].toLocaleLowerCase()} card
+                </span>
+              </div>
+              {queryEvaluating ? (
+                <div className="mt-2 flex items-center gap-1.5 text-white/45">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Counting linked content for {selectedFocusEntity.displayName}…
+                </div>
+              ) : displayedEvaluation && queryTierOffer ? (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-white/55">
+                  <span>
+                    <strong className="font-medium text-white/85">{displayedEvaluation.atomCount}</strong>{' '}
+                    linked {displayedEvaluation.atomCount === 1 ? 'memory' : 'memories'}
+                  </span>
+                  <span>
+                    <strong className="font-medium text-white/85">{displayedEvaluation.entryCount}</strong>{' '}
+                    source {displayedEvaluation.entryCount === 1 ? 'entry' : 'entries'}
+                  </span>
+                  <span>
+                    <strong className="font-medium text-white/85">
+                      {displayedEvaluation.wordCount.toLocaleString()}
+                    </strong>{' '}
+                    words
+                  </span>
+                  <span className="text-primary/90">
+                    {queryTierOffer.highestUnlocked
+                      ? `Longest unlocked: ${LOREBOOK_TIERS[queryTierOffer.highestUnlocked].label} · ~${displayedEvaluation.estimatedPages} pages`
+                      : 'Not enough linked content for a LoreBook yet'}
+                  </span>
+                  <LorebookTierMenu
+                    tierOffer={queryTierOffer}
+                    onSelectForm={handleSelectForm}
+                    subjectLabel={selectedFocusEntity.displayName}
+                    buttonLabel="See lengths"
+                    testId="library-focus-tier-menu"
+                  />
+                </div>
+              ) : (
+                <p className="mt-2 text-white/40">
+                  Content count is unavailable right now. You can still continue to Review.
+                </p>
+              )}
+            </div>
+          )}
+          {query.trim().length >= 3 && !showEvidenceReview && !selectedFocusEntity && (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               {queryEvaluating ? (
                 <span className="inline-flex items-center gap-1.5 text-white/40">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Checking knowledge for this book…
                 </span>
-              ) : queryEvaluation && queryTierOffer ? (
+              ) : displayedEvaluation && queryTierOffer ? (
                 <>
-                  <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium', READINESS_COLORS[queryEvaluation.level])}>
-                    {READINESS_LABELS[queryEvaluation.level]} · {Math.round(queryEvaluation.progress * 100)}%
+                  <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium', READINESS_COLORS[displayedEvaluation.level])}>
+                    {READINESS_LABELS[displayedEvaluation.level]} · {Math.round(displayedEvaluation.progress * 100)}%
                   </span>
                   <span className="text-white/35 font-mono">
-                    {queryEvaluation.atomCount} atoms · ~{queryEvaluation.estimatedPages} pages
+                    {displayedEvaluation.atomCount} atoms · ~{displayedEvaluation.estimatedPages} pages
                   </span>
                   <LorebookTierMenu
                     tierOffer={queryTierOffer}
@@ -215,10 +492,10 @@ export const LibraryLanding = ({
               ) : null}
             </div>
           )}
-          {showEvidenceReview && queryEvaluation && (
+          {showEvidenceReview && displayedEvaluation && (
             <div className="mt-4">
               <LorebookEvidenceReview
-                evaluation={queryEvaluation}
+                evaluation={displayedEvaluation}
                 query={query.trim()}
                 loading={queryEvaluating}
                 compiling={generating}
@@ -227,7 +504,7 @@ export const LibraryLanding = ({
               />
             </div>
           )}
-          {showEvidenceReview && !queryEvaluation && !queryEvaluating && (
+          {showEvidenceReview && !displayedEvaluation && !queryEvaluating && (
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
               Could not evaluate evidence for this query. You can still try compiling, or chat more first.
               <div className="mt-3 flex gap-2">

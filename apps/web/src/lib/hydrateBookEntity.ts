@@ -28,6 +28,24 @@ export function locationStub(id: string, name?: string): LocationProfile {
     chapters: [],
     moods: [],
     entries: [],
+    sources: [],
+  };
+}
+
+/** Book/list payloads can omit array fields — keep LocationDetailModal render-safe. */
+export function normalizeLocationProfile(
+  loc: Partial<LocationProfile> & Pick<LocationProfile, 'id' | 'name'>,
+): LocationProfile {
+  return {
+    ...loc,
+    visitCount: typeof loc.visitCount === 'number' ? loc.visitCount : 0,
+    relatedPeople: Array.isArray(loc.relatedPeople) ? loc.relatedPeople : [],
+    tagCounts: Array.isArray(loc.tagCounts) ? loc.tagCounts : [],
+    chapters: Array.isArray(loc.chapters) ? loc.chapters : [],
+    moods: Array.isArray(loc.moods) ? loc.moods : [],
+    entries: Array.isArray(loc.entries) ? loc.entries : [],
+    sources: Array.isArray(loc.sources) ? loc.sources : [],
+    purpose: Array.isArray(loc.purpose) ? loc.purpose : loc.purpose,
   };
 }
 
@@ -51,7 +69,7 @@ export async function fetchCharacterById<T = unknown>(id: string): Promise<T> {
 
 export async function fetchLocationById(id: string): Promise<LocationProfile> {
   const res = await cachedFetchJson<{ location: LocationProfile }>(`/api/locations/${id}`);
-  return res.location;
+  return normalizeLocationProfile(res.location);
 }
 
 export async function fetchProjectById(id: string): Promise<ProjectCardData> {

@@ -19,6 +19,8 @@ export {
   filterEntitiesForPresentation,
   filterCitationsForPresentation,
   isPresentableEntityName,
+  isPresentableMemoryTitle,
+  isPresentableSourceTitle,
 } from './responsePresentationFilter';
 export {
   buildEvidenceContract,

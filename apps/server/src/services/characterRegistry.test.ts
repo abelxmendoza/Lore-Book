@@ -47,6 +47,14 @@ describe('characterRegistry', () => {
     });
   });
 
+  it('allows single-letter possessive anchors only when allowShortAnchor is set', () => {
+    expect(characterRegistry.gateName('V')).toMatchObject({ ok: false, reason: 'too_short' });
+    expect(characterRegistry.gateName('V', { allowShortAnchor: true })).toMatchObject({
+      ok: true,
+      cleanName: 'V',
+    });
+  });
+
   it('does not auto-merge a bare first name into a contextual kinship name', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);

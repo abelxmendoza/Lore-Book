@@ -369,7 +369,14 @@ export const LocationBook = () => {
       <LocationMergePanel
         locations={locations}
         demoMode={isMockDataEnabled}
-        onMerged={() => void refetch()}
+        onMerged={(mergedLocations) => {
+          if (mergedLocations) {
+            mockDataService.register.locations(mergedLocations);
+            setMockRegistryTick((tick) => tick + 1);
+            return;
+          }
+          void refetch();
+        }}
         selectionMode={selectionMode}
         onSelectionModeChange={setSelectionMode}
         selectedForMerge={selectedForMerge}

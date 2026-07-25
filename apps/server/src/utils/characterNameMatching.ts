@@ -57,6 +57,8 @@ const RELATIONAL_NOUNS = new Set<string>([
   'doctor', 'therapist', 'lawyer', 'agent', 'driver', 'barber', 'stylist',
   'worker', 'nurse', 'aide', 'caregiver', 'carer', 'counselor', 'counsellor',
   'recruiter', 'social worker', 'case worker', 'care worker',
+  // Slang / scene relational labels — still imply a named anchor person.
+  'homie', 'homegirl', 'homeboy', 'homegirls', 'homeboys',
 ]);
 
 /** Multi-word professional roles matched before single-token heads. */

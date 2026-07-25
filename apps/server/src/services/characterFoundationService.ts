@@ -35,6 +35,7 @@ import {
   METADATA_CHARACTER_SUBTITLE_KEY,
   METADATA_DISPLAY_TITLE_KEY,
 } from './identity/personDisplayTitleTypes';
+import { scheduleEnsureRelationalPossessor } from './characters/relationalPossessorService';
 
 function parseNameParts(fullName: string): { firstName: string; lastName: string } {
   const parts = splitPersonName(fullName);
@@ -172,156 +173,162 @@ class CharacterFoundationService {
       return null;
     }
 
-    return characterRegistry.runExclusive(userId, async () => {
-    // ── 1. Dedup check: look up by source_entity_id (primary key) ───────────
-    const { data: existingByEntityId } = await supabaseAdmin
-      .from('characters')
-      .select('id, name, alias, metadata')
-      .eq('user_id', userId)
-      .eq('metadata->>source_entity_id', entity.id)
-      .limit(1);
+    const promoted = await characterRegistry.runExclusive(userId, async () => {
+      // ── 1. Dedup check: look up by source_entity_id (primary key) ───────────
+      const { data: existingByEntityId } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, alias, metadata')
+        .eq('user_id', userId)
+        .eq('metadata->>source_entity_id', entity.id)
+        .limit(1);
 
-    if (existingByEntityId?.[0]) {
-      const existing = existingByEntityId[0] as CharacterRow;
-      await this.updateCharacter(existing, entity);
-      await characterAuthorityService.linkSourceRecord(userId, existing.id, 'people_places', entity.id, entity.name, 'source_entity', 1);
-      logger.debug({ characterId: existing.id, name: entity.name }, 'Updated existing character');
-      return existing.id;
-    }
-
-    const mentions = entity.total_mentions ?? entity.related_entries?.length ?? 1;
-    if (!options?.forcePromote && shouldDeferCharacterPromotion(entity.name, mentions)) {
-      logger.debug({ name: entity.name, mentions }, 'Deferring entity to promotion candidate (not auto-creating character)');
-      return null;
-    }
-    const lifecycle = mayCreateCharacterFromLifecycle({
-      name: entity.name,
-      mentionCount: mentions,
-    });
-    if (!options?.forcePromote && !lifecycle.allow) {
-      logger.debug(
-        {
-          name: entity.name,
-          mentions,
-          stage: lifecycle.decision.stage,
-          confidence: lifecycle.decision.identityConfidence,
-        },
-        'Deferring entity — identity lifecycle not ready for Character',
-      );
-      return null;
-    }
-
-    // ── 3. Create new character ──────────────────────────────────────────────
-    // NOTE: Fuzzy name matching (findSimilarCharacter) is intentionally NOT
-    // used here. The source_entity_id is the authoritative dedup key for the
-    // foundation pipeline. Jaro-Winkler matching causes cross-person merges
-    // (e.g. "Abuela" matches "Abel Mendoza" on the "Abe" prefix). Fuzzy
-    // matching is reserved for future character reconciliation workflows.
-    // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
-    // This is what stops "Kelly who's handling onboarding" from becoming a
-    // second Kelly card when the omega pipeline already created "Kelly".
-    const decision = await characterRegistry.classifyForCreation(userId, entity.name);
-    if (decision.action === 'reject') {
-      logger.debug({ name: entity.name, reason: decision.reason }, 'Registry rejected character creation (foundation)');
-      return null;
-    }
-    if (decision.action === 'merge') {
-      await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { source_entity_id: entity.id });
-      await characterAuthorityService.linkSourceRecord(userId, decision.characterId, 'people_places', entity.id, entity.name, 'registry_merge', 0.95);
-      logger.info({ mention: entity.name, mergedInto: decision.matchedName }, 'Registry merged foundation mention into existing character');
-      return decision.characterId;
-    }
-    if (decision.action === 'defer') {
-      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
-      return null;
-    }
-    const cleanedName = decision.cleanName;
-
-    const characterId = uuid();
-    const aliases = Array.from(new Set(entity.corrected_names ?? [])).filter(
-      a => a.toLowerCase() !== cleanedName.toLowerCase()
-    );
-
-    const firstAppearance = entity.first_mentioned_at
-      ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
-      : null;
-
-    const { firstName, lastName } = parseNameParts(cleanedName);
-    const avatarUrl = await assignCharacterAvatar(characterId, { archetype: entity.type === 'person' ? 'human' : null });
-    const metadata = await attachStoredRelationshipKnowledge(
-      userId,
-      characterId,
-      cleanedName,
-      await mergeOntologyIntoMetadataAsync({
-      source_entity_id: entity.id,
-      mention_count: entity.total_mentions,
-      source_memory_count: entity.related_entries?.length ?? 0,
-      source_entry_ids: entity.related_entries ?? [],
-      generated_by: 'character_foundation',
-      generated_at: new Date().toISOString(),
-      first_name: firstName || undefined,
-      last_name: lastName || undefined,
-      identity_stage: lifecycle.decision.stage,
-      identity_confidence: lifecycle.decision.identityConfidence,
-      identity_promotion_log: lifecycle.decision.promotionLog,
-      ...kinshipMetadata(cleanedName),
-    }, cleanedName, entity.type, { userId, rootType: 'PERSON' })
-    );
-
-    const titleBuild = buildDisplayTitleFromMention(characterId, { text: entity.name });
-    if (!titleBuild.rejected) {
-      metadata[METADATA_DISPLAY_TITLE_KEY] = titleBuild.displayTitle;
-      if (titleBuild.characterSubtitle) {
-        metadata[METADATA_CHARACTER_SUBTITLE_KEY] = titleBuild.characterSubtitle;
+      if (existingByEntityId?.[0]) {
+        const existing = existingByEntityId[0] as CharacterRow;
+        await this.updateCharacter(existing, entity);
+        await characterAuthorityService.linkSourceRecord(userId, existing.id, 'people_places', entity.id, entity.name, 'source_entity', 1);
+        logger.debug({ characterId: existing.id, name: entity.name }, 'Updated existing character');
+        return { characterId: existing.id, placeholderName: existing.name };
       }
-    }
 
-    const displayName = titleBuild.rejected ? cleanedName : titleBuild.displayTitle.primaryTitle;
+      const mentions = entity.total_mentions ?? entity.related_entries?.length ?? 1;
+      if (!options?.forcePromote && shouldDeferCharacterPromotion(entity.name, mentions)) {
+        logger.debug({ name: entity.name, mentions }, 'Deferring entity to promotion candidate (not auto-creating character)');
+        return null;
+      }
+      const lifecycle = mayCreateCharacterFromLifecycle({
+        name: entity.name,
+        mentionCount: mentions,
+      });
+      if (!options?.forcePromote && !lifecycle.allow) {
+        logger.debug(
+          {
+            name: entity.name,
+            mentions,
+            stage: lifecycle.decision.stage,
+            confidence: lifecycle.decision.identityConfidence,
+          },
+          'Deferring entity — identity lifecycle not ready for Character',
+        );
+        return null;
+      }
 
-    const character: CharacterRow = {
-      id: characterId,
-      user_id: userId,
-      name: displayName,
-      alias: aliases.length > 0 ? aliases : null,
-      status: 'active',
-      first_appearance: firstAppearance,
-      tags: [],
-      avatar_url: avatarUrl,
-      metadata,
-    };
+      // ── 3. Create new character ──────────────────────────────────────────────
+      // NOTE: Fuzzy name matching (findSimilarCharacter) is intentionally NOT
+      // used here. The source_entity_id is the authoritative dedup key for the
+      // foundation pipeline. Jaro-Winkler matching causes cross-person merges
+      // (e.g. "Abuela" matches "Abel Mendoza" on the "Abe" prefix). Fuzzy
+      // matching is reserved for future character reconciliation workflows.
+      // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
+      // This is what stops "Kelly who's handling onboarding" from becoming a
+      // second Kelly card when the omega pipeline already created "Kelly".
+      const decision = await characterRegistry.classifyForCreation(userId, entity.name);
+      if (decision.action === 'reject') {
+        logger.debug({ name: entity.name, reason: decision.reason }, 'Registry rejected character creation (foundation)');
+        return null;
+      }
+      if (decision.action === 'merge') {
+        await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { source_entity_id: entity.id });
+        await characterAuthorityService.linkSourceRecord(userId, decision.characterId, 'people_places', entity.id, entity.name, 'registry_merge', 0.95);
+        logger.info({ mention: entity.name, mergedInto: decision.matchedName }, 'Registry merged foundation mention into existing character');
+        return { characterId: decision.characterId, placeholderName: decision.cleanName };
+      }
+      if (decision.action === 'defer') {
+        await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
+        return null;
+      }
+      const cleanedName = decision.cleanName;
 
-    const { error } = await supabaseAdmin.from('characters').insert(character);
-    if (error) {
-      logger.error({ error, name: entity.name }, 'Failed to create character');
-      return null;
-    }
+      const characterId = uuid();
+      const aliases = Array.from(new Set(entity.corrected_names ?? [])).filter(
+        a => a.toLowerCase() !== cleanedName.toLowerCase()
+      );
 
-    logger.info({ characterId, name: entity.name, aliases }, 'Created new character');
-    void identityLedgerService.recordMutation({
-      userId,
-      entityId: characterId,
-      entityType: 'character',
-      mutationType: 'ENTITY_CREATED',
-      newValue: { name: cleanedName, aliases },
-      reason: 'Character foundation created from conversation entity',
-      source: 'PIPELINE',
-      metadata: { sourceEntityId: entity.id },
+      const firstAppearance = entity.first_mentioned_at
+        ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
+        : null;
+
+      const { firstName, lastName } = parseNameParts(cleanedName);
+      const avatarUrl = await assignCharacterAvatar(characterId, { archetype: entity.type === 'person' ? 'human' : null });
+      const metadata = await attachStoredRelationshipKnowledge(
+        userId,
+        characterId,
+        cleanedName,
+        await mergeOntologyIntoMetadataAsync({
+        source_entity_id: entity.id,
+        mention_count: entity.total_mentions,
+        source_memory_count: entity.related_entries?.length ?? 0,
+        source_entry_ids: entity.related_entries ?? [],
+        generated_by: 'character_foundation',
+        generated_at: new Date().toISOString(),
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+        identity_stage: lifecycle.decision.stage,
+        identity_confidence: lifecycle.decision.identityConfidence,
+        identity_promotion_log: lifecycle.decision.promotionLog,
+        ...kinshipMetadata(cleanedName),
+      }, cleanedName, entity.type, { userId, rootType: 'PERSON' })
+      );
+
+      const titleBuild = buildDisplayTitleFromMention(characterId, { text: entity.name });
+      if (!titleBuild.rejected) {
+        metadata[METADATA_DISPLAY_TITLE_KEY] = titleBuild.displayTitle;
+        if (titleBuild.characterSubtitle) {
+          metadata[METADATA_CHARACTER_SUBTITLE_KEY] = titleBuild.characterSubtitle;
+        }
+      }
+
+      const displayName = titleBuild.rejected ? cleanedName : titleBuild.displayTitle.primaryTitle;
+
+      const character: CharacterRow = {
+        id: characterId,
+        user_id: userId,
+        name: displayName,
+        alias: aliases.length > 0 ? aliases : null,
+        status: 'active',
+        first_appearance: firstAppearance,
+        tags: [],
+        avatar_url: avatarUrl,
+        metadata,
+      };
+
+      const { error } = await supabaseAdmin.from('characters').insert(character);
+      if (error) {
+        logger.error({ error, name: entity.name }, 'Failed to create character');
+        return null;
+      }
+
+      logger.info({ characterId, name: entity.name, aliases }, 'Created new character');
+      void identityLedgerService.recordMutation({
+        userId,
+        entityId: characterId,
+        entityType: 'character',
+        mutationType: 'ENTITY_CREATED',
+        newValue: { name: cleanedName, aliases },
+        reason: 'Character foundation created from conversation entity',
+        source: 'PIPELINE',
+        metadata: { sourceEntityId: entity.id },
+      });
+      await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
+      await characterAuthorityService.linkSourceRecord(userId, characterId, 'people_places', entity.id, cleanedName, 'source_entity', 1);
+
+      // Capture chat provenance for the brand-new card so it is born with story
+      // context instead of showing "No provenance captured yet" until the audit
+      // runs. Deterministic + cheap (no LLM); fire-and-forget so it never blocks
+      // or fails ingestion.
+      void import('./characters/audit/characterProvenanceBackfillService')
+        .then(({ characterProvenanceBackfillService }) =>
+          characterProvenanceBackfillService.backfillUser(userId, { characterIds: [characterId] }),
+        )
+        .catch((err) => logger.warn({ err, characterId }, 'provenance capture on create skipped'));
+
+      return { characterId, placeholderName: cleanedName };
     });
-    await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
-    await characterAuthorityService.linkSourceRecord(userId, characterId, 'people_places', entity.id, cleanedName, 'source_entity', 1);
 
-    // Capture chat provenance for the brand-new card so it is born with story
-    // context instead of showing "No provenance captured yet" until the audit
-    // runs. Deterministic + cheap (no LLM); fire-and-forget so it never blocks
-    // or fails ingestion.
-    void import('./characters/audit/characterProvenanceBackfillService')
-      .then(({ characterProvenanceBackfillService }) =>
-        characterProvenanceBackfillService.backfillUser(userId, { characterIds: [characterId] }),
-      )
-      .catch((err) => logger.warn({ err, characterId }, 'provenance capture on create skipped'));
-
-    return characterId;
-    });
+    if (promoted?.characterId) {
+      scheduleEnsureRelationalPossessor(userId, promoted.placeholderName, promoted.characterId);
+      return promoted.characterId;
+    }
+    return null;
   }
 
   /**
@@ -608,6 +615,7 @@ class CharacterFoundationService {
       const row = existing[0] as Pick<CharacterRow, 'id' | 'name' | 'alias' | 'metadata'>;
       await this.repairOmegaCharacterName(userId, row, entity);
       await this.reviveIfArchived(userId, row.id);
+      scheduleEnsureRelationalPossessor(userId, row.name || entity.primary_name, row.id);
       return row.id;
     }
 
@@ -641,6 +649,7 @@ class CharacterFoundationService {
             .catch(() => {});
         }).catch(() => {});
       }
+      scheduleEnsureRelationalPossessor(userId, decision.cleanName, decision.characterId);
       return decision.characterId;
     }
     if (decision.action === 'defer') {
@@ -747,6 +756,7 @@ class CharacterFoundationService {
     }
 
     logger.info({ characterId, name: entity.primary_name }, 'Promoted chat entity to character');
+    scheduleEnsureRelationalPossessor(userId, cleanedName, characterId);
     return characterId;
   }
 }

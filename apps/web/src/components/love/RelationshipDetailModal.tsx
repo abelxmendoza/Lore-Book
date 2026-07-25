@@ -107,10 +107,10 @@ type DateEvent = {
 
 const RELATIONSHIP_TABS = [
   { value: 'overview', label: 'Overview', shortLabel: 'Overview', icon: Heart },
+  { value: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'pros-cons', label: 'Pros & Cons', shortLabel: 'Pros', icon: List },
   { value: 'analytics', label: 'Analytics', shortLabel: 'Stats', icon: BarChart3 },
-  { value: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
   { value: 'their-connections', label: 'Their connections', shortLabel: 'Links', icon: GitBranch },
   { value: 'life-impact', label: 'Life Impact', shortLabel: 'Impact', icon: Sparkles },
 ] as const;
@@ -124,9 +124,6 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [dates, setDates] = useState<DateEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
   const [drift, setDrift] = useState<any | null>(null);
   const [cycles, setCycles] = useState<any[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
@@ -261,52 +258,6 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
       console.error('Failed to load relationship data:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleChatSubmit = async () => {
-    if (!chatInput.trim() || chatLoading) return;
-
-    const userMessage = { role: 'user' as const, content: chatInput, timestamp: new Date() };
-    setChatMessages(prev => [...prev, userMessage]);
-    setChatInput('');
-    setChatLoading(true);
-
-    try {
-      // Call chat endpoint with relationship context
-      const response = await fetchJson<{ answer: string; updated?: boolean }>(
-        `/api/conversation/romantic-relationships/${relationshipId}/chat`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            message: chatInput,
-            conversationHistory: chatMessages.map(msg => ({ role: msg.role, content: msg.content }))
-          })
-        }
-      );
-
-      const assistantMessage = { 
-        role: 'assistant' as const, 
-        content: response.answer || 'I understand. How can I help you with this relationship?', 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, assistantMessage]);
-
-      // If relationship was updated, reload data
-      if (response.updated) {
-        await loadData();
-        onUpdate?.();
-      }
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMessage = { 
-        role: 'assistant' as const, 
-        content: 'Sorry, I encountered an error. Please try again.', 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -878,87 +829,45 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
             </div>
           </TabsContent>
 
-          {/* Chat Tab — directs to main chat with full relationship context */}
-          <TabsContent value="chat" className={`${tabPanelClass} flex flex-col min-h-[min(52vh,520px)] max-h-none sm:max-h-[calc(90vh-14rem)]`}>
-            <div className="flex-shrink-0 space-y-2 sm:space-y-4 pb-2 sm:pb-0">
-              <div className="p-3 sm:p-5 rounded-lg border border-pink-500/20 bg-pink-950/10 space-y-2 sm:space-y-4">
-                <p className="text-xs sm:text-sm text-white/70 leading-relaxed">
-                  The main chat already knows everything about{' '}
-                  <span className="text-pink-300 font-medium">{displayName}</span> — their history,
-                  patterns, drift direction, and what's happened recently.
+          {/* Chat Tab — hand off to main chat with Dating & Romance focus chip */}
+          <TabsContent value="chat" className={tabPanelClass}>
+            <div
+              className="rounded-2xl border border-pink-500/20 bg-pink-500/[0.06] px-4 py-8 text-center space-y-4"
+              data-testid="relationship-chat-panel"
+            >
+              <MessageSquare className="h-10 w-10 mx-auto text-pink-300/70" />
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-white">Chat about {displayName}</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto">
+                  Continue in main chat with a Dating & Romance focus chip — full thread, memory, and
+                  composer live there with their history and patterns loaded.
                 </p>
-                <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                  {[
-                    `How are things going with ${displayName}?`,
-                    `What patterns do you see with ${displayName}?`,
-                    `I need to talk about what happened with ${displayName}.`,
-                    `What should I know before my next interaction with ${displayName}?`,
-                  ].map((starter) => (
-                    <button
-                      type="button"
-                      key={starter}
-                      onClick={() => openRelationshipChat(starter)}
-                      className="text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg border border-pink-500/20 bg-black/40 hover:bg-pink-950/20 hover:border-pink-500/40 transition-colors text-xs sm:text-sm text-white/70 hover:text-white/90 break-words"
-                    >
-                      &ldquo;{starter}&rdquo;
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openRelationshipChat()}
-                  className="w-full py-2.5 sm:py-3 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 text-pink-300 hover:text-pink-200 text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  Open main chat →
-                </button>
               </div>
-            </div>
-
-            {/* Chat Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 sm:space-y-4 p-2 sm:p-4 mt-2 rounded-lg border border-border/60 bg-black/40">
-              {chatMessages.length === 0 ? (
-                <div className="text-center text-white/60 py-6 sm:py-8 px-2">
-                  <MessageSquare className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-4 text-pink-400/30" />
-                  <p className="text-xs sm:text-sm">Start a conversation about this relationship</p>
-                </div>
-              ) : (
-                chatMessages.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex min-w-0 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              <div className="grid grid-cols-1 gap-1.5 sm:gap-2 max-w-lg mx-auto text-left">
+                {[
+                  `How are things going with ${displayName}?`,
+                  `What patterns do you see with ${displayName}?`,
+                  `I need to talk about what happened with ${displayName}.`,
+                  `What should I know before my next interaction with ${displayName}?`,
+                ].map((starter) => (
+                  <button
+                    type="button"
+                    key={starter}
+                    onClick={() => openRelationshipChat(starter)}
+                    className="text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg border border-pink-500/20 bg-black/40 hover:bg-pink-950/20 hover:border-pink-500/40 transition-colors text-xs sm:text-sm text-white/70 hover:text-white/90 break-words"
                   >
-                    <div
-                      className={`max-w-[min(100%,16rem)] sm:max-w-[80%] rounded-lg p-2.5 sm:p-3 min-w-0 ${
-                        msg.role === 'user'
-                          ? 'bg-pink-500/20 text-white'
-                          : 'bg-black/60 text-white/90 border border-border/60'
-                      }`}
-                    >
-                      <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Chat Input */}
-            <div className="flex-shrink-0 flex flex-col sm:flex-row gap-2 pt-2 sm:pt-3 mt-auto">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
-                placeholder="Message about this relationship..."
-                className="flex-1 min-w-0 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-black/40 border border-border/60 text-white text-sm placeholder:text-white/40 focus:outline-none focus:border-pink-500/50"
-                disabled={chatLoading}
-              />
+                    &ldquo;{starter}&rdquo;
+                  </button>
+                ))}
+              </div>
               <Button
-                onClick={handleChatSubmit}
-                disabled={chatLoading || !chatInput.trim()}
-                className="bg-pink-500 hover:bg-pink-600 w-full sm:w-auto shrink-0 text-sm py-2"
+                type="button"
+                className="gap-2 bg-pink-500/25 border border-pink-400/35 text-pink-100 hover:bg-pink-500/35"
+                onClick={() => openRelationshipChat()}
+                data-testid="relationship-open-main-chat"
               >
-                {chatLoading ? '...' : 'Send'}
+                <MessageSquare className="h-4 w-4" />
+                Open main chat with Dating & Romance focus
               </Button>
             </div>
           </TabsContent>

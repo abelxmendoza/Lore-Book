@@ -16,7 +16,7 @@ import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
 
 export interface ParsedLorebookQuery {
-  scope: 'full_life' | 'domain' | 'time_range' | 'thematic' | 'character' | 'location' | 'event' | 'skill';
+  scope: 'full_life' | 'domain' | 'time_range' | 'thematic' | 'character' | 'location' | 'event' | 'skill' | 'organization';
   domain?: Domain;
   timeRange?: {
     start: string;
@@ -27,6 +27,7 @@ export interface ParsedLorebookQuery {
   locationIds?: string[];
   eventIds?: string[];
   skillIds?: string[];
+  organizationIds?: string[];
   tone?: 'neutral' | 'dramatic' | 'reflective' | 'mythic' | 'professional';
   depth?: 'summary' | 'detailed' | 'epic';
   /** Document shape tier — set only when the user explicitly picked one from the tier menu. */
@@ -34,6 +35,30 @@ export interface ParsedLorebookQuery {
   audience?: 'self' | 'public' | 'professional';
   version?: 'main' | 'safe' | 'explicit' | 'private';
   includeIntrospection?: boolean;
+}
+
+export type ExactLorebookFocus = {
+  id: string;
+  type: 'person' | 'organization' | 'place' | 'group' | 'community' | 'skill' | 'event';
+};
+
+export function applyExactLorebookFocus(
+  spec: ParsedLorebookQuery,
+  focus: ExactLorebookFocus,
+): ParsedLorebookQuery {
+  if (focus.type === 'person') {
+    return { ...spec, scope: 'character', characterIds: [focus.id] };
+  }
+  if (focus.type === 'place') {
+    return { ...spec, scope: 'location', locationIds: [focus.id] };
+  }
+  if (focus.type === 'skill') {
+    return { ...spec, scope: 'skill', skillIds: [focus.id] };
+  }
+  if (focus.type === 'event') {
+    return { ...spec, scope: 'event', eventIds: [focus.id] };
+  }
+  return { ...spec, scope: 'organization', organizationIds: [focus.id] };
 }
 
 export class LorebookSearchParser {

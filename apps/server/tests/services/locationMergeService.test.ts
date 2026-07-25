@@ -55,6 +55,17 @@ describe('locationMergeService alias preservation', () => {
     expect(identity.aliases).not.toContain('Bad Dogg Compound weeks back');
   });
 
+  it('keeps the exact name the user selected and stores the other name as an alias', () => {
+    const identity = buildMergedPlaceIdentity(
+      { id: 'loc-long', name: 'Vanguard Recreation Center & Billiards', metadata: {} },
+      { id: 'loc-short', name: 'Vanguard Recreation Center', metadata: {} },
+      { preserveTargetName: true },
+    );
+
+    expect(identity.canonicalName).toBe('Vanguard Recreation Center');
+    expect(identity.aliases).toContain('Vanguard Recreation Center & Billiards');
+  });
+
   it('allows residential/family-home place merges even when names differ', () => {
     expect(reviewPlaceDuplicateCompatibility('Anaheim Family Home', "Abuela's House")).toMatchObject({
       canMerge: true,

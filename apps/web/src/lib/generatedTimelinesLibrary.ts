@@ -1,4 +1,9 @@
 import type { GeneratedTimelineEvent } from '../components/timeline/GeneratedTimelineReveal';
+import type {
+  SubjectRelation,
+  SubjectTimelineCompilationSummary,
+  SubjectTimelinePhase,
+} from '../api/subjectTimeline';
 
 export type StoredTimelineEvent = {
   id: string;
@@ -7,6 +12,20 @@ export type StoredTimelineEvent = {
   timeline_names?: string[];
   significance?: 'low' | 'medium' | 'high';
   stateChange?: string;
+  title?: string;
+  source_kind?: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  source_id?: string;
+  source_ids?: string[];
+  source_type?: string;
+  time_precision?: string;
+  time_confidence?: number;
+  occurrence_status?: 'confirmed' | 'range' | 'unresolved';
+  phase?: SubjectTimelinePhase;
+  subjectRelation?: SubjectRelation;
+  relevance?: number;
+  evidenceCount?: number;
+  whyIncluded?: string;
+  focusedEvidence?: string;
 };
 
 export type SavedGeneratedTimeline = {
@@ -17,6 +36,7 @@ export type SavedGeneratedTimeline = {
   arcTitles: string[];
   isMock: boolean;
   collapsed: boolean;
+  compilation?: SubjectTimelineCompilationSummary;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,8 +58,36 @@ export function serializeTimelineEvent(event: GeneratedTimelineEvent): StoredTim
     start_time: event.start_time,
     content: event.content ?? '',
     timeline_names: event.timeline_names,
+    ...('title' in event && event.title ? { title: event.title } : {}),
     ...('stateChange' in event && event.stateChange ? { stateChange: event.stateChange } : {}),
     ...('significance' in event && event.significance ? { significance: event.significance } : {}),
+    ...('source_kind' in event && event.source_kind ? { source_kind: event.source_kind } : {}),
+    ...('source_id' in event && event.source_id ? { source_id: event.source_id } : {}),
+    ...('source_ids' in event && event.source_ids ? { source_ids: event.source_ids } : {}),
+    ...('source_type' in event && event.source_type ? { source_type: event.source_type } : {}),
+    ...('time_precision' in event && event.time_precision ? { time_precision: event.time_precision } : {}),
+    ...('time_confidence' in event && typeof event.time_confidence === 'number'
+      ? { time_confidence: event.time_confidence }
+      : {}),
+    ...('occurrence_status' in event && event.occurrence_status
+      ? { occurrence_status: event.occurrence_status }
+      : {}),
+    ...('phase' in event && event.phase ? { phase: event.phase } : {}),
+    ...('subjectRelation' in event && event.subjectRelation
+      ? { subjectRelation: event.subjectRelation }
+      : {}),
+    ...('relevance' in event && typeof event.relevance === 'number'
+      ? { relevance: event.relevance }
+      : {}),
+    ...('evidenceCount' in event && typeof event.evidenceCount === 'number'
+      ? { evidenceCount: event.evidenceCount }
+      : {}),
+    ...('whyIncluded' in event && event.whyIncluded
+      ? { whyIncluded: event.whyIncluded }
+      : {}),
+    ...('focusedEvidence' in event && event.focusedEvidence
+      ? { focusedEvidence: event.focusedEvidence }
+      : {}),
   };
 }
 
@@ -61,6 +109,7 @@ export function upsertGeneratedTimeline(
     preserveCollapsed?: boolean;
     /** Explicit collapse state (wins over preserveCollapsed). */
     collapsed?: boolean;
+    compilation?: SubjectTimelineCompilationSummary;
     existingId?: string;
   }
 ): { library: SavedGeneratedTimeline[]; saved: SavedGeneratedTimeline } {
@@ -85,6 +134,7 @@ export function upsertGeneratedTimeline(
     arcTitles: input.arcTitles ?? existing?.arcTitles ?? [],
     isMock: input.isMock,
     collapsed,
+    compilation: input.compilation ?? existing?.compilation,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

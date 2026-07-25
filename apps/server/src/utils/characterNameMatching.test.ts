@@ -19,6 +19,12 @@ describe('relational placeholders', () => {
     expect(parseRelationalPlaceholder("Shana's best friend")).toEqual({ relation: 'friend', anchor: 'Shana' });
   });
 
+  it('parses slang possessive labels and short anchors', () => {
+    expect(parseRelationalPlaceholder("V's Homegirl")).toEqual({ relation: 'homegirl', anchor: 'V' });
+    expect(parseRelationalPlaceholder("Taylor's homeboy")).toEqual({ relation: 'homeboy', anchor: 'Taylor' });
+    expect(parseRelationalPlaceholder('homie of Marcus')).toEqual({ relation: 'homie', anchor: 'Marcus' });
+  });
+
   it('parses professional care roles like social worker', () => {
     expect(parseRelationalPlaceholder("Marcus's Social Worker")).toEqual({
       relation: 'social worker',

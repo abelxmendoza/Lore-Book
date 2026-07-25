@@ -14,6 +14,28 @@ vi.mock('../../src/logger', () => ({
 }));
 
 describe('ModeRouterService', () => {
+  it('routes explicit subject timelines before narrative recall', async () => {
+    const explicit = await modeRouterService.routeMessage(
+      'user-1',
+      'Can you pull up a timeline of my time as Midnight Harb0r?',
+    );
+    expect(explicit.mode).toBe('SUBJECT_TIMELINE');
+
+    const ordinaryRecall = await modeRouterService.routeMessage(
+      'user-1',
+      'Do you remember my time at Vanguard Robotics?',
+    );
+    expect(ordinaryRecall.mode).not.toBe('SUBJECT_TIMELINE');
+
+    for (const message of [
+      'How did MemoVault develop over time?',
+      'Show me the history of my relationship with Jamie.',
+      'What happened during my time in the Harbor scene?',
+    ]) {
+      await expect(modeRouterService.routeMessage('user-1', message))
+        .resolves.toMatchObject({ mode: 'SUBJECT_TIMELINE' });
+    }
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

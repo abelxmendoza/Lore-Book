@@ -5,6 +5,7 @@ import type { TransitionAnalysis, EmotionalState } from '../conversationCentered
 import type { ChatSource } from '../omegaChatService';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ContinuityIntent } from '../../utils/continuityIntentDetection';
+import { PARTICIPATION_EVIDENCE_RULES } from './participationClaimGuard';
 
 export function buildSystemPrompt(
   orchestratorSummary: any,
@@ -349,6 +350,15 @@ When asked "will you remember this?" or "are you going to remember this?":
 - Say: "LoreBook is built to accumulate this. Recurring people, moments, and patterns you return to are tracked across conversations. What you share here becomes part of your record."
 - Acknowledge what the infrastructure does — entities extract, threads persist, timeline updates — without claiming perfect omniscience.
 
+**RETELLINGS — SAME STORY, SAME EVENT, AGAIN:**
+
+Users often retell the same memory, event, or occurrence — sometimes nearly verbatim, sometimes with small additions or corrections. This is normal and expected.
+- Treat a retelling as reinforcement of the same lore, not as a brand-new unrelated event.
+- When they ask "do you remember?" / "I think I already told you" / "this is a repeated story": answer from Tier 0/1 first. If the record has it, acknowledge recognition and briefly reflect the known beats before inviting only truly new detail.
+- Prefer merging into the existing people, stage names, songs, places, and moments already on record. Do not invent a second parallel copy of the same story.
+- New details in a retelling update the same memory; contradictions are corrections (user wins).
+- Never claim you forgot a story that is present in the current thread or loaded memory just because they repeated it.
+
 When asked "did you save [X]?" or "did you add [X] as a character/location/group?" or "is [X] in my [Characters/Locations/Groups]?":
 - If X already appears in your loaded character graph or lore data → confirm it directly: "Yes, [X] is in your record — [detail from their profile]."
 - If X is NOT in your loaded context → say: "People, places, and groups you mention are extracted automatically — [X] should appear in your Characters/Locations/Groups section. Check there to confirm it was picked up."
@@ -387,6 +397,9 @@ When the user expresses autobiographical intent (wanting to tell their story, wa
 - Never pretend to know specifics you don't have in context
 - When asked about something you may not have: use the 3-tier hierarchy below — never reach for the apologetic fallback first
 - Sparse authentic continuity beats synthetic emotional richness every time
+
+**EVENT PARTICIPATION — EVIDENCE GUARD:**
+- ${PARTICIPATION_EVIDENCE_RULES}
 
 **3-TIER RESPONSE HIERARCHY — follow this order before saying you don't know:**
 
@@ -870,7 +883,7 @@ ${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
 **Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
 ${timelineSummary || 'No previous entries yet.'}
 
-${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.title ?? r.relationship_type}: ${r.content ?? ''} [source=${r.source ?? 'working_memory'} | confidence=${r.confidence ?? 'n/a'} | score=${r.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.title ?? e.event_title}: ${e.content ?? e.event_summary ?? ''} [source=${e.source ?? 'working_memory'} | confidence=${e.confidence ?? 'n/a'} | score=${e.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
+${(loreData as any)?.retellingRecallBlock ? `${(loreData as any).retellingRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.title ?? r.relationship_type}: ${r.content ?? ''} [source=${r.source ?? 'working_memory'} | confidence=${r.confidence ?? 'n/a'} | score=${r.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.title ?? e.event_title}: ${e.content ?? e.event_summary ?? ''} [source=${e.source ?? 'working_memory'} | confidence=${e.confidence ?? 'n/a'} | score=${e.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
 
 **NARRATIVE INTEGRITY RULES (CRITICAL)**:

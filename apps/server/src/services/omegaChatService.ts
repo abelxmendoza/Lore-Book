@@ -110,7 +110,7 @@ import { timelineManager } from './timelineManager';
 import { extendChatContext } from './timelineInsight';
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric' | 'knowledge';
+  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
@@ -118,6 +118,8 @@ export type ChatSource = {
   /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
   relevanceScore?: number;
   relevanceReasons?: string[];
+  usage?: 'supporting' | 'background' | 'rejected';
+  rejectionReason?: string;
 };
 
 export type MemoryClaim = {
@@ -446,8 +448,16 @@ class OmegaChatService {
     message: string,
     currentContext?: CurrentContext,
     scopePlan?: import('./responseScope').ResponseScopePlan,
+    currentMessageId?: string,
   ) {
-    return _buildRAGPacket(userId, message, currentContext, this.extractDatesAndTimes.bind(this), scopePlan);
+    return _buildRAGPacket(
+      userId,
+      message,
+      currentContext,
+      this.extractDatesAndTimes.bind(this),
+      scopePlan,
+      currentMessageId,
+    );
   }
 
   /**
@@ -1977,7 +1987,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const ragStart = Date.now();
     const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, message) !== null;
     try {
-      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan);
+      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId);
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
       ragPacket = {
@@ -2329,6 +2339,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
       knowledgeGapBlock: (ragPacket as { knowledgeGapBlock?: string | null }).knowledgeGapBlock ?? null,
       foundationRecallBlock: (ragPacket as any).foundationRecallBlock ?? '',
+      retellingRecallBlock: (ragPacket as { retellingRecallBlock?: string | null }).retellingRecallBlock ?? null,
       foundationRelationships: (ragPacket as any).foundationRelationships ?? [],
       foundationTimeline: (ragPacket as any).foundationTimeline ?? [],
       workingMemory: (ragPacket as any).workingMemory ?? null,
@@ -2929,6 +2940,34 @@ When updating relationship analytics or emotional signals from this thread, weig
       logger.debug({ err: metaErr, userId }, 'Meta product gate failed (non-stream) — continuing');
     }
 
+    // Keep the non-streaming fallback on the same explicit timeline route as
+    // streaming chat. Other modes retain their existing non-stream behavior.
+    try {
+      const { modeRouterService } = await import('./modeRouter/modeRouterService');
+      const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
+      if (routing.mode === 'SUBJECT_TIMELINE') {
+        const { modeHandlers } = await import('./modeRouter/modeHandlers');
+        const handled = await modeHandlers.handleMode('SUBJECT_TIMELINE', userId, message, {
+          messageId: entryId,
+          conversationHistory,
+          threadId: sessionId,
+        });
+        return {
+          answer: handled.content,
+          entryId,
+          sources: Array.isArray(handled.metadata?.sources)
+            ? handled.metadata.sources as ChatSource[]
+            : undefined,
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, userId }, 'Non-stream subject timeline routing failed');
+      return {
+        answer: 'I recognized this as a timeline request, but the timeline compiler could not complete it.',
+        entryId,
+      };
+    }
+
     // Narrative + relationship cognition questions are reasoned, not
     // retrieved (see chatStream).
     if (responseScope.isChatFacingMode(scopePlan.responseMode)) try {
@@ -2953,7 +2992,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan);
+    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
     // Essence + identity-core profiles are independent userId-only loads — fetch
@@ -3233,6 +3272,12 @@ When updating relationship analytics or emotional signals from this thread, weig
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
       knowledgeGapBlock: (ragPacket as { knowledgeGapBlock?: string | null }).knowledgeGapBlock ?? null,
+      foundationRecallBlock: (ragPacket as { foundationRecallBlock?: string }).foundationRecallBlock ?? '',
+      retellingRecallBlock: (ragPacket as { retellingRecallBlock?: string | null }).retellingRecallBlock ?? null,
+      foundationRelationships: (ragPacket as { foundationRelationships?: unknown[] }).foundationRelationships ?? [],
+      foundationTimeline: (ragPacket as { foundationTimeline?: unknown[] }).foundationTimeline ?? [],
+      workingMemory: (ragPacket as { workingMemory?: unknown }).workingMemory ?? null,
+      workingMemoryPacket: (ragPacket as { workingMemoryPacket?: unknown }).workingMemoryPacket ?? null,
     };
 
     let scoredLoreDataChat: Record<string, unknown> = rawLoreDataChat;
@@ -3495,6 +3540,10 @@ When updating relationship analytics or emotional signals from this thread, weig
       this.generateCitations(sources, answer),
       sources,
     );
+    const supportingSourceIds = new Set(citations.map((citation) => citation.sourceId));
+    for (const source of sources) {
+      source.usage = supportingSourceIds.has(source.id) ? 'supporting' : 'background';
+    }
 
     // Extract memory claims used in response (from omega memory)
     // Note: This is a placeholder - in production, you'd query omega_claims

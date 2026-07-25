@@ -148,6 +148,19 @@ describe('meaningResolutionService', () => {
     expect(resolveFactuality('I want to work at SpaceX.', lexical).factuality).toBe('desire');
   });
 
+  it('keeps a substantive retelling factual when it ends with a recall check', () => {
+    const lexical = lexicalAnalyzerService.analyzeMessage({ ...base, text: 'x' });
+    const retelling =
+      'I bought a microphone and recorded two songs. My new stage name is Night Signal. ' +
+      'I posted the songs online. This is a repeated story, do you remember?';
+    expect(resolveFactuality(retelling, lexical).factuality).toBe('fact');
+  });
+
+  it('still treats a standalone recall check as a question', () => {
+    const lexical = lexicalAnalyzerService.analyzeMessage({ ...base, text: 'x' });
+    expect(resolveFactuality('Do you remember?', lexical).factuality).toBe('question');
+  });
+
   it('detects hypothetical and prevents hard memory candidate', async () => {
     const result = await resolve('If I worked at SpaceX I would be happy.');
     expect(result.factuality).toBe('hypothetical');

@@ -26,7 +26,7 @@ const humanizeExpressionMode = (mode: string): string => {
 };
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
+  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
   title: string;
   snippet?: string;
@@ -34,6 +34,8 @@ export type ChatSource = {
   /** Evidence-contract score (0–100): how defensibly this source belongs in the answer. */
   relevanceScore?: number;
   relevanceReasons?: string[];
+  usage?: 'supporting' | 'background' | 'rejected';
+  rejectionReason?: string;
 };
 
 export type ChatSuggestedAction = {
@@ -52,13 +54,18 @@ export type ChatSuggestedAction = {
 
 /** User-facing labels for source types (no jargon like HQI) */
 export const SOURCE_TYPE_LABELS: Record<string, string> = {
-  entry: 'Entry',
+  entry: 'Memory',
+  event: 'Event',
   chapter: 'Chapter',
   character: 'Character',
+  location: 'Place',
   task: 'Task',
   hqi: 'Smart search',
   fabric: 'Related',
-  knowledge: 'Knowledge'
+  knowledge: 'Knowledge',
+  era: 'Era',
+  saga: 'Saga',
+  arc: 'Arc',
 };
 
 import type { RecallChatPayload } from './recallTypes';
@@ -72,8 +79,11 @@ import { LexicalSignalBadges } from '../../../components/shared/LexicalSignalBad
 import { extractLexicalSignals } from '../../../lib/lexicalRelationshipLabels';
 import { SilenceMessage } from './SilenceMessage';
 import { RecallMessage } from './RecallMessage';
-import type { EntityMentionRef } from '../../../lib/entityMentions';
-import { entityMentionsFromMessage, mergeEntityMentionRefs } from '../../../lib/entityMentions';
+import {
+  entityMentionsFromMessage,
+  mergeEntityMentionRefs,
+  type EntityMentionRef,
+} from '../../../lib/entityMentions';
 import { TextWithEntityPills } from '../../../components/entity/TextWithEntityPills';
 import { HowLoreBookUnderstoodThis } from '../../../components/chat/HowLoreBookUnderstoodThis';
 import type { LoreEntityKind } from '../../../lib/loreEntities';
@@ -186,9 +196,11 @@ export type Message = {
   }>;
   creationOutcomes?: Array<{
     mention: string;
-    action: 'create' | 'merge' | 'defer' | 'reject';
+    action: 'create' | 'merge' | 'defer' | 'reject' | 'route';
     entityId?: string;
     entityName?: string;
+    entityType?: 'character' | 'self_alias' | 'tool' | 'media' | 'band' | 'role' | 'event' | 'process';
+    persistence?: 'candidate' | 'confirmed';
     reason?: string;
     candidates?: Array<{ character_id: string; name: string; subtitle?: string }>;
     authority?: 'core' | 'legacy' | 'shadow';
@@ -708,10 +720,10 @@ export const ChatMessage = ({
               />
             )}
             
-            {/* Inline Citations - ChatGPT style */}
+            {/* Citations = titles that actually appear in this reply */}
             {message.citations && message.citations.length > 0 && (
               <div className="mt-4 sm:mt-5 lg:mt-6 pt-3 sm:pt-4 border-t border-white/10">
-                <div className="text-sm sm:text-base text-white/40 mb-2 sm:mb-3">Sources:</div>
+                <div className="text-sm sm:text-base text-white/40 mb-2 sm:mb-3">Cited in this reply</div>
                 <div className="flex flex-wrap gap-2 sm:gap-3">
                   {message.citations.map((citation, idx) => (
                     <button
@@ -733,17 +745,28 @@ export const ChatMessage = ({
             )}
           </div>
 
-          {/* Sources - compact inline chips */}
-          {message.sources && message.sources.length > 0 && message.citations && message.citations.length > 0 && (
+          {/* Evidence consulted for this reply (shown even when nothing was cited by name) */}
+          {message.sources && message.sources.length > 0 && (
             <div className="pt-2 border-t border-white/8">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-white/30">from</span>
+                <span className="text-xs text-white/30">
+                  {message.citations && message.citations.length > 0 ? 'also consulted' : 'consulted'}
+                </span>
                 {message.sources.slice(0, 5).map((source, idx) => (
                   <button
-                    key={idx}
+                    key={`${source.type}:${source.id}:${idx}`}
+                    type="button"
                     onClick={() => onSourceClick?.(source)}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/8 transition-colors text-xs text-white/50 hover:text-white/80"
-                    title={source.title}
+                    title={
+                      [
+                        source.title,
+                        source.snippet,
+                        source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' — ')
+                    }
                   >
                     <span className="text-white/30">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
                     <span className="truncate max-w-[120px]">{source.title}</span>

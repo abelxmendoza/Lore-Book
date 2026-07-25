@@ -669,6 +669,9 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
           logger.debug({ err, characterId: newCharacter.id }, 'Failed to calculate initial importance');
         });
 
+      const { scheduleEnsureRelationalPossessor } = await import('./characters/relationalPossessorService');
+      scheduleEnsureRelationalPossessor(userId, decision.cleanName, newCharacter.id);
+
       return newCharacter;
     } catch (error) {
       logger.error({ error, character }, 'Failed to create character with nickname');

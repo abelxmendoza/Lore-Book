@@ -8,7 +8,7 @@ import {
 } from './entityPromotionPolicy';
 
 const STOP_WORDS = new Set([
-  'about', 'after', 'again', 'all', 'and', 'any', 'are', 'because', 'been', 'before', 'but',
+  'about', 'after', 'again', 'all', 'also', 'and', 'any', 'are', 'because', 'been', 'before', 'but',
   'can', 'day', 'did', 'does', 'doing', 'everything', 'for', 'from', 'had', 'has', 'have',
   'her', 'him', 'his', 'how', 'into', 'just', 'know', 'like', 'me', 'more', 'much', 'now',
   'our', 'out', 'really', 'said', 'she', 'some', 'that', 'the', 'their', 'them', 'then',

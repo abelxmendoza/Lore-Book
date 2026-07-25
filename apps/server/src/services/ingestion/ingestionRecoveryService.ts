@@ -10,11 +10,12 @@
  */
 
 import { logger } from '../../logger';
+import { evaluateLifeLogEligibility } from '../events/lifeLogEligibilityPolicy';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { normalizeJobStatus, isActiveStatus } from './ingestionJobStates';
 import { ingestionJobStore } from './ingestionJobStore';
 import { ingestionQueue } from './ingestionQueue';
-import { normalizeJobStatus, isActiveStatus } from './ingestionJobStates';
-import { evaluateLifeLogEligibility } from '../events/lifeLogEligibilityPolicy';
 
 const ARTIFACT_GAP_RECOVERY_VERSION = 'v1';
 const PROVIDER_RECOVERY_VERSION = 'v1';
@@ -53,6 +54,13 @@ export type RecoveryOptions = {
   limit?: number;
   staleAfterMs?: number;
   messageId?: string;
+};
+
+type PersistedArtifact = {
+  kind: string;
+  id: string;
+  label?: string | null;
+  status: 'internal_derivation' | 'persisted_record' | 'review_candidate' | 'confirmed_identity';
 };
 
 class IngestionRecoveryService {
@@ -240,6 +248,8 @@ class IngestionRecoveryService {
       assistant = asst ?? null;
     }
 
+    const confirmedArtifacts = await this.loadConfirmedArtifacts(userId, messageId);
+
     return {
       userMessage: {
         id: msg.id,
@@ -271,11 +281,256 @@ class IngestionRecoveryService {
             status: 'NOT_SCHEDULED' as const,
           },
       pipelineRun,
+      confirmedArtifacts,
       willRetry:
         job != null &&
         (job.retryable === true || isActiveStatus(normalizeJobStatus(job.status))) &&
         job.status !== 'COMPLETED' &&
         job.status !== 'PERMANENT_FAILED',
+    };
+  }
+
+  /**
+   * Read-only, source-linked receipt of what this exact chat message persisted.
+   * Candidate rows remain candidates; their presence is never presented as a
+   * promoted/canonical entity.
+   */
+  private async loadConfirmedArtifacts(userId: string, messageId: string) {
+    const artifacts: PersistedArtifact[] = [];
+    const queryErrors: string[] = [];
+
+    const query = async (
+      table: string,
+      run: () => PromiseLike<{ data: any[] | null; error: { message?: string } | null }>,
+      project: (row: any) => PersistedArtifact,
+    ) => {
+      try {
+        const { data, error } = await run();
+        if (error) {
+          queryErrors.push(`${table}: ${error.message ?? 'query failed'}`);
+          return;
+        }
+        for (const row of data ?? []) artifacts.push(project(row));
+      } catch (error) {
+        queryErrors.push(`${table}: ${error instanceof Error ? error.message : 'query failed'}`);
+      }
+    };
+
+    const derivedMessageIds: string[] = [];
+    await query(
+      'conversation_messages',
+      () => supabaseAdmin
+        .from('conversation_messages')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('metadata->>chat_message_id', messageId),
+      (row) => {
+        derivedMessageIds.push(String(row.id));
+        return {
+          kind: 'conversation_message',
+          id: String(row.id),
+          status: 'internal_derivation',
+        };
+      },
+    );
+
+    const utteranceIds: string[] = [];
+    if (derivedMessageIds.length > 0) {
+      await query(
+        'utterances',
+        () => supabaseAdmin
+          .from('utterances')
+          .select('id')
+          .eq('user_id', userId)
+          .in('message_id', derivedMessageIds),
+        (row) => {
+          utteranceIds.push(String(row.id));
+          return {
+            kind: 'utterance',
+            id: String(row.id),
+            status: 'internal_derivation',
+          };
+        },
+      );
+    }
+
+    if (utteranceIds.length > 0) {
+      await query(
+        'extracted_units',
+        () => supabaseAdmin
+          .from('extracted_units')
+          .select('id, type, content')
+          .eq('user_id', userId)
+          .in('utterance_id', utteranceIds)
+          .is('superseded_at', null),
+        (row) => ({
+          kind: `extracted_unit:${String(row.type ?? 'unknown').toLowerCase()}`,
+          id: String(row.id),
+          label: typeof row.content === 'string' ? row.content.slice(0, 240) : null,
+          status: 'internal_derivation',
+        }),
+      );
+    }
+
+    await Promise.all([
+      query(
+        'event_records',
+        () => supabaseAdmin
+          .from('event_records')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({ kind: 'event', id: String(row.id), status: 'persisted_record' }),
+      ),
+      query(
+        'episodes',
+        () => supabaseAdmin
+          .from('episodes')
+          .select('id, title')
+          .eq('user_id', userId)
+          .contains('source_message_ids', [messageId]),
+        (row) => ({
+          kind: 'episode',
+          id: String(row.id),
+          label: row.title ?? null,
+          status: 'persisted_record',
+        }),
+      ),
+      query(
+        'autobiographical_meaning_artifacts',
+        () => supabaseAdmin
+          .from('autobiographical_meaning_artifacts')
+          .select('id, meaning_type, display_label')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({
+          kind: `meaning:${String(row.meaning_type ?? 'artifact')}`,
+          id: String(row.id),
+          label: row.display_label ?? null,
+          status: 'persisted_record',
+        }),
+      ),
+      query(
+        'narrative_moments',
+        () => supabaseAdmin
+          .from('narrative_moments')
+          .select('id, summary')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({
+          kind: 'narrative_moment',
+          id: String(row.id),
+          label: row.summary ?? null,
+          status: 'persisted_record',
+        }),
+      ),
+      query(
+        'group_candidates',
+        () => supabaseAdmin
+          .from('group_candidates')
+          .select('id, proposed_name, status')
+          .eq('user_id', userId)
+          .contains('source_message_ids', [messageId]),
+        (row) => ({
+          kind: 'group',
+          id: String(row.id),
+          label: row.proposed_name ?? null,
+          status: row.status === 'accepted' ? 'persisted_record' : 'review_candidate',
+        }),
+      ),
+      query(
+        'organization_suggestions',
+        () => supabaseAdmin
+          .from('organization_suggestions')
+          .select('id, name, status_row')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({
+          kind: 'organization',
+          id: String(row.id),
+          label: row.name ?? null,
+          status: row.status_row === 'confirmed' ? 'persisted_record' : 'review_candidate',
+        }),
+      ),
+      query(
+        'skill_suggestions',
+        () => supabaseAdmin
+          .from('skill_suggestions')
+          .select('id, skill_name, status')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({
+          kind: 'skill',
+          id: String(row.id),
+          label: row.skill_name ?? null,
+          status: row.status === 'confirmed' ? 'persisted_record' : 'review_candidate',
+        }),
+      ),
+      query(
+        'quest_suggestions',
+        () => supabaseAdmin
+          .from('quest_suggestions')
+          .select('id, title, status')
+          .eq('user_id', userId)
+          .eq('source_message_id', messageId),
+        (row) => ({
+          kind: 'quest',
+          id: String(row.id),
+          label: row.title ?? null,
+          status: row.status === 'confirmed' ? 'persisted_record' : 'review_candidate',
+        }),
+      ),
+    ]);
+
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, metadata')
+        .eq('user_id', userId)
+        .limit(250);
+      if (error) {
+        queryErrors.push(`characters: ${error.message ?? 'query failed'}`);
+      } else {
+        for (const character of data ?? []) {
+          const metadata = (character.metadata ?? {}) as Record<string, unknown>;
+          const evidence = Array.isArray(metadata.self_alias_evidence)
+            ? metadata.self_alias_evidence as Array<Record<string, unknown>>
+            : [];
+          for (const item of evidence) {
+            if (item.source_message_id !== messageId || typeof item.alias !== 'string') continue;
+            artifacts.push({
+              kind: 'self_stage_name',
+              id: String(character.id),
+              label: item.alias,
+              status: 'confirmed_identity',
+            });
+          }
+        }
+      }
+    } catch (error) {
+      queryErrors.push(`characters: ${error instanceof Error ? error.message : 'query failed'}`);
+    }
+
+    artifacts.sort((left, right) => (
+      left.status.localeCompare(right.status) ||
+      left.kind.localeCompare(right.kind) ||
+      left.id.localeCompare(right.id)
+    ));
+    queryErrors.sort();
+
+    return {
+      sourceMessageId: messageId,
+      counts: {
+        total: artifacts.length,
+        internalDerivations: artifacts.filter((item) => item.status === 'internal_derivation').length,
+        persistedRecords: artifacts.filter((item) => item.status === 'persisted_record').length,
+        reviewCandidates: artifacts.filter((item) => item.status === 'review_candidate').length,
+        confirmedIdentityUpdates: artifacts.filter((item) => item.status === 'confirmed_identity').length,
+      },
+      artifacts,
+      queryErrors,
+      note:
+        'Only rows linked to this exact message are listed. Review candidates are not canonical records.',
     };
   }
 

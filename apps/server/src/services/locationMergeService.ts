@@ -154,6 +154,7 @@ function sanitizeAliasCandidates(candidates: string[]): string[] {
 export function buildMergedPlaceIdentity(
   source: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
   target: Pick<LocationRow, 'id' | 'name' | 'metadata'>,
+  opts: { preserveTargetName?: boolean } = {},
 ): { canonicalName: string; aliases: string[]; mergeHistory: Array<Record<string, unknown>> } {
   const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>;
   const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
@@ -168,8 +169,9 @@ export function buildMergedPlaceIdentity(
     ),
   );
   const cleanSourceName = sanitizeAliasCandidates([source.name])[0] ?? target.name;
-  const canonicalName =
-    canonicalPlaceMergeName(target.name, cleanSourceName, rawAliasCandidates) || target.name;
+  const canonicalName = opts.preserveTargetName
+    ? target.name
+    : canonicalPlaceMergeName(target.name, cleanSourceName, rawAliasCandidates) || target.name;
   const aliases = rawAliasCandidates.filter((alias) => alias.trim() && alias.trim() !== canonicalName);
   const mergeHistory = [
     ...(Array.isArray(targetMeta.merge_history) ? (targetMeta.merge_history as Array<Record<string, unknown>>) : []),
@@ -260,7 +262,12 @@ class LocationMergeService {
     userId: string,
     sourceId: string,
     targetId: string,
-    opts: { reason?: string; evidenceIds?: string[]; resolverVersion?: string } = {}
+    opts: {
+      reason?: string;
+      evidenceIds?: string[];
+      resolverVersion?: string;
+      preserveTarget?: boolean;
+    } = {}
   ): Promise<LocationMergeReport> {
     // Resolve both ids to the canonical authority BEFORE any equality/lookup check,
     // so a people_places-id payload from the Location Book merges correctly.
@@ -317,7 +324,7 @@ class LocationMergeService {
     let sourceScore = await readStrengthScore('locations', userId, sourceId);
     let targetScore = await readStrengthScore('locations', userId, targetId);
     let directionSwapped = false;
-    if (shouldSwapForStrength(sourceScore, targetScore)) {
+    if (!opts.preserveTarget && shouldSwapForStrength(sourceScore, targetScore)) {
       [sourceId, targetId] = [targetId, sourceId];
       [source, target] = [target, source];
       [sourceScore, targetScore] = [targetScore, sourceScore];
@@ -354,7 +361,7 @@ class LocationMergeService {
     // hierarchy — re-point children to the survivor instead.
     await this.rewriteInterestMentionLocations(userId, sourceId, targetId);
     await this.rewriteParentLocationIds(userId, sourceId, targetId);
-    const card = await this.mergeCardData(userId, source, target);
+    const card = await this.mergeCardData(userId, source, target, opts.preserveTarget ?? false);
     report.canonicalName = card.name;
     report.aliases = card.aliases;
     report.reviewFlags = card.reviewFlags;
@@ -600,11 +607,12 @@ class LocationMergeService {
   private async mergeCardData(
     userId: string,
     source: LocationRow,
-    target: LocationRow
+    target: LocationRow,
+    preserveTargetName: boolean,
   ): Promise<{ name: string; aliases: string[]; reviewFlags: string[] }> {
     const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>;
     const targetMeta = { ...(target.metadata ?? {}) } as Record<string, unknown>;
-    const identity = buildMergedPlaceIdentity(source, target);
+    const identity = buildMergedPlaceIdentity(source, target, { preserveTargetName });
     const canonicalName = identity.canonicalName;
     const aliases = identity.aliases;
 
@@ -640,7 +648,7 @@ class LocationMergeService {
         ? source.type
         : target.type || source.type || null;
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from('locations')
       .update({
         name: canonicalName,
@@ -674,6 +682,10 @@ class LocationMergeService {
       })
       .eq('id', target.id)
       .eq('user_id', userId);
+    if (updateError) {
+      logger.error({ updateError, sourceId: source.id, targetId: target.id }, '[LocationMerge] survivor update failed');
+      throw updateError;
+    }
 
     return { name: canonicalName, aliases, reviewFlags };
   }

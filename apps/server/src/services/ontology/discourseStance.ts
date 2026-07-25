@@ -44,6 +44,15 @@ const SENTENCE_SPLIT = /[.!?\n]+/;
 const norm = (s: string): string =>
   (s ?? '').toLowerCase().replace(/['’]/g, "'").replace(/\s+/g, ' ').trim();
 
+function isTrueBareEndCue(sentence: string): boolean {
+  const value = norm(sentence).replace(/[,;:—–-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return (
+    /^(?:and )?the end$/.test(value)
+    || /^(?:and )?(?:that|this|it) (?:was|is) the end(?: of (?:the )?story)?$/.test(value)
+    || /^(?:and )?(?:that|this) (?:was|is) how (?:it|the story) ended$/.test(value)
+  );
+}
+
 function scanPhraseSpecs<T extends string>(
   text: string,
   specs: Array<{ phrase: string; move: string; confidence: number }>,
@@ -59,6 +68,9 @@ function scanPhraseSpecs<T extends string>(
       if (!validMoves.has(spec.move)) continue;
       const p = spec.phrase.toLowerCase();
       if (!padded.includes(` ${p} `) && !norm(sentence).startsWith(p)) continue;
+      // "the end" is only a story boundary when it is the clause, not a
+      // spelling, editing, temporal, or layout position inside a sentence.
+      if (spec.move === 'STORY_CLOSE' && p === 'the end' && !isTrueBareEndCue(sentence)) continue;
       const key = `${sentenceIndex}:${spec.move}:${p}`;
       if (seen.has(key)) continue;
       seen.add(key);

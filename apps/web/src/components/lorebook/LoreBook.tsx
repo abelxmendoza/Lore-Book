@@ -31,6 +31,7 @@ import {
   formatCompileBlockMessage,
   shouldConfirmForceCompile,
   type CompileTopicOptions,
+  type LorebookFocusEntity,
 } from '../../lib/lorebookCompile';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { useLorebookShell } from './LorebookShell';
@@ -676,7 +677,10 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   }, [addGeneratedBook, openDemoBookForReading, preset, refreshCompiledBooks]);
 
-  const handleGenerateFromQuery = async (query: string, options?: { force?: boolean; form?: LorebookForm }) => {
+  const handleGenerateFromQuery = async (
+    query: string,
+    options?: { force?: boolean; form?: LorebookForm; focusEntity?: LorebookFocusEntity },
+  ) => {
     if (shouldUseMock || isSimulated) {
       await runDemoCompile({ query }, query);
       return;
@@ -688,14 +692,19 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowLibrary(false);
     setGenerationError(null);
     try {
-      let result = await compileLorebookFromQuery(query, options?.force ?? false, options?.form);
+      let result = await compileLorebookFromQuery(
+        query,
+        options?.force ?? false,
+        options?.form,
+        options?.focusEntity,
+      );
 
       if (!result.ok && shouldConfirmForceCompile(result.conflict)) {
         const proceed = window.confirm(
           `${result.conflict.message}\n\nCompile a thinner book anyway?`
         );
         if (proceed) {
-          result = await compileLorebookFromQuery(query, true, options?.form);
+          result = await compileLorebookFromQuery(query, true, options?.form, options?.focusEntity);
         }
       }
       if (!result.ok) {
@@ -1538,4 +1547,3 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     </div>
   );
 };
-

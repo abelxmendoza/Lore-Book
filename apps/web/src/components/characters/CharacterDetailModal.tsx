@@ -2816,6 +2816,7 @@ export const CharacterDetailModal = ({
                 <div className="mb-1.5 max-w-2xl">
                   <CharacterTitleSection
                     character={editedCharacter}
+                    compact={isMainCharacter}
                     onUpdated={(patch) => {
                       setEditedCharacter((prev) => ({ ...prev, ...patch }));
                       if (isMainCharacter && !isMockDataEnabled) {
@@ -3116,6 +3117,7 @@ export const CharacterDetailModal = ({
                 )}
                 <CharacterTitleSection
                   character={editedCharacter}
+                  compact
                   onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
                 />
                 {profileContextHooks.length > 0 && (

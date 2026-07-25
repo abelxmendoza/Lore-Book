@@ -31,7 +31,7 @@ export type LocationDuplicateGroup = {
 type Props = {
   locations: LocationProfile[];
   demoMode?: boolean;
-  onMerged: () => void;
+  onMerged: (mergedLocations?: LocationProfile[]) => void;
   selectionMode: boolean;
   onSelectionModeChange: (active: boolean) => void;
   selectedForMerge: Set<string>;
@@ -150,11 +150,16 @@ export const LocationMergePanel = ({
       let mergedName = group.locations.find(loc => loc.id === targetId)?.name ?? 'the selected place';
       let reviewCount = 0;
       if (demoMode) {
+        const mergedLocations = mergeLocationsLocally(
+          locations,
+          targetId,
+          sources.map(source => source.id),
+        );
         setMergeNotice(
-          `Demo merge preview: consolidated ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}.`
+          `Demo merge complete: consolidated ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${mergedName}.`
         );
         setDuplicateGroups(prev => prev.filter(g => g.canonical_name !== group.canonical_name));
-        onMerged();
+        onMerged(mergedLocations);
         return;
       }
       for (const source of sources) {
@@ -198,10 +203,10 @@ export const LocationMergePanel = ({
       let mergedName = locations.find(loc => loc.id === targetId)?.name ?? 'the selected place';
       let reviewCount = 0;
       if (demoMode) {
-        mergeLocationsLocally(locations, targetId, sources);
+        const mergedLocations = mergeLocationsLocally(locations, targetId, sources);
         cancelManualMerge();
-        setMergeNotice(`Demo merge preview: merged ${sources.length + 1} selected cards into ${mergedName}.`);
-        onMerged();
+        setMergeNotice(`Demo merge complete: merged ${sources.length + 1} selected cards into ${mergedName}.`);
+        onMerged(mergedLocations);
         return;
       }
       for (const sourceId of sources) {
@@ -310,6 +315,7 @@ export const LocationMergePanel = ({
         selectedCount={selectedLocations.length}
         options={selectedLocations.map((location) => ({ id: location.id, name: location.name }))}
         busy={mergeBusy}
+        error={mergeError}
         onKeep={(targetId) => void mergeSelectedLocations(targetId)}
       />
 

@@ -83,7 +83,16 @@ export interface NarrativeEdge {
  * BiographySpec - Generation request
  */
 export interface BiographySpec {
-  scope: 'full_life' | 'domain' | 'time_range' | 'thematic';
+  scope:
+    | 'full_life'
+    | 'domain'
+    | 'time_range'
+    | 'thematic'
+    | 'character'
+    | 'location'
+    | 'event'
+    | 'skill'
+    | 'organization';
   domain?: Domain;
   timeRange?: {
     start: string; // ISO date

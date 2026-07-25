@@ -23,9 +23,14 @@ vi.mock('../../contexts/MockDataContext', () => ({
   MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
-vi.mock('./CharacterTimelinePanel', () => ({
-  CharacterTimelinePanel: () => <div data-testid="timeline-panel">Timeline</div>,
-}));
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 vi.mock('./CharacterKnowledgeBase', () => ({
   CharacterKnowledgeBase: () => <div data-testid="knowledge-base">Knowledge</div>,
@@ -54,6 +59,7 @@ describe('MainCharacterDetailModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockState.mockDataEnabled = true;
+    mockNavigate.mockReset();
     vi.mocked(fetchJson).mockRejectedValue(new Error('Not found'));
   });
 
@@ -87,6 +93,26 @@ describe('MainCharacterDetailModal', () => {
     expect(screen.getByTestId('main-tab-lore')).toBeInTheDocument();
     expect(screen.getByTestId('main-tab-memories')).toBeInTheDocument();
     expect(screen.getByTestId('main-tab-chat')).toBeInTheDocument();
+  });
+
+  it('timeline tab stays in the modal and hands off to Omni Timeline on CTA', async () => {
+    const user = userEvent.setup();
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-timeline'));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('main-character-timeline-handoff')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('main-character-open-omni-timeline'));
+
+    expect(onClose).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/timeline?view=events&characterId=self-synthetic',
+    );
   });
 
   it('navigates to chat tab and offers talk-to-lore starters', async () => {

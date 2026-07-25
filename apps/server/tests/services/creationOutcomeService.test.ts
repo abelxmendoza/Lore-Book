@@ -21,6 +21,7 @@ import { entityAmbiguityService } from '../../src/services/entityAmbiguityServic
 import {
   collectCreationOutcomesForMessage,
   summarizeCreationOutcomes,
+  classifyCreationMentionDomain,
 } from '../../src/services/creationOutcomeService';
 
 describe('creationOutcomeService', () => {
@@ -50,5 +51,18 @@ describe('creationOutcomeService', () => {
     ]);
     expect(summary).toContain('Jerry');
     expect(summary).toContain('Ashley');
+    expect(summary).not.toContain('started a record');
+  });
+
+  it('routes a stage name, event, music works, and tools away from person creation', () => {
+    const story =
+      'Ska Horizon is coming up and it is the biggest ska show of the year. ' +
+      'My new stage name is Night Signal. I generated tracks with Suno and they are called ' +
+      '"Glass Harbor" and "Static Rooms".';
+    expect(classifyCreationMentionDomain('Night Signal', story)).toBe('self_alias');
+    expect(classifyCreationMentionDomain('Ska Horizon', story)).toBe('event');
+    expect(classifyCreationMentionDomain('Suno', story)).toBe('tool');
+    expect(classifyCreationMentionDomain('Glass Harbor', story)).toBe('media');
+    expect(classifyCreationMentionDomain('Static Rooms', story)).toBe('media');
   });
 });

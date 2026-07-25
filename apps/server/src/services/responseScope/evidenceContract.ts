@@ -56,6 +56,8 @@ export type EvidenceContract = {
   queryTerms: string[];
   /** Entities the question (or active context) is about. */
   entityNames: string[];
+  /** Explicit timelines may not inherit the ordinary general-pass floor. */
+  requireSubjectOverlap: boolean;
   /** Sources scoring below this never reach the model. */
   minScore: number;
   maxSources: number;
@@ -199,15 +201,25 @@ export function buildEvidenceContract(
 ): EvidenceContract {
   const topic = detectTopic(message);
   const rule = TOPIC_RULES.find((r) => r.topic === topic);
+  const isTimeline = /\b(?:timeline|chronology|history of|develop(?:ed)? over time)\b/i.test(message);
+  const timelineSubject = message
+    .replace(/^.*?\b(?:timeline|chronology|history)\s+(?:of|for)\s+/i, '')
+    .replace(/^.*?\bmy\s+/i, '')
+    .replace(/[?.!]+$/g, '')
+    .trim()
+    .toLowerCase();
+  const entityNames = (plan?.primaryEntities ?? []).map((e) => e.name.toLowerCase()).filter(Boolean);
+  if (isTimeline && timelineSubject.length >= 3) entityNames.push(timelineSubject);
 
   return {
     topic,
-    expectedAnswerShape: rule?.expectedAnswerShape ?? 'summary',
-    targetKinds: rule?.targetKinds ?? [],
+    expectedAnswerShape: isTimeline ? 'timeline' : rule?.expectedAnswerShape ?? 'summary',
+    targetKinds: isTimeline ? ['entry', 'event', 'chapter', 'knowledge'] : rule?.targetKinds ?? [],
     supportingPatterns: rule ? [rule.supporting] : [],
     forbiddenPatterns: rule ? [rule.forbidden] : [],
     queryTerms: terms(message),
-    entityNames: (plan?.primaryEntities ?? []).map((e) => e.name.toLowerCase()).filter(Boolean),
+    entityNames: [...new Set(entityNames)],
+    requireSubjectOverlap: isTimeline,
     minScore: DEFAULT_MIN_EVIDENCE_SCORE,
     maxSources: Math.max(plan?.maxEvidenceItems ?? 20, 8),
   };
@@ -221,6 +233,7 @@ type ScorableSource = {
   type?: string;
   title?: string;
   snippet?: string;
+  relevanceReasons?: string[];
 };
 
 export function scoreEvidence(
@@ -245,6 +258,17 @@ export function scoreEvidence(
   if (entityHit) {
     score += 45;
     reasons.push(`entity:${entityHit}`);
+  }
+  const linkedSubjectEvidence = (source.relevanceReasons ?? []).some((reason) =>
+    /\b(?:direct|subject|alias|linked|current.thread)\b/i.test(reason),
+  );
+  if (linkedSubjectEvidence) {
+    score += 45;
+    reasons.push('subject_linked');
+  }
+
+  if (contract.requireSubjectOverlap && !entityHit && !linkedSubjectEvidence) {
+    return { score: 0, reasons: ['timeline_subject_mismatch'] };
   }
 
   // Topic support: the source carries the kind of evidence the contract needs.
@@ -282,7 +306,7 @@ export function scoreEvidence(
 
   // A general contract has no topic lexicon; fall back to lexical + entity
   // signals with a floor so ordinary chat isn't starved of context.
-  if (contract.topic === 'general' && score < DEFAULT_MIN_EVIDENCE_SCORE) {
+  if (contract.topic === 'general' && !contract.requireSubjectOverlap && score < DEFAULT_MIN_EVIDENCE_SCORE) {
     score = 25;
     reasons.push('general_pass');
   }

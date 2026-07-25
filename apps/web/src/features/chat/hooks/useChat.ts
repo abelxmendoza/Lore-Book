@@ -833,7 +833,17 @@ export const useChat = () => {
           if (meta.sources && meta.sources.length > 0) {
             setLoadingStage('searching');
             setLoadingProgress(40);
-            setSources(prev => [...prev, ...meta.sources]);
+            setSources((prev) => {
+              const seen = new Set(prev.map((s) => `${s.type}:${s.id}`));
+              const next = [...prev];
+              for (const source of meta.sources) {
+                const key = `${source.type}:${source.id}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                next.push(source);
+              }
+              return next;
+            });
           } else if (meta.connections && meta.connections.length > 0) {
             setLoadingStage('connecting');
             setLoadingProgress(60);

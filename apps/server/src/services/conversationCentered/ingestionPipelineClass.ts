@@ -134,6 +134,11 @@ export class ConversationIngestionPipeline {
         chatMessage.content,
         chatMessageId,
       );
+      await selfCharacterService.capturePreferredStageNameCorrection(
+        userId,
+        chatMessage.content,
+        chatMessageId,
+      );
 
       // Check if already ingested (avoid duplicate processing). Skipped on a
       // forced re-ingest (a correction) — the caller has already tombstoned the

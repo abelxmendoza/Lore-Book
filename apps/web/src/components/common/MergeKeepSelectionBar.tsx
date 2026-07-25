@@ -5,6 +5,7 @@ type Props = {
   selectedCount: number;
   options: MergeKeepOption[];
   busy?: boolean;
+  error?: string | null;
   onKeep: (targetId: string) => void;
   hint?: string;
 };
@@ -14,6 +15,7 @@ export function MergeKeepSelectionBar({
   selectedCount,
   options,
   busy = false,
+  error,
   onKeep,
   hint = 'Choose which name to keep — the others fold into it.',
 }: Props) {
@@ -27,6 +29,11 @@ export function MergeKeepSelectionBar({
       <div className="text-center sm:text-left">
         <p className="text-sm font-medium text-white">{selectedCount} selected</p>
         <p className="text-xs text-white/50 mt-0.5">{hint}</p>
+        {error && (
+          <p className="mt-2 text-xs text-red-200" role="alert">
+            {error}
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
         {options.map((option) => (
@@ -37,7 +44,7 @@ export function MergeKeepSelectionBar({
             onClick={() => onKeep(option.id)}
             className="rounded-xl bg-primary px-4 py-2.5 sm:py-2 text-sm font-medium text-white hover:bg-primary/90 min-h-[44px] sm:min-h-0 touch-manipulation truncate max-w-full disabled:opacity-50"
           >
-            Keep {option.name}
+            {busy ? 'Merging…' : `Keep ${option.name}`}
           </button>
         ))}
       </div>

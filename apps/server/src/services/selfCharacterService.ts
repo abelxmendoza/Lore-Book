@@ -30,6 +30,76 @@ export function extractExplicitSelfStageName(text: string): string | null {
   return candidate;
 }
 
+export function extractPreferredSelfAliasCorrection(text: string): string | null {
+  const direct = text.match(
+    /\b(?:correct|preferred)\s+spelling\s+(?:is|should be)\s+["“]?([^"”.,;!?\n]{2,80})/i,
+  );
+  const timeAs = text.match(
+    /\bmy\s+time\s+as\s+["“]?([^"”.,;!?\n]{2,80})["”]?\s*,?\s*(?:the\s+)?correct\s+spelling\b/i,
+  );
+  const contextual = text.match(
+    /\b(?:timeline\s+(?:of|for)|(?:stage|artist|performer)\s+name\s+is)\s+["“]?([^"”.,;!?\n]{2,80})["”]?\s*,?\s*(?:the\s+)?correct\s+spelling\b/i,
+  );
+  const candidate = (direct?.[1] ?? timeAs?.[1] ?? contextual?.[1] ?? '').trim().replace(/\s+/g, ' ');
+  if (!candidate || candidate.split(/\s+/).length > 6) return null;
+  if (/https?:\/\/|@[\w.-]+/.test(candidate)) return null;
+  return candidate;
+}
+
+export function buildPreferredSelfAliasUpdate(input: {
+  aliases: string[];
+  metadata: Record<string, unknown>;
+  correctedAlias: string;
+  sourceMessageId: string;
+  now?: string;
+}) {
+  const normalize = (value: string) => value.trim().toLocaleLowerCase();
+  const correctedKey = normalize(input.correctedAlias);
+  const previousPreferred =
+    typeof input.metadata.preferred_self_alias === 'string'
+      ? input.metadata.preferred_self_alias.trim()
+      : null;
+  const aliases = [...input.aliases];
+  if (!aliases.some((alias) => normalize(alias) === correctedKey)) aliases.push(input.correctedAlias);
+  if (
+    previousPreferred &&
+    !aliases.some((alias) => normalize(alias) === normalize(previousPreferred))
+  ) {
+    aliases.push(previousPreferred);
+  }
+  const priorEvidence = Array.isArray(input.metadata.self_alias_evidence)
+    ? input.metadata.self_alias_evidence as Array<Record<string, unknown>>
+    : [];
+  const evidenceExists = priorEvidence.some(
+    (item) =>
+      item.source_message_id === input.sourceMessageId
+      && normalize(String(item.alias ?? '')) === correctedKey
+      && item.claim_type === 'preferred_alias_correction',
+  );
+  return {
+    aliases,
+    metadata: {
+      ...input.metadata,
+      is_self: true,
+      is_user: true,
+      preferred_self_alias: input.correctedAlias,
+      self_alias_evidence: evidenceExists
+        ? priorEvidence
+        : [
+            ...priorEvidence.slice(-19),
+            {
+              alias: input.correctedAlias,
+              previous_alias: previousPreferred,
+              source_message_id: input.sourceMessageId,
+              claim_type: 'preferred_alias_correction',
+              authority: 'explicit_user_correction',
+              captured_at: input.now ?? new Date().toISOString(),
+            },
+          ],
+    },
+  };
+}
+
 export type SelfProfileStats = {
   messageCount: number;
   attributeCount: number;
@@ -196,6 +266,43 @@ function buildProfileSummary(
 }
 
 class SelfCharacterService {
+  async capturePreferredStageNameCorrection(
+    userId: string,
+    text: string,
+    sourceMessageId: string,
+  ): Promise<string | null> {
+    const correctedAlias = extractPreferredSelfAliasCorrection(text);
+    if (!correctedAlias) return null;
+
+    const character = await this.ensureSelfCharacter(userId);
+    if (!character?.id) {
+      throw new Error('Could not resolve the protagonist for a preferred stage-name correction');
+    }
+    const aliases = Array.isArray(character.alias)
+      ? (character.alias as unknown[]).filter((value): value is string => typeof value === 'string')
+      : [];
+    const metadata = (character.metadata as Record<string, unknown> | null) ?? {};
+    const update = buildPreferredSelfAliasUpdate({
+      aliases,
+      metadata,
+      correctedAlias,
+      sourceMessageId,
+    });
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({
+        alias: update.aliases,
+        metadata: update.metadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', String(character.id))
+      .eq('user_id', userId);
+    if (error) {
+      throw new Error(`Failed to persist preferred stage name: ${error.message}`);
+    }
+    return correctedAlias;
+  }
+
   async captureExplicitStageName(
     userId: string,
     text: string,
@@ -283,7 +390,7 @@ class SelfCharacterService {
       );
     });
 
-    let canonical = [...candidates].sort(
+    const canonical = [...candidates].sort(
       (a, b) => scoreSelfCandidate(b, identityNames) - scoreSelfCandidate(a, identityNames)
     )[0];
 

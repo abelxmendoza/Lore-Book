@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2, Building2, Plus, Search, Loader2, Pencil } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
@@ -7,7 +7,11 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
-import { fetchLocationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
+import {
+  fetchLocationById,
+  isEphemeralEntityId,
+  normalizeLocationProfile,
+} from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
 import type { LocationProfile } from './LocationProfileCard';
@@ -126,7 +130,9 @@ export const LocationDetailModal = ({
   onLocationDeleted,
 }: LocationDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
-  const [location, setLocation] = useState(locationProp);
+  const [locationRaw, setLocation] = useState(() => normalizeLocationProfile(locationProp));
+  /** Sparse book cards omit arrays — always read a normalized profile. */
+  const location = useMemo(() => normalizeLocationProfile(locationRaw), [locationRaw]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteStep, setDeleteStep] = useState<'review' | 'confirm'>('review');
@@ -161,7 +167,7 @@ export const LocationDetailModal = ({
   };
 
   useEffect(() => {
-    setLocation(locationProp);
+    setLocation(normalizeLocationProfile(locationProp));
     setEditingProfile(false);
     setDeleteStep('review');
     setDeleteConfirmText('');
@@ -431,9 +437,9 @@ export const LocationDetailModal = ({
         setInsights({
           totalVisits: location.visitCount,
           uniquePeople: location.relatedPeople.length,
-          topTags: location.tagCounts.slice(0, 5),
-          topMoods: location.moods.slice(0, 3),
-          chapters: location.chapters.length,
+          topTags: (location.tagCounts ?? []).slice(0, 5),
+          topMoods: (location.moods ?? []).slice(0, 3),
+          chapters: (location.chapters ?? []).length,
           visitFrequency: location.firstVisited && location.lastVisited ? {
             daysBetween: Math.round((new Date(location.lastVisited).getTime() - new Date(location.firstVisited).getTime()) / (1000 * 60 * 60 * 24)),
             avgDaysBetween: location.visitCount > 1 ? Math.round((new Date(location.lastVisited).getTime() - new Date(location.firstVisited).getTime()) / (1000 * 60 * 60 * 24) / (location.visitCount - 1)) : 0
@@ -531,21 +537,30 @@ export const LocationDetailModal = ({
     ? getMockLocationPeople(location, mockDataService.get.characters())
     : location.relatedPeople.filter(person => person.character_id);
   const locationTimelineEntries = memoryCards.length > 0
-    ? memoryCards.map((memory) => ({
-        id: memory.id,
-        timestamp: memory.date,
-        title: memory.title,
-        summary: memory.content.slice(0, 240),
-        full_text: memory.content,
-        mood: memory.mood ?? null,
-        arc: memory.arcId ?? null,
-        saga: memory.sagaId ?? null,
-        era: memory.eraId ?? null,
-        lane: memory.tags.find((tag) => ['life', 'robotics', 'mma', 'work', 'creative'].includes(tag.toLowerCase()))?.toLowerCase() ?? 'life',
-        tags: memory.tags,
-        character_ids: memory.characters,
-        related_entry_ids: memory.linkedMemories?.map((linked) => linked.id) ?? [],
-      }))
+    ? memoryCards.map((memory) => {
+        const body = memory.content ?? memory.summary ?? '';
+        const tags = Array.isArray(memory.tags) ? memory.tags : [];
+        return {
+          id: memory.id,
+          timestamp: memory.date,
+          title: memory.title,
+          summary: body.slice(0, 240),
+          full_text: body,
+          mood: memory.mood ?? null,
+          arc: memory.arcId ?? null,
+          saga: memory.sagaId ?? null,
+          era: memory.eraId ?? null,
+          lane:
+            tags
+              .find((tag) =>
+                ['life', 'robotics', 'mma', 'work', 'creative'].includes(tag.toLowerCase()),
+              )
+              ?.toLowerCase() ?? 'life',
+          tags,
+          character_ids: memory.characters,
+          related_entry_ids: memory.linkedMemories?.map((linked) => linked.id) ?? [],
+        };
+      })
     : isMockDataEnabled
       ? [
           ...(location.firstVisited

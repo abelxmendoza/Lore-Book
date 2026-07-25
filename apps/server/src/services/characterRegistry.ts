@@ -91,6 +91,11 @@ export type CreationDecision =
 export type ClassifyForCreationOptions = {
   context?: ResolutionContext;
   sourceEntityType?: 'person' | 'unknown';
+  /**
+   * Possessive anchors like "V" in "V's Homegirl" are valid people refs even
+   * when shorter than the normal 2-char gate. Only use for possessor upsert.
+   */
+  allowShortAnchor?: boolean;
 };
 
 type CharacterRow = CharacterResolutionRow;
@@ -122,7 +127,7 @@ class CharacterRegistry {
    * "Dana who's handling onboarding" → "Dana"
    * "Reese the Recruiter and Dana Onboarding Contact" → parts: ["Reese", "Dana Onboarding Contact"→cleaned recursively]
    */
-  gateName(raw: string): NameGateResult {
+  gateName(raw: string, options?: { allowShortAnchor?: boolean }): NameGateResult {
     let name = (raw ?? '').trim().replace(/\s+/g, ' ');
     if (!name) return { ok: false, reason: 'empty' };
 
@@ -148,7 +153,8 @@ class CharacterRegistry {
       return { ok: true, cleanName: name, parts: compoundParts };
     }
 
-    if (name.length < 2) return { ok: false, reason: 'too_short' };
+    const minLen = options?.allowShortAnchor ? 1 : 2;
+    if (name.length < minLen) return { ok: false, reason: 'too_short' };
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
     const sentenceBleed = evaluateSentenceBleed(name);
     if (sentenceBleed.rejected) return { ok: false, reason: sentenceBleed.kind };
@@ -203,7 +209,7 @@ class CharacterRegistry {
     rawName: string,
     options?: ClassifyForCreationOptions
   ): Promise<CreationDecision> {
-    const gate = this.gateName(rawName);
+    const gate = this.gateName(rawName, { allowShortAnchor: options?.allowShortAnchor });
     if (!gate.ok) return { action: 'reject', reason: gate.reason };
     const cleanName = gate.parts ? gate.parts[0] : gate.cleanName;
 

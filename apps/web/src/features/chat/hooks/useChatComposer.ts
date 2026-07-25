@@ -96,6 +96,13 @@ export const useChatComposer = (
   const [imageCompressing, setImageCompressing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * After an intentional submit we must keep the composer empty even if:
+   * - threadId changes while the send is still in-flight, or
+   * - a vault attempt still exists until durable persistence clears it.
+   * Explicit failure recovery (requestStoryRecovery) clears this flag.
+   */
+  const skipVaultAutoRestoreRef = useRef(false);
   
   const moodEngine = useMoodEngine();
   const autoTagger = useAutoTagger();
@@ -110,18 +117,22 @@ export const useChatComposer = (
     [dispatch, draftOwnerId, threadId]
   );
 
-  // Restore a story immediately when the send path reports that the user's
-  // message was not durably persisted. Also recovers after a reload/crash.
+  // Restore unsent drafts on thread switch / remount.
+  // Vault attempts restore only on reload (when we did not just submit) or via
+  // subscribeStoryRecovery after a failed send — never after a successful submit.
   useEffect(() => {
-    const recovered = readComposerDraft(draftOwnerId, threadId)
-      || latestRecoverableStory(draftOwnerId, threadId)?.text
-      || '';
+    const draft = readComposerDraft(draftOwnerId, threadId);
+    const vaultText = skipVaultAutoRestoreRef.current
+      ? ''
+      : latestRecoverableStory(draftOwnerId, threadId)?.text || '';
+    const recovered = draft || vaultText || '';
     if (recovered && !input) {
       setInputState(recovered);
       dispatch(setComposerDraft(recovered));
     }
     return subscribeStoryRecovery((attempt) => {
       if (attempt.ownerId !== draftOwnerId || attempt.threadId !== threadId) return;
+      skipVaultAutoRestoreRef.current = false;
       setInputState(attempt.text);
       saveComposerDraft(draftOwnerId, threadId, attempt.text);
       dispatch(setComposerDraft(attempt.text));
@@ -204,6 +215,9 @@ export const useChatComposer = (
         m.composerChipKind !== 'shared_history',
     );
     const imagesToSend = pendingImages.length > 0 ? pendingImages : undefined;
+    // Suppress vault auto-restore before clearing — threadId often changes
+    // while the send is in flight and would otherwise re-fill the composer.
+    skipVaultAutoRestoreRef.current = true;
     onSubmit(text, entitiesToSend, previewCorrections, imagesToSend);
     setInput('');
     setPreviewCorrections([]);

@@ -40,6 +40,10 @@ export function getCharacterDisplayTitle(character: Pick<Character, 'name' | 'me
 
   if (nickname && first) {
     const base = last ? `${first} ${last}` : first;
+    // Avoid "Abel Mendoza (Abel Mendoza)" when nickname duplicates the full name.
+    if (nickname.toLowerCase() === base.toLowerCase() || nickname.toLowerCase() === first.toLowerCase()) {
+      return base;
+    }
     return `${nickname} (${base})`;
   }
 

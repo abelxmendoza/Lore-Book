@@ -9,9 +9,20 @@ const timelines: SavedGeneratedTimeline[] = [
     id: 't1',
     query: 'Everything with Alex',
     queryKey: 'everything with alex',
-    events: [],
-    isMock: true,
-    arcTitles: [],
+    events: [
+      {
+        id: 'e1',
+        start_time: '2024-01-10T00:00:00.000Z',
+        content: 'Coffee and catch-up downtown.',
+      },
+      {
+        id: 'e2',
+        start_time: '2024-06-02T00:00:00.000Z',
+        content: 'Road trip weekend.',
+      },
+    ],
+    isMock: false,
+    arcTitles: ['Friendship arc'],
     collapsed: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
@@ -30,7 +41,7 @@ describe('GeneratedTimelineLibraryPanel', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('opens a saved timeline', async () => {
+  it('opens a saved timeline from the card action', async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
 
@@ -43,7 +54,8 @@ describe('GeneratedTimelineLibraryPanel', () => {
       />,
     );
 
-    await user.click(screen.getByText('Everything with Alex'));
+    expect(screen.getByText('Timelines Library')).toBeInTheDocument();
+    await user.click(screen.getByTestId('generated-timeline-open-t1'));
     expect(onOpen).toHaveBeenCalledWith(timelines[0]);
   });
 
@@ -62,5 +74,47 @@ describe('GeneratedTimelineLibraryPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /remove everything with alex/i }));
     expect(onRemove).toHaveBeenCalledWith('t1');
+  });
+
+  it('offers LoreBook when readiness says it can create', async () => {
+    const user = userEvent.setup();
+    const onCreateLorebook = vi.fn();
+
+    render(
+      <GeneratedTimelineLibraryPanel
+        timelines={timelines}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        onCreateLorebook={onCreateLorebook}
+        canCreateLorebook={() => ({
+          canCreate: true,
+          reason: 'Enough moments to compile a LoreBook.',
+        })}
+        defaultExpanded
+      />,
+    );
+
+    const loreBtn = screen.getByTestId('generated-timeline-lorebook-t1');
+    expect(loreBtn).toBeEnabled();
+    await user.click(loreBtn);
+    expect(onCreateLorebook).toHaveBeenCalledWith(timelines[0]);
+  });
+
+  it('disables LoreBook when not ready', () => {
+    render(
+      <GeneratedTimelineLibraryPanel
+        timelines={timelines}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        onCreateLorebook={vi.fn()}
+        canCreateLorebook={() => ({
+          canCreate: false,
+          reason: 'Need more moments about this subject.',
+        })}
+        defaultExpanded
+      />,
+    );
+
+    expect(screen.getByTestId('generated-timeline-lorebook-t1')).toBeDisabled();
   });
 });

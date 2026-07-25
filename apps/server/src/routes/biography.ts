@@ -16,7 +16,12 @@ import { bookVersionManager } from '../services/biographyGeneration/bookVersionM
 import { autoCompilationService } from '../services/biographyGeneration/autoCompilationService';
 import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
-import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
+import {
+  applyExactLorebookFocus,
+  lorebookSearchParser,
+} from '../services/lorebook/lorebookSearchParser';
+import { validateEntityOwnership } from '../services/search/entitySearchService';
+import type { EntitySearchType } from '../services/search/entitySearchTypes';
 import { chatEditBiographySection, updateBiographySection } from '../services/biographySectionService';
 import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
@@ -27,8 +32,8 @@ import {
   checkCompileGate,
   getQuestPrompts,
   resolveCompileTarget,
+  type LoreTopicId,
 } from '../services/loreReadiness';
-import type { LoreTopicId } from '../services/loreReadiness';
 
 const router = Router();
 
@@ -322,7 +327,7 @@ const generateBiographySchema = z
     form: z.enum(['vignette', 'chapter', 'short_book', 'book', 'epic']).optional(),
     audience: z.enum(['self', 'public', 'professional']).default('self'),
     version: z.enum(['main', 'safe', 'explicit', 'private']).default('main'),
-    includeIntrospection: z.boolean().optional(),
+    includeIntrospection: z.boolean().default(true),
     force: z.boolean().optional(),
     characterIds: z.array(z.string().uuid()).optional(),
     locationIds: z.array(z.string().uuid()).optional(),
@@ -853,6 +858,11 @@ const searchSchema = z.object({
   query: z.string().min(1),
   force: z.boolean().optional(),
   form: z.enum(['vignette', 'chapter', 'short_book', 'book', 'epic']).optional(),
+  focusEntity: z.object({
+    id: z.string().uuid(),
+    type: z.enum(['person', 'organization', 'place', 'group', 'community', 'skill', 'event']),
+    name: z.string().min(1).max(200),
+  }).optional(),
 });
 
 router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -862,11 +872,14 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const { query, force, form } = parsed.data;
+    const { query, force, form, focusEntity } = parsed.data;
+    // @ is UI selection syntax. The stable ID below is authoritative; stripping
+    // the marker keeps natural-language readiness and fallback parsing intact.
+    const naturalLanguageQuery = query.replace(/@(?=\S)/g, '');
 
     const gate = await checkCompileGate(
       req.user!.id,
-      { query, depth: form ? defaultDepthForForm(form) : 'detailed', form },
+      { query: naturalLanguageQuery, depth: form ? defaultDepthForForm(form) : 'detailed', form },
       { force },
     );
     if (!gate.allowed) {
@@ -879,7 +892,19 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, query);
+    let parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, naturalLanguageQuery);
+    if (focusEntity) {
+      const owned = await validateEntityOwnership(
+        req.user!.id,
+        focusEntity.id,
+        focusEntity.type as EntitySearchType,
+      );
+      if (!owned) {
+        return res.status(400).json({ error: 'The selected LoreBook item could not be verified.' });
+      }
+
+      parsedQuery = applyExactLorebookFocus(parsedQuery, focusEntity);
+    }
     if (form) {
       parsedQuery.form = form;
       parsedQuery.depth = defaultDepthForForm(form);
@@ -994,7 +1019,18 @@ router.post('/versions/auto-compile', requireAuth, async (req: AuthenticatedRequ
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const spec: BiographySpec = parsed.data;
+    if (!parsed.data.scope) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'scope is required for automatic version compilation',
+      });
+    }
+
+    const spec: BiographySpec = {
+      ...parsed.data,
+      scope: parsed.data.scope,
+      depth: parsed.data.depth ?? 'detailed',
+    };
     const versions = await autoCompilationService.autoCompileVersions(req.user!.id, spec);
 
     res.json({ versions });
@@ -1115,4 +1151,3 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 export const biographyRouter = router;
-

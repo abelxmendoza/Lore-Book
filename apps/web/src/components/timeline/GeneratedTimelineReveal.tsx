@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Check,
   ChevronDown,
   ChevronUp,
+  Copy,
   X,
   RefreshCw,
   BookMarked,
@@ -11,8 +13,17 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 import type { MockGeneratedTimelineEvent } from '../../mocks/timelineGenerationMock';
+import type {
+  CompiledTimelineEvent,
+  SubjectTimelineCompilationSummary,
+  ResolvedTimelineSubject,
+  SubjectTimelineMode,
+  SubjectTimelinePhase,
+} from '../../api/subjectTimeline';
 import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
 import type { LorebookForm } from '../../lib/lorebookTiers';
+import { buildGeneratedTimelineClipboardText } from '../../lib/generatedTimelineClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { buildRailGradient, getLaneColor } from './generatedTimelineColors';
@@ -24,10 +35,17 @@ import {
 } from './timelineLayout';
 import './TimelineGeneratingSimulation.css';
 
-export type GeneratedTimelineEvent = ChronologyEntry | MockGeneratedTimelineEvent;
+export type GeneratedTimelineEvent =
+  | ChronologyEntry
+  | MockGeneratedTimelineEvent
+  | CompiledTimelineEvent;
 
 function isMockEvent(e: GeneratedTimelineEvent): e is MockGeneratedTimelineEvent {
   return 'stateChange' in e || String(e.id).startsWith('mock-gen-');
+}
+
+function isCompiledEvent(e: GeneratedTimelineEvent): e is CompiledTimelineEvent {
+  return 'subjectRelation' in e && 'whyIncluded' in e;
 }
 
 type PositionedEvent = {
@@ -57,6 +75,14 @@ type Props = {
   lorebookReason?: string;
   /** Content buildup toward a LoreBook for this subject. */
   lorebookMeter?: LorebookContentMeterModel | null;
+  /** Server interpretation, coverage, and provenance for a compiled subject timeline. */
+  compilation?: SubjectTimelineCompilationSummary | null;
+  /** Low-priority associations that should not displace primary events. */
+  contextEvents?: CompiledTimelineEvent[];
+  /** Honest failure state when the server compiler could not complete. */
+  generationError?: string | null;
+  /** Resolve an ambiguous query to the entity the user actually meant. */
+  onSelectSubject?: (subject: ResolvedTimelineSubject) => void;
 };
 
 function eventTime(e: GeneratedTimelineEvent): number {
@@ -83,6 +109,28 @@ function formatSavedAt(iso?: string): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatMode(mode: SubjectTimelineMode): string {
+  switch (mode) {
+    case 'EMPLOYMENT_TIMELINE': return 'Employment timeline';
+    case 'RELATIONSHIP_TIMELINE': return 'Relationship timeline';
+    case 'PROJECT_TIMELINE': return 'Project evolution';
+    case 'PLACE_TIMELINE': return 'Place timeline';
+    case 'DATE_TIMELINE': return 'Date timeline';
+    case 'EVIDENCE_SEARCH': return 'Evidence results';
+    case 'SUBJECT_TIMELINE': return 'Subject timeline';
+  }
+}
+
+function formatPhase(phase: SubjectTimelinePhase): string {
+  return phase.replace(/_/g, ' ').replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function formatPeriod(start: string, end: string): string {
+  const startLabel = formatDate(start);
+  const endLabel = formatDate(end);
+  return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+}
+
 type EventCardBodyProps = {
   event: GeneratedTimelineEvent;
   color: ReturnType<typeof getLaneColor>;
@@ -93,12 +141,18 @@ type EventCardBodyProps = {
 
 function EventCardBody({ event, color, isMobile, compact, onEventClick }: EventCardBodyProps) {
   const laneLimit = compact || isMobile ? 1 : 2;
+  const compiled = isCompiledEvent(event) ? event : null;
+  const title = 'title' in event ? event.title : undefined;
+  const datePrefix =
+    compiled?.occurrence_status === 'unresolved' || compiled?.time_precision === 'approximate'
+      ? 'Approx. '
+      : '';
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-1 mb-1">
         <span className={`text-[10px] font-semibold uppercase tracking-wide ${color.text}`}>
-          {formatDate(event.start_time)}
+          {datePrefix}{formatDate(event.start_time)}
         </span>
         {event.timeline_names?.slice(0, laneLimit).map((name) => (
           <span
@@ -114,17 +168,43 @@ function EventCardBody({ event, color, isMobile, compact, onEventClick }: EventC
           {event.stateChange}
         </span>
       )}
+      {compiled && (
+        <div className="flex flex-wrap items-center gap-1 mb-1.5">
+          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-md ${color.badgeBg}`}>
+            {formatPhase(compiled.phase)}
+          </span>
+          <span className="text-[9px] text-white/45">
+            {Math.round(compiled.relevance * 100)}% relevant
+          </span>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => onEventClick?.(event)}
         className="text-left w-full touch-manipulation"
       >
+        {title && title.trim() && (
+          <p className={`font-medium text-white mb-1 line-clamp-2 ${isMobile || compact ? 'text-xs' : 'text-sm'}`}>
+            {title}
+          </p>
+        )}
         <p
           className={`text-white/90 line-clamp-4 hover:text-white leading-snug ${isMobile || compact ? 'text-[11px]' : 'text-sm'}`}
         >
           {event.content}
         </p>
       </button>
+      {compiled && (
+        <details className="mt-2 border-t border-white/8 pt-1.5 text-[10px] text-white/50">
+          <summary className="cursor-pointer select-none text-white/55 hover:text-white/75">
+            Why this belongs · {compiled.evidenceCount} source{compiled.evidenceCount !== 1 ? 's' : ''}
+          </summary>
+          <p className="mt-1 leading-relaxed">{compiled.whyIncluded}</p>
+          <p className="mt-1 text-white/35">
+            {compiled.source_type.replace(/_/g, ' ')} · {Math.round(compiled.time_confidence * 100)}% date confidence
+          </p>
+        </details>
+      )}
     </>
   );
 }
@@ -146,13 +226,53 @@ export function GeneratedTimelineReveal({
   canCreateLorebook = true,
   lorebookReason,
   lorebookMeter,
+  compilation,
+  contextEvents = [],
+  generationError,
+  onSelectSubject,
 }: Props) {
   const isMobile = useIsMobile();
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
 
   const sorted = useMemo(
     () => [...events].sort((a, b) => eventTime(a) - eventTime(b)),
     [events],
   );
+
+  const clipboardText = useMemo(
+    () =>
+      buildGeneratedTimelineClipboardText(
+        query,
+        sorted.map((event) => ({
+          id: event.id,
+          start_time: event.start_time,
+          content: event.content,
+          title: 'title' in event ? event.title : undefined,
+          timeline_names: event.timeline_names,
+          tags: 'tags' in event ? event.tags : undefined,
+          stateChange: isMockEvent(event) ? event.stateChange : undefined,
+          significance:
+            isMockEvent(event) || isCompiledEvent(event) ? event.significance : undefined,
+        })),
+        { isMock, fromLibrary },
+      ),
+    [query, sorted, isMock, fromLibrary],
+  );
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(clipboardText);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   const cardWidth = timelineCardWidthPx(isMobile);
   const trackPaddingPx = timelineTrackPaddingPx(isMobile);
@@ -236,6 +356,36 @@ export function GeneratedTimelineReveal({
                   Simulated preview
                 </span>
               )}
+              {compilation && !isMock && (
+                <>
+                  <span
+                    className="text-[10px] text-cyan-200/90 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-2 py-0.5"
+                    data-testid="timeline-interpretation"
+                  >
+                    {formatMode(compilation.intent.mode)}
+                  </span>
+                  <span className="text-[10px] text-white/60 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
+                    {compilation.subject
+                      ? `Focused on ${compilation.subject.displayName}`
+                      : `Topic: ${compilation.intent.subjectQuery}`}
+                  </span>
+                  <span
+                    className={`text-[10px] rounded-full border px-2 py-0.5 ${
+                      compilation.coverage.score >= 0.8
+                        ? 'text-emerald-200 bg-emerald-500/10 border-emerald-500/20'
+                        : 'text-amber-200 bg-amber-500/10 border-amber-500/20'
+                    }`}
+                    data-testid="timeline-coverage"
+                  >
+                    {Math.round(compilation.coverage.score * 100)}% story coverage
+                  </span>
+                  {compilation.period && (
+                    <span className="text-[10px] text-white/45">
+                      {formatPeriod(compilation.period.start, compilation.period.end)}
+                    </span>
+                  )}
+                </>
+              )}
               {onCreateLorebook && lorebookReason && (
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full border ${
@@ -249,9 +399,57 @@ export function GeneratedTimelineReveal({
                 </span>
               )}
             </div>
+            {compilation?.warnings.map((warning) => (
+              <p key={warning} className="mt-1.5 text-[11px] text-amber-200/70">
+                {warning}
+              </p>
+            ))}
+            {generationError && (
+              <p
+                className="mt-1.5 text-[11px] text-red-200/80"
+                data-testid="timeline-generation-error"
+              >
+                Timeline compilation failed: {generationError}
+              </p>
+            )}
+            {compilation?.ambiguity.length ? (
+              <div
+                className="mt-2 flex flex-wrap items-center gap-1.5"
+                data-testid="timeline-subject-ambiguity"
+              >
+                <span className="text-[11px] text-white/50">Which subject did you mean?</span>
+                {compilation.ambiguity.map((candidate) => (
+                  <button
+                    key={`${candidate.entityType}:${candidate.entityId}`}
+                    type="button"
+                    onClick={() => onSelectSubject?.(candidate)}
+                    className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100 hover:bg-cyan-500/20"
+                  >
+                    {candidate.displayName}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
+            {events.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleCopyAll()}
+                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-white/10 text-white/60 text-xs hover:bg-white/5 touch-manipulation"
+                title="Copy the whole timeline as plain text"
+                aria-label="Copy all timeline moments"
+                data-testid="generated-timeline-copy-all"
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy all'}</span>
+              </button>
+            )}
             {onCreateLorebook && (
               <div
                 className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 pl-2.5 pr-1.5 py-1.5"
@@ -355,7 +553,9 @@ export function GeneratedTimelineReveal({
             ) : isMobile ? (
               <ol className="timeline-gen-v-list" data-testid="generated-timeline-vertical">
                 {positioned.map(({ event, color, index }) => {
-                  const high = isMockEvent(event) && event.significance === 'high';
+                  const high =
+                    (isMockEvent(event) || isCompiledEvent(event))
+                    && event.significance === 'high';
                   const isLast = index === positioned.length - 1;
                   return (
                     <li
@@ -434,7 +634,9 @@ export function GeneratedTimelineReveal({
                   <div className="timeline-gen-h-cards">
                     {positioned.map(({ event, leftPct, color, index }) => {
                       const above = index % 2 === 0;
-                      const high = isMockEvent(event) && event.significance === 'high';
+                      const high =
+                        (isMockEvent(event) || isCompiledEvent(event))
+                        && event.significance === 'high';
                       return (
                         <article
                           key={event.id}
@@ -466,6 +668,36 @@ export function GeneratedTimelineReveal({
                   </div>
                 </div>
               </div>
+            )}
+            {contextEvents.length > 0 && (
+              <section
+                className="mt-6 rounded-xl border border-white/8 bg-white/[0.025] p-3 sm:p-4"
+                data-testid="timeline-related-context"
+              >
+                <h3 className="text-sm font-medium text-white/80">Related context</h3>
+                <p className="mt-0.5 text-[11px] text-white/40">
+                  Weaker or incidental connections kept out of the main timeline.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {contextEvents.map((event) => {
+                    const color = getLaneColor(event.timeline_names?.[0]);
+                    return (
+                      <article
+                        key={`context-${event.id}`}
+                        className={`rounded-lg border p-3 ${color.cardBg} ${color.cardBorder}`}
+                      >
+                        <EventCardBody
+                          event={event}
+                          color={color}
+                          isMobile={isMobile}
+                          compact
+                          onEventClick={onEventClick}
+                        />
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
             )}
           </div>
         </div>

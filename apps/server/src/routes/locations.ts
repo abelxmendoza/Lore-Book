@@ -301,6 +301,10 @@ router.post(
 
     const report = await locationMergeService.merge(req.user!.id, parsed.data.source_id, parsed.data.target_id, {
       reason: parsed.data.reason,
+      // The UI labels this action "Keep <name>", so the selected card and its
+      // exact display name must remain canonical even if the other card has a
+      // higher inferred identity-strength score.
+      preserveTarget: true,
     });
 
     const { data: mergedLocation } = await supabaseAdmin

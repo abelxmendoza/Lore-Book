@@ -673,6 +673,7 @@ export function scoreContext(
   // Do not re-score or drop it here; this layer is a final prompt-size guard for
   // older broad lore blocks, while Working Memory has its own budget and reasons.
   filtered.foundationRecallBlock = loreData.foundationRecallBlock;
+  filtered.retellingRecallBlock = loreData.retellingRecallBlock;
   filtered.foundationRelationships = loreData.foundationRelationships;
   filtered.foundationTimeline = loreData.foundationTimeline;
   filtered.workingMemory = loreData.workingMemory;

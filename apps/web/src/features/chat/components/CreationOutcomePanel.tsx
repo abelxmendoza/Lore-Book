@@ -1,6 +1,6 @@
+import { UserPlus, GitMerge, HelpCircle, Route } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, GitMerge, HelpCircle } from 'lucide-react';
 
 import { loreAssetUrl } from '../../../api/loreAssets';
 import {
@@ -10,9 +10,11 @@ import {
 
 export type CreationOutcome = {
   mention: string;
-  action: 'create' | 'merge' | 'defer' | 'reject';
+  action: 'create' | 'merge' | 'defer' | 'reject' | 'route';
   entityId?: string;
   entityName?: string;
+  entityType?: 'character' | 'self_alias' | 'tool' | 'media' | 'band' | 'role' | 'event' | 'process';
+  persistence?: 'candidate' | 'confirmed';
   reason?: string;
   candidates?: Array<{ character_id: string; name: string; subtitle?: string }>;
   authority?: 'core' | 'legacy' | 'shadow';
@@ -30,7 +32,7 @@ const ACTION_STYLES: Record<
   { label: string; className: string; Icon: typeof UserPlus }
 > = {
   create: {
-    label: 'New record',
+    label: 'Person candidate',
     className: 'text-sky-400/80 bg-sky-400/8 border-sky-400/20',
     Icon: UserPlus,
   },
@@ -49,10 +51,15 @@ const ACTION_STYLES: Record<
     className: 'text-zinc-400/70 bg-zinc-400/6 border-zinc-400/15',
     Icon: HelpCircle,
   },
+  route: {
+    label: 'Typed mention',
+    className: 'text-violet-300/80 bg-violet-400/8 border-violet-400/20',
+    Icon: Route,
+  },
 };
 
 function describeOutcome(outcome: CreationOutcome): string {
-  if (outcome.action === 'create') return `Started a record for ${outcome.mention}`;
+  if (outcome.action === 'create') return `Person candidate: ${outcome.mention}`;
   if (outcome.action === 'merge') {
     return outcome.entityName
       ? `Resolved ${outcome.mention} as ${outcome.entityName}`
@@ -63,6 +70,12 @@ function describeOutcome(outcome: CreationOutcome): string {
     return count > 0
       ? `${outcome.mention} could match ${count} existing ${count === 1 ? 'person' : 'people'}`
       : `Needs clarification on ${outcome.mention}`;
+  }
+  if (outcome.action === 'route') {
+    if (outcome.entityType === 'self_alias') {
+      return `Recognized ${outcome.mention} as your stage name`;
+    }
+    return `Routed ${outcome.mention} to ${outcome.entityType ?? 'non-person'} detection`;
   }
   return outcome.reason ?? `Skipped ${outcome.mention}`;
 }

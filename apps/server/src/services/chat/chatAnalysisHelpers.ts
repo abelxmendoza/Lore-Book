@@ -87,22 +87,69 @@ export async function findConnections(
   return connections;
 }
 
+const GENERIC_CITE_TITLES = new Set([
+  'night',
+  'day',
+  'today',
+  'tonight',
+  'yesterday',
+  'tomorrow',
+  'show',
+  'home',
+  'work',
+  'life',
+  'time',
+  'story',
+  'memory',
+  'journal',
+  'chat',
+  'entry',
+]);
+
+/** True when the answer clearly references this source — not a weak date/substring hit. */
+export function sourceTitleCitedInAnswer(title: string, answer: string): boolean {
+  const clean = title.trim().replace(/\s+/g, ' ');
+  if (clean.length < 4) return false;
+  if (/^untitled\b/i.test(clean)) return false;
+  const lowerAnswer = answer.toLowerCase();
+  const lowerTitle = clean.toLowerCase();
+  if (GENERIC_CITE_TITLES.has(lowerTitle)) return false;
+
+  // Short titles: require the full title as a word-ish hit (not tiny generics).
+  if (clean.length <= 48) {
+    if (clean.split(/\s+/).length === 1 && clean.length < 5) return false;
+    return lowerAnswer.includes(lowerTitle);
+  }
+
+  // Longer journal titles: require ≥2 distinctive tokens (len > 3), not a 20-char prefix.
+  const tokens = lowerTitle
+    .split(/[^a-z0-9']+/i)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 3 && !GENERIC_CITE_TITLES.has(t));
+  if (tokens.length < 2) {
+    return lowerAnswer.includes(lowerTitle.slice(0, 32));
+  }
+  const hits = tokens.slice(0, 6).filter((token) => lowerAnswer.includes(token)).length;
+  return hits >= 2;
+}
+
 export function generateCitations(
   sources: ChatSource[],
   answer: string
 ): Array<{ text: string; sourceId: string; sourceType: string }> {
   const citations: Array<{ text: string; sourceId: string; sourceType: string }> = [];
+  const seen = new Set<string>();
 
-  sources.slice(0, 10).forEach(source => {
-    if (source.title && answer.toLowerCase().includes(source.title.toLowerCase().substring(0, 20))) {
-      citations.push({ text: source.title, sourceId: source.id, sourceType: source.type });
-    } else if (source.date) {
-      const dateStr = new Date(source.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      if (answer.includes(dateStr)) {
-        citations.push({ text: dateStr, sourceId: source.id, sourceType: source.type });
-      }
-    }
-  });
+  for (const source of sources.slice(0, 10)) {
+    if (!source.title || !sourceTitleCitedInAnswer(source.title, answer)) continue;
+    if (seen.has(source.id)) continue;
+    seen.add(source.id);
+    citations.push({
+      text: source.title.trim().replace(/\s+/g, ' ').slice(0, 80),
+      sourceId: source.id,
+      sourceType: source.type,
+    });
+  }
 
   return citations;
 }

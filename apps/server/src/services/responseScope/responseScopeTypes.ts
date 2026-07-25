@@ -44,6 +44,7 @@ export type ScopeIntent =
   | 'place'
   | 'event'
   | 'biography'
+  | 'timeline'
   | 'general';
 
 export type EntityRef = {

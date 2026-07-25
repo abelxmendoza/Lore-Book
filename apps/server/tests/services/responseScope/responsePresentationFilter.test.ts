@@ -5,6 +5,7 @@ import {
   filterEntitiesForPresentation,
   filterSourcesForPresentation,
   isPresentableEntityName,
+  isPresentableMemoryTitle,
 } from '../../../src/services/responseScope/responsePresentationFilter';
 import { planResponseScope } from '../../../src/services/responseScope/responseScopePlanner';
 
@@ -54,6 +55,39 @@ describe('response presentation filtering', () => {
   it('rejects known sentence-fragment entity labels', () => {
     expect(isPresentableEntityName('Also You')).toBe(false);
     expect(isPresentableEntityName('Jowell')).toBe(true);
+  });
+
+  it('allows descriptive memory titles but rejects untitled journal stubs', () => {
+    expect(
+      isPresentableMemoryTitle(
+        'Recorded Nightmares after the show and posted it on Twitter',
+      ),
+    ).toBe(true);
+    expect(isPresentableMemoryTitle('Untitled')).toBe(false);
+    expect(isPresentableMemoryTitle('well its been')).toBe(false);
+    expect(isPresentableMemoryTitle('went to th')).toBe(false);
+  });
+
+  it('keeps long memory titles on person-focused questions when they name the focus', () => {
+    const plan = planResponseScope('What do you know about Jesse?');
+    const sources = filterSourcesForPresentation(
+      [
+        {
+          type: 'entry',
+          id: 'long',
+          title: 'Jesse helped me finish Ring testing during a late lab shift last week',
+          snippet: 'worked with Jesse on lab shift',
+        },
+        {
+          type: 'entry',
+          id: 'junk',
+          title: 'Untitled',
+          snippet: 'messy journal dump',
+        },
+      ],
+      plan,
+    );
+    expect(sources.map((s) => s.id)).toEqual(['long']);
   });
 
   it('does not surface unmentioned crush characters on a vague night vent', () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Lock, Sparkles, Pencil, ArrowUpCircle, Plus, Link2, AlertCircle } from 'lucide-react';
+import { Lock, Sparkles, Pencil, ArrowUpCircle, Plus, Link2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { characterTitleApi, type CharacterDisplayTitle, type TitleStability } from '../../api/characterTitle';
@@ -15,6 +15,8 @@ import type { Character } from './CharacterProfileCard';
 type Props = {
   character: Character;
   onUpdated?: (patch: Partial<Character>) => void;
+  /** Dense header treatment for modals where vertical space is scarce. */
+  compact?: boolean;
 };
 
 const STABILITY_VARIANT: Record<TitleStability, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -25,7 +27,7 @@ const STABILITY_VARIANT: Record<TitleStability, 'default' | 'secondary' | 'outli
   needs_resolution: 'destructive',
 };
 
-export function CharacterTitleSection({ character, onUpdated }: Props) {
+export function CharacterTitleSection({ character, onUpdated, compact = false }: Props) {
   const [displayTitle, setDisplayTitle] = useState<CharacterDisplayTitle | null>(
     (character.metadata?.display_title as CharacterDisplayTitle | undefined) ?? null
   );
@@ -40,6 +42,7 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [namedPerson, setNamedPerson] = useState('');
   const [preferContextual, setPreferContextual] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   useEffect(() => {
     setDraftTitle(getCharacterDisplayTitle(character));
@@ -53,6 +56,7 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
     setSubtitle(res.characterSubtitle ?? null);
     onUpdated?.({
       name: res.displayTitle.primaryTitle,
+      alias: res.displayTitle.aliases.map((a) => a.value),
       metadata: {
         ...(character.metadata ?? {}),
         display_title: res.displayTitle,
@@ -117,7 +121,13 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
       setShowAliasForm(false);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add alias');
+      const message = e instanceof Error ? e.message : 'Could not add alias';
+      // Vite proxy surfaces a short 503 when the API process is down/restarting.
+      setError(
+        /backend unavailable/i.test(message)
+          ? 'Server unreachable — start the API (port 4000) and try again.'
+          : message,
+      );
     } finally {
       setBusy(false);
     }
@@ -188,10 +198,18 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
         prominenceScore: 0,
         evidenceCount: 0,
       }));
+  const visibleAliases = aliases.slice(0, compact ? 2 : 8);
+  const hiddenAliasCount = Math.max(0, aliases.length - visibleAliases.length);
+  const showControls = !compact || manageOpen || editing || showAliasForm || showResolveForm;
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
+    <div
+      className={`rounded-lg border border-white/10 bg-white/5 ${
+        compact ? 'space-y-1 p-2' : 'space-y-3 p-4'
+      }`}
+      data-testid={compact ? 'character-title-compact' : 'character-title-section'}
+    >
+      <div className={`flex items-start justify-between ${compact ? 'gap-2' : 'gap-3'}`}>
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="space-y-2">
@@ -211,63 +229,93 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
             </div>
           ) : (
             <>
-              <h3 className="text-lg font-semibold text-white leading-snug">{primary}</h3>
-              {subtitle ? (
-                <p className="text-sm text-white/60 mt-1 italic">{subtitle}</p>
+              <h3 className={`${compact ? 'truncate text-sm' : 'text-lg'} font-semibold text-white leading-snug`}>
+                {primary}
+              </h3>
+              {!compact && subtitle ? (
+                <p className="mt-1 text-sm text-white/60 italic">
+                  {subtitle}
+                </p>
               ) : null}
             </>
           )}
         </div>
-        <Badge variant={STABILITY_VARIANT[stability]}>
-          {getTitleStabilityLabel({ metadata: { display_title: displayTitle } })}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1">
+          <Badge variant={STABILITY_VARIANT[stability]} className={compact ? 'px-1.5 py-0 text-[10px]' : undefined}>
+            {getTitleStabilityLabel({ metadata: { display_title: displayTitle } })}
+          </Badge>
+          {compact ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-1.5 text-[11px] text-white/60 hover:text-white"
+              onClick={() => setManageOpen((v) => !v)}
+              aria-expanded={manageOpen}
+              aria-label={manageOpen ? 'Hide name controls' : 'Manage names'}
+              data-testid="character-title-manage-toggle"
+            >
+              {manageOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {aliases.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {aliases.slice(0, 8).map((alias) => (
+        <div className={`flex items-center ${compact ? 'gap-1 overflow-hidden' : 'flex-wrap gap-1.5'}`}>
+          {visibleAliases.map((alias) => (
             <span key={alias.id} className="inline-flex items-center gap-1">
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className={`${compact ? 'max-w-28 truncate px-1.5 py-0 text-[10px]' : 'text-xs'}`}>
                 {alias.value}
               </Badge>
-              {!editing && stability !== 'locked' && alias.value !== primary ? (
+              {!compact && !editing && stability !== 'locked' && alias.value !== primary ? (
                 <button
                   type="button"
                   className="text-[10px] text-white/50 hover:text-white/80 underline"
                   onClick={() => promoteAlias(alias.id)}
                   disabled={busy}
                   title="Promote to primary title"
+                  aria-label={`Promote ${alias.value} to primary title`}
                 >
                   promote
                 </button>
               ) : null}
             </span>
           ))}
+          {hiddenAliasCount > 0 ? (
+            <span className="shrink-0 text-[10px] text-white/45">+{hiddenAliasCount}</span>
+          ) : null}
         </div>
       ) : null}
 
-      {showAliasForm ? (
-        <div className="flex gap-2">
+      {showControls && showAliasForm ? (
+        <div className={`flex ${compact ? 'flex-wrap gap-1.5' : 'gap-2'}`}>
           <input
-            className="flex-1 rounded-md border border-white/15 bg-black/30 px-3 py-1.5 text-xs text-white"
+            className="min-w-40 flex-1 rounded-md border border-white/15 bg-black/30 px-3 py-1.5 text-xs text-white"
             value={newAlias}
             onChange={(e) => setNewAlias(e.target.value)}
             placeholder="Nickname, stage name, or alias"
             aria-label="New alias"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void addAlias();
+              }
+            }}
           />
-          <Button size="sm" onClick={addAlias} disabled={busy || !newAlias.trim()}>Add</Button>
+          <Button size="sm" onClick={() => void addAlias()} disabled={busy || !newAlias.trim()}>Add</Button>
           <Button size="sm" variant="ghost" onClick={() => setShowAliasForm(false)} disabled={busy}>Cancel</Button>
         </div>
       ) : null}
 
-      {showResolveForm ? (
+      {showControls && showResolveForm ? (
         <div className="space-y-2 rounded-md border border-white/10 bg-black/20 p-3">
           <p className="text-xs text-white/60">Merge this contextual reference with a real name.</p>
           <input
             className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-1.5 text-sm text-white"
             value={namedPerson}
             onChange={(e) => setNamedPerson(e.target.value)}
-            placeholder="Real name (e.g. Jiho Kang)"
+            placeholder="Real name (e.g. Jamie Park)"
             aria-label="Named person"
           />
           <label className="flex items-center gap-2 text-xs text-white/70">
@@ -279,7 +327,7 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
             Keep contextual title as primary
           </label>
           <div className="flex gap-2">
-            <Button size="sm" onClick={resolveReference} disabled={busy || !namedPerson.trim()}>
+            <Button size="sm" onClick={() => void resolveReference()} disabled={busy || !namedPerson.trim()}>
               Merge
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setShowResolveForm(false)} disabled={busy}>
@@ -291,64 +339,75 @@ export function CharacterTitleSection({ character, onUpdated }: Props) {
 
       {error ? <p className="text-xs text-red-300">{error}</p> : null}
 
-      <div className="flex flex-wrap gap-2">
-        {editing ? (
-          <>
-            <Button size="sm" onClick={saveTitle} disabled={busy}>Save title</Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>Cancel</Button>
-          </>
-        ) : (
-          <>
-            <Button size="sm" variant="secondary" onClick={() => setEditing(true)} disabled={busy}>
-              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit title
-            </Button>
-            {stability !== 'locked' ? (
-              <Button size="sm" variant="outline" onClick={lockTitle} disabled={busy}>
-                <Lock className="h-3.5 w-3.5 mr-1" /> Lock
+      {showControls ? (
+        <div className={`flex flex-wrap ${compact ? 'gap-1' : 'gap-2'}`}>
+          {editing ? (
+            <>
+              <Button size="sm" onClick={() => void saveTitle()} disabled={busy}>Save title</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>Cancel</Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="secondary" className={compact ? 'h-7 px-2 text-[11px]' : undefined} onClick={() => setEditing(true)} disabled={busy}>
+                <Pencil className="h-3.5 w-3.5 mr-1" /> Edit title
               </Button>
-            ) : null}
-            {stability === 'suggested_update' ? (
-              <Button size="sm" variant="outline" onClick={promoteSuggestion} disabled={busy}>
-                <ArrowUpCircle className="h-3.5 w-3.5 mr-1" /> Apply suggestion
-              </Button>
-            ) : null}
-            <Button size="sm" variant="outline" onClick={() => setShowAliasForm((v) => !v)} disabled={busy}>
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add alias
-            </Button>
-            {stability !== 'locked' && (
+              {stability !== 'locked' ? (
+                <Button size="sm" variant="outline" className={compact ? 'h-7 px-2 text-[11px]' : undefined} onClick={() => void lockTitle()} disabled={busy}>
+                  <Lock className="h-3.5 w-3.5 mr-1" /> Lock
+                </Button>
+              ) : null}
+              {stability === 'suggested_update' ? (
+                <Button size="sm" variant="outline" onClick={() => void promoteSuggestion()} disabled={busy}>
+                  <ArrowUpCircle className="h-3.5 w-3.5 mr-1" /> Apply suggestion
+                </Button>
+              ) : null}
               <Button
                 size="sm"
-                variant="ghost"
+                variant="outline"
+                className={compact ? 'h-7 px-2 text-[11px]' : undefined}
                 onClick={() => {
-                  const auto = suggestDisplayTitleFromNames(character);
-                  if (auto && auto !== draftTitle) {
-                    setDraftTitle(auto);
-                  }
+                  setShowAliasForm((v) => !v);
+                  if (compact) setManageOpen(true);
                 }}
                 disabled={busy}
-                title="Generate title from structured first name + primary nickname"
               >
-                Auto from names
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add alias
               </Button>
-            )}
-            {isContextual ? (
-              <Button size="sm" variant="outline" onClick={() => setShowResolveForm((v) => !v)} disabled={busy}>
-                <Link2 className="h-3.5 w-3.5 mr-1" /> Merge with name
-              </Button>
-            ) : null}
-            {stability !== 'needs_resolution' ? (
-              <Button size="sm" variant="ghost" onClick={markUnresolved} disabled={busy}>
-                <AlertCircle className="h-3.5 w-3.5 mr-1" /> Mark unresolved
-              </Button>
-            ) : null}
-          </>
-        )}
-        {isContextual ? (
-          <span className="inline-flex items-center text-xs text-white/50">
-            <Sparkles className="h-3.5 w-3.5 mr-1" /> Contextual reference
-          </span>
-        ) : null}
-      </div>
+              {!compact && stability !== 'locked' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const auto = suggestDisplayTitleFromNames(character);
+                    if (auto && auto !== draftTitle) {
+                      setDraftTitle(auto);
+                    }
+                  }}
+                  disabled={busy}
+                  title="Generate title from structured first name + primary nickname"
+                >
+                  Auto from names
+                </Button>
+              )}
+              {isContextual ? (
+                <Button size="sm" variant="outline" onClick={() => setShowResolveForm((v) => !v)} disabled={busy}>
+                  <Link2 className="h-3.5 w-3.5 mr-1" /> Merge with name
+                </Button>
+              ) : null}
+              {!compact && stability !== 'needs_resolution' ? (
+                <Button size="sm" variant="ghost" onClick={() => void markUnresolved()} disabled={busy}>
+                  <AlertCircle className="h-3.5 w-3.5 mr-1" /> Mark unresolved
+                </Button>
+              ) : null}
+            </>
+          )}
+          {isContextual ? (
+            <span className="inline-flex items-center text-xs text-white/50">
+              <Sparkles className="h-3.5 w-3.5 mr-1" /> Contextual reference
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

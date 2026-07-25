@@ -56,6 +56,21 @@ const POLICIES: Record<ScopeIntent, DomainPolicy> = {
     allowed: ['general_biography', 'people', 'places', 'events', 'projects'],
     blocked: [...NEVER_IN_CHAT],
   },
+  timeline: {
+    allowed: [
+      'people',
+      'organizations',
+      'work_roles',
+      'work_relationships',
+      'current_work_timeline',
+      'general_biography',
+      'projects',
+      'places',
+      'events',
+      'music_scene',
+    ],
+    blocked: ['quest_log', ...NEVER_IN_CHAT],
+  },
   general: {
     allowed: [
       'people',

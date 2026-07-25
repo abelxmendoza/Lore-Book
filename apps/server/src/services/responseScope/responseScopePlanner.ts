@@ -12,6 +12,7 @@ import type {
   ScopeIntent,
   ScopeSource,
 } from './responseScopeTypes';
+import { isExplicitSubjectTimelineRequest } from '../modeRouter/modeRouterService';
 
 const WORK_INTENT_RE =
   /\b(work|job|team|teammates?|coworkers?|colleagues?|manager|boss|lead(?:s)?\b|shift|on[- ]?site|office|warehouse|employer|company i work|my (role|position|title)\b|career|employed)\b/i;
@@ -67,6 +68,7 @@ export function extractCorrectionNames(message: string): string[] {
 }
 
 export function detectScopeIntent(message: string): ScopeIntent {
+  if (isExplicitSubjectTimelineRequest(message)) return 'timeline';
   // Order matters: work beats place/event ("who's on my team at Amazon" also
   // matches place-ish patterns); relationship beats family ("dating").
   if (WORK_INTENT_RE.test(message)) return 'work';

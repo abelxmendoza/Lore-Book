@@ -103,22 +103,52 @@ vi.mock('./TimelineStoryView', () => ({
 }));
 
 vi.mock('./TimelineGeneratingSimulation', () => ({
-  TimelineGeneratingSimulation: ({ query }: { query: string }) => (
-    <div data-testid="timeline-generating-simulation">{query}</div>
+  TimelineGeneratingSimulation: ({
+    query,
+    onComplete,
+  }: {
+    query: string;
+    onComplete: () => void;
+  }) => (
+    <div data-testid="timeline-generating-simulation">
+      {query}
+      <button type="button" onClick={onComplete}>Finish generation</button>
+    </div>
   ),
 }));
 
 vi.mock('./GeneratedTimelineReveal', () => ({
-  GeneratedTimelineReveal: ({ query }: { query: string }) => (
-    <div data-testid="generated-timeline-reveal">{query}</div>
+  GeneratedTimelineReveal: ({
+    query,
+    events,
+    compilation,
+  }: {
+    query: string;
+    events?: unknown[];
+    compilation?: { subject?: { displayName?: string } | null };
+  }) => (
+    <div data-testid="generated-timeline-reveal">
+      {query} · {events?.length ?? 0} · {compilation?.subject?.displayName ?? 'unresolved'}
+    </div>
   ),
 }));
+
+vi.mock('../../api/subjectTimeline', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/subjectTimeline')>();
+  return {
+    ...actual,
+    subjectTimelineApi: {
+      compile: vi.fn(),
+    },
+  };
+});
 
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useAuth } from '../../lib/supabase';
+import { subjectTimelineApi } from '../../api/subjectTimeline';
 
 function renderOmniTimeline(initialRoute = '/timeline') {
   return render(
@@ -226,6 +256,77 @@ describe('OmniTimeline layout and navigation', () => {
   it('opens generated timeline from URL query in demo mode', () => {
     renderOmniTimeline('/timeline?q=nightlife');
     expect(screen.getByTestId('generated-timeline-reveal')).toHaveTextContent('nightlife');
+  });
+
+  it('uses the subject compiler for authenticated generated timelines', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useMockData).mockReturnValue({ useMockData: false } as ReturnType<typeof useMockData>);
+    vi.mocked(useAuth).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
+    vi.mocked(subjectTimelineApi.compile).mockResolvedValue({
+      query: 'My time at Vanguard Robotics',
+      intent: {
+        rawQuery: 'My time at Vanguard Robotics',
+        mode: 'EMPLOYMENT_TIMELINE',
+        subjectQuery: 'Vanguard Robotics',
+        perspective: 'FIRST_PERSON_EXPERIENCE',
+        expectedPhases: ['prelude', 'beginning', 'active_period', 'transition', 'aftermath'],
+      },
+      subject: {
+        entityId: '11111111-1111-4111-8111-111111111111',
+        entityType: 'organization',
+        displayName: 'Vanguard Robotics',
+        aliases: [],
+        confidence: 1,
+      },
+      ambiguity: [],
+      period: null,
+      coverage: {
+        score: 0.2,
+        coveredPhases: ['beginning'],
+        missingPhases: ['prelude', 'active_period', 'transition', 'aftermath'],
+        isComplete: false,
+      },
+      events: [
+        {
+          id: 'event:work',
+          start_time: '2026-06-24T09:00:00.000Z',
+          title: 'First day',
+          content: 'Joined the lab.',
+          timeline_names: ['Beginning'],
+          source_kind: 'resolved_event',
+          source_id: 'work',
+          source_ids: ['work'],
+          source_type: 'resolved_event',
+          time_precision: 'date',
+          time_confidence: 0.95,
+          phase: 'beginning',
+          subjectRelation: 'DIRECT_WORK_ACTIVITY',
+          relevance: 0.98,
+          significance: 'high',
+          evidenceCount: 1,
+          whyIncluded: 'Directly linked work event',
+          focusedEvidence: 'Joined the lab.',
+        },
+      ],
+      contextEvents: [],
+      sources: ['resolved_event'],
+      warnings: [],
+    });
+
+    renderOmniTimeline();
+    const input = screen.getByRole('textbox', { name: /generate a timeline/i });
+    await user.type(input, 'My time at Vanguard Robotics');
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    expect(screen.getByTestId('timeline-generating-simulation')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /finish generation/i }));
+    expect(await screen.findByTestId('generated-timeline-reveal')).toHaveTextContent(
+      'My time at Vanguard Robotics · 1 · Vanguard Robotics',
+    );
+    expect(subjectTimelineApi.compile).toHaveBeenCalledWith(
+      'My time at Vanguard Robotics',
+      undefined,
+    );
   });
 
   it('opens the scoped stitched timeline when clicking an active arc in demo mode', async () => {

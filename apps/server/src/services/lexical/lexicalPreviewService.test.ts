@@ -9,7 +9,7 @@ import {
 
 describe('isLexicalNoiseToken', () => {
   it('rejects pronouns, interrogatives, and command verbs', () => {
-    for (const t of ['my', 'you', 'What', 'Tell', 'who', 'me', 'About']) {
+    for (const t of ['my', 'you', 'What', 'Tell', 'who', 'me', 'About', 'Also', 'However']) {
       expect(isLexicalNoiseToken(t), t).toBe(true);
     }
   });

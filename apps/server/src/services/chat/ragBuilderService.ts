@@ -23,6 +23,11 @@ import {
   buildRelationshipContext,
   type RelationshipContinuitySummary,
 } from './relationshipContextBuilder';
+import {
+  buildRetellingRecallBlock,
+  isRetellingRecallMessage,
+  retrievePriorRetellings,
+} from './retellingRecallService';
 import { chooseRetrievalPath } from './retrievalStrategy';
 import {
   assembleWorkingMemory,
@@ -59,9 +64,13 @@ export async function buildRAGPacket(
   currentContext?: CurrentContext,
   extractDatesAndTimes?: (msg: string) => Promise<Array<{ date: string; context: string; precision: string; confidence: number }>>,
   scopePlan?: import('../responseScope').ResponseScopePlan,
+  currentMessageId?: string,
 ) {
   // Full-packet cache hit — skip everything
-  const cached = ragPacketCacheService.getCachedPacket(userId, message);
+  // Retellings deliberately bypass the message-text cache: an identical new
+  // telling changes the evidence set even when the text is unchanged.
+  const retellingRecall = isRetellingRecallMessage(message);
+  const cached = retellingRecall ? null : ragPacketCacheService.getCachedPacket(userId, message);
   if (cached) return cached;
 
   // ── Orchestrator summary ─────────────────────────────────────────────────
@@ -243,6 +252,7 @@ export async function buildRAGPacket(
   let foundationTimeline: any[] = [];
   let workingMemory: WorkingMemoryAssembly | null = null;
   let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
+  const workingMemorySources: ChatSource[] = [];
   const retrievalPaths: string[] = [];
 
   try {
@@ -279,11 +289,11 @@ export async function buildRAGPacket(
         ...workingMemory.claims,
         ...workingMemory.timeline,
       ];
-      const existingSourceIds = new Set(sources.map((source) => source.id));
+      const existingSourceIds = new Set<string>();
       for (const item of selectedItems) {
         if (existingSourceIds.has(item.id)) continue;
         existingSourceIds.add(item.id);
-        sources.push({
+        workingMemorySources.push({
           type: 'knowledge',
           id: item.id,
           title: item.title,
@@ -305,6 +315,35 @@ export async function buildRAGPacket(
     }
   } catch (e) {
     logger.debug({ e }, 'RAGBuilder: working memory assembly failed');
+  }
+
+  let retellingRecallBlock: string | null = null;
+  const retellingSources: ChatSource[] = [];
+  if (retellingRecall) {
+    const priorRetellings = await retrievePriorRetellings(
+      userId,
+      message,
+      currentMessageId,
+    );
+    retellingRecallBlock = buildRetellingRecallBlock(message, priorRetellings);
+    for (const prior of priorRetellings) {
+      retellingSources.push({
+        type: 'knowledge',
+        id: prior.id,
+        title: 'Prior telling of this story',
+        snippet: prior.content.replace(/\s+/g, ' ').trim().slice(0, 240),
+        date: prior.createdAt,
+        relevanceScore: Math.round(prior.similarity * 100),
+        relevanceReasons: [
+          'prior user-authored telling',
+          `${prior.sharedTerms.length} shared story terms`,
+          'explicit retelling verification',
+        ],
+      });
+    }
+    retrievalPaths.push(
+      priorRetellings.length > 0 ? 'retelling_evidence_match' : 'retelling_no_verified_match',
+    );
   }
 
   // ── HQI semantic search ──────────────────────────────────────────────────
@@ -475,6 +514,8 @@ export async function buildRAGPacket(
 
   // ── Sources array ────────────────────────────────────────────────────────
   let sources: ChatSource[] = [
+    ...workingMemorySources,
+    ...retellingSources,
     ...orchestratorSummary.timeline.events.slice(0, 15).map((e: any) => ({
       type: 'entry' as const, id: e.id,
       title: e.summary || e.content?.substring(0, 50) || 'Untitled',
@@ -689,6 +730,13 @@ export async function buildRAGPacket(
   // Scope every downstream evidence surface once. This filtered list feeds
   // the prompt, visible source chips, citations, suggested actions, and
   // response metadata, preventing the UI from leaking broad retrieval noise.
+  let rejectedEvidence: Array<{
+    type?: string;
+    id?: string;
+    title?: string;
+    relevanceScore: number;
+    relevanceReasons: string[];
+  }> = [];
   if (scopePlan) {
     const { filterSourcesForPresentation } = await import('../responseScope');
     sources = filterSourcesForPresentation(sources, scopePlan, workingMemory);
@@ -709,6 +757,13 @@ export async function buildRAGPacket(
       );
     }
     const verdict = enforceEvidenceContract(sources, contract);
+    rejectedEvidence = verdict.rejected.map((source) => ({
+      type: source.type,
+      id: source.id,
+      title: source.title,
+      relevanceScore: source.relevanceScore,
+      relevanceReasons: source.relevanceReasons,
+    }));
     if (verdict.rejected.length > 0) {
       logger.info(
         {
@@ -801,6 +856,7 @@ export async function buildRAGPacket(
     knowledgeGapBlock,
     // Sprint G: foundation recall data
     foundationRecallBlock,
+    retellingRecallBlock,
     foundationRelationships,
     foundationTimeline,
     workingMemory,
@@ -809,10 +865,12 @@ export async function buildRAGPacket(
       paths: retrievalPaths,
       promptSections: [
         foundationRecallBlock ? 'working_memory' : null,
+        retellingRecallBlock ? 'retelling_recall' : null,
         entityDossierBlock ? 'entity_dossier' : null,
         entityArcNarrativeBlock ? 'entity_arc' : null,
       ].filter(Boolean),
       queryCount: workingMemory?.timing?.queryCount ?? 0,
+      rejectedEvidence,
     },
     lifeArcSynthesisBlock,
     lifeArcSynthesis,
@@ -828,6 +886,6 @@ export async function buildRAGPacket(
     queryCount: packet.retrievalTrace.queryCount,
   }, 'RAGBuilder: retrieval trace');
 
-  ragPacketCacheService.cachePacket(userId, message, packet);
+  if (!retellingRecall) ragPacketCacheService.cachePacket(userId, message, packet);
   return packet;
 }

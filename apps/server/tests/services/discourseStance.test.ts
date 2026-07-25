@@ -28,6 +28,20 @@ describe('discourseStance', () => {
     expect(moves.some((m) => m.move === 'STORY_CLOSE')).toBe(true);
   });
 
+  it('does not treat positional end phrases as story closure', () => {
+    for (const text of [
+      'Put a zero at the end.',
+      'The name has a 0 at the end.',
+      'Add a period at the end.',
+      'The show is at the end of the month.',
+      'The button is at the end of the row.',
+    ]) {
+      expect(detectDiscourseMoves(text).some((move) => move.move === 'STORY_CLOSE')).toBe(false);
+    }
+    expect(detectDiscourseMoves('The end.').some((move) => move.move === 'STORY_CLOSE')).toBe(true);
+    expect(detectDiscourseMoves('And that was the end.').some((move) => move.move === 'STORY_CLOSE')).toBe(true);
+  });
+
   it('detects narrative stages', () => {
     const stages = detectNarrativeStages(
       'It started when I moved to Austin. Then one day everything changed when I got laid off. Looking back, I learned a lot.',

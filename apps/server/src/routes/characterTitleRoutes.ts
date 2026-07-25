@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { characterTitleService } from '../services/identity/characterTitlePersistenceService';
 
@@ -59,9 +60,18 @@ router.post('/aliases', requireAuth, async (req: AuthenticatedRequest, res) => {
   const parsed = addAliasSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
 
-  const result = await characterTitleService.addAlias(req.user!.id, req.params.id as string, parsed.data);
-  if (!result) return res.status(404).json({ error: 'Character not found' });
-  return res.json({ displayTitle: result });
+  try {
+    const result = await characterTitleService.addAlias(
+      req.user!.id,
+      req.params.id as string,
+      parsed.data,
+    );
+    if (!result) return res.status(404).json({ error: 'Character not found' });
+    return res.json({ displayTitle: result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Could not add alias';
+    return res.status(422).json({ error: msg });
+  }
 });
 
 router.post('/aliases/:aliasId/promote', requireAuth, async (req: AuthenticatedRequest, res) => {

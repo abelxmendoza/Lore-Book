@@ -1,8 +1,15 @@
 import { supabase } from './supabase';
 import { addCsrfHeaders, acquireCsrfToken, getCsrfToken } from './security';
 import { config } from '../config/env';
+import type { EntitySearchType } from '../api/entitySearch';
 import type { LoreReadinessEvaluation } from './loreReadiness';
 import type { LorebookForm } from './lorebookTiers';
+
+export type LorebookFocusEntity = {
+  id: string;
+  type: EntitySearchType;
+  name: string;
+};
 
 export type CompileConflict = {
   message: string;
@@ -62,8 +69,14 @@ export async function compileLorebookFromQuery(
   query: string,
   force = false,
   form?: LorebookForm,
+  focusEntity?: LorebookFocusEntity,
 ): Promise<CompileResult<{ biography: unknown; biographyId?: string; persisted?: boolean; parsedQuery?: unknown }>> {
-  return postCompile('/api/biography/search', { query, force, ...(form ? { form } : {}) });
+  return postCompile('/api/biography/search', {
+    query,
+    force,
+    ...(form ? { form } : {}),
+    ...(focusEntity ? { focusEntity } : {}),
+  });
 }
 
 export async function compileLorebookFromSpec(

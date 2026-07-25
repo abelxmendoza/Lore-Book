@@ -2,10 +2,9 @@
  * Persistence layer for character display titles (characters.metadata).
  */
 
-import { randomUUID } from 'crypto';
 import { logger } from '../../logger';
+
 import { supabaseAdmin } from '../supabaseClient';
-import { identityLedgerService } from './identityLedgerService';
 import {
   aliasesFromProminenceMap,
   mergeAliasIntoList,
@@ -24,14 +23,14 @@ import {
   buildDisplayTitleFromMention,
   buildDisplayTitleFromName,
 } from './dynamicCharacterTitleService';
-import type {
-  CharacterAliasType,
-  CharacterDisplayTitle,
-} from './personDisplayTitleTypes';
+import { identityLedgerService } from './identityLedgerService';
 import {
   METADATA_ALIAS_PROMINENCE_KEY as ALIAS_KEY,
   METADATA_CHARACTER_SUBTITLE_KEY as SUBTITLE_KEY,
   METADATA_DISPLAY_TITLE_KEY as TITLE_KEY,
+  type CharacterAlias,
+  type CharacterAliasType,
+  type CharacterDisplayTitle,
 } from './personDisplayTitleTypes';
 
 type CharacterRow = {
@@ -46,6 +45,41 @@ function readMetadata(row: CharacterRow) {
   return (row.metadata ?? {}) as Record<string, unknown>;
 }
 
+function aliasRecord(value: string, aliasType: CharacterAliasType = 'nickname'): CharacterAlias {
+  return {
+    id: `legacy-${value.trim().toLowerCase().replace(/\s+/g, '-')}`,
+    value,
+    aliasType,
+    prominenceScore: 0,
+    evidenceCount: 0,
+  };
+}
+
+/** Union metadata aliases with the characters.alias column so adds never wipe known nicknames. */
+function coalesceAliases(
+  primaryTitle: string,
+  storedAliases: CharacterAlias[] | undefined,
+  prominence: AliasProminenceMap,
+  rowAliases: string[] | null | undefined,
+): CharacterAlias[] {
+  const fromStored = storedAliases?.length
+    ? storedAliases
+    : aliasesFromProminenceMap(prominence, primaryTitle);
+  const byKey = new Map<string, CharacterAlias>();
+  const primaryKey = primaryTitle.trim().toLowerCase();
+  for (const alias of fromStored) {
+    const key = alias.value.trim().toLowerCase();
+    if (key && key !== primaryKey) byKey.set(key, alias);
+  }
+  for (const value of rowAliases ?? []) {
+    const trimmed = value.trim();
+    const key = trimmed.toLowerCase();
+    if (!key || key === primaryKey || byKey.has(key)) continue;
+    byKey.set(key, aliasRecord(trimmed));
+  }
+  return [...byKey.values()];
+}
+
 export function displayTitleFromRow(row: CharacterRow): CharacterDisplayTitle {
   const meta = readMetadata(row);
   const stored = meta[TITLE_KEY] as CharacterDisplayTitle | undefined;
@@ -55,22 +89,24 @@ export function displayTitleFromRow(row: CharacterRow): CharacterDisplayTitle {
     return {
       ...stored,
       characterId: row.id,
-      aliases: stored.aliases?.length
-        ? stored.aliases
-        : aliasesFromProminenceMap(prominence, stored.primaryTitle),
+      aliases: coalesceAliases(
+        stored.primaryTitle,
+        stored.aliases,
+        prominence,
+        row.alias,
+      ),
     };
   }
 
   const built = buildDisplayTitleFromName(row.id, row.name, { stability: 'stable' });
   return {
     ...built.displayTitle,
-    aliases: (row.alias ?? []).map((value) => ({
-      id: randomUUID(),
-      value,
-      aliasType: 'nickname' as CharacterAliasType,
-      prominenceScore: 0,
-      evidenceCount: 0,
-    })),
+    aliases: coalesceAliases(
+      built.displayTitle.primaryTitle,
+      undefined,
+      prominence,
+      row.alias,
+    ),
   };
 }
 
@@ -112,8 +148,9 @@ async function persistTitleState(
     patch.name = displayTitle.primaryTitle.trim();
   }
 
-  const aliasValues = displayTitle.aliases.map((a) => a.value).filter(Boolean);
-  if (aliasValues.length > 0) patch.alias = aliasValues;
+  // Keep characters.alias in lockstep with the title alias list (source of truth
+  // after displayTitleFromRow coalesces column + metadata).
+  patch.alias = displayTitle.aliases.map((a) => a.value.trim()).filter(Boolean);
 
   const { data, error } = await supabaseAdmin
     .from('characters')
@@ -204,25 +241,35 @@ export const characterTitleService = {
     const row = await loadCharacter(userId, characterId);
     if (!row) return null;
 
+    const aliasValue = input.value.trim().replace(/\s+/g, ' ');
+    if (!aliasValue) throw new Error('Alias cannot be empty');
+
+    const primaryKey = (row.name || '').trim().toLowerCase();
+    if (aliasValue.toLowerCase() === primaryKey) {
+      throw new Error('Alias cannot match the character\'s primary name');
+    }
+
     const current = displayTitleFromRow(row);
     const meta = readMetadata(row);
     const prominence = (meta[ALIAS_KEY] ?? {}) as AliasProminenceMap;
-    const nextProminence = recordAliasUsage(prominence, input.value, input.aliasType);
+    const nextProminence = recordAliasUsage(prominence, aliasValue, input.aliasType);
     const nextTitle = {
       ...current,
-      aliases: mergeAliasIntoList(current.aliases, input.value, input.aliasType),
+      aliases: mergeAliasIntoList(current.aliases, aliasValue, input.aliasType),
     };
 
-    await identityLedgerService.recordMutation({
+    // Persist first so a ledger hiccup never blocks alias writes.
+    const updated = await persistTitleState(userId, row, nextTitle, { prominence: nextProminence });
+
+    void identityLedgerService.recordMutation({
       userId,
       entityId: characterId,
       entityType: 'character',
       mutationType: 'ALIAS_ADDED',
-      newValue: { alias: input.value, aliasType: input.aliasType },
+      newValue: { alias: aliasValue, aliasType: input.aliasType },
       source: 'USER',
     });
 
-    const updated = await persistTitleState(userId, row, nextTitle, { prominence: nextProminence });
     return displayTitleFromRow(updated);
   },
 

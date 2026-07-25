@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   Star,
@@ -31,7 +32,6 @@ import { Button } from '../ui/button';
 import { CharacterAvatar } from './CharacterAvatar';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { CharacterTitleSection } from './CharacterTitleSection';
-import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
@@ -136,9 +136,20 @@ function formatMemoryDate(iso: string): string {
  * Dedicated protagonist modal — visually and structurally distinct from CharacterDetailModal.
  */
 export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }: Props) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<MainTab>('story');
   const [selectedConnection, setSelectedConnection] = useState<Character | null>(null);
   const profile = useMainCharacterProfile(character);
+
+  const openOmniTimeline = () => {
+    const characterId = profile.character.id;
+    onClose();
+    navigate(
+      characterId
+        ? `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`
+        : '/timeline?view=events',
+    );
+  };
 
   // Local editable state for solidifying self identity in this modal
   const [editingIdentity, setEditingIdentity] = useState(false);
@@ -620,101 +631,66 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
             </div>
           </div>
 
-          {/* Desktop hero header */}
+          {/* Desktop hero header — kept short so tabs/content keep the viewport */}
           <header className="relative hidden shrink-0 border-b border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-950/25 to-purple-900/15 sm:block">
-            <div className="flex items-start gap-3 p-5">
-              <div className="flex min-w-[7.5rem] flex-col items-center justify-center gap-2 border-r border-amber-500/25 bg-gradient-to-b from-amber-500/20 to-transparent px-1 py-1 pr-4">
+            <div className="flex items-start gap-3 p-2.5 sm:px-4">
+              <div className="flex min-w-[4.5rem] flex-col items-center justify-center gap-1 border-r border-amber-500/25 bg-gradient-to-b from-amber-500/20 to-transparent px-1 py-0.5 pr-2.5">
                 <CharacterAvatar
                   url={avatarUrl}
                   characterId={profile.character.id}
                   archetype={profile.character.archetype}
                   role={profile.character.role}
                   name={displayName}
-                  size={64}
-                  className="ring-2 ring-amber-400/55 ring-offset-2 ring-offset-black/80"
+                  size={44}
+                  className="ring-2 ring-amber-400/55 ring-offset-1 ring-offset-black/80"
                 />
                 <Badge
                   variant="outline"
-                  className="mt-2 flex items-center gap-1 border-amber-400/50 bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-200"
+                  className="flex items-center gap-1 border-amber-400/50 bg-amber-500/20 px-1.5 py-0 text-[9px] text-amber-200"
                 >
-                  <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
-                  This is you
+                  <Star className="h-2.5 w-2.5 fill-amber-300 text-amber-300" />
+                  You
                 </Badge>
               </div>
 
-              <div className="min-w-0 flex-1">
-                <p className="mb-1 text-[10px] font-mono uppercase tracking-[0.2em] text-amber-400/80">
-                  Your profile
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-3xl font-bold tracking-tight text-white">You</h2>
-                  <span className="rounded border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-amber-400/80">
-                    app user
-                  </span>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h2 className="text-xl font-bold tracking-tight text-white">You</h2>
+                  {!isYouName ? (
+                    <span className="truncate text-sm text-amber-200/70">{displayName}</span>
+                  ) : null}
+                  <span className="truncate text-xs text-amber-200/50">{roleLine}</span>
                 </div>
-                {!isYouName && (
-                  <p className="mt-1 break-words text-sm text-amber-200/70">{displayName}</p>
-                )}
-                {/* Structured names under official title - consistent with other modals */}
-                {(() => {
-                  const ch = profile.character || {};
-                  const first = ch.first_name || '';
-                  const middle = (typeof ch.metadata?.middle_name === 'string' ? ch.metadata.middle_name : ch.middle_name) || '';
-                  const last = ch.last_name || '';
-                  const full = [first, middle, last].filter(Boolean).join(' ').trim();
-                  const aliases = (ch.alias || []).filter(Boolean);
-                  if (!full && aliases.length === 0) return null;
-                  return (
-                    <p className="mt-0.5 text-xs text-amber-300/70 truncate">
-                      {full && <span>{full}</span>}
-                      {aliases.length > 0 && <span className="text-amber-400/60"> {full ? '· ' : ''}{aliases.join(' / ')}</span>}
-                    </p>
-                  );
-                })()}
 
-                {/* Editable official title for main/self too */}
-                <div className="mt-1 max-w-xl">
+                <div className="max-w-2xl">
                   <CharacterTitleSection
                     character={profile.character}
+                    compact
                     onUpdated={() => {
-                      // refresh self to bring edits into profile, lore, continuity
                       selfCharacterApi?.ensureSelf?.().catch(() => {});
                       void profile.reload();
                     }}
                   />
                 </div>
 
-                <p className="mt-1 break-words text-sm font-medium text-amber-200/60">{roleLine}</p>
-
-                <div className="mt-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <EntityLorebookCompileControl
                     subjectLabel={displayName || 'You'}
                     focus={{ characterId: profile.character.id, themes: displayName || 'You' }}
                     testId="main-character-lorebook-compile"
                   />
-                </div>
-
-                {profile.character.archetype &&
-                  !/^protagonist$/i.test(profile.character.archetype) && (
-                  <Badge
-                    variant="outline"
-                    className="mt-2 border-primary/30 bg-primary/15 px-1.5 py-0 text-[10px] text-primary"
-                  >
-                    <Sparkles className="mr-1 h-2.5 w-2.5" />
-                    Your {profile.character.archetype.toLowerCase()} side
-                  </Badge>
-                )}
-
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  {statItems.map(({ label, value }) => (
-                    <div
-                      key={label}
-                      className="min-w-0 rounded-lg border border-amber-500/20 bg-black/35 px-2.5 py-2 text-center"
-                    >
-                      <p className="text-xl font-bold tabular-nums leading-none text-amber-100">{value}</p>
-                      <p className="mt-0.5 truncate text-xs uppercase tracking-wide text-white/45">{label}</p>
-                    </div>
-                  ))}
+                  <div className="ml-auto grid grid-cols-4 gap-1">
+                    {statItems.map(({ label, value }) => (
+                      <div
+                        key={label}
+                        className="min-w-[3.25rem] rounded border border-amber-500/20 bg-black/35 px-1.5 py-1 text-center"
+                        title={label}
+                      >
+                        <p className="text-sm font-bold tabular-nums leading-none text-amber-100">{value}</p>
+                        <p className="mt-0.5 truncate text-[9px] uppercase tracking-wide text-white/45">{label}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1264,15 +1240,30 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 )}
               </TabsContent>
 
-              {/* Timeline */}
+              {/* Timeline — hand off to Omni Timeline (no in-modal timeline body) */}
               <TabsContent value="timeline" className={tabPanelClass}>
-                <CharacterTimelinePanel
-                  characterId={profile.character.id}
-                  characterName={displayName}
-                  mockMode={profile.isMockDataEnabled}
-                  active={activeTab === 'timeline'}
-                  isSelfProfile
-                />
+                <div
+                  className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-8 text-center space-y-4"
+                  data-testid="main-character-timeline-handoff"
+                >
+                  <Clock className="h-10 w-10 mx-auto text-amber-300/70" />
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-semibold text-white">Your life on Omni Timeline</h3>
+                    <p className="text-sm text-white/50 max-w-md mx-auto">
+                      Chronology, arcs, and event search live in Omni Timeline — open it to explore
+                      your story across time.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="gap-2 bg-amber-500/25 border border-amber-400/35 text-amber-100 hover:bg-amber-500/35"
+                    onClick={openOmniTimeline}
+                    data-testid="main-character-open-omni-timeline"
+                  >
+                    <Clock className="h-4 w-4" />
+                    Open Omni Timeline
+                  </Button>
+                </div>
               </TabsContent>
 
               {/* Lore */}

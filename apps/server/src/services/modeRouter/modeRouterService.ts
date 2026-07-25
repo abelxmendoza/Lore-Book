@@ -27,6 +27,7 @@ export type ChatMode =
   | 'NARRATIVE_RECALL'       // Mode 3: Complex stories
   | 'NARRATIVE_STORY'        // Mode 3b: Build/tell a narrative ("tell me the story of X")
   | 'FOUNDATION_RECALL'      // Mode 3c: Explicit "Recall …" commands (biography, roster, family)
+  | 'SUBJECT_TIMELINE'       // Existing subject timeline compiler + stitched feed
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -96,6 +97,15 @@ class ModeRouterService {
   private quickModeCheck(message: string): ModeRoutingResult {
     const text = message.toLowerCase().trim();
     const messageLength = message.length;
+
+    // Explicit timeline generation must outrank generic narrative recall.
+    if (isExplicitSubjectTimelineRequest(message)) {
+      return {
+        mode: 'SUBJECT_TIMELINE',
+        confidence: 0.98,
+        reasoning: 'Explicit subject timeline request detected',
+      };
+    }
 
     // NEEDS_CLARIFICATION: Milestone/achievement-ish but ambiguous (app vs life, or vague).
     // Ask what they mean before ingesting. Run before greeting/meta so
@@ -499,7 +509,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
@@ -565,6 +575,20 @@ Respond with JSON:
 
     return llm;
   }
+}
+
+export function isExplicitSubjectTimelineRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return (
+    /\b(?:show|pull up|bring up|give|build|create|generate|display)\b[^.!?\n]{0,60}\b(?:a |the |my )?timeline\b/i.test(text)
+    || /\b(?:what is|what's)\b[^.!?\n]{0,40}\b timeline of\b/i.test(text)
+    || /\b(?:timeline|chronology)\b[^.!?\n]{0,45}\b(?:my time|history|relationship|career|project)\b/i.test(text)
+    || /\b(?:my|the)\s+[\p{L}\p{N}'’.-]+(?:\s+[\p{L}\p{N}'’.-]+){0,5}\s+timeline\b/iu.test(text)
+    || /\bhow did\b[^.!?\n]{2,60}\b(?:develop|evolve|change|unfold)\b[^.!?\n]{0,20}\bover time\b/i.test(text)
+    || /\b(?:show|give|tell)\b[^.!?\n]{0,30}\b(?:history|chronology)\s+of\b/i.test(text)
+    || /\bwhat happened during my time (?:at|in|with|as)\b/i.test(text)
+  );
 }
 
 export const modeRouterService = new ModeRouterService();

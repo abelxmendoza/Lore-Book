@@ -20,6 +20,14 @@ export function isLexicalNoiseToken(text: string): boolean {
   if (/^(?:a|an|the|this|that|these|those|and|or|but|so|if|to|of|in|on|at|for|with|from|about)$/i.test(t)) {
     return true;
   }
+  // Sentence adverbs / discourse markers — often capitalized at line start ("Also,").
+  if (
+    /^(?:also|however|besides|furthermore|moreover|meanwhile|anyway|instead|still|yet|though|although|therefore|otherwise|regardless)$/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   // Bare temporal adverbs — planner signals, not entity chips.
   if (/^(?:today|tonight|tomorrow|yesterday|now|later|soon|recently)$/i.test(t)) {
     return true;

@@ -1,9 +1,10 @@
 /**
  * Factuality resolution — fact / opinion / hypothetical / desire / uncertain / question.
  */
-import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
-import type { Factuality } from './meaningResolutionTypes';
 import { padForScan } from '../lexical/lexicalNormalizer';
+import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
+
+import type { Factuality } from './meaningResolutionTypes';
 
 const HYPOTHETICAL = [
   'if i worked', 'if i were', 'if i was', 'wish i was', 'wish i were',
@@ -21,6 +22,22 @@ const OPINION = [
   'is amazing', 'is terrible', 'is the future',
 ];
 
+const TRAILING_RECALL_CHECK =
+  /(?:^|[\n.!?]\s*)(?:this is (?:a )?repeated story[,.]?\s*)?(?:do you remember|have i told you (?:this|that) before|i (?:already )?told you (?:this|that) before)\??\s*$/i;
+
+/**
+ * A biographical deposit does not become "just a question" because the user
+ * ends it with a memory check. The suffix asks for retrieval; the preceding
+ * first-person statements still need ordinary memory processing.
+ */
+export function hasSubstantiveStatementBeforeRecallQuestion(text: string): boolean {
+  const statement = text.trim().replace(TRAILING_RECALL_CHECK, '').trim();
+  if (statement.length < 40) return false;
+  if (!/\b(i|i'm|i've|my|me|we|our)\b/i.test(statement)) return false;
+  return /[.!?\n]|\b(?:am|was|were|have|had|made|bought|went|worked|lived|met|created|posted|started|became)\b/i
+    .test(statement);
+}
+
 export function resolveFactuality(
   text: string,
   lexical: LexicalAnalysisResult
@@ -28,7 +45,10 @@ export function resolveFactuality(
   const padded = padForScan(text);
   const trimmed = text.trim();
 
-  if (trimmed.endsWith('?') || /\b(should i|what if|how do i)\b/i.test(trimmed)) {
+  if (
+    (trimmed.endsWith('?') || /\b(should i|what if|how do i)\b/i.test(trimmed)) &&
+    !hasSubstantiveStatementBeforeRecallQuestion(trimmed)
+  ) {
     return { factuality: 'question', certaintyLevel: Math.min(lexical.confidence, 0.4) };
   }
 

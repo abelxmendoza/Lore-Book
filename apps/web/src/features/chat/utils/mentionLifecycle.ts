@@ -12,6 +12,32 @@ export type MentionLifecycleStatus =
   | 'IGNORE';
 
 const SELF = /^(?:you|also you|me|myself|self|the user|user)$/i;
+/** Sentence adverbs / function words that look like proper names when capitalized. */
+const DISCOURSE_MARKERS = new Set([
+  'also',
+  'however',
+  'besides',
+  'furthermore',
+  'moreover',
+  'meanwhile',
+  'anyway',
+  'instead',
+  'still',
+  'yet',
+  'though',
+  'although',
+  'therefore',
+  'otherwise',
+  'regardless',
+  'and',
+  'but',
+  'or',
+  'so',
+  'then',
+  'than',
+  'because',
+  'about',
+]);
 const INDEFINITE =
   /^(?:(?:a|an|one|some|that|this|the)\s+)?(?:girl|guy|man|woman|person|dude|lady)s?$/i;
 const VAGUE_COLLECTIVE =
@@ -24,6 +50,7 @@ const CONTEXTUAL_GROUP =
 export function inferMentionLifecycleStatus(name: string): MentionLifecycleStatus {
   const key = name.trim().toLowerCase().replace(/\s+/g, ' ');
   if (!key || SELF.test(key)) return 'IGNORE';
+  if (DISCOURSE_MARKERS.has(key)) return 'IGNORE';
   if (INDEFINITE.test(key) || VAGUE_COLLECTIVE.test(key) || TRUNCATED.test(key)) return 'GENERIC';
   if (/\b(?:girls|guys|people|friends|commenters|members)\b/i.test(name) && CONTEXTUAL_GROUP.test(name)) {
     return 'GROUP';

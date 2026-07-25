@@ -70,7 +70,7 @@ function emptySummary(): Record<CharacterAuditStatus, number> {
 
 /** Relational placeholders ("friend of Shyla") — real people, unusable titles. */
 const RELATIONAL_PLACEHOLDER_PATTERN =
-  /^(friend|homie|buddy|bestie|cousin|coworker|colleague|neighbor|roommate|girlfriend|boyfriend|partner|ex)s?\s+of\s+(\S.*)$/i;
+  /^(friend|homie|homegirl|homeboy|buddy|bestie|cousin|coworker|colleague|neighbor|roommate|girlfriend|boyfriend|partner|ex)s?\s+of\s+(\S.*)$/i;
 
 function titleCase(value: string): string {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());

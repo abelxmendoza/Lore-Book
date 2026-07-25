@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CreationOutcomePanel } from './CreationOutcomePanel';
 
@@ -47,7 +47,7 @@ describe('CreationOutcomePanel', () => {
     expect(screen.queryByText(/Clarify Maria/i)).not.toBeInTheDocument();
   });
 
-  it('renders navigable create outcome', () => {
+  it('labels an unconfirmed create outcome as a person candidate', () => {
     render(
       <MemoryRouter>
         <CreationOutcomePanel
@@ -59,7 +59,29 @@ describe('CreationOutcomePanel', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('button', { name: /Started a record for Juan/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Person candidate: Juan/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Started a record/i)).not.toBeInTheDocument();
+  });
+
+  it('shows non-person mentions as routed domain candidates', () => {
+    render(
+      <MemoryRouter>
+        <CreationOutcomePanel
+          messageId="msg-1"
+          outcomes={[
+            {
+              mention: 'Ska Horizon',
+              action: 'route',
+              entityType: 'event',
+              persistence: 'candidate',
+              authority: 'core',
+            },
+          ]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/Routed Ska Horizon to event detection/i)).toBeInTheDocument();
   });
 
   it('labels existing-record resolution separately from an identity merge', () => {

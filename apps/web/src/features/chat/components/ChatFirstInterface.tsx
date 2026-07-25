@@ -69,15 +69,29 @@ import { ActiveContextPanel } from './ActiveContextPanel';
 import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
+import { useAccountAuthority } from '../../../hooks/useAccountAuthority';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
-import { selectComposerDraft } from '../../../store/selectors/composerSelectors';
+import {
+  selectComposerConfirmingSlots,
+  selectComposerDraft,
+  selectComposerIncludedSlots,
+  selectVisibleComposerMatches,
+} from '../../../store/selectors/composerSelectors';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
 import { clearComposerDraft } from '../services/storySafetyVault';
+import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import { setComposerDraft } from '../../../store/slices/composerSlice';
 import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
+import { getLoreAgentTrace } from '../../../api/loreAgents';
+import type { ComposerChipDebugPayload } from '../composer/ChatComposer';
+import {
+  buildChatConversationCopyText,
+  buildComposerAndContextDebugSnapshot,
+  type ChatMessageDiagnosticSnapshot,
+} from '../utils/adminChatDiagnosticExport';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
 
@@ -86,14 +100,60 @@ import '../styles/message-animations.css';
 // corrected (the server row + its derived knowledge must exist to re-derive).
 const PERSISTED_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+async function loadAdminMessageDiagnostics(
+  messages: Message[],
+): Promise<Record<string, ChatMessageDiagnosticSnapshot>> {
+  const persistedUserMessages = messages.filter(
+    (message) => message.role === 'user' && PERSISTED_MESSAGE_ID.test(message.id),
+  );
+  const snapshots: Record<string, ChatMessageDiagnosticSnapshot> = {};
+
+  // Avoid turning Copy all into an unbounded burst of requests on long threads.
+  // The existing endpoints remain the authority for each persisted message.
+  for (let index = 0; index < persistedUserMessages.length; index += 4) {
+    const batch = persistedUserMessages.slice(index, index + 4);
+    const results = await Promise.all(
+      batch.map(async (message) => {
+        const [durability, trace] = await Promise.allSettled([
+          fetchJson<unknown>(`/api/chat/messages/${message.id}/durability`),
+          getLoreAgentTrace(message.id),
+        ]);
+        const errors: string[] = [];
+        if (durability.status === 'rejected') errors.push('durability_unavailable');
+        if (trace.status === 'rejected') errors.push('agent_trace_unavailable');
+        return {
+          messageId: message.id,
+          snapshot: {
+            ...(durability.status === 'fulfilled' ? { durability: durability.value } : {}),
+            ...(trace.status === 'fulfilled' ? { trace: trace.value } : {}),
+            ...(errors.length > 0 ? { errors } : {}),
+          },
+        };
+      }),
+    );
+    for (const result of results) snapshots[result.messageId] = result.snapshot;
+  }
+
+  return snapshots;
+}
+
 export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { authority } = useAccountAuthority();
+  const canCopyAdminDiagnostics = authority?.canAccessAdmin === true;
   const { subscription } = useSubscription();
   const dispatch = useAppDispatch();
   const chatFocus = useAppSelector(selectChatFocus);
   const composerDraft = useAppSelector(selectComposerDraft);
+  const composerVisibleMatches = useAppSelector(selectVisibleComposerMatches);
+  const composerConfirmingSlots = useAppSelector(selectComposerConfirmingSlots);
+  const composerIncludedSlots = useAppSelector(selectComposerIncludedSlots);
+  const composerChipDebugRef = useRef<ComposerChipDebugPayload | null>(null);
+  const handleComposerChipDebugChange = useCallback((snapshot: ComposerChipDebugPayload) => {
+    composerChipDebugRef.current = snapshot;
+  }, []);
 
   // ── Message state (owned by useChat / useConversationStore) ──────────────────
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -594,15 +654,52 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   };
 
   const [conversationCopied, setConversationCopied] = useState(false);
-  const handleCopyConversation = () => {
+  const [conversationCopying, setConversationCopying] = useState(false);
+  const handleCopyConversation = async () => {
     if (messages.length === 0) return;
-    const text = messages
-      .map((m) => `${m.role === 'user' ? 'You' : 'LoreBook'}: ${m.content}`)
-      .join('\n\n');
-    navigator.clipboard.writeText(text).then(() => {
+    setConversationCopying(true);
+    const liveChips = composerChipDebugRef.current;
+    const composerAndContext = buildComposerAndContextDebugSnapshot({
+      chatFocus,
+      composerDraft,
+      composerEntityChips: liveChips?.certifiedEntities ?? composerVisibleMatches,
+      confirmingSlots: liveChips?.confirmingSlots ?? composerConfirmingSlots,
+      includedSlots: liveChips?.includedSlots ?? composerIncludedSlots,
+      lexicalPreviewChips: liveChips?.previewSpans ?? [],
+      threadChips: threadEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.name,
+        type: entity.type,
+      })),
+      selectedThreadChipId: focusedEntityId,
+      entityContext: chatSendOptions.entityContext ?? null,
+      composerEntitiesFromFocus: chatSendOptions.composerEntities,
+    });
+    try {
+      const adminDiagnostics = canCopyAdminDiagnostics
+        ? {
+            threadId: activeThreadId,
+            byMessageId: await loadAdminMessageDiagnostics(messages),
+            runtimeEvents: runtimeDiagnostics
+              .tail(100)
+              .filter((event) => !activeThreadId || !event.threadId || event.threadId === activeThreadId),
+            composerAndContext,
+          }
+        : undefined;
+      const text = buildChatConversationCopyText(messages, adminDiagnostics, composerAndContext);
+      await navigator.clipboard.writeText(text);
       setConversationCopied(true);
       setTimeout(() => setConversationCopied(false), 2000);
-    });
+    } catch {
+      // Preserve the original useful behavior if one diagnostic lookup or the
+      // richer export fails for any reason.
+      const fallback = buildChatConversationCopyText(messages, undefined, composerAndContext);
+      await navigator.clipboard.writeText(fallback);
+      setConversationCopied(true);
+      setTimeout(() => setConversationCopied(false), 2000);
+    } finally {
+      setConversationCopying(false);
+    }
   };
 
   return (
@@ -706,9 +803,22 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             {messages.length > 0 && (
               <button
                 type="button"
-                onClick={handleCopyConversation}
-                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${conversationCopied ? 'text-green-400' : 'text-white/40 hover:text-white/70'}`}
-                title={conversationCopied ? 'Copied!' : 'Copy full conversation'}
+                onClick={() => void handleCopyConversation()}
+                disabled={conversationCopying}
+                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation disabled:cursor-wait ${conversationCopied ? 'text-green-400' : 'text-white/40 hover:text-white/70'} ${conversationCopying ? 'animate-pulse' : ''}`}
+                title={
+                  conversationCopied
+                    ? 'Copied!'
+                    : canCopyAdminDiagnostics
+                      ? 'Copy conversation + admin diagnostic receipt'
+                      : 'Copy full conversation'
+                }
+                aria-label={
+                  canCopyAdminDiagnostics
+                    ? 'Copy conversation and admin diagnostics'
+                    : 'Copy full conversation'
+                }
+                data-testid="copy-conversation"
               >
                 {conversationCopied
                   ? <CheckIcon className="h-4 w-4" />
@@ -968,6 +1078,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             defaultCollapsed={isMobile && messages.length > 0}
             focusCharacterId={chatFocus?.entityType === 'character' ? chatFocus.entityId : undefined}
             focusCharacterName={chatFocus?.entityType === 'character' ? chatFocus.entityName : undefined}
+            onChipDebugChange={handleComposerChipDebugChange}
             onUploadComplete={async (result?: UploadCompletePayload) => {
               const now = new Date();
               if (result?.kind === 'resume') {

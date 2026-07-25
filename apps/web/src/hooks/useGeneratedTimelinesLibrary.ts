@@ -3,6 +3,7 @@ import { useAuth } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
 import { useLocalStorage } from './useLocalStorage';
 import type { GeneratedTimelineEvent } from '../components/timeline/GeneratedTimelineReveal';
+import type { SubjectTimelineCompilationSummary } from '../api/subjectTimeline';
 import {
   GENERATED_TIMELINES_STORAGE_KEY,
   findTimelineByQuery,
@@ -34,6 +35,7 @@ export function useGeneratedTimelinesLibrary() {
       existingId?: string;
       preserveCollapsed?: boolean;
       collapsed?: boolean;
+      compilation?: SubjectTimelineCompilationSummary;
     }): SavedGeneratedTimeline | undefined => {
       let saved: SavedGeneratedTimeline | undefined;
       setLibrary((prev) => {
