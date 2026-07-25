@@ -7,6 +7,14 @@ vi.mock('../../hooks/useShouldUseMockData', () => ({
 }));
 
 vi.mock('../../store/hooks/useEntityBooks', () => ({
+  useBookEntityIndexSearch: () => ({
+    entities: [],
+    total: 0,
+    counts: {},
+    isSearching: false,
+    isActive: false,
+    error: undefined,
+  }),
   useOrganizationsBookData: () => ({
     organizations: [],
     candidates: [],

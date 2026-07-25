@@ -1,0 +1,93 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  getDemoOrganizationLocationLinks,
+  unlinkDemoLocationOrganization,
+} from '../../mocks/locationOrganizationDemoData';
+import type { LocationProfile } from './LocationProfileCard';
+
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: true }),
+}));
+vi.mock('../memory-explorer/MemoryCard', () => ({ MemoryCardComponent: () => null }));
+vi.mock('../memory-explorer/MemoryDetailModal', () => ({ MemoryDetailModal: () => null }));
+vi.mock('../../features/chat/composer/ChatComposer', () => ({ ChatComposer: () => null }));
+vi.mock('../../features/chat/message/ChatMessage', () => ({ ChatMessage: () => null }));
+vi.mock('./LocationTimeline', () => ({
+  LocationTimeline: ({ entries, locationName }: { entries: unknown[]; locationName: string }) => (
+    <div data-testid="location-timeline-render">
+      {locationName}: {entries.length} moments
+    </div>
+  ),
+}));
+
+import { LocationDetailModal } from './LocationDetailModal';
+
+const location: LocationProfile = {
+  id: 'dummy-loc-1',
+  name: 'Novara HQ',
+  type: 'office',
+  visitCount: 4,
+  relatedPeople: [],
+  tagCounts: [],
+  chapters: [],
+  moods: [],
+  entries: [],
+  sources: [],
+};
+
+describe('LocationDetailModal — Groups & Organizations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    const testLink = getDemoOrganizationLocationLinks('mock-12').find(
+      (link) => link.location_id === 'dummy-loc-1',
+    );
+    if (testLink) unlinkDemoLocationOrganization(testLink.id);
+  });
+
+  it('shows seeded Demo Mode links in the dedicated tab', async () => {
+    render(<LocationDetailModal location={location} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /groups & organizations/i }));
+
+    expect(await screen.findByText('Novara Systems')).toBeInTheDocument();
+    expect(screen.getByText(/durable two-way links/i)).toBeInTheDocument();
+  });
+
+  it('links a selected group and exposes it from the organization direction', async () => {
+    const user = userEvent.setup();
+    render(<LocationDetailModal location={location} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /groups & organizations/i }));
+    await screen.findByText('Novara Systems');
+    fireEvent.click(screen.getByTestId('location-add-organization-toggle'));
+
+    await user.click(screen.getByRole('option', { name: /Tuesday Writers' Workshop/i }));
+    fireEvent.click(screen.getByTestId('location-add-organization-submit'));
+
+    expect(await screen.findByText(/is now linked to Novara HQ/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        getDemoOrganizationLocationLinks('mock-12').some(
+          (link) => link.location_id === 'dummy-loc-1',
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it('shows a timeline tab backed by this place memories', async () => {
+    render(<LocationDetailModal location={location} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /timeline/i }));
+
+    expect(await screen.findByTestId('location-timeline-render')).toHaveTextContent(
+      'Novara HQ: 4 moments',
+    );
+    expect(screen.getByText(/chronological view of memories and recorded visits/i)).toBeInTheDocument();
+  });
+});

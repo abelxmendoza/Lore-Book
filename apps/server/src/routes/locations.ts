@@ -8,6 +8,7 @@ import { locationService } from '../services/locationService';
 import { locationSuggestionService } from '../services/locationSuggestionService';
 import { locationDomainAuditService } from '../services/locationDomainAuditService';
 import { locationNormalizationService } from '../services/locationNormalizationService';
+import { locationOrganizationLinkService } from '../services/locationOrganizationLinkService';
 import { reviewPlaceDuplicateCompatibility } from '../services/ontology/placeIntelligence';
 import { labelPlaceDuplicate } from '../services/lexical/places/placeDuplicateLabeler';
 import { logger } from '../logger';
@@ -311,6 +312,78 @@ router.post(
 
     res.json({ merged: true, report, location: mergedLocation ?? null });
   })
+);
+
+// GET /api/locations/:id/organizations — groups linked through organization_locations
+router.get(
+  '/:id/organizations',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const requestedId = String(req.params.id);
+    const locationId =
+      (await locationMergeService.resolveCanonicalLocationId(userId, requestedId, { promote: false })) ??
+      requestedId;
+    const organizations = await locationOrganizationLinkService.list(userId, locationId);
+    res.json({ success: true, organizations });
+  }),
+);
+
+// POST /api/locations/:id/organizations — link an existing Groups Book record
+router.post(
+  '/:id/organizations',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = z.object({ organization_id: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues });
+      return;
+    }
+
+    const userId = req.user!.id;
+    const requestedId = String(req.params.id);
+    const locationId =
+      (await locationMergeService.resolveCanonicalLocationId(userId, requestedId)) ?? requestedId;
+
+    try {
+      const organization = await locationOrganizationLinkService.link(
+        userId,
+        locationId,
+        parsed.data.organization_id,
+      );
+      res.json({ success: true, organization });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to link organization';
+      if (message === 'Location not found' || message === 'Organization not found') {
+        res.status(404).json({ success: false, error: message });
+        return;
+      }
+      throw error;
+    }
+  }),
+);
+
+// DELETE /api/locations/:id/organizations/:linkId
+router.delete(
+  '/:id/organizations/:linkId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const requestedId = String(req.params.id);
+    const locationId =
+      (await locationMergeService.resolveCanonicalLocationId(userId, requestedId, { promote: false })) ??
+      requestedId;
+    const removed = await locationOrganizationLinkService.unlink(
+      userId,
+      locationId,
+      String(req.params.linkId),
+    );
+    if (!removed) {
+      res.status(404).json({ success: false, error: 'Organization link not found' });
+      return;
+    }
+    res.json({ success: true });
+  }),
 );
 
 // GET /api/locations/:id — full profile for modals and deep links

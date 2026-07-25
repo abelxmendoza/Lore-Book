@@ -9,6 +9,7 @@ const INDEX: CertifiedEntity[] = [
   { id: 'c2', name: 'Sam Chen', type: 'character', aliases: ['Sam Chen'], mentionKeys: ['sol', 'samchen'] },
   { id: 'c3', name: 'Grandma Rose', type: 'character', aliases: [], mentionKeys: ['abuela'] },
   { id: 'l1', name: 'Anaheim', type: 'location', aliases: [], mentionKeys: ['anaheim'] },
+  { id: 'p1', name: 'MemoVault', type: 'project', aliases: ['LoreBook'], mentionKeys: ['memovault', 'lorebook'] },
 ];
 
 describe('matchCertifiedEntitiesInText', () => {
@@ -32,5 +33,12 @@ describe('matchCertifiedEntitiesInText', () => {
     const matches = matchCertifiedEntitiesInText('Abel met Grandma Rose in Anaheim', INDEX);
     expect(matches.every((m) => m.id && m.type)).toBe(true);
     expect(matches).toHaveLength(3);
+  });
+
+  it('matches projects from the shared certified index', () => {
+    const matches = matchCertifiedEntitiesInText('Keep building LoreBook', INDEX);
+    expect(matches).toEqual([
+      expect.objectContaining({ id: 'p1', type: 'project', name: 'MemoVault' }),
+    ]);
   });
 });

@@ -14,6 +14,7 @@ import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { LocationProfile } from '../locations/LocationProfileCard';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 
 export type EntityType = 'memory' | 'character' | 'location';
 
@@ -475,6 +476,15 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <EntityLorebookCompileControl
+              subjectLabel={getEntityName(entityData)}
+              focus={{
+                characterId: entityData.type === 'character' ? entityData.id : undefined,
+                locationId: entityData.type === 'location' ? entityData.id : undefined,
+                themes: getEntityName(entityData),
+              }}
+              testId="entity-modal-lorebook-compile"
+            />
             {updating && (
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
             )}

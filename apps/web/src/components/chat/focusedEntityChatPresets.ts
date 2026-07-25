@@ -216,3 +216,19 @@ export const FOCUSED_ENTITY_CHAT_PRESETS: Record<FocusedEntityBookKind, FocusedE
       `and where things stand right now.`,
   },
 };
+
+/** Knowledge scope when filling a group roster from main chat. */
+export const ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE =
+  'creating Character Book people, solidifying who is (and is not) affiliated with this group, and capturing group lore from what I share';
+
+/** Prefill for Groups modal → main chat roster / affiliation session. */
+export function organizationRosterChatPrompt(name: string): string {
+  return (
+    `I want to fill out the roster and lore for ${name}. ` +
+    `Help me name the people in or around this group, create Character Book entries for anyone who isn’t in LoreBook yet, ` +
+    `and solidify who is affiliated with ${name} (with roles when I know them). ` +
+    `If I correct you — including that someone is NOT in the group — treat that as authoritative and update affiliation accordingly. ` +
+    `Also help me describe what this group/organization is and how I’m connected. ` +
+    `Please do not invent people, memberships, or details I have not shared; ask short clarifying questions when something is ambiguous.`
+  );
+}

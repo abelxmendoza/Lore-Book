@@ -222,5 +222,76 @@ describe('Characters API Routes', () => {
       expect(response.body.character.species).toBe('dog');
     });
   });
+
+  describe('PATCH /api/characters/:id — rename auto-alias', () => {
+    function mockRenamePatch(existingRow: Record<string, unknown>, renamedRow: Record<string, unknown>) {
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      let updatePayload: Record<string, unknown> | undefined;
+
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: existingRow, error: null });
+        chain.update = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+          if (table === 'characters') updatePayload = payload;
+          return {
+            ...chain,
+            eq: vi.fn().mockReturnValue({
+              ...chain,
+              eq: vi.fn().mockReturnValue({
+                ...chain,
+                select: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: renamedRow, error: null }),
+                }),
+                // Fire-and-forget organization_members propagation chain.
+                then: (resolve: (v: { error: null }) => unknown) => Promise.resolve(resolve({ error: null })),
+              }),
+            }),
+          };
+        });
+        return chain as never;
+      });
+
+      return () => updatePayload;
+    }
+
+    it('adds the previous name to alias when renaming, if not already present', async () => {
+      const existingRow = { id: 'char-1', name: 'Amazon', alias: [], status: 'active' };
+      const renamedRow = { ...existingRow, name: 'Amazon Ring', alias: ['Amazon'] };
+      const getUpdatePayload = mockRenamePatch(existingRow, renamedRow);
+
+      const response = await request(app)
+        .patch('/api/characters/char-1')
+        .send({ name: 'Amazon Ring' })
+        .expect(200);
+
+      const updatePayload = getUpdatePayload();
+      expect(updatePayload?.name).toBe('Amazon Ring');
+      expect(updatePayload?.alias).toEqual(['Amazon']);
+      expect(response.body.character?.name ?? response.body.name).toBe('Amazon Ring');
+    });
+
+    it('does not duplicate the previous name if it is already an alias', async () => {
+      const existingRow = { id: 'char-1', name: 'Amazon', alias: ['amazon'], status: 'active' };
+      const renamedRow = { ...existingRow, name: 'Amazon Ring', alias: ['amazon'] };
+      const getUpdatePayload = mockRenamePatch(existingRow, renamedRow);
+
+      await request(app)
+        .patch('/api/characters/char-1')
+        .send({ name: 'Amazon Ring' })
+        .expect(200);
+
+      const alias = (getUpdatePayload()?.alias as string[]) ?? [];
+      expect(alias.filter((a) => a.toLowerCase() === 'amazon')).toHaveLength(1);
+    });
+  });
 });
 

@@ -40,6 +40,11 @@ export interface LorebookCreatorPrefill {
   form?: LorebookForm;
   /** Forms unlocked on the launching surface (for UI hints) */
   unlockedForms?: LorebookForm[];
+  /** Entity focus — forwarded to /api/biography/generate */
+  characterIds?: string[];
+  locationIds?: string[];
+  organizationIds?: string[];
+  skillIds?: string[];
 }
 
 interface KnowledgeBaseCreatorProps {
@@ -164,9 +169,19 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
         spec.lorebookName = lorebookName.trim();
       }
 
+      const generateBody: Record<string, unknown> = { ...spec };
+      if (prefill?.characterIds?.length) generateBody.characterIds = prefill.characterIds;
+      if (prefill?.locationIds?.length) generateBody.locationIds = prefill.locationIds;
+      if (prefill?.organizationIds?.length) generateBody.organizationIds = prefill.organizationIds;
+      if (prefill?.skillIds?.length) generateBody.skillIds = prefill.skillIds;
+      if (prefill?.characterIds?.[0]) generateBody.characterId = prefill.characterIds[0];
+      if (prefill?.locationIds?.[0]) generateBody.locationId = prefill.locationIds[0];
+      if (prefill?.organizationIds?.[0]) generateBody.organizationId = prefill.organizationIds[0];
+      if (prefill?.skillIds?.[0]) generateBody.skillId = prefill.skillIds[0];
+
       const result = await fetchJson<{ biography: any }>('/api/biography/generate', {
         method: 'POST',
-        body: JSON.stringify(spec),
+        body: JSON.stringify(generateBody),
       });
 
       if (result.biography) {

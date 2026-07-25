@@ -21,6 +21,11 @@ import {
   endOfDay,
 } from 'date-fns';
 import { buildEventsBookClipboardText } from '../../lib/eventsBookClipboard';
+import {
+  CATEGORY_SUB_TABS,
+  eventMatchesCategory,
+  type EventCategory,
+} from '../../lib/eventsBookCategories';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { patternContinuityLabel } from '../../lib/patternsClipboard';
 import { formatEventTime } from '../../lib/formatEventTime';
@@ -64,7 +69,6 @@ type RecurringScene = {
 
 type ViewMode = 'events' | 'recurring';
 type MomentsLayout = 'grid' | 'facts';
-type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
 type SignificanceFilter = 'all' | 'major' | 'moderate' | 'minor';
 type SortOption = 'date_desc' | 'date_asc' | 'confidence_desc' | 'confidence_asc' | 'title_asc' | 'title_desc' | 'people_desc';
@@ -121,32 +125,6 @@ const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
   { value: 'events', label: 'Moments', icon: Sparkles },
   { value: 'recurring', label: 'Patterns', icon: Repeat2 },
 ];
-
-// ─── Keyword matching ─────────────────────────────────────────────────────────
-
-const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
-  birthdays: ['birthday', 'birthdays', 'bday'],
-  parties: ['party', 'parties', 'rave', 'raves', 'celebration', 'gathering', 'game night', 'house party', 'afters', 'afterparty', 'after-party', 'after party', 'underground'],
-  concerts_shows: ['concert', 'concerts', 'show', 'shows', 'performance', 'theater', 'theatre', 'comedy', 'gig', 'open mic', 'festival', 'local scene', 'underground scene'],
-  conventions: ['convention', 'conventions', 'conference', 'conferences', 'expo', 'expos', 'meetup', 'meetups', 'summit', 'con'],
-  work: ['work', 'meeting', 'meetings', 'presentation', 'client', 'office', 'conference', 'business trip', 'offsite', 'interview'],
-  travel: ['travel', 'trip', 'trips', 'vacation', 'vacations', 'getaway', 'weekend getaway', 'road trip', 'family visit'],
-  family: ['family', 'family dinner', 'reunion', 'reunions', 'holiday', 'holidays', 'anniversary'],
-  festivals: ['festival', 'festivals', 'fair', 'multi-day'],
-};
-
-function eventText(event: Event): string {
-  return [event.title, event.summary, event.type, ...(event.activities || [])].filter(Boolean).join(' ').toLowerCase();
-}
-
-function eventMatchesCategory(event: Event, category: EventCategory): boolean {
-  if (category === 'all') return true;
-  if (category === 'recent') return !!event.start_time && parseISO(event.start_time) >= subDays(new Date(), 30);
-  if (category === 'with_people') return event.people.length > 0;
-  if (category === 'with_locations') return event.locations.length > 0;
-  const kw = CATEGORY_KEYWORDS[category];
-  return kw ? kw.some(k => eventText(event).includes(k)) : false;
-}
 
 function getSignificanceScore(event: Event): number {
   return Math.round(
@@ -517,6 +495,7 @@ export const EventsBook: React.FC = () => {
   const [recurringScenes, setRecurringScenes] = useState<RecurringScene[]>([]);
   const [scenesLoading, setScenesLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
+  const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
   const [significanceFilter, setSignificanceFilter] = useState<SignificanceFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -621,7 +600,9 @@ export const EventsBook: React.FC = () => {
     if (filters.hasLocation !== null) filtered = filtered.filter(e => filters.hasLocation ? e.locations.length > 0 : e.locations.length === 0);
     if (filters.hasPeople !== null) filtered = filtered.filter(e => filters.hasPeople ? e.people.length > 0 : e.people.length === 0);
     if (impactFilter !== 'all') filtered = filtered.filter(e => e.impact?.type === impactFilter);
-    if (activeCategory !== 'all') filtered = filtered.filter(e => eventMatchesCategory(e, activeCategory));
+    if (activeCategory !== 'all') {
+      filtered = filtered.filter((e) => eventMatchesCategory(e, activeCategory, activeSubCategory));
+    }
     if (significanceFilter !== 'all') {
       filtered = filtered.filter(e => {
         const score = getSignificanceScore(e);
@@ -656,9 +637,9 @@ export const EventsBook: React.FC = () => {
       }
     });
     return filtered;
-  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter, significanceFilter]);
+  }, [events, searchTerm, activeCategory, activeSubCategory, filters, sortBy, impactFilter, significanceFilter]);
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeCategory, filters, sortBy, impactFilter, significanceFilter]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeCategory, activeSubCategory, filters, sortBy, impactFilter, significanceFilter]);
 
   const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -684,13 +665,15 @@ export const EventsBook: React.FC = () => {
     if (filters.hasLocation !== null) n++;
     if (filters.hasPeople !== null) n++;
     if (significanceFilter !== 'all') n++;
+    if (activeSubCategory !== 'all' && CATEGORY_SUB_TABS[activeCategory]) n++;
     return n;
-  }, [filters, significanceFilter]);
+  }, [filters, significanceFilter, activeCategory, activeSubCategory]);
 
   const clearFilters = () => {
     setFilters({ dateRange: 'all', types: [], confidenceMin: 0, confidenceMax: 1, peopleCountMin: 0, peopleCountMax: 10, locations: [], hasLocation: null, hasPeople: null });
     setSearchTerm('');
     setActiveCategory('all');
+    setActiveSubCategory('all');
     setImpactFilter('all');
     setSignificanceFilter('all');
   };
@@ -701,6 +684,7 @@ export const EventsBook: React.FC = () => {
         filters: clipboardFilterLines([
           searchTerm.trim() && `search="${searchTerm.trim()}"`,
           activeCategory !== 'all' && `category=${activeCategory}`,
+          activeSubCategory !== 'all' && `subcategory=${activeSubCategory}`,
           impactFilter !== 'all' && `impact=${impactFilter}`,
           significanceFilter !== 'all' && `significance=${significanceFilter}`,
           activeFilterCount > 0 && `advanced_filters=${activeFilterCount}`,
@@ -711,6 +695,7 @@ export const EventsBook: React.FC = () => {
       filteredEvents,
       searchTerm,
       activeCategory,
+      activeSubCategory,
       impactFilter,
       significanceFilter,
       activeFilterCount,
@@ -864,25 +849,68 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Category filter chips ── */}
-      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
-        {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
-          <button
-            key={value}
-            onClick={() => setActiveCategory(value)}
-            className={`
-              inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
-              ${activeCategory === value
-                ? 'bg-primary/20 text-primary border-primary/40'
-                : 'bg-black/40 text-white/55 border-border/40 hover:border-primary/30 hover:text-white/80'
-              }
-            `}
+      {viewMode === 'events' && momentsLayout === 'grid' && (
+        <div className="space-y-2">
+          <div
+            className="flex flex-wrap justify-center sm:justify-start gap-1.5"
+            role="tablist"
+            aria-label="Life Log event categories"
           >
-            <Icon className="h-3 w-3 flex-shrink-0" />
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{shortLabel || label}</span>
-          </button>
-        ))}
-      </div>}
+            {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={activeCategory === value}
+                onClick={() => {
+                  setActiveCategory(value);
+                  setActiveSubCategory('all');
+                }}
+                className={`
+                  inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
+                  ${activeCategory === value
+                    ? 'bg-primary/20 text-primary border-primary/40'
+                    : 'bg-black/40 text-white/55 border-border/40 hover:border-primary/30 hover:text-white/80'
+                  }
+                `}
+              >
+                <Icon className="h-3 w-3 flex-shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{shortLabel || label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Nested celebration / show classifiers */}
+          {CATEGORY_SUB_TABS[activeCategory] && (
+            <div
+              className="flex flex-wrap justify-center sm:justify-start gap-1.5 pl-0 sm:pl-1"
+              role="tablist"
+              aria-label={`${activeCategory.replace(/_/g, ' ')} subcategories`}
+              data-testid="events-book-subcategory-tabs"
+            >
+              {(CATEGORY_SUB_TABS[activeCategory] ?? []).map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeSubCategory === value}
+                  onClick={() => setActiveSubCategory(value)}
+                  className={`
+                    inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-colors border
+                    ${activeSubCategory === value
+                      ? 'bg-violet-500/20 text-violet-200 border-violet-400/40'
+                      : 'bg-black/30 text-white/45 border-border/30 hover:border-violet-400/30 hover:text-white/70'
+                    }
+                  `}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Impact filter chips ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && showFilters && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">

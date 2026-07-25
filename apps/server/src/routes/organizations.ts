@@ -13,6 +13,7 @@ import { organizationRelationshipInferenceService } from '../services/organizati
 import { organizationNetworkService } from '../services/organizationNetworkService';
 import { organizationDomainAuditService } from '../services/organizationDomainAuditService';
 import { organizationNormalizationService } from '../services/organizationNormalizationService';
+import { locationMergeService } from '../services/locationMergeService';
 
 const router = Router();
 
@@ -515,10 +516,25 @@ router.post('/:id/locations', requireAuth, async (req: AuthenticatedRequest, res
     return;
   }
   try {
-    const location = await organizationService.addLocation(userId, organizationId, parsed.data);
+    const locationInput = parsed.data.location_id
+      ? {
+          ...parsed.data,
+          location_id:
+            (await locationMergeService.resolveCanonicalLocationId(
+              userId,
+              parsed.data.location_id,
+            )) ?? parsed.data.location_id,
+        }
+      : parsed.data;
+    const location = await organizationService.addLocation(userId, organizationId, locationInput);
     res.json({ success: true, location });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to add location');
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'Location not found' || message === 'Organization not found') {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
     res.status(500).json({ success: false, error: 'Failed to add location' });
   }
 });

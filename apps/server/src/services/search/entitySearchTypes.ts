@@ -7,7 +7,8 @@ export type EntitySearchType =
   | 'group'
   | 'community'
   | 'skill'
-  | 'event';
+  | 'event'
+  | 'project';
 
 export type EntitySearchKnownStatus = 'known' | 'suggestion';
 
@@ -48,4 +49,5 @@ export const ALL_ENTITY_SEARCH_TYPES: EntitySearchType[] = [
   'community',
   'skill',
   'event',
+  'project',
 ];

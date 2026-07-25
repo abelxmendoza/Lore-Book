@@ -13,6 +13,7 @@ import {
 import { computeInfluenceScore } from '../../lib/organizationProfile';
 import { readOrganizationWorld, importanceStars } from '../../lib/organizationLore';
 import { cn } from '../../lib/cn';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 
 function formatSince(org: Organization): string | null {
   if (org.founded_date) {
@@ -141,15 +142,22 @@ export function OrganizationModalHeader({
             <StatPill label="Involved" value={`${organization.analytics.user_involvement_score}%`} className="hidden min-[400px]:flex" />
           )}
         </div>
-        <button
-          type="button"
-          onClick={onOpenChat}
-          aria-label="Chat about this group"
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-primary/35 bg-primary/20 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-primary/30 touch-manipulation"
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-          <span className="hidden xs:inline sm:inline">Chat</span>
-        </button>
+        <div className="shrink-0 flex items-center gap-1.5">
+          <EntityLorebookCompileControl
+            subjectLabel={organization.name}
+            focus={{ organizationId: organization.id, themes: organization.name }}
+            testId="org-modal-lorebook-compile"
+          />
+          <button
+            type="button"
+            onClick={onOpenChat}
+            aria-label="Chat about this group"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-primary/35 bg-primary/20 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-primary/30 touch-manipulation"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span className="hidden xs:inline sm:inline">Chat</span>
+          </button>
+        </div>
       </div>
     </div>
   );

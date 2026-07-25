@@ -93,6 +93,7 @@ export function LorebookTierModal({
   if (!isOpen || typeof document === 'undefined') return null;
 
   const handleSelect = (form: LorebookForm, unlocked: boolean) => {
+    // forceEnable may allow compile when locked (timeline/demo); UI still shows Locked.
     if (!unlocked && !forceEnable) return;
     onSelectForm(form);
     onClose();
@@ -185,7 +186,8 @@ export function LorebookTierModal({
             const def = LOREBOOK_TIERS[form];
             const details = TIER_DETAILS[form];
             const status = tierOffer.tiers.find((t) => t.form === form);
-            const unlocked = Boolean(status?.unlocked) || forceEnable;
+            const unlocked = Boolean(status?.unlocked);
+            const canCompile = unlocked || forceEnable;
             const Icon = TIER_ICONS[form];
             const isHighest = highest === form;
             const isNext = next === form;
@@ -250,16 +252,16 @@ export function LorebookTierModal({
 
                 <button
                   type="button"
-                  disabled={!unlocked}
+                  disabled={!canCompile}
                   onClick={() => handleSelect(form, Boolean(status?.unlocked))}
                   data-testid={`${testId}-select-${form}`}
                   className={
-                    unlocked
+                    canCompile
                       ? 'lorebook-tier-compile'
                       : 'lorebook-tier-compile lorebook-tier-compile--disabled'
                   }
                 >
-                  {unlocked ? 'Compile' : 'Locked'}
+                  {canCompile ? 'Compile' : 'Locked'}
                 </button>
               </div>
             );

@@ -11,7 +11,7 @@
  */
 
 import { logger } from '../../logger';
-import type { BiographySpec, Domain } from '../biographyGeneration/types';
+import type { BiographyForm, BiographySpec, Domain } from '../biographyGeneration/types';
 import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -29,6 +29,8 @@ export interface ParsedLorebookQuery {
   skillIds?: string[];
   tone?: 'neutral' | 'dramatic' | 'reflective' | 'mythic' | 'professional';
   depth?: 'summary' | 'detailed' | 'epic';
+  /** Document shape tier — set only when the user explicitly picked one from the tier menu. */
+  form?: BiographyForm;
   audience?: 'self' | 'public' | 'professional';
   version?: 'main' | 'safe' | 'explicit' | 'private';
   includeIntrospection?: boolean;

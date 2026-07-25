@@ -1,19 +1,58 @@
 import { Router } from 'express';
 
+import { inferPlaceType } from '../constants/placeTypes';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { embeddingService } from '../services/embeddingService';
-import { inferPlaceType } from '../constants/placeTypes';
-import { supabaseAdmin } from '../services/supabaseClient';
+import {
+  queryBookEntities,
+  type BookEntityType,
+} from '../services/entities/bookEntityQueryService';
 import {
   listMentionableEntities,
   matchMentionableEntitiesInText,
 } from '../services/entities/entityMentionIndexService';
 import { searchEntities } from '../services/search/entitySearchService';
 import type { EntitySearchType } from '../services/search/entitySearchTypes';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
+
+const BOOK_ENTITY_TYPES = new Set<BookEntityType>([
+  'character',
+  'location',
+  'organization',
+  'skill',
+  'project',
+  'quest',
+  'family',
+]);
+
+/**
+ * GET /api/entities/book-index?q=&types=&limit=&offset=
+ * Shared bounded discovery layer for Books and chatbot entity lookup.
+ */
+router.get(
+  '/book-index',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const types = String(req.query.types ?? '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value): value is BookEntityType => BOOK_ENTITY_TYPES.has(value as BookEntityType));
+    const limit = Number.parseInt(String(req.query.limit ?? '50'), 10);
+    const offset = Number.parseInt(String(req.query.offset ?? '0'), 10);
+    const result = await queryBookEntities(req.user!.id, {
+      types: types.length ? types : undefined,
+      search: String(req.query.q ?? ''),
+      limit: Number.isFinite(limit) ? limit : 50,
+      offset: Number.isFinite(offset) ? offset : 0,
+    });
+    res.set('Cache-Control', 'private, max-age=15');
+    res.json(result);
+  }),
+);
 
 /**
  * GET /api/entities/certified-index
@@ -37,6 +76,7 @@ const SEARCH_TYPES = new Set<EntitySearchType>([
   'community',
   'skill',
   'event',
+  'project',
 ]);
 
 /**

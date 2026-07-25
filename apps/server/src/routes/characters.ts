@@ -1901,6 +1901,19 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       lastNameToUpdate = nameParts.lastName;
     }
 
+    // General rename: preserve the previous name as an alias so old mentions
+    // and search still resolve to this character. The nickname-promotion
+    // branch above already does this for its own case; this covers every
+    // other rename (a no-op if the old name is already present).
+    if (
+      nameToUpdate &&
+      existingChar?.name &&
+      normalizeNameKey(nameToUpdate) !== normalizeNameKey(existingChar.name) &&
+      !aliasToUpdate.some((a) => normalizeNameKey(a) === normalizeNameKey(existingChar.name))
+    ) {
+      aliasToUpdate = [...aliasToUpdate, existingChar.name];
+    }
+
     if (updateData.status !== undefined) {
       const { assertCharacterStatusTransition } = await import(
         '../services/characters/characterLifecycle'

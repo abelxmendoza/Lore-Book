@@ -3,6 +3,7 @@ import {
   resolveOrganizationStance,
   organizationMatchesStance,
   countOrganizationsByStance,
+  getOrganizationTimelineVoice,
 } from './organizationStance';
 import type { Organization } from '../components/organizations/OrganizationProfileCard';
 
@@ -86,6 +87,43 @@ describe('organizationStance', () => {
       close_to: 1,
       their_world: 1,
       mentioned: 1,
+    });
+  });
+
+  describe('getOrganizationTimelineVoice', () => {
+    it('frames Mine groups as with you / without you', () => {
+      const voice = getOrganizationTimelineVoice(
+        org({ name: 'Northwind Crew', user_relationship: 'member' }),
+      );
+      expect(voice.stance).toBe('mine');
+      expect(voice.withLabel).toBe('With you');
+      expect(voice.withoutLabel).toBe('Without you');
+      expect(voice.description).toMatch(/part of with Northwind Crew/i);
+    });
+
+    it('frames Their world with crossed paths / their world lanes', () => {
+      const voice = getOrganizationTimelineVoice(
+        org({
+          name: 'Vanguard Robotics',
+          user_relationship: 'aware_of',
+          members: [
+            { id: 'm1', character_id: 'c1', character_name: 'Gary', status: 'active' },
+          ],
+        }),
+      );
+      expect(voice.stance).toBe('their_world');
+      expect(voice.withLabel).toBe('Crossed paths');
+      expect(voice.withoutLabel).toBe('Their world');
+      expect(voice.description).toMatch(/their world/i);
+    });
+
+    it('frames Mentioned as background lore', () => {
+      const voice = getOrganizationTimelineVoice(
+        org({ name: 'MemoVault', user_relationship: 'referenced', is_public_entity: true }),
+      );
+      expect(voice.stance).toBe('mentioned');
+      expect(voice.withLabel).toBe('In your story');
+      expect(voice.withoutLabel).toBe('Background');
     });
   });
 });

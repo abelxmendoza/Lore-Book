@@ -54,6 +54,7 @@ import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 import { CharacterEvidenceLocker } from './CharacterEvidenceLocker';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
@@ -2849,6 +2850,13 @@ export const CharacterDetailModal = ({
                     {wittyTagline}
                   </p>
                 )}
+                <div className="mb-1.5">
+                  <EntityLorebookCompileControl
+                    subjectLabel={displayName || editedCharacter.name}
+                    focus={{ characterId: editedCharacter.id, themes: displayName || editedCharacter.name }}
+                    testId="character-modal-lorebook-compile"
+                  />
+                </div>
                 {profileContextHooks.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-1">
                     {profileContextHooks.slice(0, 4).map((hook) => (

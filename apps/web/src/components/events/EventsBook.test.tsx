@@ -128,6 +128,31 @@ describe('EventsBook', () => {
     expect(screen.getByText(/1 moment/i)).toBeInTheDocument();
   });
 
+  it('restores Life Log celebration classifiers with nested subcategories', async () => {
+    render(<EventsBook />);
+    await screen.findByText('Night out with Jamie');
+
+    expect(screen.getByRole('tablist', { name: /Life Log event categories/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Birthdays/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Parties/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Concerts|Shows/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Conventions/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Parties/i }));
+    expect(screen.getByTestId('events-book-subcategory-tabs')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Weddings/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Baby Showers/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Raves/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Concerts|Shows/i }));
+    expect(screen.getByRole('tab', { name: /Backyard Shows/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Fight Night/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Local Scene/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Work/i }));
+    expect(screen.getByRole('tab', { name: /Meetings/i })).toBeInTheDocument();
+  });
+
   it('keeps Scale chips inside Filters rather than always visible', async () => {
     render(<EventsBook />);
     await screen.findByText('Night out with Jamie');

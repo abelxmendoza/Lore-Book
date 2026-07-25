@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
-import { Clock, List, RefreshCw, Loader2, Waves, ExternalLink, CalendarRange, Search, X, Copy, Check, BookOpen } from 'lucide-react';
+import { Clock, List, RefreshCw, Loader2, Waves, ExternalLink, CalendarRange, Search, X, Copy, Check } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -19,6 +19,7 @@ import type { Event } from '../events/EventProfileCard';
 import { getMockCharacterTimeline } from '../../mocks/characterIntelligence';
 import { buildCharacterTimelineClipboardText } from '../../lib/characterTimelineClipboard';
 import { clipboardFilterLines, copyTextToClipboard } from '../../lib/listClipboard';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import type { Character } from './CharacterProfileCard';
 
 export type CharTimelineEvent = {
@@ -35,9 +36,6 @@ export type CharTimelineEvent = {
 };
 
 type ViewMode = 'list' | 'swimlanes';
-
-/** Light client-side signal only — the real "enough content" gate is server-side (loreReadiness). */
-const MIN_EVENTS_FOR_LOREBOOK_LINK = 3;
 
 interface Props {
   characterId: string;
@@ -112,9 +110,6 @@ export function CharacterTimelinePanel({
 
   const lifeLogHref = `/events?q=${encodeURIComponent(characterName)}`;
   const omniHref = `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`;
-  /** Bridges into the existing "?focus=" auto-generate flow on the Lorebook page — the
-   * backend's own loreReadiness gate decides whether there's actually enough content. */
-  const lorebookHref = `/lorebook?focus=${encodeURIComponent(characterName)}`;
 
   const openEventDetail = useCallback(async (eventId?: string) => {
     if (!eventId || mockMode) return;
@@ -215,6 +210,23 @@ export function CharacterTimelinePanel({
       }),
     [characterName, filteredList, searchTerm],
   );
+
+  const lorebookSignals = useMemo(() => {
+    const days = new Set(
+      chronologicalList
+        .map((e) => (e.eventDate || '').slice(0, 10))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)),
+    );
+    const wordCount = chronologicalList.reduce((sum, e) => {
+      const text = `${e.eventTitle ?? ''} ${e.eventSummary ?? ''}`;
+      return sum + text.trim().split(/\s+/).filter(Boolean).length;
+    }, 0);
+    return {
+      eventCount: chronologicalList.length,
+      uniqueDays: days.size,
+      wordCount,
+    };
+  }, [chronologicalList]);
 
   const handleCopyAll = async () => {
     const ok = await copyTextToClipboard(clipboardText);
@@ -469,17 +481,13 @@ export function CharacterTimelinePanel({
             <CalendarRange className="h-3 w-3" />
             Omni Timeline
           </Link>
-          {chronologicalList.length >= MIN_EVENTS_FOR_LOREBOOK_LINK && (
-            <Link
-              to={lorebookHref}
-              data-testid="character-timeline-create-lorebook"
-              className="inline-flex items-center gap-1 text-amber-300/80 hover:text-amber-200"
-              title={`Turn ${firstName}'s timeline into a Lorebook`}
-            >
-              <BookOpen className="h-3 w-3" />
-              Create a Lorebook
-            </Link>
-          )}
+          <EntityLorebookCompileControl
+            subjectLabel={characterName}
+            signals={lorebookSignals}
+            focus={{ characterId, themes: characterName }}
+            autoFetchSignals={false}
+            testId="character-timeline-create-lorebook"
+          />
         </span>
       </div>
 

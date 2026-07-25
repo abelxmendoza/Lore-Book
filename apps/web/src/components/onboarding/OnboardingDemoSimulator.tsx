@@ -189,28 +189,44 @@ export function OnboardingDemoSimulator() {
   return (
     <>
       {!open && !dismissed && (
-        <aside className="fixed bottom-4 left-4 right-4 z-[64] rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]">
-          <button type="button" onClick={restart} className="flex w-full items-start gap-3 text-left">
-            <div className="rounded-lg bg-violet-400/10 p-2 text-violet-300">
-              {completed ? <CheckCircle2 className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white">
-                {completed ? 'Onboarding simulation completed' : 'See how LoreBook learns your story'}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-white/45">
-                {completed
-                  ? 'Replay any starting path or dismiss this launcher.'
-                  : 'Try onboarding with AI history, personal archives, or no existing data.'}
-              </p>
-            </div>
-            <ChevronRight className="ml-auto mt-1 h-4 w-4 shrink-0 text-white/35" />
-          </button>
-          {completed && (
-            <button type="button" onClick={dismiss} className="mt-3 text-xs text-white/35 hover:text-white/65">
-              Dismiss — I’ve finished this simulation
+        <aside
+          className="fixed bottom-4 left-4 right-4 z-[64] rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]"
+          data-testid="onboarding-demo-launcher"
+        >
+          <div className="flex items-start gap-2">
+            <button type="button" onClick={restart} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+              <div className="rounded-lg bg-violet-400/10 p-2 text-violet-300">
+                {completed ? <CheckCircle2 className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">
+                  {completed ? 'Onboarding simulation completed' : 'See how LoreBook learns your story'}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/45">
+                  {completed
+                    ? 'Replay any starting path or dismiss this launcher.'
+                    : 'Try onboarding with AI history, personal archives, or no existing data.'}
+                </p>
+              </div>
+              <ChevronRight className="ml-auto mt-1 h-4 w-4 shrink-0 text-white/35" />
             </button>
-          )}
+            <button
+              type="button"
+              onClick={dismiss}
+              className="shrink-0 rounded-lg p-1.5 text-white/35 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+              aria-label="Dismiss onboarding demo"
+              data-testid="onboarding-demo-dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="mt-3 text-xs text-white/35 hover:text-white/65"
+          >
+            {completed ? 'Dismiss — I’ve finished this simulation' : 'Dismiss'}
+          </button>
         </aside>
       )}
 

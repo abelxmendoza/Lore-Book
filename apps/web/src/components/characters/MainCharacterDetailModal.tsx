@@ -32,6 +32,7 @@ import { CharacterAvatar } from './CharacterAvatar';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
 import type { Character } from './CharacterProfileCard';
@@ -684,6 +685,14 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 </div>
 
                 <p className="mt-1 break-words text-sm font-medium text-amber-200/60">{roleLine}</p>
+
+                <div className="mt-2">
+                  <EntityLorebookCompileControl
+                    subjectLabel={displayName || 'You'}
+                    focus={{ characterId: profile.character.id, themes: displayName || 'You' }}
+                    testId="main-character-lorebook-compile"
+                  />
+                </div>
 
                 {profile.character.archetype &&
                   !/^protagonist$/i.test(profile.character.archetype) && (

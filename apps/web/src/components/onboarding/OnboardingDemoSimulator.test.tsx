@@ -139,4 +139,16 @@ describe('OnboardingDemoSimulator', () => {
     });
     expect(screen.getByRole('dialog', { name: 'Begin Your LoreBook' })).toBeInTheDocument();
   });
+
+  it('lets the user dismiss the launcher before finishing the simulation', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingDemoSimulator />);
+
+    expect(screen.getByText('See how LoreBook learns your story')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Dismiss onboarding demo' }));
+
+    expect(localStorage.getItem(ONBOARDING_DEMO_DISMISSED_KEY)).toBe('true');
+    expect(screen.queryByText('See how LoreBook learns your story')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-demo-launcher')).not.toBeInTheDocument();
+  });
 });

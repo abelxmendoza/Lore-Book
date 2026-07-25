@@ -4,8 +4,8 @@ import { OrganizationActivityPanel } from './OrganizationActivityPanel';
 import type { Organization, OrganizationEvent } from './OrganizationProfileCard';
 
 vi.mock('./OrganizationTimelinePanel', () => ({
-  OrganizationTimelinePanel: ({ title }: { title?: string }) => (
-    <div data-testid="timeline-panel">{title ?? 'timeline'}</div>
+  OrganizationTimelinePanel: ({ organization }: { organization: Organization }) => (
+    <div data-testid="timeline-panel">{organization.name} Timeline</div>
   ),
 }));
 
@@ -13,6 +13,7 @@ const org = {
   id: 'org-1',
   name: 'Northwind Crew',
   type: 'club',
+  user_relationship: 'member',
   member_count: 0,
   usage_count: 0,
   confidence: 0.9,
@@ -30,7 +31,7 @@ const recorded: OrganizationEvent = {
 };
 
 describe('OrganizationActivityPanel', () => {
-  it('shows conversation timeline and recorded events in one surface', () => {
+  it('shows group Timeline with soft-pedaled recorded milestones', () => {
     const onRemoveEvent = vi.fn();
     render(
       <OrganizationActivityPanel
@@ -43,9 +44,10 @@ describe('OrganizationActivityPanel', () => {
       />,
     );
 
-    expect(screen.getByTestId('org-activity-panel')).toBeInTheDocument();
-    expect(screen.getByText('Activity')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-panel')).toHaveTextContent('From your conversations');
+    expect(screen.getByTestId('org-timeline-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-panel')).toHaveTextContent('Northwind Crew Timeline');
+    expect(screen.getByTestId('org-timeline-recorded')).toBeInTheDocument();
+    expect(screen.getByText('Recorded milestones')).toBeInTheDocument();
     expect(screen.getByText('Kickoff dinner')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Remove Kickoff dinner'));

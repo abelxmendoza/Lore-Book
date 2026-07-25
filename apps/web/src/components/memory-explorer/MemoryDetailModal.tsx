@@ -11,6 +11,7 @@ import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { buildMockMemoryModalData } from '../../mocks/modalDemoData';
 import { memoryEntryToCard, type MemoryCard, type LinkedMemory } from '../../types/memory';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 
 type MemoryDetailModalProps = {
   memory: MemoryCard;
@@ -464,6 +465,22 @@ The user can ask questions about this memory, request to add details, update tag
                 <Calendar className="h-4 w-4" />
                 {formatDate(memory.date)}
               </p>
+              <div className="mt-2">
+                <EntityLorebookCompileControl
+                  subjectLabel={memory.title}
+                  signals={{
+                    eventCount: 1,
+                    uniqueDays: 1,
+                    wordCount: `${memory.title ?? ''} ${memory.content ?? ''}`
+                      .trim()
+                      .split(/\s+/)
+                      .filter(Boolean).length,
+                  }}
+                  focus={{ themes: memory.title }}
+                  autoFetchSignals={false}
+                  testId="memory-modal-lorebook-compile"
+                />
+              </div>
             </div>
             {nextMemory && (
               <Button

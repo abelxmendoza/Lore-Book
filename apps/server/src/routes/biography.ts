@@ -852,6 +852,7 @@ router.get('/capacity/:targetPages', requireAuth, async (req: AuthenticatedReque
 const searchSchema = z.object({
   query: z.string().min(1),
   force: z.boolean().optional(),
+  form: z.enum(['vignette', 'chapter', 'short_book', 'book', 'epic']).optional(),
 });
 
 router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -861,9 +862,13 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const { query, force } = parsed.data;
+    const { query, force, form } = parsed.data;
 
-    const gate = await checkCompileGate(req.user!.id, { query, depth: 'detailed' }, { force });
+    const gate = await checkCompileGate(
+      req.user!.id,
+      { query, depth: form ? defaultDepthForForm(form) : 'detailed', form },
+      { force },
+    );
     if (!gate.allowed) {
       return res.status(409).json({
         error: 'Not ready to compile',
@@ -875,6 +880,10 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, query);
+    if (form) {
+      parsedQuery.form = form;
+      parsedQuery.depth = defaultDepthForForm(form);
+    }
     const biography = await biographyGenerationEngine.generateBiography(req.user!.id, parsedQuery as BiographySpec);
 
     res.json({

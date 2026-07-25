@@ -78,5 +78,32 @@ describe('LorebookTierModal', () => {
     expect(screen.getByText(/Next: Vignette/i)).toBeInTheDocument();
     expect(screen.getByTestId('lorebook-tier-modal-select-vignette')).toBeDisabled();
     expect(screen.getByTestId('lorebook-tier-modal-card-epic')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Locked$/i).length).toBeGreaterThanOrEqual(5);
+    expect(screen.queryByText(/^Unlocked$/i)).not.toBeInTheDocument();
+  });
+
+  it('does not paint locked forms as Unlocked when forceEnable is set', () => {
+    const offer = evaluateTimelineTierOffer({
+      eventCount: 0,
+      uniqueDays: 0,
+      wordCount: 0,
+      subjectLabel: 'Amazon',
+    });
+
+    render(
+      <LorebookTierModal
+        isOpen
+        onClose={() => {}}
+        tierOffer={offer}
+        onSelectForm={() => {}}
+        subjectLabel="Amazon"
+        forceEnable
+      />,
+    );
+
+    expect(screen.getAllByText(/^Locked$/i).length).toBeGreaterThanOrEqual(5);
+    expect(screen.queryByText(/^Unlocked$/i)).not.toBeInTheDocument();
+    // forceEnable only enables compile actions — badges stay honest.
+    expect(screen.getByTestId('lorebook-tier-modal-select-vignette')).not.toBeDisabled();
   });
 });

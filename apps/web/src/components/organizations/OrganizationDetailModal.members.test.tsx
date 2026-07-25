@@ -7,11 +7,14 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
+import { ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE } from '../chat/focusedEntityChatPresets';
 
 const mockAddOrganizationMember = vi.fn();
 const mockRemoveOrganizationMember = vi.fn();
 const mockDispatchStoryDataUpdated = vi.fn();
 const mockFetchCharacterList = vi.fn();
+const mockOpenChatWithFocus = vi.fn();
+const mockFetchJson = vi.fn();
 
 vi.mock('../../store/api/entitiesApi', () => ({
   useUpdateOrganizationMutation: () => [vi.fn()],
@@ -60,6 +63,10 @@ vi.mock('../../lib/invalidateOrganizationMembershipCaches', () => ({
   invalidateOrganizationMembershipCaches: vi.fn(),
 }));
 
+vi.mock('../../lib/openChatWithFocus', () => ({
+  openChatWithFocus: (...args: unknown[]) => mockOpenChatWithFocus(...args),
+}));
+
 vi.mock('../../api/characterList', () => ({
   fetchCharacterList: (...args: unknown[]) => mockFetchCharacterList(...args),
 }));
@@ -98,28 +105,7 @@ vi.mock('../../lib/hydrateBookEntity', async () => {
 });
 
 vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(async (url: string) => {
-    if (url === '/api/characters' || url === '/api/books/characters') {
-      return {
-        characters: [
-          { id: 'char-mina', name: 'Mina' },
-          { id: 'char-owen', name: 'Owen' },
-        ],
-      };
-    }
-    if (url.includes('/derived-context')) {
-      return {
-        success: true,
-        events: [],
-        locations: [],
-        hierarchy: { subgroups: [], related: [] },
-      };
-    }
-    if (url.includes('/member-affiliations')) {
-      return { success: true, affiliations: {} };
-    }
-    return {};
-  }),
+  fetchJson: (...args: unknown[]) => mockFetchJson(...args),
 }));
 
 vi.mock('../characters/CharacterDetailModal', () => ({
@@ -138,7 +124,7 @@ vi.mock('./OrganizationActivityPanel', () => ({
   OrganizationActivityPanel: () => null,
 }));
 
-function renderModal() {
+function renderModal(onClose = vi.fn()) {
   const store = configureStore({
     reducer: { _placeholder: (s = {}) => s },
   });
@@ -146,7 +132,7 @@ function renderModal() {
     <Provider store={store}>
       <OrganizationDetailModal
         organization={seedOrg as any}
-        onClose={vi.fn()}
+        onClose={onClose}
         onUpdate={vi.fn()}
       />
     </Provider>,
@@ -156,6 +142,39 @@ function renderModal() {
 describe('OrganizationDetailModal — People / Character Book link', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/api/entities/book-index')) {
+        return {
+          entities: [
+            { id: 'char-mina', name: 'Mina', type: 'character', aliases: ['Min'] },
+            { id: 'char-owen', name: 'Owen', type: 'character', aliases: [] },
+          ],
+          total: 2,
+          limit: 100,
+          offset: 0,
+        };
+      }
+      if (url === '/api/characters' || url === '/api/books/characters') {
+        return {
+          characters: [
+            { id: 'char-mina', name: 'Mina' },
+            { id: 'char-owen', name: 'Owen' },
+          ],
+        };
+      }
+      if (url.includes('/derived-context')) {
+        return {
+          success: true,
+          events: [],
+          locations: [],
+          hierarchy: { subgroups: [], related: [] },
+        };
+      }
+      if (url.includes('/member-affiliations')) {
+        return { success: true, affiliations: {} };
+      }
+      return {};
+    });
     mockFetchCharacterList.mockResolvedValue([
       { id: 'char-mina', name: 'Mina', alias: ['Min'] },
       { id: 'char-owen', name: 'Owen' },
@@ -182,7 +201,9 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
     fireEvent.click(screen.getByTestId('org-add-member-toggle'));
 
     await waitFor(() => {
-      expect(mockFetchCharacterList).toHaveBeenCalled();
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        expect.stringContaining('/api/entities/book-index?types=character'),
+      );
     });
 
     const search = await screen.findByTestId('org-add-member-character-search');
@@ -227,6 +248,43 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
     );
   });
 
+  it('keeps indexed people when the heavy Character Book request fails', async () => {
+    mockFetchCharacterList.mockRejectedValue(new Error('timeout'));
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/api/entities/book-index')) {
+        return {
+          entities: [{ id: 'char-mina', name: 'Mina', type: 'character', aliases: [] }],
+        };
+      }
+      if (url === '/api/characters' || url === '/api/books/characters') {
+        throw new Error('timeout');
+      }
+      if (url.includes('/derived-context')) {
+        return { success: true, events: [], locations: [], hierarchy: { subgroups: [], related: [] } };
+      }
+      return {};
+    });
+
+    const user = userEvent.setup();
+    renderModal();
+    const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
+    fireEvent.click(peopleTabs[0]!);
+    fireEvent.click(screen.getByTestId('org-add-member-toggle'));
+
+    await waitFor(() => {
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        expect.stringContaining('/api/entities/book-index?types=character'),
+      );
+    });
+
+    expect(screen.queryByText(/could not load your character book/i)).not.toBeInTheDocument();
+
+    const search = await screen.findByTestId('org-add-member-character-search');
+    await user.click(search);
+    await user.type(search, 'Mina');
+    expect(await screen.findByRole('option', { name: 'Mina' })).toBeInTheDocument();
+  });
+
   it('filters Character Book options by typed search', async () => {
     const user = userEvent.setup();
     renderModal();
@@ -235,7 +293,11 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
     fireEvent.click(screen.getByTestId('org-add-member-toggle'));
 
     const search = await screen.findByTestId('org-add-member-character-search');
-    await waitFor(() => expect(mockFetchCharacterList).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockFetchJson).toHaveBeenCalledWith(
+        expect.stringContaining('/api/entities/book-index?types=character'),
+      ),
+    );
 
     await user.click(search);
     await user.type(search, 'owe');
@@ -245,5 +307,27 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
       expect(options).toContain('Owen');
       expect(options).not.toContain('Mina');
     });
+  });
+
+  it('Fill roster in chat hands off to main chat with affiliation scope', async () => {
+    const onClose = vi.fn();
+    renderModal(onClose);
+
+    const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
+    fireEvent.click(peopleTabs[0]!);
+    fireEvent.click(screen.getByTestId('org-fill-roster-in-chat-empty'));
+
+    expect(onClose).toHaveBeenCalled();
+    expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'org-1',
+        entityName: 'Static Petals',
+        entityType: 'organization',
+        sourceSurface: 'organizations',
+        knowledgeScope: ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE,
+        initialPrompt: expect.stringMatching(/fill out the roster|affiliated|NOT in the group/i),
+        arrivedAt: expect.any(Number),
+      }),
+    );
   });
 });

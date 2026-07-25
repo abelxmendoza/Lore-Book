@@ -1,10 +1,10 @@
 /**
- * Unified group Activity: conversation-derived timeline + manually recorded events.
- * Replaces the former separate Events and Timeline tabs.
+ * Group Timeline tab: conversation-derived with-you / without-you swimlanes,
+ * plus a compact hand-recorded milestones section (not a peer tab).
  */
 
 import { useState } from 'react';
-import { Calendar, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
@@ -66,46 +66,42 @@ export function OrganizationActivityPanel({
   };
 
   return (
-    <div className="space-y-6" data-testid="org-activity-panel">
-      <div>
-        <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-purple-400" />
-          Activity
-        </h3>
-        <p className="text-xs text-white/45 mt-1">
-          What happened with {organization.name} — from your conversations, plus anything you record by hand.
-        </p>
-      </div>
-
+    <div className="space-y-6" data-testid="org-timeline-panel">
       <OrganizationTimelinePanel
         organization={organization}
         mockMode={mockMode}
         active={active}
         events={derivedEvents}
         loading={derivedLoading}
-        title="From your conversations"
-        description={`Events involving ${organization.name}'s members, split by your involvement.`}
       />
 
-      <section className="space-y-3 border-t border-white/8 pt-5">
+      <section
+        className="space-y-2 border-t border-white/8 pt-4"
+        data-testid="org-timeline-recorded"
+      >
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h4 className="text-sm font-semibold text-white/85">Recorded</h4>
-            <p className="text-[11px] text-white/40 mt-0.5">
-              Hand-added milestones that stay on this group card.
+          <div className="min-w-0">
+            <h4 className="text-xs font-medium text-white/55">Recorded milestones</h4>
+            <p className="text-[10px] text-white/35 mt-0.5">
+              Optional hand-added notes on this group card.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowAdd((v) => !v)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add event
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdd((v) => !v)}
+            className="text-white/55 hover:text-white shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add
           </Button>
         </div>
 
         {showAdd && (
-          <Card className="bg-black/40 border-border/50">
-            <CardContent className="pt-6 space-y-3">
+          <Card className="bg-black/30 border-white/10">
+            <CardContent className="pt-4 space-y-3">
               <Input
-                placeholder="Event title *"
+                placeholder="Milestone title *"
                 value={draft.title}
                 onChange={(e) => setDraft((v) => ({ ...v, title: e.target.value }))}
                 className="bg-black/60 border-border/50 text-white"
@@ -134,7 +130,7 @@ export function OrganizationActivityPanel({
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => void handleSave()} disabled={eventSaving} className="flex-1">
-                  {eventSaving ? 'Saving...' : 'Save event'}
+                  {eventSaving ? 'Saving...' : 'Save'}
                 </Button>
                 <Button variant="outline" onClick={() => setShowAdd(false)}>
                   Cancel
@@ -145,33 +141,35 @@ export function OrganizationActivityPanel({
         )}
 
         {recordedEvents.length === 0 && !showAdd ? (
-          <p className="text-xs text-white/40 py-1">
-            No recorded events yet. Add a milestone above, or wait for conversation activity to appear.
+          <p className="text-[11px] text-white/30 py-0.5">
+            No hand-added milestones yet.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {recordedEvents.map((event) => (
-              <Card key={event.id} className="bg-black/40 border-border/50">
-                <CardContent className="pt-3 pb-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-white text-sm truncate">{event.title}</div>
-                      <div className="text-xs text-white/50 mt-0.5">{formatDate(event.date)}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge variant="outline">{event.type}</Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Remove ${event.title}`}
-                        onClick={() => void onRemoveEvent(event.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-400" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div
+                key={event.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-white/85 text-sm truncate">{event.title}</div>
+                  <div className="text-[11px] text-white/40 mt-0.5">{formatDate(event.date)}</div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge variant="outline" className="text-[10px] text-white/45 border-white/15">
+                    {event.type}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Remove ${event.title}`}
+                    onClick={() => void onRemoveEvent(event.id)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-400/80" />
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         )}

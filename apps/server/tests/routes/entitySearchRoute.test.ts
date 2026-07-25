@@ -14,6 +14,11 @@ vi.mock('../../src/services/search/entitySearchService', () => ({
   searchEntities: vi.fn(),
 }));
 
+vi.mock('../../src/services/entities/bookEntityQueryService', () => ({
+  queryBookEntities: vi.fn(),
+}));
+
+import { queryBookEntities } from '../../src/services/entities/bookEntityQueryService';
 import { searchEntities } from '../../src/services/search/entitySearchService';
 
 const app = express();
@@ -54,5 +59,37 @@ describe('GET /api/entities/search', () => {
         limit: 10,
       })
     );
+  });
+});
+
+describe('GET /api/entities/book-index', () => {
+  it('returns the shared paginated Books index', async () => {
+    vi.mocked(queryBookEntities).mockResolvedValue({
+      entities: [{
+        id: 'project-1',
+        name: 'MemoVault',
+        type: 'project',
+        status: 'active',
+        aliases: ['LoreBook'],
+        updatedAt: '2026-07-20T00:00:00Z',
+      }],
+      counts: { project: 1 },
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    const res = await request(app)
+      .get('/api/entities/book-index')
+      .query({ q: 'memo', types: 'project,quest', limit: 20, offset: 0 })
+      .expect(200);
+
+    expect(res.body.entities).toHaveLength(1);
+    expect(queryBookEntities).toHaveBeenCalledWith('user-search-1', {
+      types: ['project', 'quest'],
+      search: 'memo',
+      limit: 20,
+      offset: 0,
+    });
   });
 });

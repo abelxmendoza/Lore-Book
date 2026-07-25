@@ -15,6 +15,7 @@ import {
   composerIntentToWorkingMemoryIntent,
   type IntentSource,
 } from './composerIntentFastPath';
+import { retrieveSemanticClaimCandidates } from './semanticClaimRetriever';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -63,6 +64,7 @@ export type WorkingMemoryItem = {
     | 'community'
     | 'relationship'
     | 'preference'
+    | 'claim'
     | 'timeline'
     | 'entity'
     | 'debug';
@@ -95,6 +97,7 @@ export type WorkingMemoryAssembly = {
   communities: WorkingMemoryItem[];
   relationships: WorkingMemoryItem[];
   preferences: WorkingMemoryItem[];
+  claims: WorkingMemoryItem[];
   timeline: WorkingMemoryItem[];
   confidence: number;
   budget: {
@@ -123,6 +126,7 @@ export type WorkingMemoryPacket = {
   events: WorkingMemoryItem[];
   episodes: WorkingMemoryItem[];
   relationships: WorkingMemoryItem[];
+  claims: WorkingMemoryItem[];
   recentContext: WorkingMemoryItem[];
   relevantContext: WorkingMemoryItem[];
   openLoops: Array<{
@@ -489,6 +493,7 @@ function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'in
     communities: items.filter((item) => item.type === 'community'),
     relationships: items.filter((item) => item.type === 'relationship'),
     preferences: items.filter((item) => item.type === 'preference'),
+    claims: items.filter((item) => item.type === 'claim'),
     timeline: items.filter((item) => item.type === 'timeline'),
   };
 }
@@ -552,6 +557,7 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
     ...assembly.events,
     ...assembly.timeline,
     ...assembly.preferences,
+    ...assembly.claims,
   ].sort((a, b) => b.score - a.score).slice(0, 8);
 
   const openLoops: WorkingMemoryPacket['openLoops'] = [];
@@ -596,6 +602,7 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
     section('Events', assembly.events),
     section('Episodes', assembly.episodes),
     section('Relationships', assembly.relationships),
+    section('Semantic Canon Claims', assembly.claims),
     section('Recent Context', recentContext),
     section('Relevant Context', relevantContext),
     openLoops.length
@@ -613,6 +620,7 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
     events: assembly.events,
     episodes: assembly.episodes,
     relationships: assembly.relationships,
+    claims: assembly.claims,
     recentContext,
     relevantContext,
     openLoops,
@@ -2175,6 +2183,42 @@ async function loadNarrativeAnchorCandidates(
   return rows ?? [];
 }
 
+async function loadSemanticClaimCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  question: string,
+  intent: WorkingMemoryIntent,
+): Promise<Candidate[]> {
+  if (intent === 'DEBUG_QUERY' || isTemporalIntent(intent)) return [];
+  const rows = await scope.traced(
+    'match_omega_claims',
+    'semantic canon candidates before response generation',
+    `match_omega_claims:${normalizeNameKey(question).slice(0, 160)}`,
+    async () => ({
+      data: await retrieveSemanticClaimCandidates(question, userId),
+      error: null,
+    }),
+  );
+  return (rows ?? []).map((row) => ({
+    id: `omega-claim-${row.id}`,
+    type: 'claim' as const,
+    title: 'Established canon claim',
+    content: row.text,
+    source: 'omega_claims_semantic',
+    date: null,
+    confidence: Math.max(0.35, Math.min(1, row.confidence)),
+    relevance: Math.max(0, Math.min(1, row.similarity)),
+    importance: Math.max(0.4, Math.min(1, row.confidence)),
+    significance: Math.max(0.4, Math.min(1, row.similarity)),
+    relationshipDistance: 0.8,
+    metadata: {
+      entityId: row.entity_id,
+      semanticSimilarity: row.similarity,
+      retrievalStage: 'pre_response',
+    },
+  }));
+}
+
 export async function assembleWorkingMemory(
   input: { question: string; userId: string; threadId?: string | null },
   options: AssembleOptions = {}
@@ -2231,7 +2275,7 @@ export async function assembleWorkingMemory(
   const personEntityId =
     primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -2259,6 +2303,9 @@ export async function assembleWorkingMemory(
       !temporalQuery
         ? loadNarrativeAnchorCandidates(scope, input.userId, primaryEntity, intent)
         : Promise.resolve([] as Candidate[]),
+      !temporalQuery
+        ? loadSemanticClaimCandidates(scope, input.userId, input.question, intent)
+        : Promise.resolve([] as Candidate[]),
     ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
 
@@ -2274,12 +2321,19 @@ export async function assembleWorkingMemory(
     ...projectCandidates,
     ...textualCandidates,
     ...anchorCandidates,
+    ...semanticClaimCandidates,
   ];
-  // Dedupe project rows that appear in both dedicated loader and textual loader
+  // Dedupe both stable ids and repeated content. Semantic claims can overlap a
+  // structured fact under a different id; only one copy should consume budget
+  // or appear under multiple prompt headers.
   const seenIds = new Set<string>();
+  const seenContent = new Set<string>();
   const deduped = merged.filter((c) => {
     if (seenIds.has(c.id)) return false;
+    const contentKey = normalizeNameKey(c.content);
+    if (contentKey && seenContent.has(contentKey)) return false;
     seenIds.add(c.id);
+    if (contentKey) seenContent.add(contentKey);
     return true;
   });
   const { selected, rejected } = selectBudget(deduped, maxItems, intent, target);

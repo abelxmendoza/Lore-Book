@@ -27,6 +27,7 @@ import {
   formatEpistemicPercent,
 } from '../../lib/epistemicLabels';
 import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -884,6 +885,20 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              <EntityLorebookCompileControl
+                subjectLabel={displayTitle}
+                signals={{
+                  eventCount: 1,
+                  uniqueDays: 1,
+                  wordCount: `${eventData.title ?? ''} ${eventData.summary ?? ''}`
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean).length,
+                }}
+                focus={{ themes: displayTitle }}
+                autoFetchSignals={false}
+                testId="event-modal-lorebook-compile"
+              />
               <Button
                 type="button"
                 variant="ghost"

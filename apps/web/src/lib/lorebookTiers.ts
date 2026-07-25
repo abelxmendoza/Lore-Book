@@ -4,6 +4,7 @@
  */
 
 import type { ProjectDetailProfile } from '../components/projects/projectModalTypes';
+import type { LoreReadinessEvaluation, LoreTopicReadiness } from './loreReadiness';
 import {
   TIMELINE_LOREBOOK_MIN_DAYS,
   TIMELINE_LOREBOOK_MIN_EVENTS,
@@ -104,6 +105,19 @@ export const PROJECT_TIER_GATES: Record<
   epic: { milestones: 8, beats: 12, moments: 25 },
 };
 
+/**
+ * Domain/topic gates scale from each topic's own minAtoms/minEntries (its
+ * "book"-tier anchor, already calibrated per topic in LORE_TOPICS — family
+ * needs less than full_life) rather than one flat table like the two above.
+ */
+export const DOMAIN_TIER_FRACTIONS: Record<LorebookForm, number> = {
+  vignette: 0.15,
+  chapter: 0.3,
+  short_book: 0.55,
+  book: 1,
+  epic: 1.6,
+};
+
 export type LorebookTierSignals = {
   eventCount?: number;
   uniqueDays?: number;
@@ -111,9 +125,15 @@ export type LorebookTierSignals = {
   milestones?: number;
   beats?: number;
   moments?: number;
+  /** Domain source only: narrative atoms / journal-linked entries for this topic. */
+  atomCount?: number;
+  entryCount?: number;
+  /** Domain source only: this topic's own minAtoms/minEntries — the book-tier anchor. */
+  topicMinAtoms?: number;
+  topicMinEntries?: number;
   /** When true, short_book+ get a slight boost (domain already ready). */
   domainReady?: boolean;
-  source: 'timeline' | 'project' | 'entity';
+  source: 'timeline' | 'project' | 'domain';
   subjectLabel?: string;
 };
 
@@ -177,6 +197,38 @@ function projectMeets(
   return milestones >= gate.milestones || beats >= gate.beats || moments >= gate.moments;
 }
 
+function domainGateFor(
+  signals: LorebookTierSignals,
+  form: LorebookForm,
+): { atoms: number; entries: number } {
+  const fraction = DOMAIN_TIER_FRACTIONS[form];
+  const minAtoms = signals.topicMinAtoms ?? 1;
+  const minEntries = signals.topicMinEntries ?? 1;
+  return {
+    atoms: Math.max(1, Math.ceil(minAtoms * fraction)),
+    entries: Math.max(1, Math.ceil(minEntries * fraction)),
+  };
+}
+
+function domainMeets(
+  signals: LorebookTierSignals,
+  gate: { atoms: number; entries: number },
+): boolean {
+  const atoms = signals.atomCount ?? 0;
+  const entries = signals.entryCount ?? 0;
+  return atoms >= gate.atoms || entries >= gate.entries;
+}
+
+function domainProgress(
+  signals: LorebookTierSignals,
+  gate: { atoms: number; entries: number },
+): number {
+  return Math.max(
+    clamp01((signals.atomCount ?? 0) / gate.atoms),
+    clamp01((signals.entryCount ?? 0) / gate.entries),
+  );
+}
+
 function timelineProgress(
   signals: LorebookTierSignals,
   gate: { events: number; days: number; words: number },
@@ -216,6 +268,22 @@ function evaluateTierStatus(
       detailLabel: unlocked
         ? `Ready for ${def.label}${signals.subjectLabel ? ` — “${signals.subjectLabel}”` : ''}`
         : `${signals.milestones ?? 0} milestones · ${signals.beats ?? 0} beats · ${signals.moments ?? 0} moments for ${def.label}`,
+    };
+  }
+
+  if (signals.source === 'domain') {
+    const gate = domainGateFor(signals, form);
+    const unlocked = domainMeets(signals, gate);
+    const progress = unlocked ? 1 : domainProgress(signals, gate);
+    const cur = Math.min(signals.atomCount ?? 0, gate.atoms);
+    return {
+      form,
+      unlocked,
+      progress,
+      counterLabel: `${cur}/${gate.atoms}`,
+      detailLabel: unlocked
+        ? `Ready for ${def.label}${signals.subjectLabel ? ` — “${signals.subjectLabel}”` : ''}`
+        : `${signals.atomCount ?? 0} atoms · ${signals.entryCount ?? 0} entries for ${def.label}.`,
     };
   }
 
@@ -303,6 +371,39 @@ export function evaluateProjectTierOffer(
     milestones: profile.milestones.length,
     beats,
     moments: profile.stats.momentCount ?? 0,
+    subjectLabel,
+  });
+}
+
+export function evaluateTopicTierOffer(topic: LoreTopicReadiness): LorebookTierOffer {
+  return evaluateLorebookTierOffer({
+    source: 'domain',
+    atomCount: topic.atomCount,
+    entryCount: topic.entryCount,
+    wordCount: topic.wordCount,
+    topicMinAtoms: topic.topic.minAtoms,
+    topicMinEntries: topic.topic.minEntries,
+    subjectLabel: topic.topic.label,
+  });
+}
+
+/** Matches the server's DYNAMIC_COMPILE_PROFILE — the book-tier anchor for any
+ * free-text query that isn't one of the fixed LORE_TOPICS. */
+const DYNAMIC_QUERY_MIN_ATOMS = 6;
+const DYNAMIC_QUERY_MIN_ENTRIES = 3;
+
+/** Tier offer for an arbitrary free-text LoreBook Generator query (not a fixed topic). */
+export function evaluateQueryTierOffer(
+  evaluation: LoreReadinessEvaluation,
+  subjectLabel?: string,
+): LorebookTierOffer {
+  return evaluateLorebookTierOffer({
+    source: 'domain',
+    atomCount: evaluation.atomCount,
+    entryCount: evaluation.entryCount,
+    wordCount: evaluation.wordCount,
+    topicMinAtoms: DYNAMIC_QUERY_MIN_ATOMS,
+    topicMinEntries: DYNAMIC_QUERY_MIN_ENTRIES,
     subjectLabel,
   });
 }

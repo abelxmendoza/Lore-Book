@@ -24,14 +24,14 @@ export type OrgModalTabKey =
   | 'chat'
   | 'members'
   | 'stories'
+  | 'timeline'
+  /** @deprecated aliased to timeline */
   | 'activity'
-  /** @deprecated aliased to activity */
+  /** @deprecated aliased to timeline */
   | 'events'
   | 'locations'
   | 'relationships'
   | 'sources'
-  /** @deprecated aliased to activity */
-  | 'timeline'
   | 'influence'
   | 'insights'
   | 'lore'
@@ -44,12 +44,12 @@ const PRIMARY_MOBILE: TabDef[] = [
   { key: 'info', label: 'Overview', shortLabel: 'Overview', icon: FileText },
   { key: 'members', label: 'People', shortLabel: 'People', icon: Users },
   { key: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
-  { key: 'activity', label: 'Activity', shortLabel: 'Activity', icon: Clock },
+  { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
 ];
 
-/** Map legacy Events / Timeline tab keys onto the unified Activity tab. */
+/** Map legacy Events / Activity tab keys onto the unified Timeline tab. */
 export function normalizeOrgModalTab(tab: OrgModalTabKey): OrgModalTabKey {
-  if (tab === 'events' || tab === 'timeline') return 'activity';
+  if (tab === 'events' || tab === 'activity') return 'timeline';
   return tab;
 }
 
@@ -219,7 +219,7 @@ export const ORG_MODAL_BASE_TABS: TabDef[] = [
   { key: 'info', label: 'Overview', shortLabel: 'Overview', icon: FileText },
   { key: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
   { key: 'members', label: 'People', shortLabel: 'People', icon: Users },
-  { key: 'activity', label: 'Activity', shortLabel: 'Activity', icon: Clock },
+  { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
   { key: 'stories', label: 'Stories', shortLabel: 'Stories', icon: BookOpen },
   { key: 'locations', label: 'Places', shortLabel: 'Places', icon: MapPin },
   { key: 'relationships', label: 'Relationships', shortLabel: 'Links', icon: Link2 },

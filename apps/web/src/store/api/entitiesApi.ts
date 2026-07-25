@@ -4,16 +4,93 @@ import type {
   ProjectsBookPayload,
   SkillsBookPayload,
 } from '../../api/books';
-
-import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
+import { invalidateCache } from '../../lib/requestCache';
+
 import { baseApi } from './baseApi';
 
 /** Server response envelopes vary; the books BFF returns `{ success, data }` or the payload directly. */
 type Envelope<T> = T & { success?: boolean; data?: T };
 
+export type BookEntityType =
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'project'
+  | 'quest'
+  | 'family';
+
+export type BookEntitySummary = {
+  id: string;
+  name: string;
+  type: BookEntityType;
+  status: string | null;
+  aliases: string[];
+  updatedAt: string | null;
+};
+
+export type BookEntityIndexResponse = {
+  entities: BookEntitySummary[];
+  counts: Partial<Record<BookEntityType, number>>;
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type BookEntityIndexArgs = {
+  types?: BookEntityType[];
+  q?: string;
+  limit?: number;
+  offset?: number;
+};
+
 function unwrap<T>(res: Envelope<T>): T {
   return (res.data ?? res) as T;
+}
+
+function bookEntityIndexUrl(args: BookEntityIndexArgs): string {
+  const params = new URLSearchParams();
+  const types = [...new Set(args.types ?? [])].sort();
+  if (types.length) params.set('types', types.join(','));
+  if (args.q?.trim()) params.set('q', args.q.trim());
+  if (args.limit !== undefined) params.set('limit', String(args.limit));
+  if (args.offset !== undefined) params.set('offset', String(args.offset));
+  const query = params.toString();
+  return `/api/entities/book-index${query ? `?${query}` : ''}`;
+}
+
+type BookEntityCacheTag =
+  | 'Character'
+  | 'Location'
+  | 'Organization'
+  | 'Skill'
+  | 'Project'
+  | { type: 'Quest'; id: 'LIST' | 'BOARD' };
+
+function bookEntityTags(types?: BookEntityType[]): BookEntityCacheTag[] {
+  const requested = types?.length
+    ? types
+    : ['character', 'location', 'organization', 'skill', 'project', 'quest'] as BookEntityType[];
+  const tags = new Set<Exclude<BookEntityCacheTag, { type: 'Quest' }>>();
+  let includeQuest = false;
+  for (const type of requested) {
+    if (type === 'character') tags.add('Character');
+    else if (type === 'location') tags.add('Location');
+    else if (type === 'organization' || type === 'family') tags.add('Organization');
+    else if (type === 'skill') tags.add('Skill');
+    else if (type === 'project') tags.add('Project');
+    else if (type === 'quest') includeQuest = true;
+  }
+  return [
+    ...tags,
+    ...(includeQuest
+      ? [
+          { type: 'Quest' as const, id: 'LIST' as const },
+          { type: 'Quest' as const, id: 'BOARD' as const },
+        ]
+      : []),
+  ];
 }
 
 type CharacterUpdateInput = {
@@ -118,6 +195,18 @@ async function invalidateOrganizationCaches(id: string, queryFulfilled: Promise<
  */
 export const entitiesApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
+    getBookEntityIndex: build.query<BookEntityIndexResponse, BookEntityIndexArgs>({
+      query: (args) => ({ url: bookEntityIndexUrl(args) }),
+      serializeQueryArgs: ({ endpointName, queryArgs }) => ({
+        endpointName,
+        types: [...new Set(queryArgs.types ?? [])].sort(),
+        q: queryArgs.q?.trim() ?? '',
+        limit: queryArgs.limit ?? 50,
+        offset: queryArgs.offset ?? 0,
+      }),
+      providesTags: (_result, _error, args) => bookEntityTags(args.types),
+      keepUnusedDataFor: 60,
+    }),
     getCharactersBook: build.query<CharactersBookPayload, void>({
       query: () => ({ url: '/api/books/characters' }),
       transformResponse: (res: Envelope<CharactersBookPayload>) => unwrap(res),
@@ -473,6 +562,7 @@ export const entitiesApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetBookEntityIndexQuery,
   useGetCharactersBookQuery,
   useGetLocationsBookQuery,
   useGetProjectsBookQuery,

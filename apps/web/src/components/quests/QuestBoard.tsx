@@ -10,6 +10,7 @@ import { QuestDetailPanel } from './QuestDetailPanel';
 import { DetectedQuestSuggestions } from './DetectedQuestSuggestions';
 import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest } from '../../hooks/useQuests';
 import { EMPTY_QUEST_BOARD } from '../../store/hooks/useQuestData';
+import { useBookEntityIndexSearch } from '../../store/hooks/useEntityBooks';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
 
@@ -129,6 +130,34 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
   const { data: boardData, isLoading, error, refetch: refetchBoard } = useQuestBoard();
   const board = boardData ?? EMPTY_QUEST_BOARD;
   const loadFailed = !isLoading && Boolean(error);
+  const demoIndexEntities = useMemo(() => {
+    const byId = new Map<string, Quest>();
+    [
+      ...(board.main_quests || []),
+      ...(board.side_quests || []),
+      ...(board.daily_quests || []),
+      ...(board.todays_quests || []),
+      ...(board.this_weeks_quests || []),
+      ...(board.completed_quests || []),
+    ].forEach((quest) => byId.set(quest.id, quest));
+    return [...byId.values()].map((quest) => ({
+      id: quest.id,
+      name: quest.title,
+      type: 'quest' as const,
+      status: quest.status,
+      aliases: [],
+      updatedAt: quest.updated_at ?? quest.last_activity_at ?? null,
+    }));
+  }, [board]);
+  const sharedSearch = useBookEntityIndexSearch(
+    ['quest'],
+    searchQuery,
+    { mockEntities: demoIndexEntities },
+  );
+  const sharedSearchIds = useMemo(
+    () => new Set(sharedSearch.entities.map((entity) => entity.id)),
+    [sharedSearch.entities],
+  );
 
   const existingQuestTitles = useMemo(() => {
     if (!board) return [];
@@ -183,7 +212,8 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
           q =>
             q.title.toLowerCase().includes(query) ||
             q.description?.toLowerCase().includes(query) ||
-            q.tags?.some(tag => tag.toLowerCase().includes(query))
+            q.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+            sharedSearchIds.has(q.id)
         );
       }
 
@@ -210,7 +240,7 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
 
       return filtered;
     };
-  }, [searchQuery, statusFilter, typeFilter, priorityFilter, categoryFilter]);
+  }, [searchQuery, statusFilter, typeFilter, priorityFilter, categoryFilter, sharedSearchIds]);
 
   // Memoize quest arrays
   const mainQuests = useMemo(() => {

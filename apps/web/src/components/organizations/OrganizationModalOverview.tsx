@@ -24,6 +24,8 @@ import { GroupDetailPanel } from './GroupDetailPanel';
 type OverviewTab =
   | 'members'
   | 'locations'
+  | 'timeline'
+  /** @deprecated aliased by parent normalize to timeline */
   | 'activity'
   | 'family'
   | 'stories'
@@ -94,9 +96,9 @@ export function OrganizationModalOverview({
         <QuickStat icon={BookOpen} label="Stories" value={stories.length} onClick={() => onTabChange('stories')} />
         <QuickStat
           icon={Calendar}
-          label="Activity"
+          label="Timeline"
           value={derivedLoading && activityCount === 0 ? -1 : activityCount}
-          onClick={() => onTabChange('activity')}
+          onClick={() => onTabChange('timeline')}
         />
         <QuickStat icon={MapPin} label="Places" value={locationCount} onClick={() => onTabChange('locations')} />
       </div>
@@ -143,12 +145,12 @@ export function OrganizationModalOverview({
         <section className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
           <h3 className="text-xs font-semibold text-white/80 flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-amber-300" />
-            Recent activity
+            Recent on timeline
           </h3>
           {latestDerived && (
             <button
               type="button"
-              onClick={() => onTabChange('activity')}
+              onClick={() => onTabChange('timeline')}
               className="w-full text-left rounded-lg bg-white/[0.03] border border-white/8 px-2.5 py-2 hover:border-primary/25 touch-manipulation"
             >
               <p className="text-[10px] text-white/40 uppercase tracking-wide">From conversations</p>
@@ -161,7 +163,7 @@ export function OrganizationModalOverview({
           {!latestDerived && latestRecorded && (
             <button
               type="button"
-              onClick={() => onTabChange('activity')}
+              onClick={() => onTabChange('timeline')}
               className="w-full text-left rounded-lg bg-white/[0.03] border border-white/8 px-2.5 py-2 hover:border-primary/25 touch-manipulation"
             >
               <p className="text-[10px] text-white/40 uppercase tracking-wide">Recorded</p>
@@ -188,7 +190,7 @@ export function OrganizationModalOverview({
         onSelectOrganization={onSelectOrganization}
         onOpenMembersTab={() => onTabChange('members')}
         onOpenLocationsTab={() => onTabChange('locations')}
-        onOpenTimelineTab={() => onTabChange('activity')}
+        onOpenTimelineTab={() => onTabChange('timeline')}
         onOpenFamilyTab={() => onTabChange('family')}
         compact
       />

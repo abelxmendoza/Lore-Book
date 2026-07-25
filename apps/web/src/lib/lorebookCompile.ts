@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { addCsrfHeaders, acquireCsrfToken, getCsrfToken } from './security';
 import { config } from '../config/env';
 import type { LoreReadinessEvaluation } from './loreReadiness';
+import type { LorebookForm } from './lorebookTiers';
 
 export type CompileConflict = {
   message: string;
@@ -59,9 +60,10 @@ async function postCompile<T>(path: string, body: Record<string, unknown>): Prom
 
 export async function compileLorebookFromQuery(
   query: string,
-  force = false
+  force = false,
+  form?: LorebookForm,
 ): Promise<CompileResult<{ biography: unknown; biographyId?: string; persisted?: boolean; parsedQuery?: unknown }>> {
-  return postCompile('/api/biography/search', { query, force });
+  return postCompile('/api/biography/search', { query, force, ...(form ? { form } : {}) });
 }
 
 export async function compileLorebookFromSpec(
@@ -80,6 +82,8 @@ export type CompileTopicOptions = {
   threadId?: string;
   timeRange?: { start: string; end: string };
   themes?: string[];
+  /** Document shape tier — server defaults depth/chapter caps from this. */
+  form?: LorebookForm;
 };
 
 /** Topic-scoped compile — never sends topic ids through NL /search. */
@@ -98,6 +102,7 @@ export async function compileLorebookFromTopic(
   if (options.threadId) body.threadId = options.threadId;
   if (options.timeRange) body.timeRange = options.timeRange;
   if (options.themes?.length) body.themes = options.themes;
+  if (options.form) body.form = options.form;
   return postCompile('/api/biography/generate', body);
 }
 

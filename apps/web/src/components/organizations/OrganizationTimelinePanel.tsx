@@ -1,5 +1,7 @@
 /**
- * Group / organization timeline — with you / without you / group-wide lanes.
+ * Group / organization timeline — two lanes shaped by Our relationship stance
+ * (Mine / Close to / Their world / Mentioned). Group-wide moments fold into the
+ * “without” lane and keep a list badge when tagged.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,6 +12,10 @@ import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
 import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import {
+  getOrganizationTimelineVoice,
+  ORGANIZATION_STANCE_LABELS,
+} from '../../lib/organizationStance';
 import { getMockOrganizationDerivedEvents, type OrgDerivedEvent } from '../../mocks/organizationTimeline';
 import type { Organization } from './OrganizationProfileCard';
 
@@ -22,21 +28,13 @@ interface Props {
   /** When provided, use these instead of fetching derived-context. */
   events?: OrgDerivedEvent[];
   loading?: boolean;
+  /** Override auto title from stance voice. */
   title?: string;
+  /** Override auto description from stance voice. */
   description?: string;
 }
 
-const AUDIENCE_LABELS: Record<NonNullable<OrgDerivedEvent['audience']>, string> = {
-  with_user: 'With you',
-  without_user: 'Without you',
-  group_wide: 'Group-wide',
-};
-
-const AUDIENCE_BADGE: Record<NonNullable<OrgDerivedEvent['audience']>, string> = {
-  with_user: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  without_user: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
-  group_wide: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-};
+const GROUP_WIDE_BADGE = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
 
 function fmtEventDate(iso: string | null): string {
   if (!iso) return 'Unknown date';
@@ -48,9 +46,9 @@ function fmtEventDate(iso: string | null): string {
   }
 }
 
-function laneKeyForEvent(e: OrgDerivedEvent): string {
+/** Two lanes; group-wide rides in the “without” lane. */
+function laneKeyForEvent(e: OrgDerivedEvent): 'with' | 'without' {
   if (e.audience === 'with_user' || e.user_was_present) return 'with';
-  if (e.audience === 'group_wide') return 'group_wide';
   return 'without';
 }
 
@@ -71,20 +69,37 @@ function toSwim(event: OrgDerivedEvent): SwimlaneEvent {
   };
 }
 
+function audienceBadgeLabel(
+  audience: NonNullable<OrgDerivedEvent['audience']>,
+  voice: ReturnType<typeof getOrganizationTimelineVoice>,
+): string {
+  if (audience === 'group_wide') return 'Group-wide';
+  if (audience === 'with_user') return voice.withBadge;
+  return voice.withoutBadge;
+}
+
+function audienceBadgeClass(audience: NonNullable<OrgDerivedEvent['audience']>): string {
+  if (audience === 'group_wide') return GROUP_WIDE_BADGE;
+  if (audience === 'with_user') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+  return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
+}
+
 export function OrganizationTimelinePanel({
   organization,
   mockMode = false,
   active = true,
   events: externalEvents,
   loading: externalLoading,
-  title = 'From your conversations',
-  description,
+  title: titleOverride,
+  description: descriptionOverride,
 }: Props) {
   const controlled = externalEvents !== undefined;
   const [derivedEvents, setDerivedEvents] = useState<OrgDerivedEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('swimlanes');
+
+  const voice = useMemo(() => getOrganizationTimelineVoice(organization), [organization]);
 
   const loadTimeline = useCallback(async () => {
     if (!organization.id || controlled) return;
@@ -157,22 +172,31 @@ export function OrganizationTimelinePanel({
   const laneCounts = useMemo(() => ({
     with: events.filter(e => laneKeyForEvent(e) === 'with').length,
     without: events.filter(e => laneKeyForEvent(e) === 'without').length,
-    group_wide: events.filter(e => laneKeyForEvent(e) === 'group_wide').length,
   }), [events]);
 
-  const subtitle =
-    description ??
-    `Events involving ${organization.name}'s members (including subgroups), split by your involvement and group-wide impact.`;
+  const title = titleOverride ?? voice.title;
+  const subtitle = descriptionOverride ?? voice.description;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="org-timeline-stance" data-stance={voice.stance}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
-            <Clock className="h-4 w-4 text-purple-400" />
-            {title}
+            <Clock className="h-4 w-4 text-purple-400 shrink-0" />
+            <span className="truncate">{title}</span>
           </h3>
-          <p className="text-xs text-white/45 mt-1">{subtitle}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 border-white/15 text-white/65 bg-white/[0.03]"
+              title={voice.stanceHint}
+              data-testid="org-timeline-stance-badge"
+            >
+              {ORGANIZATION_STANCE_LABELS[voice.stance]}
+            </Badge>
+            <span className="text-[11px] text-white/35">{voice.stanceHint}</span>
+          </div>
+          <p className="text-xs text-white/45 mt-1.5">{subtitle}</p>
         </div>
         <div className="flex rounded-lg border border-white/10 overflow-hidden shrink-0">
           <button
@@ -211,18 +235,15 @@ export function OrganizationTimelinePanel({
         ) : sortedEvents.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center gap-2 px-6 text-center">
             <Clock className="h-8 w-8 text-white/20" />
-            <p className="text-white/60 font-medium">No events yet</p>
-            <p className="text-white/30 text-sm max-w-sm">
-              Events show up here as {organization.name}&apos;s members come up in your conversations.
-            </p>
+            <p className="text-white/60 font-medium">{voice.emptyTitle}</p>
+            <p className="text-white/30 text-sm max-w-sm">{voice.emptyHint}</p>
           </div>
         ) : (
           <ol className="relative border-l border-white/10 ml-3 space-y-0">
             {sortedEvents.map((event, idx) => {
               const audience = event.audience ?? (event.user_was_present ? 'with_user' : 'without_user');
               const lane = laneKeyForEvent(event);
-              const dotColor =
-                lane === 'with' ? 'bg-emerald-400' : lane === 'group_wide' ? 'bg-amber-400' : 'bg-violet-400';
+              const dotColor = lane === 'with' ? 'bg-emerald-400' : 'bg-sky-400';
               return (
                 <li key={event.id} className="relative pl-6 pb-6 last:pb-0">
                   <span
@@ -231,8 +252,8 @@ export function OrganizationTimelinePanel({
                   <div className="rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.date)}</time>
-                      <Badge variant="outline" className={`text-[10px] ${AUDIENCE_BADGE[audience]}`}>
-                        {AUDIENCE_LABELS[audience]}
+                      <Badge variant="outline" className={`text-[10px] ${audienceBadgeClass(audience)}`}>
+                        {audienceBadgeLabel(audience, voice)}
                       </Badge>
                       {event.type && (
                         <Badge variant="outline" className="text-[10px] text-white/50">
@@ -261,25 +282,21 @@ export function OrganizationTimelinePanel({
         <EventTimelineSwimlanes
           loading={isLoading}
           lanes={[
-            { key: 'with', label: 'With you', accent: 'emerald', hint: 'You were there' },
-            { key: 'without', label: 'Without you', accent: 'violet', hint: "Member-only — you weren't present" },
-            { key: 'group_wide', label: 'Group-wide', accent: 'amber', hint: 'Affects the whole group or multiple members' },
+            { key: 'with', label: voice.withLabel, accent: 'emerald', hint: voice.withHint },
+            { key: 'without', label: voice.withoutLabel, accent: 'sky', hint: voice.withoutHint },
           ]}
           events={swimEvents}
-          emptyTitle="No events yet"
-          emptyHint={`Events show up here as ${organization.name}'s members come up in your conversations.`}
+          emptyTitle={voice.emptyTitle}
+          emptyHint={voice.emptyHint}
         />
       )}
 
       <div className="flex items-center gap-4 text-xs text-white/40 pt-1 flex-wrap">
         <span>
-          <span className="text-emerald-300 font-medium">{laneCounts.with}</span> with you
+          <span className="text-emerald-300 font-medium">{laneCounts.with}</span> {voice.withCountLabel}
         </span>
         <span>
-          <span className="text-violet-300 font-medium">{laneCounts.without}</span> without you
-        </span>
-        <span>
-          <span className="text-amber-300 font-medium">{laneCounts.group_wide}</span> group-wide
+          <span className="text-sky-300 font-medium">{laneCounts.without}</span> {voice.withoutCountLabel}
         </span>
         {sortedEvents.length > 0 && sortedEvents[0].date && sortedEvents[sortedEvents.length - 1].date && (
           <span className="text-white/30">

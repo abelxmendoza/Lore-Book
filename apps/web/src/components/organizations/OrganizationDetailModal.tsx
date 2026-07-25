@@ -1,11 +1,11 @@
 // =====================================================
 // ORGANIZATION DETAIL MODAL
 // Purpose: Comprehensive organization profile with chatbot editing
-// Features: Info, Members, Stories, Activity, Locations, … — Chat opens main chat with group focus chip
+// Features: Info, Members, Stories, Timeline, Locations, Chat (main-chat handoff), …
 // =====================================================
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, TreePine, AlertTriangle, Search } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, TreePine, AlertTriangle, Search, MessageSquare } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -17,7 +17,7 @@ import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
 import { fetchCharacterList } from '../../api/characterList';
-import { fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
+import { fetchLocationById, fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -52,7 +52,11 @@ import {
 } from './OrganizationLorePanels';
 import { OrganizationModalOverview } from './OrganizationModalOverview';
 import { OrganizationActivityPanel } from './OrganizationActivityPanel';
-import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import {
+  FOCUSED_ENTITY_CHAT_PRESETS,
+  ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE,
+  organizationRosterChatPrompt,
+} from '../chat/focusedEntityChatPresets';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -63,6 +67,13 @@ import {
   getMockOrganizationRelationships,
   enrichOrganizationForDemo,
 } from '../../mocks/modalDemoData';
+import {
+  getDemoOrganizationLocationLinks,
+  linkDemoLocationOrganization,
+  unlinkDemoLocationOrganization,
+} from '../../mocks/locationOrganizationDemoData';
+import { mockDataService } from '../../services/mockDataService';
+import { locationAliasesForDisplay } from '../../lib/locationMergeMetadata';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
@@ -216,10 +227,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [editingIdentity, setEditingIdentity] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaved, setIdentitySaved] = useState<string | null>(null);
+  const [aliasInputError, setAliasInputError] = useState<string | null>(null);
 
-  /** Close modal and open main chat focused on this group (composer chip + context). */
+  /** Close modal and open main chat with this group focused. */
   const openOrgMainChat = useCallback(
-    (prompt?: string) => {
+    (prompt?: string, knowledgeScope?: string) => {
       const preset = FOCUSED_ENTITY_CHAT_PRESETS.organizations;
       onClose();
       openChatWithFocus({
@@ -228,7 +240,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         entityType: 'organization',
         sourceSurface: 'organizations',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
-        knowledgeScope: preset.knowledgeScope,
+        knowledgeScope: knowledgeScope ?? preset.knowledgeScope,
         initialPrompt: prompt ?? preset.existingPrompt(editedOrg.name),
         arrivedAt: Date.now(),
       });
@@ -236,17 +248,17 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     [editedOrg.id, editedOrg.name, onClose],
   );
 
-  const setActiveTab = useCallback(
-    (tab: TabKey) => {
-      const next = normalizeOrgModalTab(tab);
-      if (next === 'chat') {
-        openOrgMainChat();
-        return;
-      }
-      setActiveTabState(next);
-    },
-    [openOrgMainChat],
-  );
+  /** Roster / affiliation session in main chat (creates people + solidifies membership). */
+  const openOrgRosterChat = useCallback(() => {
+    openOrgMainChat(
+      organizationRosterChatPrompt(editedOrg.name),
+      ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE,
+    );
+  }, [editedOrg.name, openOrgMainChat]);
+
+  const setActiveTab = useCallback((tab: TabKey) => {
+    setActiveTabState(normalizeOrgModalTab(tab));
+  }, []);
 
   const [updateOrganization] = useUpdateOrganizationMutation();
   const [deleteOrganization] = useDeleteOrganizationMutation();
@@ -300,15 +312,35 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [newStory, setNewStory] = useState({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
   const [storyLoading, setStoryLoading] = useState(false);
 
-  // Events state (recorded on the Activity tab)
+  // Events state (recorded milestones on the Timeline tab)
   const [events, setEvents] = useState<OrganizationEvent[]>(resolvedOrganization.events || []);
   const [eventLoading, setEventLoading] = useState(false);
 
   // Locations state
-  const [locations, setLocations] = useState<OrganizationLocation[]>(resolvedOrganization.locations || []);
+  const [locations, setLocations] = useState<OrganizationLocation[]>(() => {
+    const demoLinks = isMockDataEnabled
+      ? getDemoOrganizationLocationLinks(resolvedOrganization.id)
+      : [];
+    const linkedIds = new Set(demoLinks.map((link) => link.location_id));
+    return [
+      ...demoLinks,
+      ...(resolvedOrganization.locations || []).filter(
+        (link) => !link.location_id || !linkedIds.has(link.location_id),
+      ),
+    ];
+  });
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocation, setNewLocation] = useState({ location_name: '' });
   const [locationLoading, setLocationLoading] = useState(false);
+  const [locationBookOptions, setLocationBookOptions] = useState<
+    Array<{ id: string; name: string; aliases?: string[] }>
+  >([]);
+  const [locationBookLoading, setLocationBookLoading] = useState(false);
+  const [selectedBookLocationId, setSelectedBookLocationId] = useState('');
+  const [locationBookSearch, setLocationBookSearch] = useState('');
+  const [showNameOnlyLocationAdd, setShowNameOnlyLocationAdd] = useState(false);
+  const [locationAddError, setLocationAddError] = useState<string | null>(null);
+  const [locationAddSuccess, setLocationAddSuccess] = useState<string | null>(null);
 
   // Conversation-derived events & locations (auto-extracted from chat threads)
   const [derivedEvents, setDerivedEvents] = useState<DerivedEvent[]>([]);
@@ -358,7 +390,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setMembers(resolvedOrganization.members || []);
     setStories(resolvedOrganization.stories || []);
     setEvents(resolvedOrganization.events || []);
-    setLocations(resolvedOrganization.locations || []);
+    const demoLinks = isMockDataEnabled
+      ? getDemoOrganizationLocationLinks(resolvedOrganization.id)
+      : [];
+    const linkedIds = new Set(demoLinks.map((link) => link.location_id));
+    setLocations([
+      ...demoLinks,
+      ...(resolvedOrganization.locations || []).filter(
+        (link) => !link.location_id || !linkedIds.has(link.location_id),
+      ),
+    ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id-scoped reset only
   }, [organization.id]);
 
@@ -391,7 +432,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
   useEffect(() => {
     if (
-      (activeTab !== 'activity' &&
+      (activeTab !== 'timeline' &&
         activeTab !== 'locations' &&
         activeTab !== 'relationships' &&
         activeTab !== 'info') ||
@@ -901,39 +942,107 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  /**
+   * Progressive Character Book load (same pattern as Places):
+   * 1) fast book-index (canonical `characters` rows)
+   * 2) full Character Book BFF with a long timeout
+   * 3) legacy `/api/characters` last resort
+   * Never wipe a successful partial list on a later failure.
+   */
   const loadCharacterBookOptions = async () => {
     setCharacterBookLoading(true);
     setMemberAddError(null);
-    try {
-      type BookChar = { id: string; name?: string; alias?: string[]; aliases?: string[] };
-      let list: BookChar[] = [];
-      try {
-        list = await fetchCharacterList<BookChar>();
-      } catch {
-        const res = await fetchJson<{ characters?: BookChar[] } | BookChar[]>('/api/characters');
-        list = Array.isArray(res)
-          ? res
-          : Array.isArray((res as { characters?: BookChar[] }).characters)
-            ? ((res as { characters: BookChar[] }).characters ?? [])
-            : [];
+    type BookChar = { id?: string; name?: string; alias?: string[]; aliases?: string[]; type?: string };
+    let loaded: Array<{ id: string; name: string; aliases: string[] }> = [];
+    let failedAll = false;
+
+    const normalize = (rows: BookChar[]) => {
+      const seen = new Set(loaded.map((c) => c.id));
+      const next = [...loaded];
+      for (const c of rows) {
+        if (!c?.id || !c?.name || String(c.id).startsWith('temp-')) continue;
+        const id = String(c.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        next.push({
+          id,
+          name: String(c.name),
+          aliases: Array.isArray(c.alias)
+            ? c.alias.map(String)
+            : Array.isArray(c.aliases)
+              ? c.aliases.map(String)
+              : [],
+        });
       }
-      setCharacterBookOptions(
-        list
-          .filter((c) => c?.id && c?.name && !String(c.id).startsWith('temp-'))
-          .map((c) => ({
+      return next.sort((a, b) => a.name.localeCompare(b.name));
+    };
+
+    const commit = (rows: BookChar[]) => {
+      loaded = normalize(rows);
+      setCharacterBookOptions(loaded);
+    };
+
+    try {
+      if (isMockDataEnabled) {
+        commit(
+          mockDataService.get.characters().map((c) => ({
             id: c.id,
-            name: String(c.name),
-            aliases: Array.isArray(c.alias)
-              ? c.alias.map(String)
-              : Array.isArray(c.aliases)
-                ? c.aliases.map(String)
-                : [],
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
-    } catch {
-      setMemberAddError('Could not load your Character Book.');
-      setCharacterBookOptions([]);
+            name: c.name,
+            alias: Array.isArray(c.alias) ? c.alias : [],
+          })),
+        );
+        return;
+      }
+
+      try {
+        const index = await fetchJson<{
+          entities?: Array<{ id: string; name: string; aliases?: string[]; type?: string }>;
+        }>('/api/entities/book-index?types=character&limit=100');
+        commit(
+          (index.entities ?? [])
+            .filter((e) => !e.type || e.type === 'character')
+            .map((e) => ({
+              id: e.id,
+              name: e.name,
+              aliases: e.aliases,
+            })),
+        );
+        // Show index hits immediately while the heavier book payload loads.
+        if (loaded.length > 0) setCharacterBookLoading(false);
+      } catch (indexError) {
+        console.warn('Character book-index unavailable', indexError);
+      }
+
+      try {
+        const list = await fetchCharacterList<BookChar>({ timeoutMs: 90_000 });
+        commit(list);
+      } catch (booksError) {
+        console.warn('Character Book BFF unavailable', booksError);
+        if (loaded.length === 0) {
+          try {
+            const legacy = await fetchJson<{ characters?: BookChar[] } | BookChar[]>(
+              '/api/characters',
+              undefined,
+              { timeoutMs: 90_000 },
+            );
+            const rows = Array.isArray(legacy)
+              ? legacy
+              : Array.isArray((legacy as { characters?: BookChar[] }).characters)
+                ? ((legacy as { characters: BookChar[] }).characters ?? [])
+                : [];
+            commit(rows);
+          } catch (legacyError) {
+            console.error('Failed to load Character Book options', legacyError);
+            failedAll = true;
+          }
+        }
+      }
+
+      if (failedAll && loaded.length === 0) {
+        setMemberAddError('Could not load your Character Book. Try again in a moment.');
+      } else {
+        setCharacterBookOptions(loaded);
+      }
     } finally {
       setCharacterBookLoading(false);
     }
@@ -967,7 +1076,8 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       );
       if (alreadyByName) return false;
       if (!term) return true;
-      return c.name.toLowerCase().includes(term);
+      const hay = [c.name, ...(c.aliases ?? [])].join(' ').toLowerCase();
+      return hay.includes(term);
     });
   }, [characterBookOptions, characterBookSearch, members, rosterCharacterIds]);
 
@@ -1249,21 +1359,273 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
-  const handleAddLocation = async () => {
-    if (!newLocation.location_name.trim()) return;
-    setLocationLoading(true);
+  const normalizeLocationOptions = (
+    rows: Array<{
+      id?: string;
+      name?: string;
+      aliases?: string[];
+      metadata?: Record<string, unknown> | null;
+    }>,
+  ) => {
+    const seen = new Set<string>();
+    const out: Array<{ id: string; name: string; aliases: string[] }> = [];
+    for (const loc of rows) {
+      if (!loc?.id || !loc?.name || String(loc.id).startsWith('temp-')) continue;
+      const id = String(loc.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({
+        id,
+        name: String(loc.name),
+        aliases: [
+          ...(Array.isArray(loc.aliases) ? loc.aliases.map(String) : []),
+          ...locationAliasesForDisplay(loc.metadata),
+        ],
+      });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  /**
+   * Progressive Places Book load:
+   * 1) fast book-index (canonical `locations` rows)
+   * 2) full Places Book BFF (includes people_places-backed cards) with a long timeout
+   * Never wipe a successful partial list on a later failure / search miss.
+   */
+  const loadLocationBookOptions = async () => {
+    setLocationBookLoading(true);
+    setLocationAddError(null);
+    let loaded: Array<{ id: string; name: string; aliases: string[] }> = [];
+    let failedAll = false;
+
+    const commit = (
+      next: Array<{
+        id?: string;
+        name?: string;
+        aliases?: string[];
+        metadata?: Record<string, unknown> | null;
+      }>,
+    ) => {
+      loaded = normalizeLocationOptions([...loaded, ...next]);
+      setLocationBookOptions(loaded);
+    };
+
     try {
-      const result = await addOrganizationLocation({
-        organizationId: organization.id,
-        location: newLocation,
-      }).unwrap() as { success: boolean; location: OrganizationLocation };
-      if (result.success) {
-        setLocations(prev => [result.location, ...prev]);
+      if (isMockDataEnabled) {
+        commit(
+          mockDataService.get.locations().map((loc) => ({
+            id: loc.id,
+            name: loc.name,
+            metadata: loc.metadata ?? null,
+          })),
+        );
+        return;
+      }
+
+      try {
+        const index = await fetchJson<{
+          entities?: Array<{ id: string; name: string; aliases?: string[]; type?: string }>;
+        }>('/api/entities/book-index?types=location&limit=100');
+        commit(
+          (index.entities ?? [])
+            .filter((e) => !e.type || e.type === 'location')
+            .map((e) => ({
+              id: e.id,
+              name: e.name,
+              aliases: e.aliases,
+            })),
+        );
+        // Show index hits immediately while the heavier book payload loads.
+        if (loaded.length > 0) setLocationBookLoading(false);
+      } catch (indexError) {
+        console.warn('Places book-index unavailable', indexError);
+      }
+
+      try {
+        const books = await fetchJson<{
+          success?: boolean;
+          data?: { locations?: Array<{ id?: string; name?: string; metadata?: Record<string, unknown> | null }> };
+          locations?: Array<{ id?: string; name?: string; metadata?: Record<string, unknown> | null }>;
+        }>('/api/books/locations', undefined, { timeoutMs: 90_000 });
+        const raw = books.data?.locations ?? books.locations ?? [];
+        commit(raw);
+      } catch (booksError) {
+        console.warn('Places Book BFF unavailable', booksError);
+        if (loaded.length === 0) {
+          // Last resort: legacy list (same heavy path Places Book historically used).
+          try {
+            const legacy = await fetchJson<{
+              locations?: Array<{ id?: string; name?: string; metadata?: Record<string, unknown> | null }>;
+            }>('/api/locations', undefined, { timeoutMs: 90_000 });
+            commit(legacy.locations ?? []);
+          } catch (legacyError) {
+            console.error('Failed to load Places Book options', legacyError);
+            failedAll = true;
+          }
+        }
+      }
+
+      if (failedAll && loaded.length === 0) {
+        setLocationAddError('Could not load your Places Book. Try again in a moment.');
+      } else {
+        setLocationBookOptions(loaded);
+      }
+    } finally {
+      setLocationBookLoading(false);
+    }
+  };
+
+  const openAddLocationPanel = async () => {
+    const next = !showAddLocation;
+    setShowAddLocation(next);
+    setLocationAddError(null);
+    setLocationAddSuccess(null);
+    setShowNameOnlyLocationAdd(false);
+    setSelectedBookLocationId('');
+    setLocationBookSearch('');
+    setNewLocation({ location_name: '' });
+    if (next) {
+      await loadLocationBookOptions();
+    }
+  };
+
+  const rosterLocationIds = useMemo(
+    () => new Set(locations.map((l) => l.location_id).filter((id): id is string => Boolean(id))),
+    [locations],
+  );
+
+  const availableBookLocations = useMemo(() => {
+    const term = locationBookSearch.trim().toLowerCase();
+    return locationBookOptions.filter((loc) => {
+      if (rosterLocationIds.has(loc.id)) return false;
+      const alreadyByName = locations.some(
+        (l) => !l.location_id && l.location_name.toLowerCase() === loc.name.toLowerCase(),
+      );
+      if (alreadyByName) return false;
+      if (!term) return true;
+      const hay = [loc.name, ...(loc.aliases ?? [])].join(' ').toLowerCase();
+      return hay.includes(term);
+    });
+  }, [locationBookOptions, locationBookSearch, locations, rosterLocationIds]);
+
+  /** Add from Places Book — posts location_id for an official durable link. */
+  const handleAddExistingLocation = async () => {
+    if (!selectedBookLocationId || locationLoading) return;
+    const chosen = locationBookOptions.find((loc) => loc.id === selectedBookLocationId);
+    if (!chosen) {
+      setLocationAddError('Choose a place from your Places Book.');
+      return;
+    }
+    if (isEphemeralEntityId(organization.id) && !isMockDataEnabled) {
+      setLocationAddError('Save this group first before linking places.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationAddError(null);
+    try {
+      if (isMockDataEnabled) {
+        const saved = linkDemoLocationOrganization(chosen, organization.id);
+        setLocations((prev) => [
+          saved,
+          ...prev.filter(
+            (link) =>
+              link.id !== saved.id &&
+              link.location_id !== saved.location_id,
+          ),
+        ]);
+        setSelectedBookLocationId('');
+        setLocationBookSearch('');
         setNewLocation({ location_name: '' });
         setShowAddLocation(false);
+        setLocationAddSuccess(`${chosen.name} linked to this group from your Places Book.`);
+        return;
       }
+
+      const result = (await addOrganizationLocation({
+        organizationId: organization.id,
+        location: {
+          location_id: chosen.id,
+          location_name: chosen.name,
+        },
+      }).unwrap()) as { success?: boolean; location?: OrganizationLocation };
+
+      const saved = result?.location;
+      if (saved?.id) {
+        setLocations((prev) => {
+          const withoutDup = prev.filter(
+            (l) =>
+              l.id !== saved.id &&
+              l.location_id !== saved.location_id &&
+              l.location_name.toLowerCase() !== saved.location_name.toLowerCase(),
+          );
+          return [saved, ...withoutDup];
+        });
+      } else {
+        setLocations((prev) => [
+          {
+            id: `org-loc-${Date.now()}`,
+            location_id: chosen.id,
+            location_name: chosen.name,
+            visit_count: 1,
+          },
+          ...prev,
+        ]);
+      }
+      setSelectedBookLocationId('');
+      setLocationBookSearch('');
+      setNewLocation({ location_name: '' });
+      setShowAddLocation(false);
+      setLocationAddSuccess(`${chosen.name} linked to this group from your Places Book.`);
+    } catch (error) {
+      console.error('Failed to add location from Places Book:', error);
+      setLocationAddError(
+        error instanceof Error ? error.message : 'Could not link this place to the group.',
+      );
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  /** Name-only fallback when the place is not in the Places Book yet. */
+  const handleAddLocation = async () => {
+    if (!newLocation.location_name.trim() || locationLoading) return;
+    if (isEphemeralEntityId(organization.id)) {
+      setLocationAddError('Save this group first before adding places.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationAddError(null);
+    try {
+      // Prefer an exact Places Book match when the typed name already exists.
+      const exact = locationBookOptions.find(
+        (loc) => loc.name.toLowerCase() === newLocation.location_name.trim().toLowerCase(),
+      );
+      const result = (await addOrganizationLocation({
+        organizationId: organization.id,
+        location: exact
+          ? { location_id: exact.id, location_name: exact.name }
+          : { location_name: newLocation.location_name.trim() },
+      }).unwrap()) as { success?: boolean; location?: OrganizationLocation };
+
+      const saved = result?.location;
+      if (saved?.id) {
+        setLocations((prev) => [saved, ...prev.filter((l) => l.id !== saved.id)]);
+      }
+      setNewLocation({ location_name: '' });
+      setShowAddLocation(false);
+      setShowNameOnlyLocationAdd(false);
+      setLocationAddSuccess(
+        exact
+          ? `${exact.name} linked to this group from your Places Book.`
+          : 'Place added. Link it from Places Book later for a durable connection.',
+      );
     } catch (error) {
       console.error('Failed to add location:', error);
+      setLocationAddError(
+        error instanceof Error ? error.message : 'Could not add this place.',
+      );
     } finally {
       setLocationLoading(false);
     }
@@ -1271,10 +1633,25 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
   const handleRemoveLocation = async (locationId: string) => {
     setLocations(prev => prev.filter(l => l.id !== locationId));
+    if (isMockDataEnabled) {
+      unlinkDemoLocationOrganization(locationId);
+      return;
+    }
     try {
       await removeOrganizationLocation({ organizationId: organization.id, itemId: locationId }).unwrap();
     } catch (error) {
       console.error('Failed to remove location:', error);
+    }
+  };
+
+  const openLinkedLocation = async (loc: OrganizationLocation) => {
+    if (!loc.location_id) return;
+    try {
+      const full = await fetchLocationById(loc.location_id);
+      setSelectedLocation(full);
+    } catch (error) {
+      console.error('Failed to open linked place:', error);
+      setLocationAddError('Could not open that place from Places Book.');
     }
   };
 
@@ -1322,7 +1699,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
               Boolean(editedOrg.metadata?.group_candidate_id)) &&
             !isMockDataEnabled
           }
-          onOpenChat={() => openOrgMainChat()}
+          onOpenChat={() => setActiveTab('chat')}
         />
 
         <OrganizationModalNav
@@ -1438,6 +1815,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                         data-testid="org-alias-add-input"
                         disabled={saving || (isEphemeralEntityId(organization.id) && !isMockDataEnabled)}
                         className="w-28 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-xs text-white placeholder:text-white/25 focus:border-primary/60 focus:outline-none disabled:opacity-40"
+                        onChange={() => setAliasInputError(null)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -1445,19 +1823,26 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                             const value = input.value.trim();
                             if (!value) return;
                             const existing = editedOrg.aliases ?? [];
-                            if (
-                              existing.some((a) => a.toLowerCase() === value.toLowerCase()) ||
-                              value.toLowerCase() === editedOrg.name.trim().toLowerCase()
-                            ) {
-                              input.value = '';
+                            if (value.toLowerCase() === editedOrg.name.trim().toLowerCase()) {
+                              setAliasInputError(`"${value}" is already this group's name — try a different alias.`);
                               return;
                             }
+                            if (existing.some((a) => a.toLowerCase() === value.toLowerCase())) {
+                              setAliasInputError(`"${value}" is already an alias for this group.`);
+                              return;
+                            }
+                            setAliasInputError(null);
                             input.value = '';
                             void saveAliases([...existing, value]);
                           }
                         }}
                       />
                     </div>
+                    {aliasInputError && (
+                      <p className="mt-1.5 text-[10px] text-red-400" data-testid="org-alias-add-error">
+                        {aliasInputError}
+                      </p>
+                    )}
                     <p className="mt-1.5 text-[10px] text-white/30">
                       Press Enter to add. Aliases help chat and detection recognize other names for this group.
                     </p>
@@ -1616,13 +2001,34 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 onSelectOrganization={onSelectOrganization}
                 onTabChange={setActiveTab}
                 onMemberClick={(member) => void openMemberCharacter(member)}
-                onOpenChat={(prompt) => {
-                  openOrgMainChat(prompt);
-                }}
+                onOpenChat={(prompt) => openOrgMainChat(prompt)}
               />
             </TabsContent>
 
-            {/* Chat tab is intercepted in setActiveTab → openOrgMainChat (main chat + focus chip) */}
+            {/* Chat Tab — hand off to main chat (no in-modal composer) */}
+            <TabsContent value="chat" className={TAB_PANEL}>
+              <div
+                className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-8 text-center space-y-4"
+                data-testid="org-chat-panel"
+              >
+                <MessageSquare className="h-10 w-10 mx-auto text-violet-300/70" />
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-semibold text-white">Chat about {editedOrg.name}</h3>
+                  <p className="text-sm text-white/50 max-w-md mx-auto">
+                    Continue in main chat with this group focused — full thread, memory, and composer live there.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="gap-2 bg-violet-500/25 border border-violet-400/35 text-violet-100 hover:bg-violet-500/35"
+                  onClick={() => openOrgMainChat()}
+                  data-testid="org-open-main-chat"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Open main chat with focus
+                </Button>
+              </div>
+            </TabsContent>
 
             {/* Members Tab */}
             <TabsContent value="members" className={TAB_PANEL}>
@@ -1653,9 +2059,26 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
               {showAddMember && (
                 <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
+                    <div className="rounded-xl border border-violet-400/20 bg-violet-500/[0.08] px-3 py-2.5 space-y-2">
+                      <p className="text-[12px] text-violet-100/80 leading-relaxed">
+                        Adding a whole roster? Continue in main chat — create people who aren’t in Character Book yet,
+                        solidify who is (and isn’t) in {editedOrg.name}, and fill in group lore. LoreBook remembers what
+                        you confirm and your corrections.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full h-9 gap-2 bg-violet-500/25 border border-violet-400/35 text-violet-100 hover:bg-violet-500/35"
+                        onClick={() => openOrgRosterChat()}
+                        data-testid="org-fill-roster-in-chat"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        Fill roster in chat
+                      </Button>
+                    </div>
                     <p className="text-[12px] text-white/55 leading-relaxed">
-                      Type a name from your Character Book, pick them from the list, then add.
-                      LoreBook saves an official membership link (person ↔ group) in your knowledge base.
+                      Or pick someone already in your Character Book — LoreBook saves an official membership link
+                      (person ↔ group) in your knowledge base.
                     </p>
                     <SearchWithAutocomplete
                       value={characterBookSearch}
@@ -1799,17 +2222,31 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                     </div>
                     <p className="text-sm font-medium text-white/75">No people yet</p>
                     <p className="mt-1 text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
-                      Add someone from your Character Book to build this group’s roster.
+                      Link people from Character Book, or fill the whole roster in chat — including people who don’t
+                      exist in LoreBook yet.
                     </p>
                     {!showAddMember && (
-                      <Button
-                        size="sm"
-                        className="mt-4 h-9"
-                        onClick={() => void openAddMemberPanel()}
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1.5" />
-                        Add person
-                      </Button>
+                      <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <Button
+                          size="sm"
+                          className="h-9"
+                          onClick={() => void openAddMemberPanel()}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1.5" />
+                          Add person
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-9 gap-1.5 border-violet-400/30 text-violet-100 hover:bg-violet-500/15"
+                          onClick={() => openOrgRosterChat()}
+                          data-testid="org-fill-roster-in-chat-empty"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Fill roster in chat
+                        </Button>
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -1973,12 +2410,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
               )}
             </TabsContent>
 
-            {/* Activity Tab — conversation timeline + recorded events */}
-            <TabsContent value="activity" className={TAB_PANEL}>
+            {/* Timeline Tab — with you / without you + recorded milestones */}
+            <TabsContent value="timeline" className={TAB_PANEL}>
               <OrganizationActivityPanel
                 organization={resolvedOrganization}
                 mockMode={isMockDataEnabled}
-                active={activeTab === 'activity'}
+                active={activeTab === 'timeline'}
                 derivedEvents={derivedEvents}
                 derivedLoading={derivedLoading}
                 recordedEvents={events}
@@ -1991,66 +2428,209 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
             {/* Locations Tab */}
             <TabsContent value="locations" className={TAB_PANEL}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Locations</h3>
-                <Button variant="outline" size="sm" onClick={() => setShowAddLocation(v => !v)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Location
-                </Button>
-              </div>
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-teal-500/[0.07] via-black/40 to-black/50 overflow-hidden">
+                <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3.5 py-3 sm:px-4">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-teal-300 shrink-0" />
+                      Places
+                      <span className="rounded-full border border-white/12 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium tabular-nums text-white/55">
+                        {locations.length}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-white/40 mt-0.5 truncate">
+                      Linked places for {editedOrg.name}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="shrink-0 h-9 px-3 text-xs bg-teal-500/20 border border-teal-400/30 text-teal-100 hover:bg-teal-500/30"
+                    onClick={() => void openAddLocationPanel()}
+                    data-testid="org-add-location-toggle"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    {showAddLocation ? 'Close' : 'Add place'}
+                  </Button>
+                </div>
 
-              {showAddLocation && (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 space-y-3">
-                    <Input
-                      placeholder="Location name *"
-                      value={newLocation.location_name}
-                      onChange={e => setNewLocation(v => ({ ...v, location_name: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
-                      onKeyDown={e => e.key === 'Enter' && void handleAddLocation()}
+                {showAddLocation && (
+                  <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
+                    <p className="text-[12px] text-white/55 leading-relaxed">
+                      Pick a place from your Places Book to link it to this group.
+                      LoreBook saves an official place ↔ group connection.
+                    </p>
+                    <SearchWithAutocomplete
+                      value={locationBookSearch}
+                      onChange={(next) => {
+                        setLocationBookSearch(next);
+                        if (selectedBookLocationId) {
+                          const selected = locationBookOptions.find((l) => l.id === selectedBookLocationId);
+                          if (!selected || selected.name.toLowerCase() !== next.trim().toLowerCase()) {
+                            setSelectedBookLocationId('');
+                          }
+                        }
+                      }}
+                      onSelectItem={(item) => {
+                        setSelectedBookLocationId(item.id);
+                        setLocationBookSearch(item.name);
+                      }}
+                      placeholder={
+                        locationBookLoading
+                          ? 'Loading Places Book…'
+                          : 'Type a place name to find it…'
+                      }
+                      items={availableBookLocations}
+                      getSearchableText={(loc) => [loc.name, ...(loc.aliases ?? [])].join(' ')}
+                      getDisplayLabel={(loc) => loc.name}
+                      getItemKey={(loc) => loc.id}
+                      minCharsToSuggest={0}
+                      maxSuggestions={12}
+                      emptyHint={
+                        locationBookLoading
+                          ? 'Loading…'
+                          : locationBookOptions.length === 0
+                            ? 'No places in Places Book yet'
+                            : 'No matching places'
+                      }
+                      disabled={locationBookLoading || locationLoading}
+                      data-testid="org-add-location-place-search"
+                      inputProps={{ 'aria-label': 'Search Places Book locations' }}
+                      inputClassName="h-10 bg-black/55 border-white/12 text-white rounded-xl"
                     />
-                    <div className="flex gap-2">
-                      <Button onClick={() => void handleAddLocation()} disabled={locationLoading} className="flex-1">
-                        {locationLoading ? 'Saving...' : 'Save Location'}
-                      </Button>
-                      <Button variant="outline" onClick={() => setShowAddLocation(false)}>Cancel</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                    {selectedBookLocationId && (
+                      <div
+                        className="flex items-center gap-2 rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2"
+                        data-testid="org-add-location-selected"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-teal-300 shrink-0" />
+                        <span className="text-sm text-teal-100 truncate">
+                          {locationBookOptions.find((l) => l.id === selectedBookLocationId)?.name ||
+                            locationBookSearch}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] border-teal-400/30 text-teal-200">
+                          Selected
+                        </Badge>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-10 px-4 text-sm w-full sm:w-auto"
+                      disabled={!selectedBookLocationId || locationLoading}
+                      onClick={() => void handleAddExistingLocation()}
+                      data-testid="org-add-location-submit"
+                    >
+                      {locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add place'}
+                    </Button>
 
-              {locations.length === 0 && !showAddLocation ? (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 text-center text-white/60">
-                    No locations yet. Add one above.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {locations.map((location) => (
-                    <Card key={location.id} className="bg-black/40 border-border/50">
-                      <CardContent className="pt-4 pb-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-semibold text-white">{location.location_name}</div>
-                            <div className="text-sm text-white/60 mt-1">
-                              {location.visit_count} {location.visit_count === 1 ? 'visit' : 'visits'}
-                            </div>
-                            {location.last_visited && (
-                              <div className="text-xs text-white/40 mt-1">
-                                Last: {formatDate(location.last_visited)}
-                              </div>
-                            )}
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={() => void handleRemoveLocation(location.id)}>
-                            <Trash2 className="h-4 w-4 text-red-400" />
+                    <button
+                      type="button"
+                      className="text-[11px] text-white/40 hover:text-white/70 underline-offset-2 hover:underline"
+                      onClick={() => setShowNameOnlyLocationAdd((v) => !v)}
+                    >
+                      {showNameOnlyLocationAdd ? 'Hide name-only add' : 'Place not listed? Add by name'}
+                    </button>
+
+                    {showNameOnlyLocationAdd && (
+                      <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-3">
+                        <p className="text-[10px] text-white/40">
+                          If that exact name already exists in Places Book, LoreBook auto-links it.
+                          Otherwise the row stays unlinked until you create the place card.
+                        </p>
+                        <Input
+                          placeholder="Place name"
+                          value={newLocation.location_name}
+                          onChange={(e) =>
+                            setNewLocation((prev) => ({ ...prev, location_name: e.target.value }))
+                          }
+                          className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
+                          onKeyDown={(e) => e.key === 'Enter' && void handleAddLocation()}
+                          data-testid="org-add-location-name-input"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="h-9"
+                            disabled={!newLocation.location_name.trim() || locationLoading}
+                            onClick={() => void handleAddLocation()}
+                            data-testid="org-add-location-name-submit"
+                          >
+                            {locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add by name'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9"
+                            onClick={() => setShowNameOnlyLocationAdd(false)}
+                          >
+                            Cancel
                           </Button>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                      </div>
+                    )}
+
+                    {locationAddError && (
+                      <p className="text-xs text-red-300" data-testid="org-add-location-error">
+                        {locationAddError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {locationAddSuccess && !showAddLocation && (
+                  <p className="px-3.5 sm:px-4 py-2 text-xs text-teal-200/90" data-testid="org-add-location-success">
+                    {locationAddSuccess}
+                  </p>
+                )}
+
+                {locations.length === 0 && !showAddLocation ? (
+                  <div className="px-3.5 sm:px-4 py-8 text-center text-white/50 text-sm">
+                    No places linked yet. Add one from your Places Book.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/6">
+                    {locations.map((location) => (
+                      <div
+                        key={location.id}
+                        className="flex items-center justify-between gap-3 px-3.5 sm:px-4 py-3"
+                        data-testid={`org-location-row-${location.id}`}
+                      >
+                        <button
+                          type="button"
+                          className="min-w-0 text-left flex-1 disabled:cursor-default"
+                          disabled={!location.location_id}
+                          onClick={() => void openLinkedLocation(location)}
+                          title={location.location_id ? 'Open in Places Book' : undefined}
+                        >
+                          <div className="font-semibold text-white flex items-center gap-2 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 text-teal-300/80 shrink-0" />
+                            <span className="truncate">{location.location_name}</span>
+                            {location.location_id && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-teal-400/25 text-teal-200/90 shrink-0"
+                              >
+                                Linked
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-white/45 mt-1 ml-5">
+                            {location.visit_count} {location.visit_count === 1 ? 'visit' : 'visits'}
+                            {location.last_visited ? ` · Last ${formatDate(location.last_visited)}` : ''}
+                          </div>
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Remove ${location.location_name}`}
+                          onClick={() => void handleRemoveLocation(location.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-400" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Conversation-derived locations */}
               <div className="pt-2">

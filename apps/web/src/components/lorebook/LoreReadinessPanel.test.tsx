@@ -218,7 +218,7 @@ describe('LoreReadinessPanel', () => {
     vi.clearAllMocks();
   });
 
-  it('calls onGenerateTopic with organization focus when Career Compile is clicked', () => {
+  it('opens the LoreBook tier picker and calls onGenerateTopic with organization focus + chosen form', async () => {
     render(
       <LoreReadinessPanel
         readiness={baseReadiness()}
@@ -227,11 +227,17 @@ describe('LoreReadinessPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByRole('button', { name: /^Compile$/i })[0]);
+    const menu = screen.getByTestId('lore-topic-tier-menu-professional');
+    fireEvent.click(menu.querySelector('button')!);
+
+    const bookSelect = await screen.findByTestId('lore-topic-tier-menu-professional-modal-select-book');
+    fireEvent.click(bookSelect);
+
     expect(onGenerateTopic).toHaveBeenCalledWith(
       'professional',
       expect.objectContaining({
         organizationId: '44444444-4444-4444-8444-444444444444',
+        form: 'book',
       }),
     );
   });
@@ -293,7 +299,7 @@ describe('LoreReadinessPanel', () => {
     expect(screen.getAllByText(/Marcus/).length).toBeGreaterThan(0);
   });
 
-  it('compiles person topic with selected characterId when ready', () => {
+  it('compiles person topic with selected characterId and chosen form when ready', async () => {
     const readiness = baseReadiness();
     readiness.topics = readiness.topics.map((t) =>
       t.topic.id === 'character_book'
@@ -315,11 +321,15 @@ describe('LoreReadinessPanel', () => {
       />,
     );
 
-    const personCard = screen.getByTestId('lore-topic-card-character_book');
-    fireEvent.click(personCard.querySelector('button')!);
+    const menu = screen.getByTestId('lore-topic-tier-menu-character_book');
+    fireEvent.click(menu.querySelector('button')!);
+
+    const bookSelect = await screen.findByTestId('lore-topic-tier-menu-character_book-modal-select-book');
+    fireEvent.click(bookSelect);
+
     expect(onGenerateTopic).toHaveBeenCalledWith(
       'character_book',
-      expect.objectContaining({ characterId }),
+      expect.objectContaining({ characterId, form: 'book' }),
     );
   });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
-import { OrganizationsBook } from './OrganizationsBook';
+import { buildDemoOrganization, OrganizationsBook } from './OrganizationsBook';
 import { MockDataProvider } from '../../contexts/MockDataContext';
 import { makeStore } from '../../store';
 
@@ -129,6 +129,27 @@ describe('OrganizationsBook', () => {
 
     const { container } = wrap(<OrganizationsBook />);
     expect(container.innerHTML.length).toBeGreaterThan(0);
+  });
+
+  it('builds new Demo Mode groups as searchable local organizations', () => {
+    const organization = buildDemoOrganization(
+      {
+        name: 'Vanguard Robotics Circle',
+        groupType: 'crew',
+        subcategory: 'project_team',
+        description: 'A synthetic demo collaboration group.',
+      },
+      'mock-created-vanguard',
+    );
+
+    expect(organization).toMatchObject({
+      id: 'mock-created-vanguard',
+      name: 'Vanguard Robotics Circle',
+      group_type: 'crew',
+      user_relationship: 'member',
+      status: 'active',
+      metadata: { subcategory: 'project_team' },
+    });
   });
 
   it('shows loading state initially', async () => {
@@ -307,7 +328,7 @@ describe('OrganizationsBook', () => {
     wrap(<OrganizationsBook />);
     await waitFor(() => {
       // Wait for component to finish loading
-      expect(screen.queryByRole('button', { name: /add|create|new/i })).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });

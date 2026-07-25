@@ -2,18 +2,18 @@
  * BFF aggregate loaders for Book surfaces — one round-trip per page load.
  * Delegates to existing services; does not duplicate business logic.
  */
+import { normalizeNameKey } from '../../utils/nameNormalization';
+import { evaluateWrongDomain } from '../characters/audit/wrongDomainCharacterGuard';
+import { familyTreeService } from '../familyTreeService';
 import { familyGraphService } from '../kinship/familyGraphService';
 import { familySurnameSuggestionService } from '../kinship/familySurnameSuggestionService';
 import { householdService } from '../kinship/householdService';
-import { familyTreeService } from '../familyTreeService';
 import { locationService } from '../locationService';
-import { projectService } from '../projectService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
+import { projectService } from '../projectService';
 import { skillService } from '../skills/skillService';
 import { skillSuggestionService } from '../skills/skillSuggestionService';
 import { supabaseAdmin } from '../supabaseClient';
-import { normalizeNameKey } from '../../utils/nameNormalization';
-import { evaluateWrongDomain } from '../characters/audit/wrongDomainCharacterGuard';
 
 export type BookCounts = {
   characters: number;
@@ -27,7 +27,9 @@ export type BookCounts = {
 async function loadCounts(userId: string): Promise<BookCounts> {
   const [chars, locs, evts, orgs, skills, projects] = await Promise.all([
     supabaseAdmin.from('characters').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-    supabaseAdmin.from('omega_entities').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('entity_type', 'LOCATION'),
+    // The Places Book reads canonical rows through locationService/locations.
+    // Count that same authority instead of the legacy omega projection.
+    supabaseAdmin.from('locations').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabaseAdmin.from('event_candidates').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabaseAdmin.from('skills').select('id', { count: 'exact', head: true }).eq('user_id', userId),

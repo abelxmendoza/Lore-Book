@@ -567,16 +567,45 @@ export function CharacterInfoPanel({
   const autoAttemptedRef = useRef<string | null>(null);
   const autoRoleAttemptedRef = useRef<string | null>(null);
 
-  const addAlias = () => {
-    const val = newAlias.trim();
-    if (val && !aliasesList.includes(val)) {
-      setAliasesList([...aliasesList, val]);
-      setNewAlias('');
-    }
-  };
-
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+
+  // Cohesion: aliases/nicknames must add something beyond the names already
+  // on the card — shared by add-time validation and the save-time filter so
+  // the two never disagree about what counts as "already the name."
+  const nameKeys = useMemo(() => {
+    const firstName = firstNameDraft.trim();
+    const middleName = middleNameDraft.trim();
+    const lastName = lastNameDraft.trim();
+    return new Set(
+      [
+        editedCharacter.name,
+        firstName,
+        middleName,
+        lastName,
+        `${firstName} ${lastName}`,
+        `${firstName} ${middleName} ${lastName}`,
+      ]
+        .map((v) => v?.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter(Boolean),
+    );
+  }, [editedCharacter.name, firstNameDraft, middleNameDraft, lastNameDraft]);
+
+  const addAlias = () => {
+    const val = newAlias.trim().replace(/\s+/g, ' ');
+    if (!val) return;
+    if (nameKeys.has(val.toLowerCase())) {
+      setIdentityError(`"${val}" is already this character's name — try a different alias.`);
+      return;
+    }
+    if (aliasesList.some((a) => a.toLowerCase() === val.toLowerCase())) {
+      setIdentityError(`"${val}" is already an alias for this character.`);
+      return;
+    }
+    setIdentityError(null);
+    setAliasesList([...aliasesList, val]);
+    setNewAlias('');
+  };
 
   const humanizeType = (t: string) =>
     t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -711,19 +740,9 @@ export function CharacterInfoPanel({
     const middleName = middleNameDraft.trim();
     const lastName = lastNameDraft.trim();
     // Cohesion: aliases/nicknames must add something beyond the names already
-    // on the card — drop entries that just repeat the title or name parts.
-    const nameKeys = new Set(
-      [
-        editedCharacter.name,
-        firstName,
-        middleName,
-        lastName,
-        `${firstName} ${lastName}`,
-        `${firstName} ${middleName} ${lastName}`,
-      ]
-        .map((v) => v?.trim().toLowerCase().replace(/\s+/g, ' '))
-        .filter(Boolean),
-    );
+    // on the card. addAlias() already rejects these at input time (with a
+    // visible error) via the shared nameKeys memo above — this filter is a
+    // final safety net, not the primary defense, so it stays silent.
     const seenAliases = new Set<string>();
     const aliases = aliasesList
       .map((a) => a.replace(/\s+/g, ' ').trim())
@@ -1252,7 +1271,7 @@ export function CharacterInfoPanel({
                 <div className="mt-1 flex gap-2">
                   <input
                     value={newAlias}
-                    onChange={(e) => setNewAlias(e.target.value)}
+                    onChange={(e) => { setNewAlias(e.target.value); setIdentityError(null); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAlias(); } }}
                     placeholder="Add nickname or alias and press Enter"
                     className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-sm text-white focus:border-primary/60 focus:outline-none"

@@ -35,6 +35,7 @@ import {
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { useLorebookShell } from './LorebookShell';
 import type { LoreTopicId } from '../../lib/loreReadiness';
+import type { LorebookForm } from '../../lib/lorebookTiers';
 
 // Biography types (define locally to avoid server import)
 type Biography = {
@@ -675,7 +676,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   }, [addGeneratedBook, openDemoBookForReading, preset, refreshCompiledBooks]);
 
-  const handleGenerateFromQuery = async (query: string, options?: { force?: boolean }) => {
+  const handleGenerateFromQuery = async (query: string, options?: { force?: boolean; form?: LorebookForm }) => {
     if (shouldUseMock || isSimulated) {
       await runDemoCompile({ query }, query);
       return;
@@ -687,14 +688,14 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowLibrary(false);
     setGenerationError(null);
     try {
-      let result = await compileLorebookFromQuery(query, options?.force ?? false);
+      let result = await compileLorebookFromQuery(query, options?.force ?? false, options?.form);
 
       if (!result.ok && shouldConfirmForceCompile(result.conflict)) {
         const proceed = window.confirm(
           `${result.conflict.message}\n\nCompile a thinner book anyway?`
         );
         if (proceed) {
-          result = await compileLorebookFromQuery(query, true);
+          result = await compileLorebookFromQuery(query, true, options?.form);
         }
       }
       if (!result.ok) {

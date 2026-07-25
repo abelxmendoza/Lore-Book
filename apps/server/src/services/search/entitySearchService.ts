@@ -1,8 +1,8 @@
-import { normalizeNameKey } from '../../utils/nameNormalization';
 import { jaroWinkler } from '../../utils/jaroWinkler';
-import { supabaseAdmin } from '../supabaseClient';
-import { listCertifiedEntities } from '../entities/certifiedEntityIndexService';
+import { normalizeNameKey } from '../../utils/nameNormalization';
 import { listMentionableEntities } from '../entities/entityMentionIndexService';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type {
   EntitySearchInput,
   EntitySearchMatchKind,
@@ -26,6 +26,7 @@ const PREVIEW_TYPE_TO_SEARCH: Record<string, EntitySearchType[]> = {
   GROUP: ['group', 'organization', 'community'],
   COMMUNITY: ['community', 'group', 'organization'],
   SKILL: ['skill'],
+  PROJECT: ['project'],
   EVENT: ['event', 'place'],
   ROLE: ['person', 'organization'],
 };
@@ -38,6 +39,7 @@ function certifiedToSearchType(
   if (type === 'location') return 'place';
   if (type === 'skill') return 'skill';
   if (type === 'event') return 'event';
+  if (type === 'project') return 'project';
   const orgKind = String(metadata?.group_type ?? metadata?.kind ?? '').toLowerCase();
   if (orgKind.includes('community')) return 'community';
   if (orgKind.includes('group') || orgKind.includes('team') || orgKind.includes('club')) return 'group';
@@ -52,6 +54,7 @@ function sourceLabel(certifiedType: string, status: 'known' | 'suggestion'): str
     case 'organization': return 'organizations';
     case 'skill': return 'skills';
     case 'event': return 'events';
+    case 'project': return 'projects';
     default: return 'lorebook';
   }
 }
@@ -126,8 +129,7 @@ function scoreEntity(
 }
 
 async function loadIndexedEntities(userId: string): Promise<IndexedEntity[]> {
-  const [certified, mentionable, glossaryRows] = await Promise.all([
-    listCertifiedEntities(userId),
+  const [mentionable, glossaryRows] = await Promise.all([
     listMentionableEntities(userId),
     supabaseAdmin
       .from('user_glossary_terms')
@@ -138,6 +140,7 @@ async function loadIndexedEntities(userId: string): Promise<IndexedEntity[]> {
       .catch(() => []),
   ]);
 
+  const certified = mentionable.filter((entity) => entity.status === 'confirmed');
   const mentionStatus = new Map(mentionable.map((m) => [`${m.type}:${m.id}`, m.status]));
   const recencyBySlot = new Map<string, number>();
 
@@ -270,6 +273,7 @@ const TABLE_BY_TYPE: Record<EntitySearchType, string | null> = {
   community: 'organizations',
   skill: 'skills',
   event: 'timeline_events',
+  project: 'projects',
 };
 
 /** Verify entity belongs to user before applying link correction. */
@@ -304,5 +308,5 @@ export async function validateEntityOwnership(
 }
 
 export function previewTypeToDefaultSearchTypes(previewType: string): EntitySearchType[] {
-  return PREVIEW_TYPE_TO_SEARCH[previewType] ?? ['person', 'organization', 'place', 'group', 'skill', 'event'];
+  return PREVIEW_TYPE_TO_SEARCH[previewType] ?? ['person', 'organization', 'place', 'group', 'skill', 'event', 'project'];
 }

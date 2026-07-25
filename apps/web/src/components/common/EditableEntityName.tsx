@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, X, Pencil, Loader2 } from 'lucide-react';
 
 type EditableEntityNameProps = {
@@ -37,11 +37,17 @@ export function EditableEntityName({
   const [value, setValue] = useState(name);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep display in sync when parent renames from elsewhere.
   useEffect(() => {
     if (!editing) setValue(name);
   }, [name, editing]);
+
+  useEffect(() => () => {
+    if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+  }, []);
 
   const start = () => {
     if (disabled) return;
@@ -67,6 +73,9 @@ export function EditableEntityName({
     try {
       await onSave(next);
       setEditing(false);
+      setJustSaved(true);
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+      justSavedTimer.current = setTimeout(() => setJustSaved(false), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to rename');
     } finally {
@@ -95,10 +104,20 @@ export function EditableEntityName({
         >
           {name}
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/50 group-hover/edit:border-white/25 group-hover/edit:text-white/80">
-          <Pencil className="h-3 w-3" aria-hidden />
-          Edit
-        </span>
+        {justSaved ? (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300"
+            data-testid="editable-entity-name-saved"
+          >
+            <Check className="h-3 w-3" aria-hidden />
+            Saved
+          </span>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/50 group-hover/edit:border-white/25 group-hover/edit:text-white/80">
+            <Pencil className="h-3 w-3" aria-hidden />
+            Edit
+          </span>
+        )}
       </button>
     );
   }

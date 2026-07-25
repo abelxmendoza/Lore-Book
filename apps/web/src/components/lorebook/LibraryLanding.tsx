@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BookOpen, BookMarked, Search, Sparkles, User, Briefcase, Clock,
   Heart, Zap, MapPin, Calendar, Loader2, ChevronRight, Edit3,
@@ -37,6 +37,8 @@ import { useLoreReadiness } from '../../hooks/useLoreReadiness';
 import { useQueryReadiness } from '../../hooks/useQueryReadiness';
 import { READINESS_COLORS, READINESS_LABELS } from '../../lib/loreReadiness';
 import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
+import { evaluateQueryTierOffer, type LorebookForm } from '../../lib/lorebookTiers';
+import { LorebookTierMenu } from './LorebookTierMenu';
 
 const LIBRARY_BOOK_STYLES = [
   { gradient: 'from-purple-600 to-indigo-700', accent: 'text-purple-300', border: 'border-purple-500/25' },
@@ -61,7 +63,7 @@ function libraryBookPresentation(book: CompiledLorebook, index: number) {
 }
 
 interface LibraryLandingProps {
-  onGenerate: (query: string, options?: { force?: boolean }) => void;
+  onGenerate: (query: string, options?: { force?: boolean; form?: LorebookForm }) => void;
   onGenerateTopic?: (
     topicId: string,
     options?: {
@@ -96,13 +98,19 @@ export const LibraryLanding = ({
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [showEvidenceReview, setShowEvidenceReview] = useState(false);
+  const [selectedForm, setSelectedForm] = useState<LorebookForm | undefined>(undefined);
   const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
   const { evaluation: queryEvaluation, loading: queryEvaluating } = useQueryReadiness(query);
+  const queryTierOffer = useMemo(
+    () => (queryEvaluation ? evaluateQueryTierOffer(queryEvaluation, query.trim()) : null),
+    [queryEvaluation, query],
+  );
 
   const handleCategoryClick = (cat: BookCategory) => {
     setActiveCategory(cat.id);
     setQuery(cat.prompt);
     setShowEvidenceReview(false);
+    setSelectedForm(undefined);
     // Focus the input after selecting a category
     setTimeout(() => {
       const input = document.getElementById('library-search-input');
@@ -119,9 +127,17 @@ export const LibraryLanding = ({
     setShowEvidenceReview(true);
   };
 
+  const handleSelectForm = (form: LorebookForm) => {
+    setSelectedForm(form);
+    setShowEvidenceReview(true);
+  };
+
   const handleConfirmCompile = (force = false) => {
     if (!query.trim() || generating) return;
-    onGenerate(query.trim(), force ? { force: true } : undefined);
+    const options: { force?: boolean; form?: LorebookForm } = {};
+    if (force) options.force = true;
+    if (selectedForm) options.form = selectedForm;
+    onGenerate(query.trim(), Object.keys(options).length ? options : undefined);
   };
 
   return (
@@ -150,6 +166,7 @@ export const LibraryLanding = ({
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setShowEvidenceReview(false);
+                  setSelectedForm(undefined);
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                 placeholder="e.g. 'my 2020 story', 'Sarah', 'my music journey'…"
@@ -179,7 +196,7 @@ export const LibraryLanding = ({
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Checking knowledge for this book…
                 </span>
-              ) : queryEvaluation ? (
+              ) : queryEvaluation && queryTierOffer ? (
                 <>
                   <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium', READINESS_COLORS[queryEvaluation.level])}>
                     {READINESS_LABELS[queryEvaluation.level]} · {Math.round(queryEvaluation.progress * 100)}%
@@ -187,6 +204,13 @@ export const LibraryLanding = ({
                   <span className="text-white/35 font-mono">
                     {queryEvaluation.atomCount} atoms · ~{queryEvaluation.estimatedPages} pages
                   </span>
+                  <LorebookTierMenu
+                    tierOffer={queryTierOffer}
+                    onSelectForm={handleSelectForm}
+                    subjectLabel={query.trim()}
+                    buttonLabel="Lengths"
+                    testId="library-search-tier-menu"
+                  />
                 </>
               ) : null}
             </div>

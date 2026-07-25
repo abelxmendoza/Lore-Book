@@ -50,7 +50,7 @@ describe('OrganizationModalOverview — Key people', () => {
     });
   });
 
-  it('routes Activity quick-stat and recent derived activity to the Activity tab', () => {
+  it('routes Timeline quick-stat and recent derived activity to the Timeline tab', () => {
     const onTabChange = vi.fn();
     render(
       <OrganizationModalOverview
@@ -75,10 +75,10 @@ describe('OrganizationModalOverview — Key people', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('Activity'));
-    expect(onTabChange).toHaveBeenCalledWith('activity');
+    fireEvent.click(screen.getByText('Timeline'));
+    expect(onTabChange).toHaveBeenCalledWith('timeline');
 
     fireEvent.click(screen.getByText('Tour stop'));
-    expect(onTabChange).toHaveBeenCalledWith('activity');
+    expect(onTabChange).toHaveBeenCalledWith('timeline');
   });
 });

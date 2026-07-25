@@ -3,13 +3,14 @@
  * Powers chat composer chips and entity recall by stable id.
  */
 
-import { normalizeNameKey } from '../../utils/nameNormalization';
 import { characterSuggestionId, locationSuggestionId } from '../../utils/entitySuggestionId';
+import { normalizeNameKey } from '../../utils/nameNormalization';
 import { characterSuggestionService } from '../characterSuggestionService';
+import { hasFamilySignal } from '../conversationCentered/datingEligibilityService';
+import { groupCandidateService } from '../groupCandidateService';
 import { locationSuggestionService } from '../locationSuggestionService';
 import { skillSuggestionService } from '../skills/skillSuggestionService';
-import { groupCandidateService } from '../groupCandidateService';
-import { hasFamilySignal } from '../conversationCentered/datingEligibilityService';
+
 import {
   listCertifiedEntities,
   matchCertifiedEntitiesInText,
@@ -50,10 +51,15 @@ function groupCandidateDisplayName(members: string[], proposed?: string): string
   return `${first.join(' & ')} Crew`;
 }
 
-export async function listMentionableEntities(userId: string): Promise<MentionableEntity[]> {
+export async function listMentionableEntities(
+  userId: string,
+  confirmedEntities?: CertifiedEntity[],
+): Promise<MentionableEntity[]> {
   const [confirmed, charSuggestions, locSuggestions, skillSuggestions, groupCandidates] =
     await Promise.all([
-      listCertifiedEntities(userId),
+      confirmedEntities
+        ? Promise.resolve(confirmedEntities)
+        : listCertifiedEntities(userId),
       characterSuggestionService.getSuggestions(userId).catch(() => []),
       locationSuggestionService.getSuggestions(userId).catch(() => []),
       skillSuggestionService.getPendingSuggestions(userId).catch(() => []),

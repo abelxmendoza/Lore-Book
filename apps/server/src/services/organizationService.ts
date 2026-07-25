@@ -762,20 +762,50 @@ export class OrganizationService {
   ): Promise<Organization> {
     this.invalidateOrganizations(userId);
     try {
+      // Renaming needs to know the previous name (to auto-preserve it as an
+      // alias) and, when this call doesn't also include an aliases array,
+      // the current aliases so we can append to them rather than clobber.
+      let existingName: string | null = null;
+      let existingAliases: string[] = [];
+      if (updates.name !== undefined) {
+        const { data: current } = await supabaseAdmin
+          .from('organizations')
+          .select('name, aliases')
+          .eq('id', organizationId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        existingName = (current?.name as string | undefined) ?? null;
+        existingAliases = (current?.aliases as string[] | null) ?? [];
+      }
+
       // Only patch fields that were actually provided so partial updates
       // (e.g. aliases-only) cannot null out name or other columns.
       const patch: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
       if (updates.name !== undefined) patch.name = updates.name.trim();
-      if (updates.aliases !== undefined) {
-        patch.aliases = [
+      if (updates.aliases !== undefined || updates.name !== undefined) {
+        const base = updates.aliases !== undefined ? updates.aliases : existingAliases;
+        const aliasSet = [
           ...new Set(
-            (updates.aliases ?? [])
+            (base ?? [])
               .map((a) => String(a).trim())
               .filter(Boolean),
           ),
         ];
+        // Renaming: automatically keep the previous name as an alias so old
+        // mentions and search still resolve to this organization.
+        const trimmedNewName = updates.name !== undefined ? updates.name.trim() : null;
+        const trimmedOldName = existingName?.trim();
+        if (
+          trimmedNewName &&
+          trimmedOldName &&
+          trimmedNewName.toLowerCase() !== trimmedOldName.toLowerCase() &&
+          !aliasSet.some((a) => a.toLowerCase() === trimmedOldName.toLowerCase())
+        ) {
+          aliasSet.push(trimmedOldName);
+        }
+        patch.aliases = aliasSet;
       }
       if (updates.type !== undefined) patch.type = updates.type;
       if (updates.group_type !== undefined) patch.group_type = updates.group_type;
@@ -1635,12 +1665,44 @@ export class OrganizationService {
   ): Promise<OrganizationLocation> {
     this.invalidateOrganizations(userId);
     try {
+      const { data: ownedOrganization, error: organizationError } = await supabaseAdmin
+        .from('organizations')
+        .select('id')
+        .eq('id', organizationId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (organizationError) throw organizationError;
+      if (!ownedOrganization) throw new Error('Organization not found');
+
+      let locationName = location.location_name;
+      if (location.location_id) {
+        const { data: ownedLocation, error: locationError } = await supabaseAdmin
+          .from('locations')
+          .select('id, name')
+          .eq('id', location.location_id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (locationError) throw locationError;
+        if (!ownedLocation) throw new Error('Location not found');
+        locationName = ownedLocation.name;
+
+        const { data: existingRows, error: existingError } = await supabaseAdmin
+          .from('organization_locations')
+          .select(ORG_LOCATION_COLS)
+          .eq('user_id', userId)
+          .eq('organization_id', organizationId)
+          .eq('location_id', location.location_id)
+          .limit(1);
+        if (existingError) throw existingError;
+        if (existingRows?.[0]) return existingRows[0] as OrganizationLocation;
+      }
+
       const { data, error } = await supabaseAdmin
         .from('organization_locations')
         .insert({
           user_id: userId,
           organization_id: organizationId,
-          location_name: location.location_name,
+          location_name: locationName,
           location_id: location.location_id,
           visit_count: location.visit_count || 1,
           last_visited: location.last_visited,

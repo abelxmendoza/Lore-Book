@@ -3,6 +3,11 @@
 **Date:** 2026-06-16  
 **Prerequisite:** `ENTITY_RESOLUTION_CORE=on` stable for 7+ days with acceptable disagreement rate
 
+**2026-07-25 progress:** the cognition query `EntityResolver` is now a thin
+adapter over `entityResolutionCore`. Production bridge/service deletion remains
+blocked on the prerequisite above; repository fixtures are not a substitute for
+seven days of live disagreement metrics.
+
 ---
 
 ## Target Architecture

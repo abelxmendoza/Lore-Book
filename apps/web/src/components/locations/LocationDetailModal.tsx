@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2 } from 'lucide-react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2, Building2, Plus, Search, Loader2, Pencil } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -17,6 +17,12 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { schedulePostChatRefresh } from '../../lib/storyRefresh';
 import { mockDataService } from '../../services/mockDataService';
 import { getMockLocationFacts, getMockLocationPeople } from '../../mocks/modalDemoData';
+import {
+  demoOrganizationOptions,
+  getDemoLocationOrganizationLinks,
+  linkDemoLocationOrganization,
+  unlinkDemoLocationOrganization,
+} from '../../mocks/locationOrganizationDemoData';
 import { classifyLocation, KIND_META, locationHierarchy, computeChildren, isHouseholdLocation, isRoomLocation } from '../../lib/locationTaxonomy';
 import {
   formatPlaceType,
@@ -35,11 +41,13 @@ import {
 } from '../../lib/locationMergeMetadata';
 import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
+import { LocationTimeline } from './LocationTimeline';
 import { Button } from '../ui/button';
-import { Pencil } from 'lucide-react';
 import { EditableEntityName } from '../common/EditableEntityName';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { openOrganizationBookModal } from '../../lib/skillEntityNavigation';
 
 /**
  * Same-file CodeQL barrier for js/xss + js/client-side-unvalidated-url-redirection.
@@ -70,13 +78,40 @@ type LocationDetailModalProps = {
   onLocationDeleted?: (id: string) => void;
 };
 
-type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge' | 'chat' | 'delete';
+type LinkedLocationOrganization = {
+  id: string;
+  organization_id: string;
+  location_id?: string;
+  location_name: string;
+  visit_count: number;
+  organization: {
+    id: string;
+    name: string;
+    type?: string | null;
+    group_type?: string | null;
+    status?: string | null;
+    user_relationship?: string | null;
+    description?: string | null;
+  };
+};
+
+type OrganizationBookOption = {
+  id: string;
+  name: string;
+  type?: string;
+  status?: string | null;
+  aliases?: string[];
+};
+
+type TabKey = 'overview' | 'memories' | 'timeline' | 'people' | 'organizations' | 'insights' | 'knowledge' | 'chat' | 'delete';
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'overview',  label: 'Overview',    shortLabel: 'Overview', icon: FileText },
   { key: 'knowledge', label: 'What I Know', shortLabel: 'Know',     icon: Brain },
   { key: 'memories',  label: 'Memories',    shortLabel: 'Memories', icon: Calendar },
+  { key: 'timeline',  label: 'Timeline',     shortLabel: 'Timeline', icon: Clock },
   { key: 'people',    label: 'People',      shortLabel: 'People',   icon: Users },
+  { key: 'organizations', label: 'Groups & Organizations', shortLabel: 'Groups', icon: Building2 },
   { key: 'insights',  label: 'Insights',    shortLabel: 'Insights', icon: Sparkles },
   { key: 'chat',      label: 'Chat',        shortLabel: 'Chat',     icon: MessageSquare },
   { key: 'delete',    label: 'Delete',      shortLabel: 'Delete',   icon: Trash2 },
@@ -172,6 +207,16 @@ export const LocationDetailModal = ({
   const [locationFacts, setLocationFacts] = useState<any[]>([]);
   const [factsLoading, setFactsLoading] = useState(false);
   const [factsLoaded, setFactsLoaded] = useState(false);
+  const [linkedOrganizations, setLinkedOrganizations] = useState<LinkedLocationOrganization[]>([]);
+  const [organizationOptions, setOrganizationOptions] = useState<OrganizationBookOption[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
+  const [organizationSaving, setOrganizationSaving] = useState(false);
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const [organizationSuccess, setOrganizationSuccess] = useState<string | null>(null);
+  const [showOrganizationPicker, setShowOrganizationPicker] = useState(false);
+  const [organizationSearch, setOrganizationSearch] = useState('');
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -181,6 +226,71 @@ export const LocationDetailModal = ({
       contentRef.current.scrollTop = 0;
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    setLinkedOrganizations([]);
+    setOrganizationOptions([]);
+    setOrganizationsLoaded(false);
+    setOrganizationError(null);
+    setOrganizationSuccess(null);
+    setShowOrganizationPicker(false);
+    setOrganizationSearch('');
+    setSelectedOrganizationId('');
+  }, [locationProp.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'organizations' || organizationsLoaded || !location.id) return;
+    let cancelled = false;
+    setOrganizationsLoading(true);
+    setOrganizationError(null);
+
+    (async () => {
+      try {
+        if (isMockDataEnabled) {
+          if (cancelled) return;
+          setLinkedOrganizations(getDemoLocationOrganizationLinks(location.id));
+          setOrganizationOptions(demoOrganizationOptions);
+          setOrganizationsLoaded(true);
+          return;
+        }
+
+        const links = await fetchJson<{
+          success?: boolean;
+          organizations?: LinkedLocationOrganization[];
+        }>(`/api/locations/${location.id}/organizations`);
+        if (cancelled) return;
+        setLinkedOrganizations(links.organizations ?? []);
+        try {
+          const index = await fetchJson<{ entities?: OrganizationBookOption[] }>(
+            '/api/entities/book-index?types=organization&limit=100',
+          );
+          if (!cancelled) {
+            setOrganizationOptions(
+              (index.entities ?? []).filter(
+                (entity) => !entity.type || entity.type === 'organization',
+              ),
+            );
+          }
+        } catch {
+          // Existing links remain useful even if the picker index is temporarily unavailable.
+        }
+        if (cancelled) return;
+        setOrganizationsLoaded(true);
+      } catch (error) {
+        if (!cancelled) {
+          setOrganizationError(
+            error instanceof Error ? error.message : 'Could not load linked groups.',
+          );
+        }
+      } finally {
+        if (!cancelled) setOrganizationsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, isMockDataEnabled, location.id, organizationsLoaded]);
 
   useEffect(() => {
     const loadLocationMemories = async () => {
@@ -420,6 +530,164 @@ export const LocationDetailModal = ({
   const verifiedPeople = isMockDataEnabled
     ? getMockLocationPeople(location, mockDataService.get.characters())
     : location.relatedPeople.filter(person => person.character_id);
+  const locationTimelineEntries = memoryCards.length > 0
+    ? memoryCards.map((memory) => ({
+        id: memory.id,
+        timestamp: memory.date,
+        title: memory.title,
+        summary: memory.content.slice(0, 240),
+        full_text: memory.content,
+        mood: memory.mood ?? null,
+        arc: memory.arcId ?? null,
+        saga: memory.sagaId ?? null,
+        era: memory.eraId ?? null,
+        lane: memory.tags.find((tag) => ['life', 'robotics', 'mma', 'work', 'creative'].includes(tag.toLowerCase()))?.toLowerCase() ?? 'life',
+        tags: memory.tags,
+        character_ids: memory.characters,
+        related_entry_ids: memory.linkedMemories?.map((linked) => linked.id) ?? [],
+      }))
+    : isMockDataEnabled
+      ? [
+          ...(location.firstVisited
+            ? [{
+                id: `${location.id}-timeline-first`,
+                timestamp: location.firstVisited,
+                title: `First recorded visit to ${location.name}`,
+                summary: location.description || `${location.name} entered your place history.`,
+                full_text: location.description || `${location.name} entered your place history.`,
+                mood: null,
+                arc: null,
+                saga: null,
+                era: null,
+                lane: 'life',
+                tags: ['place', 'first visit'],
+                character_ids: [],
+                related_entry_ids: [],
+              }]
+            : []),
+          ...(location.lastVisited
+            ? [{
+                id: `${location.id}-timeline-latest`,
+                timestamp: location.lastVisited,
+                title: `Latest recorded visit to ${location.name}`,
+                summary: `${location.visitCount} visits are currently recorded for this place.`,
+                full_text: `${location.visitCount} visits are currently recorded for this place.`,
+                mood: location.moods[0]?.mood ?? null,
+                arc: null,
+                saga: null,
+                era: null,
+                lane: 'life',
+                tags: ['place', 'recent visit'],
+                character_ids: [],
+                related_entry_ids: [],
+              }]
+            : []),
+        ]
+      : [];
+  const linkedOrganizationIds = new Set(
+    linkedOrganizations.map((link) => link.organization_id),
+  );
+  const availableOrganizationOptions = organizationOptions.filter((organization) => {
+    if (linkedOrganizationIds.has(organization.id)) return false;
+    const term = organizationSearch.trim().toLowerCase();
+    if (!term) return true;
+    return [organization.name, ...(organization.aliases ?? [])]
+      .join(' ')
+      .toLowerCase()
+      .includes(term);
+  });
+
+  const linkSelectedOrganization = async () => {
+    if (!selectedOrganizationId || organizationSaving) return;
+    const selected = organizationOptions.find(
+      (organization) => organization.id === selectedOrganizationId,
+    );
+    if (!selected) return;
+
+    setOrganizationSaving(true);
+    setOrganizationError(null);
+    setOrganizationSuccess(null);
+    try {
+      const linked = isMockDataEnabled
+        ? linkDemoLocationOrganization(location, selectedOrganizationId)
+        : (
+            await fetchJson<{
+              success: boolean;
+              organization: LinkedLocationOrganization;
+            }>(`/api/locations/${location.id}/organizations`, {
+              method: 'POST',
+              body: JSON.stringify({ organization_id: selectedOrganizationId }),
+            })
+          ).organization;
+
+      setLinkedOrganizations((current) => [
+        linked,
+        ...current.filter((item) => item.id !== linked.id),
+      ]);
+      setSelectedOrganizationId('');
+      setOrganizationSearch('');
+      setShowOrganizationPicker(false);
+      setOrganizationSuccess(`${selected.name} is now linked to ${location.name}.`);
+      apiCache.deletePattern(/\/api\/(locations|organizations|books|entities)/);
+      window.dispatchEvent(
+        new CustomEvent('lk:organizations-updated', {
+          detail: { ids: [selected.id], locationIds: [location.id] },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('lk:locations-updated', {
+          detail: { ids: [location.id], organizationIds: [selected.id] },
+        }),
+      );
+    } catch (error) {
+      setOrganizationError(
+        error instanceof Error ? error.message : 'Could not link that group.',
+      );
+    } finally {
+      setOrganizationSaving(false);
+    }
+  };
+
+  const unlinkOrganization = async (link: LinkedLocationOrganization) => {
+    if (organizationSaving) return;
+    setOrganizationSaving(true);
+    setOrganizationError(null);
+    setOrganizationSuccess(null);
+    const before = linkedOrganizations;
+    setLinkedOrganizations((current) => current.filter((item) => item.id !== link.id));
+    try {
+      if (isMockDataEnabled) {
+        unlinkDemoLocationOrganization(link.id);
+      } else {
+        await fetchJson(`/api/locations/${location.id}/organizations/${link.id}`, {
+          method: 'DELETE',
+        });
+      }
+      apiCache.deletePattern(/\/api\/(locations|organizations|books|entities)/);
+      window.dispatchEvent(
+        new CustomEvent('lk:organizations-updated', {
+          detail: { ids: [link.organization_id], locationIds: [location.id] },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('lk:locations-updated', {
+          detail: { ids: [location.id], organizationIds: [link.organization_id] },
+        }),
+      );
+    } catch (error) {
+      setLinkedOrganizations(before);
+      setOrganizationError(
+        error instanceof Error ? error.message : 'Could not unlink that group.',
+      );
+    } finally {
+      setOrganizationSaving(false);
+    }
+  };
+
+  const openLinkedOrganization = (organizationId: string) => {
+    openOrganizationBookModal(organizationId);
+    onClose();
+  };
   const placeLine = [location.address, location.city, location.region, location.country].filter(Boolean).join(', ');
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
@@ -547,7 +815,13 @@ export const LocationDetailModal = ({
 
         {/* ── Header — compact on mobile ── */}
         <div className="relative border-b border-white/8 shrink-0 bg-gradient-to-r from-teal-950/30 via-black/40 to-teal-950/20">
-          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex items-center gap-1">
+          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5">
+            <EntityLorebookCompileControl
+              subjectLabel={location.name}
+              focus={{ locationId: location.id, themes: location.name }}
+              testId="location-modal-lorebook-compile"
+              className="hidden sm:inline-flex"
+            />
             <button
               type="button"
               onClick={onClose}
@@ -580,6 +854,13 @@ export const LocationDetailModal = ({
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
+                <div className="mt-1.5 sm:hidden">
+                  <EntityLorebookCompileControl
+                    subjectLabel={location.name}
+                    focus={{ locationId: location.id, themes: location.name }}
+                    testId="location-modal-lorebook-compile-mobile"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1092,6 +1373,44 @@ export const LocationDetailModal = ({
             </div>
           )}
 
+          {/* ── TIMELINE ── */}
+          {activeTab === 'timeline' && (
+            <div className="space-y-3" data-testid="location-timeline-tab">
+              <div className="rounded-xl bg-purple-500/8 border border-purple-500/15 px-4 py-3">
+                <p className="text-xs font-semibold text-purple-200">
+                  {location.name} across time
+                </p>
+                <p className="text-xs text-white/40 mt-1">
+                  A chronological view of memories and recorded visits connected to this place.
+                </p>
+              </div>
+              {loadingMemories ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-sm text-white/40">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading place timeline…
+                </div>
+              ) : locationTimelineEntries.length === 0 ? (
+                <div className="text-center py-16">
+                  <Clock className="h-10 w-10 mx-auto mb-3 text-white/15" />
+                  <p className="text-sm font-medium text-white/40">No timeline moments yet</p>
+                  <p className="mt-1 text-xs text-white/25">
+                    Memories and visits linked to {location.name} will appear here.
+                  </p>
+                </div>
+              ) : (
+                <LocationTimeline
+                  entries={locationTimelineEntries}
+                  locationName={location.name}
+                  compact
+                  onMemoryClick={(entry) => {
+                    const memory = memoryCards.find((card) => card.id === entry.id);
+                    if (memory) setSelectedMemory(memory);
+                  }}
+                />
+              )}
+            </div>
+          )}
+
           {/* ── PEOPLE ── */}
           {activeTab === 'people' && (
             <div className="space-y-2">
@@ -1124,6 +1443,178 @@ export const LocationDetailModal = ({
                       <p className="text-xs text-white/50">{person.entryCount} {person.entryCount === 1 ? 'visit' : 'visits'}</p>
                       <p className="text-[10px] text-white/30">{person.total_mentions} mentions</p>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── GROUPS & ORGANIZATIONS ── */}
+          {activeTab === 'organizations' && (
+            <div className="space-y-3" data-testid="location-organizations-tab">
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-cyan-500/8 border border-cyan-500/15 px-4 py-3">
+                <div>
+                  <p className="text-xs font-semibold text-cyan-200">Groups connected to this place</p>
+                  <p className="text-xs text-white/40 mt-1">
+                    These are durable two-way links. Adding or removing one here also updates the place in that group's profile.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setShowOrganizationPicker((open) => !open);
+                    setOrganizationError(null);
+                    setOrganizationSuccess(null);
+                  }}
+                  className="shrink-0 border-cyan-500/25 text-cyan-200 hover:bg-cyan-500/10"
+                  data-testid="location-add-organization-toggle"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Link group
+                </Button>
+              </div>
+
+              {showOrganizationPicker && (
+                <div className="rounded-xl border border-white/10 bg-black/25 p-3 space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+                    <input
+                      value={organizationSearch}
+                      onChange={(event) => {
+                        setOrganizationSearch(event.target.value);
+                        setSelectedOrganizationId('');
+                      }}
+                      placeholder="Search Groups & Organizations Book"
+                      className="h-10 w-full rounded-lg border border-white/10 bg-black/40 pl-9 pr-3 text-sm text-white placeholder:text-white/25 focus:border-cyan-500/40 focus:outline-none"
+                      data-testid="location-organization-search"
+                    />
+                  </div>
+
+                  <div
+                    className="max-h-44 overflow-y-auto rounded-lg border border-white/8 bg-black/25"
+                    role="listbox"
+                    aria-label="Groups and organizations"
+                  >
+                    {availableOrganizationOptions.length === 0 ? (
+                      <p className="px-3 py-4 text-center text-xs text-white/35">
+                        {organizationOptions.length === linkedOrganizations.length
+                          ? 'Every available group is already linked.'
+                          : 'No matching groups found.'}
+                      </p>
+                    ) : (
+                      availableOrganizationOptions.map((organization) => (
+                        <button
+                          key={organization.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selectedOrganizationId === organization.id}
+                          onClick={() => setSelectedOrganizationId(organization.id)}
+                          className={`flex w-full items-center gap-3 border-b border-white/5 px-3 py-2.5 text-left last:border-0 ${
+                            selectedOrganizationId === organization.id
+                              ? 'bg-cyan-500/12 text-cyan-100'
+                              : 'text-white/75 hover:bg-white/5'
+                          }`}
+                        >
+                          <Building2 className="h-4 w-4 shrink-0 text-cyan-300/70" />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">{organization.name}</span>
+                            {organization.status && (
+                              <span className="block text-[10px] capitalize text-white/35">
+                                {organization.status.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowOrganizationPicker(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void linkSelectedOrganization()}
+                      disabled={!selectedOrganizationId || organizationSaving}
+                      data-testid="location-add-organization-submit"
+                    >
+                      {organizationSaving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Link selected
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {organizationError && (
+                <p className="rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200">
+                  {organizationError}
+                </p>
+              )}
+              {organizationSuccess && (
+                <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-3 py-2 text-xs text-emerald-200">
+                  {organizationSuccess}
+                </p>
+              )}
+
+              {organizationsLoading ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-sm text-white/40">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading linked groups…
+                </div>
+              ) : linkedOrganizations.length === 0 ? (
+                <div className="text-center py-16">
+                  <Building2 className="h-10 w-10 mx-auto mb-3 text-white/15" />
+                  <p className="text-sm font-medium text-white/40">No groups linked yet</p>
+                  <p className="mt-1 text-xs text-white/25">
+                    Link one from your Groups & Organizations Book.
+                  </p>
+                </div>
+              ) : (
+                linkedOrganizations.map((link) => (
+                  <div
+                    key={link.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-white/4 border border-white/8 px-4 py-3"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openLinkedOrganization(link.organization.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/12">
+                        <Building2 className="h-4 w-4 text-cyan-300" />
+                      </div>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-white">
+                          {link.organization.name}
+                        </span>
+                        <span className="block truncate text-[10px] capitalize text-cyan-300/60">
+                          {(link.organization.group_type || link.organization.type || 'organization').replace(/_/g, ' ')}
+                          {link.organization.user_relationship
+                            ? ` · ${link.organization.user_relationship.replace(/_/g, ' ')}`
+                            : ''}
+                        </span>
+                      </span>
+                    </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void unlinkOrganization(link)}
+                      disabled={organizationSaving}
+                      className="shrink-0 text-white/35 hover:text-red-300"
+                      aria-label={`Unlink ${link.organization.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))
               )}

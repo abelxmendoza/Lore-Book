@@ -1,5 +1,5 @@
 /**
- * Group modal chat should hand off to main chat with a focus chip — no in-modal composer.
+ * Group modal Chat tab has no in-modal composer — hands off to main chat.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -31,6 +31,7 @@ vi.mock('../../hooks/useShouldUseMockData', () => ({
 vi.mock('../../lib/storyRefresh', () => ({
   onStoryDataUpdated: vi.fn(() => () => {}),
   dispatchStoryDataUpdated: vi.fn(),
+  schedulePostChatRefresh: vi.fn(),
 }));
 
 vi.mock('../../lib/openChatWithFocus', () => ({
@@ -83,16 +84,30 @@ function renderModal(onClose = vi.fn()) {
   );
 }
 
-describe('OrganizationDetailModal — chat redirect', () => {
+describe('OrganizationDetailModal — chat handoff', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('header Chat opens main chat with the group focus chip context', () => {
+  it('Chat tab stays in the modal without an in-modal composer', () => {
     const onClose = vi.fn();
     renderModal(onClose);
 
-    fireEvent.click(screen.getByRole('button', { name: /chat about this group/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^chat$/i })[0]!);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(mockOpenChatWithFocus).not.toHaveBeenCalled();
+    expect(screen.getByTestId('org-chat-panel')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/ask about/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('org-chat-composer')).not.toBeInTheDocument();
+  });
+
+  it('Open main chat with focus hands off to main chat', () => {
+    const onClose = vi.fn();
+    renderModal(onClose);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^chat$/i })[0]!);
+    fireEvent.click(screen.getByTestId('org-open-main-chat'));
 
     expect(onClose).toHaveBeenCalled();
     expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
@@ -102,23 +117,6 @@ describe('OrganizationDetailModal — chat redirect', () => {
         entityType: 'organization',
         sourceSurface: 'organizations',
         arrivedAt: expect.any(Number),
-      }),
-    );
-    expect(screen.queryByPlaceholderText(/ask about/i)).not.toBeInTheDocument();
-  });
-
-  it('Chat nav tab redirects to main chat instead of an in-modal composer', () => {
-    const onClose = vi.fn();
-    renderModal(onClose);
-
-    fireEvent.click(screen.getAllByRole('button', { name: /^chat$/i })[0]!);
-
-    expect(onClose).toHaveBeenCalled();
-    expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entityId: 'org-northwind',
-        entityType: 'organization',
-        sourceSurface: 'organizations',
       }),
     );
   });

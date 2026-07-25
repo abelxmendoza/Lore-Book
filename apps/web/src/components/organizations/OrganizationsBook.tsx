@@ -36,7 +36,10 @@ import { fetchOrganizationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { useOrganizationsBookData } from '../../store/hooks/useEntityBooks';
+import {
+  useBookEntityIndexSearch,
+  useOrganizationsBookData,
+} from '../../store/hooks/useEntityBooks';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
@@ -185,6 +188,34 @@ const normalizeOrganization = (raw: Partial<Organization>): Organization => {
     analytics: raw.analytics,
   };
 };
+
+export function buildDemoOrganization(
+  input: {
+    name: string;
+    groupType: Organization['group_type'];
+    subcategory?: string;
+    description?: string;
+  },
+  id = `mock-created-${Date.now()}`,
+): Organization {
+  const now = new Date().toISOString();
+  return normalizeOrganization({
+    id,
+    name: input.name.trim(),
+    aliases: [],
+    type: isLegacyType(input.groupType) ? input.groupType : 'other',
+    group_type: input.groupType,
+    membership_model: input.groupType === 'public_entity' ? 'none' : 'strict',
+    user_relationship: input.groupType === 'public_entity' ? 'referenced' : 'member',
+    is_public_entity: input.groupType === 'public_entity',
+    description: input.description?.trim() || undefined,
+    status: 'active',
+    created_at: now,
+    updated_at: now,
+    last_seen: now,
+    metadata: input.subcategory ? { subcategory: input.subcategory } : {},
+  });
+}
 
 const candidateToPreviewOrganization = (candidate: GroupCandidate): Organization => {
   const now = new Date().toISOString();
@@ -1098,6 +1129,28 @@ export const OrganizationsBook: React.FC = () => {
       mergeOrganizationsAndCandidates(organizationsResult, candidatesResult)
     );
   }, [isMockDataEnabled, orgsFromServer, candidatesFromServer, mergeCreated]);
+  const demoIndexEntities = useMemo(
+    () => isMockDataEnabled
+      ? organizations.map((organization) => ({
+          id: organization.id,
+          name: organization.name,
+          type: 'organization' as const,
+          status: organization.status ?? null,
+          aliases: organization.aliases ?? [],
+          updatedAt: organization.updated_at ?? organization.last_seen ?? null,
+        }))
+      : undefined,
+    [isMockDataEnabled, organizations],
+  );
+  const sharedSearch = useBookEntityIndexSearch(
+    ['organization'],
+    searchTerm,
+    { mockEntities: demoIndexEntities },
+  );
+  const sharedSearchIds = useMemo(
+    () => new Set(sharedSearch.entities.map((entity) => entity.id)),
+    [sharedSearch.entities],
+  );
 
   const loading = bookLoading || scanning || creating;
 
@@ -1166,6 +1219,23 @@ export const OrganizationsBook: React.FC = () => {
     if (!newOrg.name.trim()) return;
     setCreating(true);
     try {
+      if (isMockDataEnabled) {
+        const created = buildDemoOrganization(newOrg);
+        createdOrgsRef.current = [
+          created,
+          ...createdOrgsRef.current.filter((organization) => organization.id !== created.id),
+        ];
+        setCreatedOrgsVersion((version) => version + 1);
+        setShowCreateForm(false);
+        setNewOrg({ name: '', groupType: 'other', subcategory: '', description: '' });
+        setActiveStance('all');
+        setActiveCategory('all');
+        setSearchTerm('');
+        setSortBy('recent');
+        setCurrentPage(1);
+        setHighlightOrgId(created.id);
+        return;
+      }
       await fetchJson('/api/organizations', {
         method: 'POST',
         body: JSON.stringify({
@@ -1184,7 +1254,7 @@ export const OrganizationsBook: React.FC = () => {
       setShowCreateForm(false);
       setNewOrg({ name: '', groupType: 'other', subcategory: '', description: '' });
       await loadOrganizations();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create organization:', err);
     } finally {
       setCreating(false);
@@ -1232,12 +1302,14 @@ export const OrganizationsBook: React.FC = () => {
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(org =>
-        org.name.toLowerCase().includes(term) ||
-        org.aliases.some(a => a.toLowerCase().includes(term)) ||
-        (org.description && org.description.toLowerCase().includes(term)) ||
-        org.group_type.toLowerCase().includes(term)
-      );
+      filtered = filtered.filter((org) => {
+        const localMatch =
+          org.name.toLowerCase().includes(term) ||
+          org.aliases.some(a => a.toLowerCase().includes(term)) ||
+          (org.description && org.description.toLowerCase().includes(term)) ||
+          org.group_type.toLowerCase().includes(term);
+        return localMatch || sharedSearchIds.has(org.id);
+      });
     }
 
     // Sorting
@@ -1283,7 +1355,7 @@ export const OrganizationsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [organizations, searchTerm, activeStance, activeCategory, sortBy]);
+  }, [organizations, searchTerm, activeStance, activeCategory, sortBy, sharedSearchIds]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1556,6 +1628,15 @@ export const OrganizationsBook: React.FC = () => {
               inputClassName="bg-black/40 border-border/50 text-white placeholder:text-white/40"
               emptyHint="No matching groups"
             />
+            <p className="sr-only" aria-live="polite">
+              {sharedSearch.isSearching
+                ? `Searching the ${sharedSearch.source === 'demo' ? 'demo' : 'shared LoreBook'} index`
+                : sharedSearch.isActive
+                  ? `${sharedSearch.total} matching groups in the ${
+                      sharedSearch.source === 'demo' ? 'demo' : 'shared LoreBook'
+                    } index`
+                  : ''}
+            </p>
           </div>
           
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full sm:w-auto">

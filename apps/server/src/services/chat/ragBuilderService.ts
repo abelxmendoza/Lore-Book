@@ -1,29 +1,35 @@
 import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
-
-import { loadPromptClaims } from '../knowledgeCrystallization';
-import {
-  resolveRelationshipNames,
-  buildRelationshipContext,
-  type RelationshipContinuitySummary,
-} from './relationshipContextBuilder';
 import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
+import { loadPromptClaims } from '../knowledgeCrystallization';
 import { locationService } from '../locationService';
 import { memoryGraphService } from '../memoryGraphService';
+import type { ChatSource } from '../omegaChatService';
 import { orchestratorService } from '../orchestratorService';
-import { buildLegacyPeoplePlacesView } from './foundationEntityIndex';
 import { ragPacketCacheService } from '../ragPacketCacheService';
 import { supabaseAdmin } from '../supabaseClient';
-import type { ChatSource } from '../omegaChatService';
+
 import {
   isEntityQuery,
   detectMentionedEntities,
   loadEntityArc,
   arcToMemoryEntries,
 } from './entityScopedRetriever';
-import { assembleWorkingMemory, buildWorkingMemoryPacket } from './workingMemoryAssembler';
+import { buildLegacyPeoplePlacesView } from './foundationEntityIndex';
+import {
+  resolveRelationshipNames,
+  buildRelationshipContext,
+  type RelationshipContinuitySummary,
+} from './relationshipContextBuilder';
+import { chooseRetrievalPath } from './retrievalStrategy';
+import {
+  assembleWorkingMemory,
+  buildWorkingMemoryPacket,
+  type WorkingMemoryAssembly,
+  type WorkingMemoryItem,
+} from './workingMemoryAssembler';
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
@@ -229,6 +235,78 @@ export async function buildRAGPacket(
     } catch (e) { logger.debug({ e }, 'RAGBuilder: centrality merge failed'); }
   }
 
+  // ── Working Memory — single authoritative retrieval packet ───────────────
+  // Assemble before legacy retrieval so normal turns can skip the parallel
+  // entity arc / generic memory / dossier passes when WMA found usable context.
+  let foundationRecallBlock = '';
+  let foundationRelationships: any[] = [];
+  let foundationTimeline: any[] = [];
+  let workingMemory: WorkingMemoryAssembly | null = null;
+  let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
+  const retrievalPaths: string[] = [];
+
+  try {
+    const { loadLivingMemoryPreferences } = await import('../preferences/livingMemoryPreferences');
+    const livingMemory = await loadLivingMemoryPreferences(userId);
+    if (!livingMemory.useLivingMemory) {
+      logger.debug({ userId }, 'RAGBuilder: Living Memory use disabled — skipping WMA');
+    } else {
+      workingMemory = await assembleWorkingMemory({
+        userId,
+        question: message,
+        threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
+      });
+      const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
+      workingMemory = applyScopePlanToAssembly(
+        workingMemory,
+        scopePlan ?? planResponseScope(message),
+      );
+      workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
+      foundationRecallBlock = workingMemoryPacket.text;
+      foundationRelationships = workingMemory.relationships;
+      foundationTimeline = workingMemory.timeline;
+      retrievalPaths.push('working_memory');
+
+      const selectedItems: WorkingMemoryItem[] = [
+        ...workingMemory.episodes,
+        ...workingMemory.events,
+        ...workingMemory.projects,
+        ...workingMemory.goals,
+        ...workingMemory.skills,
+        ...workingMemory.communities,
+        ...workingMemory.relationships,
+        ...workingMemory.preferences,
+        ...workingMemory.claims,
+        ...workingMemory.timeline,
+      ];
+      const existingSourceIds = new Set(sources.map((source) => source.id));
+      for (const item of selectedItems) {
+        if (existingSourceIds.has(item.id)) continue;
+        existingSourceIds.add(item.id);
+        sources.push({
+          type: 'knowledge',
+          id: item.id,
+          title: item.title,
+          snippet: item.content.slice(0, 240),
+          date: item.date ?? undefined,
+          relevanceScore: Math.round(item.score * 100),
+          relevanceReasons: item.reasons,
+        });
+      }
+
+      logger.debug({
+        userId,
+        intent: workingMemory.intent,
+        selected: workingMemory.budget.selected,
+        rejected: workingMemory.budget.rejected,
+        confidence: workingMemory.confidence,
+        queries: workingMemory.timing?.queryCount ?? 0,
+      }, 'RAGBuilder: working memory assembled');
+    }
+  } catch (e) {
+    logger.debug({ e }, 'RAGBuilder: working memory assembly failed');
+  }
+
   // ── HQI semantic search ──────────────────────────────────────────────────
   let hqiResults: any[] = [];
   try {
@@ -262,8 +340,17 @@ export async function buildRAGPacket(
   try {
     const { retrieveMemoriesByThread, retrieveMemoriesUnderNode } = await import('../chat/contextAwareMemoryRetrieval');
     const { MemoryRetriever } = await import('../chat/memoryRetriever');
+    const retrievalPath = chooseRetrievalPath({
+      hasWorkingMemory: Boolean(workingMemory && workingMemory.budget.selected > 0),
+      contextKind: currentContext?.kind,
+      entityQuery: isEntityQuery(message),
+    });
+    retrievalPaths.push(retrievalPath);
 
-    if (currentContext?.kind === 'thread' && currentContext.threadId) {
+    if (retrievalPath === 'working_memory_only') {
+      // WMA already supplied ranked, deduplicated evidence and sources. Do not
+      // issue a second generic/entity-scoped retrieval pass for the same turn.
+    } else if (retrievalPath === 'thread_scoped_fallback' && currentContext?.kind === 'thread' && currentContext.threadId) {
       // Thread-scoped entries + cross-thread entity mentions run in parallel.
       // Cross-thread path uses related_entries on legacy entity rows to surface what the user
       // said about the same people in completely different conversations.
@@ -279,10 +366,10 @@ export async function buildRAGPacket(
         ...crossThreadEntries.filter((e: any) => !seen.has(e.id)),
       ] as ResolvedMemoryEntry[];
 
-    } else if (currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
+    } else if (retrievalPath === 'timeline_scoped_fallback' && currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
       relatedEntries = (await retrieveMemoriesUnderNode(userId, currentContext.timelineNodeId, currentContext.timelineLayer, 30)) as ResolvedMemoryEntry[];
 
-    } else if (isEntityQuery(message)) {
+    } else if (retrievalPath === 'entity_arc_fallback') {
       // Entity-scoped retrieval path
       const mentionedEntities = detectMentionedEntities(message, allCharacters, allLocations);
       let arcLoadedForPrimary = false;
@@ -558,61 +645,20 @@ export async function buildRAGPacket(
     }
   } catch (e) { logger.debug({ e }, 'RAGBuilder: relationship context build failed'); }
 
-  // ── Working Memory — single authoritative retrieval packet ───────────────
-  // This replaces the duplicate routeRecallQuery() pass that used to run here.
-  // Upstream recall gates still exist for explicit diagnostic/short-circuit
-  // modes, but normal LLM context now gets one bounded memory packet.
-  let foundationRecallBlock = '';
-  let foundationRelationships: any[] = [];
-  let foundationTimeline: any[] = [];
-  let workingMemory: Awaited<ReturnType<typeof assembleWorkingMemory>> | null = null;
-  let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
-
-  try {
-    const { loadLivingMemoryPreferences } = await import('../preferences/livingMemoryPreferences');
-    const livingMemory = await loadLivingMemoryPreferences(userId);
-    if (!livingMemory.useLivingMemory) {
-      logger.debug({ userId }, 'RAGBuilder: Living Memory use disabled — skipping WMA');
-    } else {
-      workingMemory = await assembleWorkingMemory({
-        userId,
-        question: message,
-        threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
-      });
-      // Response scope gate: retrieval stays broad, but evidence from domains
-      // this question blocked (family in a work answer, romance in a family
-      // answer, diagnostics anywhere) never reaches the LLM.
-      // Prefer the caller's plan — it carries the thread's active context, so a
-      // follow-up like "what about Joss?" gates by the inherited intent instead
-      // of re-planning from the bare message.
-      const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
-      workingMemory = applyScopePlanToAssembly(workingMemory, scopePlan ?? planResponseScope(message));
-      workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
-      foundationRecallBlock = workingMemoryPacket.text;
-      foundationRelationships = workingMemory.relationships;
-      foundationTimeline = workingMemory.timeline;
-      logger.debug({
-        userId,
-        intent: workingMemory.intent,
-        selected: workingMemory.budget.selected,
-        rejected: workingMemory.budget.rejected,
-        confidence: workingMemory.confidence,
-      }, 'RAGBuilder: working memory assembled');
-    }
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: working memory assembly failed'); }
-
-  // ── Entity dossier — verified facts + recurring moments for entities the
-  //    user just mentioned. Grounding layer for accurate recall. Runs after
-  //    Working Memory so it can skip re-fetching facts for the character WMA
-  //    already loaded (loadPersonCandidates) — moments stay dossier-exclusive.
+  // ── Entity dossier fallback ───────────────────────────────────────────────
+  // Only runs when WMA found no usable evidence (or Living Memory is disabled).
+  // Normal turns now have one retrieval pass instead of WMA + dossier + arc.
   let entityDossierBlock: string | null = null;
-  try {
-    const { buildEntityDossierBlock } = await import('./entityDossierService');
-    entityDossierBlock = await buildEntityDossierBlock(
-      userId, message, allCharacters, allLocations,
-      workingMemory?.factsCoveredEntityIds ?? [],
-    );
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: entity dossier build failed'); }
+  if (!workingMemory || workingMemory.budget.selected === 0) {
+    try {
+      const { buildEntityDossierBlock } = await import('./entityDossierService');
+      entityDossierBlock = await buildEntityDossierBlock(
+        userId, message, allCharacters, allLocations,
+        workingMemory?.factsCoveredEntityIds ?? [],
+      );
+      if (entityDossierBlock) retrievalPaths.push('entity_dossier_fallback');
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: entity dossier build failed'); }
+  }
 
   let lifeArcSynthesisBlock = '';
   let lifeArcSynthesis: Awaited<ReturnType<typeof import('../continuityRuntime/arcs/lifeArcSynthesisService').synthesizeLifeArcs>> | null = null;
@@ -759,12 +805,28 @@ export async function buildRAGPacket(
     foundationTimeline,
     workingMemory,
     workingMemoryPacket,
+    retrievalTrace: {
+      paths: retrievalPaths,
+      promptSections: [
+        foundationRecallBlock ? 'working_memory' : null,
+        entityDossierBlock ? 'entity_dossier' : null,
+        entityArcNarrativeBlock ? 'entity_arc' : null,
+      ].filter(Boolean),
+      queryCount: workingMemory?.timing?.queryCount ?? 0,
+    },
     lifeArcSynthesisBlock,
     lifeArcSynthesis,
     storyContextBlock,
     storyContext,
     confirmedSkills,
   };
+
+  logger.info({
+    userId,
+    paths: retrievalPaths,
+    promptSections: packet.retrievalTrace.promptSections,
+    queryCount: packet.retrievalTrace.queryCount,
+  }, 'RAGBuilder: retrieval trace');
 
   ragPacketCacheService.cachePacket(userId, message, packet);
   return packet;

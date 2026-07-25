@@ -749,8 +749,12 @@ class OmegaChatService {
       chatFocus.sourceSurface === 'love'
         ? ' Prioritize feelings, attachment, patterns, and relationship dynamics over general lore. Treat emotionally charged sharing as deepening this bond.'
         : '';
+    const organizationNote =
+      chatFocus.sourceSurface === 'organizations' || chatFocus.entityType === 'organization'
+        ? ' Prioritize accurate roster and affiliation for this group: help name people, create/update Character Book entries from what the user shares, link membership when they affirm affiliation, and respect corrections that someone is NOT in the group. Do not invent members or affiliations. Prefer short clarifying questions over guessing. Durable facts should follow Living Memory write rules (review before canon for high-risk claims).'
+        : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 

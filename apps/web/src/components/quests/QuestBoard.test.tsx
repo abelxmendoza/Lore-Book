@@ -13,6 +13,17 @@ vi.mock('../../hooks/useQuests', () => ({
   usePauseQuest: () => ({ mutateAsync: vi.fn() }),
 }));
 
+vi.mock('../../store/hooks/useEntityBooks', () => ({
+  useBookEntityIndexSearch: () => ({
+    entities: [],
+    total: 0,
+    counts: {},
+    isSearching: false,
+    isActive: false,
+    error: undefined,
+  }),
+}));
+
 vi.mock('./DetectedQuestSuggestions', () => ({
   DetectedQuestSuggestions: () => <div data-testid="quest-suggestions-stub" />,
 }));

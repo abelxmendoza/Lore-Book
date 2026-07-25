@@ -62,6 +62,7 @@ import {
 import { formatSkillCertaintyDetail, levelLabel, skillCertaintyFieldLabel } from '../../lib/skillStory';
 import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
 import type { Achievement } from '../../types/achievement';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 
 type SkillDetailModalProps = {
   skill: Skill;
@@ -716,14 +717,22 @@ When the user provides information about who they learned from, where they pract
       >
         {/* Header — compact on mobile */}
         <div className={cn('relative shrink-0 border-b border-white/8 bg-gradient-to-r', theme.headerGrad)}>
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex items-center gap-1.5">
+            <EntityLorebookCompileControl
+              subjectLabel={skill.skill_name}
+              focus={{ skillId: skill.id, themes: skill.skill_name }}
+              testId="skill-modal-lorebook-compile"
+              className="hidden sm:inline-flex"
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
           <div
             className="sm:hidden px-3 py-1.5 pr-11 min-w-0"
@@ -744,6 +753,13 @@ When the user provides information about who they learned from, where they pract
                     </span>
                   )}
                 </p>
+                <div className="mt-1.5 sm:hidden">
+                  <EntityLorebookCompileControl
+                    subjectLabel={skill.skill_name}
+                    focus={{ skillId: skill.id, themes: skill.skill_name }}
+                    testId="skill-modal-lorebook-compile-mobile"
+                  />
+                </div>
               </div>
             </div>
             <div className={cn('mt-1.5 h-1 rounded-full overflow-hidden', theme.progressTrack)}>

@@ -164,8 +164,7 @@ describe('CharacterTimelinePanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /copy all timeline events/i })).toHaveTextContent('Copied'));
   });
 
-  it('only shows "Create a Lorebook" once there is a minimum amount of timeline content', async () => {
-    // Fixture has 2 events total — below the 3-event threshold.
+  it('always exposes Compile LoreBook forms control on the character timeline', async () => {
     render(
       <MemoryRouter>
         <CharacterTimelinePanel characterId="c1" characterName="Jerry Medina" active />
@@ -173,32 +172,21 @@ describe('CharacterTimelinePanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
-    expect(screen.queryByTestId('character-timeline-create-lorebook')).not.toBeInTheDocument();
+    expect(screen.getByTestId('character-timeline-create-lorebook')).toBeInTheDocument();
+    expect(screen.getByTestId('character-timeline-create-lorebook-menu')).toBeInTheDocument();
   });
 
-  it('shows a working "Create a Lorebook" deep link once there is enough content', async () => {
-    fetchJsonMock.mockResolvedValue({
-      success: true,
-      timelines: {
-        sharedExperiences: [
-          { id: 'cte-1', eventId: 'evt-1', eventTitle: 'A', eventDate: '2024-01-01T00:00:00.000Z' },
-          { id: 'cte-2', eventId: 'evt-2', eventTitle: 'B', eventDate: '2024-02-01T00:00:00.000Z' },
-        ],
-        lore: [
-          { id: 'cte-3', eventId: 'evt-3', eventTitle: 'C', eventDate: '2024-03-01T00:00:00.000Z' },
-        ],
-      },
-    });
-
+  it('opens LoreBook forms picker from the character timeline control', async () => {
     render(
       <MemoryRouter>
         <CharacterTimelinePanel characterId="c1" characterName="Jerry Medina" active />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('character-timeline-create-lorebook')).toBeInTheDocument());
-    expect(screen.getByTestId('character-timeline-create-lorebook').getAttribute('href')).toBe(
-      '/lorebook?focus=Jerry%20Medina',
-    );
+    await waitFor(() => expect(screen.getByTestId('character-timeline-create-lorebook-menu')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('character-timeline-create-lorebook-menu').querySelector('button')!);
+    expect(await screen.findByText(/Compile a LoreBook/i)).toBeInTheDocument();
+    expect(screen.getByText(/LoreBook forms/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Vignette$/i)).toBeInTheDocument();
   });
 });

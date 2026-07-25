@@ -33,6 +33,8 @@ import {
   lorebookEditorUrlForCompiledBooks,
   lorebookLibraryUrl,
 } from '../../lib/lorebookLibrary';
+import { evaluateTopicTierOffer, type LorebookForm } from '../../lib/lorebookTiers';
+import { LorebookTierMenu } from './LorebookTierMenu';
 
 export type GenerateTopicOptions = {
   characterId?: string;
@@ -42,6 +44,8 @@ export type GenerateTopicOptions = {
   threadId?: string;
   timeRange?: { start: string; end: string };
   themes?: string[];
+  /** Document shape tier chosen from the LoreBook tier picker. */
+  form?: LorebookForm;
 };
 
 function optionsFromFocus(focus: FocusCandidate): GenerateTopicOptions {
@@ -137,20 +141,16 @@ function TopicCard({
   const selected = focuses.find((f) => f.id === selectedId) ?? focuses[0];
   const badge = READINESS_COLORS[topic.level];
   const gap = primaryGap(topic);
+  const tierOffer = useMemo(() => evaluateTopicTierOffer(topic), [topic]);
 
-  const handleCompile = () => {
+  const handleSelectForm = (form: LorebookForm) => {
     if (!onGenerate) return;
     if (selected) {
-      onGenerate(optionsFromFocus(selected));
+      onGenerate({ ...optionsFromFocus(selected), form });
       return;
     }
-    onGenerate();
+    onGenerate({ form });
   };
-
-  const canCompile = Boolean(
-    onGenerate &&
-      (selected?.canCompile || (topic.canGenerate && (focuses.length === 0 || selected)))
-  );
 
   const signalLine =
     topic.signalSummary ||
@@ -190,15 +190,15 @@ function TopicCard({
       <ProgressBar value={topic.progress} level={topic.level} />
       <div className="flex items-center justify-between mt-2 gap-2">
         <p className="text-[11px] text-white/35 font-mono truncate">{signalLine}</p>
-        {canCompile && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs px-2 text-emerald-300 hover:text-emerald-200 shrink-0"
-            onClick={handleCompile}
-          >
-            Compile
-          </Button>
+        {onGenerate && (
+          <LorebookTierMenu
+            tierOffer={tierOffer}
+            onSelectForm={handleSelectForm}
+            subjectLabel={topic.topic.label}
+            buttonLabel="LoreBook"
+            className="shrink-0"
+            testId={`lore-topic-tier-menu-${topic.topic.id}`}
+          />
         )}
       </div>
 

@@ -4,16 +4,6 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { StorageBlockedError } from '../utils/postgresError';
 import { shouldBlockAnonymousAiChat } from '../config/runtimePolicy';
-import { openAiHttpBurstLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
-import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { checkAiRequestLimit } from '../middleware/subscription';
-import { omegaChatService } from '../services/omegaChatService';
-import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
-import { incrementAiRequestCount } from '../services/usageTracking';
-import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
-import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
-import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
-import { messageCorrectionService } from '../services/messageCorrectionService';
 import {
   insertAssistantPlaceholder,
   finalizeAssistantMessage,
@@ -141,7 +131,7 @@ const chatSchema = z
         z.object({
           id: z.string().min(1),
           name: z.string(),
-          type: z.enum(['character', 'location', 'organization', 'skill', 'event']),
+          type: z.enum(['character', 'location', 'organization', 'skill', 'event', 'project']),
           status: z.enum(['confirmed', 'suggestion']).optional(),
         }),
       )
@@ -207,12 +197,22 @@ import {
 } from '../services/chat/chatDurability';
 import { buildDurabilityApiResponse } from '../services/chat/durabilityApiContract';
 import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
+import { openAiHttpBurstLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
+import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { checkAiRequestLimit } from '../middleware/subscription';
 import {
   detectFirstSessionCallback,
   shouldRunFirstSessionCallback,
 } from '../services/chat/firstSessionContinuity';
-import { supabaseAdmin } from '../services/supabaseClient';
+import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { classifyIngestionError } from '../services/ingestion/ingestionJobStates';
+import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
+import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
+import { messageCorrectionService } from '../services/messageCorrectionService';
+import { omegaChatService } from '../services/omegaChatService';
+import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { incrementAiRequestCount } from '../services/usageTracking';
 
 function isOpenAIQuotaError(error: unknown): boolean {
   if (isOpenAiBudgetExceededError(error)) return true;

@@ -7,7 +7,13 @@ import { normalizeNameKey } from '../../utils/nameNormalization';
 import { formatSelfChipLabel, isReservedSelfName } from '../identity/selfIdentityGuard';
 import { supabaseAdmin } from '../supabaseClient';
 
-export type CertifiedEntityType = 'character' | 'location' | 'organization' | 'skill' | 'event';
+export type CertifiedEntityType =
+  | 'character'
+  | 'location'
+  | 'organization'
+  | 'skill'
+  | 'event'
+  | 'project';
 
 export type CharacterVariant = 'romantic';
 
@@ -88,6 +94,7 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     orgsRes,
     skillsRes,
     eventsRes,
+    projectsRes,
     romanticRes,
   ] = await Promise.all([
     Promise.resolve(
@@ -137,6 +144,14 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
         .eq('user_id', userId)
         .order('occurred_at', { ascending: false })
         .limit(500)
+    )
+      .then((r) => r.data ?? [])
+      .catch(() => []),
+    Promise.resolve(
+      supabaseAdmin
+        .from('projects')
+        .select('id, name, metadata')
+        .eq('user_id', userId)
     )
       .then((r) => r.data ?? [])
       .catch(() => []),
@@ -266,6 +281,17 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
       type: 'event',
       aliases,
       mentionKeys: mentionKeysFor(ev.title, aliases),
+    });
+  }
+
+  for (const project of projectsRes as Array<{ id: string; name: string; metadata?: Record<string, unknown> }>) {
+    const aliases = (project.metadata?.aliases as string[] | undefined) ?? [];
+    pushEntity(map, {
+      id: project.id,
+      name: project.name,
+      type: 'project',
+      aliases,
+      mentionKeys: mentionKeysFor(project.name, aliases),
     });
   }
 

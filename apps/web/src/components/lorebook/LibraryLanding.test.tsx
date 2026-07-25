@@ -107,6 +107,21 @@ describe('LibraryLanding', () => {
     expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music', undefined);
   });
 
+  it('picking a length from the tier menu opens evidence review and compiles with that form', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'my journey with music' } });
+
+    fireEvent.click(screen.getByTestId('library-search-tier-menu').querySelector('button')!);
+    const bookSelect = await screen.findByTestId('library-search-tier-menu-modal-select-book');
+    fireEvent.click(bookSelect);
+
+    expect(screen.getByTestId('lorebook-evidence-review')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /compile this book/i }));
+    expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music', { form: 'book' });
+  });
+
   it('pre-fills query when a category is clicked', async () => {
     render(<LibraryLanding onGenerate={mockOnGenerate} />);
     const careerBtn = screen.getByRole('button', { name: /Career/i });
