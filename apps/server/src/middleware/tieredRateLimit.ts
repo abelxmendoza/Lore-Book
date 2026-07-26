@@ -64,6 +64,8 @@ const SKIP_PATHS = [
   /^\/api\/security\/csrf-token\/?$/i,
   /^\/api\/user\/authority\/?$/i,
   /^\/api\/user\/terms-status\/?$/i,
+  // Composer cold-start — failing this leaves "Entity detection unavailable" stuck.
+  /^\/api\/entities\/certified-index\/?$/i,
 ];
 
 /** CORS preflights must not consume the read budget. */

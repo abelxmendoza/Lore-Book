@@ -71,6 +71,12 @@ describe('tieredRateLimit', () => {
     ).toEqual([]);
   });
 
+  it('skips certified entity index cold-start endpoint', () => {
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/entities/certified-index', 'GET', 'user-1') as Request),
+    ).toEqual([]);
+  });
+
   it('classifies guest chat as guest tier only', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/guest/stream', 'POST') as Request

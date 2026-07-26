@@ -455,6 +455,9 @@ export const useChatThreads = () => {
               subtitle: ensuredMeta.subtitle ?? row?.subtitle ?? existing?.subtitle,
               dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
               messages: [],
+              // Clear list-API messageCount so the UI does not spin on
+              // "Finding connections" forever when the server snapshot is empty.
+              messageCount: 0,
               updatedAt: bestUpdatedAt,
               threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
             };
@@ -485,6 +488,7 @@ export const useChatThreads = () => {
             subtitle: ensuredMeta.subtitle ?? row?.subtitle ?? existing?.subtitle,
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
+            messageCount: messages.length,
             updatedAt: bestUpdatedAt,
             threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
           };

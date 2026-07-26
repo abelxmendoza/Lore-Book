@@ -170,36 +170,46 @@ describe('useEntityIndexer', () => {
   });
 
   it('surfaces index load errors and clears matches', async () => {
-    fetchJson.mockRejectedValueOnce(new Error('network'));
+    // Internal loader retries transient network failures 3× before surfacing.
+    fetchJson
+      .mockRejectedValueOnce(new Error('network'))
+      .mockRejectedValueOnce(new Error('network'))
+      .mockRejectedValueOnce(new Error('network'));
 
     const { result } = renderHook(() => useEntityIndexer(), { wrapper });
 
-    await waitFor(() => {
-      expect(result.current.indexError).toBeTruthy();
-    });
+    await waitFor(
+      () => {
+        expect(result.current.indexError).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
 
     expect(result.current.indexReady).toBe(false);
     expect(result.current.matches).toHaveLength(0);
   });
 
   it('retries index load after failure', async () => {
-    fetchJson.mockRejectedValueOnce(new Error('network'));
-    fetchJson.mockImplementation((url: string) => {
-      if (url.includes('/api/entities/certified-index')) {
-        return Promise.resolve({ entities: INDEX_ENTITIES });
-      }
-      return Promise.resolve({ spans: [], inferredAssociations: [], ambiguities: [] });
-    });
+    fetchJson
+      .mockRejectedValueOnce(new Error('network'))
+      .mockRejectedValueOnce(new Error('network'))
+      .mockRejectedValueOnce(new Error('network'))
+      .mockImplementation((url: string) => {
+        if (url.includes('/api/entities/certified-index')) {
+          return Promise.resolve({ entities: INDEX_ENTITIES });
+        }
+        return Promise.resolve({ spans: [], inferredAssociations: [], ambiguities: [] });
+      });
 
     const { result } = renderHook(() => useEntityIndexer(), { wrapper });
 
-    await waitFor(() => expect(result.current.indexError).toBeTruthy());
+    await waitFor(() => expect(result.current.indexError).toBeTruthy(), { timeout: 5000 });
 
     act(() => {
       result.current.retryLoad();
     });
 
-    await waitFor(() => expect(result.current.indexReady).toBe(true));
+    await waitFor(() => expect(result.current.indexReady).toBe(true), { timeout: 5000 });
     expect(result.current.indexError).toBeNull();
   });
 });

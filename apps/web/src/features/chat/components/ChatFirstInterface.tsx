@@ -197,6 +197,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     loadMoreThreads,
     lastError,
     dismissThreadError,
+    isHydratingMessages,
+    hydrationError,
+    retryHydrateActiveThread,
   } = useConversationRuntime();
 
   // Build the display list: prepend the ephemeral greeting when present.
@@ -215,14 +218,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     ? [greetingDisplayMsg, ...messages]
     : messages;
 
-  const activeThreadMeta = useMemo(
-    () => threads.find((t) => t.id === activeThreadId),
-    [threads, activeThreadId]
-  );
-  const isHydratingThreadMessages =
-    !!activeThreadId &&
-    messages.length === 0 &&
-    (activeThreadMeta?.messageCount ?? 0) > 0;
+  // Prefer explicit hydration state — the old messageCount heuristic could spin
+  // forever after a failed/empty hydrate while list metadata still said > 0.
+  const showThreadHydrating =
+    isHydratingMessages || (threadsLoading && !!activeThreadId && messages.length === 0);
 
   const threadEntities = useMemo(() => collectThreadEntities(messages), [messages]);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
@@ -1014,9 +1013,21 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {messages.length === 0 ? (
             <div className="flex-1 overflow-y-auto chat-scrollbar">
-              {isHydratingThreadMessages || (threadsLoading && !!activeThreadId) ? (
+              {showThreadHydrating ? (
                 <div className="flex flex-1 items-center justify-center min-h-[12rem] p-6">
                   <ChatLoadingPulse stage="connecting" progress={35} />
+                </div>
+              ) : hydrationError ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 min-h-[12rem] p-6 text-center">
+                  <p className="text-sm text-white/70">Couldn&apos;t load this conversation.</p>
+                  <p className="text-xs text-white/40 max-w-sm">{hydrationError}</p>
+                  <button
+                    type="button"
+                    onClick={() => retryHydrateActiveThread()}
+                    className="rounded-lg bg-primary/20 px-3 py-1.5 text-sm text-primary hover:bg-primary/30"
+                  >
+                    Try again
+                  </button>
                 </div>
               ) : (
                 <>

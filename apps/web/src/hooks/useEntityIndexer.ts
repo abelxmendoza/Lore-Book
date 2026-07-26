@@ -120,17 +120,46 @@ async function loadSharedIndex(force = false): Promise<void> {
         return;
       }
 
-      const data = await fetchJson<{ entities: CertifiedEntity[] }>(INDEX_CACHE_KEY);
-      const entities = data.entities ?? [];
-      shared = {
-        entities,
-        matchIndex: buildEntityMatchIndex(entities),
-        ready: true,
-        error: null,
-        loading: false,
-      };
-    } catch (err) {
-      if (isTransientAuthError(err)) {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const data = await fetchJson<{ entities: CertifiedEntity[] }>(INDEX_CACHE_KEY);
+          const entities = data.entities ?? [];
+          shared = {
+            entities,
+            matchIndex: buildEntityMatchIndex(entities),
+            ready: true,
+            error: null,
+            loading: false,
+          };
+          return;
+        } catch (err) {
+          lastErr = err;
+          if (isTransientAuthError(err)) {
+            shared = {
+              entities: [],
+              matchIndex: buildEntityMatchIndex([]),
+              ready: false,
+              error: null,
+              loading: false,
+            };
+            return;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          const status =
+            typeof err === 'object' && err && 'status' in err
+              ? Number((err as { status?: number }).status)
+              : undefined;
+          const retryable =
+            status === 429 ||
+            status === 503 ||
+            /429|rate limit|too many requests|timeout|network|failed to fetch/i.test(msg);
+          if (!retryable || attempt === 2) break;
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1) ** 2));
+        }
+      }
+
+      if (isTransientAuthError(lastErr)) {
         shared = {
           entities: [],
           matchIndex: buildEntityMatchIndex([]),
@@ -236,6 +265,16 @@ export const useEntityIndexer = () => {
 
     return () => authListener.subscription.unsubscribe();
   }, [retryTick]);
+
+  // Auto-retry entity index after transient failures (rate limit / network blip).
+  useEffect(() => {
+    if (!sharedState.error || sharedState.loading || sharedState.ready) return;
+    const timer = window.setTimeout(() => {
+      apiCache.delete(INDEX_CACHE_KEY);
+      void loadSharedIndex(true);
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [sharedState.error, sharedState.loading, sharedState.ready]);
 
   useEffect(() => {
     dispatch(setComposerIndexReady(sharedState.ready));

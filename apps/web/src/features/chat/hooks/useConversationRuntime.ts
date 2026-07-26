@@ -69,6 +69,8 @@ export const useConversationRuntime = () => {
 
   const [greetingMessage, setGreetingMessage] = useState<string | null>(null);
   const greetingThreadRef = useRef<string | null>(null);
+  const [isHydratingMessages, setIsHydratingMessages] = useState(false);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
 
   const intendedThreadRef = useRef<string | null>(threadIdParam ?? null);
   const hydratedByHandlerRef = useRef<string | null>(null);
@@ -168,6 +170,24 @@ export const useConversationRuntime = () => {
     [setActiveThreadId, switchThread, getThread]
   );
 
+  const beginHydration = useCallback((threadId: string) => {
+    hydrationRequestRef.current = threadId;
+    setIsHydratingMessages(true);
+    setHydrationError(null);
+    runtimeDiagnostics.startTimer('hydration');
+  }, []);
+
+  const endHydration = useCallback((threadId: string, outcome: 'done' | 'error' | 'empty', error?: string) => {
+    if (hydrationRequestRef.current !== threadId) return;
+    hydrationRequestRef.current = null;
+    setIsHydratingMessages(false);
+    if (outcome === 'error') {
+      setHydrationError(error || 'Could not load this conversation.');
+    } else {
+      setHydrationError(null);
+    }
+  }, []);
+
   // ── URL-driven hydration (single path) ─────────────────────────────────────
   useEffect(() => {
     if (authLoading || threadsLoading) return;
@@ -198,16 +218,23 @@ export const useConversationRuntime = () => {
         }
         // Reconcile with server in background — never skip when assistant turns may be missing.
         if (hydrationRequestRef.current === threadIdParam) return;
-        hydrationRequestRef.current = threadIdParam;
-        runtimeDiagnostics.startTimer('hydration');
+        beginHydration(threadIdParam);
         hydrateThreadMessages(threadIdParam)
           .then((hydratedThread) => {
             if (hydrationRequestRef.current !== threadIdParam) return;
-            hydrationRequestRef.current = null;
-            if (hydratedThread) applyHydratedThread(threadIdParam);
+            if (hydratedThread) {
+              endHydration(threadIdParam, 'done');
+              applyHydratedThread(threadIdParam);
+            } else {
+              endHydration(threadIdParam, 'empty');
+            }
           })
-          .catch(() => {
-            if (hydrationRequestRef.current === threadIdParam) hydrationRequestRef.current = null;
+          .catch((err) => {
+            endHydration(
+              threadIdParam,
+              'error',
+              err instanceof Error ? err.message : String(err),
+            );
           });
         intendedThreadRef.current = threadIdParam;
         isHydratedRef.current = true;
@@ -247,27 +274,29 @@ export const useConversationRuntime = () => {
           switchThread(threadIdParam);
           intendedThreadRef.current = threadIdParam;
           if (hydrationRequestRef.current === threadIdParam) return;
-          hydrationRequestRef.current = threadIdParam;
-          runtimeDiagnostics.startTimer('hydration');
+          beginHydration(threadIdParam);
           hydrateThreadMessages(threadIdParam)
             .then((hydratedThread) => {
               if (hydrationRequestRef.current !== threadIdParam) return;
-              hydrationRequestRef.current = null;
               if (!hydratedThread) {
+                endHydration(threadIdParam, 'empty');
                 runtimeDiagnostics.record('hydration_empty', { threadId: threadIdParam, meta: { reason: 'not_found' } });
                 navigate('/chat', { replace: true });
                 return;
               }
+              endHydration(threadIdParam, 'done');
               applyHydratedThread(threadIdParam);
             })
             .catch((err) => {
-              if (hydrationRequestRef.current === threadIdParam) {
-                hydrationRequestRef.current = null;
-                runtimeDiagnostics.record('hydration_error', {
-                  threadId: threadIdParam,
-                  meta: { error: err instanceof Error ? err.message : String(err) },
-                });
-              }
+              endHydration(
+                threadIdParam,
+                'error',
+                err instanceof Error ? err.message : String(err),
+              );
+              runtimeDiagnostics.record('hydration_error', {
+                threadId: threadIdParam,
+                meta: { error: err instanceof Error ? err.message : String(err) },
+              });
             });
           return;
         }
@@ -280,27 +309,29 @@ export const useConversationRuntime = () => {
         runtimeDiagnostics.recordTimed('hydration_complete', 'hydration', { threadId: threadIdParam });
       } else if (threadsReady) {
         if (hydrationRequestRef.current === threadIdParam) return;
-        hydrationRequestRef.current = threadIdParam;
-        runtimeDiagnostics.startTimer('hydration');
+        beginHydration(threadIdParam);
         hydrateThreadMessages(threadIdParam)
           .then((hydratedThread) => {
             if (hydrationRequestRef.current !== threadIdParam) return;
-            hydrationRequestRef.current = null;
             if (!hydratedThread) {
+              endHydration(threadIdParam, 'empty');
               runtimeDiagnostics.record('hydration_empty', { threadId: threadIdParam, meta: { reason: 'not_found' } });
               navigate('/chat', { replace: true });
               return;
             }
+            endHydration(threadIdParam, 'done');
             applyHydratedThread(threadIdParam);
           })
           .catch((err) => {
-            if (hydrationRequestRef.current === threadIdParam) {
-              hydrationRequestRef.current = null;
-              runtimeDiagnostics.record('hydration_error', {
-                threadId: threadIdParam,
-                meta: { error: err instanceof Error ? err.message : String(err) },
-              });
-            }
+            endHydration(
+              threadIdParam,
+              'error',
+              err instanceof Error ? err.message : String(err),
+            );
+            runtimeDiagnostics.record('hydration_error', {
+              threadId: threadIdParam,
+              meta: { error: err instanceof Error ? err.message : String(err) },
+            });
           });
       }
     } else {
@@ -322,6 +353,8 @@ export const useConversationRuntime = () => {
     switchThread,
     setCurrentThreadId,
     applyHydratedThread,
+    beginHydration,
+    endHydration,
     setActiveThreadId,
     activeThreadId,
     navigate,
@@ -589,6 +622,32 @@ export const useConversationRuntime = () => {
     setGreetingMessage(null);
   }, []);
 
+  const retryHydrateActiveThread = useCallback(() => {
+    const id = threadIdParam;
+    if (!id) return;
+    if (hydrationRequestRef.current === id) return;
+    beginHydration(id);
+    hydrateThreadMessages(id)
+      .then((hydratedThread) => {
+        if (hydrationRequestRef.current !== id) return;
+        if (!hydratedThread) {
+          endHydration(id, 'empty');
+          runtimeDiagnostics.record('hydration_empty', { threadId: id, meta: { reason: 'not_found_retry' } });
+          navigate('/chat', { replace: true });
+          return;
+        }
+        endHydration(id, 'done');
+        applyHydratedThread(id);
+      })
+      .catch((err) => {
+        endHydration(id, 'error', err instanceof Error ? err.message : String(err));
+        runtimeDiagnostics.record('hydration_error', {
+          threadId: id,
+          meta: { error: err instanceof Error ? err.message : String(err), retry: true },
+        });
+      });
+  }, [threadIdParam, beginHydration, endHydration, hydrateThreadMessages, applyHydratedThread, navigate]);
+
   return {
     threads,
     threadsLoading,
@@ -602,6 +661,9 @@ export const useConversationRuntime = () => {
     activeMessages,
     greetingMessage,
     clearGreeting,
+    isHydratingMessages,
+    hydrationError,
+    retryHydrateActiveThread,
     handleNewChat,
     handleSelectThread,
     handleDeleteThread,
