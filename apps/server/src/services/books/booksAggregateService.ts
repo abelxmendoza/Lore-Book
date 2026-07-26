@@ -9,6 +9,7 @@ import { familyGraphService } from '../kinship/familyGraphService';
 import { familySurnameSuggestionService } from '../kinship/familySurnameSuggestionService';
 import { householdService } from '../kinship/householdService';
 import { locationService } from '../locationService';
+import { organizationService } from '../organizationService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { projectService } from '../projectService';
 import { skillService } from '../skills/skillService';
@@ -106,9 +107,34 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
   const visibleCharacters = dedupeCharacters((characters ?? []).filter(isVisibleCharacter));
   const visibleCounts = { ...counts, characters: visibleCharacters.length };
 
+  const preferredOrgIdByCharacter: Record<string, string | undefined> = {};
+  for (const row of visibleCharacters) {
+    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+    const preferred =
+      (typeof meta.primary_organization_id === 'string' && meta.primary_organization_id) ||
+      (typeof meta.primary_group_id === 'string' && meta.primary_group_id) ||
+      undefined;
+    if (preferred) preferredOrgIdByCharacter[row.id as string] = preferred;
+  }
+
+  const primaryByCharacter = await organizationService.getPrimaryAffiliationsByCharacterIds(
+    userId,
+    visibleCharacters.map((c) => c.id as string),
+    { preferredOrgIdByCharacter },
+  );
+
+  const charactersWithPrimary = visibleCharacters.map((row) => {
+    const primary = primaryByCharacter[row.id as string];
+    if (!primary) return row;
+    return {
+      ...row,
+      primary_organization: primary,
+    };
+  });
+
   let duplicate_groups: unknown[] = [];
   if (opts?.includeDuplicates !== false) {
-    const rows = visibleCharacters.filter((row) => {
+    const rows = charactersWithPrimary.filter((row) => {
       const meta = (row.metadata ?? {}) as Record<string, unknown>;
       return meta.is_self !== true && meta.is_user !== true;
     });
@@ -127,7 +153,7 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
       }));
   }
 
-  return { characters: visibleCharacters, duplicate_groups, counts: visibleCounts };
+  return { characters: charactersWithPrimary, duplicate_groups, counts: visibleCounts };
 }
 
 export async function loadLocationsBook(userId: string) {

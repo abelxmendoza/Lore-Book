@@ -28,6 +28,8 @@ import { fetchCharacterById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { supabase, useAuth } from '../../lib/supabase';
 import { useCharactersBookData } from '../../store/hooks/useEntityBooks';
+import { useGetOrganizationsQuery } from '../../store/api/entitiesApi';
+import { withPrimaryOrganizations } from '../../lib/primaryOrganization';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { selectHighlightedCharacterIds } from '../../store/selectors';
 import { clearCharacterHighlights } from '../../store/slices/chatSlice';
@@ -2658,6 +2660,9 @@ export const CharacterBook = () => {
     isGuest: isGuestRuntime,
     guestId,
   } = useCharactersBookData();
+  const { data: organizationsPayload } = useGetOrganizationsQuery(undefined, {
+    skip: !user?.id || isMockDataEnabled || isMockEnabled || isGuestRuntime || isGuest,
+  });
   const [demoCharacterOverride, setDemoCharacterOverride] = useState<Character[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
@@ -2757,7 +2762,12 @@ export const CharacterBook = () => {
     mockRegistryTick,
   ]);
 
-  const characters = demoCharacterOverride ?? serverCharacters;
+  const characters = useMemo(() => {
+    const base = demoCharacterOverride ?? serverCharacters;
+    const orgs = organizationsPayload?.organizations ?? [];
+    if (!orgs.length) return base;
+    return withPrimaryOrganizations(base, orgs);
+  }, [demoCharacterOverride, serverCharacters, organizationsPayload?.organizations]);
   const bookLoading = charactersLoading || loading;
 
   useEffect(() => {

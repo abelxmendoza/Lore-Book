@@ -61,18 +61,20 @@ export class HouseholdService {
         if (!m.character_id) continue;
         const roleRaw = (m.role ?? 'member').toLowerCase();
         let householdRole: HouseholdRole =
-          roleRaw === 'visitor' ? 'visitor' : roleRaw === 'former' ? 'former_resident' : 'resident';
+          m.status === 'former' || /former/.test(roleRaw)
+            ? 'former_resident'
+            : roleRaw === 'visitor'
+              ? 'visitor'
+              : 'resident';
 
         const parsed = parseKinshipFromName(m.character_name);
         const isHead =
           headName &&
           m.character_name.toLowerCase().includes(headName.toLowerCase().split(/\s+/)[0]);
 
-        if (isHead || householdRole === 'head_of_household') {
+        if (householdRole !== 'former_resident' && (isHead || householdRole === 'head_of_household')) {
           householdRole = 'head_of_household';
           headCharacterId = m.character_id;
-        } else if (selfId && m.character_id === selfId) {
-          householdRole = 'visitor';
         }
 
         memberDtos.push({

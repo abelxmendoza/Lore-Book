@@ -144,6 +144,16 @@ export class FamilyGraphService {
 
     const nameById = new Map((chars ?? []).map((c) => [c.id as string, c.name as string]));
     const mentionById = new Map((chars ?? []).map((c) => [c.id as string, Number((c.metadata as Record<string, unknown>)?.mention_count ?? 0)]));
+    const excludedIds = new Set(
+      (chars ?? [])
+        .filter((c) => {
+          const flag = (c.metadata as Record<string, unknown> | null)?.family_excluded;
+          if (flag === true) return true;
+          if (flag && typeof flag === 'object' && (flag as { value?: unknown }).value === true) return true;
+          return false;
+        })
+        .map((c) => c.id as string),
+    );
 
     const edges: FamilyGraphEdge[] = [];
     const seen = new Set<string>();
@@ -153,6 +163,9 @@ export class FamilyGraphService {
       const kinship = (meta.kinship as string | undefined) ?? r.relationship_role ?? undefined;
 
       if (!isFamilyRelationshipRow(r)) continue;
+      if (excludedIds.has(r.source_character_id as string) || excludedIds.has(r.target_character_id as string)) {
+        continue;
+      }
 
       const edgeType = edgeTypeFromKinship(kinship, r.relationship_type);
       const key = `${r.source_character_id}|${r.target_character_id}|${edgeType}`;

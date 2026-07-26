@@ -65,6 +65,23 @@ describe('CharacterProfileCard', () => {
     expect(screen.getAllByText('Major').length).toBeGreaterThan(0);
   });
 
+  it('renders primary organization affiliation on the card', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          primary_organization: {
+            id: 'org-1',
+            name: 'Whittier Hometown Family Household',
+            group_type: 'family',
+            role: 'member',
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('Whittier Hometown Family Household')).toBeInTheDocument();
+  });
+
   it('shows "High impact" badge when minor/background and character_influence_on_user >= 70', async () => {
     render(
       <CharacterProfileCard
@@ -201,5 +218,44 @@ describe('CharacterProfileCard', () => {
     await waitFor(() => {
       expect(screen.queryByTitle('Rare in your story, but high impact on you')).not.toBeInTheDocument();
     });
+  });
+
+  it('shows kinship label (e.g. "Uncle") instead of "Unknown" when role is empty but kinship_label is set', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          role: undefined,
+          archetype: 'family',
+          metadata: { kinship_label: 'Uncle' },
+        }}
+      />
+    );
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Uncle').length).toBeGreaterThan(0);
+  });
+
+  it('still shows the honest "Unknown" empty state when there is no role, archetype, or kinship label', () => {
+    render(<CharacterProfileCard character={{ ...baseCharacter, role: undefined }} />);
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('shows the kinship label instead of generic "Family" in the archetype badge', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          archetype: 'family',
+          metadata: { kinship_label: 'Grandma' },
+        }}
+      />
+    );
+    expect(screen.getAllByText('Grandma').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Family')).not.toBeInTheDocument();
+  });
+
+  it('shows the primary role plus a +N count for multiple roles, like the archetype badge', () => {
+    render(<CharacterProfileCard character={{ ...baseCharacter, role: 'dj, promoter, bartender' }} />);
+    expect(screen.getByText('dj +2')).toBeInTheDocument();
   });
 });

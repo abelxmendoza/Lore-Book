@@ -39,6 +39,29 @@ export function normalizeDuplicateKey(name: string): string {
  *   "kelly"       ⊂ "kelly's meeting colleague"    (possessive — ambiguous!)
  * Token equality only — "sol" does NOT match "solomon".
  */
+/** Drop a single trailing possessive ("'s", "s'", or a bare trailing "'"). */
+function stripTrailingPossessive(normalized: string): string {
+  if (/['’`]s$/i.test(normalized)) return normalized.replace(/['’`]s$/i, '');
+  if (/s['’`]$/.test(normalized)) return normalized.replace(/['’`]$/, '');
+  if (/['’`]$/.test(normalized)) return normalized.replace(/['’`]$/, '');
+  return normalized;
+}
+
+/**
+ * True when `a` and `b` differ only by a trailing possessive suffix on one
+ * side ("Tio Ralph's" vs "Tio Ralph", "James'" vs "James") — an accidental
+ * possessive typo, not a real alternate name. Distinct from
+ * {@link normalizeDuplicateKey}, which only equates two spellings that BOTH
+ * already carry an "s" ("Mom's House" === "Moms House"); stripping "'s"
+ * entirely would wrongly collapse genuinely different names there.
+ */
+export function isTrailingPossessiveVariant(a: string, b: string): boolean {
+  const na = normalizeNameKey(a);
+  const nb = normalizeNameKey(b);
+  if (na === nb) return false;
+  return stripTrailingPossessive(na) === stripTrailingPossessive(nb);
+}
+
 export function nameContained(shortNorm: string, longNorm: string): boolean {
   const clean = (s: string) => s.replace(/[.,;:!?]/g, '');
   const sTokens = clean(shortNorm).split(' ').filter(Boolean);
@@ -77,14 +100,77 @@ export function containmentIsPossessive(shortNorm: string, longNorm: string): bo
     && !longNorm.split(' ').includes(lastShort);
 }
 
+/** Leading kinship / honorific titles that must NOT become first/middle names. */
+const LEADING_TITLE_RE =
+  /^(?:(?:mr|mrs|ms|miss|mx|dr|prof|professor|dj|sir|dame|lord|lady|rev|fr)\.?\s+|(?:my|our)\s+)?(?:step(?:\s|-)?(?:dad|father|mom|mother)|t[íi]o|t[íi]a|uncle|auntie|aunt|abuelita|abuelito|abuela|abuelo|grandma|grandpa|grandmother|grandfather|cousin|primo|prima|brother|sister|hermano|hermana|mom|dad|mother|father|mommy|daddy|mama|papa|mamá|papá)\s+/i;
+
+/** Tokens that are kinship labels, never legal given/middle/family names. */
+const KINSHIP_NAME_TOKENS = new Set([
+  'step', 'dad', 'mom', 'father', 'mother', 'stepfather', 'stepmother', 'stepdad', 'stepmom',
+  'tio', 'tío', 'tia', 'tía', 'uncle', 'aunt', 'auntie', 'abuela', 'abuelo', 'abuelita', 'abuelito',
+  'grandma', 'grandpa', 'grandmother', 'grandfather', 'cousin', 'primo', 'prima',
+  'brother', 'sister', 'hermano', 'hermana', 'mommy', 'daddy', 'mama', 'papa', 'mamá', 'papá',
+]);
+
+export function isKinshipNameToken(token: string | null | undefined): boolean {
+  const t = normalizeNameKey(token ?? '');
+  return Boolean(t) && KINSHIP_NAME_TOKENS.has(t);
+}
+
+/**
+ * Strip leading kinship/honorific titles before splitting into first/last.
+ * "Step Dad Ben" → "Ben"; "Tía Grace" → "Grace"; "Aunt Maribel" → "Maribel".
+ */
+export function stripLeadingPersonTitles(fullName: string): string {
+  let working = (fullName ?? '').trim().replace(/\s+/g, ' ');
+  if (!working) return '';
+  // Multi-pass for stacked titles ("my Step Dad Ben").
+  for (let i = 0; i < 3; i++) {
+    const next = working.replace(LEADING_TITLE_RE, '').trim();
+    if (next === working) break;
+    working = next;
+  }
+  return working;
+}
+
 export function splitPersonName(fullName: string): { firstName: string; lastName?: string } {
-  const cleaned = (fullName ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/^(?:mr|mrs|ms|miss|mx|dr|prof|professor|dj|sir|dame|lord|lady|rev|fr|father)\.?\s+/i, '');
+  const cleaned = stripLeadingPersonTitles(fullName);
   const parts = cleaned.split(' ').filter(Boolean);
+  // If stripping left nothing (title-only "Mom" / "Abuela"), keep the original label
+  // as firstName so callers still have a display string — but never invent middle names.
+  if (parts.length === 0) {
+    const original = (fullName ?? '').trim().replace(/\s+/g, ' ');
+    return { firstName: original, lastName: undefined };
+  }
   return {
     firstName: parts[0] ?? '',
     lastName: parts.length > 1 ? parts.slice(1).join(' ') : undefined,
+  };
+}
+
+/**
+ * Split into first / middle / last after stripping kinship titles.
+ * Never places kinship words into structured name fields.
+ */
+export function splitStructuredPersonName(fullName: string): {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+} {
+  const cleaned = stripLeadingPersonTitles(fullName);
+  const parts = cleaned.split(/\s+/).filter(Boolean).filter((p) => !isKinshipNameToken(p));
+  if (parts.length === 0) {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: '', lastName: '' };
+  }
+  if (parts.length === 2) {
+    return { firstName: parts[0], middleName: '', lastName: parts[1] };
+  }
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(' '),
+    lastName: parts[parts.length - 1],
   };
 }

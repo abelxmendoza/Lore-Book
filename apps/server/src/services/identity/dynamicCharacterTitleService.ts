@@ -26,7 +26,7 @@ const HONORIFIC_PREFIX =
   /^(Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?|Doctor|Prof\.?|Professor|Pastor|Rev\.?|Reverend|President|Senator|Mayor|Judge|Principal|Dean|Coach|Officer|Captain|General|Colonel|Sergeant)\.?\s+/i;
 
 const FAMILY_PREFIX =
-  /^(Tio|Tía|Tia|Tío|Uncle|Aunt|Auntie|Abuela|Abuelo|Grandma|Grandpa|Primo|Prima|Cousin)\.?\s+/i;
+  /^(Tio|Tía|Tia|Tío|Uncle|Aunt|Auntie|Abuela|Abuelo|Grandma|Grandpa|Primo|Prima|Cousin|Step\s*Dad|Step\s*Mom|Stepfather|Stepmother|Step\s*Father|Step\s*Mother)\.?\s+/i;
 
 const SUFFIX_RE = /\s+(Jr\.?|Sr\.?|III|IV|II)$/i;
 

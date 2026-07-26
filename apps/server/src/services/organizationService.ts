@@ -13,6 +13,8 @@ import {
 import { logger } from '../logger';
 import {
   normalizeNameKey,
+  normalizeDuplicateKey,
+  isTrailingPossessiveVariant,
   namesOverlapByContainment,
   splitPersonName,
 } from '../utils/nameNormalization';
@@ -794,18 +796,35 @@ export class OrganizationService {
           ),
         ];
         // Renaming: automatically keep the previous name as an alias so old
-        // mentions and search still resolve to this organization.
+        // mentions and search still resolve to this organization. A rename
+        // that only fixes punctuation/possessive/case (e.g. "Ring's" ->
+        // "Ring") is a typo correction, not a real alternate name — never
+        // preserve the old spelling as an alias for that case.
         const trimmedNewName = updates.name !== undefined ? updates.name.trim() : null;
         const trimmedOldName = existingName?.trim();
         if (
           trimmedNewName &&
           trimmedOldName &&
           trimmedNewName.toLowerCase() !== trimmedOldName.toLowerCase() &&
+          normalizeDuplicateKey(trimmedNewName) !== normalizeDuplicateKey(trimmedOldName) &&
+          !isTrailingPossessiveVariant(trimmedNewName, trimmedOldName) &&
           !aliasSet.some((a) => a.toLowerCase() === trimmedOldName.toLowerCase())
         ) {
           aliasSet.push(trimmedOldName);
         }
-        patch.aliases = aliasSet;
+        // Defense in depth: scrub any alias that's just a punctuation/
+        // possessive/case variant of the current name, even one saved by an
+        // earlier rename before this guard existed — self-heals on the next
+        // save regardless of whether this particular update renames anything.
+        const canonicalNameForAliasCleanup = trimmedNewName ?? trimmedOldName;
+        const cleanedAliasSet = canonicalNameForAliasCleanup
+          ? aliasSet.filter(
+              (a) =>
+                normalizeDuplicateKey(a) !== normalizeDuplicateKey(canonicalNameForAliasCleanup) &&
+                !isTrailingPossessiveVariant(a, canonicalNameForAliasCleanup),
+            )
+          : aliasSet;
+        patch.aliases = cleanedAliasSet;
       }
       if (updates.type !== undefined) patch.type = updates.type;
       if (updates.group_type !== undefined) patch.group_type = updates.group_type;
@@ -930,6 +949,7 @@ export class OrganizationService {
               character_name: characterName,
               role: member.role ?? existing.role,
               joined_date: member.joined_date ?? existing.joined_date,
+              left_at: member.left_at ?? existing.left_at,
               status: member.status || existing.status || 'active',
               notes: member.notes ?? existing.notes,
             })
@@ -956,6 +976,7 @@ export class OrganizationService {
           character_id: characterId ?? null,
           role: member.role,
           joined_date: member.joined_date,
+          left_at: member.left_at ?? null,
           status: member.status || 'active',
           notes: member.notes,
         })
@@ -1969,6 +1990,125 @@ export class OrganizationService {
       return result;
     } catch (error) {
       logger.error({ error, userId, organizationId }, 'Failed to get member affiliations batch');
+      return {};
+    }
+  }
+
+  /**
+   * One primary affiliation per character for Character Book cards.
+   * Lightweight: memberships + org name/type only (no full org subgraph).
+   */
+  async getPrimaryAffiliationsByCharacterIds(
+    userId: string,
+    characterIds: string[],
+    opts?: { preferredOrgIdByCharacter?: Record<string, string | undefined> },
+  ): Promise<
+    Record<
+      string,
+      { id: string; name: string; group_type?: string; role?: string | null; status?: string }
+    >
+  > {
+    const uniq = [...new Set(characterIds.filter(Boolean))];
+    if (uniq.length === 0) return {};
+
+    try {
+      const { data: memberships, error } = await supabaseAdmin
+        .from('organization_members')
+        .select('character_id, organization_id, role, status')
+        .eq('user_id', userId)
+        .in('character_id', uniq);
+      if (error) throw error;
+      if (!memberships?.length) return {};
+
+      const orgIds = [...new Set(memberships.map((m) => m.organization_id as string).filter(Boolean))];
+      const { data: orgs, error: orgErr } = await supabaseAdmin
+        .from('organizations')
+        .select('id, name, type, group_type, usage_count, status')
+        .eq('user_id', userId)
+        .in('id', orgIds);
+      if (orgErr) throw orgErr;
+
+      const orgById = new Map(
+        (orgs ?? []).map((o) => [
+          o.id as string,
+          {
+            id: o.id as string,
+            name: String(o.name ?? ''),
+            type: String(o.type ?? ''),
+            group_type: String(o.group_type ?? o.type ?? ''),
+            usage_count: Number(o.usage_count ?? 0),
+            status: String(o.status ?? 'active'),
+          },
+        ]),
+      );
+
+      const score = (
+        membership: { role?: string | null; status?: string | null },
+        org: { group_type: string; usage_count: number; status: string },
+        preferred: boolean,
+      ): number => {
+        let s = 0;
+        if (preferred) s += 1000;
+        const mStatus = String(membership.status ?? 'active').toLowerCase();
+        if (mStatus === 'active') s += 100;
+        else if (mStatus === 'honorary') s += 40;
+        else if (mStatus === 'former') s += 15;
+        const role = String(membership.role ?? '').toLowerCase();
+        if (/head|founder|leader|owner|captain/.test(role)) s += 55;
+        else if (/member|resident/.test(role)) s += 25;
+        const gType = org.group_type.toLowerCase();
+        if (/company|employer|work|brand|vendor/.test(gType)) s += 45;
+        else if (/friend_group|crew|band|club|team|sports|household|family|martial/.test(gType)) s += 35;
+        if (org.status === 'active') s += 10;
+        s += Math.min(25, org.usage_count);
+        return s;
+      };
+
+      type Cand = {
+        characterId: string;
+        id: string;
+        name: string;
+        group_type?: string;
+        role?: string | null;
+        status?: string;
+        score: number;
+      };
+      const best = new Map<string, Cand>();
+
+      for (const row of memberships) {
+        const characterId = row.character_id as string;
+        const org = orgById.get(row.organization_id as string);
+        if (!org?.name) continue;
+        const preferredId = opts?.preferredOrgIdByCharacter?.[characterId];
+        const cand: Cand = {
+          characterId,
+          id: org.id,
+          name: org.name,
+          group_type: org.group_type || org.type,
+          role: row.role as string | null,
+          status: (row.status as string) ?? 'active',
+          score: score(row, org, Boolean(preferredId && preferredId === org.id)),
+        };
+        const prev = best.get(characterId);
+        if (!prev || cand.score > prev.score) best.set(characterId, cand);
+      }
+
+      const out: Record<
+        string,
+        { id: string; name: string; group_type?: string; role?: string | null; status?: string }
+      > = {};
+      for (const [characterId, cand] of best) {
+        out[characterId] = {
+          id: cand.id,
+          name: cand.name,
+          group_type: cand.group_type,
+          role: cand.role,
+          status: cand.status,
+        };
+      }
+      return out;
+    } catch (error) {
+      logger.error({ error, userId, count: uniq.length }, 'Failed to get primary affiliations batch');
       return {};
     }
   }

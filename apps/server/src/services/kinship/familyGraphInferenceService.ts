@@ -9,12 +9,14 @@ import { organizationService } from '../organizationService';
 import { nameHousehold } from '../entities/householdNaming';
 import {
   extractKinshipMentions,
+  extractRelationalKinshipClaims,
   kinshipRoleToString,
   parseKinshipFromName,
   type KinshipRole,
 } from './kinshipGlossary';
 import { applyKinshipSexInference } from './applyKinshipSexInference';
 import { familySurnameSuggestionService } from './familySurnameSuggestionService';
+import { applyKinshipLabelToCharacter, upsertBidirectionalFamilyEdge } from './familyEdgeWriter';
 
 type CharacterRow = { id: string; name: string; metadata?: Record<string, unknown> | null };
 
@@ -58,7 +60,10 @@ export class FamilyGraphInferenceService {
     const protagonist = charRows.find((c) => (c.metadata as Record<string, unknown>)?.is_self === true)
       ?? charRows.find((c) => normalizeNameKey(c.name).includes('self'));
 
-    const kinMentions = extractKinshipMentions(text);
+    const kinMentions = [
+      ...extractKinshipMentions(text),
+      ...extractRelationalKinshipClaims(text),
+    ];
     const kinCharacters: CharacterRow[] = [];
     const parentIds = new Set<string>();
 
@@ -75,14 +80,16 @@ export class FamilyGraphInferenceService {
       }).catch(() => {});
 
       if (protagonist && row.id !== protagonist.id) {
+        const kinshipStr = kinshipRoleToString(kin.role);
         const created = await relationshipFoundationService.assertProtagonistKinship(
           userId,
           row.id,
-          kinshipRoleToString(kin.role),
+          kinshipStr,
           messageId,
           kin.confidence
         );
         if (created) edges++;
+        void applyKinshipLabelToCharacter(userId, row.id, kinshipStr).catch(() => {});
         // Re-check surnames even when the self↔kin edge already exists — cousins
         // who share a last name (and tree placement) still need linking.
         void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
@@ -101,14 +108,16 @@ export class FamilyGraphInferenceService {
         phrase: parsed.sourcePhrase,
         kinship: kinshipRoleToString(parsed.role),
       }).catch(() => {});
+      const parsedKinshipStr = kinshipRoleToString(parsed.role);
       const created = await relationshipFoundationService.assertProtagonistKinship(
         userId,
         row.id,
-        kinshipRoleToString(parsed.role),
+        parsedKinshipStr,
         messageId,
         parsed.confidence
       );
       if (created) edges++;
+      void applyKinshipLabelToCharacter(userId, row.id, parsedKinshipStr).catch(() => {});
       void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
     }
 
@@ -198,19 +207,25 @@ export class FamilyGraphInferenceService {
                 },
               })
               .eq('id', existing.id);
+            // Ensure reverse spouse_of exists for bidirectional consistency.
+            await upsertBidirectionalFamilyEdge(userId, a, b, 'spouse_of', {
+              source: 'parent_pair_inference',
+              inferenceStatus: 'inferred',
+              summary: 'Inferred spouses — both are parents in your family tree',
+              metadata: {
+                kinship: 'spouse',
+                inference_source: 'parent_pair_inference',
+                source_message_id: messageId,
+              },
+            });
             created++;
           }
           continue;
         }
 
-        await supabaseAdmin.from('character_relationships').insert({
-          user_id: userId,
-          source_character_id: a,
-          target_character_id: b,
-          relationship_type: 'spouse_of',
-          relationship_category: 'family',
-          status: 'active',
-          inference_status: 'inferred',
+        const ok = await upsertBidirectionalFamilyEdge(userId, a, b, 'spouse_of', {
+          source: 'parent_pair_inference',
+          inferenceStatus: 'inferred',
           summary: 'Inferred spouses — both are parents in your family tree',
           metadata: {
             kinship: 'spouse',
@@ -218,7 +233,7 @@ export class FamilyGraphInferenceService {
             source_message_id: messageId,
           },
         });
-        created++;
+        if (ok) created++;
       }
     }
     return created;

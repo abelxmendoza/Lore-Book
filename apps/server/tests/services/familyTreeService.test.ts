@@ -5,6 +5,8 @@ import {
   assessNodeReview,
   applyRelationOverride,
   projectSharedFamilyTreeOntoEgo,
+  projectAffinityFamilyTreeOntoEgo,
+  isAffinityKinOnSharedTree,
   collectAbsoluteParentChildEdges,
   inferSiblingAndInverseParentEdges,
   inverseFamilyEdgeType,
@@ -158,5 +160,70 @@ describe('familyTreeService — bidirectional + shared projection', () => {
     expect(ontoJames.members.find((m) => m.id === 'grace')?.relation).toBe('parent');
     expect(ontoJames.members.find((m) => m.id === 'jerry')?.relation).toBe('sibling');
     expect(ontoJames.members.find((m) => m.id === 'james')?.parent_id).toBe('grace');
+  });
+
+  it('scopes step-parent ego trees to partner + shared child, not blood relatives', () => {
+    const shared: FamilyTreeDTO = {
+      self_id: 'you',
+      branches: [{ side: 'maternal', label: 'Maternal', color: '#f472b6' }],
+      members: [
+        member({ id: 'you', name: 'Marcus', relation: 'related', relation_label: 'You', generation: 0, is_self: true }),
+        member({
+          id: 'mom',
+          name: 'Mom',
+          kinship_title: 'Mother',
+          relation: 'parent',
+          relation_label: 'Mother',
+          generation: -1,
+          side: 'maternal',
+        }),
+        member({
+          id: 'ben',
+          name: 'Step Dad Ben',
+          kinship_title: 'Step-father',
+          relation: 'step_parent',
+          relation_label: 'Step-father',
+          generation: -1,
+          side: 'paternal',
+        }),
+        member({
+          id: 'abuela',
+          name: 'Abuela',
+          relation: 'grandparent',
+          relation_label: 'Grandparent',
+          generation: -2,
+          side: 'maternal',
+        }),
+        member({
+          id: 'grace',
+          name: 'Tía Grace',
+          relation: 'aunt',
+          relation_label: 'Aunt',
+          generation: -1,
+          side: 'maternal',
+        }),
+        member({
+          id: 'james',
+          name: 'James',
+          relation: 'cousin',
+          relation_label: 'Cousin',
+          generation: 0,
+          side: 'maternal',
+          parent_id: 'grace',
+        }),
+      ],
+    };
+
+    expect(isAffinityKinOnSharedTree(shared.members.find((m) => m.id === 'ben')!)).toBe(true);
+    expect(isAffinityKinOnSharedTree(shared.members.find((m) => m.id === 'grace')!)).toBe(false);
+
+    const ontoBen = projectAffinityFamilyTreeOntoEgo(shared, 'ben');
+    const ids = ontoBen.members.map((m) => m.id).sort();
+    expect(ids).toEqual(['ben', 'mom', 'you'].sort());
+    expect(ontoBen.members.find((m) => m.id === 'ben')?.is_self).toBe(true);
+    expect(ontoBen.members.find((m) => m.id === 'mom')?.relation).toBe('spouse');
+    expect(ontoBen.members.find((m) => m.id === 'you')?.relation).toBe('step_child');
+    expect(ontoBen.members.some((m) => m.id === 'abuela')).toBe(false);
+    expect(ontoBen.members.some((m) => m.id === 'james')).toBe(false);
   });
 });

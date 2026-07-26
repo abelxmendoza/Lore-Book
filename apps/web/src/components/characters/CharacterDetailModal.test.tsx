@@ -698,4 +698,45 @@ describe('CharacterDetailModal', () => {
       expect(await screen.findByText('Amazon')).toBeInTheDocument();
     });
   });
+
+  describe('renaming', () => {
+    // Regression: a rename used to only broadcast lk:story-data-updated for
+    // the main/self character, and even then without the 'family' scope —
+    // so the Family Tree view (and anything else scoped to 'family') never
+    // refetched the corrected name for an ordinary character.
+    it('broadcasts a family-scoped story update for an ordinary (non-main) character rename', async () => {
+      const storyUpdates: StoryDataUpdatedDetail[] = [];
+      const onStoryUpdate = (e: Event) => storyUpdates.push((e as CustomEvent<StoryDataUpdatedDetail>).detail);
+      window.addEventListener(STORY_DATA_UPDATED, onStoryUpdate);
+
+      render(
+        <CharacterDetailModal
+          character={{ ...mockCharacter, id: 'dummy-rename-char', name: "Tio Ralph's" }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+        />
+      );
+
+      // Both the mobile and desktop header render their own EditableEntityName
+      // instance for the name — only one is visible per viewport, but jsdom
+      // doesn't hide either, so pick the first of each matching pair.
+      const editButtons = await screen.findAllByLabelText('Edit character name');
+      await userEvent.click(editButtons[0]);
+      const input = screen.getAllByLabelText('Edit character name')[0];
+      await userEvent.clear(input);
+      await userEvent.type(input, 'Tio Ralph');
+      await userEvent.click(screen.getAllByLabelText('Save character name')[0]);
+
+      await waitFor(() => {
+        expect(storyUpdates).toContainEqual(
+          expect.objectContaining({
+            scopes: expect.arrayContaining(['characters', 'family']),
+            characterIds: ['dummy-rename-char'],
+          }),
+        );
+      });
+
+      window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
+    });
+  });
 });

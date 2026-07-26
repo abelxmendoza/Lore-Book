@@ -22,7 +22,12 @@ import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { displayAvatarUrl, backfillMissingAvatars } from '../services/characterAvatarService';
-import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
+import {
+  normalizeNameKey,
+  normalizeDuplicateKey,
+  isTrailingPossessiveVariant,
+  splitPersonName,
+} from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
 import { characterRestoreService } from '../services/characterRestoreService';
@@ -1130,6 +1135,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
       };
       
       allRelationships?.forEach(rel => {
+        if ((rel.status ?? 'active') !== 'active') return;
         // Add to source character
         if (!relationshipsByCharacter.has(rel.source_character_id)) {
           relationshipsByCharacter.set(rel.source_character_id, []);
@@ -1271,11 +1277,37 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         return characterData;
       }));
 
-      void backfillMissingAvatars(req.user!.id, charactersData, 25).catch((err) => {
+      const userId = req.user!.id;
+
+      // Attach primary group affiliation for card surfaces (one batch query).
+      try {
+        const { organizationService } = await import('../services/organizationService');
+        const preferredOrgIdByCharacter: Record<string, string | undefined> = {};
+        for (const char of charactersWithStats) {
+          const meta = (char.metadata ?? {}) as Record<string, unknown>;
+          const preferred =
+            (typeof meta.primary_organization_id === 'string' && meta.primary_organization_id) ||
+            (typeof meta.primary_group_id === 'string' && meta.primary_group_id) ||
+            undefined;
+          if (preferred) preferredOrgIdByCharacter[char.id] = preferred;
+        }
+        const primaryByCharacter = await organizationService.getPrimaryAffiliationsByCharacterIds(
+          userId,
+          charactersWithStats.map((c) => c.id),
+          { preferredOrgIdByCharacter },
+        );
+        for (const char of charactersWithStats) {
+          const primary = primaryByCharacter[char.id];
+          if (primary) (char as Record<string, unknown>).primary_organization = primary;
+        }
+      } catch (err) {
+        logger.debug({ err, userId }, 'Primary organization attach failed (non-blocking)');
+      }
+
+      void backfillMissingAvatars(userId, charactersData, 25).catch((err) => {
         logger.debug({ err }, 'Avatar backfill failed (non-blocking)');
       });
 
-      const userId = req.user!.id;
       void (async () => {
         const { getInferenceState } = await import('../services/inference/inferenceStateService');
         const state = await getInferenceState(userId);
@@ -1868,14 +1900,34 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // General rename: preserve the previous name as an alias so old mentions
     // and search still resolve to this character. The nickname-promotion
     // branch above already does this for its own case; this covers every
-    // other rename (a no-op if the old name is already present).
+    // other rename (a no-op if the old name is already present). A rename
+    // that only fixes punctuation/possessive/case (e.g. "Tio Ralph's" ->
+    // "Tio Ralph") is a typo correction, not a real alternate name — never
+    // preserve the old spelling as an alias for that case.
     if (
       nameToUpdate &&
       existingChar?.name &&
       normalizeNameKey(nameToUpdate) !== normalizeNameKey(existingChar.name) &&
+      normalizeDuplicateKey(nameToUpdate) !== normalizeDuplicateKey(existingChar.name) &&
+      !isTrailingPossessiveVariant(nameToUpdate, existingChar.name) &&
       !aliasToUpdate.some((a) => normalizeNameKey(a) === normalizeNameKey(existingChar.name))
     ) {
       aliasToUpdate = [...aliasToUpdate, existingChar.name];
+    }
+
+    // Defense in depth: scrub any alias that's just a punctuation/possessive/
+    // case variant of the character's current name — even one saved by an
+    // earlier rename before this guard existed (e.g. a stale "Tio Ralph's"
+    // left over from correcting the name to "Tio Ralph"). Runs on every
+    // save, not just renames, so a pre-existing bad alias self-heals the
+    // next time this character is touched.
+    const canonicalNameForAliasCleanup = nameToUpdate ?? existingChar?.name;
+    if (canonicalNameForAliasCleanup) {
+      aliasToUpdate = aliasToUpdate.filter(
+        (a) =>
+          normalizeDuplicateKey(a) !== normalizeDuplicateKey(canonicalNameForAliasCleanup) &&
+          !isTrailingPossessiveVariant(a, canonicalNameForAliasCleanup)
+      );
     }
 
     if (updateData.status !== undefined) {

@@ -120,6 +120,35 @@ describe('organizationService.updateOrganization — auto-alias on rename', () =
     expect(patch.aliases).toEqual(['Amazon']);
   });
 
+  // Regression: fixing an accidental possessive ("Ring's" -> "Ring") is a
+  // typo correction, not a rename to a real alternate name — the old,
+  // misspelled form must never be preserved as an alias.
+  it('does not add the old name as an alias when the rename only fixes a possessive typo', async () => {
+    mockOrgTable({
+      currentName: "Amazon Ring's",
+      currentAliases: [],
+      updatedRow: { id: 'org-1', name: 'Amazon Ring', aliases: [] },
+    });
+
+    await organizationService.updateOrganization('user-1', 'org-1', { name: 'Amazon Ring' });
+
+    const patch = updateSpy.mock.calls[0][0];
+    expect(patch.aliases).toEqual([]);
+  });
+
+  it('scrubs a previously-saved possessive-typo alias the next time the organization is saved', async () => {
+    mockOrgTable({
+      currentName: 'Amazon Ring',
+      currentAliases: ["Amazon Ring's", 'AMZN'],
+      updatedRow: { id: 'org-1', name: 'Amazon Ring', aliases: ['AMZN'] },
+    });
+
+    await organizationService.updateOrganization('user-1', 'org-1', { name: 'Amazon Ring' });
+
+    const patch = updateSpy.mock.calls[0][0];
+    expect(patch.aliases).toEqual(['AMZN']);
+  });
+
   it('leaves aliases untouched when neither name nor aliases are part of the update', async () => {
     mockOrgTable({
       currentName: 'Amazon Ring',

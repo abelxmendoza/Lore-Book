@@ -3,7 +3,7 @@
  * accumulate "Tío Ray" or "Abuela" from co-mentioned family sentences.
  */
 import { matchCharacterNames, parseCharacterName } from '../../utils/characterNameMatching';
-import { normalizeNameKey } from '../../utils/nameNormalization';
+import { normalizeNameKey, normalizeDuplicateKey, isTrailingPossessiveVariant } from '../../utils/nameNormalization';
 
 /** Same kinship bucket but different given names → different people. */
 export function areConflictingKinshipAliases(a: string, b: string): boolean {
@@ -42,6 +42,15 @@ export function isValidAliasForCharacter(
   const aliasKey = normalizeNameKey(cleaned);
   if (aliasKey === canonicalKey) {
     return cleaned !== canonicalName.trim();
+  }
+  // A punctuation/possessive-only variant of the canonical name ("Tio
+  // Ralph's" for "Tio Ralph") is a typo, not a real alternate name — never
+  // a valid alias, even though it isn't an exact normalizeNameKey match.
+  if (
+    normalizeDuplicateKey(cleaned) === normalizeDuplicateKey(canonicalName) ||
+    isTrailingPossessiveVariant(cleaned, canonicalName)
+  ) {
+    return false;
   }
   if (areConflictingKinshipAliases(canonicalName, cleaned)) return false;
 

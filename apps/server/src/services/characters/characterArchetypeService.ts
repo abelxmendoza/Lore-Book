@@ -20,6 +20,8 @@ export const CHARACTER_ARCHETYPE_PRESETS: ArchetypePreset[] = [
   { value: 'crush', label: 'Crush', description: 'Attraction or interest that did not become a relationship.' },
   { value: 'unrequited_crush', label: 'Unrequited Crush', description: 'A one-sided crush, overpursuit, or attraction that did not go well.' },
   { value: 'past_romantic', label: 'Past Flame', description: 'A closed chapter that still shaped you.' },
+  { value: 'romantic_interest', label: 'Romantic Interest', description: 'Someone you are drawn to, before it is official.' },
+  { value: 'one_night_stand', label: 'One Night Stand', description: 'A single romantic or sexual encounter, not an ongoing relationship.' },
   { value: 'mentor', label: 'Mentor', description: 'Someone who shapes how you grow.' },
   { value: 'ally', label: 'Ally', description: 'In your corner when it counts.' },
   { value: 'confidant', label: 'Confidant', description: 'Someone trusted with private thoughts, fears, or plans.' },
@@ -90,11 +92,27 @@ const RULES: Rule[] = [
       relationshipType === 'unrequited',
   },
   {
+    archetype: 'one_night_stand',
+    confidence: 0.85,
+    reason: 'A single romantic or sexual encounter, not an ongoing relationship',
+    test: ({ text, relationshipType }) =>
+      /\b(one[- ]?night stand|one[- ]?time hookup|hooked up once|slept together once)\b/.test(text) ||
+      relationshipType === 'one_night_stand',
+  },
+  {
     archetype: 'crush',
     confidence: 0.82,
     reason: 'The context points to attraction or a crush that did not become a relationship',
     test: ({ text, relationshipType }) =>
       hasCrushSignal(text, relationshipType) && !/\b(girlfriend|boyfriend|partner|wife|husband|dating|dated)\b/.test(text),
+  },
+  {
+    archetype: 'romantic_interest',
+    confidence: 0.78,
+    reason: 'A budding romantic interest, before it is official',
+    test: ({ text, relationshipType }) =>
+      /\b(romantic interest|romantically interested|catching feelings|talking stage|texting stage)\b/.test(text) ||
+      relationshipType === 'romantic_interest',
   },
   {
     archetype: 'family',

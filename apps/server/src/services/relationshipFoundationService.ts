@@ -700,15 +700,19 @@ class RelationshipFoundationService {
     const protagonist = await this.findProtagonist(userId, (chars ?? []) as CharacterRow[]);
     if (!protagonist || protagonist.id === kinCharacterId) return false;
 
-    const [a, b] = normalizePair(protagonist.id, kinCharacterId);
-    return this.upsertRelationship(userId, {
-      charAId: a,
-      charBId: b,
-      relType: 'family',
-      evidenceIds: messageId ? [messageId] : [],
+    const { assertTypedProtagonistKinshipEdge } = await import('./kinship/familyEdgeWriter');
+    return assertTypedProtagonistKinshipEdge(userId, protagonist.id, kinCharacterId, kinship, {
       source: 'kinship_inference',
-      kinship,
-      confidence,
+      inferenceStatus: 'inferred',
+      closenessScore: Math.round(Math.min(10, Math.max(1, confidence * 10))),
+      messageId,
+      metadata: {
+        confidence,
+        source_memory_ids: messageId ? [messageId] : [],
+        sources: ['kinship_inference'],
+        generated_by: 'relationship_foundation',
+      },
+      summary: `Inferred kinship: ${kinship}`,
     });
   }
 
@@ -730,6 +734,26 @@ class RelationshipFoundationService {
     if (!(await this.bothCharactersExist(userId, srcId, tgtId))) {
       logger.debug({ userId, srcId, tgtId, source: params.source }, 'Skipping relationship — character id missing');
       return false;
+    }
+
+    // Never invent family edges for characters the user excluded from kin
+    // (stage names like Oscuridad that share a given name with real relatives).
+    if (params.relType === 'family') {
+      const { data: metaRows } = await supabaseAdmin
+        .from('characters')
+        .select('id, metadata')
+        .eq('user_id', userId)
+        .in('id', [srcId, tgtId]);
+      const excluded = (metaRows ?? []).some((row) => {
+        const flag = (row.metadata as Record<string, unknown> | null)?.family_excluded;
+        if (flag === true) return true;
+        if (flag && typeof flag === 'object' && (flag as { value?: unknown }).value === true) return true;
+        return false;
+      });
+      if (excluded) {
+        logger.debug({ userId, srcId, tgtId, source: params.source }, 'Skipping family edge — character is family_excluded');
+        return false;
+      }
     }
 
     const { data: existing } = await supabaseAdmin

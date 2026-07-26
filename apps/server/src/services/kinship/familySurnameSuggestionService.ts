@@ -18,6 +18,7 @@ import { normalizeNameKey } from '../../utils/nameNormalization';
 import { supabaseAdmin } from '../supabaseClient';
 import { parseKinshipFromName } from './kinshipGlossary';
 import { isFamilyRelationshipRow, type FamilyRelationshipRowLike } from './familyGraphService';
+import { syncSiblingsUnderParent, upsertBidirectionalFamilyEdge } from './familyEdgeWriter';
 
 type CharacterRow = {
   id: string;
@@ -347,31 +348,17 @@ class FamilySurnameSuggestionService {
       return false;
     }
 
-    const { data: reverse } = await supabaseAdmin
-      .from('character_relationships')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('source_character_id', childId)
-      .eq('target_character_id', parentId)
-      .limit(1)
-      .maybeSingle();
-    if (reverse) return false;
-
-    await supabaseAdmin.from('character_relationships').insert({
-      user_id: userId,
-      source_character_id: parentId,
-      target_character_id: childId,
-      relationship_type: 'parent_of',
-      relationship_category: 'family',
-      status: 'active',
-      inference_status: 'asserted',
+    const ok = await upsertBidirectionalFamilyEdge(userId, parentId, childId, 'parent_of', {
+      source: 'surname_tree_comember',
+      inferenceStatus: 'asserted',
       summary: 'Synced from shared family-tree placement + surname',
       metadata: {
         inference_source: 'surname_tree_comember',
         kinship: 'parent',
       },
     });
-    return true;
+    if (ok) await syncSiblingsUnderParent(userId, parentId);
+    return ok;
   }
 
   private async suggestIfNew(userId: string, a: CharacterRow, b: CharacterRow): Promise<void> {

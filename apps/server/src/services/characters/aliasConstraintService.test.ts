@@ -22,3 +22,20 @@ describe('isValidAliasForCharacter — relational placeholders', () => {
     expect(filterValidAliases('friend of Shana', ['Shana', 'friend of Shana'])).toEqual([]);
   });
 });
+
+describe('isValidAliasForCharacter — possessive/punctuation-only variants', () => {
+  // Regression: renaming "Tio Ralph's" -> "Tio Ralph" to fix an accidental
+  // possessive must never leave "Tio Ralph's" behind as a valid alias — it's
+  // a typo correction, not a real alternate name.
+  it('rejects a trailing-apostrophe-s variant of the canonical name', () => {
+    expect(isValidAliasForCharacter('Tio Ralph', "Tio Ralph's")).toBe(false);
+  });
+
+  it('rejects the canonical name as an alias in the reverse direction too', () => {
+    expect(isValidAliasForCharacter("Tio Ralph's", 'Tio Ralph')).toBe(false);
+  });
+
+  it('filters a possessive-variant alias out entirely', () => {
+    expect(filterValidAliases('Tio Ralph', ["Tio Ralph's", 'Ralph'])).toEqual(['Ralph']);
+  });
+});

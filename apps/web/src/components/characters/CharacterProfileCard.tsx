@@ -80,6 +80,14 @@ export type Character = {
   mentioned_by_character_ids?: string[] | null;
   context_of_mention?: string | null;
   likelihood_to_meet?: 'likely' | 'possible' | 'unlikely' | 'never' | null;
+  /** Main group affiliation for card display (from Character Book aggregate). */
+  primary_organization?: {
+    id: string;
+    name: string;
+    group_type?: string;
+    role?: string | null;
+    status?: string;
+  } | null;
   // Analytics
   analytics?: {
     closeness_score: number;
@@ -185,6 +193,13 @@ export const CharacterProfileCard = ({
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const attributes = isControlled ? attributesProp : fetchedAttributes;
   const primaryArchetype = primaryCharacterLabel(character.archetype);
+  const kinshipLabel = character.metadata?.kinship_label ? String(character.metadata.kinship_label) : '';
+  const humanizeArchetype = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const archetypeDisplayLabel = (value: string) =>
+    kinshipLabel && value.toLowerCase() === 'family' ? kinshipLabel : humanizeArchetype(value);
+  const primaryRole = primaryCharacterLabel(character.role);
+  const roleCount = splitCharacterLabels(character.role).length;
+  const unknownRoleFallbackLabel = kinshipLabel || (primaryArchetype ? archetypeDisplayLabel(primaryArchetype) : '');
 
   // Load attributes for this character only when not provided by the parent
   // (the grid batches them in a single request and passes them down).
@@ -465,7 +480,12 @@ export const CharacterProfileCard = ({
             {/* Show role prominently on mobile; keep short on card, full text in modal */}
             {character.role ? (
               <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={character.role}>
-                {character.role.length > 60 ? `${character.role.slice(0, 60).trim()}…` : character.role}
+                {primaryRole}
+                {roleCount > 1 ? ` +${roleCount - 1}` : ''}
+              </p>
+            ) : unknownRoleFallbackLabel ? (
+              <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={unknownRoleFallbackLabel}>
+                {unknownRoleFallbackLabel}
               </p>
             ) : (
               <div className="mt-0.5">
@@ -487,6 +507,22 @@ export const CharacterProfileCard = ({
                 />
               </div>
             )}
+            {character.primary_organization?.name ? (
+              <div className="mt-1">
+                <Badge
+                  variant="outline"
+                  className="max-w-full bg-cyan-500/15 text-cyan-200 border-cyan-400/40 text-[8px] sm:text-[10px] px-1.5 py-0.5 font-medium inline-flex items-center gap-1"
+                  title={
+                    character.primary_organization.role
+                      ? `${character.primary_organization.name} · ${character.primary_organization.role}`
+                      : character.primary_organization.name
+                  }
+                >
+                  <Users className="h-2.5 w-2.5 flex-shrink-0" />
+                  <span className="truncate">{character.primary_organization.name}</span>
+                </Badge>
+              </div>
+            ) : null}
             {character.first_name && character.last_name && character.name !== displayName && (
               <p className="text-[9px] sm:text-xs text-white/40 mt-0.5 truncate hidden sm:block">
                 Also known as: {character.name}
@@ -546,7 +582,7 @@ export const CharacterProfileCard = ({
               title={character.archetype}
             >
               <Sparkles className="h-2.5 w-2.5 mr-0.5" />
-              {primaryArchetype}
+              {archetypeDisplayLabel(primaryArchetype)}
               {splitCharacterLabels(character.archetype).length > 1 ? ` +${splitCharacterLabels(character.archetype).length - 1}` : ''}
             </Badge>
           )}

@@ -486,12 +486,18 @@ export const CharacterDetailModal = ({
       invalidateCache(character.id);
       onUpdate();
 
+      // Any character's rename can change a name shown elsewhere (Family
+      // Tree nodes, relationship lists, etc.) — those views only refetch on
+      // this event, so it must fire for every rename, not just the main
+      // character, and it must include 'family' or FamilyTreePanel's
+      // scope-filtered listener never picks it up.
+      dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [character.id] });
+
       // For main/self character: immediately adapt the system
       if (isMainCharacter && !isMockDataEnabled) {
         selfCharacterApi.ensureSelf().catch(() => {});
         selfCharacterApi.getProfile().then(applySelfProfile).catch(() => {});
         selfCharacterApi.repairIdentity().catch(() => {});
-        dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id] });
       }
     } catch (err) {
       // Roll back optimistic rename and surface the error inline (EditableEntityName).

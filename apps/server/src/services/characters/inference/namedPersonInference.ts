@@ -1,4 +1,5 @@
 import { parseCharacterName } from '../../../utils/characterNameMatching';
+import { splitStructuredPersonName } from '../../../utils/nameNormalization';
 import { normalizePersonNameKey } from '../../../utils/personNameValidation';
 import { looksLikeStageOrNickname } from '../audit/ambiguousCharacterGuard';
 import { isValidFamilyTitleName } from './familyPersonInference';
@@ -95,11 +96,13 @@ export function isLikelyFullName(name: string): boolean {
 
 export function parseNameTitleParts(name: string): CharacterTitleParts {
   const parsed = parseCharacterName(name);
-  const tokens = name.trim().split(/\s+/);
-  if (tokens.length >= 2 && parsed.coreName) {
+  const structured = splitStructuredPersonName(name);
+  if (structured.firstName) {
     return {
-      firstName: tokens[0],
-      lastName: tokens.slice(1).join(' '),
+      firstName: structured.firstName,
+      ...(structured.middleName ? { middleName: structured.middleName } : {}),
+      ...(structured.lastName ? { lastName: structured.lastName } : {}),
+      ...(parsed.strippedTitle ? { nickname: parsed.strippedTitle } : {}),
     };
   }
   return { nickname: name };

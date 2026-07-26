@@ -292,6 +292,40 @@ describe('Characters API Routes', () => {
       const alias = (getUpdatePayload()?.alias as string[]) ?? [];
       expect(alias.filter((a) => a.toLowerCase() === 'amazon')).toHaveLength(1);
     });
+
+    // Regression: fixing an accidental possessive ("Tio Ralph's" -> "Tio
+    // Ralph") is a typo correction, not a rename to a real alternate name —
+    // the old, misspelled form must never be preserved as an alias.
+    it('does not add the old name as an alias when the rename only fixes a possessive typo', async () => {
+      const existingRow = { id: 'char-1', name: "Tio Ralph's", alias: [], status: 'active' };
+      const renamedRow = { ...existingRow, name: 'Tio Ralph', alias: [] };
+      const getUpdatePayload = mockRenamePatch(existingRow, renamedRow);
+
+      await request(app)
+        .patch('/api/characters/char-1')
+        .send({ name: 'Tio Ralph' })
+        .expect(200);
+
+      const alias = (getUpdatePayload()?.alias as string[]) ?? [];
+      expect(alias).toEqual([]);
+    });
+
+    it('scrubs a previously-saved possessive-typo alias the next time the character is saved', async () => {
+      // Simulates data left over from before this guard existed: an earlier
+      // rename already pushed "Tio Ralph's" into alias. Any future save
+      // (even one unrelated to the name) must clean it up.
+      const existingRow = { id: 'char-1', name: 'Tio Ralph', alias: ["Tio Ralph's", 'Uncle Ralph'], status: 'active' };
+      const renamedRow = { ...existingRow, alias: ['Uncle Ralph'] };
+      const getUpdatePayload = mockRenamePatch(existingRow, renamedRow);
+
+      await request(app)
+        .patch('/api/characters/char-1')
+        .send({ name: 'Tio Ralph' }) // re-saving the same (already correct) name
+        .expect(200);
+
+      const alias = (getUpdatePayload()?.alias as string[]) ?? [];
+      expect(alias).toEqual(['Uncle Ralph']);
+    });
   });
 });
 

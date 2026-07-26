@@ -4,6 +4,8 @@ import { entityConversationLinkService } from '../conversationCentered/entityCon
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { appendMemoryEvent } from '../memory/memoryEventService';
+import { parseFocusedKinshipAssertion } from '../kinship/kinshipGlossary';
+import { kinshipStringToTreeRelation } from '../kinship/familyEdgeWriter';
 
 export type CharacterChatKnowledgeResult = {
   characterId: string;
@@ -11,6 +13,7 @@ export type CharacterChatKnowledgeResult = {
   isCorrection: boolean;
   fieldUpdates: string[];
   factsExtracted: boolean;
+  kinshipUpdated?: boolean;
 };
 
 type FieldPatch = Record<string, unknown>;
@@ -129,6 +132,32 @@ export async function applyCharacterChatKnowledgeUpdate(
   const displayName = options.characterName ?? character.name;
   const patch: FieldPatch = {};
   const aliases = Array.isArray(character.alias) ? [...character.alias] : [];
+  let kinshipUpdated = false;
+
+  const kinshipClaim = parseFocusedKinshipAssertion(message);
+  if (kinshipClaim) {
+    const relation = kinshipStringToTreeRelation(kinshipClaim.kinship);
+    if (relation) {
+      try {
+        const { familyTreeService } = await import('../familyTreeService');
+        const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation });
+        if (ok) {
+          kinshipUpdated = true;
+          fieldUpdates.push('family_relation');
+          if (kinshipClaim.kinship && !patch.role) {
+            // Soft-set role label when empty / previously wrong kin title.
+            const currentRole = String(character.role ?? '').toLowerCase();
+            if (!currentRole || currentRole.includes('cousin') || currentRole.includes('relative') || kinshipClaim.replaces) {
+              patch.role = kinshipClaim.kinship;
+              fieldUpdates.push('role');
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, characterId, kinship: kinshipClaim.kinship }, 'Kinship chat correction failed');
+      }
+    }
+  }
 
   if (isCorrection) {
     const newName = parseNameCorrection(message);
@@ -220,9 +249,10 @@ export async function applyCharacterChatKnowledgeUpdate(
 
   return {
     characterId,
-    applied: fieldUpdates.length > 0 || factsExtracted,
-    isCorrection,
+    applied: fieldUpdates.length > 0 || factsExtracted || kinshipUpdated,
+    isCorrection: isCorrection || kinshipUpdated,
     fieldUpdates,
     factsExtracted,
+    kinshipUpdated,
   };
 }

@@ -32,6 +32,7 @@ import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
 import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import { suggestDisplayTitleFromNames, getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
+import { isKinshipNameToken, splitStructuredPersonName } from '../../lib/structuredPersonName';
 
 type Relationship = {
   id?: string;
@@ -94,6 +95,8 @@ const FALLBACK_ARCHETYPE_PRESETS: ArchetypePreset[] = [
   { value: 'crush', label: 'Crush', description: 'Attraction or interest that did not become a relationship.' },
   { value: 'unrequited_crush', label: 'Unrequited Crush', description: 'A one-sided crush, overpursuit, or attraction that did not go well.' },
   { value: 'past_romantic', label: 'Past Flame', description: 'A closed chapter that still shaped you.' },
+  { value: 'romantic_interest', label: 'Romantic Interest', description: 'Someone you are drawn to, before it is official.' },
+  { value: 'one_night_stand', label: 'One Night Stand', description: 'A single romantic or sexual encounter, not an ongoing relationship.' },
   { value: 'mentor', label: 'Mentor', description: 'Someone who shapes how you grow.' },
   { value: 'ally', label: 'Ally', description: 'In your corner when it counts.' },
   { value: 'confidant', label: 'Confidant', description: 'Someone trusted with private thoughts, fears, or plans.' },
@@ -148,7 +151,12 @@ const ROLE_PRESETS: EditableFieldOption[] = [
   { value: 'coach', label: 'Coach' },
   { value: 'entrepreneur', label: 'Entrepreneur' },
   { value: 'content creator', label: 'Content creator' },
+  { value: 'youtuber', label: 'Youtuber' },
   { value: 'influencer', label: 'Influencer' },
+  { value: 'egirl', label: 'E-girl/E-boy' },
+  { value: 'cosplayer', label: 'Cosplayer' },
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'boss', label: 'Boss' },
   { value: 'military', label: 'Military' },
   { value: 'classmate', label: 'Classmate' },
   { value: 'roommate', label: 'Roommate' },
@@ -216,8 +224,14 @@ function inferArchetypeFromLocalContext(input: {
   ) {
     return { archetype: 'unrequited_crush', reason: 'The context points to a one-sided crush or overpursuit rather than family.' };
   }
+  if (/\b(one[- ]?night stand|one[- ]?time hookup|hooked up once|slept together once)\b/.test(text) || relationshipType === 'one_night_stand') {
+    return { archetype: 'one_night_stand', reason: 'A single romantic or sexual encounter, not an ongoing relationship.' };
+  }
   if (hasCrushSignal && !/\b(girlfriend|boyfriend|partner|wife|husband|dating|dated)\b/.test(text)) {
     return { archetype: 'crush', reason: 'The context points to attraction or a crush that did not become a relationship.' };
+  }
+  if (/\b(romantic interest|romantically interested|catching feelings|talking stage|texting stage)\b/.test(text) || relationshipType === 'romantic_interest') {
+    return { archetype: 'romantic_interest', reason: 'A budding romantic interest appears in the character details.' };
   }
   if ((kinship || /^(family|parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step)/.test(relationshipType)) && !hasCrushSignal) {
     return { archetype: 'family', reason: 'Family or kinship context is already on this card.' };
@@ -458,23 +472,37 @@ function parseAliases(raw: string, primaryName: string): string[] {
 function inferNameParts(character: Character): { firstName: string; middleName: string; lastName: string } {
   const meta = (character.metadata ?? {}) as Record<string, unknown>;
   const explicitMiddle = typeof meta.middle_name === 'string' ? meta.middle_name : character.middle_name;
-  const firstName = character.first_name ?? '';
-  const lastName = character.last_name ?? '';
-  if (firstName || explicitMiddle || lastName) {
-    const lastParts = lastName.trim().split(/\s+/).filter(Boolean);
+  const storedFirst = (character.first_name ?? (typeof meta.first_name === 'string' ? meta.first_name : '')).trim();
+  const storedLast = (character.last_name ?? (typeof meta.last_name === 'string' ? meta.last_name : '')).trim();
+  const storedMiddle = (explicitMiddle ?? '').trim();
+
+  const poisoned =
+    isKinshipNameToken(storedFirst) ||
+    isKinshipNameToken(storedMiddle) ||
+    storedLast.split(/\s+/).some((p) => isKinshipNameToken(p)) ||
+    // "Dad Ben" as last_name is the classic Step Dad Ben mis-parse.
+    /\b(dad|mom|father|mother|step)\b/i.test(storedLast);
+
+  if (!poisoned && (storedFirst || storedMiddle || storedLast)) {
+    const lastParts = storedLast.split(/\s+/).filter(Boolean).filter((p) => !isKinshipNameToken(p));
     return {
-      firstName,
-      middleName: explicitMiddle ?? (lastParts.length > 1 ? lastParts.slice(0, -1).join(' ') : ''),
-      lastName: explicitMiddle ? lastName : (lastParts.length > 1 ? lastParts[lastParts.length - 1] : lastName),
+      firstName: isKinshipNameToken(storedFirst) ? '' : storedFirst,
+      middleName: isKinshipNameToken(storedMiddle) ? '' : storedMiddle,
+      lastName: lastParts.length > 1 && !storedMiddle ? lastParts[lastParts.length - 1] : lastParts.join(' '),
     };
   }
 
-  const parts = character.name.trim().split(/\s+/).filter(Boolean);
-  return {
-    firstName: parts[0] ?? '',
-    middleName: parts.length > 2 ? parts.slice(1, -1).join(' ') : '',
-    lastName: parts.length > 1 ? parts[parts.length - 1] : '',
-  };
+  // Prefer legal name from aliases like "Ben Lopez" / "Benjamin Lopez" when the
+  // card title is still a kinship phrase ("Step Dad Ben").
+  const aliases = Array.isArray(character.alias) ? character.alias : [];
+  for (const alias of aliases) {
+    const structured = splitStructuredPersonName(alias);
+    if (structured.firstName && structured.lastName && !isKinshipNameToken(structured.firstName)) {
+      return structured;
+    }
+  }
+
+  return splitStructuredPersonName(character.name);
 }
 
 export function CharacterInfoPanel({
