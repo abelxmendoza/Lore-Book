@@ -59,7 +59,16 @@ describe('tieredRateLimit', () => {
     );
     expect(rules).toHaveLength(1);
     expect(rules[0].tier).toBe('read');
-    expect(rules[0].max).toBeGreaterThanOrEqual(6000);
+    expect(rules[0].max).toBeGreaterThanOrEqual(12000);
+  });
+
+  it('skips CSRF and authority bootstrap endpoints', () => {
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/security/csrf-token', 'GET', 'user-1') as Request),
+    ).toEqual([]);
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/user/authority', 'GET', 'user-1') as Request),
+    ).toEqual([]);
   });
 
   it('classifies guest chat as guest tier only', () => {

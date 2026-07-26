@@ -42,9 +42,9 @@ type TierRule = { tier: ApiRateTier; max: number; windowMs: number };
  * while /api/health stayed green.
  */
 const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
-  read: { max: 6000, windowMs: FIFTEEN_MIN },
-  write: { max: 900, windowMs: FIFTEEN_MIN },
-  write_burst: { max: 240, windowMs: ONE_MIN },
+  read: { max: 12000, windowMs: FIFTEEN_MIN },
+  write: { max: 1800, windowMs: FIFTEEN_MIN },
+  write_burst: { max: 480, windowMs: ONE_MIN },
   // Real chat completions only (not composer preview). ~1 msg / 5s average.
   ai: { max: 180, windowMs: FIFTEEN_MIN },
   compute: { max: 50, windowMs: FIFTEEN_MIN },
@@ -60,6 +60,10 @@ const SKIP_PATHS = [
   /^\/api\/health\/?$/,
   /^\/api\/health\/db\/?$/,
   /^\/health\/?$/,
+  // Auth bootstrap — must never 429 or the SPA cannot recover (CSRF + role gate).
+  /^\/api\/security\/csrf-token\/?$/i,
+  /^\/api\/user\/authority\/?$/i,
+  /^\/api\/user\/terms-status\/?$/i,
 ];
 
 /** CORS preflights must not consume the read budget. */
