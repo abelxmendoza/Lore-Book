@@ -21,6 +21,30 @@ import {
 } from '../services/entities/entityMentionIndexService';
 import { writeChatSseEvent } from '../utils/sseWrite';
 import { MAX_CHAT_IMAGES_PER_TURN } from '../services/chat/chatImageInput';
+import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
+import {
+  buildDurabilityPayload,
+  isChatDurabilityError,
+  type ChatDurabilityPayload,
+} from '../services/chat/chatDurability';
+import { buildDurabilityApiResponse } from '../services/chat/durabilityApiContract';
+import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
+import { chatStreamBurstLimit, chatStreamHttpLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
+import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { checkAiRequestLimit } from '../middleware/subscription';
+import {
+  detectFirstSessionCallback,
+  shouldRunFirstSessionCallback,
+} from '../services/chat/firstSessionContinuity';
+import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
+import { classifyIngestionError } from '../services/ingestion/ingestionJobStates';
+import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
+import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
+import { messageCorrectionService } from '../services/messageCorrectionService';
+import { omegaChatService } from '../services/omegaChatService';
+import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { incrementAiRequestCount } from '../services/usageTracking';
 
 const personaRL = new ChatPersonaRL();
 
@@ -188,31 +212,6 @@ function resolveThreadContext(
   }
   return currentContext;
 }
-
-import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
-import {
-  buildDurabilityPayload,
-  isChatDurabilityError,
-  type ChatDurabilityPayload,
-} from '../services/chat/chatDurability';
-import { buildDurabilityApiResponse } from '../services/chat/durabilityApiContract';
-import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
-import { chatStreamBurstLimit, chatStreamHttpLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
-import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { checkAiRequestLimit } from '../middleware/subscription';
-import {
-  detectFirstSessionCallback,
-  shouldRunFirstSessionCallback,
-} from '../services/chat/firstSessionContinuity';
-import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
-import { classifyIngestionError } from '../services/ingestion/ingestionJobStates';
-import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
-import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
-import { messageCorrectionService } from '../services/messageCorrectionService';
-import { omegaChatService } from '../services/omegaChatService';
-import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { incrementAiRequestCount } from '../services/usageTracking';
 
 function isOpenAIQuotaError(error: unknown): boolean {
   if (isOpenAiBudgetExceededError(error)) return true;
