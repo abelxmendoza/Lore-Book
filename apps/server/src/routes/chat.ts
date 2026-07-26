@@ -197,7 +197,7 @@ import {
 } from '../services/chat/chatDurability';
 import { buildDurabilityApiResponse } from '../services/chat/durabilityApiContract';
 import { beginMessageCost, flushMessageCost, getMessageCost } from '../lib/messageCostTracker';
-import { openAiHttpBurstLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
+import { chatStreamBurstLimit, chatStreamHttpLimit, openAiHttpLimit, requireDevToolingAccess } from '../middleware/apiProtection';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import {
@@ -271,7 +271,7 @@ async function salvageDurabilityFromIdempotencyKey(opts: {
 }
 
 // Streaming endpoint
-router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
   req.socket?.setNoDelay(true);
 
@@ -769,7 +769,7 @@ router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, chec
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {

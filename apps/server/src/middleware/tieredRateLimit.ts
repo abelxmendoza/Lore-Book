@@ -45,8 +45,8 @@ const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
   read: { max: 6000, windowMs: FIFTEEN_MIN },
   write: { max: 900, windowMs: FIFTEEN_MIN },
   write_burst: { max: 240, windowMs: ONE_MIN },
-  // Real chat completions only (not composer preview). ~1 msg / 12s average.
-  ai: { max: 90, windowMs: FIFTEEN_MIN },
+  // Real chat completions only (not composer preview). ~1 msg / 5s average.
+  ai: { max: 180, windowMs: FIFTEEN_MIN },
   compute: { max: 50, windowMs: FIFTEEN_MIN },
   auth_sensitive: { max: 20, windowMs: FIFTEEN_MIN },
   webhook: { max: 120, windowMs: FIFTEEN_MIN },
@@ -97,8 +97,8 @@ const COMPOSER_HOT_PATH =
 
 /**
  * Real chat sends already have dedicated caps:
- *   - tiered `ai` (60/15m)
- *   - openAiHttpLimit (60/15m) + openAiHttpBurstLimit (15/1m)
+ *   - tiered `ai` (180/15m)
+ *   - chatStreamHttpLimit (180/15m) + chatStreamBurstLimit (45/1m)
  *
  * Do NOT also charge the shared write / write_burst buckets. Postgres-backed
  * write windows persist across deploys; once a typing session (or any other
@@ -106,6 +106,14 @@ const COMPOSER_HOT_PATH =
  * after composer hot paths are excluded.
  */
 const CHAT_SEND_PATH = /\/api\/chat(\/stream)?\/?$/i;
+
+/**
+ * Thread activity bumps (PATCH …/threads/:id with touchActivity) fire on every
+ * send and must not drain write_burst — otherwise the follow-up chat send's
+ * parallel activity ping 429s and the UI looks like "2nd message always fails".
+ */
+const THREAD_ACTIVITY_PATH =
+  /\/api\/(conversation\/)?threads\/[^/]+\/?$/i;
 
 function requestPath(req: Request): string {
   return (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0];
@@ -121,12 +129,15 @@ function getClientId(req: Request): string {
 
 function resolveTierRules(req: Request): TierRule[] {
   const path = requestPath(req);
+  const method = req.method.toUpperCase();
   if (shouldSkip(path) || isCorsPreflight(req)) return [];
 
   // Composer previews are capped by route middleware only.
   if (COMPOSER_HOT_PATH.test(path)) return [];
 
-  const method = req.method.toUpperCase();
+  // Cheap thread activity bumps — do not share the write budget with chat.
+  if (method === 'PATCH' && THREAD_ACTIVITY_PATH.test(path)) return [];
+
   const rules: TierRule[] = [];
 
   if (WEBHOOK_PATH.test(path)) {
@@ -155,7 +166,7 @@ function resolveTierRules(req: Request): TierRule[] {
   if (isRead) {
     rules.push({ tier: 'read', ...TIER_LIMITS.read });
   } else if (!CHAT_SEND_PATH.test(path)) {
-    // Chat sends: ai tier only (plus route openAi* limiters). See CHAT_SEND_PATH.
+    // Chat sends: ai tier only (plus dedicated chatStream* limiters). See CHAT_SEND_PATH.
     rules.push({ tier: 'write', ...TIER_LIMITS.write });
     rules.push({ tier: 'write_burst', ...TIER_LIMITS.write_burst });
   }

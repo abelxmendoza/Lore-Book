@@ -48,32 +48,41 @@ const getMethodBucket = (req: Request): 'read' | 'write' => {
 function sendRateLimitResponse(
   req: Request,
   res: Response,
-  retryAfterSec: number
+  retryAfterSec: number,
+  limiterName?: string
 ): void {
   logSecurityEvent('rate_limit_exceeded', {
     ip: req.ip,
     path: req.path,
     clientId: getClientId(req).substring(0, 8),
     userAgent: req.headers['user-agent'] || 'unknown',
+    ...(limiterName ? { limiter: limiterName } : {}),
   });
 
   res.setHeader('Retry-After', String(retryAfterSec));
   res.status(429).json({
     error: 'Too many requests',
-    message: 'Rate limit exceeded. Please try again later.',
+    message: limiterName
+      ? `Rate limit exceeded (${limiterName}). Please try again later.`
+      : 'Rate limit exceeded. Please try again later.',
+    ...(limiterName ? { tier: limiterName } : {}),
     retryAfter: retryAfterSec,
   });
 }
 
 // Factory for endpoint-specific rate limiters (each gets its own store)
-export function createRateLimiter(prodMax: number, windowMs = RATE_LIMIT_WINDOW_MS) {
+export function createRateLimiter(
+  prodMax: number,
+  windowMs = RATE_LIMIT_WINDOW_MS,
+  limiterName?: string,
+) {
   const limitStore = createRateLimitStore();
   return (req: Request, res: Response, next: NextFunction) => {
     const clientId = getClientId(req);
     const max = isDevelopment() ? 10000 : prodMax;
     const result = checkRateLimit(limitStore, clientId, max, windowMs);
     if (!result.allowed) {
-      sendRateLimitResponse(req, res, result.retryAfterSec);
+      sendRateLimitResponse(req, res, result.retryAfterSec, limiterName);
       return;
     }
     next();

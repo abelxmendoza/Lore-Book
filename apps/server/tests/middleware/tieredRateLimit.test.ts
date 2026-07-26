@@ -40,6 +40,19 @@ describe('tieredRateLimit', () => {
     ).toEqual([]);
   });
 
+  it('excludes thread activity PATCH from write budgets', () => {
+    expect(
+      resolveApiRateTierRulesForTests(
+        mockReq('/api/conversation/threads/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'PATCH', 'user-1') as Request,
+      ),
+    ).toEqual([]);
+    expect(
+      resolveApiRateTierRulesForTests(
+        mockReq('/api/threads/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'PATCH', 'user-1') as Request,
+      ),
+    ).toEqual([]);
+  });
+
   it('allows a high SPA read ceiling in production', () => {
     const rules = resolveApiRateTierRulesForTests(
       mockReq('/api/books/characters', 'GET', 'user-1') as Request,
@@ -70,6 +83,7 @@ describe('tieredRateLimit', () => {
       mockReq('/api/chat', 'POST', 'user-1') as Request
     );
     expect(rules.map((r) => r.tier)).toEqual(['ai']);
+    expect(rules[0].max).toBeGreaterThanOrEqual(180);
   });
 
   it('keeps ordinary writes on write + write_burst', () => {
