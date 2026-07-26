@@ -22,16 +22,20 @@ import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { displayAvatarUrl, backfillMissingAvatars } from '../services/characterAvatarService';
-import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
+import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
 import { characterRestoreService } from '../services/characterRestoreService';
 import { characterConversationRescanService } from '../services/characterConversationRescanService';
 import { asyncHandler } from '../utils/asyncHandler';
+import { createMemoryUpload } from '../middleware/multerConfig';
 import {
   filterValidAliases,
   shouldMergeCharacterRecords,
 } from '../services/characters/aliasConstraintService';
+import {
+  characterConsolidationReviewService,
+} from '../services/characters/characterConsolidationReviewService';
 import {
   filterSelfCandidatesForIncoming,
   isSelfCharacterRow,
@@ -46,46 +50,6 @@ import { characterTitleRoutes } from './characterTitleRoutes';
 import { characterCardAuditService } from '../services/characters/audit/characterCardAuditService';
 
 const router = Router();
-
-function characterNameKeys(row: { name: string; alias?: string[] | null }): Set<string> {
-  return new Set([row.name, ...((row.alias ?? []) as string[])].filter(Boolean).map(normalizeNameKey));
-}
-
-function duplicateConfidence(
-  left: { name: string; alias?: string[] | null },
-  right: { name: string; alias?: string[] | null }
-): { match_type: 'exact' | 'alias' | 'containment'; confidence: number; recommendation: 'merge' | 'review'; reason: string } | null {
-  const leftKeys = characterNameKeys(left);
-  const rightKeys = characterNameKeys(right);
-  const overlap = [...leftKeys].filter(key => rightKeys.has(key));
-  if (overlap.length > 0) {
-    const primaryOverlap = normalizeNameKey(left.name) === normalizeNameKey(right.name);
-    return {
-      match_type: primaryOverlap ? 'exact' : 'alias',
-      confidence: primaryOverlap ? 0.98 : 0.92,
-      recommendation: 'merge',
-      reason: primaryOverlap ? 'same canonical name' : 'name/alias overlap',
-    };
-  }
-
-  const leftKey = normalizeNameKey(left.name);
-  const rightKey = normalizeNameKey(right.name);
-  if (namesOverlapByContainment(leftKey, rightKey)) {
-    const shortKey = leftKey.length <= rightKey.length ? leftKey : rightKey;
-    const longKey = leftKey.length > rightKey.length ? leftKey : rightKey;
-    const kinshipAmbiguity = /\b(tio|tia|uncle|aunt|mom|mother|dad|father|grandma|grandpa)\b/.test(longKey);
-    return {
-      match_type: 'containment',
-      confidence: kinshipAmbiguity ? 0.55 : 0.72,
-      recommendation: 'review',
-      reason: kinshipAmbiguity
-        ? 'shared name with kinship/context prefix; requires user confirmation'
-        : `contained name "${shortKey}" appears inside "${longKey}"`,
-    };
-  }
-
-  return null;
-}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -185,6 +149,13 @@ const mergeCharactersSchema = z.object({
   source_id: z.string().uuid(),
   target_id: z.string().uuid(),
   reason: z.string().optional(),
+});
+
+const keepSeparateSchema = z.object({
+  left_id: z.string().uuid(),
+  right_id: z.string().uuid(),
+  decision: z.enum(['KEEP_SEPARATE', 'NOT_SAME_PERSON']).default('NOT_SAME_PERSON'),
+  reason_code: z.string().optional(),
 });
 
 const NON_PERSON_NAME_PATTERNS = [
@@ -917,6 +888,7 @@ router.post('/card-audit/review/:id/resolve', requireAuth, asyncHandler(async (r
 router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
+    const includeKeepSeparate = req.query.include_keep_separate === 'true';
     const { data, error } = await supabaseAdmin
       .from('characters')
       .select('id, name, alias, metadata, status, created_at, updated_at')
@@ -924,57 +896,49 @@ router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) =>
       .order('created_at', { ascending: true });
     if (error) throw error;
 
-    const rows = (data ?? []).filter((row) => {
-      if (row.status === 'archived') return false;
-      const meta = (row.metadata ?? {}) as Record<string, unknown>;
-      if (meta.is_self === true || meta.is_user === true) return false;
-      return true;
+    const groups = characterConsolidationReviewService.buildGroups(data ?? []);
+    // Default: only surface groups that still need a merge/review decision.
+    // Keep-separate / descriptor conversions are available via ?include_keep_separate=true
+    // (and always available as actions on review groups).
+    const filtered = includeKeepSeparate
+      ? groups
+      : groups.filter((g) =>
+          ['merge', 'needs_identity_review', 'review', 'resolve_head_character'].includes(
+            g.recommendation,
+          ),
+        );
+
+    res.json({
+      duplicate_groups: filtered,
+      repair_plan: characterConsolidationReviewService.planRepairs(data ?? []),
     });
-    const byKey = new Map<string, typeof rows>();
-    for (const row of rows) {
-      const key = normalizeNameKey(row.name);
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key)!.push(row);
-    }
-
-    const groups = [...byKey.entries()]
-      .filter(([, chars]) => chars.length > 1)
-      .map(([canonical_name, characters]) => ({
-        match_type: 'exact',
-        confidence: 0.98,
-        recommendation: 'merge',
-        reason: 'same canonical name',
-        canonical_name,
-        characters,
-      }));
-
-    const seenPairs = new Set<string>();
-    for (let i = 0; i < rows.length; i++) {
-      for (let j = i + 1; j < rows.length; j++) {
-        const left = rows[i];
-        const right = rows[j];
-        const pairKey = [left.id, right.id].sort().join(':');
-        if (seenPairs.has(pairKey)) continue;
-        const score = duplicateConfidence(left, right);
-        if (!score || score.match_type === 'exact') continue;
-        seenPairs.add(pairKey);
-        groups.push({
-          match_type: score.match_type,
-          confidence: score.confidence,
-          recommendation: score.recommendation,
-          reason: score.reason,
-          canonical_name: normalizeNameKey(left.name).length <= normalizeNameKey(right.name).length
-            ? normalizeNameKey(left.name)
-            : normalizeNameKey(right.name),
-          characters: [left, right],
-        });
-      }
-    }
-
-    res.json({ duplicate_groups: groups });
   } catch (error) {
     logger.error({ err: error }, 'Failed to list duplicate characters');
     res.status(500).json({ error: 'Failed to list duplicate characters' });
+  }
+});
+
+router.post('/consolidation/keep-separate', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = keepSeparateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid keep-separate request', details: parsed.error.flatten() });
+    }
+    const userId = req.user!.id;
+    const result = await characterConsolidationReviewService.persistDecision({
+      userId,
+      leftEntityId: parsed.data.left_id,
+      rightEntityId: parsed.data.right_id,
+      decision: parsed.data.decision,
+      reasonCode: (parsed.data.reason_code as any) ?? 'DISTINCT_IDENTITY_ASSERTION',
+    });
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ ok: true, pair_key: result.pairKey, decision: parsed.data.decision });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to persist keep-separate decision');
+    res.status(500).json({ error: 'Failed to mark characters as distinct' });
   }
 });
 
@@ -3152,6 +3116,74 @@ router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => 
   }
 });
 
+// DELETE /api/characters/:id/facts/:factId
+// Soft-retract a single fact (status → contradicted). Used by self-profile
+// "What Lore Knows" so users can remove incorrect facts about themselves.
+router.delete('/:id/facts/:factId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const factId = String(req.params.factId);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!characterId || !factId) return res.status(400).json({ error: 'character id and fact id required' });
+
+  try {
+    const { entityFactsService } = await import('../services/entityFactsService');
+    const retracted = await entityFactsService.retractFactById(
+      userId,
+      characterId,
+      'character',
+      factId,
+    );
+    if (!retracted) {
+      return res.status(404).json({ error: 'Fact not found' });
+    }
+    res.json({ success: true, factId, status: 'contradicted' });
+  } catch (error) {
+    logger.error({ error, characterId, factId }, 'Failed to retract character fact');
+    res.status(500).json({ error: 'Failed to remove fact' });
+  }
+});
+
+// PATCH /api/characters/:id/facts/:factId
+// User correction — rewrite the fact text, keep previous_value + corrected status.
+router.patch('/:id/facts/:factId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const factId = String(req.params.factId);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!characterId || !factId) return res.status(400).json({ error: 'character id and fact id required' });
+
+  const schema = z.object({
+    fact: z.string().trim().min(1, 'Fact text is required').max(500),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid fact', details: parsed.error.flatten() });
+  }
+
+  try {
+    const { entityFactsService } = await import('../services/entityFactsService');
+    const updated = await entityFactsService.correctFactById(
+      userId,
+      characterId,
+      'character',
+      factId,
+      parsed.data.fact,
+    );
+    if (!updated) {
+      return res.status(404).json({ error: 'Fact not found' });
+    }
+    res.json({ success: true, fact: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to correct fact';
+    if (message.includes('too long')) {
+      return res.status(400).json({ error: message });
+    }
+    logger.error({ error, characterId, factId }, 'Failed to correct character fact');
+    res.status(500).json({ error: 'Failed to correct fact' });
+  }
+});
+
 // GET /api/characters/:id/scene-candidates
 // Returns recurring event candidates involving this character (for "Moments with X" UI).
 router.get('/:id/scene-candidates', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -3170,11 +3202,12 @@ router.get('/:id/scene-candidates', requireAuth, async (req: AuthenticatedReques
 });
 
 // ── Character media: Photos + Messages (DM screenshots / text) ────────────────
-// GET /api/characters/:id/media?kind=photo|message
+// GET /api/characters/:id/media?kind=photo|message&photoRole=selfie|appears_in
 router.get('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const characterId = String(req.params.id);
   const kind = req.query.kind ? String(req.query.kind) : undefined;
+  const photoRole = req.query.photoRole ? String(req.query.photoRole) : undefined;
   let q = supabaseAdmin
     .from('character_media')
     .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
@@ -3187,107 +3220,255 @@ router.get('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => 
     logger.error({ error, characterId }, 'list character media failed');
     return res.status(500).json({ error: 'Failed to load media' });
   }
-  res.json({ media: data ?? [] });
+  let media = data ?? [];
+  if (photoRole === 'selfie' || photoRole === 'appears_in') {
+    media = media.filter((row) => {
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      const role =
+        meta.photoRole === 'selfie' || meta.photoRole === 'appears_in'
+          ? meta.photoRole
+          : meta.isSelfie === true || meta.source === 'selfie'
+            ? 'selfie'
+            : 'appears_in';
+      return role === photoRole;
+    });
+  }
+  res.json({ media });
 });
 
-// POST /api/characters/:id/media  { kind, dataUrl?, text?, caption?, source? }
-// Image items pass base64 dataUrl. Message screenshots are analyzed with vision OCR.
-router.post('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const userId = req.user!.id;
-  const characterId = String(req.params.id);
-  const schema = z.object({
-    kind: z.enum(['photo', 'message']),
-    dataUrl: z.string().optional(),
-    text: z.string().optional(),
-    caption: z.string().optional(),
-    source: z.string().optional(),
-    analyzeImage: z.boolean().optional(),
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid media', details: parsed.error.flatten() });
-  const { kind, dataUrl, text, caption, source, analyzeImage } = parsed.data;
-  if (!dataUrl && !text) return res.status(400).json({ error: 'Provide an image or text' });
+const characterMediaUpload = createMemoryUpload({
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
-  const { data: character } = await supabaseAdmin
-    .from('characters')
-    .select('name')
-    .eq('user_id', userId)
-    .eq('id', characterId)
-    .maybeSingle();
-  if (!character) return res.status(404).json({ error: 'Character not found' });
-
+async function persistCharacterPhotoMedia(opts: {
+  userId: string;
+  characterId: string;
+  characterName: string;
+  buffer: Buffer;
+  contentType: string;
+  caption?: string | null;
+  source?: string | null;
+  photoRole?: 'selfie' | 'appears_in';
+}): Promise<{ media: Record<string, unknown> } | { error: string; status: number }> {
+  const { userId, characterId, characterName, buffer, contentType, caption, source, photoRole } = opts;
+  const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+  const storage_path = `${userId}/characters/${characterId}/${randomUUID()}.${ext}`;
+  const { error: upErr } = await supabaseAdmin.storage
+    .from('photos')
+    .upload(storage_path, buffer, { contentType, upsert: false });
+  if (upErr) {
+    logger.error({ error: upErr, characterId, message: upErr.message }, 'character media upload failed');
+    return {
+      status: 500,
+      error: upErr.message?.includes('Bucket not found')
+        ? 'Photo storage is not configured (missing photos bucket).'
+        : `Upload failed: ${upErr.message || 'storage error'}`,
+    };
+  }
+  const url = supabaseAdmin.storage.from('photos').getPublicUrl(storage_path).data.publicUrl;
+  const resolvedRole = photoRole === 'selfie' || photoRole === 'appears_in' ? photoRole : 'appears_in';
+  const { data, error } = await supabaseAdmin
+    .from('character_media')
+    .insert({
+      user_id: userId,
+      character_id: characterId,
+      kind: 'photo',
+      url,
+      storage_path,
+      text: null,
+      caption: caption ?? null,
+      source: source ?? (resolvedRole === 'selfie' ? 'selfie' : 'characters_book'),
+      metadata: {
+        photoRole: resolvedRole,
+        isSelfie: resolvedRole === 'selfie',
+      },
+    })
+    .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
+    .single();
+  if (error) {
+    logger.error({ error, characterId }, 'insert character media failed');
+    return { status: 500, error: 'Could not save media' };
+  }
+  const photoId = storage_path.split('/').pop()?.replace(/\.[^.]+$/, '') || randomUUID();
   try {
-    if (kind === 'message') {
-      const { characterMessageMediaService } = await import('../services/characters/characterMessageMediaService');
-      const saved = await characterMessageMediaService.saveMessageMedia({
+    const { photoService } = await import('../services/photoService');
+    await photoService.ensurePhotoAlbumEntry({
+      userId,
+      photoUrl: url,
+      photoId,
+      filename: storage_path.split('/').pop(),
+      source: 'character_media',
+      content: caption?.trim() || `Photo of ${characterName}`,
+      tags: ['photo', 'character', resolvedRole === 'selfie' ? 'selfie' : 'appears_in'],
+      metadata: {
+        characterId,
+        characterName,
+        characterMediaId: data?.id,
+        storagePath: storage_path,
+        photoRole: resolvedRole,
+      },
+    });
+  } catch (albumErr) {
+    logger.warn({ albumErr, characterId }, 'character media album entry failed — media still saved');
+  }
+
+  // Self character Selfies / Pictures I'm In → vision appearance learning.
+  let mediaOut: Record<string, unknown> = data as Record<string, unknown>;
+  if (photoRole === 'selfie' || photoRole === 'appears_in') {
+    try {
+      const { selfCharacterService } = await import('../services/selfCharacterService');
+      const self = await selfCharacterService.ensureSelfCharacter(userId);
+      const selfId = self?.id ? String(self.id) : null;
+      if (selfId && selfId === characterId) {
+        const { photoAnalysisService } = await import('../services/photoAnalysisService');
+        const learned = await photoAnalysisService.learnAppearanceFromSelfPhoto({
+          userId,
+          selfCharacterId: selfId,
+          photoBuffer: buffer,
+          filename: storage_path.split('/').pop() || `${photoId}.jpg`,
+          photoId,
+          forceSelfSubject: resolvedRole === 'selfie',
+        });
+        if (learned.appearanceSignals.length || learned.analysis) {
+          const nextMeta = {
+            ...((mediaOut.metadata as Record<string, unknown> | null) ?? {}),
+            photoRole: resolvedRole,
+            isSelfie: resolvedRole === 'selfie',
+            appearanceSignals: learned.appearanceSignals,
+            lookProfileUpdated: learned.lookProfileUpdated,
+            analysis: learned.analysis
+              ? {
+                  subjectFocus: learned.analysis.subjectFocus,
+                  isSelfie: learned.analysis.isSelfie,
+                  summary: learned.analysis.summary,
+                }
+              : undefined,
+          };
+          const { data: updated } = await supabaseAdmin
+            .from('character_media')
+            .update({ metadata: nextMeta })
+            .eq('id', String(mediaOut.id))
+            .eq('user_id', userId)
+            .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
+            .maybeSingle();
+          if (updated) mediaOut = updated as Record<string, unknown>;
+        }
+      }
+    } catch (learnErr) {
+      logger.warn({ learnErr, characterId }, 'character media appearance learning failed — media still saved');
+    }
+  }
+
+  return { media: mediaOut };
+}
+
+// POST /api/characters/:id/media — multipart file preferred; JSON dataUrl still supported.
+router.post(
+  '/:id/media',
+  requireAuth,
+  (req, res, next) => {
+    const ct = String(req.headers['content-type'] || '');
+    if (ct.includes('multipart/form-data')) {
+      return characterMediaUpload.single('file')(req, res, next);
+    }
+    return next();
+  },
+  async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const characterId = String(req.params.id);
+    const file = (req as AuthenticatedRequest & { file?: { buffer: Buffer; mimetype: string; originalname?: string } }).file;
+
+    const schema = z.object({
+      kind: z.enum(['photo', 'message']).default('photo'),
+      dataUrl: z.string().optional(),
+      text: z.string().optional(),
+      caption: z.string().optional(),
+      source: z.string().optional(),
+      analyzeImage: z.boolean().optional(),
+      photoRole: z.enum(['selfie', 'appears_in']).optional(),
+    });
+
+    const rawBody = {
+      kind: req.body?.kind ?? (file ? 'photo' : undefined),
+      dataUrl: req.body?.dataUrl,
+      text: req.body?.text,
+      caption: req.body?.caption,
+      source: req.body?.source,
+      analyzeImage:
+        req.body?.analyzeImage === true ||
+        req.body?.analyzeImage === 'true' ||
+        req.body?.analyzeImage === '1',
+      photoRole: req.body?.photoRole,
+    };
+    const parsed = schema.safeParse(rawBody);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid media', details: parsed.error.flatten() });
+    }
+    const { kind, dataUrl, text, caption, source, analyzeImage, photoRole } = parsed.data;
+    if (!file && !dataUrl && !text) {
+      return res.status(400).json({ error: 'Provide an image or text' });
+    }
+
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('id', characterId)
+      .maybeSingle();
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    try {
+      if (kind === 'message') {
+        const { characterMessageMediaService } = await import('../services/characters/characterMessageMediaService');
+        const saved = await characterMessageMediaService.saveMessageMedia({
+          userId,
+          characterId,
+          characterName: character.name as string,
+          dataUrl,
+          text,
+          caption,
+          source,
+          analyzeImage,
+        });
+        if (!saved) return res.status(500).json({ error: 'Could not save message' });
+        return res.json({ media: saved });
+      }
+
+      let buffer: Buffer | null = null;
+      let contentType = 'image/jpeg';
+      if (file?.buffer?.length) {
+        buffer = file.buffer;
+        contentType = file.mimetype || 'image/jpeg';
+      } else if (dataUrl) {
+        const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl);
+        if (!match) return res.status(400).json({ error: 'Invalid image data URL' });
+        contentType = match[1];
+        buffer = Buffer.from(match[2], 'base64');
+      }
+      if (!buffer) return res.status(400).json({ error: 'Provide an image' });
+
+      const result = await persistCharacterPhotoMedia({
         userId,
         characterId,
         characterName: character.name as string,
-        dataUrl,
-        text,
+        buffer,
+        contentType,
         caption,
         source,
-        analyzeImage,
+        photoRole,
       });
-      if (!saved) return res.status(500).json({ error: 'Could not save message' });
-      return res.json({ media: saved });
+      if ('error' in result) return res.status(result.status).json({ error: result.error });
+      return res.json({ media: result.media });
+    } catch (e) {
+      logger.error({ error: e, characterId }, 'character media error');
+      res.status(500).json({ error: 'Could not save media' });
     }
-
-    let url: string | null = null;
-    let storage_path: string | null = null;
-    if (dataUrl) {
-      const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl);
-      if (!match) return res.status(400).json({ error: 'Invalid image data URL' });
-      const contentType = match[1];
-      const buffer = Buffer.from(match[2], 'base64');
-      const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
-      storage_path = `${userId}/characters/${characterId}/${randomUUID()}.${ext}`;
-      const { error: upErr } = await supabaseAdmin.storage.from('photos').upload(storage_path, buffer, { contentType, upsert: false });
-      if (upErr) {
-        logger.error({ error: upErr, characterId }, 'character media upload failed');
-        return res.status(500).json({ error: 'Upload failed' });
-      }
-      url = supabaseAdmin.storage.from('photos').getPublicUrl(storage_path).data.publicUrl;
-    }
-    const { data, error } = await supabaseAdmin
-      .from('character_media')
-      .insert({ user_id: userId, character_id: characterId, kind, url, storage_path, text: text ?? null, caption: caption ?? null, source: source ?? null })
-      .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
-      .single();
-    if (error) {
-      logger.error({ error, characterId }, 'insert character media failed');
-      return res.status(500).json({ error: 'Could not save media' });
-    }
-    // Character photo uploads also belong in the global Photo Album.
-    if (kind === 'photo' && url && storage_path) {
-      try {
-        const { photoService } = await import('../services/photoService');
-        const photoId = storage_path.split('/').pop()?.replace(/\.[^.]+$/, '') || randomUUID();
-        await photoService.ensurePhotoAlbumEntry({
-          userId,
-          photoUrl: url,
-          photoId,
-          filename: storage_path.split('/').pop(),
-          source: 'character_media',
-          content: caption?.trim() || `Photo of ${character.name as string}`,
-          tags: ['photo', 'character'],
-          metadata: {
-            characterId,
-            characterName: character.name,
-            characterMediaId: data?.id,
-            storagePath: storage_path,
-          },
-        });
-      } catch (albumErr) {
-        logger.warn({ albumErr, characterId }, 'character media album entry failed — media still saved');
-      }
-    }
-    res.json({ media: data });
-  } catch (e) {
-    logger.error({ error: e, characterId }, 'character media error');
-    res.status(500).json({ error: 'Could not save media' });
-  }
-});
+  },
+);
 
 // DELETE /api/characters/:id/media/:mediaId
 router.delete('/:id/media/:mediaId', requireAuth, async (req: AuthenticatedRequest, res) => {

@@ -83,6 +83,45 @@ describe('scoreEvidence', () => {
     expect(score).toBeGreaterThanOrEqual(80);
     expect(reasons).toContain('entity:rina');
   });
+
+  it('does not general_pass an unrelated low-scoring source for a closed-scope query', () => {
+    const closedScopeContract = buildEvidenceContract(
+      "who's new and returning in this story?",
+    );
+    expect(closedScopeContract.closedScope).toBe(true);
+    const { score, reasons } = scoreEvidence(
+      src('entry', 'unrelated', 'Ska World trivia', 'Random background episode never mentioned in this story.'),
+      closedScopeContract,
+    );
+    expect(score).toBe(0);
+    expect(reasons).toContain('current_story_entity_mismatch');
+    expect(reasons).not.toContain('general_pass');
+  });
+
+  it('still general_passes the same low-scoring source when the query is not closed-scope (regression guard)', () => {
+    const generalContract = buildEvidenceContract('how has my week been?');
+    expect(generalContract.closedScope).toBe(false);
+    const { score, reasons } = scoreEvidence(
+      src('entry', 'unrelated', 'Random errand', 'Picked up dry cleaning.'),
+      generalContract,
+    );
+    expect(score).toBe(25);
+    expect(reasons).toContain('general_pass');
+  });
+
+  it('closed-scope contract still accepts a source with a real entity hit from the active-story roster', () => {
+    const closedScopeContract = buildEvidenceContract(
+      "who's new and returning in this story?",
+      undefined,
+      ['Ravi', 'Tobias'],
+    );
+    const { score, reasons } = scoreEvidence(
+      src('entry', 'e1', 'Ravi mentioned', 'Ravi showed up at the meeting.'),
+      closedScopeContract,
+    );
+    expect(score).toBeGreaterThan(0);
+    expect(reasons.some((r) => r.startsWith('entity:'))).toBe(true);
+  });
 });
 
 describe('enforceEvidenceContract', () => {
@@ -102,6 +141,22 @@ describe('enforceEvidenceContract', () => {
     expect(verdict.rejected.find((source) => source.id === 'food')?.relevanceReasons)
       .toContain('timeline_subject_mismatch');
     expect(contract.expectedAnswerShape).toBe('timeline');
+  });
+
+  it('rejects every unrelated candidate for a closed-scope cast query — empty context beats unrelated background', () => {
+    const contract = buildEvidenceContract("who's new and returning in this story?");
+    const verdict = enforceEvidenceContract(
+      [
+        src('entry', 'ska', 'Ska World episode', 'An unrelated scene never mentioned in this thread.'),
+        src('character', 'chipotle', 'Chipotle run', 'Grabbed a burrito bowl.'),
+        src('character', 'omega1', 'Omega1 background note', 'Background note from an unrelated topic.'),
+      ],
+      contract,
+    );
+    expect(verdict.accepted).toEqual([]);
+    for (const rejected of verdict.rejected) {
+      expect(rejected.relevanceReasons).toContain('current_story_entity_mismatch');
+    }
   });
   it('forwards only defensible evidence for a conflict question', () => {
     const contract = buildEvidenceContract('Who am I having conflict with?');

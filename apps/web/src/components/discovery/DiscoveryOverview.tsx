@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import {
   DATA_CONTROL_PANELS,
   INSIGHT_PANELS,
@@ -330,10 +329,6 @@ export const DiscoveryOverview = () => {
           Explore what LoreBook knows — patterns, people, and memory health at a glance.
         </p>
       )}
-
-      <div className={isMobile ? 'hidden' : ''}>
-        <ChatFirstViewHint />
-      </div>
 
       <OverviewDashboard mobile={isMobile} />
 

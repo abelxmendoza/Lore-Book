@@ -89,23 +89,22 @@ describe('EventsBook', () => {
     vi.mocked(fetchJson).mockResolvedValue({ success: true, events: [] });
   });
 
-  it('renders ChatFirstViewHint with chat-first messaging', async () => {
-    const { findByText } = render(<EventsBook />);
-    expect(await findByText(/This view is built from your conversations/i)).toBeInTheDocument();
+  it('does not show the legacy chat-first banner above Life Log', async () => {
+    render(<EventsBook />);
+    await screen.findByText(/Scenes from your conversations/i);
+    expect(screen.queryByText(/This view is built from your conversations/i)).not.toBeInTheDocument();
   });
 
   it('shows a Filters toggle button in the header', async () => {
     render(<EventsBook />);
-    await waitFor(() => {
-      expect(screen.queryByText(/This view is built from your conversations/i)).toBeInTheDocument();
-    });
+    await screen.findByText(/Scenes from your conversations/i);
     const filtersButton = screen.queryByRole('button', { name: /Filters?/i });
     expect(filtersButton).toBeInTheDocument();
   });
 
   it('renders the Moments tab by default with a search input', async () => {
-    const { findByText } = render(<EventsBook />);
-    await findByText(/This view is built from your conversations/i);
+    render(<EventsBook />);
+    await screen.findByRole('button', { name: /^Moments$/i });
     expect(screen.getByRole('button', { name: /^Moments$/i })).toBeInTheDocument();
     const searchInput = document.querySelector('input[type="text"]');
     expect(searchInput).toBeInTheDocument();

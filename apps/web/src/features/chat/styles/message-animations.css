@@ -729,6 +729,30 @@
   letter-spacing: 0.04em;
 }
 
+/* Occasional "Noted." lead-in at the top of a normal reply — black type on purple highlight. */
+.chat-noted-lead {
+  display: flex;
+  align-items: center;
+  margin: 0 0 0.35rem;
+}
+
+.chat-noted-lead-mark {
+  display: inline-block;
+  color: #0a0a0c;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  padding: 0.18em 0.55em;
+  border-radius: 0.4em;
+  background: linear-gradient(105deg, #c084fc 0%, #a855f7 45%, #7e22ce 100%);
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.55),
+    0 0 18px rgba(168, 85, 247, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-bubble-noted {
     animation: none !important;

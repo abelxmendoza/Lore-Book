@@ -41,6 +41,7 @@ import {
   toEntityContext,
 } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -69,6 +70,7 @@ import { ActiveContextPanel } from './ActiveContextPanel';
 import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
+import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
 import { useAccountAuthority } from '../../../hooks/useAccountAuthority';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { clearChatFocus } from '../../../store/slices/selectionSlice';
@@ -229,6 +231,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     setFocusedEntityId(null);
   }, [activeThreadId]);
 
+  // Message-independent base: entityContext/composerEntities derived from
+  // the pinned focus chip regardless of what's being sent. Used as-is for
+  // display/diagnostic purposes (e.g. the admin export below), where
+  // showing the raw current pin state is correct.
   const chatSendOptions = useMemo(() => {
     const focused = focusedEntityId
       ? threadEntities.find((e) => e.id === focusedEntityId)
@@ -242,6 +248,29 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       composerEntities: focusComposer,
     };
   }, [focusedEntityId, threadEntities, chatFocus]);
+
+  // Per-message variant: a stale focus chip (left open from an earlier,
+  // unrelated conversation) must not attach its entityContext to an
+  // outgoing closed-scope message (e.g. "who's new and returning in this
+  // story?"). An explicitly clicked-in-thread entity (`focused`) is always
+  // an intentional pin for THIS message, so it's never gated. The chip
+  // itself and chatFocus state are untouched — this only decides what
+  // rides along with this specific outgoing message.
+  const buildChatSendOptions = useCallback(
+    (msg: string) => {
+      const focused = focusedEntityId
+        ? threadEntities.find((e) => e.id === focusedEntityId)
+        : undefined;
+      if (focused) return chatSendOptions;
+
+      const { closedScope } = isClosedScopeQuery(msg);
+      const focusRelevant = !chatFocus || !closedScope || isFocusEntityRelevant(msg, chatFocus.entityName ?? '');
+      if (focusRelevant) return chatSendOptions;
+
+      return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined };
+    },
+    [chatSendOptions, chatFocus, focusedEntityId, threadEntities]
+  );
 
   // Wrap sendMessage: clear the greeting and track analytics before sending.
   const handleSubmit = (
@@ -257,9 +286,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       });
       clearGreeting();
     }
+    const options = buildChatSendOptions(msg);
     sendMessage(msg, {
-      ...chatSendOptions,
-      composerEntities: certifiedEntities?.length ? certifiedEntities : chatSendOptions.composerEntities,
+      ...options,
+      composerEntities: certifiedEntities?.length ? certifiedEntities : options.composerEntities,
       previewCorrections,
       ...(images?.length ? { images } : {}),
     });
@@ -267,17 +297,17 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   const handleRecallPrompt = useCallback(
     (prompt: string) => {
-      sendMessage(prompt, chatSendOptions);
+      sendMessage(prompt, buildChatSendOptions(prompt));
     },
-    [sendMessage, chatSendOptions]
+    [sendMessage, buildChatSendOptions]
   );
 
   const chatSimulation = useChatLifecycleSimulation({
     sendMessage: useCallback(
       async (text: string) => {
-        sendMessage(text, chatSendOptions);
+        sendMessage(text, buildChatSendOptions(text));
       },
-      [sendMessage, chatSendOptions]
+      [sendMessage, buildChatSendOptions]
     ),
   });
 
@@ -299,8 +329,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   const { isGuest, canSendChatMessage } = useGuest();
   const { backendUnavailable } = useMockData();
-  const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
+  const demoRuntime = isDemoRuntimeActive();
+  // Public /demo must never show the authenticated account avatar / initials.
+  const avatarUrl: string | undefined = demoRuntime
+    ? undefined
+    : user?.user_metadata?.avatar_url;
   const avatarInitial: string | null = (() => {
+    if (demoRuntime) return 'D';
     const name: string = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
     return name ? name.charAt(0).toUpperCase() : null;
   })();
@@ -368,7 +403,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     if (scrubbed) {
       setInitialPrompt(scrubbed);
     } else {
-      const ownerId = user?.id ?? 'guest-or-anonymous';
+      const ownerId = isDemoRuntimeActive()
+        ? demoThreadStorageUserId()
+        : (user?.id ?? 'guest-or-anonymous');
       clearComposerDraft(ownerId, activeThreadId);
       dispatch(setComposerDraft(''));
       setInitialPrompt('');
@@ -1109,7 +1146,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                       ? `I just shared this photo (${result.fileName}). Analysis: "${result.analysis.summary}". Talk with me about it — what should we remember?`
                       : `I just shared this photo (${result.fileName}). What do you notice? Help me remember what matters.`;
                   void sendMessage(prompt, {
-                    ...chatSendOptions,
+                    ...buildChatSendOptions(prompt),
                     images: [
                       {
                         dataUrl: img.dataUrl,

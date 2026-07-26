@@ -7,7 +7,7 @@ export {
   extractCorrectionNames,
 } from './responseScopePlanner';
 export { domainPolicyFor, isDomainAllowed, NEVER_IN_CHAT } from './responseDomainPolicy';
-export { resolveResponseMode, isChatFacingMode, isFollowUpShaped, CORRECTION_RE } from './responseModeResolver';
+export { resolveResponseMode, isChatFacingMode, isFollowUpShaped, isRetryRequest, CORRECTION_RE } from './responseModeResolver';
 export { deriveActiveContext, MAX_ACTIVE_CONTEXT_TURNS } from './activeContextTracker';
 export { filterEvidence, classifyItemDomain } from './responseEvidenceFilter';
 export { detectOverflow, pruneToAnswer, enforceChatScope } from './responseOverflowGuard';

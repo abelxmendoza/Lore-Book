@@ -1,15 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
 import { makeStore } from '../../../store';
 import { setComposerMatches } from '../../../store/slices/composerSlice';
-import { preserveStoryAttempt } from '../services/storySafetyVault';
+import {
+  clearDemoSession,
+  demoThreadStorageUserId,
+  enterDemoRuntime,
+} from '../../../lib/demoRuntime';
+import { preserveStoryAttempt, saveComposerDraft } from '../services/storySafetyVault';
 import { useChatComposer } from './useChatComposer';
 
 const analyze = vi.fn();
 const mockMatches = vi.fn(() => [] as Array<Record<string, unknown>>);
+const mockUseAuth = vi.fn(() => ({ user: null as { id: string } | null }));
+
+vi.mock('../../../lib/supabase', () => ({
+  useAuth: () => mockUseAuth(),
+}));
 
 vi.mock('../../../hooks/useMoodEngine', () => ({
   useMoodEngine: () => ({
@@ -41,7 +51,15 @@ describe('useChatComposer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMatches.mockReturnValue([]);
+    mockUseAuth.mockReturnValue({ user: null });
+    clearDemoSession();
+    window.history.replaceState({}, '', '/');
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    clearDemoSession();
+    window.history.replaceState({}, '', '/');
   });
 
   it('does not leak an unsent draft between composers with different threadIds', () => {
@@ -79,6 +97,31 @@ describe('useChatComposer', () => {
       { wrapper },
     );
     expect(reopened.current.input).toBe('unsent note about Alice');
+  });
+
+  it('does not restore an authenticated user draft on /demo', () => {
+    const realUserId = 'user-private-lore-1';
+    const privateDraft =
+      'well its been on my mind alot and the showcase must never show this draft';
+    mockUseAuth.mockReturnValue({ user: { id: realUserId } });
+    saveComposerDraft(realUserId, undefined, privateDraft);
+
+    window.history.replaceState({}, '', '/demo');
+    enterDemoRuntime();
+
+    const { result } = renderHook(() => useChatComposer(vi.fn()), { wrapper });
+    expect(result.current.input).toBe('');
+
+    // Typing in demo must write under the demo namespace, never the real account key.
+    act(() => {
+      result.current.setInput('demo-only note');
+    });
+    expect(window.localStorage.getItem(
+      `lorekeeper.composerDraft.v1:${realUserId}:new-thread`,
+    )).toBe(privateDraft);
+    expect(window.localStorage.getItem(
+      `lorekeeper.composerDraft.v1:${demoThreadStorageUserId()}:new-thread`,
+    )).toBe('demo-only note');
   });
 
   it('analyzes input as the user types and clears on empty input', () => {

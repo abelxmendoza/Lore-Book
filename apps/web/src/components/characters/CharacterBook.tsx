@@ -41,7 +41,6 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useGuest } from '../../contexts/GuestContext';
 import { getGuestCharacters } from '../../services/guestLoreStore';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
@@ -3264,7 +3263,6 @@ export const CharacterBook = () => {
       data-testid="character-book"
     >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
-      <ChatFirstViewHint />
       <FocusedEntityChatLauncher
         options={characterChatOptions}
         copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}

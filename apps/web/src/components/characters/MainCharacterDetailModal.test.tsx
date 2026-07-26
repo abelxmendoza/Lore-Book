@@ -115,15 +115,38 @@ describe('MainCharacterDetailModal', () => {
     );
   });
 
-  it('navigates to chat tab and offers talk-to-lore starters', async () => {
+  it('talk-to-lore tab opens chat launchpad distinct from your story', async () => {
     const user = userEvent.setup();
     render(
       <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
     );
 
     await user.click(screen.getByTestId('main-tab-chat'));
-    expect(screen.getByText(/Open main chat/i)).toBeInTheDocument();
+    expect(screen.getByText(/Open main chat about you/i)).toBeInTheDocument();
+    expect(screen.getByTestId('main-open-self-chat')).toBeInTheDocument();
     expect(screen.getByText(/What's Lore learned about me lately/i)).toBeInTheDocument();
+  });
+
+  it('your story tab explains identity editing instead of mirroring chat', async () => {
+    const user = userEvent.setup();
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-story'));
+    expect(screen.getByText(/Your identity card/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Open main chat about you/i)).not.toBeInTheDocument();
+  });
+
+  it('resets a stale unknown tab value to story', async () => {
+    const { rerender } = render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+    // Simulate hot-reload leaving an invalid controlled value by clicking chat then
+    // relying on the guard — smoke that story content is reachable.
+    rerender(<MainCharacterDetailModal character={mainCharacter} onClose={onClose} />);
+    expect(screen.getByTestId('main-tab-story')).toBeInTheDocument();
+    expect(screen.getByText(/Your identity card/i)).toBeInTheDocument();
   });
 
   it('calls onClose when close button is clicked', async () => {

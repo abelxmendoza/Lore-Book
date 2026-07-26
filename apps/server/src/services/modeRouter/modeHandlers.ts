@@ -51,7 +51,13 @@ class ModeHandlers {
 
       case 'SUBJECT_TIMELINE':
         return await this.handleSubjectTimeline(userId, message, options?.threadId, options?.messageId);
-      
+
+      case 'CURRENT_STORY_CAST':
+        return await this.handleCurrentStoryCast(userId, message, options?.threadId);
+
+      case 'CHARACTER_BOOK_WRITE':
+        return await this.handleCharacterBookWrite(userId, message, options?.threadId);
+
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
       
@@ -137,6 +143,70 @@ class ModeHandlers {
       logger.error({ err: error, userId }, 'Failed to handle foundation recall mode');
       return {
         content: "Something went wrong pulling that up — what were you trying to recall?",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+  }
+
+  /**
+   * Current-story cast query: who's new vs. returning in THIS thread, not the
+   * whole autobiography. Closed-scope — must not fall back to general recall.
+   */
+  private async handleCurrentStoryCast(
+    userId: string,
+    message: string,
+    threadId?: string
+  ): Promise<ModeHandlerResponse> {
+    if (!threadId) {
+      return {
+        content: "I don't have an active conversation thread to check the cast of — try asking again from within the chat.",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+    try {
+      const { buildCastRosterChatResponse } = await import('../chat/castRosterQueryService');
+      return await buildCastRosterChatResponse(userId, message, threadId);
+    } catch (error) {
+      logger.error({ err: error, userId, threadId }, 'Failed to handle current-story cast query');
+      return {
+        content: "Something went wrong pulling together who's been part of this conversation — want me to try again?",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+  }
+
+  /**
+   * Explicit "add these people to my character book" request — resolves and
+   * persists each mentioned person, reporting a real per-character outcome.
+   */
+  private async handleCharacterBookWrite(
+    userId: string,
+    message: string,
+    threadId?: string
+  ): Promise<ModeHandlerResponse> {
+    if (!threadId) {
+      return {
+        content: "I don't have an active conversation thread to pull the cast from — try again from within the chat.",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+    try {
+      const { writeCastToCharacterBook } = await import('../chat/characterBookWriteService');
+      const { results, summary } = await writeCastToCharacterBook(userId, message, threadId);
+      return {
+        content: summary,
+        response_mode: 'CHARACTER_BOOK_WRITE',
+        confidence: 0.9,
+        metadata: { characterBookWriteResults: results },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId, threadId }, 'Failed to handle character book write request');
+      return {
+        content: "Something went wrong saving that to your character book — want me to try again?",
         response_mode: 'SILENCE',
         confidence: 0.5,
       };

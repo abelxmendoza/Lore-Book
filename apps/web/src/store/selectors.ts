@@ -1,5 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 import type { RootState } from './index';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -25,9 +26,15 @@ export const selectChatFocus = (state: RootState) => state.selection.chatFocus;
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 export const selectUseMockData = (state: RootState) => state.runtime.useMockData;
-/** Auth-gated mock flag — authenticated users never use mock data. */
-export const selectEffectiveUseMockData = (state: RootState) =>
-  state.auth.user ? false : state.runtime.useMockData;
+/**
+ * Effective mock/demo flag.
+ * Authenticated users never use mock data — except inside the public `/demo`
+ * sandbox, which must stay synthetic even if a Supabase session exists.
+ */
+export const selectEffectiveUseMockData = (state: RootState) => {
+  if (isDemoRuntimeActive()) return true;
+  return state.auth.user ? false : state.runtime.useMockData;
+};
 export const selectIsMockDataActive = (state: RootState) => state.runtime.isMockDataActive;
 export const selectBackendUnavailable = (state: RootState) => state.runtime.backendUnavailable;
 export const selectBackendHealth = (state: RootState) => state.runtime.backendHealth;

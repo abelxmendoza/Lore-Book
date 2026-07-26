@@ -32,7 +32,6 @@ import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
@@ -341,7 +340,6 @@ export const LocationBook = () => {
 
   return (
     <div className={`space-y-5 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}>
-      <ChatFirstViewHint />
       <FocusedEntityChatLauncher
         options={locationChatOptions}
         copy={FOCUSED_ENTITY_CHAT_PRESETS.locations.copy}

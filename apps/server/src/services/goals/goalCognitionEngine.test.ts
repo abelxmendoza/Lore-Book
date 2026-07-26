@@ -92,6 +92,40 @@ describe('Goal Cognition Engine', () => {
     expect(evaluate('I miss Sol.').candidate.kind).toBe('NON_GOAL');
   });
 
+  it('rejects Character Book person intros as NON_GOAL (not quests)', () => {
+    const result = evaluate(
+      "I want to tell you about Jamie, Marcus's Social Worker, someone new in my life.",
+      'Tell you about Jamie',
+    );
+    expect(result.candidate.kind).toBe('NON_GOAL');
+    expect(result.decision).toBe('REJECT');
+    expect(result.eligibility.eligible).toBe(false);
+  });
+
+  it('rejects canonicalized tell-you-about titles even when kind was proposed as QUEST', () => {
+    const result = goalCognitionEngine.evaluate({
+      ownerEntityId: 'synthetic-user',
+      sourceText: 'I want to tell you about Taylor.',
+      proposedTitle: 'Tell you about Taylor',
+      proposedKind: 'QUEST',
+      sourceMessageId: 'synthetic-message',
+      sourceType: 'chat',
+      authorRole: 'user',
+      now: new Date('2026-07-23T12:00:00Z'),
+    });
+    expect(result.candidate.kind).toBe('NON_GOAL');
+    expect(result.decision).toBe('REJECT');
+  });
+
+  it('still accepts a real goal that co-occurs with a person intro', () => {
+    const result = evaluate(
+      "I want to tell you about Jamie. My goal is to launch MemoVault this year.",
+      'Launch MemoVault',
+    );
+    expect(result.candidate.kind).toBe('QUEST');
+    expect(result.eligibility.eligible).toBe(true);
+  });
+
   it('routes a third-party assignment to obligation, not quest', () => {
     const result = evaluate(
       'Jesse told me to test four Ring devices.',

@@ -44,6 +44,10 @@ export interface CohesionCandidate {
   locationIds?: string[];
   activityIds?: string[];
   tags?: string[];
+  /** narrative_moments.caused_by_moment_id — this candidate's key, if set. */
+  causedByKey?: string | null;
+  /** narrative_moments.leads_to_moment_id — this candidate's key, if set. */
+  leadsToKey?: string | null;
 }
 
 export interface NarrativeAnchor {
@@ -63,6 +67,8 @@ export interface NarrativeAnchor {
   memberTimes: number[];
   /** Candidate keys that seeded the anchor (always scene). */
   memberKeys: Set<string>;
+  /** Lowercase tags/themes donated by member candidates — Day Story thematic-unity scoring only. */
+  themeTags: Set<string>;
 }
 
 export interface CohesionBreakdown {
@@ -184,6 +190,7 @@ export function buildNarrativeAnchor(
     locationNames: [],
     memberTimes: [],
     memberKeys: new Set(),
+    themeTags: new Set(),
   };
 
   for (const c of candidates) {
@@ -198,6 +205,7 @@ export function buildNarrativeAnchor(
     for (const id of c.locationIds ?? []) anchor.locationIds.add(id);
     for (const id of c.activityIds ?? []) anchor.activityIds.add(id);
     for (const term of tokenizeTerms(c.text)) anchor.terms.add(term);
+    for (const tag of c.tags ?? []) anchor.themeTags.add(tag.toLowerCase());
   }
 
   return anchor.memberKeys.size > 0 ? anchor : null;
@@ -302,4 +310,56 @@ export function classifyCandidate(
     return { cls: 'background', score: breakdown.total, breakdown };
   }
   return { cls: 'excluded', score: breakdown.total, breakdown };
+}
+
+// ---------------------------------------------------------------------------
+// Day Story coherence — two additional dimensions (causal continuity,
+// thematic unity) on top of the same-day sub-clustering pass. Kept as a
+// separate function rather than folded into scoreCohesion/classifyCandidate:
+// those two are the live arc-scoped stitching pipeline's SCENE_THRESHOLD
+// gate, and changing their total-score formula would silently reshape
+// already-relied-upon scene/background/excluded behavior there. Day Story
+// assembly is a new, independent consumer of the same anchor/candidate
+// primitives, not a replacement for the existing classification.
+// ---------------------------------------------------------------------------
+
+const W_CAUSAL = 15;
+const W_THEMATIC = 10;
+
+export interface DayStoryCoherenceBreakdown extends CohesionBreakdown {
+  causalContinuity: number;
+  thematicUnity: number;
+}
+
+/**
+ * Same five features as scoreCohesion, plus:
+ *  - causalContinuity: the candidate's caused_by/leads_to link points at an
+ *    anchor member (narrative_moments' causal chain, not proximity).
+ *  - thematicUnity: tag/theme overlap with the anchor's member-donated tags.
+ */
+export function scoreDayStoryCoherence(
+  anchor: NarrativeAnchor,
+  candidate: CohesionCandidate,
+): DayStoryCoherenceBreakdown {
+  const base = scoreCohesion(anchor, candidate);
+
+  const causalContinuity =
+    (candidate.causedByKey != null && anchor.memberKeys.has(candidate.causedByKey)) ||
+    (candidate.leadsToKey != null && anchor.memberKeys.has(candidate.leadsToKey))
+      ? W_CAUSAL
+      : 0;
+
+  const candidateTags = new Set((candidate.tags ?? []).map((t) => t.toLowerCase()));
+  const tagHits = overlapCount(candidateTags, anchor.themeTags);
+  const thematicUnity =
+    anchor.themeTags.size > 0 && candidateTags.size > 0
+      ? Math.min(1, tagHits / Math.min(candidateTags.size, 3)) * W_THEMATIC
+      : 0;
+
+  return {
+    ...base,
+    causalContinuity,
+    thematicUnity,
+    total: Math.round(base.total + causalContinuity + thematicUnity),
+  };
 }

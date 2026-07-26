@@ -1328,7 +1328,8 @@ export class ConversationIngestionPipeline {
                     characterId,
                     'character',
                     (entity as any).primary_name,
-                    fullNormalizedText
+                    fullNormalizedText,
+                    { sourceMessageId: messageId },
                   )
                   .catch((err) => logger.warn({ err }, 'Character facts extraction failed (non-blocking)'));
               } catch (err) {
@@ -1379,7 +1380,9 @@ export class ConversationIngestionPipeline {
                   if (!name) return;
                   const id = await entityFactsService.resolveOrgIdByName(userId, name);
                   if (!id) return;
-                  entityFactsService.extractAndPersistFacts(userId, id, 'organization', name, utteranceText)
+                  entityFactsService.extractAndPersistFacts(userId, id, 'organization', name, utteranceText, {
+                    sourceMessageId: messageId,
+                  })
                     .catch(err => logger.warn({ err }, 'Org facts extraction failed (non-blocking)'));
                 } catch { /* non-blocking */ }
               });
@@ -1390,7 +1393,9 @@ export class ConversationIngestionPipeline {
                   if (!name) return;
                   const id = await entityFactsService.resolveLocationIdByName(userId, name);
                   if (!id) return;
-                  entityFactsService.extractAndPersistFacts(userId, id, 'location', name, utteranceText)
+                  entityFactsService.extractAndPersistFacts(userId, id, 'location', name, utteranceText, {
+                    sourceMessageId: messageId,
+                  })
                     .catch(err => logger.warn({ err }, 'Location facts extraction failed (non-blocking)'));
                 } catch { /* non-blocking */ }
               });
@@ -1446,12 +1451,14 @@ export class ConversationIngestionPipeline {
                 undefined
               );
 
-              if (hasSelfReference) {
+              if (hasSelfReference && hasSelfAttributeSignal(rawText)) {
                 const selfChar = await entityAttributeDetector.ensureUserCharacter(userId);
                 if (selfChar) {
                   const { entityFactsService } = await import('../entityFactsService');
                   entityFactsService
-                    .extractAndPersistSelfFacts(userId, selfChar.id, rawText)
+                    .extractAndPersistSelfFacts(userId, selfChar.id, rawText, {
+                      sourceMessageId: messageId,
+                    })
                     .catch(err => logger.warn({ err }, 'Self facts extraction failed (non-blocking)'));
                 }
               }
@@ -1489,7 +1496,9 @@ export class ConversationIngestionPipeline {
           if (selfChar) {
             const { entityFactsService } = await import('../entityFactsService');
             entityFactsService
-              .extractAndPersistSelfFacts(userId, selfChar.id, rawText)
+              .extractAndPersistSelfFacts(userId, selfChar.id, rawText, {
+                sourceMessageId: messageId,
+              })
               .catch(err => logger.warn({ err }, 'Self facts extraction failed (non-blocking)'));
           }
         } catch (error) {

@@ -12,6 +12,8 @@ const { fromMock, rows } = vi.hoisted(() => {
     let mode: 'select' | 'update' = 'select';
     let updatePayload: Record<string, unknown> = {};
 
+    const matchedRows = () => rows.filter((r) => filters.every((f) => f(r)));
+
     const q: Record<string, unknown> = {
       select: () => q,
       update: (payload: Record<string, unknown>) => {
@@ -28,8 +30,15 @@ const { fromMock, rows } = vi.hoisted(() => {
         return q;
       },
       order: () => q,
+      maybeSingle: async () => {
+        const matched = matchedRows();
+        if (mode === 'update') {
+          for (const r of matched) Object.assign(r, updatePayload);
+        }
+        return { data: matched[0] ?? null, error: null };
+      },
       then: (resolve: (v: { data: unknown; error: null }) => unknown) => {
-        const matched = rows.filter((r) => filters.every((f) => f(r)));
+        const matched = matchedRows();
         if (mode === 'update') {
           for (const r of matched) Object.assign(r, updatePayload);
           return resolve({ data: matched, error: null });
@@ -87,5 +96,98 @@ describe('entityFactsService.retractFactsMatching', () => {
   it('ignores an empty match string', async () => {
     await entityFactsService.retractFactsMatching('u1', 'char-1', 'character', 'relationship', '   ');
     expect(rows.every((r) => r.status === 'active')).toBe(true);
+  });
+});
+
+describe('entityFactsService.retractFactById', () => {
+  beforeEach(() => {
+    fromMock.mockClear();
+    rows.length = 0;
+    rows.push(
+      {
+        id: 'f1', user_id: 'u1', entity_id: 'char-1', entity_type: 'character',
+        category: 'career', fact: 'Works at Vanguard Robotics', status: 'active',
+      },
+      {
+        id: 'f2', user_id: 'u1', entity_id: 'char-1', entity_type: 'character',
+        category: 'goals', fact: 'Learning guitar', status: 'active',
+      },
+      {
+        id: 'f-other', user_id: 'u2', entity_id: 'char-9', entity_type: 'character',
+        category: 'career', fact: 'Other user fact', status: 'active',
+      },
+    );
+  });
+
+  it('soft-retracts the owned fact and leaves siblings untouched', async () => {
+    const ok = await entityFactsService.retractFactById('u1', 'char-1', 'character', 'f1');
+    expect(ok).toBe(true);
+    expect(rows.find((r) => r.id === 'f1')?.status).toBe('contradicted');
+    expect(rows.find((r) => r.id === 'f2')?.status).toBe('active');
+  });
+
+  it('returns false when the fact is missing or not owned by this entity', async () => {
+    const ok = await entityFactsService.retractFactById('u1', 'char-1', 'character', 'f-other');
+    expect(ok).toBe(false);
+    expect(rows.find((r) => r.id === 'f-other')?.status).toBe('active');
+  });
+});
+
+describe('entityFactsService.correctFactById', () => {
+  beforeEach(() => {
+    fromMock.mockClear();
+    rows.length = 0;
+    rows.push(
+      {
+        id: 'f1',
+        user_id: 'u1',
+        entity_id: 'char-1',
+        entity_type: 'character',
+        category: 'appearance',
+        fact: 'Has pink hair',
+        status: 'active',
+        confidence: 0.8,
+        previous_value: null,
+        metadata: {},
+      },
+      {
+        id: 'f2',
+        user_id: 'u1',
+        entity_id: 'char-1',
+        entity_type: 'character',
+        category: 'career',
+        fact: 'Works at Vanguard Robotics',
+        status: 'active',
+        confidence: 0.9,
+        previous_value: null,
+        metadata: {},
+      },
+    );
+  });
+
+  it('rewrites the fact, keeps previous_value, and marks corrected', async () => {
+    const updated = await entityFactsService.correctFactById(
+      'u1',
+      'char-1',
+      'character',
+      'f1',
+      'Had pink hair in the past',
+    );
+    expect(updated?.fact).toBe('Had pink hair in the past');
+    expect(updated?.status).toBe('corrected');
+    expect(updated?.previous_value).toBe('Has pink hair');
+    expect(Number(updated?.confidence)).toBeGreaterThanOrEqual(0.95);
+    expect(rows.find((r) => r.id === 'f2')?.fact).toBe('Works at Vanguard Robotics');
+  });
+
+  it('returns null for a fact that does not belong to this entity', async () => {
+    const updated = await entityFactsService.correctFactById(
+      'u1',
+      'char-1',
+      'character',
+      'missing',
+      'Something else',
+    );
+    expect(updated).toBeNull();
   });
 });

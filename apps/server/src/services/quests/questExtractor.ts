@@ -121,11 +121,15 @@ Return JSON:
 
 Reject fragments, completed/past actions, memories, feedback, negated desires, hypotheticals,
 passive phrases, third-party goals, assistant suggestions, wishes, and waiting states.
+Reject person introductions and Character Book onboarding ("I want to tell you about X",
+"let me tell you about X", "someone new in my life", "meet X") — those are cast/lore updates,
+not quests, even when they contain "want to".
 Keep tasks, habits, projects, milestones, and durable quests distinct. A candidate must express
 current or future user intent, user agency, an unresolved outcome, and a complete proposition.
 
 Look for:
-- Explicit goals ("I want to...", "I need to...", "I should...", "I'm going to...")
+- Explicit goals ("I want to...", "I need to...", "I should...", "I'm going to...") — but NOT
+  "I want to tell you about [person]"
 - Tasks mentioned ("I have to...", "I need to finish...", "I should start...")
 - Aspirations ("I'd like to...", "My goal is...", "I'm planning to...")
 - Commitments ("I will...", "I'm going to...", "I plan to...")

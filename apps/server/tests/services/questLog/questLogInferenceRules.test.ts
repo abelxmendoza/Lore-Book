@@ -87,6 +87,13 @@ describe('quest log inference rules', () => {
     expect(result.accepted.some((c) => /find my/i.test(c.displayName))).toBe(false);
   });
 
+  it('rejects Character Book person intros as quests', () => {
+    const result = infer(
+      "I want to tell you about Jamie, Marcus's Social Worker, someone new in my life.",
+    );
+    expect(result.accepted.some((c) => /tell you about|jamie/i.test(c.displayName))).toBe(false);
+  });
+
   it('project alone rejected', () => {
     expect(isBareGenericQuestLabel('project')).toBe(true);
     const result = infer('Working on a project today.');

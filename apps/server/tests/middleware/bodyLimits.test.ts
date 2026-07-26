@@ -12,6 +12,7 @@ function buildApp(isDevelopment: boolean) {
     res.json({ ok: true, imageChars: req.body?.images?.[0]?.dataUrl?.length ?? 0 });
   });
   app.post('/api/chat', (_req, res) => res.json({ ok: true }));
+  app.post('/api/characters/:id/media', (_req, res) => res.json({ ok: true }));
   app.post('/api/other', (_req, res) => res.json({ ok: true }));
   app.use(errorHandler);
   return app;
@@ -35,6 +36,14 @@ describe('createJsonBodyParser', () => {
     const res = await request(app)
       .post('/api/chat')
       .send({ message: 'photo', images: [{ dataUrl: dataUrl(3_000_000) }] });
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts multi-mb character media JSON bodies in production mode', async () => {
+    const app = buildApp(false);
+    const res = await request(app)
+      .post('/api/characters/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/media')
+      .send({ kind: 'photo', dataUrl: dataUrl(2_500_000) });
     expect(res.status).toBe(200);
   });
 

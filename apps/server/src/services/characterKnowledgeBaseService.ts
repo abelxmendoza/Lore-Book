@@ -1,5 +1,6 @@
 import { fetchEntityProfile } from './chat/foundationRecallDataService';
 import { entityFactsService } from './entityFactsService';
+import { computeLearningScore } from './entities/learningScore';
 import { supabaseAdmin } from './supabaseClient';
 
 export type RelatedEntity = {
@@ -207,17 +208,14 @@ export async function getCharacterKnowledgeBase(
     identityMentions.reduce((sum, m) => sum + m.evidenceCount, 0) +
     (sceneCandidatesResult?.length ?? 0);
 
-  const learningScore = Math.min(
-    100,
-    Math.round(
-      facts.length * 4 +
-        knowledgeClaims.length * 10 +
-        memoryCount * 2 +
-        timelineEventCount * 3 +
-        identityMentions.length * 3 +
-        (sceneCandidatesResult?.length ?? 0) * 5
-    )
-  );
+  const learningScore = computeLearningScore({
+    facts,
+    patternCount: knowledgeClaims.length,
+    timelineEventCount,
+    identityMentionCount: identityMentions.length,
+    memoryCount,
+    sceneCandidateCount: sceneCandidatesResult?.length ?? 0,
+  });
 
   const timestamps = [
     character.updated_at,

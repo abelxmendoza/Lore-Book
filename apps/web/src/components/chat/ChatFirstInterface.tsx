@@ -19,7 +19,10 @@ import { Button } from '../ui/button';
 import { diagnoseEndpoints, logDiagnostics } from '../../utils/errorDiagnostics';
 import { analytics } from '../../lib/monitoring';
 
+import { isDemoRuntimeActive } from '../../lib/demoRuntime';
+
 const CONVERSATION_STORAGE_KEY = 'lorekeeper_chat_conversation';
+const DEMO_CONVERSATION_STORAGE_KEY = 'lorekeeper_chat_conversation_demo';
 
 export const ChatFirstInterface = () => {
   const navigate = useNavigate();
@@ -39,10 +42,12 @@ export const ChatFirstInterface = () => {
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   const { streamChat, isStreaming, cancel } = useChatStream();
   const { isGuest, canSendChatMessage, incrementChatMessage, guestState } = useGuest();
+  const demoRuntime = isDemoRuntimeActive();
 
-  // Use localStorage hook for conversation persistence
+  // Use localStorage hook for conversation persistence — demo never shares the
+  // authenticated conversation key (private lore isolation).
   const [savedMessages, setSavedMessages, clearSavedMessages] = useLocalStorage<Message[]>(
-    CONVERSATION_STORAGE_KEY,
+    demoRuntime ? DEMO_CONVERSATION_STORAGE_KEY : CONVERSATION_STORAGE_KEY,
     []
   );
 

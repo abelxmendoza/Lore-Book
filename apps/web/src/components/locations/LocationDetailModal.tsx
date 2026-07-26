@@ -113,7 +113,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'overview',  label: 'Overview',    shortLabel: 'Overview', icon: FileText },
   { key: 'knowledge', label: 'What I Know', shortLabel: 'Know',     icon: Brain },
   { key: 'memories',  label: 'Memories',    shortLabel: 'Memories', icon: Calendar },
-  { key: 'timeline',  label: 'Timeline',     shortLabel: 'Timeline', icon: Clock },
+  { key: 'timeline',  label: 'Timeline',    shortLabel: 'Time',     icon: Clock },
   { key: 'people',    label: 'People',      shortLabel: 'People',   icon: Users },
   { key: 'organizations', label: 'Groups & Organizations', shortLabel: 'Groups', icon: Building2 },
   { key: 'insights',  label: 'Insights',    shortLabel: 'Insights', icon: Sparkles },
@@ -914,31 +914,32 @@ export const LocationDetailModal = ({
           </div>
         </div>
 
-        {/* ── Tab bar — stacked grid on mobile, wrap on desktop ── */}
+        {/* ── Tab bar — compact 1-row scroll on mobile; wrapping row on desktop ── */}
         <nav
-          className="shrink-0 border-b border-white/8 px-2 sm:px-5 pt-2 pb-2 sm:pt-3"
+          className="shrink-0 border-b border-white/8 bg-black/20 sm:bg-transparent"
           aria-label="Place sections"
         >
-          <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
-          {tabs.map(({ key, label, shortLabel, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center justify-center sm:justify-start gap-1.5 px-2 sm:px-3 py-2 text-[11px] sm:text-xs font-medium rounded-lg sm:rounded-t-lg border sm:border-0 sm:border-b-2 transition-colors touch-manipulation min-h-[40px] sm:min-h-0 ${
-                activeTab === key
-                  ? 'border-teal-500/40 bg-teal-500/10 text-teal-300 sm:bg-transparent sm:border-teal-400'
-                  : 'border-white/8 text-white/45 hover:text-white/70 hover:bg-white/[0.04] sm:border-transparent'
-              }`}
-              aria-current={activeTab === key ? 'page' : undefined}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                <span className="sm:hidden">{shortLabel}</span>
-                <span className="hidden sm:inline">{label}</span>
-              </span>
-            </button>
-          ))}
+          <div className="flex gap-0.5 overflow-x-auto overscroll-x-contain px-1.5 py-1 sm:flex-wrap sm:overflow-visible sm:gap-1.5 sm:px-5 sm:pt-3 sm:pb-0 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:[scrollbar-width:auto]">
+            {tabs.map(({ key, label, shortLabel, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={`flex flex-shrink-0 flex-col items-center justify-center gap-0 rounded-md px-1.5 py-1 min-w-[2.75rem] min-h-[2.25rem] text-[8px] font-medium leading-none transition-colors touch-manipulation sm:flex-row sm:gap-1.5 sm:rounded-t-lg sm:rounded-b-none sm:px-3 sm:py-2 sm:min-w-0 sm:min-h-0 sm:text-xs sm:border-0 sm:border-b-2 ${
+                  activeTab === key
+                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 sm:bg-transparent sm:border-teal-400'
+                    : 'text-white/45 border border-transparent hover:text-white/70 hover:bg-white/[0.05] sm:border-transparent sm:hover:bg-white/[0.04]'
+                }`}
+                aria-current={activeTab === key ? 'page' : undefined}
+                aria-label={label}
+              >
+                <Icon className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+                <span className="max-w-[2.75rem] text-center truncate mt-0.5 sm:max-w-none sm:text-left sm:mt-0">
+                  <span className="sm:hidden">{shortLabel}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                </span>
+              </button>
+            ))}
           </div>
         </nav>
 

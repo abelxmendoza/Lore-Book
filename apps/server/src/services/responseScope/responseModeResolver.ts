@@ -35,16 +35,25 @@ const ANAPHORA_RE = /\b(?:he|him|his|she|her|hers|they|them|their|theirs|that on
 
 const SHORT_QUESTION_MAX_CHARS = 80;
 
+/** "try again", "retry", "one more time" — asks to replay the previous failed turn. */
+const RETRY_RE = /^(try again|retry|please try again|can you try again|one more time|try that again)\s*[!.?]*$/i;
+
+export function isRetryRequest(message: string): boolean {
+  return RETRY_RE.test(message.trim());
+}
+
 /**
- * A message that cannot stand alone: a correction, a continuation opener, or a
- * short question whose subject is a pronoun. These inherit the conversation's
- * active context instead of being scoped as context-free general chatter.
+ * A message that cannot stand alone: a correction, a continuation opener, a
+ * retry request, or a short question whose subject is a pronoun. These
+ * inherit the conversation's active context instead of being scoped as
+ * context-free general chatter.
  */
 export function isFollowUpShaped(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
   if (CORRECTION_RE.test(text)) return true;
   if (FOLLOW_UP_OPENER_RE.test(text)) return true;
+  if (isRetryRequest(text)) return true;
   return text.length <= SHORT_QUESTION_MAX_CHARS && text.endsWith('?') && ANAPHORA_RE.test(text);
 }
 

@@ -10,16 +10,19 @@ import { useAuth } from '../lib/supabase';
 import { useMockData } from '../contexts/MockDataContext';
 import { useGuest } from '../contexts/GuestContext';
 import { config } from '../config/env';
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 
 /**
  * Returns true if mock data should be used.
  * Guest mode = clean slate unless they explicitly chose Demo Mode (globalEnabled true).
+ * Public `/demo` always uses synthetic data — even if a Supabase session exists.
  */
 export function useShouldUseMockData(): boolean {
   const { user, loading: authLoading } = useAuth();
   const { useMockData: globalEnabled } = useMockData();
   const { isGuest } = useGuest();
 
+  if (isDemoRuntimeActive()) return true;
   if (user) return false;
   // Guest: mock only in Demo Mode; otherwise clean slate (ignore dev default)
   if (isGuest) return globalEnabled === true;
@@ -33,6 +36,7 @@ export function useShouldUseMockData(): boolean {
  * Guest with mock off = clean slate (false). Demo Mode guest = mock on (true).
  */
 export function shouldUseMockData(): boolean {
+  if (isDemoRuntimeActive()) return true;
   if (getIsUserLoggedIn()) return false;
   if (getGlobalIsGuest() && !getGlobalMockDataEnabled()) return false;
   return getGlobalMockDataEnabled() || config.dev.allowMockData;
@@ -47,6 +51,7 @@ export function useShouldSimulateUploadFlow(): boolean {
   const { isGuest } = useGuest();
   const mockEnabled = useShouldUseMockData();
 
+  if (isDemoRuntimeActive()) return true;
   if (user) return false;
   if (isGuest) return true;
   if (authLoading) return false;
@@ -54,6 +59,7 @@ export function useShouldSimulateUploadFlow(): boolean {
 }
 
 export function shouldSimulateUploadFlow(): boolean {
+  if (isDemoRuntimeActive()) return true;
   if (getIsUserLoggedIn()) return false;
   if (getGlobalIsGuest()) return true;
   return shouldUseMockData();
@@ -72,6 +78,7 @@ export function useShouldSimulateChat(): boolean {
   const { isGuest } = useGuest();
   const mockEnabled = useShouldUseMockData();
 
+  if (isDemoRuntimeActive()) return true;
   if (user) return false;
   if (config.env.isProduction && isGuest) return true;
   if (isGuest) return mockEnabled;
@@ -80,6 +87,7 @@ export function useShouldSimulateChat(): boolean {
 }
 
 export function shouldSimulateChat(): boolean {
+  if (isDemoRuntimeActive()) return true;
   if (getIsUserLoggedIn()) return false;
   if (config.env.isProduction && getGlobalIsGuest()) return true;
   if (getGlobalIsGuest()) return shouldUseMockData();

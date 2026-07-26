@@ -33,7 +33,6 @@ import { fetchJson } from '../../lib/api';
 import { getDisplayTitle } from '../../utils/displayTitle';
 import { useEventsBookData } from '../../store/hooks/useEntityBooks';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { MemoryExplorer } from '../memory-explorer/MemoryExplorer';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -707,8 +706,6 @@ export const EventsBook: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <ChatFirstViewHint />
-
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-black/70 via-purple-950/25 to-black/60">
         <CardContent className="p-4 sm:p-6">
           <div className="min-w-0">

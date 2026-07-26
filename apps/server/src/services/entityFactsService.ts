@@ -15,6 +15,13 @@ import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { supabaseAdmin } from './supabaseClient';
+import {
+  findBestMatchingFact,
+  dedupeEntityFactsForDisplay,
+  preferFactWording,
+  type FactRelationKind,
+} from './entities/entityFactDedup';
+import { gateEntityFactWrite } from './entities/entityFactWriteGate';
 
 export type EntityType = 'character' | 'organization' | 'location';
 
@@ -51,6 +58,7 @@ export interface EntityFact {
   last_confirmed_at: string;
   created_at: string;
   updated_at: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface ExtractedFact {
@@ -58,7 +66,15 @@ interface ExtractedFact {
   category: string;
   confidence: number;
   contradicts?: string;
+  /** Optional assertion tag from write gate. */
+  assertionType?: string;
+  /** Distinct evidence id (chat message) for confirmation dedupe. */
+  sourceMessageId?: string;
 }
+
+export type PersistFactsOptions = {
+  sourceMessageId?: string;
+};
 
 // ── Extraction prompts per entity type ────────────────────────────────────────
 
@@ -165,7 +181,8 @@ class EntityFactsService {
     entityId: string,
     entityType: EntityType,
     entityName: string,
-    conversationText: string
+    conversationText: string,
+    options?: PersistFactsOptions,
   ): Promise<void> {
     if (!conversationText.trim()) return;
 
@@ -181,23 +198,74 @@ class EntityFactsService {
 
     const { data: existingRows } = await supabaseAdmin
       .from('entity_facts')
-      .select('id, fact, category, confidence, mention_count, status, previous_value')
+      .select('id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata')
       .eq('user_id', userId)
       .eq('entity_id', entityId)
       .eq('entity_type', entityType)
-      .eq('status', 'active');
+      .in('status', ['active', 'updated', 'corrected']);
 
     const existing = (existingRows ?? []) as EntityFact[];
 
-    for (const incoming of extracted) {
+    const stableFacts: ExtractedFact[] = [];
+    const opinions: ExtractedFact[] = [];
+    const path =
+      entityType === 'character' ? 'character' : entityType === 'organization' ? 'organization' : 'location';
+
+    for (const f of extracted) {
+      const gated = gateEntityFactWrite(f, {
+        path,
+        sourceText: conversationText,
+        entityName,
+      });
+      if (gated.action === 'drop') {
+        if (gated.kind === 'opinion' && entityType === 'character') {
+          opinions.push(f);
+        }
+        continue;
+      }
+      stableFacts.push({
+        ...f,
+        assertionType: gated.assertionType,
+        sourceMessageId: options?.sourceMessageId,
+      });
+    }
+
+    // Legacy opinion split for characters (write gate already drops most; keep route).
+    if (entityType === 'character') {
+      const { classifyFactStability } = await import('./entities/opinionVsFactClassifier');
+      for (const f of [...stableFacts]) {
+        const sentence = this.sentencesAbout(conversationText, entityName);
+        if (classifyFactStability(f, sentence) === 'opinion_or_reaction') {
+          opinions.push(f);
+          const idx = stableFacts.indexOf(f);
+          if (idx >= 0) stableFacts.splice(idx, 1);
+        }
+      }
+    }
+
+    for (const incoming of stableFacts) {
       await this.upsertFact(userId, entityId, entityType, incoming, existing);
     }
 
-    // Facts carry classification signal — use them to upgrade chat-promoted
-    // characters from "mentioned" to a categorized archetype so they appear
-    // under the right tab in the Characters Book. Scan ALL categories AND the
-    // raw utterance: LLM extraction doesn't reliably surface "my old college
-    // roommate" as a fact, but the user's own words always contain it.
+    if (opinions.length > 0 && entityType === 'character') {
+      const { perceptionService } = await import('./perceptionService');
+      for (const op of opinions) {
+        const content = /^i (?:thought|think|found|felt|feel)\b/i.test(op.fact.trim())
+          ? op.fact.trim()
+          : `I thought that ${op.fact.trim()}`;
+        await perceptionService
+          .createPerceptionEntry(userId, {
+            subject_person_id: entityId,
+            subject_alias: entityName,
+            content,
+            source: 'intuition',
+            confidence_level: 0.3,
+            impact_on_me: 'Recorded as a personal impression, not a verified character trait.',
+          })
+          .catch((err) => logger.warn({ err, entityId }, 'Perception entry creation failed (non-blocking)'));
+      }
+    }
+
     if (entityType === 'character') {
       this.classifyCharacterFromFacts(userId, entityId, entityName, extracted, conversationText).catch(err =>
         logger.warn({ err, entityId }, 'Character classification from facts failed (non-blocking)')
@@ -211,7 +279,8 @@ class EntityFactsService {
   async extractAndPersistSelfFacts(
     userId: string,
     characterId: string,
-    conversationText: string
+    conversationText: string,
+    options?: PersistFactsOptions,
   ): Promise<void> {
     if (!conversationText.trim()) return;
 
@@ -227,16 +296,34 @@ class EntityFactsService {
 
     const { data: existingRows } = await supabaseAdmin
       .from('entity_facts')
-      .select('id, fact, category, confidence, mention_count, status, previous_value')
+      .select('id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata')
       .eq('user_id', userId)
       .eq('entity_id', characterId)
       .eq('entity_type', 'character')
-      .eq('status', 'active');
+      .in('status', ['active', 'updated', 'corrected']);
 
     const existing = (existingRows ?? []) as EntityFact[];
 
-    for (const incoming of extracted) {
-      await this.upsertFact(userId, characterId, 'character', incoming, existing);
+    const { classifyFactStability } = await import('./entities/opinionVsFactClassifier');
+
+    for (const f of extracted) {
+      const gated = gateEntityFactWrite(f, {
+        path: 'self',
+        sourceText: conversationText,
+      });
+      if (gated.action === 'drop') continue;
+      if (classifyFactStability(f, conversationText) === 'opinion_or_reaction') continue;
+      await this.upsertFact(
+        userId,
+        characterId,
+        'character',
+        {
+          ...f,
+          assertionType: gated.assertionType,
+          sourceMessageId: options?.sourceMessageId,
+        },
+        existing,
+      );
     }
   }
 
@@ -647,48 +734,138 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     incoming: ExtractedFact,
     existing: EntityFact[]
   ): Promise<void> {
-    const similar = existing.find(
-      e => e.category === incoming.category && this.isSimilarFact(e.fact, incoming.fact)
+    const now = new Date().toISOString();
+    const matched = findBestMatchingFact(
+      { fact: incoming.fact, category: incoming.category },
+      existing,
     );
 
-    const now = new Date().toISOString();
+    const evidenceId =
+      incoming.sourceMessageId?.trim() ||
+      `span:${incoming.category}:${incoming.fact.toLowerCase().slice(0, 80)}`;
 
-    if (similar) {
+    if (matched) {
+      const { match: similar, relation } = matched;
+      const isStateChange = relation === 'state_change';
       const isContradiction =
-        incoming.contradicts &&
-        similar.fact.toLowerCase().includes(incoming.contradicts.toLowerCase().slice(0, 20));
-      const hasChanged =
-        !isContradiction && similar.fact.toLowerCase() !== incoming.fact.toLowerCase();
+        Boolean(incoming.contradicts) &&
+        similar.fact.toLowerCase().includes(String(incoming.contradicts).toLowerCase().slice(0, 20));
+      const isConfirmation =
+        relation === 'exact_confirmation' || relation === 'near_confirmation';
 
-      await supabaseAdmin
-        .from('entity_facts')
-        .update({
-          fact: incoming.fact,
-          confidence: Math.min(1, similar.confidence + 0.05),
-          mention_count: similar.mention_count + 1,
-          status: isContradiction ? 'corrected' : hasChanged ? 'updated' : 'active',
-          previous_value: isContradiction || hasChanged ? similar.fact : similar.previous_value,
-          last_confirmed_at: now,
-          updated_at: now,
-        })
-        .eq('id', similar.id);
-    } else {
-      const contradicted = incoming.contradicts
-        ? existing.find(
-            e =>
-              e.category === incoming.category &&
-              e.fact.toLowerCase().includes(incoming.contradicts!.toLowerCase().slice(0, 20))
-          )
-        : undefined;
+      const nextText = isContradiction
+        ? incoming.fact.trim()
+        : preferFactWording(similar.fact, incoming.fact, relation as FactRelationKind);
 
-      if (contradicted) {
-        await supabaseAdmin
-          .from('entity_facts')
-          .update({ status: 'contradicted', updated_at: now })
-          .eq('id', contradicted.id);
+      const status: FactStatus = isContradiction
+        ? 'corrected'
+        : isStateChange
+          ? 'updated'
+          : similar.status === 'corrected'
+            ? 'corrected'
+            : similar.status === 'updated'
+              ? 'updated'
+              : 'active';
+
+      const prevMeta =
+        similar.metadata && typeof similar.metadata === 'object' && !Array.isArray(similar.metadata)
+          ? { ...similar.metadata }
+          : {};
+
+      const evidenceIds = Array.isArray(prevMeta.evidence_ids)
+        ? [...(prevMeta.evidence_ids as string[])]
+        : [];
+      const isNewEvidence = !evidenceIds.includes(evidenceId);
+      if (isNewEvidence) {
+        evidenceIds.push(evidenceId);
+        while (evidenceIds.length > 40) evidenceIds.shift();
       }
 
-      await supabaseAdmin.from('entity_facts').insert({
+      // Confirmations only inflate counts for distinct evidence; state changes update wording only.
+      const bumpCount = isNewEvidence;
+
+      const stateChanges = Array.isArray(prevMeta.state_changes)
+        ? [...(prevMeta.state_changes as unknown[])]
+        : [];
+      if (isStateChange || isContradiction) {
+        stateChanges.push({
+          at: now,
+          from: similar.fact,
+          to: nextText,
+          kind: isContradiction ? 'correction' : 'state_change',
+        });
+        while (stateChanges.length > 8) stateChanges.shift();
+      }
+
+      const nextMention = bumpCount ? (similar.mention_count ?? 1) + 1 : (similar.mention_count ?? 1);
+      const confirmationCount =
+        evidenceIds.length > 0
+          ? evidenceIds.length
+          : Number(prevMeta.confirmation_count ?? similar.mention_count ?? 1);
+
+      const patch: Record<string, unknown> = {
+        fact: nextText,
+        confidence: Math.min(
+          1,
+          Math.max(similar.confidence, incoming.confidence ?? similar.confidence) +
+            (isConfirmation && isNewEvidence ? 0.03 : isStateChange || isContradiction ? 0.05 : 0),
+        ),
+        mention_count: nextMention,
+        status,
+        previous_value:
+          isStateChange || isContradiction || nextText !== similar.fact
+            ? similar.fact
+            : similar.previous_value,
+        last_confirmed_at: now,
+        updated_at: now,
+        metadata: {
+          ...prevMeta,
+          confirmation_count: confirmationCount,
+          evidence_ids: evidenceIds,
+          last_relation: relation,
+          last_confirmed_kind:
+            isContradiction || isStateChange
+              ? 'state_change'
+              : isNewEvidence
+                ? 'confirmation'
+                : 'duplicate_projection',
+          ...(incoming.assertionType ? { assertion_type: incoming.assertionType } : {}),
+          ...(stateChanges.length ? { state_changes: stateChanges } : {}),
+        },
+      };
+
+      await supabaseAdmin.from('entity_facts').update(patch).eq('id', similar.id);
+
+      similar.fact = nextText;
+      similar.confidence = patch.confidence as number;
+      similar.mention_count = patch.mention_count as number;
+      similar.status = status;
+      similar.previous_value = patch.previous_value as string | null;
+      similar.last_confirmed_at = now;
+      similar.updated_at = now;
+      similar.metadata = patch.metadata as Record<string, unknown>;
+      return;
+    }
+
+    const contradicted = incoming.contradicts
+      ? existing.find(
+          (e) =>
+            e.category === incoming.category &&
+            e.fact.toLowerCase().includes(incoming.contradicts!.toLowerCase().slice(0, 20)),
+        )
+      : undefined;
+
+    if (contradicted) {
+      await supabaseAdmin
+        .from('entity_facts')
+        .update({ status: 'contradicted', updated_at: now })
+        .eq('id', contradicted.id);
+      contradicted.status = 'contradicted';
+    }
+
+    const { data: inserted } = await supabaseAdmin
+      .from('entity_facts')
+      .insert({
         user_id: userId,
         entity_id: entityId,
         entity_type: entityType,
@@ -700,21 +877,22 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
         previous_value: contradicted ? contradicted.fact : null,
         first_seen_at: now,
         last_confirmed_at: now,
-      });
-    }
-  }
+        metadata: {
+          confirmation_count: 1,
+          evidence_ids: [evidenceId],
+          last_relation: 'distinct',
+          last_confirmed_kind: 'new',
+          ...(incoming.assertionType ? { assertion_type: incoming.assertionType } : {}),
+        },
+      })
+      .select(
+        'id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata',
+      )
+      .maybeSingle();
 
-  private isSimilarFact(a: string, b: string): boolean {
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-    const na = normalize(a);
-    const nb = normalize(b);
-    if (na === nb) return true;
-    const wordsA = new Set(na.split(/\s+/).filter(w => w.length > 2));
-    const wordsB = new Set(nb.split(/\s+/).filter(w => w.length > 2));
-    if (wordsA.size === 0 || wordsB.size === 0) return false;
-    const [shorter, longer] = wordsA.size <= wordsB.size ? [wordsA, wordsB] : [wordsB, wordsA];
-    const overlap = [...shorter].filter(w => longer.has(w)).length;
-    return overlap / shorter.size >= 0.6;
+    if (inserted) {
+      existing.push(inserted as EntityFact);
+    }
   }
 
   /**
@@ -732,7 +910,7 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     const trimmed = fact.trim();
     if (!trimmed || !entityId) return;
 
-    const existing = await this.getEntityFacts(userId, entityId, entityType, false);
+    const existing = await this.getEntityFacts(userId, entityId, entityType, false, { dedupe: false });
     await this.upsertFact(
       userId,
       entityId,
@@ -758,7 +936,7 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     const needle = matchSubstring.trim().toLowerCase();
     if (!needle || !entityId) return;
 
-    const active = await this.getEntityFacts(userId, entityId, entityType, false);
+    const active = await this.getEntityFacts(userId, entityId, entityType, false, { dedupe: false });
     const matches = active.filter(
       (f) => f.category === category && f.fact.toLowerCase().includes(needle),
     );
@@ -775,14 +953,168 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
   }
 
   /**
+   * User-initiated retract for a single fact. Soft-deletes via `contradicted`
+   * so history remains; the fact disappears from default getEntityFacts reads.
+   * Returns false when the fact is missing or not owned by this user/entity.
+   */
+  async retractFactById(
+    userId: string,
+    entityId: string,
+    entityType: EntityType,
+    factId: string,
+  ): Promise<boolean> {
+    if (!userId || !entityId || !factId) return false;
+
+    const { data, error } = await supabaseAdmin
+      .from('entity_facts')
+      .update({ status: 'contradicted', updated_at: new Date().toISOString() })
+      .eq('id', factId)
+      .eq('user_id', userId)
+      .eq('entity_id', entityId)
+      .eq('entity_type', entityType)
+      .in('status', ['active', 'updated', 'corrected'])
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, userId, entityId, entityType, factId }, 'Failed to retract fact by id');
+      throw error;
+    }
+    return Boolean(data?.id);
+  }
+
+  /**
+   * User-initiated correction for a single fact. Keeps the row, stores the old
+   * text in `previous_value`, marks status `corrected`, and records provenance
+   * in metadata so Living Memory treats the edit as authoritative.
+   */
+  async correctFactById(
+    userId: string,
+    entityId: string,
+    entityType: EntityType,
+    factId: string,
+    nextFact: string,
+  ): Promise<EntityFact | null> {
+    const trimmed = nextFact.replace(/\s+/g, ' ').trim();
+    if (!userId || !entityId || !factId || !trimmed) return null;
+    if (trimmed.length > 500) {
+      throw new Error('Fact text is too long (max 500 characters)');
+    }
+
+    const { data: current, error: readError } = await supabaseAdmin
+      .from('entity_facts')
+      .select('*')
+      .eq('id', factId)
+      .eq('user_id', userId)
+      .eq('entity_id', entityId)
+      .eq('entity_type', entityType)
+      .in('status', ['active', 'updated', 'corrected'])
+      .maybeSingle();
+
+    if (readError) {
+      logger.error({ error: readError, userId, entityId, factId }, 'Failed to load fact for correction');
+      throw readError;
+    }
+    if (!current) return null;
+
+    const previous = String(current.fact ?? '').trim();
+    if (previous.toLowerCase() === trimmed.toLowerCase()) {
+      // Repeated confirmation of the same wording — bump timestamps only.
+      const now = new Date().toISOString();
+      const prevMeta =
+        current.metadata && typeof current.metadata === 'object' && !Array.isArray(current.metadata)
+          ? (current.metadata as Record<string, unknown>)
+          : {};
+      const { data, error } = await supabaseAdmin
+        .from('entity_facts')
+        .update({
+          mention_count: (Number(current.mention_count) || 1) + 1,
+          last_confirmed_at: now,
+          updated_at: now,
+          confidence: Math.max(Number(current.confidence) || 0.7, 0.95),
+          metadata: {
+            ...prevMeta,
+            confirmation_count: Number(prevMeta.confirmation_count ?? current.mention_count ?? 1) + 1,
+            last_confirmed_kind: 'confirmation',
+            last_relation: 'exact_confirmation',
+          },
+        })
+        .eq('id', factId)
+        .eq('user_id', userId)
+        .eq('entity_id', entityId)
+        .eq('entity_type', entityType)
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      return (data as EntityFact | null) ?? (current as EntityFact);
+    }
+
+    const now = new Date().toISOString();
+    const prevMeta =
+      current.metadata && typeof current.metadata === 'object' && !Array.isArray(current.metadata)
+        ? (current.metadata as Record<string, unknown>)
+        : {};
+    const stateChanges = Array.isArray(prevMeta.state_changes)
+      ? [...(prevMeta.state_changes as unknown[])]
+      : [];
+    stateChanges.push({
+      at: now,
+      from: previous,
+      to: trimmed,
+      kind: 'user_correction',
+    });
+    while (stateChanges.length > 8) stateChanges.shift();
+
+    const { data, error } = await supabaseAdmin
+      .from('entity_facts')
+      .update({
+        fact: trimmed,
+        previous_value: previous || current.previous_value || null,
+        status: 'corrected',
+        confidence: Math.max(Number(current.confidence) || 0.7, 0.95),
+        mention_count: (Number(current.mention_count) || 1) + 1,
+        last_confirmed_at: now,
+        updated_at: now,
+        metadata: {
+          ...prevMeta,
+          confirmation_count: Number(prevMeta.confirmation_count ?? current.mention_count ?? 1) + 1,
+          last_confirmed_kind: 'state_change',
+          last_relation: 'state_change',
+          state_changes: stateChanges,
+          user_correction: {
+            at: now,
+            previous_value: previous,
+            source: 'self_profile_what_lore_knows',
+          },
+        },
+      })
+      .eq('id', factId)
+      .eq('user_id', userId)
+      .eq('entity_id', entityId)
+      .eq('entity_type', entityType)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, userId, entityId, entityType, factId }, 'Failed to correct fact by id');
+      throw error;
+    }
+    return (data as EntityFact | null) ?? null;
+  }
+
+  /**
    * Fetch facts for an entity. Active + updated + corrected by default (excludes contradicted).
+   * Set `dedupe: false` for write-path matching so every row is visible.
+   * Display/API callers keep default dedupe to collapse redundant twins.
    */
   async getEntityFacts(
     userId: string,
     entityId: string,
     entityType: EntityType,
-    includeContradicted = false
+    includeContradicted = false,
+    opts?: { dedupe?: boolean },
   ): Promise<EntityFact[]> {
+    const dedupe = opts?.dedupe !== false;
     let query = supabaseAdmin
       .from('entity_facts')
       .select('*')
@@ -790,7 +1122,7 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
       .eq('entity_id', entityId)
       .eq('entity_type', entityType)
       .order('category')
-      .order('confidence', { ascending: false });
+      .order('last_confirmed_at', { ascending: false });
 
     if (!includeContradicted) {
       query = query.in('status', ['active', 'updated', 'corrected']);
@@ -801,7 +1133,9 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
       logger.error({ error, entityId, entityType }, 'Failed to fetch entity facts');
       return [];
     }
-    return (data ?? []) as EntityFact[];
+    const rows = (data ?? []) as EntityFact[];
+    if (!dedupe || includeContradicted) return rows;
+    return dedupeEntityFactsForDisplay(rows);
   }
 
   /**

@@ -61,12 +61,12 @@ type Props = {
 
 const MAIN_CHARACTER_TABS = [
   { value: 'story', label: 'Your Story', shortLabel: 'Story', icon: BookOpen },
+  { value: 'chat', label: 'Talk to Lore', shortLabel: 'Chat', icon: MessageSquare },
   { value: 'people', label: 'Your People', shortLabel: 'People', icon: Users },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'lore', label: 'What Lore Knows', shortLabel: 'Lore', icon: Brain },
   { value: 'photos', label: 'Your Photos', shortLabel: 'Photos', icon: ImageIcon },
   { value: 'memories', label: 'Memories', shortLabel: 'Mem', icon: Sparkles },
-  { value: 'chat', label: 'Talk to Lore', shortLabel: 'Chat', icon: MessageSquare },
 ] as const;
 
 type MainTab = (typeof MAIN_CHARACTER_TABS)[number]['value'];
@@ -140,6 +140,13 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
   const [activeTab, setActiveTab] = useState<MainTab>('story');
   const [selectedConnection, setSelectedConnection] = useState<Character | null>(null);
   const profile = useMainCharacterProfile(character);
+
+  // Hot reload / stale state can leave an unknown tab value with an empty panel.
+  useEffect(() => {
+    if (!MAIN_CHARACTER_TABS.some((tab) => tab.value === activeTab)) {
+      setActiveTab('story');
+    }
+  }, [activeTab]);
 
   const openOmniTimeline = () => {
     const characterId = profile.character.id;
@@ -540,6 +547,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
       profile: {
         relationshipToUser: null,
         memoryCount: profile.memories.length,
+        // Thin seed — CharacterKnowledgeBase always fetches /knowledge-base for real counts.
         timelineEventCount: 0,
         timelineEvents: [],
       },
@@ -547,10 +555,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
         totalEvidenceItems:
           profile.facts.length + profile.knowledgeClaims.length + profile.attributes.length,
         lastUpdated: profile.stats?.lastSyncedAt ?? null,
-        learningScore: Math.min(
-          100,
-          profile.facts.length * 8 + profile.knowledgeClaims.length * 12 + profile.attributes.length * 4,
-        ),
+        learningScore: 0,
       },
     }), [profile, displayName]);
 
@@ -768,6 +773,12 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
               {/* Story */}
               <TabsContent value="story" className={`${tabPanelClass} space-y-4 sm:space-y-5`}>
+                <div className="rounded-lg border border-amber-500/15 bg-black/25 px-3 py-2">
+                  <p className="text-xs text-white/55 leading-relaxed">
+                    Your identity card — names, role, and life pillars you can edit here.
+                    To chat about yourself, use <span className="text-amber-200/80">Talk to Lore</span> above.
+                  </p>
+                </div>
                 <blockquote className="rounded-xl border border-amber-500/25 bg-gradient-to-br from-amber-950/30 to-black/40 p-4 sm:p-5">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/70 mb-2">
                     In your words
@@ -903,7 +914,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                             </ul>
                           ) : (
                             <p className="text-xs text-white/40 italic">
-                              Tell Lore about this in chat — it fills in as you share.
+                              Not filled in yet — edit core identity above, or check What Lore Knows.
                             </p>
                           )}
                         </div>
@@ -936,198 +947,35 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 {profile.attributes.length === 0 && !profile.loading && (
                   <div className="rounded-xl border border-dashed border-amber-500/25 bg-amber-950/10 p-4 sm:p-5 text-center space-y-3">
                     <p className="text-sm text-white/65">
-                      Lore builds your personal profile as you chat and add life details.
+                      Start by solidifying your name and role, then Lore will fill life pillars as you share.
                     </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
-                      onClick={() => openSelfChat('Help me build out my personal profile.')}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      Start with Lore
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
+                        onClick={() => setEditingIdentity(true)}
+                      >
+                        Edit core identity
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-white/60 hover:text-amber-100"
+                        onClick={() => setActiveTab('lore')}
+                      >
+                        See What Lore Knows
+                      </Button>
+                    </div>
                   </div>
                 )}
               </TabsContent>
 
               {/* People */}
               <TabsContent value="people" className={`${tabPanelClass} space-y-3`}>
-                <div className="flex items-center gap-2 px-1">
-                  <p className="text-xs text-white/50 flex-1">
-                    People in your life — tap someone to see their full character profile.
-                  </p>
-                  {canEditWorld && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-white/55"
-                      onClick={() => void toggleConnectionAdd()}
-                      data-testid="self-add-connection-toggle"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
-                    </Button>
-                  )}
-                </div>
-                {connectionAddOpen && canEditWorld && (
-                  <div className="rounded-xl border border-amber-500/20 bg-black/35 p-3">
-                    <p className="text-[10px] text-white/35 mb-2">
-                      Link someone who already exists in your Character Book.
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
-                      <select
-                        value={connectionTargetId}
-                        onChange={(e) => setConnectionTargetId(e.target.value)}
-                        disabled={connectionOptionsLoading}
-                        aria-label="Existing character"
-                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
-                      >
-                        <option value="">
-                          {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
-                        </option>
-                        {connectionOptions
-                          .filter(
-                            (c) =>
-                              c.id !== selfId &&
-                              !sortedRelationships.some((r) => r.character_id === c.id),
-                          )
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                      <input
-                        list="self-connection-type-options"
-                        value={connectionType}
-                        onChange={(e) => setConnectionType(e.target.value)}
-                        placeholder="Relationship (e.g. friend)"
-                        aria-label="Relationship type"
-                        className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
-                      />
-                      <datalist id="self-connection-type-options">
-                        {['friend', 'best friend', 'close friend', 'partner', 'family', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
-                          <option key={t} value={t} />
-                        ))}
-                      </datalist>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 text-xs"
-                        disabled={!connectionTargetId || connectionSaving}
-                        onClick={() => void addConnection()}
-                        data-testid="self-add-connection-submit"
-                      >
-                        {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
-                      </Button>
-                    </div>
-                    {connectionError && <p className="text-xs text-red-400 mt-2">{connectionError}</p>}
-                  </div>
-                )}
-                {!connectionAddOpen && connectionError && (
-                  <p className="text-xs text-red-400 px-1">{connectionError}</p>
-                )}
-                {sortedRelationships.length === 0 ? (
-                  <div className="rounded-xl border border-amber-500/15 bg-black/35 p-6 text-center">
-                    <Users className="h-10 w-10 mx-auto mb-3 text-amber-400/30" />
-                    <p className="text-sm text-white/60">
-                      People you mention in chat appear here as your cast.
-                    </p>
-                    {canEditWorld && !connectionAddOpen && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 h-8 text-xs border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
-                        onClick={() => void toggleConnectionAdd()}
-                        data-testid="self-empty-add-connection"
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" />
-                        Add a connection manually
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  sortedRelationships.map((rel, i) => {
-                    const name = rel.character_name || 'Unknown';
-                    const relId = rel.character_id || rel.id || `rel-${i}`;
-                    const openConnection = () =>
-                      setSelectedConnection({
-                        id: rel.character_id || rel.id || relId,
-                        name,
-                        role: rel.relationship_type,
-                        summary: rel.summary,
-                        status: rel.status || 'active',
-                      } as Character);
-                    return (
-                      <div
-                        key={relId}
-                        role="button"
-                        tabIndex={0}
-                        onClick={openConnection}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            openConnection();
-                          }
-                        }}
-                        className="w-full min-h-[48px] cursor-pointer text-left rounded-xl border border-amber-500/15 bg-black/35 hover:bg-amber-950/20 hover:border-amber-500/30 transition-colors p-3 sm:p-4 flex items-start gap-3 group touch-manipulation active:bg-amber-950/25"
-                      >
-                        <CharacterAvatar
-                          characterId={rel.character_id}
-                          name={name}
-                          size={40}
-                          className="flex-shrink-0 ring-1 ring-white/10"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-white group-hover:text-amber-100">
-                              {name}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] bg-white/5 text-white/60 border-white/15"
-                            >
-                              {formatRelationshipType(rel.relationship_type)}
-                            </Badge>
-                            {typeof rel.closeness_score === 'number' && rel.closeness_score > 0 && (
-                              <span className="text-[10px] text-amber-400/70 font-mono">
-                                {Math.round(rel.closeness_score)}% close
-                              </span>
-                            )}
-                          </div>
-                          {rel.summary && (
-                            <p className="text-xs sm:text-sm text-white/55 mt-1 line-clamp-2">
-                              {rel.summary}
-                            </p>
-                          )}
-                        </div>
-                        {canEditWorld && rel.id && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 flex-shrink-0 mt-1 text-white/25 hover:text-red-400"
-                            aria-label={`Remove connection with ${name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void removeConnection(rel);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        <ChevronRight className="h-5 w-5 text-amber-400/30 group-hover:text-amber-300 flex-shrink-0 mt-1" />
-                      </div>
-                    );
-                  })
-                )}
-
-                {/* Your Groups & Organizations — memberships from the Groups & Orgs book */}
+                {/* Groups & Organizations first — then individual people below */}
                 {canEditWorld && (
-                  <div className="pt-2 space-y-2">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2 px-1">
                       <h3 className="flex-1 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex items-center gap-1.5">
                         <Building2 className="h-3.5 w-3.5" />
@@ -1238,6 +1086,187 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     })}
                   </div>
                 )}
+
+                <div className={`${canEditWorld ? 'pt-2' : ''} space-y-2`}>
+                  <div className="flex items-center gap-2 px-1">
+                    <h3 className="flex-1 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      People
+                      <span className="font-normal normal-case text-white/30">
+                        {sortedRelationships.length} total
+                      </span>
+                    </h3>
+                    {canEditWorld && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-white/55"
+                        onClick={() => void toggleConnectionAdd()}
+                        data-testid="self-add-connection-toggle"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/50 px-1">
+                    People in your life — tap someone to see their full character profile.
+                  </p>
+                  {connectionAddOpen && canEditWorld && (
+                    <div className="rounded-xl border border-amber-500/20 bg-black/35 p-3">
+                      <p className="text-[10px] text-white/35 mb-2">
+                        Link someone who already exists in your Character Book.
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
+                        <select
+                          value={connectionTargetId}
+                          onChange={(e) => setConnectionTargetId(e.target.value)}
+                          disabled={connectionOptionsLoading}
+                          aria-label="Existing character"
+                          className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                        >
+                          <option value="">
+                            {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
+                          </option>
+                          {connectionOptions
+                            .filter(
+                              (c) =>
+                                c.id !== selfId &&
+                                !sortedRelationships.some((r) => r.character_id === c.id),
+                            )
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </select>
+                        <input
+                          list="self-connection-type-options"
+                          value={connectionType}
+                          onChange={(e) => setConnectionType(e.target.value)}
+                          placeholder="Relationship (e.g. friend)"
+                          aria-label="Relationship type"
+                          className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-amber-500/60 focus:outline-none"
+                        />
+                        <datalist id="self-connection-type-options">
+                          {['friend', 'best friend', 'close friend', 'partner', 'family', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
+                            <option key={t} value={t} />
+                          ))}
+                        </datalist>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 text-xs"
+                          disabled={!connectionTargetId || connectionSaving}
+                          onClick={() => void addConnection()}
+                          data-testid="self-add-connection-submit"
+                        >
+                          {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                        </Button>
+                      </div>
+                      {connectionError && <p className="text-xs text-red-400 mt-2">{connectionError}</p>}
+                    </div>
+                  )}
+                  {!connectionAddOpen && connectionError && (
+                    <p className="text-xs text-red-400 px-1">{connectionError}</p>
+                  )}
+                  {sortedRelationships.length === 0 ? (
+                    <div className="rounded-xl border border-amber-500/15 bg-black/35 p-6 text-center">
+                      <Users className="h-10 w-10 mx-auto mb-3 text-amber-400/30" />
+                      <p className="text-sm text-white/60">
+                        People you mention in chat appear here as your cast.
+                      </p>
+                      {canEditWorld && !connectionAddOpen && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-8 text-xs border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
+                          onClick={() => void toggleConnectionAdd()}
+                          data-testid="self-empty-add-connection"
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Add a connection manually
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    sortedRelationships.map((rel, i) => {
+                      const name = rel.character_name || 'Unknown';
+                      const relId = rel.character_id || rel.id || `rel-${i}`;
+                      const openConnection = () =>
+                        setSelectedConnection({
+                          id: rel.character_id || rel.id || relId,
+                          name,
+                          role: rel.relationship_type,
+                          summary: rel.summary,
+                          status: rel.status || 'active',
+                        } as Character);
+                      return (
+                        <div
+                          key={relId}
+                          role="button"
+                          tabIndex={0}
+                          onClick={openConnection}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              openConnection();
+                            }
+                          }}
+                          className="w-full min-h-[48px] cursor-pointer text-left rounded-xl border border-amber-500/15 bg-black/35 hover:bg-amber-950/20 hover:border-amber-500/30 transition-colors p-3 sm:p-4 flex items-start gap-3 group touch-manipulation active:bg-amber-950/25"
+                        >
+                          <CharacterAvatar
+                            characterId={rel.character_id}
+                            name={name}
+                            size={40}
+                            className="flex-shrink-0 ring-1 ring-white/10"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-white group-hover:text-amber-100">
+                                {name}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-white/5 text-white/60 border-white/15"
+                              >
+                                {formatRelationshipType(rel.relationship_type)}
+                              </Badge>
+                              {typeof rel.closeness_score === 'number' && rel.closeness_score > 0 && (
+                                <span className="text-[10px] text-amber-400/70 font-mono">
+                                  {Math.round(rel.closeness_score)}% close
+                                </span>
+                              )}
+                            </div>
+                            {rel.summary && (
+                              <p className="text-xs sm:text-sm text-white/55 mt-1 line-clamp-2">
+                                {rel.summary}
+                              </p>
+                            )}
+                          </div>
+                          {canEditWorld && rel.id && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 flex-shrink-0 mt-1 text-white/25 hover:text-red-400"
+                              aria-label={`Remove connection with ${name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void removeConnection(rel);
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <ChevronRight className="h-5 w-5 text-amber-400/30 group-hover:text-amber-300 flex-shrink-0 mt-1" />
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </TabsContent>
 
               {/* Timeline — hand off to Omni Timeline (no in-modal timeline body) */}
@@ -1318,6 +1347,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                   characterId={profile.character.id}
                   characterName={displayName}
                   kind="photo"
+                  isSelfProfile
                 />
               </TabsContent>
 
@@ -1337,6 +1367,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                       variant="outline"
                       className="mt-4 border-amber-500/40 text-amber-200 hover:bg-amber-500/15"
                       onClick={() => setActiveTab('chat')}
+                      data-testid="memories-talk-to-lore"
                     >
                       Talk to Lore
                     </Button>
@@ -1372,13 +1403,16 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 )}
               </TabsContent>
 
-              {/* Chat */}
+              {/* Chat — leave-the-modal conversation launchpad (not an identity editor) */}
               <TabsContent value="chat" className={`${tabPanelClass} flex flex-col min-h-[min(40vh,360px)] sm:min-h-[min(52vh,480px)]`}>
                 <div className="rounded-xl border border-amber-500/25 bg-gradient-to-br from-amber-950/25 to-black/40 p-3 sm:p-5 space-y-3 sm:space-y-4">
-                  <p className="text-xs sm:text-sm text-white/70 leading-relaxed">
-                    Main chat already knows your full personal profile — your goals, attributes,
-                    and what you&apos;ve shared about your life.
-                  </p>
+                  <div>
+                    <p className="text-sm font-medium text-amber-100/90">Open main chat about you</p>
+                    <p className="mt-1 text-xs sm:text-sm text-white/60 leading-relaxed">
+                      This leaves your profile and opens Lore chat with your personal context attached.
+                      To edit names and life pillars, stay on Your Story.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
                     {[
                       'Help me update my resume profile.',
@@ -1400,6 +1434,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     type="button"
                     onClick={() => openSelfChat()}
                     className="w-full py-2.5 sm:py-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/35 text-amber-200 hover:text-amber-100 text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                    data-testid="main-open-self-chat"
                   >
                     <MessageSquare className="w-4 h-4 shrink-0" />
                     Open main chat

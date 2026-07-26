@@ -29,6 +29,7 @@ import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import { apiCache } from '../lib/cache';
 import { cn } from '../lib/cn';
 import { useAuth } from '../lib/supabase';
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 import type { Quest } from '../types/quest';
 import type { Skill } from '../types/skill';
 
@@ -314,12 +315,16 @@ export const HomeScreen = () => {
   const showXPanel = isMock || authority?.canAccessAdmin === true;
 
   const userId = user?.id ?? '';
-  const displayName =
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    user?.email?.split('@')[0] ||
-    'there';
-
+  const demoRuntime = isDemoRuntimeActive();
+  // Public /demo must never greet with the authenticated account's name/email.
+  const displayName = demoRuntime
+    ? 'Demo'
+    : (
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      user?.email?.split('@')[0] ||
+      'there'
+    );
   // ── Data state ─────────────────────────────────────────────────────────────
   const [topChars,       setTopChars]       = useState<Character[]>([]);
   const [topSkills,      setTopSkills]      = useState<Skill[]>([]);

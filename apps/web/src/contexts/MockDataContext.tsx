@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
 import { config } from '../config/env';
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 import { useAuth } from '../lib/supabase';
 import {
   checkBackendHealth,
@@ -153,26 +154,31 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
   }, [backendUnavailable, checkHealth]);
 
   useEffect(() => {
-    if (user) {
+    // Authenticated users leave mock/guest mode — unless they opened the public
+    // /demo sandbox, which must stay fully isolated from their real account.
+    if (user && !isDemoRuntimeActive()) {
       dispatch(setUseMockData(false));
       dispatch(setIsGuest(false));
+    }
+    if (user && isDemoRuntimeActive()) {
+      dispatch(setUseMockData(true));
     }
   }, [user?.id, dispatch]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !user) {
+    if (typeof window !== 'undefined' && (!user || isDemoRuntimeActive())) {
       localStorage.setItem(MOCK_DATA_STORAGE_KEY, String(rawUseMockData));
     }
   }, [rawUseMockData, user]);
 
   const toggleMockData = useCallback(() => {
-    if (user) return;
+    if (user && !isDemoRuntimeActive()) return;
     dispatch(setUseMockData(!rawUseMockData));
   }, [dispatch, rawUseMockData, user]);
 
   const setUseMockDataValue = useCallback(
     (value: boolean) => {
-      if (user) return;
+      if (user && !isDemoRuntimeActive()) return;
       dispatch(setUseMockData(value));
     },
     [dispatch, user],
@@ -185,16 +191,16 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     [dispatch],
   );
 
-  const derivedIdentity = useMemo<RuntimeIdentityType>(
-    () =>
-      resolveRuntimeIdentity({
-        isAuthenticated: !!user,
-        isGuest: false,
-        isMockDataEnabled: user ? false : rawUseMockData,
-        backendUnavailable,
-      }),
-    [rawUseMockData, user, backendUnavailable],
-  );
+  const derivedIdentity = useMemo<RuntimeIdentityType>(() => {
+    const demo = isDemoRuntimeActive();
+    return resolveRuntimeIdentity({
+      // Demo sandbox must never resolve as REAL_USER even with a live session.
+      isAuthenticated: !!user && !demo,
+      isGuest: demo,
+      isMockDataEnabled: demo || (!user && rawUseMockData),
+      backendUnavailable,
+    });
+  }, [rawUseMockData, user, backendUnavailable]);
 
   const derivedDataMode = useMemo<RuntimeDataMode>(() => {
     if (derivedIdentity === 'DEMO_RUNTIME') return 'DEMO';

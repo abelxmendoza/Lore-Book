@@ -23,11 +23,18 @@ const EMOTIONAL_PATTERN =
 const ADVICE_SEEKING =
   /\b(what do you think|advice|help me decide|not sure if|what should i)\b/i;
 
-/** Reflective / creative discussion — not a memory deposit. */
 const CREATIVE_DISCUSSION_PATTERN =
   /\b(I thought|I think|what if|maybe we|the villain|character arc|backstory|plot|scene|chapter|draft|rewrite|more depth|story idea)\b/i;
 
+const FACT_SHARE_PATTERN =
+  /\b(I am|I'm|I was|I've|my name is|I work|I live|I met|today I|just (got|finished|started|moved)|remember that|for the record)\b/i;
+
 const MIN_TURNS_SINCE_LAST_NOTED = 5;
+
+export function isNotedAssistantContent(content: string): boolean {
+  const t = content.trim();
+  return t === NOTED_SIGNATURE || /^Noted\.\s+/i.test(t);
+}
 
 export function isEligibleForNotedSignature(ctx: NotedSignatureContext): boolean {
   const msg = ctx.message.trim();
@@ -47,6 +54,17 @@ export function isEligibleForNotedSignature(ctx: NotedSignatureContext): boolean
   return true;
 }
 
+export function isEligibleForNotedLeadIn(ctx: NotedSignatureContext): boolean {
+  if (isEligibleForNotedSignature(ctx)) return true;
+  const msg = ctx.message.trim();
+  if (!msg || msg.length < 12 || msg.length > 320) return false;
+  if (QUESTION_PATTERN.test(msg)) return false;
+  if (EMOTIONAL_PATTERN.test(msg)) return false;
+  if (ADVICE_SEEKING.test(msg)) return false;
+  if (CREATIVE_DISCUSSION_PATTERN.test(msg)) return false;
+  return FACT_SHARE_PATTERN.test(msg);
+}
+
 export function turnsSinceLastNotedSignature(
   history?: Array<{ role: 'user' | 'assistant'; content: string }>,
 ): number {
@@ -55,7 +73,7 @@ export function turnsSinceLastNotedSignature(
   let turns = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const entry = history[i];
-    if (entry.role === 'assistant' && entry.content.trim() === NOTED_SIGNATURE) {
+    if (entry.role === 'assistant' && isNotedAssistantContent(entry.content)) {
       return turns;
     }
     turns += 1;
@@ -81,6 +99,22 @@ export function shouldUseNotedSignature(ctx: NotedSignatureContext): boolean {
   return rand() < probability;
 }
 
+export function shouldShowNotedLeadIn(ctx: NotedSignatureContext): boolean {
+  if (!isEligibleForNotedLeadIn(ctx)) return false;
+
+  const sinceLast = turnsSinceLastNotedSignature(ctx.conversationHistory);
+  if (sinceLast < MIN_TURNS_SINCE_LAST_NOTED) return false;
+
+  const rand = ctx.random ?? Math.random;
+  const isExplicitLog = EXPLICIT_LOG_PATTERN.test(ctx.message.trim());
+  const probability = isExplicitLog ? 0.28 : 0.14;
+  return rand() < probability;
+}
+
 export function maybeNotedSignatureResponse(ctx: NotedSignatureContext): string | null {
   return shouldUseNotedSignature(ctx) ? NOTED_SIGNATURE : null;
+}
+
+export function stripLeadingNotedPrefix(content: string): string {
+  return content.replace(/^Noted\.\s*/i, '').trimStart();
 }

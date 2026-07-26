@@ -5,6 +5,7 @@ import { performance as perfMonitoring, errorTracking } from './monitoring';
 import { apiCache, generateCacheKey } from './cache';
 import { handleError, createAppError, retryWithBackoff, type AppError } from './errorHandler';
 import { getGlobalMockDataEnabled, getBackendUnavailable, notifyBackendReachable } from '../contexts/MockDataContext';
+import { isDemoRuntimeActive } from './demoRuntime';
 
 // Log backend-down message once per session to avoid console flood
 let backendDownWarned = false;
@@ -35,9 +36,12 @@ export const fetchJson = async <T>(
     timeoutMs?: number;
   }
 ): Promise<T> => {
-  // Get session first so we can skip mock when user is logged in
+  // Get session first so we can skip mock when user is logged in.
+  // Public /demo must never attach the authenticated bearer token — that would
+  // load private lore into a showcase surface.
+  const demoRuntime = isDemoRuntimeActive();
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = demoRuntime ? undefined : data.session?.access_token;
 
   // Short-circuit: when backend is known down, return mock only if user is NOT logged in
   if (getBackendUnavailable() && options?.mockData !== undefined && !token) {
@@ -47,8 +51,8 @@ export const fetchJson = async <T>(
     return options.mockData;
   }
 
-  // When user is logged in, never use mock data — always use real backend
-  const isLoggedIn = !!token;
+  // When user is logged in (and not in demo), never use mock data — always use real backend
+  const isLoggedIn = !!token && !demoRuntime;
 
   // Use configured API URL
   const apiBaseUrl = config.api.url;
@@ -122,9 +126,13 @@ export const fetchJson = async <T>(
         await acquireCsrfToken(token, apiBaseUrl);
       }
 
+      const isFormDataBody =
+        typeof FormData !== 'undefined' && init?.body instanceof FormData;
+
       const buildHeaders = (authToken: string | undefined) =>
         addCsrfHeaders({
-          'Content-Type': 'application/json',
+          // Let the browser set multipart boundaries for FormData uploads.
+          ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           // The user's IANA timezone rides every request so the server resolves
           // "yesterday"/"last night" in THEIR day, not the UTC day.
           'X-User-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',

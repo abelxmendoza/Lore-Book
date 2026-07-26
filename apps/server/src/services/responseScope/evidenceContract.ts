@@ -17,6 +17,7 @@
  */
 
 import type { ResponseScopePlan } from './responseScopeTypes';
+import { isClosedScopeQuery, type ClosedScopeReason } from '@lorebook/api-contracts';
 
 /** What the answer should look like, predicted from the question. */
 export type ExpectedAnswerShape =
@@ -58,6 +59,14 @@ export type EvidenceContract = {
   entityNames: string[];
   /** Explicit timelines may not inherit the ordinary general-pass floor. */
   requireSubjectOverlap: boolean;
+  /**
+   * Closed-scope queries (current-story cast, entity comparison, character-
+   * book comparison) may only accept evidence with a real entity/subject
+   * link — no general_pass floor, no unrelated background. An empty context
+   * slot is preferred over unrelated background for these queries.
+   */
+  closedScope: boolean;
+  closedScopeReason?: ClosedScopeReason;
   /** Sources scoring below this never reach the model. */
   minScore: number;
   maxSources: number;
@@ -197,7 +206,14 @@ function detectTopic(message: string): EvidenceContract['topic'] {
 
 export function buildEvidenceContract(
   message: string,
-  plan?: Pick<ResponseScopePlan, 'primaryEntities' | 'maxEvidenceItems'> | null,
+  plan?: Partial<Pick<ResponseScopePlan, 'primaryEntities' | 'maxEvidenceItems' | 'closedScope'>> | null,
+  /**
+   * Active-story roster names/aliases (from threadRosterService), so a
+   * closed-scope query's entities count as evidence hits even when the
+   * message itself doesn't re-type every name. Only consulted for
+   * closed-scope contracts.
+   */
+  rosterNames?: string[],
 ): EvidenceContract {
   const topic = detectTopic(message);
   const rule = TOPIC_RULES.find((r) => r.topic === topic);
@@ -211,6 +227,12 @@ export function buildEvidenceContract(
   const entityNames = (plan?.primaryEntities ?? []).map((e) => e.name.toLowerCase()).filter(Boolean);
   if (isTimeline && timelineSubject.length >= 3) entityNames.push(timelineSubject);
 
+  const { closedScope, reason: closedScopeReason } = isClosedScopeQuery(message);
+  const closedScopeActive = closedScope || Boolean(plan?.closedScope);
+  if (closedScopeActive && rosterNames?.length) {
+    entityNames.push(...rosterNames.map((n) => n.toLowerCase()).filter(Boolean));
+  }
+
   return {
     topic,
     expectedAnswerShape: isTimeline ? 'timeline' : rule?.expectedAnswerShape ?? 'summary',
@@ -220,6 +242,8 @@ export function buildEvidenceContract(
     queryTerms: terms(message),
     entityNames: [...new Set(entityNames)],
     requireSubjectOverlap: isTimeline,
+    closedScope: closedScopeActive,
+    closedScopeReason,
     minScore: DEFAULT_MIN_EVIDENCE_SCORE,
     maxSources: Math.max(plan?.maxEvidenceItems ?? 20, 8),
   };
@@ -271,6 +295,13 @@ export function scoreEvidence(
     return { score: 0, reasons: ['timeline_subject_mismatch'] };
   }
 
+  // Closed-scope queries (current-story cast, entity comparison, character-
+  // book comparison) may only accept evidence with a real entity/subject
+  // link — an empty context slot beats unrelated background.
+  if (contract.closedScope && !entityHit && !linkedSubjectEvidence) {
+    return { score: 0, reasons: ['current_story_entity_mismatch'] };
+  }
+
   // Topic support: the source carries the kind of evidence the contract needs.
   if (contract.supportingPatterns.some((p) => p.test(text))) {
     score += 35;
@@ -305,8 +336,16 @@ export function scoreEvidence(
   }
 
   // A general contract has no topic lexicon; fall back to lexical + entity
-  // signals with a floor so ordinary chat isn't starved of context.
-  if (contract.topic === 'general' && !contract.requireSubjectOverlap && score < DEFAULT_MIN_EVIDENCE_SCORE) {
+  // signals with a floor so ordinary chat isn't starved of context. Closed-
+  // scope queries never get this floor — the hard reject above already ran
+  // for them, so anything reaching here already has a real entity/subject
+  // link and doesn't need (or want) a synthetic score bump.
+  if (
+    contract.topic === 'general' &&
+    !contract.requireSubjectOverlap &&
+    !contract.closedScope &&
+    score < DEFAULT_MIN_EVIDENCE_SCORE
+  ) {
     score = 25;
     reasons.push('general_pass');
   }

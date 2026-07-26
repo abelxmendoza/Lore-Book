@@ -597,6 +597,10 @@ Return JSON:
                     photoId: uploadResult.photoId,
                     journalEntryId: entry.id,
                     isSelfie: Boolean(analysis.isSelfie),
+                    photoRole:
+                      analysis.isSelfie || analysis.subjectFocus === 'selfie'
+                        ? 'selfie'
+                        : 'appears_in',
                     appearanceSignals: analysis.appearanceSignals ?? [],
                   },
                 })
@@ -639,9 +643,48 @@ Return JSON:
   }
 
   /**
+   * Vision-analyze a selfie (or user-in-frame photo) and fold traits into the
+   * self character look_profile + self facts. Used by character-media uploads
+   * and the photo gallery process path.
+   */
+  async learnAppearanceFromSelfPhoto(opts: {
+    userId: string;
+    selfCharacterId: string;
+    photoBuffer: Buffer;
+    filename: string;
+    photoId: string;
+    /** When true (Selfies tab), treat the subject as the user even if vision is unsure. */
+    forceSelfSubject?: boolean;
+  }): Promise<{ appearanceSignals: string[]; lookProfileUpdated: boolean; analysis: PhotoAnalysisResult | null }> {
+    const { userId, selfCharacterId, photoBuffer, filename, photoId, forceSelfSubject } = opts;
+    try {
+      const { photoService } = await import('./photoService');
+      const metadata = await photoService.extractMetadata(photoBuffer, filename).catch(() => ({}));
+      const analysis = await this.analyzePhoto(userId, photoBuffer, filename, metadata);
+      const shouldLearn =
+        forceSelfSubject ||
+        Boolean(analysis.isSelfie) ||
+        Boolean(analysis.likelyUserInFrame) ||
+        analysis.subjectFocus === 'selfie' ||
+        analysis.subjectFocus === 'user_with_others';
+      if (!shouldLearn) {
+        return { appearanceSignals: [], lookProfileUpdated: false, analysis };
+      }
+      const signals = analysis.appearanceSignals ?? [];
+      const lookProfileUpdated = signals.length
+        ? await this.upsertLookProfile(userId, selfCharacterId, signals, photoId)
+        : false;
+      return { appearanceSignals: signals, lookProfileUpdated, analysis };
+    } catch (err) {
+      logger.warn({ err, userId, selfCharacterId }, 'learnAppearanceFromSelfPhoto failed');
+      return { appearanceSignals: [], lookProfileUpdated: false, analysis: null };
+    }
+  }
+
+  /**
    * Persist appearance traits on the self character so LoreBook learns how the user looks.
    */
-  private async upsertLookProfile(
+  async upsertLookProfile(
     userId: string,
     selfCharacterId: string,
     signals: string[],

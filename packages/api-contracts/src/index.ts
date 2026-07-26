@@ -29,3 +29,11 @@ export {
 } from './chat/streamEvents';
 
 export * from './ingestion';
+
+export {
+  isCastRosterQuery,
+  isCharacterBookWriteRequest,
+  isClosedScopeQuery,
+  isFocusEntityRelevant,
+  type ClosedScopeReason,
+} from './chat/closedScopeIntent';

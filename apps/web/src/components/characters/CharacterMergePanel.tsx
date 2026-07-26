@@ -29,10 +29,23 @@ import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import type { Character } from './CharacterProfileCard';
 
 export type CharacterDuplicateGroup = {
-  match_type: 'exact' | 'alias' | 'containment';
+  match_type: 'exact' | 'alias' | 'containment' | 'shared_given_name' | 'descriptor' | 'none';
   confidence?: number;
-  recommendation?: 'merge' | 'review';
+  recommendation?:
+    | 'merge'
+    | 'review'
+    | 'keep_separate'
+    | 'link_alias'
+    | 'set_preferred_name'
+    | 'convert_descriptor'
+    | 'resolve_head_character'
+    | 'mark_distinct_people'
+    | 'needs_identity_review';
   reason?: string;
+  reasonCode?: string;
+  explanation?: string[];
+  actions?: string[];
+  pair_key?: string;
   canonical_name: string;
   characters: Character[];
 };
@@ -211,6 +224,41 @@ export const CharacterMergePanel = ({
     setMergeNotice(notice);
     window.setTimeout(() => setMergeNotice(null), 12000);
     if (!demoMode) invalidateEntityTags(['Character']);
+  };
+
+  const keepGroupSeparate = async (group: CharacterDuplicateGroup) => {
+    if (group.characters.length < 2) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    setMergeNotice(null);
+    try {
+      if (demoMode) {
+        setDuplicateGroups((prev) =>
+          prev.filter((existing) => existing.canonical_name !== group.canonical_name),
+        );
+        await afterConsolidation(
+          `Demo: marked ${group.characters.map((c) => c.name).join(' and ')} as different people.`,
+        );
+        return;
+      }
+      const [left, right] = group.characters;
+      await fetchJson('/api/characters/consolidation/keep-separate', {
+        method: 'POST',
+        body: JSON.stringify({
+          left_id: left.id,
+          right_id: right.id,
+          decision: 'NOT_SAME_PERSON',
+          reason_code: group.reasonCode ?? 'DISTINCT_IDENTITY_ASSERTION',
+        }),
+      });
+      await afterConsolidation(
+        `Marked ${left.name} and ${right.name} as different people. This pair will not be suggested for merge again.`,
+      );
+    } catch (error) {
+      setMergeError(apiErrorMessage(error, 'Failed to keep characters separate'));
+    } finally {
+      setMergeBusy(false);
+    }
   };
 
   const mergeDuplicateGroup = async (group: CharacterDuplicateGroup, targetId: string) => {
@@ -537,7 +585,8 @@ export const CharacterMergePanel = ({
                 {duplicateGroups.length} possible duplicate {duplicateGroups.length === 1 ? 'group' : 'groups'}
               </p>
               <p className="text-xs text-amber-100/65">
-                Exact matches are usually safe to merge. Containment or alias matches need your judgment.
+                Exact matches are usually safe to merge. Shared first names and relational descriptors are not.
+                You can always choose Keep separate / Not the same person.
               </p>
             </div>
           </div>
@@ -780,25 +829,41 @@ export const CharacterMergePanel = ({
                 ) : (
                   duplicateGroups.map((group, index) => (
                     <div
-                      key={`${group.canonical_name}-${index}`}
+                      key={`${group.pair_key ?? group.canonical_name}-${index}`}
                       className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-white">
-                            {group.match_type === 'exact'
-                              ? 'Exact duplicate'
-                              : group.match_type === 'alias'
-                                ? 'Alias match'
-                                : 'Review possible duplicate'}
+                            {group.recommendation === 'keep_separate' ||
+                            group.recommendation === 'convert_descriptor' ||
+                            group.recommendation === 'mark_distinct_people'
+                              ? 'Likely different people'
+                              : group.match_type === 'exact'
+                                ? 'Exact duplicate'
+                                : group.match_type === 'alias'
+                                  ? 'Alias match'
+                                  : group.recommendation === 'resolve_head_character'
+                                    ? 'Resolve head character'
+                                    : 'Review possible duplicate'}
                           </p>
                           <p className="text-xs text-white/45">
                             {group.canonical_name}
                             {typeof group.confidence === 'number'
-                              ? ` · ${Math.round(group.confidence * 100)}% confidence`
+                              ? ` · ${Math.round(group.confidence * 100)}% identity likelihood`
                               : ''}
-                            {group.reason ? ` · ${group.reason}` : ''}
+                            {group.recommendation ? ` · Recommend: ${group.recommendation.replace(/_/g, ' ')}` : ''}
                           </p>
+                          {group.reason ? (
+                            <p className="text-xs text-white/55 mt-1">{group.reason}</p>
+                          ) : null}
+                          {(group.explanation ?? []).length > 0 ? (
+                            <ul className="mt-2 space-y-0.5 text-[11px] text-white/45 list-disc pl-4">
+                              {group.explanation!.map((line) => (
+                                <li key={line}>{line}</li>
+                              ))}
+                            </ul>
+                          ) : null}
                         </div>
                         <span className="text-[10px] uppercase tracking-wider text-white/35">
                           {group.characters.length} cards
@@ -820,14 +885,41 @@ export const CharacterMergePanel = ({
                             </div>
                             <Button
                               size="sm"
-                              disabled={mergeBusy || group.characters.length < 2 || isSelfCharacter(character)}
+                              disabled={
+                                mergeBusy ||
+                                group.characters.length < 2 ||
+                                isSelfCharacter(character) ||
+                                group.recommendation === 'keep_separate' ||
+                                group.recommendation === 'convert_descriptor' ||
+                                group.recommendation === 'mark_distinct_people'
+                              }
                               onClick={() => void mergeDuplicateGroup(group, character.id)}
                               leftIcon={<GitMerge className="h-3.5 w-3.5" />}
                             >
-                              Keep {character.name}
+                              Merge into {character.name}
                             </Button>
                           </div>
                         ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1 border-t border-white/10">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={mergeBusy || group.characters.length < 2}
+                          onClick={() => void keepGroupSeparate(group)}
+                          className="text-xs border-white/20 text-white/80"
+                        >
+                          Not the same person
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={mergeBusy || group.characters.length < 2}
+                          onClick={() => void keepGroupSeparate(group)}
+                          className="text-xs text-white/55"
+                        >
+                          Keep separate
+                        </Button>
                       </div>
                     </div>
                   ))

@@ -16,6 +16,8 @@ import {
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
+import { filterScoringAliases } from './characters/aliasProvenanceValidation';
+import { classifyCharacterLabel } from './characters/characterLabelSemantics';
 import { characterMergeService } from './characterMergeService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -246,11 +248,25 @@ class CharacterDeduplicationService {
         const cb = characters[j];
         if (distinctPairs.has(pairKey(ca.id, cb.id))) continue;
 
-        // Relational placeholders ("friend of Shyla") only union with the SAME
-        // placeholder, never with their anchor or unrelated people.
-        if (isRelationalPlaceholder(ca.name) || isRelationalPlaceholder(cb.name)) {
-          const m = matchCharacterName(ca.name, cb.name);
-          if (m.matches && m.confidence >= 0.88) union(ca.id, cb.id);
+        // Relational / spatial descriptors never union with their referenced person.
+        const classA = classifyCharacterLabel(ca.name, {
+          aliases: ca.alias,
+          nameProfile: profileOf(ca),
+        });
+        const classB = classifyCharacterLabel(cb.name, {
+          aliases: cb.alias,
+          nameProfile: profileOf(cb),
+        });
+        if (
+          classA.labelClass === 'RELATIONAL_PERSON_DESCRIPTOR' ||
+          classB.labelClass === 'RELATIONAL_PERSON_DESCRIPTOR' ||
+          classA.labelClass === 'SPATIAL_OR_EVENT_DESCRIPTOR' ||
+          classB.labelClass === 'SPATIAL_OR_EVENT_DESCRIPTOR'
+        ) {
+          if (isRelationalPlaceholder(ca.name) && isRelationalPlaceholder(cb.name)) {
+            const m = matchCharacterName(ca.name, cb.name);
+            if (m.matches && m.confidence >= 0.88) union(ca.id, cb.id);
+          }
           continue;
         }
 
@@ -266,18 +282,42 @@ class CharacterDeduplicationService {
           if (shared.length > 0 && shared.every((t) => weak.has(t))) continue;
         }
 
+        // Kinship title vs scene alias sharing a single given-name token → keep separate.
+        const kinshipVsScene =
+          (Boolean(classA.kinshipRole) && classB.labelClass === 'NAMED_PERSON_WITH_ALIAS') ||
+          (Boolean(classB.kinshipRole) && classA.labelClass === 'NAMED_PERSON_WITH_ALIAS');
+        if (kinshipVsScene) {
+          const tb = identityTokens(cb);
+          const shared = [...identityTokens(ca)].filter((t) => tb.has(t));
+          if (shared.length > 0 && shared.every((t) => t.split(/\s+/).length === 1)) continue;
+        }
+
         const direct = matchCharacterName(ca.name, cb.name);
         if (!direct.matches || direct.confidence < 0.88) {
           // Cross-match each card's labels against the OTHER card's labels only —
           // never a card against its own aliases (that self-match would union any
-          // two cards sharing a first name).
-          const labelsA = [ca.name, ...(ca.alias ?? [])];
-          const labelsB = [cb.name, ...(cb.alias ?? [])];
+          // two cards sharing a first name). Skip malformed aliases.
+          const labelsA = [
+            ca.name,
+            ...filterScoringAliases(ca.alias ?? [], { canonicalName: ca.name }),
+          ];
+          const labelsB = [
+            cb.name,
+            ...filterScoringAliases(cb.alias ?? [], { canonicalName: cb.name }),
+          ];
           let aliasHit = false;
           outer: for (const la of labelsA) {
             for (const lb of labelsB) {
               const m = matchCharacterName(la, lb);
               if (m.matches && m.confidence >= 0.88) {
+                // Shared single-token given name under kinship/scene conflict is not identity.
+                if (
+                  kinshipVsScene &&
+                  normalizeForMatching(la).split(/\s+/).length === 1 &&
+                  normalizeForMatching(la) === normalizeForMatching(lb)
+                ) {
+                  continue;
+                }
                 aliasHit = true;
                 break outer;
               }

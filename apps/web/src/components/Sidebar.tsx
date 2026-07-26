@@ -11,6 +11,7 @@ import { getGuestUsage } from '../components/guest/guestExperience';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import { canAccessAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 import { UserAvatarButton } from './UserAvatarButton';
 
 import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
@@ -37,9 +38,12 @@ const SidebarContent = ({
   const { user } = useAuth();
   const { isGuest, guestState } = useGuest();
   const guestUsage = getGuestUsage(guestState);
+  const demoRuntime = isDemoRuntimeActive();
+  // Demo sandbox never shows the authenticated account / admin chrome.
+  const showRealAccount = Boolean(user) && !demoRuntime;
   const { authority, loading: authorityLoading } = useAccountAuthority();
   const counts = useEntityCounts();
-  const userIsAdmin = canAccessAdmin(authority);
+  const userIsAdmin = showRealAccount && canAccessAdmin(authority);
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
     const route = surfaceToRoute[surface];
@@ -610,7 +614,7 @@ const SidebarContent = ({
           </button>
         )}
 
-        {user ? (
+        {showRealAccount ? (
           /* Logged-in: avatar + name + account link */
           <button
             type="button"
@@ -618,15 +622,37 @@ const SidebarContent = ({
             aria-label="Open account center"
             className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-white/5 group"
           >
-            <UserAvatarButton user={user} size={36} editable={false} />
+            <UserAvatarButton user={user!} size={36} editable={false} />
             <div className="flex-1 min-w-0 text-left">
               <p className="text-white font-medium truncate leading-tight">
-                {user.user_metadata?.full_name || user.user_metadata?.name || 'My Account'}
+                {user!.user_metadata?.full_name || user!.user_metadata?.name || 'My Account'}
               </p>
-              <p className="text-white/40 text-xs truncate leading-tight">{user.email}</p>
+              <p className="text-white/40 text-xs truncate leading-tight">{user!.email}</p>
             </div>
             <UserCog className="h-4 w-4 text-white/30 group-hover:text-white/60 flex-shrink-0 transition-colors" aria-hidden="true" />
           </button>
+        ) : demoRuntime ? (
+          <div
+            className="flex w-full items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm"
+            data-testid="demo-runtime-account-chrome"
+          >
+            <div className="w-8 h-8 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="h-4 w-4 text-amber-300" aria-hidden="true" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-white font-medium truncate leading-tight">Demo showcase</p>
+              <p className="text-amber-200/70 text-xs truncate leading-tight">
+                Synthetic data only — your account stays private
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { navigate('/login'); onMobileDrawerClose?.(); }}
+              className="text-xs text-amber-100/80 hover:text-white underline underline-offset-2 flex-shrink-0"
+            >
+              Exit
+            </button>
+          </div>
         ) : isGuest ? (
           <button
             type="button"

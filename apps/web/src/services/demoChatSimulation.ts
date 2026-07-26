@@ -19,7 +19,7 @@ import { DEMO_ENTITY_FALLBACKS } from '../lib/demoEntityFallbacks';
 import { getLoreEntity, loreKindForChip } from '../lib/loreEntities';
 import { CONVERSATION_SCENARIOS } from '../lib/storyForge/conversationScenarios';
 import { scenariosToDemoThreads } from '../lib/storyForge/scenarioToDemoThread';
-import { maybeNotedSignatureResponse } from '../lib/notedSignature';
+import { maybeNotedSignatureResponse, shouldShowNotedLeadIn } from '../lib/notedSignature';
 
 export type DemoChatLoadingStage =
   | 'analyzing'
@@ -30,6 +30,8 @@ export type DemoChatLoadingStage =
 
 export type DemoChatSendResult = {
   content: string;
+  /** Occasional themed "Noted." lead-in on a normal demo reply. */
+  notedLeadIn?: boolean;
   mentionedEntities?: Message['mentionedEntities'];
   connections?: string[];
   timelineUpdates?: string[];
@@ -307,9 +309,12 @@ function buildGenericDemoResponse(
       : ['📅 Conversation logged to your demo timeline'];
 
   const loreUpdates = mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined;
+  const notedLeadIn = shouldShowNotedLeadIn({ message, conversationHistory });
+  const lead = notedLeadIn ? 'Noted.\n\n' : '';
 
   return {
-    content: `*(${simulationLabel(mode)})*\n\n${body}${ontologyLine}${relationshipLine}${priorLine}`,
+    content: `${lead}*(${simulationLabel(mode)})*\n\n${body}${ontologyLine}${relationshipLine}${priorLine}`,
+    notedLeadIn: notedLeadIn || undefined,
     mentionedEntities: entities.length > 0 ? toMessageMentionedEntities(entities) : undefined,
     connections:
       entities.length > 0

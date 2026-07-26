@@ -51,6 +51,29 @@ describe('ChatMessage — "Noted." signature', () => {
     expect(screen.queryByTestId('chat-message-noted')).not.toBeInTheDocument();
   });
 
+  it('shows a themed Noted. lead-in at the top of longer replies', () => {
+    renderMessage({
+      ...base,
+      id: 'n4b',
+      content: 'Noted. I also want to add that this matters because of what you said before.',
+    });
+    expect(screen.getByTestId('chat-noted-lead-in')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-noted-lead-in')).toHaveTextContent('Noted.');
+    expect(screen.getByTestId('chat-message-assistant')).toHaveTextContent(
+      'I also want to add that this matters because of what you said before.',
+    );
+  });
+
+  it('shows lead-in from metadata even when body has no Noted. prefix', () => {
+    renderMessage({
+      ...base,
+      id: 'n4c',
+      content: 'You work at Vanguard Robotics — locked that in.',
+      metadata: { notedLeadIn: true },
+    });
+    expect(screen.getByTestId('chat-noted-lead-in')).toBeInTheDocument();
+  });
+
   it('does NOT treat a user message saying Noted. as the signature', () => {
     renderMessage({ ...base, id: 'n5', role: 'user' });
     expect(screen.queryByTestId('chat-message-noted')).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
 import {
   Brain,
@@ -11,12 +11,23 @@ import {
   Users,
   Building2,
   ExternalLink,
+  Trash2,
+  Pencil,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { InsufficientData } from '../ui/InsufficientData';
-import { cachedFetchJson } from '../../lib/requestCache';
+import { cachedFetchJson, invalidateCache } from '../../lib/requestCache';
+import { fetchJson } from '../../lib/api';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { buildWhatLoreKnowsClipboardText } from '../../lib/whatLoreKnowsClipboard';
+import {
+  confirmationDisplayCount,
+  partitionCurrentHistoryFacts,
+} from '../../lib/whatLoreKnowsFacts';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundle';
 import { getMockKnowledgeBaseBundle } from '../../mocks/characterIntelligence';
 import type { Character } from '../../hooks/useLoreNavigatorData';
@@ -40,6 +51,11 @@ export type CharacterKnowledgeBaseData = {
     confidence?: number;
     status?: string;
     previous_value?: string;
+    mention_count?: number;
+    first_seen_at?: string | null;
+    last_confirmed_at?: string | null;
+    updated_at?: string | null;
+    metadata?: Record<string, unknown> | null;
   }>;
   knowledgeClaims: Array<{
     id: string;
@@ -74,7 +90,7 @@ type CharacterKnowledgeBaseProps = {
   mockMode?: boolean;
   active?: boolean;
   onAskInChat?: (prompt: string) => void;
-  /** Pre-loaded bundle (e.g. self profile) — skips fetch when provided */
+  /** Pre-loaded seed (e.g. self profile facts). Does not skip the knowledge-base fetch. */
   initialData?: Partial<CharacterKnowledgeBaseData>;
   chatMentions?: CharacterChatMention[];
   /** When true, copy addresses the app user in second person (your profile). */
@@ -97,6 +113,17 @@ const statusBadge: Record<string, { label: string; cls: string }> = {
   corrected: { label: 'Corrected', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
   contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
 };
+
+function formatFactDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
 
 function buildMockData(
   characterId: string,
@@ -181,14 +208,30 @@ export function CharacterKnowledgeBase({
   const [data, setData] = useState<CharacterKnowledgeBaseData | null>(() =>
     resolveInitialData(characterId, characterName, mockMode, initialData, character),
   );
-  const [loading, setLoading] = useState(!initialData && !mockMode);
-  const [loaded, setLoaded] = useState(Boolean(initialData || mockMode));
+  // Seed can render immediately; still fetch full KB unless mockMode.
+  const [loading, setLoading] = useState(!mockMode);
+  const [loaded, setLoaded] = useState(Boolean(mockMode));
+  /** Two-step remove: first click arms a fact; second click confirms. */
+  const [pendingRemoveFactId, setPendingRemoveFactId] = useState<string | null>(null);
+  const [removingFactId, setRemovingFactId] = useState<string | null>(null);
+  const [factActionError, setFactActionError] = useState<string | null>(null);
+  /** Edit mode: draft must be saved explicitly — typing alone does not persist. */
+  const [editingFactId, setEditingFactId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [savingFactId, setSavingFactId] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const copyAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyAllTimerRef.current) clearTimeout(copyAllTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!initialData || mockMode) return;
+    // Optimistic seed only — keep loading until knowledge-base fetch completes.
     setData((prev) => ({ ...(prev ?? ({} as CharacterKnowledgeBaseData)), ...initialData } as CharacterKnowledgeBaseData));
-    setLoaded(true);
-    setLoading(false);
   }, [initialData, mockMode]);
 
   useEffect(() => {
@@ -222,15 +265,152 @@ export function CharacterKnowledgeBase({
       });
   }, [active, loaded, mockMode, characterId, characterName, character]);
 
+  const beginEditFact = (fact: { id: string; fact: string }) => {
+    setFactActionError(null);
+    setPendingRemoveFactId(null);
+    setEditingFactId(fact.id);
+    setEditDraft(fact.fact);
+  };
+
+  const cancelEditFact = () => {
+    setEditingFactId(null);
+    setEditDraft('');
+    setFactActionError(null);
+  };
+
+  const confirmSaveFactEdit = async (factId: string) => {
+    if (savingFactId || removingFactId) return;
+    const next = editDraft.replace(/\s+/g, ' ').trim();
+    if (!next) {
+      setFactActionError('Enter a corrected fact before saving.');
+      return;
+    }
+    setFactActionError(null);
+    setSavingFactId(factId);
+    try {
+      let updated: { id: string; fact: string; status?: string; previous_value?: string; confidence?: number } | null =
+        null;
+      if (!mockMode) {
+        const res = await fetchJson<{
+          success: boolean;
+          fact: { id: string; fact: string; status?: string; previous_value?: string; confidence?: number };
+        }>(`/api/characters/${characterId}/facts/${factId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ fact: next }),
+        });
+        updated = res.fact;
+        invalidateCache(`/api/characters/${characterId}/knowledge-base`);
+        invalidateCache(`/api/characters/${characterId}/facts`);
+      } else {
+        updated = {
+          id: factId,
+          fact: next,
+          status: 'corrected',
+          previous_value: data?.facts.find((f) => f.id === factId)?.fact,
+          confidence: 0.95,
+        };
+      }
+      if (updated) {
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            facts: prev.facts.map((f) =>
+              f.id === factId
+                ? {
+                    ...f,
+                    fact: updated!.fact,
+                    status: updated!.status ?? 'corrected',
+                    previous_value: updated!.previous_value ?? f.fact,
+                    confidence: updated!.confidence ?? Math.max(f.confidence ?? 0.7, 0.95),
+                  }
+                : f,
+            ),
+          };
+        });
+      }
+      cancelEditFact();
+    } catch (error) {
+      setFactActionError(error instanceof Error ? error.message : 'Could not save that correction.');
+    } finally {
+      setSavingFactId(null);
+    }
+  };
+
+  const confirmRemoveFact = async (factId: string) => {
+    if (removingFactId || savingFactId) return;
+    setFactActionError(null);
+    setRemovingFactId(factId);
+    try {
+      if (!mockMode) {
+        await fetchJson<{ success: boolean }>(`/api/characters/${characterId}/facts/${factId}`, {
+          method: 'DELETE',
+        });
+        invalidateCache(`/api/characters/${characterId}/knowledge-base`);
+        invalidateCache(`/api/characters/${characterId}/facts`);
+      }
+      setData((prev) => {
+        if (!prev) return prev;
+        const nextFacts = prev.facts.filter((f) => f.id !== factId);
+        return {
+          ...prev,
+          facts: nextFacts,
+          intelligence: {
+            ...prev.intelligence,
+            totalEvidenceItems: Math.max(0, prev.intelligence.totalEvidenceItems - 1),
+            learningScore: Math.max(0, prev.intelligence.learningScore - 8),
+          },
+        };
+      });
+      setPendingRemoveFactId(null);
+    } catch (error) {
+      setFactActionError(error instanceof Error ? error.message : 'Could not remove that fact.');
+    } finally {
+      setRemovingFactId(null);
+    }
+  };
+
   const firstName = shortDisplayName(characterName);
   const kb = data;
   const learningScore = kb?.intelligence.learningScore ?? 0;
+  const pillOrDash = (n: number) => (loading && !loaded ? '—' : n);
   const headerTitle = isSelfProfile ? 'What Lore Knows About You' : 'Entity Knowledge Base';
   const headerDescription = isSelfProfile
     ? 'Facts, patterns, and connections Lore has collected from your conversations, journal, and resume — your personal knowledge base.'
     : `Everything LoreBook has learned about ${characterName} — facts, patterns, connections, and timeline. Grows as you chat and when duplicate mentions merge into this person.`;
 
-  if (loading) {
+  const clipboardText = useMemo(
+    () =>
+      buildWhatLoreKnowsClipboardText({
+        title: headerTitle,
+        characterName,
+        learningScore,
+        lastUpdated: kb?.intelligence.lastUpdated ?? null,
+        knowledgeBase: kb,
+        chatMentions,
+      }),
+    [headerTitle, characterName, learningScore, kb, chatMentions],
+  );
+
+  const hasClipboardContent = Boolean(
+    (kb?.facts.length ?? 0) > 0 ||
+      (kb?.knowledgeClaims.length ?? 0) > 0 ||
+      (kb?.profile.timelineEvents.length ?? 0) > 0 ||
+      (kb?.relatedEntities.length ?? 0) > 0 ||
+      (kb?.aliases.length ?? 0) > 0 ||
+      (kb?.summary?.trim() ?? '') ||
+      chatMentions.length > 0,
+  );
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(clipboardText);
+    if (!ok) return;
+    setCopiedAll(true);
+    if (copyAllTimerRef.current) clearTimeout(copyAllTimerRef.current);
+    copyAllTimerRef.current = setTimeout(() => setCopiedAll(false), 2000);
+  };
+
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="h-8 w-8 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
@@ -254,16 +434,39 @@ export function CharacterKnowledgeBase({
                   {isSelfProfile ? 'What Lore Knows' : headerTitle}
                 </h2>
               </div>
-              <div className="shrink-0 text-right leading-none">
-                <span className="text-base font-bold tabular-nums text-white">{learningScore}</span>
-                <span className="text-[10px] text-white/40">/100</span>
+              <div className="shrink-0 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyAll()}
+                  disabled={!hasClipboardContent}
+                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[10px] font-medium transition-colors disabled:opacity-40 ${
+                    copiedAll
+                      ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                      : 'border-white/10 text-white/55 hover:text-white hover:border-white/25'
+                  }`}
+                  title="Copy all What Lore Knows as plain text"
+                  aria-label="Copy all What Lore Knows"
+                  data-testid="what-lore-knows-copy-all"
+                >
+                  {copiedAll ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copiedAll ? 'Copied' : 'Copy'}
+                </button>
+                <div className="text-right leading-none">
+                  <span className="text-base font-bold tabular-nums text-white">{learningScore}</span>
+                  <span className="text-[10px] text-white/40">/100</span>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-4 gap-1">
-              <StatPill icon={Brain} label="Facts" value={kb?.facts.length ?? 0} compact />
-              <StatPill icon={Layers} label="Patterns" value={kb?.knowledgeClaims.length ?? 0} compact />
-              <StatPill icon={Clock} label="Time" value={kb?.profile.timelineEventCount ?? 0} compact />
-              <StatPill icon={MessageSquare} label="Mem" value={kb?.profile.memoryCount ?? 0} compact />
+              <StatPill icon={Brain} label="Facts" value={pillOrDash(kb?.facts.length ?? 0)} compact />
+              <StatPill icon={Layers} label="Patterns" value={pillOrDash(kb?.knowledgeClaims.length ?? 0)} compact />
+              <StatPill icon={Clock} label="Time" value={pillOrDash(kb?.profile.timelineEventCount ?? 0)} compact />
+              <StatPill
+                icon={MessageSquare}
+                label="Chat"
+                value={pillOrDash(chatMentions.length)}
+                compact
+              />
             </div>
           </div>
 
@@ -281,7 +484,23 @@ export function CharacterKnowledgeBase({
                 <p className="mt-1 max-w-xl text-sm text-white/55">{headerDescription}</p>
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCopyAll()}
+                disabled={!hasClipboardContent}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                  copiedAll
+                    ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                    : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
+                }`}
+                title="Copy all What Lore Knows as plain text"
+                aria-label="Copy all What Lore Knows"
+                data-testid="what-lore-knows-copy-all-desktop"
+              >
+                {copiedAll ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiedAll ? 'Copied' : 'Copy all'}
+              </button>
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 shrink-0 text-green-400" />
                 <span className="text-2xl font-bold tabular-nums text-white">{learningScore}</span>
@@ -297,10 +516,10 @@ export function CharacterKnowledgeBase({
         </CardHeader>
         <CardContent className="px-3 pt-0 sm:px-6">
           <div className="mb-0 hidden grid-cols-2 gap-2 sm:mb-0 sm:grid sm:grid-cols-4">
-            <StatPill icon={Brain} label="Facts" value={kb?.facts.length ?? 0} />
-            <StatPill icon={Layers} label="Patterns" value={kb?.knowledgeClaims.length ?? 0} />
-            <StatPill icon={Clock} label="Timeline" value={kb?.profile.timelineEventCount ?? 0} />
-            <StatPill icon={MessageSquare} label="Memories" value={kb?.profile.memoryCount ?? 0} />
+            <StatPill icon={Brain} label="Facts" value={pillOrDash(kb?.facts.length ?? 0)} />
+            <StatPill icon={Layers} label="Patterns" value={pillOrDash(kb?.knowledgeClaims.length ?? 0)} />
+            <StatPill icon={Clock} label="Timeline" value={pillOrDash(kb?.profile.timelineEventCount ?? 0)} />
+            <StatPill icon={MessageSquare} label="Chat" value={pillOrDash(chatMentions.length)} />
           </div>
 
           {(kb?.aliases.length ?? 0) > 0 || (kb?.identityMentions.length ?? 0) > 1 ? (
@@ -443,54 +662,242 @@ export function CharacterKnowledgeBase({
           />
         ) : (
           <div className="space-y-4">
+            {factActionError && (
+              <p className="text-xs text-red-300/90 px-1" role="alert">
+                {factActionError}
+              </p>
+            )}
             {Object.entries(
               kb.facts.reduce((acc: Record<string, typeof kb.facts>, f) => {
                 if (!acc[f.category]) acc[f.category] = [];
                 acc[f.category].push(f);
                 return acc;
               }, {})
-            ).map(([category, facts]) => (
+            ).map(([category, facts]) => {
+              const { current, history } = partitionCurrentHistoryFacts(facts);
+              const ordered = [...current, ...history];
+              return (
               <div key={category}>
                 <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
                   {catLabel[category] ?? category}
                 </p>
                 <div className="space-y-2">
-                  {facts.map((fact) => {
+                  {current.length > 0 && (
+                    <p className="text-[9px] font-semibold text-emerald-300/45 uppercase tracking-wider">
+                      Current
+                    </p>
+                  )}
+                  {ordered.map((fact) => {
                     const pct = Math.round((fact.confidence ?? 0.7) * 100);
                     const badge = statusBadge[fact.status as string];
+                    const confirming = pendingRemoveFactId === fact.id;
+                    const editing = editingFactId === fact.id;
+                    const busyRemove = removingFactId === fact.id;
+                    const busySave = savingFactId === fact.id;
+                    const actionsLocked = Boolean(removingFactId || savingFactId);
+                    const isHist = history.some((h) => h.id === fact.id);
+                    const showHistoryLabel =
+                      isHist && fact.id === history[0]?.id && current.length > 0;
                     return (
+                      <Fragment key={fact.id}>
+                      {showHistoryLabel && (
+                        <p className="text-[9px] font-semibold text-white/25 uppercase tracking-wider pt-1">
+                          History
+                        </p>
+                      )}
+                      {isHist && fact.id === history[0]?.id && current.length === 0 && (
+                        <p className="text-[9px] font-semibold text-white/25 uppercase tracking-wider">
+                          History
+                        </p>
+                      )}
                       <div
-                        key={fact.id}
-                        className="flex items-start gap-2.5 p-3 rounded-lg border border-white/6 bg-white/3"
+                        className={`flex items-start gap-2.5 p-3 rounded-lg border bg-white/3 ${
+                          confirming
+                            ? 'border-red-500/35 bg-red-950/20'
+                            : editing
+                              ? 'border-amber-500/35 bg-amber-950/15'
+                              : isHist
+                                ? 'border-white/5 opacity-75'
+                                : 'border-white/6'
+                        }`}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
-                          {fact.previous_value && (
-                            <p className="text-[11px] text-white/35 mt-1 line-through">
-                              {fact.previous_value}
+                          {editing ? (
+                            <div className="space-y-2">
+                              <label className="sr-only" htmlFor={`edit-fact-${fact.id}`}>
+                                Corrected fact
+                              </label>
+                              <textarea
+                                id={`edit-fact-${fact.id}`}
+                                value={editDraft}
+                                onChange={(e) => setEditDraft(e.target.value)}
+                                rows={3}
+                                maxLength={500}
+                                disabled={busySave}
+                                placeholder="e.g. Had pink hair in the past"
+                                className="w-full rounded-lg border border-amber-500/30 bg-black/50 px-3 py-2 text-sm text-white/90 placeholder:text-white/30 focus:border-amber-400/60 focus:outline-none resize-y min-h-[72px]"
+                                data-testid={`edit-fact-input-${fact.id}`}
+                              />
+                              <p className="text-[11px] text-amber-100/70">
+                                Lore will remember this correction and keep the old wording as history.
+                                Saving is required — edits are not applied until you confirm.
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <p className={`text-sm leading-snug ${isHist ? 'text-white/65' : 'text-white/85'}`}>
+                                {fact.fact}
+                              </p>
+                              {fact.previous_value && (
+                                <p className="text-[11px] text-white/35 mt-1 line-through">
+                                  {fact.previous_value}
+                                </p>
+                              )}
+                              {(() => {
+                                const firstSeen = formatFactDate(fact.first_seen_at);
+                                const lastConfirmed = formatFactDate(
+                                  fact.last_confirmed_at || fact.updated_at,
+                                );
+                                const mentions = confirmationDisplayCount(fact);
+                                if (!firstSeen && !lastConfirmed && mentions < 2) return null;
+                                return (
+                                  <p className="text-[10px] text-white/35 mt-1.5 tabular-nums">
+                                    {firstSeen ? `First noted ${firstSeen}` : null}
+                                    {firstSeen && lastConfirmed && lastConfirmed !== firstSeen
+                                      ? ' · '
+                                      : null}
+                                    {lastConfirmed && lastConfirmed !== firstSeen
+                                      ? `Confirmed ${lastConfirmed}`
+                                      : firstSeen && lastConfirmed === firstSeen
+                                        ? null
+                                        : lastConfirmed
+                                          ? `Confirmed ${lastConfirmed}`
+                                          : null}
+                                    {mentions >= 2
+                                      ? `${firstSeen || lastConfirmed ? ' · ' : ''}${mentions}× confirmed`
+                                      : null}
+                                  </p>
+                                );
+                              })()}
+                            </>
+                          )}
+                          {confirming && !editing && (
+                            <p className="text-[11px] text-red-200/80 mt-2">
+                              Remove this fact from What Lore Knows? This won&apos;t delete your chats.
+                              If it was true before, edit it instead (e.g. past tense).
                             </p>
                           )}
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          {badge && (
+                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                          {badge && !editing && (
                             <span
                               className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}
                             >
                               {badge.label}
                             </span>
                           )}
-                          <span
-                            className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}
-                          >
-                            {pct}%
-                          </span>
+                          {!editing && (
+                            <span
+                              className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}
+                            >
+                              {pct}%
+                            </span>
+                          )}
+                          {isSelfProfile && (
+                            editing ? (
+                              <div className="flex flex-col items-stretch gap-1.5 mt-0.5 min-w-[7.5rem]">
+                                <button
+                                  type="button"
+                                  disabled={busySave || !editDraft.trim()}
+                                  onClick={() => void confirmSaveFactEdit(fact.id)}
+                                  className="text-[10px] font-semibold px-2 py-1 rounded border border-amber-400/50 bg-amber-500/20 text-amber-50 hover:bg-amber-500/30 disabled:opacity-50"
+                                  data-testid={`confirm-save-fact-${fact.id}`}
+                                >
+                                  {busySave ? 'Saving…' : 'Save correction'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busySave}
+                                  onClick={cancelEditFact}
+                                  className="text-[10px] px-2 py-1 rounded border border-white/15 text-white/60 hover:bg-white/5 disabled:opacity-50"
+                                  data-testid={`cancel-edit-fact-${fact.id}`}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : confirming ? (
+                              <div className="flex flex-col items-stretch gap-1.5 mt-0.5 min-w-[7.5rem]">
+                                <button
+                                  type="button"
+                                  disabled={busyRemove}
+                                  onClick={() => void confirmRemoveFact(fact.id)}
+                                  className="text-[10px] font-semibold px-2 py-1 rounded border border-red-400/50 bg-red-500/20 text-red-100 hover:bg-red-500/30 disabled:opacity-50"
+                                  data-testid={`confirm-remove-fact-${fact.id}`}
+                                >
+                                  {busyRemove ? 'Removing…' : 'Confirm remove'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busyRemove}
+                                  onClick={() => beginEditFact(fact)}
+                                  className="text-[10px] font-semibold px-2 py-1 rounded border border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                                  data-testid={`edit-instead-fact-${fact.id}`}
+                                >
+                                  Edit instead
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busyRemove}
+                                  onClick={() => {
+                                    setPendingRemoveFactId(null);
+                                    setFactActionError(null);
+                                  }}
+                                  className="text-[10px] px-2 py-1 rounded border border-white/15 text-white/60 hover:bg-white/5 disabled:opacity-50"
+                                  data-testid={`cancel-remove-fact-${fact.id}`}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <button
+                                  type="button"
+                                  disabled={actionsLocked}
+                                  onClick={() => beginEditFact(fact)}
+                                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-white/10 text-white/40 hover:text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/10 disabled:opacity-50"
+                                  aria-label="Edit fact"
+                                  data-testid={`arm-edit-fact-${fact.id}`}
+                                >
+                                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={actionsLocked}
+                                  onClick={() => {
+                                    setFactActionError(null);
+                                    setEditingFactId(null);
+                                    setPendingRemoveFactId(fact.id);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-white/10 text-white/40 hover:text-red-200 hover:border-red-400/40 hover:bg-red-500/10 disabled:opacity-50"
+                                  aria-label="Remove fact"
+                                  data-testid={`arm-remove-fact-${fact.id}`}
+                                >
+                                  <Trash2 className="h-3 w-3" aria-hidden="true" />
+                                  Remove
+                                </button>
+                              </div>
+                            )
+                          )}
                         </div>
                       </div>
+                      </Fragment>
                     );
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -692,7 +1099,7 @@ function StatPill({
 }: {
   icon: typeof Brain;
   label: string;
-  value: number;
+  value: number | string;
   compact?: boolean;
 }) {
   if (compact) {

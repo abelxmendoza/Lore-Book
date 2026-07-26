@@ -70,10 +70,6 @@ vi.mock('../../contexts/EntityModalContext', () => ({
   useEntityModal: vi.fn(() => ({ openMemory: vi.fn() })),
 }));
 
-vi.mock('../ChatFirstViewHint', () => ({
-  ChatFirstViewHint: () => null,
-}));
-
 vi.mock('./TimelineSwimlanes', () => ({
   TimelineSwimlanes: () => <div data-testid="timeline-swimlanes-view">Swimlanes view</div>,
 }));

@@ -1,3 +1,4 @@
+import { isConversationalPersonIntro } from '../../identity/personIntroDecomposition';
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { QuestLogCandidate } from './questLogInferenceTypes';
 import { buildQuestLogContext } from './questLogProvenanceService';
@@ -32,6 +33,8 @@ export function inferGoals(text: string): QuestLogCandidate[] {
       const name = displayName(match).trim();
       const key = normalizeNameKey(name);
       if (!name || seen.has(key)) continue;
+      // "want to tell you about Jamie..." is Character Book onboarding, not a goal.
+      if (isConversationalPersonIntro(match[0]) || isConversationalPersonIntro(name)) continue;
       seen.add(key);
       out.push({
         displayName: name,

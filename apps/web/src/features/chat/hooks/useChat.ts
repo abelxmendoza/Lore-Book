@@ -16,6 +16,7 @@ import {
 } from '../../../services/demoChatSimulation';
 import { shouldSimulateChat, shouldUseMockData } from '../../../hooks/useShouldUseMockData';
 import { useAuth } from '../../../lib/supabase';
+import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
 import {
   chatSendCooldownNotice,
   chatSendCooldownRemainingSec,
@@ -223,7 +224,10 @@ export const useChat = () => {
   // can reuse the same clientIdempotencyKey without creating a duplicate user bubble.
   const restoredVaultAttemptsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const ownerId = user?.id ?? guestState?.guestId;
+    // Demo sandbox must never restore vault attempts owned by the real account.
+    const ownerId = isDemoRuntimeActive()
+      ? demoThreadStorageUserId()
+      : (user?.id ?? guestState?.guestId);
     const threadId = urlThreadId;
     if (!ownerId || !threadId) return;
     const attempt = latestRecoverableStory(ownerId, threadId);
@@ -393,7 +397,9 @@ export const useChat = () => {
     }
 
     const retry = options?.retry;
-    const ownerId = user?.id ?? guestState?.guestId ?? 'anonymous';
+    const ownerId = isDemoRuntimeActive()
+      ? demoThreadStorageUserId()
+      : (user?.id ?? guestState?.guestId ?? 'anonymous');
     const recovered = latestRecoverableStory(ownerId, threadId);
 
     // Client send-attempt key: reused on retry / exact vault recovery to avoid duplicate user rows.
@@ -767,6 +773,9 @@ export const useChat = () => {
             modeDecision: demoResult.modeDecision,
             creationOutcomes: demoResult.creationOutcomes,
             creationOutcomeSummary: demoResult.creationOutcomeSummary,
+            ...(demoResult.notedLeadIn
+              ? { notedLeadIn: true, metadata: { notedLeadIn: true } }
+              : {}),
           },
           { touchActivity: true }
         );

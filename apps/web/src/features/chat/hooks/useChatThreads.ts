@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../../../lib/supabase';
 import { config } from '../../../config/env';
+import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
 import { store } from '../../../store';
 import { chatApi } from '../../../store/api/chatApi';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
@@ -113,8 +114,10 @@ async function fetchThreadsPage(args: { limit?: number; cursor?: string | null }
 
 export const useChatThreads = () => {
   const { user, loading: authLoading } = useAuth();
-  const userId = user?.id;
-  const isAuthenticated = !!userId;
+  // Public /demo must never load or persist against the authenticated user id.
+  const demoRuntime = isDemoRuntimeActive();
+  const userId = demoRuntime ? demoThreadStorageUserId() : user?.id;
+  const isAuthenticated = demoRuntime ? false : !!user?.id;
   const dispatch = useAppDispatch();
   const currentThreadId = useAppSelector(selectCurrentThreadId);
   const lastError = useAppSelector(selectThreadError);

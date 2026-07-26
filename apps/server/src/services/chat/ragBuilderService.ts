@@ -745,7 +745,20 @@ export async function buildRAGPacket(
     // Scores travel with the source so the UI can show them; sub-floor
     // sources never reach the model.
     const { buildEvidenceContract, enforceEvidenceContract } = await import('../responseScope');
-    const contract = buildEvidenceContract(message, scopePlan);
+    // Closed-scope queries need the active-story roster so their entities
+    // count as evidence hits even when the message doesn't re-type every
+    // name. Cheap cached-snapshot read — only fetched when actually needed.
+    let closedScopeRosterNames: string[] | undefined;
+    if (scopePlan?.closedScope && currentContext?.threadId) {
+      try {
+        const { threadRosterService } = await import('../conversationCentered/threadRosterService');
+        const { cast } = await threadRosterService.getChatRosterContext(userId, currentContext.threadId);
+        closedScopeRosterNames = cast.map((c) => c.name);
+      } catch (e) {
+        logger.debug({ e }, 'RAGBuilder: closed-scope roster fetch failed');
+      }
+    }
+    const contract = buildEvidenceContract(message, scopePlan, closedScopeRosterNames);
     // Inspect-style strategies answer from structured state (threads,
     // knowledge). The allowlist is hard: broad observation results never
     // ride along, regardless of how well they scored.

@@ -1,3 +1,4 @@
+import { isConversationalPersonIntro } from '../identity/personIntroDecomposition';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { resolveGoalAgency } from './goalAgencyResolver';
 import { canonicalizeGoalTitle, isSemanticallyCompleteGoalTitle } from './goalCanonicalizer';
@@ -28,8 +29,16 @@ function stableId(value: string): string {
   return `goal-${(hash >>> 0).toString(16)}`;
 }
 
-function classifyGoalKind(text: string, proposed?: string): GoalKind {
+function classifyGoalKind(text: string, proposedKind?: string, proposedTitle?: string): GoalKind {
   const lower = text.toLowerCase();
+  // Character Book / chat person intros ("I want to tell you about Jamie...") are
+  // NOT quests. Must run before the bare "want to" → QUEST rule.
+  if (
+    isConversationalPersonIntro(text) ||
+    (proposedTitle ? isConversationalPersonIntro(proposedTitle) : false)
+  ) {
+    return 'NON_GOAL';
+  }
   if (/^(?:next|you completely failed|that was a failed response)\b/.test(lower)) return 'NON_GOAL';
   if (/\b(?:response failed|you forgot|app broke|that was a failed|completely failed)\b/.test(lower)) return 'FEEDBACK';
   if (/^(?:next|you completely|that was a)\b/.test(lower)) return 'NON_GOAL';
@@ -57,7 +66,7 @@ function classifyGoalKind(text: string, proposed?: string): GoalKind {
     return 'PROJECT';
   }
   if (/\b(?:my goal|want to|trying to|still want|plan to|intend to)\b/.test(lower)) return 'QUEST';
-  const normalized = proposed?.toUpperCase();
+  const normalized = proposedKind?.toUpperCase();
   if (normalized && [
     'QUEST', 'PROJECT', 'MILESTONE', 'TASK', 'HABIT', 'ROUTINE', 'INTENTION',
   ].includes(normalized)) return normalized as GoalKind;
@@ -83,7 +92,7 @@ export class GoalCognitionEngine {
     const now = input.now ?? new Date();
     const sourceType = input.sourceType ?? 'chat';
     const clause = selectGoalClause(input.sourceText, input.proposedTitle);
-    const kind = classifyGoalKind(clause.text, input.proposedKind);
+    const kind = classifyGoalKind(clause.text, input.proposedKind, input.proposedTitle);
     const polarity = resolveGoalPolarity(clause.text);
     const temporalState = input.userConfirmed
       ? 'PRESENT_ACTIVE'

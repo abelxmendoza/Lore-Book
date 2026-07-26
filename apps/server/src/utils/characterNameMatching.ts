@@ -93,8 +93,12 @@ export function parseRelationalPlaceholder(name: string): RelationalPlaceholder 
   const cleaned = (name ?? '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return null;
 
+  // Strip trailing venue/place qualifiers so
+  // "Shyla's Friend from Bad Dogg Compound" still parses as friend→Shyla.
+  const withoutPlace = cleaned.replace(/\s+from\s+.+$/i, '').trim();
+
   // "<Name>'s <relation>"  →  Shyla's friend / Shyla's best friend
-  const poss = cleaned.match(/^(.+?)['’]s\s+(.+)$/i);
+  const poss = withoutPlace.match(/^(.+?)['’]s\s+(.+)$/i);
   if (poss) {
     const head = relationHead(poss[2]);
     const anchor = poss[1].trim();
@@ -102,7 +106,7 @@ export function parseRelationalPlaceholder(name: string): RelationalPlaceholder 
   }
 
   // "<a|the|my|…>? <relation> of <Name>"  →  friend of Shyla / a coworker of Juan
-  const of = cleaned.match(/^(?:a|an|the|some|my|her|his|their|our)?\s*(.+?)\s+of\s+(.+)$/i);
+  const of = withoutPlace.match(/^(?:a|an|the|some|my|her|his|their|our)?\s*(.+?)\s+of\s+(.+)$/i);
   if (of) {
     const head = relationHead(of[1]);
     const anchor = of[2].trim();

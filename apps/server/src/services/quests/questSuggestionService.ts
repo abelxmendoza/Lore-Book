@@ -8,6 +8,7 @@ import { questStorage } from './questStorage';
 import type { CreateQuestInput, Quest, QuestType } from './types';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { hasQuestSignal } from '../conversationCentered/extractionSignals';
 import { goalCognitionEngine } from '../goals/goalCognitionEngine';
 import { explainGoalEvidence } from '../goals/goalEvidenceService';
 import type { GoalKind, GoalSourceType } from '../goals/goalTypes';
@@ -452,6 +453,10 @@ class QuestSuggestionService {
     content: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<number> {
+    // Defense in depth: Character Book intros ("tell you about X") must not
+    // spend an LLM call or land in Suggested Quests.
+    if (!hasQuestSignal(content)) return 0;
+
     const sourceThreadId = await suggestionDismissalService.resolveThreadIdFromMessageId(messageId);
     const extracted = await questExtractor.extractQuestsFromMessage(userId, content, conversationHistory);
     const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });

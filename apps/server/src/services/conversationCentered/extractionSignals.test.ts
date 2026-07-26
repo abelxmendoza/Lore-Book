@@ -34,6 +34,23 @@ describe('extractionSignals — pre-LLM fan-out gates', () => {
     expect(hasQuestSignal('I had a sandwich')).toBe(false);
   });
 
+  it('does not treat Character Book person intros as quest signals', () => {
+    expect(
+      hasQuestSignal(
+        "I want to tell you about Jamie, Marcus's Social Worker, someone new in my life.",
+      ),
+    ).toBe(false);
+    expect(hasQuestSignal('Let me tell you about Taylor.')).toBe(false);
+  });
+
+  it('still detects a real goal that co-occurs with a person intro', () => {
+    expect(
+      hasQuestSignal(
+        "I want to tell you about Jamie. My goal is to launch MemoVault this year.",
+      ),
+    ).toBe(true);
+  });
+
   it('detects progress updates', () => {
     expect(hasProgressSignal("I'm 50% done with the course")).toBe(true);
     expect(hasProgressSignal('finally finished the first draft')).toBe(true);

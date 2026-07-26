@@ -17,6 +17,14 @@ describe('planCognition — strategy selection', () => {
     }
   });
 
+  it('routes a closed-scope cast/roster question to cast_roster, blocking observation search', () => {
+    const plan = planCognition("who's new and returning in this story, like the people/characters?");
+    expect(plan.strategy).toBe('cast_roster');
+    expect(plan.reasoning).toBe('inspect');
+    expect(plan.allowObservationSearch).toBe(false);
+    expect(plan.retrieve).toContain('active_threads');
+  });
+
   it('routes person questions to the relationship timeline', () => {
     const plan = planCognition('What happened with Rina?');
     expect(plan.strategy).toBe('relationship');

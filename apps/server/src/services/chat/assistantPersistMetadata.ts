@@ -1,3 +1,15 @@
+/** The resolved shape of a mode-routed turn — enough to replay it on "try again". */
+export type ResolvedTurnState = {
+  mode: string;
+  scopeIntent?: string;
+  scopeSource?: string;
+  entities?: Array<{ id?: string; name: string }>;
+  threadId?: string;
+  responseMode?: string;
+  /** The original user message text, capped — needed to re-drive the handler on retry. */
+  originalMessageText: string;
+};
+
 /**
  * Fields streamed on assistant turns that must survive chat_messages persistence.
  */
@@ -14,6 +26,9 @@ export type AssistantPersistMetadataInput = {
   staleProjectionHints?: unknown;
   staleProjectionSummary?: unknown;
   tokenUsage?: unknown;
+  resolvedTurnState?: ResolvedTurnState;
+  /** Occasional themed "Noted." lead-in on a normal assistant reply. */
+  notedLeadIn?: boolean;
 };
 
 export function buildAssistantPersistMetadata(
@@ -43,6 +58,12 @@ export function buildAssistantPersistMetadata(
   }
   if (input.tokenUsage) {
     metadata.tokenUsage = input.tokenUsage;
+  }
+  if (input.resolvedTurnState) {
+    metadata.resolvedTurnState = input.resolvedTurnState;
+  }
+  if (input.notedLeadIn) {
+    metadata.notedLeadIn = true;
   }
 
   return metadata;

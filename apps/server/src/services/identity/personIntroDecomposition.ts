@@ -145,6 +145,38 @@ function normalizeRolePhrase(role: string): string {
   return role.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+/** Conversational "tell you about X" framing used by Character Book intro presets. */
+const TELL_ABOUT_FRAME_RE =
+  /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+tell\s+(?:you\s+)?about|let\s+me\s+tell\s+(?:you\s+)?about|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know))\b/i;
+
+/** Canonicalized quest titles after stripping "I want to" → "Tell you about Jamie". */
+const CANONICAL_TELL_ABOUT_TITLE_RE = /^tell(?:\s+you)?\s+about\b/i;
+
+/**
+ * True when text is (or was) a person-onboarding utterance, not a durable quest.
+ * Used to keep Character Book intros out of Suggested Quests / goal cognition.
+ */
+export function isConversationalPersonIntro(text: string): boolean {
+  const trimmed = (text ?? '').replace(/\s+/g, ' ').trim();
+  if (!trimmed) return false;
+  if (CANONICAL_TELL_ABOUT_TITLE_RE.test(trimmed)) return true;
+  if (TELL_ABOUT_FRAME_RE.test(trimmed)) return true;
+  return detectPersonOnboardingIntent(trimmed).detected;
+}
+
+/**
+ * Strip person-intro framing so co-occurring real goals can still be detected.
+ */
+export function stripConversationalPersonIntro(text: string): string {
+  return (text ?? '')
+    .replace(
+      /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+tell\s+(?:you\s+)?about|let\s+me\s+tell\s+(?:you\s+)?about|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know))\b[^.!?\n]*/gi,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Detect explicit new-person introduction intent in a full user message.
  */
@@ -156,12 +188,25 @@ export function detectPersonOnboardingIntent(text: string): {
   const trimmed = (text ?? '').trim();
   if (!trimmed) return { detected: false, candidateName: null, decomposition: null };
 
-  // "I want to tell you about Jessica, ..."
+  // "I want to tell you about Jamie, ..." / "want to tell you about ..."
   const tellAbout = trimmed.match(
-    /\b(?:i want to tell you about|let me tell you about|i(?:'|’)d like (?:you )?to (?:meet|know)|meet)\s+([^.…\n]{1,80}?)(?:\.|$)/i,
+    /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+tell\s+(?:you\s+)?about|let\s+me\s+tell\s+(?:you\s+)?about|i(?:'|’)d like (?:you )?to (?:meet|know))\s+([^.…\n]{1,80}?)(?:\.|$)/i,
   );
   if (tellAbout) {
     const decomp = decomposePersonIntro(tellAbout[1]);
+    if (decomp.canonicalName) {
+      return {
+        detected: true,
+        candidateName: decomp.canonicalName,
+        decomposition: decomp,
+      };
+    }
+  }
+
+  // Canonicalized titles after LEADING_INTENT strip: "Tell you about Jamie"
+  const titleTell = trimmed.match(/^tell(?:\s+you)?\s+about\s+([^.…\n]{1,80})$/i);
+  if (titleTell) {
+    const decomp = decomposePersonIntro(titleTell[1]);
     if (decomp.canonicalName) {
       return {
         detected: true,

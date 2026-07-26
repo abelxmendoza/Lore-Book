@@ -12,7 +12,7 @@ import { Sparkles, type LucideIcon } from 'lucide-react';
  * `action` is provided the section is chat-first, matching how unknowns are
  * filled in across the product.
  */
-type Accent = 'neutral' | 'yellow' | 'indigo' | 'violet' | 'purple';
+type Accent = 'neutral' | 'yellow' | 'indigo' | 'violet' | 'purple' | 'sky';
 
 const ACCENTS: Record<Accent, { border: string; bg: string; icon: string; btn: string }> = {
   neutral: {
@@ -45,6 +45,12 @@ const ACCENTS: Record<Accent, { border: string; bg: string; icon: string; btn: s
     icon: 'text-purple-400/40',
     btn: 'text-purple-300 border-purple-500/30 hover:text-purple-200 hover:border-purple-500/50',
   },
+  sky: {
+    border: 'border-sky-500/20',
+    bg: 'bg-sky-950/10',
+    icon: 'text-sky-400/40',
+    btn: 'text-sky-300 border-sky-500/30 hover:text-sky-200 hover:border-sky-500/50',
+  },
 };
 
 interface InsufficientDataProps {
@@ -70,7 +76,7 @@ export const InsufficientData = ({
   action,
   compact,
 }: InsufficientDataProps) => {
-  const a = ACCENTS[accent];
+  const a = ACCENTS[accent] ?? ACCENTS.neutral;
   const ActionIcon = action?.icon;
 
   return (

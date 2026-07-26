@@ -23,6 +23,8 @@
  * Pure and deterministic — runs on every turn before retrieval.
  */
 
+import { isCastRosterQuery } from '@lorebook/api-contracts';
+
 export type CognitiveStrategy =
   | 'identity'
   | 'current_focus'
@@ -33,6 +35,7 @@ export type CognitiveStrategy =
   | 'compare'
   | 'planning'
   | 'reflect_patterns'
+  | 'cast_roster'
   | 'general';
 
 export type EvidenceClass =
@@ -257,6 +260,21 @@ export function planCognition(
   opts: { wmaIntent?: WmaIntent } = {},
 ): CognitivePlan {
   const compacted = message.replace(/\s+/g, ' ').trim();
+
+  // Closed-scope cast/roster query: "who's new and returning in this
+  // story?" — hard no on broad observation search, evidenceContract's
+  // closedScope gate does the real work of restricting evidence.
+  if (isCastRosterQuery(compacted)) {
+    return {
+      strategy: 'cast_roster',
+      retrieve: ['active_threads'],
+      reasoning: 'inspect',
+      expectedAnswer: 'list',
+      allowObservationSearch: false,
+      directive:
+        'This is a CAST/ROSTER question scoped to the active story window only. Classify each mentioned person as returning, new, or unresolved using thread mentions and Character Book records — never pull in people never mentioned in this story.',
+    };
+  }
 
   // Shapes WMA cannot express take precedence: "Why have I been depressed?"
   // is a why-question even when an intent classifier tags it differently.

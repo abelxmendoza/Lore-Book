@@ -167,6 +167,7 @@ export const runtimeGuards = {
 // Kept in sync with the Redux runtime slice via runtimeAccess store subscription.
 
 import { getCachedRuntimeIdentity } from '../store/runtimeIdentityCache';
+import { isDemoRuntimeActive } from './demoRuntime';
 
 export function getGlobalRuntimeIdentity(): RuntimeIdentityType {
   return getCachedRuntimeIdentity();
@@ -179,5 +180,7 @@ export function setGlobalRuntimeIdentity(_identity: RuntimeIdentityType): void {
 
 /** True only for authenticated users on a healthy backend — safe for protected /api reads. */
 export function canCallAuthenticatedApi(): boolean {
+  // Demo sandbox must never hit authenticated APIs even if a session cookie exists.
+  if (isDemoRuntimeActive()) return false;
   return getGlobalRuntimeIdentity() === 'REAL_USER';
 }

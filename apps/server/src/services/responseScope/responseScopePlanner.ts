@@ -13,6 +13,7 @@ import type {
   ScopeSource,
 } from './responseScopeTypes';
 import { isExplicitSubjectTimelineRequest } from '../modeRouter/modeRouterService';
+import { isClosedScopeQuery } from '@lorebook/api-contracts';
 
 const WORK_INTENT_RE =
   /\b(work|job|team|teammates?|coworkers?|colleagues?|manager|boss|lead(?:s)?\b|shift|on[- ]?site|office|warehouse|employer|company i work|my (role|position|title)\b|career|employed)\b/i;
@@ -157,5 +158,6 @@ export function planResponseScope(
     maxCharactersReturned: responseMode === 'audit' ? 200 : 15,
     includeProvenanceSummary: responseMode === 'debug_inspector' || responseMode === 'audit',
     includeUncertainty: true,
+    closedScope: isClosedScopeQuery(message).closedScope,
   };
 }

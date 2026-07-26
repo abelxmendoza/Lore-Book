@@ -1,3 +1,4 @@
+import { isConversationalPersonIntro } from '../../identity/personIntroDecomposition';
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import { PROJECT_BOOK_ENTITIES } from './questLogInferenceTypes';
 import type { QuestLogCandidate } from './questLogInferenceTypes';
@@ -52,6 +53,8 @@ export function inferQuests(text: string): QuestLogCandidate[] {
       const displayName = label(match).trim();
       const key = normalizeNameKey(displayName);
       if (!displayName || seen.has(key) || isProjectEntityOnly(displayName)) continue;
+      // Character Book intros: "I want to tell you about Jamie..." → not a quest.
+      if (isConversationalPersonIntro(match[0]) || isConversationalPersonIntro(displayName)) continue;
       seen.add(key);
       out.push({
         displayName,

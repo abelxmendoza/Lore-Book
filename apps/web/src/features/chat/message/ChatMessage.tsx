@@ -355,6 +355,16 @@ export const ChatMessage = ({
     );
   }
 
+  const notedLeadInFlag =
+    message.metadata?.notedLeadIn === true ||
+    (message as Message & { notedLeadIn?: boolean }).notedLeadIn === true;
+  const contentHasNotedPrefix = /^Noted\.\s+/i.test(message.content.trim());
+  const showNotedLeadIn =
+    !isUser && !isThinking && (notedLeadInFlag || contentHasNotedPrefix);
+  const assistantBodyContent = showNotedLeadIn
+    ? message.content.replace(/^Noted\.\s*/i, '').trimStart()
+    : message.content;
+
   // Memory Recall messages - check both response_mode and metadata
   const responseMode = message.response_mode || message.metadata?.response_mode;
   if (!isUser && (responseMode === 'SILENCE' || responseMode === 'RECALL')) {
@@ -518,6 +528,11 @@ export const ChatMessage = ({
               )}
             </div>
           )}
+          {showNotedLeadIn && (
+            <div className="chat-noted-lead" data-testid="chat-noted-lead-in" aria-label="Noted">
+              <span className="chat-noted-lead-mark">Noted.</span>
+            </div>
+          )}
           {/* Strategic Guidance - More subtle */}
           {message.strategicGuidance && (
             <div className="chat-guidance-card p-3 rounded-lg mb-3">
@@ -572,7 +587,7 @@ export const ChatMessage = ({
                       />
                     )}
                     <MarkdownRenderer
-                      content={message.content}
+                      content={assistantBodyContent}
                       isStreaming={message.isStreaming}
                       className={message.isStreaming ? 'chat-message-streaming' : ''}
                       entityMentions={inlineEntityMentions}

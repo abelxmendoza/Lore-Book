@@ -16,6 +16,7 @@ const FILES = [
   'envelopes.ts',
   'chat/durability.ts',
   'chat/streamEvents.ts',
+  'chat/closedScopeIntent.ts',
   // ingestion is package-primary; mirror must include after sync
   'ingestion/common.ts',
   'ingestion/semanticGuards.ts',

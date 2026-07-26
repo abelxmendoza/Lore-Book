@@ -13,7 +13,6 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useAuth } from '../../lib/supabase';
 import { useGuest } from '../../contexts/GuestContext';
 import { useEntityModal } from '../../contexts/EntityModalContext';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { TimelineSwimlanes } from './TimelineSwimlanes';
 import { TimelineStoryView } from './TimelineStoryView';
 import { TimelineStitchedView } from './TimelineStitchedView';
@@ -818,8 +817,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           className="omni-timeline-header"
           style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
         >
-          <ChatFirstViewHint />
-
           <div className="flex flex-row items-center justify-between gap-4 mt-1">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">

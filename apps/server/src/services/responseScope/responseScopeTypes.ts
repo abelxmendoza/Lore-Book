@@ -88,6 +88,14 @@ export type ResponseScopePlan = {
   maxCharactersReturned: number;
   includeProvenanceSummary: boolean;
   includeUncertainty: boolean;
+
+  /**
+   * Closed-scope query (current-story cast, entity comparison, character-book
+   * comparison): evidence must have a real entity/subject link — no
+   * general_pass floor. Computed once here so the evidence contract and the
+   * focus-relevance gate read one flag instead of two parallel checks.
+   */
+  closedScope: boolean;
 };
 
 /** A retrieved evidence item, domain-tagged so the filter can judge it. */

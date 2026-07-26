@@ -16,6 +16,7 @@ import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
+import { isCastRosterQuery, isCharacterBookWriteRequest } from '@lorebook/api-contracts';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
@@ -28,6 +29,8 @@ export type ChatMode =
   | 'NARRATIVE_STORY'        // Mode 3b: Build/tell a narrative ("tell me the story of X")
   | 'FOUNDATION_RECALL'      // Mode 3c: Explicit "Recall …" commands (biography, roster, family)
   | 'SUBJECT_TIMELINE'       // Existing subject timeline compiler + stitched feed
+  | 'CURRENT_STORY_CAST'     // Closed-scope: new/returning/unresolved people in the active thread
+  | 'CHARACTER_BOOK_WRITE'   // Explicit "add these people to my character book" request
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -104,6 +107,28 @@ class ModeRouterService {
         mode: 'SUBJECT_TIMELINE',
         confidence: 0.98,
         reasoning: 'Explicit subject timeline request detected',
+      };
+    }
+
+    // Closed-scope current-story cast query ("who's new and returning in this
+    // story?") must outrank generic narrative recall — NARRATIVE_RECALL has
+    // no concept of "the active thread's cast" and SILENCEs on this shape.
+    if (isCastRosterQuery(message)) {
+      return {
+        mode: 'CURRENT_STORY_CAST',
+        confidence: 0.95,
+        reasoning: 'Cast/roster new-vs-returning query for the active story window',
+      };
+    }
+
+    // Explicit "add these people to my character book" request — must not
+    // fall through to ordinary chat, where it only gets a prompt-level
+    // acknowledgment with no real persistence.
+    if (isCharacterBookWriteRequest(message)) {
+      return {
+        mode: 'CHARACTER_BOOK_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Character Book write request detected',
       };
     }
 
@@ -483,6 +508,8 @@ Modes:
 7. NARRATIVE_STORY - Explicit request to BUILD/TELL a narrative: "tell me the story of my last year", "write the story of my growth", "give me a narrative about my relationship with X", "what's my story?", "narrate my journey"
 5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
 6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
+8. CURRENT_STORY_CAST - Asking who's new vs. already-known in the CURRENT conversation/thread specifically: "who's new and returning in this story?", "who have I mentioned so far in this chat?". Scoped to this thread, not the whole life story.
+9. CHARACTER_BOOK_WRITE - Explicit request to save/add people to the character book: "make sure they're all in my character book", "add these people to my character book".
 
 Key rules:
 - When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
@@ -509,7 +536,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

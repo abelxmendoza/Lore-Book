@@ -44,6 +44,8 @@
     "anchors:migrate": "tsx src/scripts/narrativeAnchorsMigrate.ts --execute",
     "beliefs:audit": "tsx src/scripts/beliefQueueMigrate.ts",
     "beliefs:migrate": "tsx src/scripts/beliefQueueMigrate.ts --execute",
+    "self-facts:cleanup": "tsx src/scripts/cleanupSelfEntityFacts.ts",
+    "self-facts:cleanup:apply": "tsx src/scripts/cleanupSelfEntityFacts.ts --apply",
     "contextual-lore:audit": "tsx src/scripts/founderContextualLoreBackfill.ts",
     "contextual-lore:apply": "tsx src/scripts/founderContextualLoreBackfill.ts --apply",
     "timeline:repair-founder": "tsx src/scripts/repairOmniTimelineFounder.ts",

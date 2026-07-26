@@ -17,6 +17,11 @@
  * tight enough to skip greetings, questions, and plain third-person narration.
  */
 
+import {
+  isConversationalPersonIntro,
+  stripConversationalPersonIntro,
+} from '../identity/personIntroDecomposition';
+
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/[‘’ʼ]/g, "'");
 
 const QUEST_RE =
@@ -50,7 +55,16 @@ const WORKOUT_RE =
 const BIOMETRIC_RE =
   /\b(scale|weighed|weight|body fat|bodyfat|muscle mass|bmi|hydration|bone mass|visceral fat|metabolic age|body composition|biometric|health metrics|fitness tracker)\b/i;
 
-export const hasQuestSignal = (text: string): boolean => QUEST_RE.test(norm(text));
+export const hasQuestSignal = (text: string): boolean => {
+  const t = norm(text);
+  if (!QUEST_RE.test(t)) return false;
+  // "I want to tell you about Jamie..." is Character Book onboarding, not a quest.
+  // Still fire when a durable goal cue remains after stripping the intro frame.
+  if (isConversationalPersonIntro(text)) {
+    return QUEST_RE.test(norm(stripConversationalPersonIntro(text)));
+  }
+  return true;
+};
 export const hasProgressSignal = (text: string): boolean => PROGRESS_RE.test(norm(text));
 export const hasSkillSignal = (text: string): boolean => SKILL_RE.test(norm(text));
 export const hasProjectSignal = (text: string): boolean => PROJECT_RE.test(norm(text));
@@ -62,13 +76,12 @@ export const hasBiometricSignal = (text: string): boolean => BIOMETRIC_RE.test(n
 
 /** Fast top-level check: does the message warrant ANY of the cluster extractors? */
 export const hasAnyExtractionSignal = (text: string): boolean => {
-  const t = norm(text);
   return (
-    QUEST_RE.test(t) ||
-    PROGRESS_RE.test(t) ||
-    SKILL_RE.test(t) ||
-    PROJECT_RE.test(t) ||
-    INTEREST_RE.test(t) ||
-    LIFE_CHANGE_RE.test(t)
+    hasQuestSignal(text) ||
+    hasProgressSignal(text) ||
+    hasSkillSignal(text) ||
+    hasProjectSignal(text) ||
+    hasInterestSignal(text) ||
+    hasLifeChangeSignal(text)
   );
 };

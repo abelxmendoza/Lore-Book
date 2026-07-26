@@ -9,6 +9,7 @@ import { logger } from '../logger';
 import { entityFactsService } from './entityFactsService';
 import { entityAttributeDetector, type DetectedAttribute } from './conversationCentered/entityAttributeDetector';
 import { characterBlurbService } from './characters/characterBlurbService';
+import { factTemporalPolarity } from './entities/entityFactDedup';
 import { supabaseAdmin } from './supabaseClient';
 
 export const SELF_REFERENCE_PATTERN =
@@ -240,7 +241,7 @@ function buildProfileSummary(
 ): string | null {
   const parts: string[] = [];
 
-  const currentAttrs = attributes.filter(a => a.isCurrent);
+  const currentAttrs = attributes.filter((a) => a.isCurrent);
   const attrLabels: Record<string, string> = {
     occupation: 'Works as',
     workplace: 'Works at',
@@ -252,18 +253,72 @@ function buildProfileSummary(
     living_situation: 'Living situation',
   };
 
-  for (const attr of currentAttrs.slice(0, 6)) {
+  for (const attr of currentAttrs.slice(0, 4)) {
     const label = attrLabels[attr.attributeType] ?? attr.attributeType.replace(/_/g, ' ');
     parts.push(`${label}: ${attr.attributeValue}`);
   }
 
-  for (const fact of facts.filter(f => f.status === 'active').slice(0, 4)) {
+  const ranked = rankFactsForSummary(facts);
+  for (const fact of ranked.slice(0, 5)) {
+    if (parts.length >= 6) break;
     parts.push(fact.fact);
   }
 
   if (parts.length === 0) return null;
   return parts.join(' · ');
 }
+
+const SUMMARY_CATEGORY_PRIORITY: Record<string, number> = {
+  career: 100,
+  goals: 90,
+  location: 75,
+  personality: 70,
+  relationship: 60,
+  history: 45,
+  appearance: 25,
+  general: 20,
+};
+
+const SUMMARY_NOISE =
+  /\b(?:pictured in the image|shown in the (?:photo|image)|is asking|is testing|wants the assistant|tomorrow|second day|starts? at\s*\d)\b/i;
+
+function rankFactsForSummary(
+  facts: Awaited<ReturnType<typeof entityFactsService.getEntityFacts>>,
+): typeof facts {
+  const active = facts.filter((f) => f.status === 'active' || f.status === 'updated' || f.status === 'corrected');
+  const scored = active
+    .filter((f) => !SUMMARY_NOISE.test(f.fact))
+    .filter((f) => {
+      const sens = f.metadata && typeof f.metadata === 'object' ? f.metadata.assertion_type : null;
+      return sens !== 'feeling' || (f.confidence ?? 0) >= 0.85;
+    })
+    .map((f) => {
+      const catPri = SUMMARY_CATEGORY_PRIORITY[f.category] ?? 15;
+      const polarity = factTemporalPolarity(f.fact);
+      const stability = polarity === 'past' ? 0.45 : polarity === 'present' ? 1 : 0.75;
+      const evidenceIds = Array.isArray(f.metadata?.evidence_ids) ? f.metadata!.evidence_ids.length : 0;
+      const confirm = Number(f.metadata?.confirmation_count ?? f.mention_count ?? 1);
+      const evidence = Math.min(1.4, 0.7 + evidenceIds * 0.15 + Math.max(0, confirm - 1) * 0.08);
+      const score = catPri * stability * (f.confidence ?? 0.7) * evidence;
+      return { fact: f, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const usedCategories = new Map<string, number>();
+  const picked: typeof facts = [];
+  for (const { fact } of scored) {
+    const count = usedCategories.get(fact.category) ?? 0;
+    const maxForCat = fact.category === 'appearance' ? 1 : 2;
+    if (count >= maxForCat) continue;
+    usedCategories.set(fact.category, count + 1);
+    picked.push(fact);
+  }
+  return picked;
+}
+
+/** Exported for unit tests. */
+export { buildProfileSummary, rankFactsForSummary };
+
 
 class SelfCharacterService {
   async capturePreferredStageNameCorrection(

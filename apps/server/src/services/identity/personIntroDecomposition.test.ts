@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   decomposePersonIntro,
   detectPersonOnboardingIntent,
+  isConversationalPersonIntro,
+  stripConversationalPersonIntro,
 } from './personIntroDecomposition';
 
 describe('decomposePersonIntro', () => {
@@ -39,5 +41,30 @@ describe('detectPersonOnboardingIntent', () => {
     expect(r.candidateName).toBe('Jamie');
     expect(r.decomposition?.rolePhrase).toBe('social worker');
     expect(r.decomposition?.supportsAnchor).toBe('Marcus');
+  });
+});
+
+describe('isConversationalPersonIntro', () => {
+  it('flags Character Book intro presets and canonicalized titles', () => {
+    expect(
+      isConversationalPersonIntro(
+        "I want to tell you about Jamie, Marcus's Social Worker, someone new in my life.",
+      ),
+    ).toBe(true);
+    expect(isConversationalPersonIntro('Tell you about Jamie')).toBe(true);
+    expect(isConversationalPersonIntro('let me tell you about Taylor')).toBe(true);
+  });
+
+  it('does not flag durable goals', () => {
+    expect(isConversationalPersonIntro('I want to launch MemoVault')).toBe(false);
+    expect(isConversationalPersonIntro('My goal is to run a marathon')).toBe(false);
+  });
+
+  it('strips intro framing so co-occurring goals remain', () => {
+    const stripped = stripConversationalPersonIntro(
+      "I want to tell you about Jamie. My goal is to launch MemoVault.",
+    );
+    expect(stripped.toLowerCase()).toContain('my goal is to launch memovault');
+    expect(stripped.toLowerCase()).not.toContain('tell you about');
   });
 });

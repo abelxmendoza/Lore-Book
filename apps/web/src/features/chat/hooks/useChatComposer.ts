@@ -31,6 +31,7 @@ import {
   type ChatImageAttachment,
 } from '../types/chatImageAttachment';
 import { useAuth } from '../../../lib/supabase';
+import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
 import {
   latestRecoverableStory,
   readComposerDraft,
@@ -79,7 +80,11 @@ export const useChatComposer = (
 ) => {
   const { submitOnEnter = true, threadId } = options;
   const { user } = useAuth();
-  const draftOwnerId = user?.id ?? 'guest-or-anonymous';
+  // Public /demo must never read/write drafts under the authenticated user id —
+  // that is how private unsent lore leaked into the showcase composer.
+  const draftOwnerId = isDemoRuntimeActive()
+    ? demoThreadStorageUserId()
+    : (user?.id ?? 'guest-or-anonymous');
   const dispatch = useAppDispatch();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);

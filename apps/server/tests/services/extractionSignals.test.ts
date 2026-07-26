@@ -35,6 +35,8 @@ describe('extractionSignals', () => {
       'had coffee with Maria',
       'the weather is nice today',
       'she walked to the store',
+      "I want to tell you about Jamie, Marcus's Social Worker, someone new in my life.",
+      'Let me tell you about Taylor.',
     ])('ignores non-quest text: %s', (text) => {
       expect(hasQuestSignal(text)).toBe(false);
     });

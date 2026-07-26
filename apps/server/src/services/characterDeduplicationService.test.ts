@@ -74,4 +74,36 @@ describe('findDuplicateGroups — false-positive guards', () => {
     const groups = await characterDeduplicationService.findDuplicateGroups('u1');
     expect(groups).toHaveLength(1);
   });
+
+  it('does NOT merge DJ Night (given name Alex) with Uncle Alex', async () => {
+    ROWS = [
+      {
+        id: 'dj',
+        name: 'DJ Night',
+        alias: ['Alex'],
+        metadata: { nameProfile: { nickname: 'DJ Night', givenName: 'Alex', kind: 'stage_name' } },
+      },
+      { id: 'uncle', name: 'Uncle Alex', alias: ['Alex'], metadata: {} },
+    ];
+    const groups = await characterDeduplicationService.findDuplicateGroups('u1');
+    expect(groups).toHaveLength(0);
+  });
+
+  it('does NOT merge Maya with Maya\'s Friend from The Venue', async () => {
+    ROWS = [
+      { id: 'maya', name: 'Maya', alias: null, metadata: {} },
+      { id: 'friend', name: "Maya's Friend from The Venue", alias: ['Maya'], metadata: {} },
+    ];
+    const groups = await characterDeduplicationService.findDuplicateGroups('u1');
+    expect(groups).toHaveLength(0);
+  });
+
+  it('does NOT merge Evan with Noah Next to Evan\'s Desk', async () => {
+    ROWS = [
+      { id: 'evan', name: 'Evan', alias: null, metadata: {} },
+      { id: 'noah', name: "Noah Next to Evan's Desk", alias: null, metadata: {} },
+    ];
+    const groups = await characterDeduplicationService.findDuplicateGroups('u1');
+    expect(groups).toHaveLength(0);
+  });
 });

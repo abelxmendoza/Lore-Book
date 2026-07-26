@@ -13,6 +13,8 @@ import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 import { messageReferencesMention } from '../utils/disambiguationUtils';
 import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
+import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
 
 import {
   isBeliefChallengeAllowed,
@@ -354,6 +356,8 @@ export type StreamingChatResponse = {
     assistantMessageId?: string;
     /** Structured durability boundary (user save / assistant / ingestion). */
     durability?: ChatDurabilityPayload;
+    /** Occasional themed "Noted." lead-in on a normal reply. */
+    notedLeadIn?: boolean;
     continuityAcknowledged?: {
       signals: string[];
       entityHints: string[];
@@ -384,6 +388,8 @@ export type StreamingChatResponse = {
     staleProjectionSummary?: string | null;
     mode?: string;
     confidence?: number;
+    /** Resolved shape of a mode-routed turn, replayed by "try again". */
+    resolvedTurnState?: import('./chat/assistantPersistMetadata').ResolvedTurnState;
   };
 };
 
@@ -1212,10 +1218,18 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Durable enqueue BEFORE optional assistant generation can fail. Awaited so
     // the API can report truth-backed ingestion status under OpenAI 429/quota.
     // Never claim QUEUED if the WAL write failed.
+    //
+    // Always scheduled, regardless of entityContext: a focus chip being open
+    // (character/location/relationship chat) must not silently disable real
+    // ingestion — conversation ingestion, entity-mention extraction, and
+    // event-candidate extraction all still need to run. Canonicalization
+    // policy (auto-writing into characters/entity_facts without review) is a
+    // separate, later gate inside the job itself — this only fixes whether a
+    // job gets scheduled at all.
     let ingestionJobId: string | undefined;
     let ingestionRecoveryRequired = false;
     let ingestionStatus: string | undefined;
-    if (!entityContext) {
+    {
       try {
         const { maybeInjectFault } = await import('./chat/durabilityFaultInjection');
         await maybeInjectFault('before_durable_job_enqueue', { userId });
@@ -1287,7 +1301,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     timer.mark('enqueue_dispatch');
     timer.flush({
       path: 'full',
-      enqueuedIngestion: !entityContext && !ingestionRecoveryRequired,
+      enqueuedIngestion: !ingestionRecoveryRequired,
       ingestionJobId,
       ingestionRecoveryRequired,
     });
@@ -1342,10 +1356,20 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Caption text for persistence/ingestion; placeholder when image-only.
     message = resolveUserMessageText(message, images);
 
-    // Derive entity context from modal/book focus when not explicitly set
-    if (!entityContext && chatFocus?.relationshipId) {
+    // Derive entity context from modal/book focus when not explicitly set —
+    // but only when the focus is actually relevant to THIS message. A stale
+    // focus chip (left open from an earlier, unrelated conversation) must not
+    // contaminate a closed-scope query (e.g. "who's new in this story?") with
+    // an entityContext the message never asked about. Ordinary (non-closed-
+    // scope) chat is unaffected — the pin is always honored there, matching
+    // existing behavior.
+    const { closedScope: chatFocusClosedScope } = isClosedScopeQuery(message);
+    const focusRelevant =
+      !chatFocus || !chatFocusClosedScope || isFocusEntityRelevant(message, chatFocus.entityName ?? '');
+
+    if (!entityContext && chatFocus?.relationshipId && focusRelevant) {
       entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
-    } else if (!entityContext && chatFocus) {
+    } else if (!entityContext && chatFocus && focusRelevant) {
       if (chatFocus.entityType === 'character') {
         entityContext = { type: 'CHARACTER', id: chatFocus.entityId };
       } else if (chatFocus.entityType === 'location') {
@@ -1567,11 +1591,34 @@ When updating relationship analytics or emotional signals from this thread, weig
     // inform this answer, whether the user asked a chat question or for
     // diagnostics, and whether this message corrects a previous answer.
     const responseScope = await import('./responseScope');
+
+    // Retry continuity: "try again" replays the previous failed turn's mode
+    // and scope instead of being reclassified from scratch as a generic
+    // message. `effectiveMessage` is what scope planning and mode routing
+    // see; `message` (the literal "try again") is still what gets persisted
+    // as the user's actual turn — retry only substitutes what's FED to the
+    // handler, never the record of what the user typed.
+    let retryState: import('./chat/assistantPersistMetadata').ResolvedTurnState | null = null;
+    if (responseScope.isRetryRequest(message)) {
+      const { loadLastResolvedTurnState } = await import('./responseScope/retryContinuity');
+      retryState = await loadLastResolvedTurnState(userId, sessionId);
+    }
+    const effectiveMessage = retryState?.originalMessageText ?? message;
+    const retryOriginalMessageText = retryState?.originalMessageText;
+
     // Active context: what this thread is currently about. Context-free
     // follow-ups ("what about Joss?", "you forgot Wren") inherit it so scope
     // and entity anchoring survive across turns, not just for corrections.
-    const activeContext = responseScope.deriveActiveContext(conversationHistory);
-    const scopePlan = responseScope.planResponseScope(message, { activeContext });
+    // A retry supplies its own ActiveConversationContext directly from the
+    // stored state instead of deriving it from history.
+    const activeContext = retryState
+      ? {
+          intent: (retryState.scopeIntent ?? 'general') as import('./responseScope/responseScopeTypes').ScopeIntent,
+          entities: retryState.entities ?? [],
+          userTurnsSinceAnchor: 0,
+        }
+      : responseScope.deriveActiveContext(conversationHistory);
+    const scopePlan = responseScope.planResponseScope(effectiveMessage, { activeContext });
     const scopeGuard = (content: string): string => {
       const guarded = responseScope.enforceChatScope(content, scopePlan);
       if (guarded.violations.length > 0) {
@@ -1828,9 +1875,14 @@ When updating relationship analytics or emotional signals from this thread, weig
       const { modeHandlers } = await import('./modeRouter/modeHandlers');
       const { formatModeResponse } = await import('./modeRouter/responseFormatter');
 
-      const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
+      // A retry inherits its mode directly from the failed turn — never
+      // reclassified from scratch — so the same mechanism replays a failed
+      // CURRENT_STORY_CAST turn and a failed SUBJECT_TIMELINE turn identically.
+      const routing = retryState
+        ? { mode: retryState.mode as import('./modeRouter/modeRouterService').ChatMode, confidence: 1, reasoning: 'retry continuity' }
+        : await modeRouterService.routeMessage(userId, message, conversationHistory);
       modeDecision = { mode: routing.mode, confidence: routing.confidence, reasoning: routing.reasoning ?? '' };
-      
+
       // Route to appropriate handler if mode is known
       if (
         routing.mode !== 'UNKNOWN' &&
@@ -1843,7 +1895,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         const handlerResponse = await modeHandlers.handleMode(
           routing.mode,
           userId,
-          message,
+          effectiveMessage,
           {
             messageId,
             conversationHistory,
@@ -1860,7 +1912,19 @@ When updating relationship analytics or emotional signals from this thread, weig
         ) {
           handlerResponse.content = scopeGuard(handlerResponse.content);
         }
-        return formatModeResponse(handlerResponse, routing.mode, modeExtras());
+        // Persist enough of this turn's resolved shape that a later "try
+        // again" can replay it via retryContinuity.loadLastResolvedTurnState
+        // instead of being reclassified from scratch as a generic message.
+        const resolvedTurnState = {
+          mode: routing.mode,
+          scopeIntent: scopePlan.intent,
+          scopeSource: scopePlan.scopeSource,
+          entities: scopePlan.primaryEntities,
+          threadId: sessionId,
+          responseMode: handlerResponse.response_mode,
+          originalMessageText: (retryOriginalMessageText ?? message).slice(0, 500),
+        };
+        return formatModeResponse(handlerResponse, routing.mode, { ...modeExtras(), resolvedTurnState });
       }
     } catch (error) {
       logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
@@ -2845,6 +2909,26 @@ When updating relationship analytics or emotional signals from this thread, weig
       ontologyActions,
     });
 
+    // Rejected evidence (e.g. closed-scope items rejected with
+    // current_story_entity_mismatch) is computed by ragBuilderService but
+    // otherwise dropped — surface it here so the admin/diagnostic source
+    // export can show why something was left out instead of it silently
+    // vanishing. See clientSourcesBuilder.ts for the (unit-tested) logic.
+    const rejectedEvidence = (ragPacket as { retrievalTrace?: { rejectedEvidence?: RejectedEvidenceItem[] } })
+      .retrievalTrace?.rejectedEvidence ?? [];
+    const clientSources: ChatSource[] = buildClientSourcesWithRejected(sources, rejectedEvidence);
+
+    let notedLeadIn = false;
+    try {
+      const { shouldShowNotedLeadIn } = await import('./chat/notedSignature');
+      notedLeadIn = shouldShowNotedLeadIn({
+        message,
+        conversationHistory,
+      });
+    } catch {
+      notedLeadIn = false;
+    }
+
     return {
       stream,
       metadata: {
@@ -2853,7 +2937,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         sessionId, // Include sessionId for action tracking
         characterIds,
         mentionedEntities: mentionedEntities.length > 0 ? mentionedEntities : undefined,
-        sources: sources.slice(0, 10),
+        sources: clientSources,
         connections,
         continuityWarnings,
         timelineUpdates,
@@ -2868,6 +2952,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
         durability: durabilityFor('pending'),
+        notedLeadIn: notedLeadIn || undefined,
         continuityAcknowledged: continuityIntent?.detected ? {
           signals: continuityIntent.signals,
           entityHints: continuityIntent.entityHints,

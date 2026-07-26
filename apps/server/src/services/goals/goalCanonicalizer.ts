@@ -24,6 +24,8 @@ export function isSemanticallyCompleteGoalTitle(title: string): boolean {
     /^(?:launch|ship|build|find|finish|complete|improve|continue|avoid|reply|move|save|learn)\b/i.test(title);
   if ((!compactAction && words.length < 3) || words.length > 12) return false;
   if (/^(?:next|you completely|that was a|failed response|run by)\b/i.test(title)) return false;
+  // Person-intro titles after "I want to" strip — not outcomes.
+  if (/^tell(?:\s+you)?\s+about\b/i.test(title)) return false;
   if (/\b(?:and|or|to|with|because|after|before)$/.test(title.toLowerCase())) return false;
   if (/^(?:it|this|that|they|he|she)\b/i.test(title)) return false;
   return /[a-z]/i.test(title);

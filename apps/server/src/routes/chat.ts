@@ -619,6 +619,8 @@ router.post('/stream', optionalAuth, openAiHttpLimit, openAiHttpBurstLimit, chec
           creationOutcomeSummary: result.metadata.creationOutcomeSummary,
           staleProjectionHints: result.metadata.staleProjectionHints,
           staleProjectionSummary: result.metadata.staleProjectionSummary,
+          resolvedTurnState: result.metadata.resolvedTurnState,
+          notedLeadIn: Boolean(result.metadata.notedLeadIn),
           ...(streamTokenUsage ? { tokenUsage: streamTokenUsage } : {}),
         }),
         status,

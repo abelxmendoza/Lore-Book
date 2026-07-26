@@ -19,7 +19,6 @@ import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 import type { TimelineContextLayer } from '../../types/currentContext';
 import { fetchJson } from '../../lib/api';
 import { ThreadTimelineView } from '../threads/ThreadTimelineView';
-import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { GitBranch } from 'lucide-react';
 
 type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical' | 'threads' | '9layers';
@@ -279,8 +278,6 @@ export const OmniTimelinePanel = () => {
 
   return (
     <div className="space-y-6" data-testid="timeline">
-      <ChatFirstViewHint />
-
       {/* Active arcs banner — "you are here" across all parallel tracks */}
       {!arcsLoading && activeArcs.length > 0 && (
         <div className="px-4 pt-3 pb-1">

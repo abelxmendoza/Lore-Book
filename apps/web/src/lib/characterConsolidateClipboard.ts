@@ -15,12 +15,16 @@ export function buildCharacterConsolidateClipboardText(
         fields: [
           { label: 'Match type', value: group.match_type },
           {
-            label: 'Confidence',
+            label: 'Identity likelihood',
             value:
               group.confidence != null ? `${Math.round(group.confidence * 100)}%` : null,
           },
           { label: 'Recommendation', value: group.recommendation },
           { label: 'Reason', value: group.reason },
+          { label: 'Reason code', value: group.reasonCode },
+          { label: 'Explanation', value: group.explanation ?? [] },
+          { label: 'Actions', value: group.actions ?? [] },
+          { label: 'Pair key', value: group.pair_key },
           { label: 'Cards', value: cardNames },
           { label: 'Card count', value: group.characters.length },
           { label: 'Card ids', value: group.characters.map((c) => c.id) },
