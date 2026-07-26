@@ -55,11 +55,11 @@ describe('tieredRateLimit', () => {
 
   it('allows a high SPA read ceiling in production', () => {
     const rules = resolveApiRateTierRulesForTests(
-      mockReq('/api/books/characters', 'GET', 'user-1') as Request,
+      mockReq('/api/counts', 'GET', 'user-1') as Request,
     );
     expect(rules).toHaveLength(1);
     expect(rules[0].tier).toBe('read');
-    expect(rules[0].max).toBeGreaterThanOrEqual(12000);
+    expect(rules[0].max).toBeGreaterThanOrEqual(100000);
   });
 
   it('skips CSRF and authority bootstrap endpoints', () => {
@@ -74,6 +74,29 @@ describe('tieredRateLimit', () => {
   it('skips certified entity index cold-start endpoint', () => {
     expect(
       resolveApiRateTierRulesForTests(mockReq('/api/entities/certified-index', 'GET', 'user-1') as Request),
+    ).toEqual([]);
+  });
+
+  it('skips stripped /api-mount paths for certified-index', () => {
+    const req = {
+      originalUrl: undefined,
+      url: '/entities/certified-index',
+      path: '/entities/certified-index',
+      baseUrl: '/api',
+      method: 'GET',
+      ip: '203.0.113.10',
+      headers: { 'user-agent': 'test' },
+      user: { id: 'user-1' },
+    } as unknown as Request;
+    expect(resolveApiRateTierRulesForTests(req)).toEqual([]);
+  });
+
+  it('skips SPA cold-start book/biography GETs', () => {
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/books/characters', 'GET', 'user-1') as Request),
+    ).toEqual([]);
+    expect(
+      resolveApiRateTierRulesForTests(mockReq('/api/biography/living', 'GET', 'user-1') as Request),
     ).toEqual([]);
   });
 

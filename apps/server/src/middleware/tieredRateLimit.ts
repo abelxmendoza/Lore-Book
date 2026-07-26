@@ -18,7 +18,8 @@ const isDevelopment = () =>
   (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
 
 const isRateLimitDisabled = () =>
-  isDevelopment() && process.env.DISABLE_RATE_LIMIT === 'true';
+  process.env.DISABLE_RATE_LIMIT === 'true' ||
+  process.env.RATE_LIMIT_DISABLED === 'true';
 
 export type ApiRateTier =
   | 'read'
@@ -42,9 +43,10 @@ type TierRule = { tier: ApiRateTier; max: number; windowMs: number };
  * while /api/health stayed green.
  */
 const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
-  read: { max: 12000, windowMs: FIFTEEN_MIN },
-  write: { max: 1800, windowMs: FIFTEEN_MIN },
-  write_burst: { max: 480, windowMs: ONE_MIN },
+  // SPA cold-start + multi-tab fan-out easily exceeds a few thousand GETs.
+  read: { max: 100_000, windowMs: FIFTEEN_MIN },
+  write: { max: 5_000, windowMs: FIFTEEN_MIN },
+  write_burst: { max: 1_200, windowMs: ONE_MIN },
   // Real chat completions only (not composer preview). ~1 msg / 5s average.
   ai: { max: 180, windowMs: FIFTEEN_MIN },
   compute: { max: 50, windowMs: FIFTEEN_MIN },
@@ -64,9 +66,31 @@ const SKIP_PATHS = [
   /^\/api\/security\/csrf-token\/?$/i,
   /^\/api\/user\/authority\/?$/i,
   /^\/api\/user\/terms-status\/?$/i,
-  // Composer cold-start — failing this leaves "Entity detection unavailable" stuck.
+  // Composer / home cold-start — failing these leaves the SPA stuck.
   /^\/api\/entities\/certified-index\/?$/i,
+  /^\/api\/conversation\/threads\/[^/]+\/messages\/?$/i,
+  /^\/api\/conversation\/threads\/[^/]+\/ensure-visible\/?$/i,
+  /^\/api\/chat\/return-point\/?$/i,
+  /^\/api\/subscription\/status\/?$/i,
+  /^\/api\/user\/activity\/?$/i,
+  /^\/api\/books\/(characters|skills)\/?$/i,
+  /^\/api\/biography\/(living|readiness(?:\/.*)?)\/?$/i,
 ];
+
+/**
+ * Normalize paths for skip/tier matching.
+ * `app.use('/api', …)` leaves `req.url`/`req.path` without the `/api` prefix;
+ * prefer `originalUrl`, but accept stripped forms too.
+ */
+function requestPath(req: Request): string {
+  const raw = (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0] || '';
+  if (raw.startsWith('/api/') || raw === '/api' || raw.startsWith('/health')) return raw;
+  if (req.baseUrl === '/api' || raw.startsWith('/')) {
+    const rel = raw.startsWith('/') ? raw : `/${raw}`;
+    if (!rel.startsWith('/api')) return `/api${rel === '/' ? '' : rel}`;
+  }
+  return raw;
+}
 
 /** CORS preflights must not consume the read budget. */
 function isCorsPreflight(req: Request): boolean {
@@ -120,10 +144,6 @@ const CHAT_SEND_PATH = /\/api\/chat(\/stream)?\/?$/i;
  */
 const THREAD_ACTIVITY_PATH =
   /\/api\/(conversation\/)?threads\/[^/]+\/?$/i;
-
-function requestPath(req: Request): string {
-  return (req.originalUrl ?? req.url ?? req.path ?? '').split('?')[0];
-}
 
 function shouldSkip(path: string): boolean {
   return SKIP_PATHS.some((re) => re.test(path));

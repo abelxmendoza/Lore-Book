@@ -150,10 +150,22 @@ async function loadSharedIndex(force = false): Promise<void> {
             typeof err === 'object' && err && 'status' in err
               ? Number((err as { status?: number }).status)
               : undefined;
+          const retryAfter =
+            typeof err === 'object' && err && 'retryAfter' in err
+              ? Number((err as { retryAfter?: number }).retryAfter)
+              : undefined;
+          const is429 = status === 429 || /429|rate limit|too many requests/i.test(msg);
+          // Do not hammer the API while rate-limited — wait out Retry-After once, then surface.
+          if (is429) {
+            const waitMs = Math.min(
+              Math.max((Number.isFinite(retryAfter) ? retryAfter! : 30) * 1000, 5_000),
+              60_000,
+            );
+            await new Promise((r) => setTimeout(r, waitMs));
+            break;
+          }
           const retryable =
-            status === 429 ||
-            status === 503 ||
-            /429|rate limit|too many requests|timeout|network|failed to fetch/i.test(msg);
+            status === 503 || /timeout|network|failed to fetch/i.test(msg);
           if (!retryable || attempt === 2) break;
           await new Promise((r) => setTimeout(r, 400 * (attempt + 1) ** 2));
         }
@@ -266,13 +278,13 @@ export const useEntityIndexer = () => {
     return () => authListener.subscription.unsubscribe();
   }, [retryTick]);
 
-  // Auto-retry entity index after transient failures (rate limit / network blip).
+  // Auto-retry entity index after transient failures — slow enough not to amplify 429 storms.
   useEffect(() => {
     if (!sharedState.error || sharedState.loading || sharedState.ready) return;
     const timer = window.setTimeout(() => {
       apiCache.delete(INDEX_CACHE_KEY);
       void loadSharedIndex(true);
-    }, 8_000);
+    }, 45_000);
     return () => window.clearTimeout(timer);
   }, [sharedState.error, sharedState.loading, sharedState.ready]);
 
