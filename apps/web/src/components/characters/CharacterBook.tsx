@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
+import { FamilyTreeCopyAllButton } from '../family/FamilyTreeCopyAllButton';
 import { MyFamilyModal } from '../family/MyFamilyModal';
 import { CharacterProfileCard, type Character, type CharacterAttribute } from './CharacterProfileCard';
 import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCharacterProfileCard';
@@ -3742,9 +3743,17 @@ export const CharacterBook = () => {
           <>
           {/* User's own family tree */}
           <div className="rounded-xl border border-pink-500/20 bg-pink-950/10 p-5">
-            <p className="text-[10px] font-semibold text-pink-400/70 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Heart className="h-3.5 w-3.5" /> Your Family Tree
-            </p>
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold text-pink-400/70 uppercase tracking-widest flex items-center gap-2">
+                <Heart className="h-3.5 w-3.5" /> Your Family Tree
+              </p>
+              <FamilyTreeCopyAllButton
+                tree={createMockUserFamilyTree()}
+                title="Your family tree"
+                filters={['mode=demo', 'scope=mine']}
+                data-testid="character-book-family-copy-all"
+              />
+            </div>
             <FamilyTreeView
               tree={createMockUserFamilyTree()}
               onMemberClick={(member) => {
@@ -3765,9 +3774,16 @@ export const CharacterBook = () => {
               if (!tree) return null;
               return (
                 <div key={c.id} className="rounded-xl border border-white/10 bg-white/4 p-5">
-                  <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <GitBranch className="h-3.5 w-3.5" /> {c.name}&apos;s Family Tree
-                  </p>
+                  <div className="mb-4 flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                      <GitBranch className="h-3.5 w-3.5" /> {c.name}&apos;s Family Tree
+                    </p>
+                    <FamilyTreeCopyAllButton
+                      tree={tree}
+                      title={`Family tree — ${c.name}`}
+                      filters={[`characterId=${c.id}`, 'mode=demo']}
+                    />
+                  </div>
                   <FamilyTreeView
                     tree={tree}
                     compact={true}

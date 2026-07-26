@@ -39,6 +39,7 @@ import type { Character } from './CharacterProfileCard';
 import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingProfileSection';
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
+import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
 import { useMainCharacterProfile, type MainCharacterRelationship } from '../../hooks/useMainCharacterProfile';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
@@ -671,6 +672,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                   <CharacterTitleSection
                     character={profile.character}
                     compact
+                    omitTitle
                     onUpdated={() => {
                       selfCharacterApi?.ensureSelf?.().catch(() => {});
                       void profile.reload();
@@ -1037,12 +1039,28 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                             {orgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
                           </Button>
                         </div>
+                        <CreateGroupFromCharacterPanel
+                          character={{
+                            id: profile.character.id,
+                            name: profile.character.name,
+                            role: profile.character.role,
+                            archetype: profile.character.archetype,
+                          }}
+                          isSelf
+                          defaultMemberRole={orgMemberRole}
+                          onOpenedChat={() => {
+                            setOrgAddOpen(false);
+                            onClose();
+                          }}
+                          testIdPrefix="self-create-group"
+                          accentClassName="border-amber-500/25 bg-amber-500/5"
+                        />
                       </div>
                     )}
                     {orgMemberError && <p className="text-xs text-red-400 px-1">{orgMemberError}</p>}
                     {selfOrganizations.length === 0 && !orgAddOpen && (
                       <p className="text-xs text-white/30 italic text-center py-3">
-                        No group memberships yet — add one from your Groups &amp; Organizations book.
+                        No group memberships yet — add an existing group, or create a new one in chat.
                       </p>
                     )}
                     {selfOrganizations.map((org) => {

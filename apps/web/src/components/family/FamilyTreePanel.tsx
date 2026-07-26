@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Loader2, Plus, RefreshCw, TreePine } from 'lucide-react';
 import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
+import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
@@ -45,6 +46,8 @@ interface FamilyTreePanelProps {
   scope: Scope;
   entityId?: string;
   title?: string;
+  /** Clipboard export title; defaults to `title`. */
+  copyTitle?: string;
   hint?: string;
   compact?: boolean;
   refreshKey?: number;
@@ -59,6 +62,7 @@ export const FamilyTreePanel = ({
   scope,
   entityId,
   title,
+  copyTitle,
   hint,
   compact,
   refreshKey = 0,
@@ -251,6 +255,19 @@ export const FamilyTreePanel = ({
     </div>
   ) : null;
 
+  const resolvedCopyTitle =
+    copyTitle?.trim() ||
+    title?.trim() ||
+    (scope === 'mine'
+      ? 'Your family tree'
+      : scope === 'organization'
+        ? 'Organization family tree'
+        : 'Character family tree');
+  const copyFilters = [
+    `scope=${scope}`,
+    entityId ? `entityId=${entityId}` : null,
+  ].filter(Boolean) as string[];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-white/50 text-sm">
@@ -286,12 +303,19 @@ export const FamilyTreePanel = ({
         <p className="text-xs text-white/40">
           {tree.members.length} relative{tree.members.length !== 1 ? 's' : ''} · inferred from your stories
         </p>
-        {scope === 'character' && entityId && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-white/50" onClick={() => void rebuild()} disabled={rebuilding}>
-            {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            <span className="ml-1.5">Refresh</span>
-          </Button>
-        )}
+        <div className="flex items-center gap-1.5">
+          <FamilyTreeCopyAllButton
+            tree={tree}
+            title={resolvedCopyTitle}
+            filters={copyFilters}
+          />
+          {scope === 'character' && entityId && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-white/50" onClick={() => void rebuild()} disabled={rebuilding}>
+              {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              <span className="ml-1.5">Refresh</span>
+            </Button>
+          )}
+        </div>
       </div>
       {manualAddPanel}
       <FamilyTreeView

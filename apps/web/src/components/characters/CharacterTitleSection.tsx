@@ -17,6 +17,8 @@ type Props = {
   onUpdated?: (patch: Partial<Character>) => void;
   /** Dense header treatment for modals where vertical space is scarce. */
   compact?: boolean;
+  /** Skip repeating the primary title when the parent already renders it. */
+  omitTitle?: boolean;
 };
 
 const STABILITY_VARIANT: Record<TitleStability, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -27,7 +29,12 @@ const STABILITY_VARIANT: Record<TitleStability, 'default' | 'secondary' | 'outli
   needs_resolution: 'destructive',
 };
 
-export function CharacterTitleSection({ character, onUpdated, compact = false }: Props) {
+export function CharacterTitleSection({
+  character,
+  onUpdated,
+  compact = false,
+  omitTitle = false,
+}: Props) {
   const [displayTitle, setDisplayTitle] = useState<CharacterDisplayTitle | null>(
     (character.metadata?.display_title as CharacterDisplayTitle | undefined) ?? null
   );
@@ -202,14 +209,16 @@ export function CharacterTitleSection({ character, onUpdated, compact = false }:
   const hiddenAliasCount = Math.max(0, aliases.length - visibleAliases.length);
   const showControls = !compact || manageOpen || editing || showAliasForm || showResolveForm;
 
+  const showTitleBlock = editing || !omitTitle;
+
   return (
     <div
       className={`rounded-lg border border-white/10 bg-white/5 ${
-        compact ? 'space-y-1 p-2' : 'space-y-3 p-4'
+        compact ? 'space-y-1 p-1.5' : 'space-y-3 p-4'
       }`}
       data-testid={compact ? 'character-title-compact' : 'character-title-section'}
     >
-      <div className={`flex items-start justify-between ${compact ? 'gap-2' : 'gap-3'}`}>
+      <div className={`flex items-center justify-between ${compact ? 'gap-1.5' : 'gap-3'}`}>
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="space-y-2">
@@ -227,7 +236,7 @@ export function CharacterTitleSection({ character, onUpdated, compact = false }:
                 aria-label="Context subtitle"
               />
             </div>
-          ) : (
+          ) : showTitleBlock ? (
             <>
               <h3 className={`${compact ? 'truncate text-sm' : 'text-lg'} font-semibold text-white leading-snug`}>
                 {primary}
@@ -238,6 +247,28 @@ export function CharacterTitleSection({ character, onUpdated, compact = false }:
                 </p>
               ) : null}
             </>
+          ) : (
+            <div className={`flex min-w-0 items-center ${compact ? 'gap-1 overflow-hidden' : 'flex-wrap gap-1.5'}`}>
+              {isContextual ? (
+                <span className="inline-flex shrink-0 items-center text-[10px] text-white/50">
+                  <Sparkles className="mr-0.5 h-3 w-3" /> Contextual
+                </span>
+              ) : null}
+              {visibleAliases.map((alias) => (
+                <Badge
+                  key={alias.id}
+                  variant="outline"
+                  className={`${compact ? 'max-w-24 truncate px-1.5 py-0 text-[10px]' : 'text-xs'}`}
+                >
+                  {alias.value}
+                </Badge>
+              ))}
+              {hiddenAliasCount > 0 ? (
+                <span className="shrink-0 text-[10px] text-white/45">+{hiddenAliasCount}</span>
+              ) : aliases.length === 0 && !isContextual ? (
+                <span className="truncate text-[11px] text-white/45">Names & aliases</span>
+              ) : null}
+            </div>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -261,7 +292,7 @@ export function CharacterTitleSection({ character, onUpdated, compact = false }:
         </div>
       </div>
 
-      {aliases.length > 0 ? (
+      {showTitleBlock && aliases.length > 0 ? (
         <div className={`flex items-center ${compact ? 'gap-1 overflow-hidden' : 'flex-wrap gap-1.5'}`}>
           {visibleAliases.map((alias) => (
             <span key={alias.id} className="inline-flex items-center gap-1">
@@ -401,7 +432,7 @@ export function CharacterTitleSection({ character, onUpdated, compact = false }:
               ) : null}
             </>
           )}
-          {isContextual ? (
+          {isContextual && !compact ? (
             <span className="inline-flex items-center text-xs text-white/50">
               <Sparkles className="h-3.5 w-3.5 mr-1" /> Contextual reference
             </span>

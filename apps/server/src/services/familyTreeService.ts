@@ -459,6 +459,15 @@ class FamilyTreeService {
     opts: { isUserTree?: boolean; rebuild?: boolean } = {}
   ): Promise<FamilyTreeDTO | null> {
     try {
+      // Prefer the account shared family graph when this character is already
+      // on the user's tree — every kin modal then shows the SAME roster with
+      // bidirectional parent/child structure, re-rooted onto this ego.
+      const shared = await this.getUserFamilyTree(userId);
+      if (shared?.members?.some((m) => m.id === characterId)) {
+        const projected = projectSharedFamilyTreeOntoEgo(shared, characterId);
+        return this.applyOverridesAndReview(userId, projected);
+      }
+
       if (opts.rebuild) {
         await relationshipTreeBuilder.buildTree(userId, characterId, 'character', 'family', 4);
       }
@@ -467,6 +476,8 @@ class FamilyTreeService {
       // Include user-asserted tree placements (family_override.connects_to_id)
       // so a cousin's tree shows their aunt even before a parent_of row exists.
       edges.push(...(await this.loadOverridePlacementEdges(userId, characterId)));
+      // Shared-parent siblings / reverse parent edges so character trees are bidirectional.
+      edges.push(...inferSiblingAndInverseParentEdges(edges));
       if (edges.length === 0) {
         // Fallback: relationship tree builder
         const built = await relationshipTreeBuilder.buildTree(userId, characterId, 'character', 'family', 4);
@@ -481,6 +492,7 @@ class FamilyTreeService {
               });
             }
           }
+          edges.push(...inferSiblingAndInverseParentEdges(edges));
         }
       }
 
@@ -515,7 +527,8 @@ class FamilyTreeService {
         markSelf: opts.isUserTree ?? false,
         selfId: characterId,
       });
-      return this.applyOverridesAndReview(userId, tree);
+      const enriched = this.enrichRelationsFromNames(tree);
+      return this.applyOverridesAndReview(userId, enriched);
     } catch (error) {
       logger.error({ error, userId, characterId }, 'Failed to build character family tree');
       return null;
@@ -800,6 +813,7 @@ class FamilyTreeService {
     }
     if (connectsToId) {
       await this.upsertFamilyEdge(userId, connectsToId, characterId, 'parent_of');
+      await this.syncSiblingsUnderParent(userId, connectsToId);
     }
 
     const { identityLedgerService } = await import('./identity/identityLedgerService');
@@ -889,6 +903,7 @@ class FamilyTreeService {
    * `relationshipType` follows the `<kin>_of` convention (source IS the <kin>
    * of target). Idempotent on (user, source, target, type). Fails open so a
    * missing table / transient error never blocks the tree edit.
+   * Parent/child and sibling edges are written bidirectionally.
    */
   private async upsertFamilyEdge(
     userId: string,
@@ -898,6 +913,19 @@ class FamilyTreeService {
   ): Promise<void> {
     if (!sourceId || !targetId || sourceId === targetId) return;
     if (isSyntheticNodeId(sourceId) || isSyntheticNodeId(targetId)) return;
+    await this.upsertFamilyEdgeOnce(userId, sourceId, targetId, relationshipType);
+    const inverse = inverseFamilyEdgeType(relationshipType);
+    if (inverse) {
+      await this.upsertFamilyEdgeOnce(userId, targetId, sourceId, inverse);
+    }
+  }
+
+  private async upsertFamilyEdgeOnce(
+    userId: string,
+    sourceId: string,
+    targetId: string,
+    relationshipType: string,
+  ): Promise<void> {
     const { error } = await supabaseAdmin.from('character_relationships').upsert(
       {
         user_id: userId,
@@ -915,6 +943,41 @@ class FamilyTreeService {
       const code = (error as { code?: string }).code;
       if (code === 'PGRST205' || code === '42P01') return; // table not present
       logger.warn({ error, userId, sourceId, targetId, relationshipType }, 'Failed to upsert family edge');
+    }
+  }
+
+  /** Materialize sibling_of between every pair of children under the same parent. */
+  private async syncSiblingsUnderParent(userId: string, parentId: string): Promise<void> {
+    if (!parentId || isSyntheticNodeId(parentId)) return;
+    const childIds = new Set<string>();
+
+    const { data: parentEdges } = await supabaseAdmin
+      .from('character_relationships')
+      .select('target_character_id, relationship_type')
+      .eq('user_id', userId)
+      .eq('source_character_id', parentId)
+      .in('relationship_type', ['parent_of', 'step_parent_of', 'adopted_parent_of']);
+    for (const row of parentEdges ?? []) {
+      if (row.target_character_id) childIds.add(row.target_character_id as string);
+    }
+
+    const { data: peers } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .limit(400);
+    for (const peer of peers ?? []) {
+      const ov = (peer.metadata as Record<string, unknown> | null)?.family_override as
+        | { connects_to_id?: string | null }
+        | undefined;
+      if (ov?.connects_to_id === parentId) childIds.add(peer.id as string);
+    }
+
+    const kids = [...childIds].filter((id) => id && id !== parentId && !isSyntheticNodeId(id));
+    for (let i = 0; i < kids.length; i++) {
+      for (let j = i + 1; j < kids.length; j++) {
+        await this.upsertFamilyEdge(userId, kids[i], kids[j], 'sibling_of');
+      }
     }
   }
 
@@ -1014,6 +1077,8 @@ class FamilyTreeService {
 
     if (explicitSelfId) {
       const edges = await this.loadFamilyEdges(userId, explicitSelfId);
+      edges.push(...(await this.loadOverridePlacementEdges(userId, explicitSelfId)));
+      edges.push(...inferSiblingAndInverseParentEdges(edges));
       if (edges.length > 0) {
         const { data: rootChar } = await supabaseAdmin
           .from('characters')
@@ -1498,6 +1563,329 @@ export function assessNodeReview(
   }
 
   return null;
+}
+
+/** Inverse of a directed family edge type (parent↔child, sibling↔sibling). */
+export function inverseFamilyEdgeType(type: string): string | null {
+  const t = normalizeRelationshipType(type);
+  const map: Record<string, string> = {
+    parent_of: 'child_of',
+    child_of: 'parent_of',
+    step_parent_of: 'step_child_of',
+    step_child_of: 'step_parent_of',
+    adopted_parent_of: 'adopted_child_of',
+    adopted_child_of: 'adopted_parent_of',
+    grandparent_of: 'grandchild_of',
+    grandchild_of: 'grandparent_of',
+    aunt_of: 'niece_of',
+    uncle_of: 'nephew_of',
+    niece_of: 'aunt_of',
+    nephew_of: 'uncle_of',
+    sibling_of: 'sibling_of',
+    half_sibling_of: 'half_sibling_of',
+    step_sibling_of: 'step_sibling_of',
+    twin_of: 'twin_of',
+    cousin_of: 'cousin_of',
+    spouse_of: 'spouse_of',
+  };
+  return map[t] ?? null;
+}
+
+type FamilyEdge = { fromId: string; toId: string; type: string; confidence: number; evidence?: string };
+
+/** Add child_of inverses for parent_of and sibling_of among shared-parent children. */
+export function inferSiblingAndInverseParentEdges(edges: FamilyEdge[]): FamilyEdge[] {
+  const extra: FamilyEdge[] = [];
+  const seen = new Set(edges.map((e) => `${e.fromId}|${e.toId}|${normalizeRelationshipType(e.type)}`));
+  const push = (fromId: string, toId: string, type: string, confidence: number, evidence?: string) => {
+    const key = `${fromId}|${toId}|${type}`;
+    if (fromId === toId || seen.has(key)) return;
+    seen.add(key);
+    extra.push({ fromId, toId, type, confidence, evidence });
+  };
+
+  const childrenByParent = new Map<string, string[]>();
+  for (const e of edges) {
+    const type = normalizeRelationshipType(e.type);
+    if (type === 'parent_of' || type === 'step_parent_of' || type === 'adopted_parent_of') {
+      push(e.toId, e.fromId, inverseFamilyEdgeType(type) ?? 'child_of', e.confidence, e.evidence);
+      const list = childrenByParent.get(e.fromId) ?? [];
+      list.push(e.toId);
+      childrenByParent.set(e.fromId, list);
+    } else if (type === 'child_of' || type === 'step_child_of' || type === 'adopted_child_of') {
+      push(e.toId, e.fromId, inverseFamilyEdgeType(type) ?? 'parent_of', e.confidence, e.evidence);
+      const list = childrenByParent.get(e.toId) ?? [];
+      list.push(e.fromId);
+      childrenByParent.set(e.toId, list);
+    }
+  }
+
+  for (const [, kids] of childrenByParent) {
+    const uniq = [...new Set(kids)];
+    for (let i = 0; i < uniq.length; i++) {
+      for (let j = i + 1; j < uniq.length; j++) {
+        push(uniq[i], uniq[j], 'sibling_of', 0.88, 'shared_parent');
+        push(uniq[j], uniq[i], 'sibling_of', 0.88, 'shared_parent');
+      }
+    }
+  }
+  return extra;
+}
+
+/**
+ * Absolute parent→child edges from a built FamilyTreeDTO (parent_id + gen-relative
+ * parent/child relations to the tree self).
+ */
+export function collectAbsoluteParentChildEdges(
+  tree: FamilyTreeDTO,
+): Array<{ parentId: string; childId: string }> {
+  const edges: Array<{ parentId: string; childId: string }> = [];
+  const seen = new Set<string>();
+  const push = (parentId: string, childId: string) => {
+    if (!parentId || !childId || parentId === childId) return;
+    const key = `${parentId}|${childId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push({ parentId, childId });
+  };
+
+  const selfId = tree.self_id;
+  for (const m of tree.members) {
+    if (m.parent_id) push(m.parent_id, m.id);
+    if (
+      selfId &&
+      !m.is_self &&
+      (m.relation === 'parent' ||
+        m.relation === 'step_parent' ||
+        m.relation === 'adopted_parent' ||
+        m.relation === 'godparent')
+    ) {
+      push(m.id, selfId);
+    }
+    if (selfId && !m.is_self && (m.relation === 'child' || m.relation === 'step_child' || m.relation === 'adopted_child')) {
+      push(selfId, m.id);
+    }
+  }
+  return edges;
+}
+
+function kinshipSiblingHint(member: FamilyMemberDTO): boolean {
+  const blob = `${member.kinship_title ?? ''} ${member.relation_label ?? ''} ${member.name ?? ''}`.toLowerCase();
+  return /\b(brother|sister|sibling|hermano|hermana)\b/.test(blob);
+}
+
+function kinshipParentHint(member: FamilyMemberDTO): 'parent' | 'step_parent' | null {
+  const blob = `${member.kinship_title ?? ''} ${member.relation_label ?? ''} ${member.name ?? ''}`.toLowerCase();
+  if (/\b(step[-\s]?dad|step[-\s]?mom|step[-\s]?father|step[-\s]?mother|step[-\s]?parent)\b/.test(blob)) {
+    return 'step_parent';
+  }
+  if (/\b(mom|mother|dad|father|parent|mam[aá]|pap[aá])\b/.test(blob)) return 'parent';
+  return null;
+}
+
+function kinshipAuntUncleHint(member: FamilyMemberDTO): 'aunt' | 'uncle' | null {
+  const blob = `${member.kinship_title ?? ''} ${member.relation_label ?? ''} ${member.name ?? ''}`.toLowerCase();
+  if (/\b(t[ií]a|aunt)\b/.test(blob)) return 'aunt';
+  if (/\b(t[ií]o|uncle)\b/.test(blob)) return 'uncle';
+  return null;
+}
+
+function kinshipGrandparentHint(member: FamilyMemberDTO): boolean {
+  const blob = `${member.kinship_title ?? ''} ${member.relation_label ?? ''} ${member.name ?? ''}`.toLowerCase();
+  return /\b(abuela|abuelo|grandma|grandpa|grandmother|grandfather|grandparent)\b/.test(blob);
+}
+
+/**
+ * Re-root the account shared family tree onto another member so every kin modal
+ * shows the same roster with bidirectional parent/child structure and siblings
+ * inferred from shared parents (+ kinship titles like brother/sister).
+ */
+export function projectSharedFamilyTreeOntoEgo(
+  shared: FamilyTreeDTO,
+  egoId: string,
+): FamilyTreeDTO {
+  if (!shared.members.some((m) => m.id === egoId)) return shared;
+  if (shared.self_id === egoId) {
+    return {
+      ...shared,
+      members: shared.members.map((m) =>
+        m.id === egoId ? { ...m, is_self: true, relation_label: m.relation_label || 'You' } : { ...m, is_self: false },
+      ),
+    };
+  }
+
+  const byId = new Map(shared.members.map((m) => [m.id, m]));
+  const parentEdges = collectAbsoluteParentChildEdges(shared);
+  const parentsOf = new Map<string, Set<string>>();
+  const childrenOf = new Map<string, Set<string>>();
+  const addLink = (parentId: string, childId: string) => {
+    if (!byId.has(parentId) || !byId.has(childId)) return;
+    (parentsOf.get(childId) ?? parentsOf.set(childId, new Set()).get(childId)!).add(parentId);
+    (childrenOf.get(parentId) ?? childrenOf.set(parentId, new Set()).get(parentId)!).add(childId);
+  };
+  for (const e of parentEdges) addLink(e.parentId, e.childId);
+
+  // Generations via undirected parent/child walk from ego.
+  const generation = new Map<string, number>([[egoId, 0]]);
+  const queue = [egoId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const g = generation.get(cur)!;
+    for (const p of parentsOf.get(cur) ?? []) {
+      if (!generation.has(p)) {
+        generation.set(p, g - 1);
+        queue.push(p);
+      }
+    }
+    for (const c of childrenOf.get(cur) ?? []) {
+      if (!generation.has(c)) {
+        generation.set(c, g + 1);
+        queue.push(c);
+      }
+    }
+  }
+  // Keep unreachable members at their relative offset from original user centering.
+  const originalSelfGen = 0;
+  const egoOriginalGen = byId.get(egoId)?.generation ?? 0;
+  for (const m of shared.members) {
+    if (generation.has(m.id)) continue;
+    generation.set(m.id, (m.generation - egoOriginalGen) || originalSelfGen);
+  }
+
+  const egoParents = parentsOf.get(egoId) ?? new Set<string>();
+  const egoChildren = childrenOf.get(egoId) ?? new Set<string>();
+  const egoParentList = [...egoParents];
+
+  const classify = (m: FamilyMemberDTO): { relation: FamilyRelationType; label: string } => {
+    if (m.id === egoId) return { relation: 'related', label: 'You' };
+    if (egoParents.has(m.id)) {
+      const step = m.relation === 'step_parent' || kinshipParentHint(m) === 'step_parent';
+      return {
+        relation: step ? 'step_parent' : 'parent',
+        label: m.kinship_title || m.relation_label || (step ? 'Step-parent' : 'Parent'),
+      };
+    }
+    if (egoChildren.has(m.id)) {
+      return {
+        relation: m.relation === 'step_child' ? 'step_child' : 'child',
+        label: m.kinship_title || m.relation_label || 'Child',
+      };
+    }
+    // Shared parent(s) → sibling (brother/sister titles reinforce).
+    const theirParents = parentsOf.get(m.id) ?? new Set<string>();
+    const sharedParents = egoParentList.filter((p) => theirParents.has(p));
+    if (sharedParents.length > 0 || (kinshipSiblingHint(m) && (generation.get(m.id) ?? 99) === 0)) {
+      const half = sharedParents.length > 0 && egoParentList.length > sharedParents.length;
+      return {
+        relation: half ? 'half_sibling' : 'sibling',
+        label: m.kinship_title || m.relation_label || (half ? 'Half-sibling' : 'Sibling'),
+      };
+    }
+    // Parent of a parent → grandparent
+    for (const p of egoParents) {
+      if ((parentsOf.get(p) ?? new Set()).has(m.id) || kinshipGrandparentHint(m)) {
+        if ((parentsOf.get(p) ?? new Set()).has(m.id) || (generation.get(m.id) ?? 0) <= -2) {
+          return {
+            relation: 'grandparent',
+            label: m.kinship_title || m.relation_label || 'Grandparent',
+          };
+        }
+      }
+    }
+    if ([...egoParents].some((p) => (parentsOf.get(p) ?? new Set()).has(m.id))) {
+      return {
+        relation: 'grandparent',
+        label: m.kinship_title || m.relation_label || 'Grandparent',
+      };
+    }
+    // Child of child → grandchild
+    for (const c of egoChildren) {
+      if ((childrenOf.get(c) ?? new Set()).has(m.id)) {
+        return {
+          relation: 'grandchild',
+          label: m.kinship_title || m.relation_label || 'Grandchild',
+        };
+      }
+    }
+    // Sibling of parent → aunt/uncle; their children → cousins
+    for (const p of egoParents) {
+      const parentSibs = [...(childrenOf.get([...parentsOf.get(p) ?? []][0] ?? '') ?? [])].filter((id) => id !== p);
+      // Also: anyone who shares a parent with ego's parent
+      for (const gp of parentsOf.get(p) ?? []) {
+        for (const sib of childrenOf.get(gp) ?? []) {
+          if (sib === p) continue;
+          if (sib === m.id) {
+            const au = kinshipAuntUncleHint(m) ?? (m.relation === 'uncle' ? 'uncle' : m.relation === 'aunt' ? 'aunt' : 'aunt');
+            return {
+              relation: au,
+              label: m.kinship_title || m.relation_label || (au === 'uncle' ? 'Uncle' : 'Aunt'),
+            };
+          }
+          if ((childrenOf.get(sib) ?? new Set()).has(m.id)) {
+            return {
+              relation: 'cousin',
+              label: m.kinship_title || m.relation_label || 'Cousin',
+            };
+          }
+        }
+      }
+      void parentSibs;
+    }
+    // Fall back: original user-relative label adjusted by generation delta, keep titles.
+    const gen = generation.get(m.id) ?? 0;
+    if (gen <= -2 || kinshipGrandparentHint(m)) {
+      return { relation: 'grandparent', label: m.kinship_title || m.relation_label || 'Grandparent' };
+    }
+    if (gen === -1) {
+      const au = kinshipAuntUncleHint(m);
+      if (au) return { relation: au, label: m.kinship_title || m.relation_label || (au === 'uncle' ? 'Uncle' : 'Aunt') };
+      const ph = kinshipParentHint(m);
+      if (ph) return { relation: ph, label: m.kinship_title || m.relation_label || 'Parent' };
+      return { relation: m.relation === 'uncle' || m.relation === 'aunt' ? m.relation : 'related', label: m.kinship_title || m.relation_label || 'Relative' };
+    }
+    if (gen === 1) {
+      return { relation: 'child', label: m.kinship_title || m.relation_label || 'Child' };
+    }
+    if (gen === 0) {
+      if (m.relation === 'cousin' || /\bcousin\b/i.test(`${m.kinship_title ?? ''} ${m.name}`)) {
+        return { relation: 'cousin', label: m.kinship_title || m.relation_label || 'Cousin' };
+      }
+      if (m.relation === 'spouse') return { relation: 'spouse', label: m.kinship_title || m.relation_label || 'Spouse' };
+      return { relation: 'related', label: m.kinship_title || m.relation_label || 'Relative' };
+    }
+    return {
+      relation: m.relation,
+      label: m.kinship_title || m.relation_label || labelForRelation(m.relation, m.name),
+    };
+  };
+
+  const members = shared.members.map((m) => {
+    const { relation, label } = classify(m);
+    const gen = generation.get(m.id) ?? m.generation;
+    return {
+      ...m,
+      relation,
+      relation_label: m.id === egoId ? 'You' : label,
+      generation: gen,
+      is_self: m.id === egoId,
+      closeness: m.id === egoId ? 100 : m.closeness,
+      // Preserve absolute parent connectors for bidirectional graph UI.
+      parent_id: m.parent_id,
+    };
+  });
+
+  members.sort(
+    (a, b) =>
+      a.generation - b.generation ||
+      Number(Boolean(b.is_self)) - Number(Boolean(a.is_self)) ||
+      a.name.localeCompare(b.name),
+  );
+
+  return {
+    members,
+    branches: shared.branches,
+    self_id: egoId,
+  };
 }
 
 export const familyTreeService = new FamilyTreeService();

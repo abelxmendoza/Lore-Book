@@ -6,6 +6,7 @@ import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRef
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
 import { FamilyTreePanel } from './FamilyTreePanel';
+import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
 import { FamilyTreeView } from './FamilyTreeView';
 import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
@@ -370,7 +371,7 @@ export function FamilyBook() {
         <>
           {tab === 'tree' && (
             <div className="space-y-4">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setViewMode('visual')}
@@ -385,6 +386,15 @@ export function FamilyBook() {
                 >
                   Tree view
                 </button>
+                <div className="ml-auto">
+                  <FamilyTreeCopyAllButton
+                    tree={demoTree || summary?.tree}
+                    title="Your family tree"
+                    filters={[`view=${viewMode}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
+                    size="md"
+                    data-testid="family-book-copy-all"
+                  />
+                </div>
               </div>
               {viewMode === 'hierarchical' && (demoTree || summary?.tree)?.members?.length ? (
                 <HierarchicalFamilyTree

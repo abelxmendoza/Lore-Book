@@ -13,6 +13,7 @@ import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
+import { FamilyTreeCopyAllButton } from '../family/FamilyTreeCopyAllButton';
 import { RelationshipEditor } from '../family/RelationshipEditor';
 import { useFamilyTreeEditing } from '../family/useFamilyTreeEditing';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -24,6 +25,7 @@ import { apiCache } from '../../lib/cache';
 import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
+import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -34,6 +36,7 @@ import type { Character } from './CharacterProfileCard';
 import { CharacterInfoPanel } from './CharacterInfoPanel';
 import { EditableEntityName } from '../common/EditableEntityName';
 import { CharacterAvatar } from './CharacterAvatar';
+import { ConnectionSectionHeader } from './ConnectionSectionHeader';
 import { useMockData } from '../../contexts/MockDataContext';
 import { mockDataService } from '../../services/mockDataService';
 import {
@@ -776,10 +779,6 @@ export const CharacterDetailModal = ({
 
   const getArchetypeTooltip = (archetype?: string | null) => {
     return `Archetype: "${archetype}" represents the archetypal role this person plays in your narrative. This is inferred from patterns in your conversations, their influence on you, and the nature of your relationship.`;
-  };
-
-  const getPronounsTooltip = (pronouns?: string | null) => {
-    return `Pronouns: "${pronouns}" are the pronouns this person uses. This is learned from your conversations when you mention their pronouns or refer to them using specific pronouns.`;
   };
 
   const getTagTooltip = (tag: string) => {
@@ -2704,11 +2703,11 @@ export const CharacterDetailModal = ({
             </div>
           </div>
 
-          {/* Desktop: full header - compacted for more content space */}
-          <div className="hidden sm:block p-3 pr-12 lg:p-4 lg:pr-14">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-              <div className="relative flex-shrink-0 flex flex-col items-center gap-1">
+          {/* Desktop: dense identity header — keep tabs/content dominant */}
+          <div className="hidden sm:block p-2 pr-12 lg:p-2.5 lg:pr-14">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <div className="relative flex-shrink-0 flex flex-col items-center gap-0.5">
                 {/* Phase ring around avatar */}
                 {(() => {
                   const c = editedCharacter.analytics?.closeness_score ?? 0;
@@ -2727,7 +2726,7 @@ export const CharacterDetailModal = ({
                         role={editedCharacter.role}
                         name={editedCharacter.name}
                         size={36}
-                        className="sm:w-10 sm:h-10 lg:w-12 lg:h-12"
+                        className="sm:w-9 sm:h-9 lg:w-10 lg:h-10"
                       />
                     </div>
                   );
@@ -2736,25 +2735,25 @@ export const CharacterDetailModal = ({
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
-                    className="h-7 text-[10px] border-white/15 text-white/70 hover:text-white"
+                    size="icon"
+                    className="h-7 w-7 border-white/15 text-white/70 hover:text-white"
                     disabled={loreAvatarBusy}
                     onClick={() => void generateLorePortrait()}
                     title="Generate a portrait from what LoreBook knows about them"
+                    aria-label="Generate portrait from lore"
                   >
                     {loreAvatarBusy ? (
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <ImageIcon className="h-3 w-3 mr-1" />
+                      <ImageIcon className="h-3 w-3" />
                     )}
-                    Portrait from lore
                   </Button>
                 )}
                 {loreAvatarError && (
-                  <p className="text-[10px] text-amber-400/90 max-w-[9rem] text-center leading-tight">{loreAvatarError}</p>
+                  <p className="text-[10px] text-amber-400/90 max-w-[5.5rem] text-center leading-tight">{loreAvatarError}</p>
                 )}
                 {editedCharacter.status && (
-                  <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1">
+                  <div className="absolute -bottom-0.5 -right-0.5">
                     <Tooltip content={getStatusTooltip(editedCharacter.status)}>
                     <Badge
                       className={`${
@@ -2763,7 +2762,7 @@ export const CharacterDetailModal = ({
                           : editedCharacter.status === 'unmet'
                           ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
                           : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                        } text-[9px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5 cursor-help`}
+                        } text-[9px] px-1 py-0 cursor-help`}
                     >
                       {editedCharacter.status === 'unmet' ? 'Unmet' : editedCharacter.status}
                     </Badge>
@@ -2771,9 +2770,9 @@ export const CharacterDetailModal = ({
                   </div>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-	                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 flex-wrap">
-	                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight break-words">
+              <div className="flex-1 min-w-0 space-y-1">
+	                <div className="flex items-center gap-1.5 flex-wrap">
+	                  <h2 className="text-base lg:text-lg font-bold text-white tracking-tight break-words leading-tight">
 	                    {displayName === editedCharacter.name ? (
 	                      <EditableEntityName
 	                        name={editedCharacter.name}
@@ -2786,16 +2785,16 @@ export const CharacterDetailModal = ({
 	                  </h2>
                     {isMainCharacter && (
                       <>
-                        <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/50 text-[9px] sm:text-xs px-1.5 py-0.5 flex items-center gap-1">
+                        <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/50 text-[9px] px-1.5 py-0 flex items-center gap-1">
                           <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
-                          Main Character
+                          Main
                         </Badge>
                         {/^me$/i.test(editedCharacter.name) && profileRealName && (
-                          <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0.5">
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0">
                             Me
                           </span>
                         )}
-                        <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0.5">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0">
                           you
                         </span>
                       </>
@@ -2812,11 +2811,12 @@ export const CharacterDetailModal = ({
                     )}
 	                </div>
 
-                {/* Official title + structured names under it (compact) */}
-                <div className="mb-1.5 max-w-2xl">
+                {/* Name controls collapsed by default — parent already shows the display name */}
+                <div className="max-w-2xl">
                   <CharacterTitleSection
                     character={editedCharacter}
-                    compact={isMainCharacter}
+                    compact
+                    omitTitle
                     onUpdated={(patch) => {
                       setEditedCharacter((prev) => ({ ...prev, ...patch }));
                       if (isMainCharacter && !isMockDataEnabled) {
@@ -2827,54 +2827,81 @@ export const CharacterDetailModal = ({
                       }
                     }}
                   />
-                  {/* Display all names under the official title - now for main character too */}
-                  {(() => {
-                    const first = editedCharacter.first_name || '';
-                    const middle = (typeof editedCharacter.metadata?.middle_name === 'string' ? editedCharacter.metadata.middle_name : editedCharacter.middle_name) || '';
-                    const last = editedCharacter.last_name || '';
-                    const full = [first, middle, last].filter(Boolean).join(' ').trim();
-                    const aliases = (editedCharacter.alias || []).filter(Boolean);
-                    if (!full && aliases.length === 0) return null;
-                    return (
-                      <div className="text-[10px] sm:text-xs text-white/55 mt-0.5 leading-tight truncate">
-                        {full && <span className="font-medium text-white/70">{full}</span>}
-                        {aliases.length > 0 && (
-                          <span className="text-white/40"> {full ? ' · ' : ''}{aliases.join(' / ')}</span>
-                        )}
-                      </div>
-                    );
-                  })()}
                 </div>
 
                 {wittyTagline && (
-                  <p className="text-xs sm:text-sm text-white/70 italic leading-snug mb-1 max-w-2xl">
+                  <p className="text-[11px] text-white/55 italic leading-snug line-clamp-1 max-w-2xl" title={wittyTagline}>
                     {wittyTagline}
                   </p>
                 )}
-                <div className="mb-1.5">
+
+                {/* LoreBook + meta chips share one row */}
+                <div className="flex flex-wrap items-center gap-1">
                   <EntityLorebookCompileControl
                     subjectLabel={displayName || editedCharacter.name}
                     focus={{ characterId: editedCharacter.id, themes: displayName || editedCharacter.name }}
                     testId="character-modal-lorebook-compile"
+                    className="py-0.5 pl-1.5 pr-1.5"
                   />
-                </div>
-                {profileContextHooks.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {profileContextHooks.slice(0, 4).map((hook) => (
+                  {editedCharacter.importance_level && (
+                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
                       <Badge
-                        key={hook}
                         variant="outline"
-                        className={`text-[8px] sm:text-[9px] px-1 py-0 ${
-                          isMainCharacter
-                            ? 'bg-amber-500/10 text-amber-200/90 border-amber-500/25'
-                            : 'bg-primary/10 text-primary/90 border-primary/25'
-                        }`}
+                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] px-1.5 py-0 flex items-center gap-0.5 cursor-help`}
                       >
-                        {hook}
+                        {getImportanceIcon(editedCharacter.importance_level)}
+                        {getImportanceLabel(editedCharacter.importance_level)}
                       </Badge>
-                    ))}
-                  </div>
-                )}
+                    </Tooltip>
+                  )}
+                  {editedCharacter.role && (
+                    <Tooltip content={getRoleTooltip(editedCharacter.role)}>
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] px-1.5 py-0 cursor-help max-w-[10rem] truncate">
+                        {editedCharacter.role}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {editedCharacter.archetype && (
+                    <Tooltip content={getArchetypeTooltip(editedCharacter.archetype)}>
+                      <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-[9px] px-1.5 py-0 cursor-help max-w-[9rem] truncate">
+                        {editedCharacter.archetype}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {editedCharacter.pronouns && (
+                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[9px] px-1.5 py-0">
+                      {editedCharacter.pronouns}
+                    </Badge>
+                  )}
+                  {editedCharacter.metadata?.kinship_label && (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[9px] px-1.5 py-0">
+                      {String(editedCharacter.metadata.kinship_label)}
+                    </Badge>
+                  )}
+                  {profileContextHooks.slice(0, 2).map((hook) => (
+                    <Badge
+                      key={hook}
+                      variant="outline"
+                      className={`text-[8px] px-1 py-0 ${
+                        isMainCharacter
+                          ? 'bg-amber-500/10 text-amber-200/90 border-amber-500/25'
+                          : 'bg-primary/10 text-primary/90 border-primary/25'
+                      }`}
+                    >
+                      {hook}
+                    </Badge>
+                  ))}
+                  {(editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
+                    (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70 && (
+                    <Badge
+                      variant="outline"
+                      className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[8px] px-1 py-0 flex items-center gap-0.5"
+                    >
+                      <Zap className="h-2.5 w-2.5" />
+                      High impact
+                    </Badge>
+                  )}
+                </div>
 
                 {/* Originating external posts (X/Twitter) — provenance back to the source */}
                 {(() => {
@@ -2889,8 +2916,8 @@ export const CharacterDetailModal = ({
                   const xSources = sources.filter((s) => s.provider === 'x' && s.url);
                   if (xSources.length === 0) return null;
                   return (
-                    <div className="flex flex-wrap gap-1 mb-1">
-                      {xSources.slice(0, 3).map((s) => (
+                    <div className="flex flex-wrap gap-1">
+                      {xSources.slice(0, 2).map((s) => (
                         <Tooltip
                           key={s.sourceId ?? s.url}
                           content={s.excerpt ? `“${s.excerpt}”` : 'This entity came from one of your X posts'}
@@ -2899,85 +2926,30 @@ export const CharacterDetailModal = ({
                             href={s.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[9px] sm:text-[10px] text-sky-300 hover:bg-sky-500/20 transition"
+                            className="flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0 text-[9px] text-sky-300 hover:bg-sky-500/20 transition"
                           >
                             <Twitter className="h-2.5 w-2.5" />
-                            From X post
+                            From X
                             {s.postedAt ? ` · ${new Date(s.postedAt).toLocaleDateString()}` : ''}
                           </a>
                         </Tooltip>
                       ))}
-                      {xSources.length > 3 && (
+                      {xSources.length > 2 && (
                         <span className="text-[9px] text-white/40 self-center">
-                          +{xSources.length - 3} more
+                          +{xSources.length - 2} more
                         </span>
                       )}
                     </div>
                   );
                 })()}
 
-                {/* Compact info row - reduced for desktop space */}
-                <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-0.5 text-[9px] sm:text-[10px]">
-                  {editedCharacter.role && (
-                    <Tooltip content={getRoleTooltip(editedCharacter.role)}>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 cursor-help">
-                        <Briefcase className="h-2.5 w-2.5 mr-0.5" />Occupation: {editedCharacter.role}
-                      </Badge>
-                    </Tooltip>
-                  )}
-                  {editedCharacter.pronouns && (
-                    <Tooltip content={getPronounsTooltip(editedCharacter.pronouns)}>
-                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5">
-                        {editedCharacter.pronouns}
-                      </Badge>
-                    </Tooltip>
-                  )}
-                  {editedCharacter.metadata?.kinship_label && (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5">
-                      {String(editedCharacter.metadata.kinship_label)}
-                    </Badge>
-                  )}
-                  {editedCharacter.importance_level && (
-                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
-                    <Badge
-                      variant="outline"
-                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5 cursor-help`}
-                    >
-                      {getImportanceIcon(editedCharacter.importance_level)}
-                      <span className="hidden sm:inline">{getImportanceLabel(editedCharacter.importance_level)}</span>
-                    </Badge>
-                    </Tooltip>
-                  )}
-                  {(editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
-                    (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70 && (
-                    <Badge
-                      variant="outline"
-                      className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5"
-                    >
-                      <Zap className="h-2.5 w-2.5" />
-                      Rare in story, high impact on you
-                    </Badge>
-                  )}
-                </div>
-                {/* Archetype badge - show separately on mobile */}
-                {editedCharacter.archetype && (
-                  <div className="mt-1 sm:mt-0">
-                    <Tooltip content={getArchetypeTooltip(editedCharacter.archetype)}>
-                      <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1 w-fit">
-                        <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                        <span className="truncate max-w-[100px] sm:max-w-none">{editedCharacter.archetype}</span>
-                      </Badge>
-                    </Tooltip>
-                  </div>
-                )}
-
                 {/* ── Intelligence quick-stats bar ── */}
                 {(dynamics || editedCharacter.analytics) && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 pt-2 border-t border-white/8">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-1 border-t border-white/8">
                     {/* Health score */}
                     {dynamics?.health?.health_score != null && (
                       <div className="flex items-center gap-1.5">
-                        <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
                               dynamics.health.health_score >= 80 ? 'bg-emerald-400' :
@@ -3118,6 +3090,7 @@ export const CharacterDetailModal = ({
                 <CharacterTitleSection
                   character={editedCharacter}
                   compact
+                  omitTitle
                   onUpdated={(patch) => setEditedCharacter((prev) => ({ ...prev, ...patch }))}
                 />
                 {profileContextHooks.length > 0 && (
@@ -3317,45 +3290,46 @@ export const CharacterDetailModal = ({
             )}
 
             {!loadingDetails && activeTab === 'relationships' && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 {/* Relationship to You */}
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    Relationship to You
-                  </h3>
+                  <ConnectionSectionHeader icon={Users} title="Relationship to You" />
                   <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
                     <CardContent className="p-4">
-                      <div className="space-y-2">
-                        {editedCharacter.role && (
-                          <div>
-                            <span className="text-xs text-white/50 uppercase">Role</span>
-                            <p className="text-white font-medium">{editedCharacter.role}</p>
-                          </div>
-                        )}
-                        {editedCharacter.archetype && (
-                          <div>
-                            <span className="text-xs text-white/50 uppercase">Archetype</span>
-                            <p className="text-white font-medium">{editedCharacter.archetype}</p>
+                      <div className="space-y-3">
+                        {(editedCharacter.role || editedCharacter.archetype) && (
+                          <div className="grid grid-cols-2 gap-4">
+                            {editedCharacter.role && (
+                              <div>
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Role</span>
+                                <p className="text-white font-medium mt-0.5">{editedCharacter.role}</p>
+                              </div>
+                            )}
+                            {editedCharacter.archetype && (
+                              <div>
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Archetype</span>
+                                <p className="text-white font-medium mt-0.5">{editedCharacter.archetype}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                         {editedCharacter.summary && (
                           <div>
-                            <span className="text-xs text-white/50 uppercase">Summary</span>
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Summary</span>
                             <p className="text-white/80 text-sm mt-1">{editedCharacter.summary}</p>
                           </div>
                         )}
                         {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
                           <div>
-                            <span className="text-xs text-white/50 uppercase">Closeness</span>
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Closeness</span>
                             {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name) && (
-                              <div className="mt-1">
+                              <div className="mt-1.5">
                                 <div className="flex items-center gap-2">
                                   <div className="flex-1 bg-black/40 rounded-full h-2">
-                                    <div 
+                                    <div
                                       className="bg-primary h-2 rounded-full"
-                                      style={{ 
-                                        width: `${((editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0) / 10) * 100}%` 
+                                      style={{
+                                        width: `${((editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0) / 10) * 100}%`
                                       }}
                                     />
                                   </div>
@@ -3373,11 +3347,8 @@ export const CharacterDetailModal = ({
                 </div>
 
                 {/* Family Tree */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    <TreePine className="h-5 w-5 text-primary" />
-                    Family Tree
-                  </h3>
+                <div className="pt-8 border-t border-white/[0.06]">
+                  <ConnectionSectionHeader icon={TreePine} title="Family Tree" />
                   <Card className="bg-black/40 border-border/50">
                     <CardContent className="p-4">
                       {isMockDataEnabled ? (() => {
@@ -3385,17 +3356,30 @@ export const CharacterDetailModal = ({
                           createMockFamilyTreeForCharacter(editedCharacter.name) ??
                           createMockUserFamilyTree();
                         return (
-                          <FamilyTreeView
-                            tree={mockTree}
-                            onMemberClick={(member) => {
-                              if (!member.is_self) {
-                                setSelectedCharacterForModal({
-                                  id: member.id,
-                                  name: member.name,
-                                } as Character);
-                              }
-                            }}
-                          />
+                          <div className="space-y-3">
+                            <div className="flex justify-end">
+                              <FamilyTreeCopyAllButton
+                                tree={mockTree}
+                                title={`Family tree — ${shortDisplayName(editedCharacter.name)}`}
+                                filters={[
+                                  `characterId=${editedCharacter.id}`,
+                                  'mode=demo',
+                                ]}
+                                data-testid="character-modal-family-copy-all"
+                              />
+                            </div>
+                            <FamilyTreeView
+                              tree={mockTree}
+                              onMemberClick={(member) => {
+                                if (!member.is_self) {
+                                  setSelectedCharacterForModal({
+                                    id: member.id,
+                                    name: member.name,
+                                  } as Character);
+                                }
+                              }}
+                            />
+                          </div>
                         );
                       })() : (
                         <FamilyTreePanel
@@ -3403,6 +3387,7 @@ export const CharacterDetailModal = ({
                           entityId={editedCharacter.id}
                           refreshKey={familyRefreshKey}
                           title={`No family tree for ${shortDisplayName(editedCharacter.name)} yet`}
+                          copyTitle={`Family tree — ${shortDisplayName(editedCharacter.name)}`}
                           hint="Share how they're related to you or others in chat — LoreBook infers positions and keeps updating."
                           {...familyEditing.editHandlers}
                           onMemberClick={(id, name) => {
@@ -3424,23 +3409,25 @@ export const CharacterDetailModal = ({
 
                 {/* Friends & Other Connections */}
                 {(
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                      <UserCircle className="h-5 w-5 text-primary" />
-                      Friends & Other Connections
-                      {!isMockDataEnabled && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-7 text-xs text-white/55"
-                          onClick={() => void toggleConnectionAdd()}
-                          data-testid="add-connection-toggle"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
-                        </Button>
-                      )}
-                    </h3>
+                  <div className="pt-8 border-t border-white/[0.06]">
+                    <ConnectionSectionHeader
+                      icon={UserCircle}
+                      title="Friends & Other Connections"
+                      action={
+                        !isMockDataEnabled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-white/55"
+                            onClick={() => void toggleConnectionAdd()}
+                            data-testid="add-connection-toggle"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
+                          </Button>
+                        )
+                      }
+                    />
                     {connectionAddOpen && !isMockDataEnabled && (
                       <Card className="bg-black/40 border-border/50 mb-3">
                         <CardContent className="p-3">
@@ -3574,14 +3561,16 @@ export const CharacterDetailModal = ({
 
                 {/* Wider network (inferred periphery — formerly its own tab) */}
                 {editedCharacter.id && (
-                  <RelationshipPeripheralsPanel
-                    anchorKind="character"
-                    anchorId={editedCharacter.id}
-                    anchorName={editedCharacter.name}
-                    title="Wider network"
-                    description={`People LoreBook has inferred around ${shortDisplayName(editedCharacter.name)} — confirm, dismiss, or promote them into Character Book.`}
-                    onUpdate={onUpdate}
-                  />
+                  <div className="pt-8 border-t border-white/[0.06]">
+                    <RelationshipPeripheralsPanel
+                      anchorKind="character"
+                      anchorId={editedCharacter.id}
+                      anchorName={editedCharacter.name}
+                      title="Wider network"
+                      description={`People LoreBook has inferred around ${shortDisplayName(editedCharacter.name)} — confirm, dismiss, or promote them into Character Book.`}
+                      onUpdate={onUpdate}
+                    />
+                  </div>
                 )}
 
                 {/* Groups & Organizations */}
@@ -3664,25 +3653,27 @@ export const CharacterDetailModal = ({
                     </div>
                   );
                   return (
-                    <div data-testid="character-groups-section">
-                      <h3 className="text-sm font-semibold text-white/70 mb-1 flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-primary" />
-                        Groups &amp; Organizations
-                        <span className="ml-auto text-[10px] text-white/30">{orgs.length} total</span>
-                        {!isMockDataEnabled && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-[10px] text-white/55"
-                            onClick={() => void toggleOrgAdd()}
-                            data-testid="add-membership-toggle"
-                          >
-                            <Plus className="h-3 w-3" />
-                            <span className="ml-1">{orgAddOpen ? 'Close' : 'Add'}</span>
-                          </Button>
-                        )}
-                      </h3>
-                      <p className="text-[10px] text-white/35 mb-3">
+                    <div data-testid="character-groups-section" className="pt-8 border-t border-white/[0.06]">
+                      <ConnectionSectionHeader
+                        icon={Building2}
+                        title="Groups & Organizations"
+                        meta={`${orgs.length} total`}
+                        action={
+                          !isMockDataEnabled && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px] text-white/55"
+                              onClick={() => void toggleOrgAdd()}
+                              data-testid="add-membership-toggle"
+                            >
+                              <Plus className="h-3 w-3" />
+                              <span className="ml-1">{orgAddOpen ? 'Close' : 'Add'}</span>
+                            </Button>
+                          )
+                        }
+                      />
+                      <p className="text-xs text-white/35 mb-3">
                         Same links as the Groups &amp; Organizations book — add or remove here and both sides stay in sync.
                       </p>
                       {orgAddOpen && !isMockDataEnabled && (
@@ -3725,6 +3716,20 @@ export const CharacterDetailModal = ({
                               {orgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
                             </Button>
                           </div>
+                          <CreateGroupFromCharacterPanel
+                            character={{
+                              id: editedCharacter.id,
+                              name: editedCharacter.name,
+                              role: editedCharacter.role,
+                              archetype: editedCharacter.archetype,
+                            }}
+                            defaultMemberRole={orgMemberRole}
+                            onOpenedChat={() => {
+                              setOrgAddOpen(false);
+                              onClose();
+                            }}
+                            testIdPrefix="create-group"
+                          />
                         </div>
                       )}
                       {orgMemberError && !isMockDataEnabled && (
@@ -3757,11 +3762,8 @@ export const CharacterDetailModal = ({
 
                 {/* Associated Characters (for indirect/third-party characters) */}
                 {(editedCharacter.proximity_level === 'indirect' || editedCharacter.proximity_level === 'third_party' || editedCharacter.associated_with_character_ids) && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                      <Link2 className="h-5 w-5 text-primary" />
-                      Associated With
-                    </h3>
+                  <div className="pt-8 border-t border-white/[0.06]">
+                    <ConnectionSectionHeader icon={Link2} title="Associated With" />
                     <Card className="bg-black/40 border-border/50">
                       <CardContent className="p-4">
                         {editedCharacter.associated_with_character_ids && editedCharacter.associated_with_character_ids.length > 0 ? (

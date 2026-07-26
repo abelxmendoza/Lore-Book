@@ -29,4 +29,14 @@ describe('CharacterTitleSection compact mode', () => {
     expect(screen.getByRole('button', { name: 'Edit title' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add alias' })).toBeInTheDocument();
   });
+
+  it('omits duplicated primary title when parent already shows the name', () => {
+    render(<CharacterTitleSection character={character} compact omitTitle />);
+
+    expect(screen.getByTestId('character-title-compact')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Taylor Example' })).not.toBeInTheDocument();
+    expect(screen.getByText('Tay')).toBeInTheDocument();
+    expect(screen.getByText('+2')).toBeInTheDocument();
+    expect(screen.getByTestId('character-title-manage-toggle')).toBeInTheDocument();
+  });
 });
