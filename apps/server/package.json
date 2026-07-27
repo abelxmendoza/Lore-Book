@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "main": "dist/index.js",
   "scripts": {
+    "predev": "npm run build:api-contracts",
     "dev": "NODE_ENV=development tsx watch --exclude 'logs/**' --exclude '.private/**' --exclude 'tmp/**' --exclude 'artifacts/**' --exclude '.cache/**' src/bootstrap.ts",
     "sync:legal": "mkdir -p legal && (cp -f ../../legal/TERMS.md ../../legal/PRIVACY.md legal/ 2>/dev/null || true) && test -f legal/TERMS.md && test -f legal/PRIVACY.md",
     "prebuild": "npm run build:api-contracts && npm run sync:legal",

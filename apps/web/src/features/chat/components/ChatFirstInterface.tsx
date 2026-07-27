@@ -192,6 +192,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     clearConversation,
     messageRefs,
     registerMessageRef,
+    GroupToastContainer,
   } = useChat();
 
   // ── Thread lifecycle (owned by useConversationRuntime) ────────────────────────
@@ -877,6 +878,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   return (
     <div className="flex h-[100dvh] max-h-[100dvh] lg:h-full bg-black w-full overflow-hidden">
+      <GroupToastContainer />
       <ChatThreadList
         threads={threads}
         currentThreadId={activeThreadId}

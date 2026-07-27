@@ -29,6 +29,12 @@ export type AssistantPersistMetadataInput = {
   resolvedTurnState?: ResolvedTurnState;
   /** Occasional themed "Noted." lead-in on a normal assistant reply. */
   notedLeadIn?: boolean;
+  /** Chat-driven group/organization write outcome — drives the client's success toast. */
+  organizationId?: unknown;
+  organizationName?: unknown;
+  groupCreated?: unknown;
+  groupRenamed?: unknown;
+  groupWriteMembers?: unknown;
 };
 
 export function buildAssistantPersistMetadata(
@@ -64,6 +70,13 @@ export function buildAssistantPersistMetadata(
   }
   if (input.notedLeadIn) {
     metadata.notedLeadIn = true;
+  }
+  if (input.groupCreated || input.groupRenamed) {
+    metadata.organizationId = input.organizationId;
+    metadata.organizationName = input.organizationName;
+    metadata.groupCreated = input.groupCreated;
+    metadata.groupRenamed = input.groupRenamed;
+    metadata.groupWriteMembers = input.groupWriteMembers;
   }
 
   return metadata;

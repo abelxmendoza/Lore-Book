@@ -41,6 +41,11 @@ describe('ontology glossary — Discovery Hub sprint', () => {
     expect(entities.every((e) => e.category !== 'SHADOW_SIGNAL')).toBe(true);
   });
 
+  it('does not classify a trailing kinship nickname in a nightlife context as family', () => {
+    const entities = discoverEntities('i danced at the goth club with Goth Tio');
+    expect(entities.some((e) => e.category === 'FAMILY')).toBe(false);
+  });
+
   it('detects entity authority merge/alias cues', () => {
     const merge = discoverEntityAuthoritySignals('those are the same person, merge them');
     expect(merge.some((h) => h.subcategory === 'MERGE')).toBe(true);

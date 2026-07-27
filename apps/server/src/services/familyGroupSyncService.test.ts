@@ -11,6 +11,11 @@ describe('familyGroupSync — pure helpers', () => {
     expect(kinshipRoleFromName('Leslie')).toBeNull();
   });
 
+  it('does not treat a trailing kinship word as a relation (nightlife nickname)', () => {
+    expect(kinshipRoleFromName('Goth Tio')).toBeNull();
+    expect(kinshipRoleFromName('Stage Mom')).toBeNull();
+  });
+
   const chars = [
     { id: 'l1', name: 'Leslie', alias: [] },
     { id: 'r1', name: 'Tio Ralph', alias: ['Ralph'] },

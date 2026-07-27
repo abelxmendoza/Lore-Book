@@ -22,6 +22,8 @@ export type GroupWriteResult = {
   organizationId: string;
   organizationName: string;
   created: boolean;
+  /** Renamed via an explicit reply to "what do you want to name it?" */
+  renamed: boolean;
   members: GroupWriteMemberOutcome[];
   summary: string;
 };
@@ -34,8 +36,34 @@ function titleCaseWords(raw: string): string {
     .replace(/\s+/g, ' ')
     .split(' ')
     .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) =>
+      w
+        .split('-')
+        .map((seg) => (seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : seg))
+        .join('-'),
+    )
     .join(' ');
+}
+
+/** "What do you want to name it?" / "anything specific you want to name the group?" */
+const NAMING_QUESTION_RE =
+  /\b(?:what|anything(?:\s+specific)?)\s+(?:do you\s+|you\s+)?want to (?:name|call)\s+(?:it|the group|the crew|the squad)\b/i;
+
+/**
+ * True when the assistant just asked what to name the pending group and this
+ * message is a short, bare reply answering it (not itself a "make a group"
+ * request or a member roster — those are handled by their own branches).
+ */
+export function isReplyToGroupNamingPrompt(
+  message: string,
+  history: Array<{ role: string; content: string }>,
+): boolean {
+  const text = message.trim();
+  if (!text || text.split(/\s+/).length > 6) return false;
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant');
+  if (!lastAssistant || !NAMING_QUESTION_RE.test(lastAssistant.content)) return false;
+  if (extractListedMemberNames(text).length >= 2) return false;
+  return true;
 }
 
 /** Pull name tokens from "So far we have A, B, and C" / "members: A, B". */
@@ -189,7 +217,9 @@ async function writePendingGroup(
 function summarize(result: Omit<GroupWriteResult, 'summary'>): string {
   const header = result.created
     ? `Created **${result.organizationName}** and updated the roster:`
-    : `Updated **${result.organizationName}**:`;
+    : result.renamed
+      ? `Renamed the group to **${result.organizationName}**:`
+      : `Updated **${result.organizationName}**:`;
   if (result.members.length === 0) {
     return `${header}\nNo members listed yet — send the roster (e.g. "So far we have A, B, and C") and I'll add them.`;
   }
@@ -219,8 +249,25 @@ export async function writeOrganizationGroupFromChat(
   let organizationId = pending?.organizationId ?? null;
   let organizationName = pending?.name ?? null;
   let created = false;
+  let renamed = false;
 
-  if (wantsCreate || !organizationId) {
+  // The user is answering "what do you want to name it?" directly — that
+  // reply is the authoritative title, title-cased regardless of how it was
+  // typed (see the lowercase-in-composer request this closes).
+  const isNamingReply =
+    !wantsCreate && Boolean(pending) && isReplyToGroupNamingPrompt(message, history);
+
+  if (isNamingReply && organizationId) {
+    const newName = titleCaseWords(message.trim().replace(/[.!?]+$/, ''));
+    if (newName && newName.toLowerCase() !== (organizationName ?? '').toLowerCase()) {
+      const updated = await organizationService.updateOrganization(userId, organizationId, {
+        name: newName,
+      });
+      organizationName = updated.name;
+      renamed = true;
+      await writePendingGroup(userId, threadId, { organizationId, name: organizationName });
+    }
+  } else if (wantsCreate || !organizationId) {
     organizationName = inferGroupNameFromContext(message, history, options?.threadTitle);
     const existing = await organizationService.findByName(userId, organizationName);
     if (existing) {
@@ -244,8 +291,10 @@ export async function writeOrganizationGroupFromChat(
     });
   }
 
-  const memberNames = [...listed];
-  if (options?.focusCharacterName?.trim()) {
+  // A naming reply ("popular e-girls") answers the name question only — it
+  // is not a roster, so it must never be parsed as a member candidate.
+  const memberNames = isNamingReply ? [] : [...listed];
+  if (!isNamingReply && options?.focusCharacterName?.trim()) {
     const focus = stripPersonNameEpithet(options.focusCharacterName).trim();
     if (focus && !memberNames.some((n) => n.toLowerCase() === focus.toLowerCase())) {
       // Only auto-include focus when creating / naming the group, not on every roster ping.
@@ -304,6 +353,7 @@ export async function writeOrganizationGroupFromChat(
     organizationId: organizationId!,
     organizationName: organizationName!,
     created,
+    renamed,
     members,
   };
   return { ...result, summary: summarize(result) };

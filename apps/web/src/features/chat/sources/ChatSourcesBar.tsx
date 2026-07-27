@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Sparkles } from 'lucide-react';
 import { Badge } from '../../../components/ui/badge';
 import {
   buildChatSourcesClipboardText,
@@ -16,6 +16,7 @@ type ChatSourcesBarProps = {
 
 export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) => {
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,17 +58,31 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
       data-testid="chat-sources-bar"
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <div className="min-w-0">
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="chat-sources-bar-body"
+          data-testid="chat-sources-toggle"
+        >
           <div className="flex items-center gap-2">
             <Sparkles className="h-3 w-3 text-primary/70 shrink-0" />
             <span className="text-xs font-semibold text-primary/70">Sources for this answer</span>
             <span className="text-xs text-white/40">({visible.length})</span>
+            {expanded ? (
+              <ChevronUp className="h-3 w-3 text-white/40 shrink-0" />
+            ) : (
+              <ChevronDown className="h-3 w-3 text-white/40 shrink-0" />
+            )}
           </div>
-          <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
-            Supporting sources are cited or matched to the answer. Background sources were
-            consulted but are not presented as direct support.
-          </p>
-        </div>
+          {expanded && (
+            <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
+              Supporting sources are cited or matched to the answer. Background sources were
+              consulted but are not presented as direct support.
+            </p>
+          )}
+        </button>
         <button
           type="button"
           onClick={() => void handleCopyAll()}
@@ -84,52 +99,54 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
           <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy all'}</span>
         </button>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {visible.some((source) => source.usage === 'supporting') && (
-          <span className="text-[10px] font-medium text-emerald-300/70 w-full">
-            Sources supporting this answer
-          </span>
-        )}
-        {Object.entries(groupedSources).map(([type, typeSources]) => (
-          <div key={type} className="flex items-center gap-1">
-            <Badge variant="outline" className="text-xs border-border/30 text-white/50">
-              {SOURCE_TYPE_LABELS[type] ?? type}
-            </Badge>
-            {typeSources.slice(0, 3).map((source) => (
-              <button
-                key={`${source.type}:${source.id}`}
-                type="button"
-                onClick={() => onSourceClick?.(source)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-black/40 transition-colors max-w-[160px]"
-                title={
-                  [
-                    source.title,
-                    source.snippet,
-                    source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' — ')
-                }
-              >
-                <span className="truncate">{source.title}</span>
-                {source.relevanceScore != null && (
-                  <span className="shrink-0 text-[10px] tabular-nums text-primary/60">
-                    {source.relevanceScore}
-                  </span>
-                )}
-              </button>
-            ))}
-            {typeSources.length > 3 && (
-              <span className="text-xs text-white/40">+{typeSources.length - 3}</span>
-            )}
-          </div>
-        ))}
-        {visible.some((source) => source.usage !== 'supporting') && (
-          <span className="text-[10px] text-white/35 w-full mt-1">
-            Consulted background: {visible.filter((source) => source.usage !== 'supporting').length}
-          </span>
-        )}
-      </div>
+      {expanded && (
+        <div id="chat-sources-bar-body" className="flex flex-wrap gap-2">
+          {visible.some((source) => source.usage === 'supporting') && (
+            <span className="text-[10px] font-medium text-emerald-300/70 w-full">
+              Sources supporting this answer
+            </span>
+          )}
+          {Object.entries(groupedSources).map(([type, typeSources]) => (
+            <div key={type} className="flex items-center gap-1">
+              <Badge variant="outline" className="text-xs border-border/30 text-white/50">
+                {SOURCE_TYPE_LABELS[type] ?? type}
+              </Badge>
+              {typeSources.slice(0, 3).map((source) => (
+                <button
+                  key={`${source.type}:${source.id}`}
+                  type="button"
+                  onClick={() => onSourceClick?.(source)}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-black/40 transition-colors max-w-[160px]"
+                  title={
+                    [
+                      source.title,
+                      source.snippet,
+                      source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' — ')
+                  }
+                >
+                  <span className="truncate">{source.title}</span>
+                  {source.relevanceScore != null && (
+                    <span className="shrink-0 text-[10px] tabular-nums text-primary/60">
+                      {source.relevanceScore}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {typeSources.length > 3 && (
+                <span className="text-xs text-white/40">+{typeSources.length - 3}</span>
+              )}
+            </div>
+          ))}
+          {visible.some((source) => source.usage !== 'supporting') && (
+            <span className="text-[10px] text-white/35 w-full mt-1">
+              Consulted background: {visible.filter((source) => source.usage !== 'supporting').length}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

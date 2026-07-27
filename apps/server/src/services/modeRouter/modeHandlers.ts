@@ -229,6 +229,7 @@ class ModeHandlers {
           organizationId: result.organizationId,
           organizationName: result.organizationName,
           groupCreated: result.created,
+          groupRenamed: result.renamed,
           groupWriteMembers: result.members,
         },
       };

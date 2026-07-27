@@ -1,6 +1,10 @@
 /**
  * Backfills metadata.mentionedEntities on legacy assistant rows that were
  * persisted before stream metadata included entity chips.
+ *
+ * Scans both the paired user turn AND the assistant's own reply text — a
+ * name the assistant introduced (from retrieval context) rather than the
+ * user typing it still needs a chip.
  */
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
@@ -82,9 +86,10 @@ export async function backfillMentionedEntitiesForUser(userId: string): Promise<
     const users = usersBySession.get(assistant.session_id) ?? [];
     const paired = precedingUserMessage(users, assistant.created_at);
     const userContent = paired?.content?.trim() ?? '';
-    if (!userContent) continue;
+    const assistantContent = assistant.content?.trim() ?? '';
+    if (!userContent && !assistantContent) continue;
 
-    const entities = await resolveMessageEntitiesForDisplay(userId, userContent);
+    const entities = await resolveMessageEntitiesForDisplay(userId, `${userContent}\n${assistantContent}`);
     const nextMeta: Record<string, unknown> = {
       ...(assistant.metadata ?? {}),
       entity_backfill_at: new Date().toISOString(),

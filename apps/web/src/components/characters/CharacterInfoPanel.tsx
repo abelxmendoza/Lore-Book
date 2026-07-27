@@ -644,6 +644,23 @@ export function CharacterInfoPanel({
 
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const [rankingBusyKey, setRankingBusyKey] = useState<'standing_override' | 'impact_override' | null>(null);
+  const [rankingStatus, setRankingStatus] = useState<string | null>(null);
+  const [rankingError, setRankingError] = useState<string | null>(null);
+  const [impactDraft, setImpactDraft] = useState<number | null>(impactOverride);
+  const rankingStatusTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setImpactDraft(impactOverride);
+  }, [characterId, impactOverride]);
+
+  useEffect(() => {
+    return () => {
+      if (rankingStatusTimerRef.current != null) {
+        window.clearTimeout(rankingStatusTimerRef.current);
+      }
+    };
+  }, []);
 
   // Cohesion: aliases/nicknames must add something beyond the names already
   // on the card — shared by add-time validation and the save-time filter so
@@ -788,7 +805,22 @@ export function CharacterInfoPanel({
     public_figure: 'Public figure',
   };
 
-  const persistOverride = async (key: string, value: unknown) => {
+  const flashRankingStatus = (message: string) => {
+    setRankingStatus(message);
+    if (rankingStatusTimerRef.current != null) {
+      window.clearTimeout(rankingStatusTimerRef.current);
+    }
+    rankingStatusTimerRef.current = window.setTimeout(() => {
+      setRankingStatus(null);
+      rankingStatusTimerRef.current = null;
+    }, 2200);
+  };
+
+  const persistOverride = async (
+    key: 'standing_override' | 'impact_override' | 'sex' | 'sexual_orientation',
+    value: unknown,
+  ) => {
+    const previousMeta = { ...((editedCharacter.metadata ?? {}) as Record<string, unknown>) };
     const patch =
       key === 'sex' || key === 'sexual_orientation'
         ? {
@@ -797,18 +829,93 @@ export function CharacterInfoPanel({
             [`${key}_confirmed_at`]: value === 'unknown' ? null : new Date().toISOString(),
           }
         : { [key]: value };
-    setEditedCharacter((prev) => ({
-      ...prev,
-      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...patch },
-    }));
+
+    const applyLocalPatch = (nextPatch: Record<string, unknown>) => {
+      setEditedCharacter((prev) => {
+        const nextMeta = { ...((prev.metadata ?? {}) as Record<string, unknown>), ...nextPatch };
+        if (key === 'standing_override' || key === 'impact_override') {
+          if (nextPatch[key] === null) delete nextMeta[key];
+        }
+        if (key === 'standing_override') {
+          const override = nextPatch.standing_override as { tier?: string } | null;
+          const prevStanding = (nextMeta.social_standing as Record<string, unknown> | undefined) ?? {};
+          if (override?.tier) {
+            nextMeta.social_standing = {
+              ...prevStanding,
+              tier: override.tier,
+              overridden: true,
+              computed_at: new Date().toISOString(),
+            };
+          } else if (nextPatch.standing_override === null && prevStanding) {
+            const { overridden: _ignored, ...rest } = prevStanding;
+            nextMeta.social_standing = { ...rest, computed_at: new Date().toISOString() };
+          }
+        }
+        return { ...prev, metadata: nextMeta };
+      });
+    };
+
+    applyLocalPatch(patch);
+    if (key === 'impact_override') {
+      setImpactDraft(typeof value === 'number' ? value : null);
+    }
+
+    if (key === 'standing_override' || key === 'impact_override') {
+      setRankingBusyKey(key);
+      setRankingError(null);
+    }
+
+    if (isMockDataEnabled) {
+      if (key === 'standing_override' || key === 'impact_override') {
+        flashRankingStatus('Saved');
+        setRankingBusyKey(null);
+      }
+      onUpdate();
+      return;
+    }
+
     try {
       await updateCharacter({ id: characterId, values: { metadata: patch } }).unwrap();
+      if (key === 'standing_override' || key === 'impact_override') {
+        flashRankingStatus('Saved');
+      }
       onUpdate();
     } catch (err) {
+      setEditedCharacter((prev) => ({
+        ...prev,
+        metadata: previousMeta,
+      }));
+      if (key === 'impact_override') {
+        setImpactDraft(typeof previousMeta.impact_override === 'number' ? previousMeta.impact_override : null);
+      }
+      const message = formatPersistError(err, 'Could not save ranking');
+      if (key === 'standing_override' || key === 'impact_override') {
+        setRankingError(message);
+      }
       console.error('Failed to save character override:', err);
-      throw err instanceof Error ? err : new Error('Could not save character field');
+      throw err instanceof Error ? err : new Error(message);
+    } finally {
+      if (key === 'standing_override' || key === 'impact_override') {
+        setRankingBusyKey(null);
+      }
     }
   };
+
+  const standingTierOptions: Array<{ value: string; label: string }> = [
+    { value: 'inner_circle', label: 'Inner circle' },
+    { value: 'close', label: 'Close' },
+    { value: 'regular', label: 'Regular' },
+    { value: 'peripheral', label: 'Peripheral' },
+  ];
+
+  const computedStandingLabel = socialStanding?.tier
+    ? tierLabels[socialStanding.tier] ?? socialStanding.tier.replace(/_/g, ' ')
+    : 'Still learning';
+  const autoImpact = Math.round(editedCharacter.analytics?.character_influence_on_user ?? 0);
+  const impactDirty =
+    impactDraft !== null && impactDraft !== impactOverride;
+  const impactBusy = rankingBusyKey === 'impact_override';
+  const standingBusy = rankingBusyKey === 'standing_override';
 
   const saveIdentityNames = async () => {
     const firstName = firstNameDraft.trim();
@@ -1855,62 +1962,171 @@ export function CharacterInfoPanel({
 
       {/* ── 7. Your ranking overrides ──────────────────────────────────── */}
       <section className="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Star className="h-4 w-4 text-emerald-400" />
-          <h3 className="text-sm font-bold text-white">Your ranking</h3>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <Star className="h-4 w-4 shrink-0 text-emerald-400" />
+            <h3 className="text-sm font-bold text-white">Your ranking</h3>
+          </div>
+          <p className="text-[11px] text-white/45 shrink-0" aria-live="polite">
+            {rankingBusyKey ? 'Saving…' : rankingStatus}
+          </p>
         </div>
-        <p className="text-xs text-white/50 mb-3">Override computed standing — your call wins.</p>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <p className="text-xs text-white/50 mb-3">
+          Your pick wins over LoreBook&apos;s auto standing
+          {socialStanding?.tier ? ` (${computedStandingLabel})` : ''}.
+        </p>
+
+        <div className="space-y-4">
           <div>
-            <label className="text-[10px] uppercase tracking-wide text-white/40 mb-1 block">Standing</label>
-            <select
-              data-testid="standing-override-select"
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <label className="text-[10px] uppercase tracking-wide text-white/40">Standing</label>
+              {standingOverride ? (
+                <span className="text-[10px] text-emerald-300/90">Pinned by you</span>
+              ) : (
+                <span className="text-[10px] text-white/35">Using auto</span>
+              )}
+            </div>
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="group"
               aria-label="Standing tier override"
+              data-testid="standing-override-select"
+            >
+              <button
+                type="button"
+                disabled={standingBusy}
+                aria-pressed={!standingOverride}
+                onClick={() => {
+                  if (!standingOverride) return;
+                  void persistOverride('standing_override', null).catch(() => undefined);
+                }}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs transition disabled:opacity-60 ${
+                  !standingOverride
+                    ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100'
+                    : 'border-white/10 bg-black/40 text-white/65 hover:border-emerald-500/35 hover:text-white'
+                }`}
+              >
+                Auto
+              </button>
+              {standingTierOptions.map((opt) => {
+                const selected = standingOverride === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={standingBusy}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      if (selected) return;
+                      void persistOverride('standing_override', {
+                        tier: opt.value,
+                        set_at: new Date().toISOString(),
+                      }).catch(() => undefined);
+                    }}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs transition disabled:opacity-60 ${
+                      selected
+                        ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100'
+                        : 'border-white/10 bg-black/40 text-white/65 hover:border-emerald-500/35 hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Keep a hidden native select for older tests / assistive flows */}
+            <select
+              className="sr-only"
+              aria-hidden="true"
+              tabIndex={-1}
               value={standingOverride ?? 'auto'}
               onChange={(e) => {
                 const v = e.target.value;
-                void persistOverride('standing_override', v === 'auto' ? null : { tier: v, set_at: new Date().toISOString() });
+                void persistOverride(
+                  'standing_override',
+                  v === 'auto' ? null : { tier: v, set_at: new Date().toISOString() },
+                ).catch(() => undefined);
               }}
-              className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-sm text-white focus:border-emerald-500/50 focus:outline-none"
             >
-              <option value="auto">Auto{tierLabels[socialStanding?.tier ?? ''] ? ` (${tierLabels[socialStanding!.tier!]})` : ''}</option>
-              <option value="inner_circle">Inner circle</option>
-              <option value="close">Close</option>
-              <option value="regular">Regular</option>
-              <option value="peripheral">Peripheral</option>
+              <option value="auto">Auto</option>
+              {standingTierOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
+
           <div>
-            <label className="text-[10px] uppercase tracking-wide text-white/40 mb-1 block">
-              Impact on you {impactOverride !== null ? `· ${impactOverride}/100` : ''}
-            </label>
-            {impactOverride === null ? (
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="text-[10px] uppercase tracking-wide text-white/40" htmlFor="impact-override-slider">
+                Impact on you
+              </label>
+              <span className="text-[11px] tabular-nums text-white/70">
+                {impactDraft !== null ? `${impactDraft}/100` : `Auto · ${autoImpact}/100`}
+              </span>
+            </div>
+            <input
+              id="impact-override-slider"
+              type="range"
+              min={0}
+              max={100}
+              value={impactDraft ?? autoImpact}
+              aria-label="Impact on me"
+              data-testid="impact-override-slider"
+              disabled={impactBusy}
+              onChange={(e) => setImpactDraft(Number(e.target.value))}
+              className="w-full accent-emerald-400"
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                data-testid="impact-override-enable"
-                onClick={() => void persistOverride('impact_override', Math.round(editedCharacter.analytics?.character_influence_on_user ?? 50))}
-                className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-left text-xs text-white/60 hover:border-emerald-500/40"
+                data-testid="impact-override-save"
+                disabled={
+                  impactBusy ||
+                  impactDraft === null ||
+                  (impactOverride !== null && !impactDirty)
+                }
+                onClick={() => {
+                  if (impactDraft === null) return;
+                  void persistOverride('impact_override', impactDraft).catch(() => undefined);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-40 disabled:pointer-events-none"
               >
-                Auto ({Math.round(editedCharacter.analytics?.character_influence_on_user ?? 0)}/100) — tap to set
+                {impactBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {impactOverride === null ? 'Save impact' : 'Save impact'}
               </button>
-            ) : (
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={impactOverride}
-                aria-label="Impact on me"
-                data-testid="impact-override-slider"
-                onChange={(e) => setEditedCharacter((prev) => ({
-                  ...prev,
-                  metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), impact_override: Number(e.target.value) },
-                }))}
-                onPointerUp={(e) => void persistOverride('impact_override', Number((e.currentTarget as HTMLInputElement).value))}
-                className="w-full accent-emerald-400 mt-2"
-              />
-            )}
+              {impactOverride === null && impactDraft === null && (
+                <button
+                  type="button"
+                  data-testid="impact-override-enable"
+                  disabled={impactBusy}
+                  onClick={() => setImpactDraft(Math.max(autoImpact, 1))}
+                  className="rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/65 hover:border-emerald-500/35 hover:text-white disabled:opacity-60"
+                >
+                  Customize
+                </button>
+              )}
+              {(impactOverride !== null || impactDraft !== null) && (
+                <button
+                  type="button"
+                  disabled={impactBusy}
+                  onClick={() => {
+                    setImpactDraft(null);
+                    void persistOverride('impact_override', null).catch(() => undefined);
+                  }}
+                  className="rounded-lg border border-white/10 bg-transparent px-3 py-1.5 text-xs text-white/50 hover:text-white/80 disabled:opacity-60"
+                >
+                  Use auto
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {rankingError && (
+          <p className="mt-3 text-xs text-red-300" role="alert">
+            {rankingError}
+          </p>
+        )}
       </section>
 
       {/* ── 8. Detected attributes ─────────────────────────────────────── */}

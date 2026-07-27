@@ -358,6 +358,12 @@ export type StreamingChatResponse = {
     durability?: ChatDurabilityPayload;
     /** Occasional themed "Noted." lead-in on a normal reply. */
     notedLeadIn?: boolean;
+    /** Chat-driven group/organization write outcome — drives the client's success toast. */
+    organizationId?: string;
+    organizationName?: string;
+    groupCreated?: boolean;
+    groupRenamed?: boolean;
+    groupWriteMembers?: unknown;
     continuityAcknowledged?: {
       signals: string[];
       entityHints: string[];
@@ -391,6 +397,25 @@ export type StreamingChatResponse = {
     /** Resolved shape of a mode-routed turn, replayed by "try again". */
     resolvedTurnState?: import('./chat/assistantPersistMetadata').ResolvedTurnState;
   };
+  /**
+   * The chip-eligible entity list at return time only reflects the user's
+   * message — the reply text doesn't exist yet (the stream hasn't been
+   * consumed). Call this once the full reply is assembled to fold in any
+   * entity names the assistant itself introduced, so they get highlighted too.
+   */
+  resolveReplyMentionedEntities?: (replyText: string) => Promise<MentionedEntityChip[]>;
+};
+
+export type MentionedEntityChip = {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'organization';
+  confidence?: number;
+  provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+  mentionStatus?: 'confirmed' | 'mentioned_only';
+  lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
+  identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
+  identityConfidence?: number;
 };
 
 class OmegaChatService {
@@ -2793,6 +2818,37 @@ When updating relationship analytics or emotional signals from this thread, weig
       }),
     );
 
+    // The reply text doesn't exist yet at this point in a streaming turn — the
+    // caller (SSE stream consumer) invokes this once it has the full assistant
+    // text, so entity names the assistant itself introduces still get chips.
+    const resolveReplyMentionedEntities = async (replyText: string): Promise<MentionedEntityChip[]> => {
+      if (!replyText?.trim()) return mentionedEntities;
+      try {
+        const rawReplyEntities = await resolveMessageEntitiesForDisplay(userId, replyText);
+        const scopedReplyEntities = responseScope.filterEntitiesForPresentation(rawReplyEntities, scopePlan);
+        const merged = new Map(mentionedEntities.map((e) => [e.id, e]));
+        for (const e of scopedReplyEntities) {
+          if (!merged.has(e.id)) {
+            merged.set(e.id, {
+              id: e.id,
+              name: e.name,
+              type: e.type,
+              confidence: e.confidence,
+              provenance: e.provenance,
+              mentionStatus: e.mentionStatus,
+              lifecycleStatus: e.lifecycleStatus,
+              identityStage: e.identityStage,
+              identityConfidence: e.identityConfidence,
+            });
+          }
+        }
+        return [...merged.values()];
+      } catch (err) {
+        logger.debug({ err, userId }, 'Failed to resolve entities from assistant reply text (non-blocking)');
+        return mentionedEntities;
+      }
+    };
+
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
     characterNicknameService.extractNicknamesFromConversation(userId, message, conversationHistory)
@@ -2964,7 +3020,8 @@ When updating relationship analytics or emotional signals from this thread, weig
           retrievalMs: Date.now() - ragStart,
           contextItems: hqiResults.length + (sources?.length ?? 0),
         }
-      }
+      },
+      resolveReplyMentionedEntities,
     };
     }); // afterPersist — never report unsaved when entryId exists
   }
@@ -3659,8 +3716,10 @@ When updating relationship analytics or emotional signals from this thread, weig
         });
     }
 
-    // Resolve entities from character/location/org books + omega_entities (not legacy people_places)
-    const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    // Resolve entities from character/location/org books + omega_entities (not legacy people_places).
+    // Scan both the user's message AND the generated reply — names the assistant
+    // itself introduces (e.g. from retrieval context) should still get chips.
+    const rawDisplayEntities = await resolveMessageEntitiesForDisplay(userId, `${message}\n${answer}`);
     const displayEntities = responseScope.filterEntitiesForPresentation(rawDisplayEntities, scopePlan);
     const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
     const mentionedEntities = displayEntities.map(

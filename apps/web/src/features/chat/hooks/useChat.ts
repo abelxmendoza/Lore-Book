@@ -7,6 +7,7 @@ import { useGuest, GUEST_CHAT_LIMIT } from '../../../contexts/GuestContext';
 import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
+import { useToast } from '../../../components/ui/toast';
 import { invalidateAfterChatIngestion } from '../../../store/invalidateEntityCache';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
 import {
@@ -204,7 +205,8 @@ export const useChat = () => {
   const soulProfileContext = soulProfileChat?.soulProfileContext ?? undefined;
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  
+  const { success: showSuccessToast, ToastContainer: GroupToastContainer } = useToast({ maxVisible: 1 });
+
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -831,6 +833,11 @@ export const useChat = () => {
             progressIntervalRef.current = null;
           }
           
+          if ((meta.groupCreated || meta.groupRenamed) && typeof meta.organizationName === 'string') {
+            const verb = meta.groupRenamed ? 'renamed' : 'created';
+            showSuccessToast(`Group "${meta.organizationName}" ${verb}.`, 5000, 'group');
+          }
+
           if (meta.loreUpdates && isGuest && guestState?.guestId) {
             applyGuestLoreUpdates(guestState.guestId, meta.loreUpdates);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
@@ -1422,5 +1429,6 @@ export const useChat = () => {
     clearConversation,
     messageRefs: conversationStore.messageRefs,
     registerMessageRef: conversationStore.registerMessageRef,
+    GroupToastContainer,
   };
 };

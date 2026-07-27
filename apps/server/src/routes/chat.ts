@@ -19,7 +19,7 @@ import {
   listMentionableEntities,
   sanitizeComposerEntities,
 } from '../services/entities/entityMentionIndexService';
-import { writeChatSseEvent } from '../utils/sseWrite';
+import { writeChatSseEvent, commitChatSseHeaders } from '../utils/sseWrite';
 import { MAX_CHAT_IMAGES_PER_TURN } from '../services/chat/chatImageInput';
 import { isOpenAiBudgetExceededError } from '../services/openaiBudgetService';
 import {
@@ -36,7 +36,7 @@ import {
   detectFirstSessionCallback,
   shouldRunFirstSessionCallback,
 } from '../services/chat/firstSessionContinuity';
-import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
+import { isFallbackEnabled, isFallbackError, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { classifyIngestionError } from '../services/ingestion/ingestionJobStates';
 import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
@@ -357,9 +357,21 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     // fan-out and the streamed answer; flushed once after the stream is consumed.
     beginMessageCost({ label: 'chat', userId });
 
-    // Resolve the chat stream BEFORE committing SSE headers.
-    // If chatStream() throws (OpenAI quota, DB error, etc.) we can still return a
-    // proper JSON error response instead of sending a broken SSE stream.
+    // Commit SSE headers BEFORE calling chatStream(). RAG retrieval, evidence
+    // scoring, and routing inside chatStream() can legitimately take tens of
+    // seconds; with headers uncommitted the connection carries zero bytes
+    // that whole time, which is exactly what idle-timing proxies kill. Errors
+    // that used to become clean JSON responses (headers not yet sent) are now
+    // reported as an SSE `error` frame instead — the client already treats
+    // that identically to a JSON error (see useChatStream.ts's `type === 'error'`
+    // handling), so this is a transport change, not a behavior change.
+    commitChatSseHeaders(res);
+    heartbeatTimer = setInterval(() => {
+      if (!clientGone && !res.writableEnded) {
+        sseWrite({ type: 'metadata', data: { heartbeat: true } });
+      }
+    }, 15_000);
+
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
       result = await omegaChatService.chatStream(
@@ -380,13 +392,16 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       const mc = getMessageCost();
       if (mc) mc.messageId = result.metadata.messageId;
     } catch (setupError) {
+      // The heartbeat is only re-armed inside the streaming try/finally below —
+      // every branch here returns before reaching it, so clear it explicitly.
+      clearInterval(heartbeatTimer);
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))
           ? 'OpenAI 429 quota exceeded'
           : `OpenAI error: ${setupError instanceof Error ? setupError.message.substring(0, 60) : 'unknown'}`;
         const msgForFallback = (req.body as { message?: string })?.message ?? '';
-        // Headers not yet sent — streamFallbackResponse will set them.
-        await streamFallbackResponse(res, msgForFallback, reason);
+        // Headers already committed above — write into the open stream.
+        writeFallbackToOpenStream(res, msgForFallback, reason);
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
 
@@ -400,7 +415,17 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             stage: setupError.stage,
             errorCategory: setupError.category,
           });
-          res.status(setupError.httpStatus).json(contract);
+          sseWrite({
+            type: 'error',
+            error: contract.notice.message,
+            notice: contract.notice,
+            userMessage: contract.userMessage,
+            assistantResponse: contract.assistantResponse,
+            ingestion: contract.ingestion,
+            durability: contract.durability,
+            code: setupError.code,
+          });
+          if (!res.writableEnded) res.end();
           return;
         }
 
@@ -428,7 +453,17 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             },
             'Chat stream failed after user message was durable — returning salvaged durability',
           );
-          res.status(502).json(contract);
+          sseWrite({
+            type: 'error',
+            error: contract.notice.message,
+            notice: contract.notice,
+            userMessage: contract.userMessage,
+            assistantResponse: contract.assistantResponse,
+            ingestion: contract.ingestion,
+            durability: contract.durability,
+            code: classified.code,
+          });
+          if (!res.writableEnded) res.end();
           return;
         }
 
@@ -449,102 +484,75 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
                   message: budgetErr.userMessage ?? 'AI budget exceeded.',
                 },
               };
-          res.status(403).json({
-            error: 'openai_budget_exceeded',
+          const notice = {
+            code: 'message_saved_assistant_failed',
+            message:
+              (durabilityPart as { notice?: { message?: string } }).notice?.message ??
+              budgetErr.userMessage ??
+              'AI budget exceeded.',
+          };
+          sseWrite({
+            type: 'error',
+            error: notice.message,
             code: 'openai_budget_exceeded',
             stage: 'response_generation',
-            budget: budgetErr.budget,
-            ...durabilityPart,
-            notice: {
-              code: 'message_saved_assistant_failed',
-              message:
-                (durabilityPart as { notice?: { message?: string } }).notice?.message ??
-                budgetErr.userMessage ??
-                'AI budget exceeded.',
-            },
+            notice,
+            userMessage: durabilityPart.userMessage,
+            assistantResponse: durabilityPart.assistantResponse,
+            ingestion: durabilityPart.ingestion,
           });
+          if (!res.writableEnded) res.end();
           return;
         }
         if (isOpenAIQuotaError(setupError)) {
           // Without ChatDurabilityError we cannot prove save status — stay honest.
           // Do NOT claim message_saved; do NOT force the UI into "unsaved restore"
           // with a false persisted:false when the client may hydrate the thread.
-          res.status(429).json({
-            error: 'OpenAI quota exhausted',
+          const message =
+            'Response generation failed because the OpenAI quota is exhausted. If your message was already accepted, it may still be processing — check the thread after refresh rather than resending.';
+          sseWrite({
+            type: 'error',
+            error: message,
+            code: 'openai_quota_exhausted',
             stage: 'response_generation',
+            notice: { code: 'unknown', message },
             userMessage: { persisted: false },
             assistantResponse: { status: 'failed', errorCategory: 'quota_exhausted' },
             ingestion: { status: 'UNKNOWN' },
-            notice: {
-              code: 'unknown',
-              message:
-                'Response generation failed because the OpenAI quota is exhausted. If your message was already accepted, it may still be processing — check the thread after refresh rather than resending.',
-            },
-            memory: {
-              user_message_saved: false,
-              ingestion_started: false,
-              entity_creation_started: false,
-              assistant_message_saved: false,
-            },
           });
+          if (!res.writableEnded) res.end();
           return;
         }
         if (setupError instanceof StorageBlockedError) {
-          res.status(setupError.statusCode).json({
+          sseWrite({
+            type: 'error',
             error: setupError.message,
             code: setupError.apiCode,
             stage: 'message_persistence',
+            notice: { code: 'message_not_saved', message: setupError.message },
             userMessage: { persisted: false },
             assistantResponse: { status: 'failed' },
             ingestion: { status: 'NOT_SCHEDULED' },
-            notice: {
-              code: 'message_not_saved',
-              message: setupError.message,
-            },
-            memory: {
-              user_message_saved: false,
-              ingestion_started: false,
-              entity_creation_started: false,
-              assistant_message_saved: false,
-            },
           });
+          if (!res.writableEnded) res.end();
           return;
         }
-        // Headers not yet committed — safe to send JSON.
-        res.status(500).json({
-          error: 'Failed to process chat message',
+        const message =
+          'Something went wrong while processing your message. If it was already accepted, it may still appear in the thread after refresh — check before resending.';
+        sseWrite({
+          type: 'error',
+          error: setupError instanceof Error ? setupError.message : 'Unknown error',
+          code: 'unknown',
           stage: 'response_generation',
-          message: setupError instanceof Error ? setupError.message : 'Unknown error',
+          notice: { code: 'unknown', message },
           userMessage: { persisted: false },
           assistantResponse: { status: 'failed' },
           ingestion: { status: 'UNKNOWN' },
-          notice: {
-            code: 'unknown',
-            message:
-              'Something went wrong while processing your message. If it was already accepted, it may still appear in the thread after refresh — check before resending.',
-          },
         });
+        if (!res.writableEnded) res.end();
       }
       return;
     }
-
-    // chatStream() succeeded — now commit SSE headers and begin streaming.
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    // A long tool-call chain or slow model turn can leave the connection with
-    // no bytes in flight for tens of seconds. Silent idle SSE connections get
-    // killed by some intermediary proxies/load balancers without a clean
-    // close the client can detect, leaving the reply stuck "streaming"
-    // forever on the client (see recallIntentPatterns fix — same incident
-    // class). A harmless periodic metadata frame keeps the connection alive
-    // and gives the client's idle watchdog something to reset on.
-    heartbeatTimer = setInterval(() => {
-      if (!clientGone && !res.writableEnded) {
-        sseWrite({ type: 'metadata', data: { heartbeat: true } });
-      }
-    }, 15_000);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err =>
@@ -638,6 +646,11 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           staleProjectionSummary: result.metadata.staleProjectionSummary,
           resolvedTurnState: result.metadata.resolvedTurnState,
           notedLeadIn: Boolean(result.metadata.notedLeadIn),
+          organizationId: result.metadata.organizationId,
+          organizationName: result.metadata.organizationName,
+          groupCreated: result.metadata.groupCreated,
+          groupRenamed: result.metadata.groupRenamed,
+          groupWriteMembers: result.metadata.groupWriteMembers,
           ...(streamTokenUsage ? { tokenUsage: streamTokenUsage } : {}),
         }),
         status,
@@ -667,6 +680,13 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
         throw new Error(
           'The assistant response ended before any content was received. Please retry this reply.',
         );
+      }
+      if (fullResponse.trim().length > 0 && result.resolveReplyMentionedEntities) {
+        try {
+          result.metadata.mentionedEntities = await result.resolveReplyMentionedEntities(fullResponse);
+        } catch (err) {
+          logger.debug({ err }, 'Failed to merge reply-derived entity mentions (non-blocking)');
+        }
       }
       await persistAssistant(clientGone ? 'partial' : 'complete');
       if (streamResponseId && req.user?.id && persistSessionId) {
@@ -735,6 +755,13 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       }
     } catch (streamError) {
       // Mid-stream failure: persist whatever we got so the assistant turn is never lost.
+      if (fullResponse.trim().length > 0 && result.resolveReplyMentionedEntities) {
+        try {
+          result.metadata.mentionedEntities = await result.resolveReplyMentionedEntities(fullResponse);
+        } catch (err) {
+          logger.debug({ err }, 'Failed to merge reply-derived entity mentions (non-blocking)');
+        }
+      }
       await persistAssistant(fullResponse.trim().length > 0 ? 'partial' : 'failed');
       // Mid-stream failure — headers committed, can only write an error event.
       if (isFallbackEnabled() && isFallbackError(streamError)) {

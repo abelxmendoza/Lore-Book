@@ -1682,6 +1682,38 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       if (key in metadataPatch && metadataPatch[key] === null) delete updatedMetadata[key];
     }
 
+    // Apply standing override to social_standing in the same write so the UI
+    // (and any concurrent recompute) sees the pin immediately — not only after
+    // the async full-user recompute finishes.
+    if ('standing_override' in metadataPatch) {
+      const VALID_STANDING_TIERS = new Set([
+        'inner_circle',
+        'close',
+        'regular',
+        'peripheral',
+        'public_figure',
+      ]);
+      const prevStanding =
+        existingMetadata.social_standing && typeof existingMetadata.social_standing === 'object'
+          ? ({ ...(existingMetadata.social_standing as Record<string, unknown>) } as Record<string, unknown>)
+          : ({} as Record<string, unknown>);
+      const override = updatedMetadata.standing_override as { tier?: string } | undefined;
+      if (override?.tier && VALID_STANDING_TIERS.has(override.tier)) {
+        updatedMetadata.social_standing = {
+          ...prevStanding,
+          tier: override.tier,
+          overridden: true,
+          computed_at: new Date().toISOString(),
+        };
+      } else if (metadataPatch.standing_override === null) {
+        delete prevStanding.overridden;
+        updatedMetadata.social_standing = {
+          ...prevStanding,
+          computed_at: new Date().toISOString(),
+        };
+      }
+    }
+
     // Get existing character to check if it's a nickname
     const { data: existingChar } = await supabaseAdmin
       .from('characters')

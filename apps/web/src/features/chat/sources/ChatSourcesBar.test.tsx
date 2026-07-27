@@ -45,4 +45,26 @@ describe('ChatSourcesBar', () => {
     expect(payload).toContain('Usage: supporting');
     expect(await screen.findByText('Copied')).toBeInTheDocument();
   });
+
+  it('collapses and expands the source list', () => {
+    render(
+      <ChatSourcesBar
+        sources={[
+          { type: 'character', id: 'c1', title: 'Marcus', usage: 'supporting' },
+        ]}
+      />,
+    );
+
+    const toggle = screen.getByTestId('chat-sources-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Sources supporting this answer')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
+  });
 });

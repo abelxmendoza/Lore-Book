@@ -145,7 +145,18 @@ class SocialStandingService {
 
       // User override wins over the computed tier; computed score is kept so
       // the organic signal stays visible alongside the pin.
-      const overrideTier = c.metadata?.standing_override?.tier as SocialStanding['tier'] | undefined;
+      // Re-read metadata before write so a concurrent PATCH (e.g. standing_override)
+      // is not clobbered by a stale snapshot from the start of this recompute.
+      const { data: freshRow } = await supabaseAdmin
+        .from('characters')
+        .select('metadata')
+        .eq('id', c.id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      const freshMeta = ((freshRow as { metadata?: Record<string, unknown> } | null)?.metadata
+        ?? c.metadata
+        ?? {}) as Record<string, unknown>;
+      const overrideTier = (freshMeta.standing_override as { tier?: SocialStanding['tier'] } | undefined)?.tier;
       const hasOverride = Boolean(overrideTier && VALID_TIERS.includes(overrideTier));
 
       const standing: SocialStanding = {
@@ -159,7 +170,7 @@ class SocialStandingService {
 
       await supabaseAdmin
         .from('characters')
-        .update({ metadata: { ...(c.metadata ?? {}), social_standing: standing } })
+        .update({ metadata: { ...freshMeta, social_standing: standing } })
         .eq('id', c.id)
         .eq('user_id', userId);
       updated++;

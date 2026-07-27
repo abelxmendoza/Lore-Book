@@ -17,6 +17,7 @@ import { openai } from '../openaiClient';
 import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
 import { isCastRosterQuery, isCharacterBookWriteRequest, isOrganizationGroupWriteRequest } from '@lorebook/api-contracts';
+import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
@@ -62,7 +63,7 @@ class ModeRouterService {
 
     try {
       // Step 1: Quick pattern checks (fast, <50ms)
-      const quickCheck = this.quickModeCheck(message);
+      const quickCheck = this.quickModeCheck(message, conversationHistory);
       if (quickCheck.confidence > 0.8) {
         // Always log routing decisions at info — the router gates the entire
         // conversational pipeline, and silent misroutes cost weeks to find.
@@ -98,7 +99,10 @@ class ModeRouterService {
   /**
    * Fast pattern-based mode detection (<50ms)
    */
-  private quickModeCheck(message: string): ModeRoutingResult {
+  private quickModeCheck(
+    message: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  ): ModeRoutingResult {
     const text = message.toLowerCase().trim();
     const messageLength = message.length;
 
@@ -118,6 +122,16 @@ class ModeRouterService {
         mode: 'ORGANIZATION_GROUP_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit organization/group create or roster write request detected',
+      };
+    }
+
+    // Bare reply to "what do you want to name it?" (e.g. "popular e-girls") —
+    // no group/crew keyword, so isOrganizationGroupWriteRequest alone misses it.
+    if (isReplyToGroupNamingPrompt(message, conversationHistory)) {
+      return {
+        mode: 'ORGANIZATION_GROUP_WRITE',
+        confidence: 0.9,
+        reasoning: 'Bare reply to a pending group-naming prompt',
       };
     }
 

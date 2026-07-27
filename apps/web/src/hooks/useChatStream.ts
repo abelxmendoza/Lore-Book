@@ -433,8 +433,14 @@ export const useChatStream = () => {
           } else if (data.type === 'error') {
             const streamErr = new Error(data.error || 'Stream error') as Error & {
               durability?: ChatStreamDurability;
+              status?: number;
             };
             if (data.durability) streamErr.durability = data.durability;
+            // Setup errors now arrive as SSE frames instead of HTTP status codes
+            // (headers commit before chatStream() runs — see chat.ts). Synthesize
+            // the one status code a downstream consumer actually branches on:
+            // chatSendRateLimit's cooldown gate checks `error.status === 429`.
+            if (data.code === 'openai_quota_exhausted') streamErr.status = 429;
             throw streamErr;
           }
         }

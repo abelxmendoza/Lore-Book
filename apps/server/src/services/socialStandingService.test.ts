@@ -11,9 +11,12 @@ type CharFixture = Record<string, unknown>;
 // the given result. characters updates are captured for assertions.
 function makeChain(result: unknown, onUpdate?: (payload: unknown) => void) {
   const c: any = {};
-  for (const m of ['select', 'eq', 'limit', 'update', 'contains', 'in']) {
+  for (const m of ['select', 'eq', 'limit', 'update', 'contains', 'in', 'maybeSingle', 'single']) {
     c[m] = vi.fn((...args: unknown[]) => {
       if (m === 'update' && onUpdate) onUpdate(args[0]);
+      if (m === 'maybeSingle' || m === 'single') {
+        return Promise.resolve(result);
+      }
       return c;
     });
   }
@@ -24,7 +27,10 @@ function makeChain(result: unknown, onUpdate?: (payload: unknown) => void) {
 function setupDb(chars: CharFixture[]) {
   const updates: Array<Record<string, any>> = [];
   vi.mocked(supabaseAdmin.from).mockImplementation(((table: string) => {
-    if (table === 'characters') return makeChain({ data: chars }, p => updates.push(p as Record<string, any>));
+    if (table === 'characters') {
+      // List query returns all chars; per-id refresh returns the matching row.
+      return makeChain({ data: chars }, (p) => updates.push(p as Record<string, any>));
+    }
     if (table === 'entity_facts') return makeChain({ data: [] });
     if (table === 'resolved_events') return makeChain({ data: [] });
     return makeChain({ data: [] });

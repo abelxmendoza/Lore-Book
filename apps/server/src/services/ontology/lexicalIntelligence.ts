@@ -179,7 +179,7 @@ export function discoverEntities(text: string): DiscoveredEntity[] {
   while ((m = possessive.exec(t)) !== null) {
     const owner = m[1];
     const ownerEntry = lookupKeyword(owner);
-    if (ownerEntry?.category === 'FAMILY') {
+    if (ownerEntry?.category === 'FAMILY' && scoreKinshipInContext(owner, text).isKin) {
       out.push({ surface: owner, name: titleCase(owner), domain: 'PERSON', category: 'FAMILY', subcategory: ownerEntry.subcategory, confidence: ownerEntry.confidence, reason: 'kinship owner of dwelling' });
     } else {
       out.push({ surface: owner, name: titleCase(owner), domain: 'PERSON', category: 'PERSON', confidence: 0.6, reason: 'possessive owner (proper noun)' });
@@ -192,6 +192,7 @@ export function discoverEntities(text: string): DiscoveredEntity[] {
     if (HINT_ONLY_CATEGORIES.has(entry.category) || entry.domain === 'TIME') continue;
     if (entry.category === 'VENUE' && ['school', 'university', 'college', 'campus', 'classroom', 'gym', 'bar', 'restaurant', 'cafe', 'office'].includes(alias)) continue;
     if (t.includes(` ${alias} `) || t.includes(` ${alias}'s `)) {
+      if (entry.category === 'FAMILY' && !scoreKinshipInContext(alias, text).isKin) continue;
       out.push({ surface: alias, name: titleCase(alias), domain: entry.domain, category: entry.category, subcategory: entry.subcategory, confidence: entry.confidence, reason: `glossary:${entry.domain}/${entry.category}` });
     }
   }

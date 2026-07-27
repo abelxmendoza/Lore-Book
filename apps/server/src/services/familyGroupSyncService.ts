@@ -19,21 +19,26 @@ import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
 
 const KINSHIP_ROLES: Array<[RegExp, string]> = [
-  [/(^|\s)(t[ií]o|uncle)(\s|$)/i, 'uncle'],
-  [/(^|\s)(t[ií]a|aunt|auntie)(\s|$)/i, 'aunt'],
-  [/(^|\s)(abuel[oa]|grand(ma|pa|mother|father))(\s|$)/i, 'grandparent'],
-  [/(^|\s)(mom|mother|mama)(\s|$)/i, 'mother'],
-  [/(^|\s)(dad|father|papa)(\s|$)/i, 'father'],
-  [/(^|\s)(prim[oa]|cousin)(\s|$)/i, 'cousin'],
-  [/(^|\s)(herman[oa]|brother|sister)(\s|$)/i, 'sibling'],
-  [/(^|\s)(sobrin[oa]|nephew|niece)(\s|$)/i, 'nibling'],
-  [/(^|\s)step\s?(mom|dad|mother|father)(\s|$)/i, 'step-parent'],
+  [/^(t[ií]o|uncle)(\s|$)/i, 'uncle'],
+  [/^(t[ií]a|aunt|auntie)(\s|$)/i, 'aunt'],
+  [/^(abuel[oa]|grand(ma|pa|mother|father))(\s|$)/i, 'grandparent'],
+  [/^(mom|mother|mama)(\s|$)/i, 'mother'],
+  [/^(dad|father|papa)(\s|$)/i, 'father'],
+  [/^(prim[oa]|cousin)(\s|$)/i, 'cousin'],
+  [/^(herman[oa]|brother|sister)(\s|$)/i, 'sibling'],
+  [/^(sobrin[oa]|nephew|niece)(\s|$)/i, 'nibling'],
+  [/^step\s?(mom|dad|mother|father)(\s|$)/i, 'step-parent'],
 ];
 
-/** Kinship role from a display name ("Tio Ralph" → "uncle"). Pure. */
+/**
+ * Kinship role from a display name ("Tio Ralph" → "uncle"). Requires the
+ * kinship term to lead the name — a trailing kinship word ("Goth Tio") is a
+ * nightlife nickname, not a real relation. Pure.
+ */
 export function kinshipRoleFromName(name: string): string | null {
+  const trimmed = name.trim();
   for (const [re, role] of KINSHIP_ROLES) {
-    if (re.test(name)) return role;
+    if (re.test(trimmed)) return role;
   }
   return null;
 }

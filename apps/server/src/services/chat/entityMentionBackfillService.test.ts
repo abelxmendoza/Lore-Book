@@ -113,7 +113,7 @@ describe('backfillMentionedEntitiesForUser', () => {
     expect(updates).toHaveLength(0);
   });
 
-  it('backfills mentionedEntities from the preceding user turn', async () => {
+  it('backfills mentionedEntities from the paired user turn and the assistant reply', async () => {
     assistantRows = [
       {
         id: 'a1',
@@ -138,7 +138,10 @@ describe('backfillMentionedEntitiesForUser', () => {
     const count = await backfillMentionedEntitiesForUser('user-1');
 
     expect(count).toBe(1);
-    expect(mockResolve).toHaveBeenCalledWith('user-1', 'I visited Tía Maria in San Diego.');
+    expect(mockResolve).toHaveBeenCalledWith(
+      'user-1',
+      'I visited Tía Maria in San Diego.\nThat sounds meaningful.',
+    );
     expect(updates).toHaveLength(1);
     expect(updates[0].id).toBe('a1');
     expect(updates[0].metadata.mentionedEntities).toEqual([
@@ -146,6 +149,39 @@ describe('backfillMentionedEntitiesForUser', () => {
       { id: 'l1', name: 'San Diego', type: 'location', confidence: 1, provenance: 'location_book' },
     ]);
     expect(updates[0].metadata.entity_backfill_at).toBeTruthy();
+  });
+
+  it('backfills entities introduced only in the assistant reply, not the user turn', async () => {
+    assistantRows = [
+      {
+        id: 'a3',
+        session_id: 's3',
+        content: 'You danced with Neon Pixie at the goth club.',
+        created_at: '2026-06-01T00:00:01Z',
+        metadata: {},
+      },
+    ];
+    userRows = [
+      {
+        session_id: 's3',
+        content: 'I went dancing this weekend.',
+        created_at: '2026-06-01T00:00:00Z',
+      },
+    ];
+    mockResolve.mockResolvedValue([
+      { id: 'c2', name: 'Neon Pixie', type: 'character', confidence: 0.9, provenance: 'character_book' },
+    ]);
+
+    const count = await backfillMentionedEntitiesForUser('user-1');
+
+    expect(count).toBe(1);
+    expect(mockResolve).toHaveBeenCalledWith(
+      'user-1',
+      'I went dancing this weekend.\nYou danced with Neon Pixie at the goth club.',
+    );
+    expect(updates[0].metadata.mentionedEntities).toEqual([
+      { id: 'c2', name: 'Neon Pixie', type: 'character', confidence: 0.9, provenance: 'character_book' },
+    ]);
   });
 
   it('marks entity_backfill_at even when no entities are detected', async () => {

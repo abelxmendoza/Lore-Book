@@ -718,9 +718,11 @@ export class GroupCandidateService {
     const name = memberName.toLowerCase();
 
     if (candidate.suggested_group_type === 'family') {
-      if (/\babuela|grandma|grandmother\b/.test(name)) return 'Grandmother';
-      if (/\bt[ií]a|aunt\b/.test(name)) return 'Aunt';
-      if (/\bt[ií]o|uncle\b/.test(name)) return 'Uncle';
+      // Kinship word must lead the name — a trailing one ("Goth Tio") is a
+      // nightlife nickname, not a real relation.
+      if (/^(abuela|grandma|grandmother)\b/.test(name)) return 'Grandmother';
+      if (/^(t[ií]a|aunt)\b/.test(name)) return 'Aunt';
+      if (/^(t[ií]o|uncle)\b/.test(name)) return 'Uncle';
       return 'Family member';
     }
     if (/clever programmer/.test(text) && /rafeh|qazi/.test(name)) return 'Teacher / mentor';
