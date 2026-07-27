@@ -60,12 +60,38 @@ export type ComposerAndContextDebugSnapshot = {
   };
 };
 
+/** People / Places / Actors / Building-on / Recent mentions for Copy all. */
+export type ThreadSurfaceDebugSnapshot = {
+  summaryLine?: string | null;
+  people?: string[];
+  places?: string[];
+  themes?: string[];
+  actors?: Array<{
+    name: string;
+    kind?: string;
+    role?: string;
+    status?: string;
+    mentions?: number;
+    entityId?: string | null;
+    actorType?: string;
+  }>;
+  buildingOn?: Array<{ id: string; name: string; type?: string }>;
+  recentMentions?: Array<{
+    id: string;
+    name: string;
+    lifecycleStatus?: string;
+    identityStage?: string;
+    identityConfidence?: number;
+  }>;
+};
+
 export type AdminChatDiagnosticContext = {
   threadId?: string | null;
   generatedAt?: string;
   runtimeEvents?: RuntimeEvent[];
   byMessageId?: Record<string, ChatMessageDiagnosticSnapshot>;
   composerAndContext?: ComposerAndContextDebugSnapshot;
+  threadSurface?: ThreadSurfaceDebugSnapshot;
 };
 
 const SENSITIVE_KEY =
@@ -274,6 +300,66 @@ export function formatComposerAndContextDebugSection(
   return lines.join('\n');
 }
 
+export function formatThreadSurfaceDebugSection(
+  snapshot: ThreadSurfaceDebugSnapshot,
+): string {
+  const lines: string[] = ['===== THREAD SURFACE DEBUG ====='];
+
+  const summary = snapshot.summaryLine?.trim();
+  lines.push(summary ? `Summary: ${summary}` : 'Summary: (none)');
+
+  const people = snapshot.people ?? [];
+  lines.push(`People (${people.length}): ${people.length ? people.join(', ') : '(none)'}`);
+
+  const places = snapshot.places ?? [];
+  lines.push(`Places (${places.length}): ${places.length ? places.join(', ') : '(none)'}`);
+
+  const themes = snapshot.themes ?? [];
+  lines.push(`Themes (${themes.length}): ${themes.length ? themes.join(', ') : '(none)'}`);
+
+  const actors = snapshot.actors ?? [];
+  lines.push(`Actors (${actors.length}):`);
+  if (actors.length === 0) lines.push('  (none)');
+  else {
+    for (const actor of actors) {
+      const bits = [
+        actor.kind,
+        actor.actorType,
+        actor.role,
+        actor.status,
+        actor.mentions != null ? `${actor.mentions} mentions` : null,
+      ].filter(Boolean);
+      const id = actor.entityId ? ` [${actor.entityId}]` : '';
+      lines.push(`- ${actor.name}${bits.length ? ` (${bits.join(', ')})` : ''}${id}`);
+    }
+  }
+
+  const buildingOn = snapshot.buildingOn ?? [];
+  lines.push(`Building on (${buildingOn.length}):`);
+  if (buildingOn.length === 0) lines.push('  (none)');
+  else {
+    for (const chip of buildingOn) {
+      lines.push(`- ${chip.name} (${chip.type ?? 'entity'}) [${chip.id}]`);
+    }
+  }
+
+  const recent = snapshot.recentMentions ?? [];
+  lines.push(`Recent mentions (${recent.length}):`);
+  if (recent.length === 0) lines.push('  (none)');
+  else {
+    for (const m of recent) {
+      const bits = [
+        m.lifecycleStatus,
+        m.identityStage,
+        m.identityConfidence != null ? `conf=${m.identityConfidence}` : null,
+      ].filter(Boolean);
+      lines.push(`- ${m.name}${bits.length ? ` (${bits.join(', ')})` : ''} [${m.id}]`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function buildComposerAndContextDebugSnapshot(input: {
   chatFocus?: ChatFocus | null;
   composerDraft?: string;
@@ -335,6 +421,7 @@ export function buildChatConversationCopyText(
   messages: Message[],
   adminDiagnostics?: AdminChatDiagnosticContext,
   composerAndContext?: ComposerAndContextDebugSnapshot,
+  threadSurface?: ThreadSurfaceDebugSnapshot,
 ): string {
   const transcript = messages
     .map((message) => {
@@ -350,9 +437,13 @@ export function buildChatConversationCopyText(
   const chipSection = chipSnapshot
     ? formatComposerAndContextDebugSection(chipSnapshot)
     : null;
+  const surfaceSnapshot = threadSurface ?? adminDiagnostics?.threadSurface;
+  const surfaceSection = surfaceSnapshot
+    ? formatThreadSurfaceDebugSection(surfaceSnapshot)
+    : null;
 
   if (!adminDiagnostics) {
-    return chipSection ? [transcript, '', chipSection].join('\n') : transcript;
+    return [transcript, '', surfaceSection, chipSection].filter(Boolean).join('\n');
   }
 
   const byMessageId = adminDiagnostics.byMessageId ?? {};
@@ -374,6 +465,7 @@ export function buildChatConversationCopyText(
       messageCount: messages.length,
       note: 'Read-only export. Attempted actions are not proof that records persisted.',
     },
+    threadSurface: surfaceSnapshot ?? null,
     composerAndContext: chipSnapshot ?? null,
     messages: diagnosticMessages,
     runtime: (adminDiagnostics.runtimeEvents ?? []).map((event) => ({
@@ -394,6 +486,7 @@ export function buildChatConversationCopyText(
   return [
     transcript,
     '',
+    ...(surfaceSection ? [surfaceSection, ''] : []),
     ...(chipSection ? [chipSection, ''] : []),
     '===== LOREBOOK ADMIN DIAGNOSTIC RECEIPT =====',
     JSON.stringify(receipt, null, 2),

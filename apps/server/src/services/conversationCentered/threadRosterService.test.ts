@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveRosterEntries,
   applyRosterOverrides,
+  applyCharacterEpithetsToRoster,
   activeRoster,
   rosterKey,
   rosterRole,
@@ -47,9 +48,8 @@ describe('threadRosterService — pure helpers', () => {
       expect(daisy.lastSeenRef).toBe('12.2');
       expect(daisy.role).toBe('main');
 
-      const band = entries.find((e) => e.entityId === 'o-heartbreak')!;
-      expect(band.kind).toBe('organization');
-      expect(band.role).toBe('mentioned');
+      // Orgs stay out of Actors (Places / Themes own venues and bands).
+      expect(entries.find((e) => e.entityId === 'o-heartbreak')).toBeUndefined();
     });
 
     it('sorts by mentions and omits refs when the thread has no number yet', () => {
@@ -123,6 +123,85 @@ describe('threadRosterService — pure helpers', () => {
 
       expect(entries.map((e) => e.name)).toEqual(['Marcus']);
       expect(entries[0].actorType).toBe('PERSON');
+    });
+
+    it('omits places, skills, events, and polluting person labels from Actors', () => {
+      const entries = deriveRosterEntries(
+        [
+          msg('m1', 1, 0, [
+            { id: 'c-jamie', name: 'Jamie', type: 'character' },
+            { id: 'l1', name: "Abuela's house", type: 'location' },
+            { id: 'l2', name: 'Costco', type: 'location' },
+            { id: 'o1', name: 'Costco', type: 'organization' },
+            { name: 'Cousin in', type: 'character' },
+            { name: 'June 3rd 2026', type: 'character' },
+            { name: 'Magic the Gathering', type: 'character' },
+            { name: 'current event', type: 'character' },
+            { id: 's1', name: 'DJing', type: 'skill' },
+          ]),
+        ],
+        5,
+      );
+
+      expect(entries.map((e) => e.name)).toEqual(['Jamie']);
+    });
+
+    it('collapses twin entity ids and appositive descriptor tails', () => {
+      const entries = deriveRosterEntries(
+        [
+          msg('m1', 1, 0, [
+            { id: 'g1', name: 'Goth Tio', type: 'character' },
+            { id: 'g2', name: 'Goth Tio', type: 'character' },
+            { id: 'h1', name: 'Neon Pixie', type: 'character' },
+            {
+              id: 'h2',
+              name: 'Neon Pixie from the Underground Scene',
+              type: 'character',
+            },
+            { id: 'r1', name: "Tío Ralph's", type: 'character' },
+          ]),
+        ],
+        9,
+      );
+
+      expect(entries.map((e) => e.name).sort()).toEqual(['Goth Tio', 'Neon Pixie', 'Tío Ralph']);
+      expect(entries.find((e) => e.name === 'Goth Tio')!.mentions).toBe(2);
+      expect(entries.find((e) => e.name === 'Neon Pixie')!.mentions).toBe(2);
+    });
+
+    it('strips "the Epithet" tails from actor display names', () => {
+      const entries = deriveRosterEntries(
+        [
+          msg('m1', 1, 0, [
+            { id: 'a1', name: 'Aunt Maribel the Hallway Guardian', type: 'character' },
+            { id: 'a1', name: 'Aunt Maribel', type: 'character' },
+          ]),
+        ],
+        3,
+      );
+
+      expect(entries.map((e) => e.name)).toEqual(['Aunt Maribel']);
+      expect(entries[0].mentions).toBe(2);
+    });
+
+    it('applyCharacterEpithetsToRoster composes intentional display titles', () => {
+      const entries = deriveRosterEntries(
+        [msg('m1', 1, 0, [{ id: 'a1', name: 'Aunt Maribel', type: 'character' }])],
+        1,
+      );
+      const decorated = applyCharacterEpithetsToRoster(
+        entries,
+        new Map([
+          [
+            'a1',
+            {
+              name: 'Aunt Maribel',
+              metadata: { epithet: 'Hallway Guardian' },
+            },
+          ],
+        ]),
+      );
+      expect(decorated.map((e) => e.name)).toEqual(['Aunt Maribel the Hallway Guardian']);
     });
 
     it('omits groups and unresolved from Cast — only RESOLVED identities', () => {

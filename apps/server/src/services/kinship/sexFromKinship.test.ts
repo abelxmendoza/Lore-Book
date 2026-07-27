@@ -6,6 +6,7 @@ import {
   sexFromKinshipString,
   canSoftWriteSex,
   kinshipSexMetadataPatch,
+  nameSexMetadataPatch,
 } from './sexFromKinship';
 
 describe('sexFromKinship', () => {
@@ -52,5 +53,34 @@ describe('sexFromKinship', () => {
       sex_source: 'kinship_inferred',
     });
     expect(kinshipSexMetadataPatch({ sex: 'female', sex_source: 'user_confirmed' }, 'male')).toBeNull();
+  });
+
+  describe('name_inferred precedence — a name guess is the weakest tier', () => {
+    it('a name guess fills an empty slot', () => {
+      expect(canSoftWriteSex({}, 'name_inferred')).toBe(true);
+      expect(nameSexMetadataPatch({}, 'male')).toEqual({ sex: 'male', sex_source: 'name_inferred' });
+    });
+
+    it('a name guess never overwrites a kinship-inferred value', () => {
+      expect(canSoftWriteSex({ sex: 'female', sex_source: 'kinship_inferred' }, 'name_inferred')).toBe(false);
+      expect(nameSexMetadataPatch({ sex: 'female', sex_source: 'kinship_inferred' }, 'male')).toBeNull();
+    });
+
+    it('a name guess never overwrites user_confirmed/explicit sex', () => {
+      expect(canSoftWriteSex({ sex: 'male', sex_source: 'user_confirmed' }, 'name_inferred')).toBe(false);
+      expect(canSoftWriteSex({ sex: 'male', sex_source: 'explicit' }, 'name_inferred')).toBe(false);
+    });
+
+    it('kinship inference can still overwrite a prior name-inferred guess', () => {
+      expect(canSoftWriteSex({ sex: 'male', sex_source: 'name_inferred' }, 'kinship_inferred')).toBe(true);
+      expect(kinshipSexMetadataPatch({ sex: 'male', sex_source: 'name_inferred' }, 'female')).toEqual({
+        sex: 'female',
+        sex_source: 'kinship_inferred',
+      });
+    });
+
+    it('a second name-inferred pass does not re-overwrite an existing name-inferred value', () => {
+      expect(canSoftWriteSex({ sex: 'male', sex_source: 'name_inferred' }, 'name_inferred')).toBe(false);
+    });
   });
 });

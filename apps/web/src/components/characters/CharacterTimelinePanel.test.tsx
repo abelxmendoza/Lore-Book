@@ -117,7 +117,7 @@ describe('CharacterTimelinePanel', () => {
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
     expect(screen.getByText('Graduated college')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText(/search jerry's timeline/i), {
+    fireEvent.change(screen.getByPlaceholderText(/search jerry's story/i), {
       target: { value: 'dinner' },
     });
 
@@ -134,11 +134,11 @@ describe('CharacterTimelinePanel', () => {
 
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText(/search jerry's timeline/i), {
+    fireEvent.change(screen.getByPlaceholderText(/search jerry's story/i), {
       target: { value: 'nonexistent event' },
     });
 
-    expect(screen.getByText(/no timeline events match/i)).toBeInTheDocument();
+    expect(screen.getByText(/no story items match/i)).toBeInTheDocument();
     expect(screen.queryByText('Dinner with Jerry')).not.toBeInTheDocument();
   });
 

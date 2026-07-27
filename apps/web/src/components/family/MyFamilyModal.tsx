@@ -3,6 +3,7 @@ import { Users, UserCheck, UserX, Loader2 } from 'lucide-react';
 
 import { Modal } from '../ui/modal';
 import { fetchJson } from '../../lib/api';
+import { formatFamilyMemberDisplayName } from '../../lib/familyMemberDisplay';
 
 interface FamilyMember {
   id: string;
@@ -148,8 +149,10 @@ export function MyFamilyModal({ isOpen, onClose }: Props) {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {list.map((m) => (
                     <div key={m.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-                      <div className="text-white text-sm font-medium truncate">{m.kinship_title || m.name}</div>
-                      <div className="text-[11px] text-white/45">{m.relation_label || m.relation}{m.kinship_title && m.kinship_title !== m.name ? ` · ${m.name}` : ''}</div>
+                      <div className="text-white text-sm font-medium truncate">
+                        {formatFamilyMemberDisplayName(m)}
+                      </div>
+                      <div className="text-[11px] text-white/45">{m.relation_label || m.relation}</div>
                     </div>
                   ))}
                 </div>

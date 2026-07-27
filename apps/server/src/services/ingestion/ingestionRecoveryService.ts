@@ -64,6 +64,23 @@ type PersistedArtifact = {
 };
 
 class IngestionRecoveryService {
+  /** Prefer known sessionId; otherwise read from chat_messages so recovery never enqueues ''. */
+  private async resolveSessionIdForMessage(
+    userId: string,
+    messageId: string,
+    fallback?: string | null,
+  ): Promise<string> {
+    const trimmed = typeof fallback === 'string' ? fallback.trim() : '';
+    if (trimmed) return trimmed;
+    const { data } = await supabaseAdmin
+      .from('chat_messages')
+      .select('session_id')
+      .eq('id', messageId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    return typeof data?.session_id === 'string' ? data.session_id.trim() : '';
+  }
+
   async scan(opts: RecoveryOptions = {}): Promise<RecoveryScanResult> {
     const dryRun = opts.dryRun !== false;
     const limit = Math.min(opts.limit ?? 50, 200);
@@ -97,11 +114,12 @@ class IngestionRecoveryService {
         if (!opts.userId && !m.messageId) continue;
         const userId = opts.userId ?? (await this.lookupMessageUser(m.messageId));
         if (!userId) continue;
+        const sessionId = await this.resolveSessionIdForMessage(userId, m.messageId, m.sessionId);
         const result = await ingestionQueue.enqueueDurable(
           {
             userId,
             chatMessageId: m.messageId,
-            sessionId: m.sessionId ?? '',
+            sessionId,
             conversationHistory: [],
           },
           'NORMAL',
@@ -121,11 +139,12 @@ class IngestionRecoveryService {
         if (opts.messageId && j.messageId === opts.messageId) {
           const userId = opts.userId ?? (await this.lookupJobUser(j.jobId));
           if (!userId || !j.messageId) continue;
+          const sessionId = await this.resolveSessionIdForMessage(userId, j.messageId);
           const result = await ingestionQueue.enqueueDurable(
             {
               userId,
               chatMessageId: j.messageId,
-              sessionId: '',
+              sessionId,
               conversationHistory: [],
               force: true,
             },
@@ -189,11 +208,12 @@ class IngestionRecoveryService {
       throw new Error('User message not found for this account');
     }
 
+    const sessionId = await this.resolveSessionIdForMessage(userId, messageId, msg.session_id);
     const result = await ingestionQueue.enqueueDurable(
       {
         userId,
         chatMessageId: messageId,
-        sessionId: msg.session_id ?? '',
+        sessionId,
         conversationHistory: [],
         force,
       },
@@ -232,20 +252,67 @@ class IngestionRecoveryService {
       /* optional */
     }
 
-    // Assistant messages in same session after this user message
+    // Pair this user turn with its assistant reply — NOT "first later assistant
+    // in the whole session" (that falsely joins many user turns to one mega-reply
+    // in long reused threads / diagnostic exports). Prefer same turn_number when
+    // present; otherwise bound by the next user message in the session.
     let assistant: { id: string; created_at: string } | null = null;
     if (msg.session_id && msg.role === 'user') {
-      const { data: asst } = await supabaseAdmin
-        .from('chat_messages')
-        .select('id, created_at')
-        .eq('user_id', userId)
-        .eq('session_id', msg.session_id)
-        .eq('role', 'assistant')
-        .gt('created_at', msg.created_at)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      assistant = asst ?? null;
+      try {
+        const { data: userTurnRow } = await supabaseAdmin
+          .from('chat_messages')
+          .select('turn_number')
+          .eq('id', messageId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        const turnNumber =
+          typeof userTurnRow?.turn_number === 'number' && Number.isFinite(userTurnRow.turn_number)
+            ? userTurnRow.turn_number
+            : null;
+        if (turnNumber != null) {
+          const { data: asstByTurn } = await supabaseAdmin
+            .from('chat_messages')
+            .select('id, created_at')
+            .eq('user_id', userId)
+            .eq('session_id', msg.session_id)
+            .eq('role', 'assistant')
+            .eq('turn_number', turnNumber)
+            .order('reply_seq', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          assistant = asstByTurn ?? null;
+        }
+      } catch {
+        /* turn_number / reply_seq may be absent pre-migration */
+      }
+
+      if (!assistant) {
+        const { data: nextUser } = await supabaseAdmin
+          .from('chat_messages')
+          .select('created_at')
+          .eq('user_id', userId)
+          .eq('session_id', msg.session_id)
+          .eq('role', 'user')
+          .gt('created_at', msg.created_at)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        let asstQuery = supabaseAdmin
+          .from('chat_messages')
+          .select('id, created_at')
+          .eq('user_id', userId)
+          .eq('session_id', msg.session_id)
+          .eq('role', 'assistant')
+          .gt('created_at', msg.created_at)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (nextUser?.created_at) {
+          asstQuery = asstQuery.lt('created_at', nextUser.created_at);
+        }
+        const { data: asst } = await asstQuery.maybeSingle();
+        assistant = asst ?? null;
+      }
     }
 
     const confirmedArtifacts = await this.loadConfirmedArtifacts(userId, messageId);
@@ -806,11 +873,12 @@ class IngestionRecoveryService {
       .maybeSingle();
     if (!message) return false;
 
+    const sessionId = await this.resolveSessionIdForMessage(userId, job.messageId, job.sessionId);
     const result = await ingestionQueue.enqueueDurable(
       {
         userId,
         chatMessageId: job.messageId,
-        sessionId: job.sessionId ?? '',
+        sessionId,
         conversationHistory: [],
         force: true,
       },
@@ -869,7 +937,7 @@ class IngestionRecoveryService {
       {
         userId,
         chatMessageId: gap.messageId,
-        sessionId: gap.sessionId ?? '',
+        sessionId: await this.resolveSessionIdForMessage(userId, gap.messageId, gap.sessionId),
         conversationHistory: [],
         force: true,
       },

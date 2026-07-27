@@ -4,7 +4,7 @@ import type { Character } from '../components/characters/CharacterProfileCard';
 
 const baseChar = (overrides: Partial<Character> = {}): Character => ({
   id: 'c1',
-  name: 'Hell Fairy',
+  name: 'Neon Pixie',
   relatedPeople: [],
   tagCounts: [],
   chapters: [],

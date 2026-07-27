@@ -1,32 +1,30 @@
 /**
- * Smoothly scrolls to a message by its ID
+ * Smoothly scrolls to a message by its ID. Retries briefly while message refs mount
+ * (long threads often register refs after the first paint).
  */
 export const scrollToMessage = (
   messageId: string,
-  containerRef: React.RefObject<HTMLElement>,
-  messageRefs: Map<string, HTMLElement>
+  containerRef: React.RefObject<HTMLElement | null>,
+  messageRefs: Map<string, HTMLElement>,
+  options?: { attempts?: number; behavior?: ScrollBehavior },
 ): void => {
-  const element = messageRefs.get(messageId);
-  if (element && containerRef.current) {
-    const container = containerRef.current;
-    const elementTop = element.offsetTop;
-    const containerTop = container.scrollTop;
-    const containerHeight = container.clientHeight;
-    const elementHeight = element.offsetHeight;
-    
-    // Calculate scroll position to center the element
-    const scrollPosition = elementTop - containerTop - (containerHeight / 2) + (elementHeight / 2);
-    
-    container.scrollTo({
-      top: container.scrollTop + scrollPosition,
-      behavior: 'smooth'
-    });
-    
-    // Add highlight class temporarily
-    element.classList.add('ring-2', 'ring-primary/50', 'rounded-lg');
-    setTimeout(() => {
-      element.classList.remove('ring-2', 'ring-primary/50', 'rounded-lg');
-    }, 2000);
-  }
-};
+  const maxAttempts = options?.attempts ?? 12;
+  const behavior = options?.behavior ?? 'smooth';
 
+  const tryScroll = (attempt: number) => {
+    const element = messageRefs.get(messageId);
+    const container = containerRef.current;
+    if (element && container) {
+      element.scrollIntoView({ behavior, block: 'center' });
+      element.classList.add('ring-2', 'ring-primary/50', 'rounded-lg');
+      window.setTimeout(() => {
+        element.classList.remove('ring-2', 'ring-primary/50', 'rounded-lg');
+      }, 2800);
+      return;
+    }
+    if (attempt + 1 >= maxAttempts) return;
+    window.requestAnimationFrame(() => tryScroll(attempt + 1));
+  };
+
+  tryScroll(0);
+};

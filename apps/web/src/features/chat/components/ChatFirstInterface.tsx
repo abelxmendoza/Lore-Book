@@ -31,15 +31,29 @@ import { ThreadEntityChips } from './ThreadEntityChips';
 import { ChatFocusChipBar } from './ChatFocusChipBar';
 import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
 import { LoreBookNoticeHost } from '../../../components/chat/LoreBookNoticeHost';
+import {
+  CHAT_JUMP_MESSAGE_KEY,
+  clearChatThreadJump,
+  peekChatJumpHighlightTerms,
+  peekChatJumpMessageId,
+  peekChatJumpSessionId,
+} from '../../../lib/chatThreadJump';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { ThreadRosterBar } from './ThreadRosterBar';
 import { CastTrendsNudge } from './CastTrendsNudge';
-import { fetchCastThreads } from '../../../api/threadRoster';
+import { fetchCastThreads, fetchThreadRoster } from '../../../api/threadRoster';
+import { fetchThreadSummary } from '../../../api/threadSummary';
 import {
   collectRecentThreadMentions,
   collectThreadEntities,
   toEntityContext,
 } from '../utils/collectThreadEntities';
+import {
+  isCastDisplayWorthy,
+  scrubPeopleLabels,
+  scrubPlacesLabels,
+  scrubSummaryDisplayLine,
+} from '../utils/threadSurfaceScrub';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
@@ -93,6 +107,7 @@ import {
   buildChatConversationCopyText,
   buildComposerAndContextDebugSnapshot,
   type ChatMessageDiagnosticSnapshot,
+  type ThreadSurfaceDebugSnapshot,
 } from '../utils/adminChatDiagnosticExport';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -342,26 +357,62 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
+  const [jumpHighlightTerms, setJumpHighlightTerms] = useState<string[]>([]);
+  /** Shown after jumping into a long reused thread — offer a clean draft. */
+  const [longThreadJumpOffer, setLongThreadJumpOffer] = useState(false);
 
-  // Jump to a message when navigating from thread explorer search hits.
+  // Jump to a message when navigating from character "From your chats" / thread search.
+  // Keep the pending jump until the target message is present (don't clear on a miss).
   useEffect(() => {
-    if (!activeThreadId || messages.length === 0) return;
-    const jumpId = sessionStorage.getItem('lk:chat-jump-message');
-    if (jumpId) {
-      sessionStorage.removeItem('lk:chat-jump-message');
-      if (messages.some(m => m.id === jumpId)) {
-        setSearchMessageId(jumpId);
-        return;
+    if (!activeThreadId) return;
+    const jumpId = peekChatJumpMessageId();
+    if (!jumpId) return;
+
+    const jumpSession = peekChatJumpSessionId();
+    if (jumpSession && jumpSession !== activeThreadId) return;
+
+    if (messages.length === 0) return;
+
+    const finishJump = (messageId: string) => {
+      setSearchMessageId(messageId);
+      setJumpHighlightTerms(peekChatJumpHighlightTerms());
+      clearChatThreadJump();
+      // Long sticky sessions feel "merged" when a mention opens them — offer escape.
+      const metaCount = threads.find((t) => t.id === activeThreadId)?.messageCount ?? 0;
+      if (Math.max(messages.length, metaCount) >= 25) {
+        setLongThreadJumpOffer(true);
       }
+    };
+
+    if (messages.some((m) => m.id === jumpId)) {
+      finishJump(jumpId);
+      return;
     }
+
     const jumpIndexRaw = sessionStorage.getItem('lk:chat-jump-index');
     if (jumpIndexRaw != null) {
       sessionStorage.removeItem('lk:chat-jump-index');
       const idx = Number(jumpIndexRaw);
       const target = messages[idx];
-      if (target?.id) setSearchMessageId(target.id);
+      if (target?.id) {
+        finishJump(target.id);
+      }
     }
-  }, [activeThreadId, messages]);
+  }, [activeThreadId, messages, threads]);
+
+  // Fade name highlight after a few seconds; keep message ring via searchMessageId until next nav.
+  useEffect(() => {
+    if (!jumpHighlightTerms.length || !searchMessageId) return;
+    const t = window.setTimeout(() => setJumpHighlightTerms([]), 8000);
+    return () => window.clearTimeout(t);
+  }, [jumpHighlightTerms, searchMessageId]);
+
+  // Clear the jumped-message ring after the user has had time to spot it.
+  useEffect(() => {
+    if (!searchMessageId) return;
+    const t = window.setTimeout(() => setSearchMessageId(null), 12000);
+    return () => window.clearTimeout(t);
+  }, [searchMessageId]);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
   const [correcting, setCorrecting] = useState<{ id: string; content: string } | null>(null);
   const { correctMessage, saving: correctionSaving, error: correctionError } = useMessageCorrection();
@@ -388,6 +439,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // Apply modal → chat prefill once per focus arrival.
   // Empty / scrubbed handoffs (Groups) clear the composer so the retired
   // Maya correction boilerplate cannot stick around in a saved draft.
+  // Entity focus (Characters / Love / etc.) starts a fresh draft by default so
+  // we never dump a new topic into a long sticky mega-thread.
   useEffect(() => {
     if (!chatFocus?.arrivedAt) {
       if (chatFocus?.initialPrompt) {
@@ -397,6 +450,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     }
     if (lastFocusArrivalRef.current === chatFocus.arrivedAt) return;
     lastFocusArrivalRef.current = chatFocus.arrivedAt;
+
+    if (chatFocus.startNewThread !== false) {
+      handleNewChatBase();
+    }
 
     const scrubbed = scrubLegacyComposerPrefill(chatFocus.initialPrompt ?? '');
     if (scrubbed) {
@@ -417,9 +474,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     chatFocus?.entityId,
     chatFocus?.sourceSurface,
     chatFocus?.initialPrompt,
+    chatFocus?.startNewThread,
     activeThreadId,
     dispatch,
     user?.id,
+    handleNewChatBase,
   ]);
 
   // ── URL search param pre-fill (date / prompt) ─────────────────────────────────
@@ -486,8 +545,17 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // ── Thread action wrappers (close mobile drawer before navigating) ────────────
   const handleNewChat = () => {
     setThreadListMobileOpen(false);
+    setLongThreadJumpOffer(false);
     handleNewChatBase();
   };
+
+  const handleSelectThreadWrapped = useCallback(
+    async (id: string) => {
+      setLongThreadJumpOffer(false);
+      await handleSelectThread(id);
+    },
+    [handleSelectThread],
+  );
 
   const handleDeleteThread = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -695,6 +763,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     if (messages.length === 0) return;
     setConversationCopying(true);
     const liveChips = composerChipDebugRef.current;
+    const buildingOn = threadEntities.map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      type: entity.type,
+    }));
+    const recentMentions = collectRecentThreadMentions(messages, {
+      recentMessageWindow: 12,
+      max: 12,
+    });
     const composerAndContext = buildComposerAndContextDebugSnapshot({
       chatFocus,
       composerDraft,
@@ -702,15 +779,64 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       confirmingSlots: liveChips?.confirmingSlots ?? composerConfirmingSlots,
       includedSlots: liveChips?.includedSlots ?? composerIncludedSlots,
       lexicalPreviewChips: liveChips?.previewSpans ?? [],
-      threadChips: threadEntities.map((entity) => ({
-        id: entity.id,
-        name: entity.name,
-        type: entity.type,
-      })),
+      threadChips: buildingOn,
       selectedThreadChipId: focusedEntityId,
       entityContext: chatSendOptions.entityContext ?? null,
       composerEntitiesFromFocus: chatSendOptions.composerEntities,
     });
+
+    let threadSurface: ThreadSurfaceDebugSnapshot = {
+      buildingOn,
+      recentMentions: recentMentions.map((m) => ({
+        id: m.id,
+        name: m.name,
+        lifecycleStatus: m.lifecycleStatus,
+        identityStage: m.identityStage,
+        identityConfidence: m.identityConfidence,
+      })),
+      people: [],
+      places: [],
+      themes: [],
+      actors: [],
+    };
+
+    if (user?.id && activeThreadId) {
+      const [summaryResult, rosterResult] = await Promise.allSettled([
+        fetchThreadSummary(activeThreadId),
+        fetchThreadRoster(activeThreadId),
+      ]);
+      if (summaryResult.status === 'fulfilled') {
+        const summary = summaryResult.value.summary;
+        const people = scrubPeopleLabels(summary.people ?? []);
+        const places = scrubPlacesLabels(summary.places ?? []);
+        threadSurface = {
+          ...threadSurface,
+          people,
+          places,
+          themes: (summary.themes ?? []).map((t) => t.trim()).filter(Boolean),
+          summaryLine:
+            scrubSummaryDisplayLine(summary.medium || summary.short || summary.long, people, places) ??
+            null,
+        };
+      }
+      if (rosterResult.status === 'fulfilled') {
+        threadSurface = {
+          ...threadSurface,
+          actors: (rosterResult.value.entries ?? [])
+            .filter((e) => isCastDisplayWorthy(e.name, e.kind))
+            .map((e) => ({
+              name: e.name,
+              kind: e.kind,
+              role: e.role,
+              status: e.status,
+              mentions: e.mentions,
+              entityId: e.entityId,
+              actorType: e.actorType,
+            })),
+        };
+      }
+    }
+
     try {
       const adminDiagnostics = canCopyAdminDiagnostics
         ? {
@@ -720,16 +846,27 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               .tail(100)
               .filter((event) => !activeThreadId || !event.threadId || event.threadId === activeThreadId),
             composerAndContext,
+            threadSurface,
           }
         : undefined;
-      const text = buildChatConversationCopyText(messages, adminDiagnostics, composerAndContext);
+      const text = buildChatConversationCopyText(
+        messages,
+        adminDiagnostics,
+        composerAndContext,
+        threadSurface,
+      );
       await navigator.clipboard.writeText(text);
       setConversationCopied(true);
       setTimeout(() => setConversationCopied(false), 2000);
     } catch {
       // Preserve the original useful behavior if one diagnostic lookup or the
       // richer export fails for any reason.
-      const fallback = buildChatConversationCopyText(messages, undefined, composerAndContext);
+      const fallback = buildChatConversationCopyText(
+        messages,
+        undefined,
+        composerAndContext,
+        threadSurface,
+      );
       await navigator.clipboard.writeText(fallback);
       setConversationCopied(true);
       setTimeout(() => setConversationCopied(false), 2000);
@@ -746,12 +883,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         onNewChat={handleNewChat}
         onSelectThread={(id, options) => {
           if (options?.messageId) {
-            sessionStorage.setItem('lk:chat-jump-message', options.messageId);
+            sessionStorage.setItem(CHAT_JUMP_MESSAGE_KEY, options.messageId);
           } else if (options?.messageIndex != null) {
             sessionStorage.setItem('lk:chat-jump-index', String(options.messageIndex));
           }
           setThreadListMobileOpen(false);
-          handleSelectThread(id);
+          void handleSelectThreadWrapped(id);
         }}
         onDeleteThread={handleDeleteThread}
         onRenameThread={renameThread}
@@ -846,13 +983,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                   conversationCopied
                     ? 'Copied!'
                     : canCopyAdminDiagnostics
-                      ? 'Copy conversation + admin diagnostic receipt'
-                      : 'Copy full conversation'
+                      ? 'Copy conversation + thread surface + admin diagnostic receipt'
+                      : 'Copy conversation + people, places, actors, and chips'
                 }
                 aria-label={
                   canCopyAdminDiagnostics
-                    ? 'Copy conversation and admin diagnostics'
-                    : 'Copy full conversation'
+                    ? 'Copy conversation, thread surface, and admin diagnostics'
+                    : 'Copy conversation and thread surface'
                 }
                 data-testid="copy-conversation"
               >
@@ -988,6 +1125,34 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What Changed Since Last Time — proves continuity before the user types anything */}
         <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
 
+        {longThreadJumpOffer && (
+          <div
+            className="mx-3 sm:mx-4 mb-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3"
+            data-testid="long-thread-jump-offer"
+            role="status"
+          >
+            <p className="text-xs sm:text-sm text-amber-50/90 flex-1 min-w-0">
+              This thread has piled up many older conversations. Stay to read the source line, or start a fresh chat so new messages stay clean.
+            </p>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="px-3 py-1.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-50 text-xs font-medium"
+              >
+                Start fresh chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setLongThreadJumpOffer(false)}
+                className="px-3 py-1.5 rounded-lg text-amber-100/70 hover:text-amber-50 text-xs"
+              >
+                Stay here
+              </button>
+            </div>
+          </div>
+        )}
+
         <ThreadSummaryBar
           threadId={activeThreadId}
           messageCount={messages.length}
@@ -1041,6 +1206,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               messages={displayMessages}
               streamingMessageId={streamingMessageId}
               searchMessageId={searchMessageId}
+              highlightTerms={
+                searchMessageId && jumpHighlightTerms.length > 0 ? jumpHighlightTerms : undefined
+              }
               messageRefs={messageRefs.current}
               showCognitiveTrace={showCognitiveTrace}
               onCopy={handleCopy}

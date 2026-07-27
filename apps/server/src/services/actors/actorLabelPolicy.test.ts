@@ -10,11 +10,18 @@ import {
 import { enrichActorLabel } from './enrichActorLabel';
 
 describe('actorLabelPolicy', () => {
-  it('rejects indefinite person references', () => {
-    for (const label of ['one girl', 'this guy', 'that woman', 'some person', 'a dude']) {
-      expect(isVagueOrIndefiniteActorPhrase(label)).toBe(true);
-      expect(classifyActorLabel(label).action).toBe('reject');
-      expect(mayPromoteToCharacter(label)).toBe(false);
+  it('rejects truncated kinship mid-phrase extraction', () => {
+    for (const label of ['Cousin in', 'uncle at', 'Sibling those', 'Also Obscurios', 'her house']) {
+      expect(isVagueOrIndefiniteActorPhrase(label), label).toBe(true);
+      expect(classifyActorLabel(label).action, label).toBe('reject');
+      expect(mayPromoteToCharacter(label), label).toBe(false);
+    }
+  });
+
+  it('rejects bare household roles and pipeline personas', () => {
+    for (const label of ['Mom', 'Uncle', 'therapist', 'archivist']) {
+      expect(classifyActorLabel(label).action, label).toBe('reject');
+      expect(mayPromoteToCharacter(label), label).toBe(false);
     }
   });
 

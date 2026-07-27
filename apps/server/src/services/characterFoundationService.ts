@@ -20,7 +20,8 @@ import { identityLedgerService } from './identity/identityLedgerService';
 import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { mayCreateCharacterFromLifecycle } from './actors/identityLifecycleService';
-import { parseKinshipFromName } from './kinship/kinshipGlossary';
+import { kinshipRoleToString, parseKinshipFromName } from './kinship/kinshipGlossary';
+import { decideRelationshipToYouFromKinship } from './kinship/kinshipRelationshipToYou';
 import { sexFromKinship } from './kinship/sexFromKinship';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { characterRegistry } from './characterRegistry';
@@ -46,10 +47,11 @@ function kinshipMetadata(name: string): Record<string, string> {
   const parsed = parseKinshipFromName(name);
   if (!parsed) return {};
   const sex = sexFromKinship(parsed.role, parsed.sourcePhrase);
-  return {
+  const base: Record<string, string> = {
     kinship_role: parsed.role.toLowerCase(),
     kinship_label: parsed.canonicalLabel,
     relationship_type: 'family',
+    kinship_source: 'chat_inferred',
     ...(sex
       ? {
           sex,
@@ -57,6 +59,18 @@ function kinshipMetadata(name: string): Record<string, string> {
         }
       : {}),
   };
+
+  const toYou = decideRelationshipToYouFromKinship({
+    kinship: kinshipRoleToString(parsed.role),
+    characterName: name,
+    explicitClaim: false,
+  });
+  if (toYou.apply && toYou.value) {
+    base.relationship_to_user = toYou.value;
+    base.relationship_to_user_source = 'chat_inferred';
+  }
+
+  return base;
 }
 
 async function attachStoredRelationshipKnowledge(

@@ -10,6 +10,7 @@ export type CharacterBookModalTab =
   | 'chat'
   | 'relationships'
   | 'timeline'
+  /** @deprecated Prefer `timeline` (Story tab). Kept for deep-link compatibility. */
   | 'history'
   /** @deprecated Prefer `relationships` — Connections tab now includes wider network. */
   | 'network'
@@ -38,7 +39,8 @@ export function openCharacterBookModal({
   if (typeof window === 'undefined') return;
   sessionStorage.setItem('highlightItem', characterId);
   if (tab) {
-    sessionStorage.setItem('characterModalTab', tab);
+    const resolvedTab = tab === 'history' ? 'timeline' : tab === 'network' ? 'relationships' : tab;
+    sessionStorage.setItem('characterModalTab', resolvedTab);
   } else if (focusField) {
     sessionStorage.setItem('characterModalTab', 'info');
   } else {

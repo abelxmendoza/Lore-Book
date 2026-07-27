@@ -9,7 +9,7 @@ describe('CreateGroupFromCharacterPanel', () => {
     vi.restoreAllMocks();
   });
 
-  it('opens main chat with create-group context and notifies parent', async () => {
+  it('opens main chat focused on the character and notifies parent', async () => {
     const user = userEvent.setup();
     const onOpenedChat = vi.fn();
     const events: CustomEvent[] = [];
@@ -24,19 +24,21 @@ describe('CreateGroupFromCharacterPanel', () => {
       />,
     );
 
-    await user.type(screen.getByTestId('create-group-name'), 'Vanguard Robotics');
-    await user.type(
-      screen.getByTestId('create-group-details'),
-      'Workplace robotics company where Marcus and I are coworkers',
-    );
+    expect(screen.queryByTestId('create-group-name')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('create-group-details')).not.toBeInTheDocument();
+
     await user.click(screen.getByTestId('create-group-submit'));
 
     window.removeEventListener('lorebook:open-chat-focus', handler);
 
     expect(onOpenedChat).toHaveBeenCalledTimes(1);
     expect(events).toHaveLength(1);
-    expect(events[0].detail.entityName).toBe('Vanguard Robotics');
-    expect(String(events[0].detail.initialPrompt)).toMatch(/company/i);
+    expect(events[0].detail.entityId).toBe('c1');
+    expect(events[0].detail.entityName).toBe('Marcus');
+    expect(events[0].detail.entityType).toBe('character');
+    expect(events[0].detail.sourceSurface).toBe('organizations');
     expect(String(events[0].detail.initialPrompt)).toContain('Marcus');
+    expect(String(events[0].detail.initialPrompt)).toMatch(/Groups & Organizations/i);
+    expect(String(events[0].detail.knowledgeScope)).toMatch(/distributing related lore/i);
   });
 });

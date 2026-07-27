@@ -83,7 +83,11 @@ describe('applyKinshipLabelToCharacter', () => {
     updateSpy = vi.fn();
   });
 
-  async function mockCharacterRow(row: { metadata: Record<string, unknown> | null; archetype?: string | null }) {
+  async function mockCharacterRow(row: {
+    name?: string;
+    metadata: Record<string, unknown> | null;
+    archetype?: string | null;
+  }) {
     const { supabaseAdmin } = await import('../supabaseClient');
     (supabaseAdmin as any).from = vi.fn(() => ({
       select: () => ({
@@ -101,10 +105,13 @@ describe('applyKinshipLabelToCharacter', () => {
   }
 
   it('sets kinship_label and kinship_role from a chat-detected kinship term', async () => {
-    await mockCharacterRow({ metadata: {}, archetype: null });
+    await mockCharacterRow({ name: 'Ben', metadata: {}, archetype: null });
     const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
 
-    await applyKinshipLabelToCharacter('user-1', 'char-1', 'uncle');
+    await applyKinshipLabelToCharacter('user-1', 'char-1', 'uncle', {
+      characterName: 'Uncle Ben',
+      explicitClaim: true,
+    });
 
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -112,15 +119,55 @@ describe('applyKinshipLabelToCharacter', () => {
           kinship_role: 'uncle',
           kinship_label: 'Uncle',
           relationship_type: 'family',
-          kinship_source: 'chat_inferred',
+          kinship_source: 'chat_asserted',
+          relationship_to_user: 'uncle',
+          relationship_to_user_source: 'chat_asserted',
         }),
         archetype: 'family',
       }),
     );
   });
 
+  it('auto-sets relationship_to_user for title-leading Cousin James', async () => {
+    await mockCharacterRow({ name: 'Cousin James', metadata: {}, archetype: null });
+    const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
+
+    await applyKinshipLabelToCharacter('user-1', 'char-1', 'cousin', {
+      characterName: 'Cousin James',
+      context: 'catching up with cousin james',
+      explicitClaim: false,
+    });
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          kinship_label: 'Cousin',
+          relationship_to_user: 'cousin',
+          relationship_to_user_source: 'chat_inferred',
+        }),
+      }),
+    );
+  });
+
+  it('does not set relationship_to_user for Goth Tio stage personas', async () => {
+    await mockCharacterRow({ name: 'Goth Tio', metadata: {}, archetype: null });
+    const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
+
+    await applyKinshipLabelToCharacter('user-1', 'char-1', 'uncle', {
+      characterName: 'Goth Tio',
+      context: 'saw Goth Tio at the warehouse goth show',
+      explicitClaim: false,
+    });
+
+    expect(updateSpy).toHaveBeenCalled();
+    const patch = (updateSpy as any).mock.calls[0][0] as { metadata: Record<string, unknown> };
+    expect(patch.metadata.kinship_label).toBe('Uncle');
+    expect(patch.metadata.relationship_to_user).toBeUndefined();
+  });
+
   it('does not overwrite a user-confirmed kinship label', async () => {
     await mockCharacterRow({
+      name: 'Ben',
       metadata: { kinship_label: 'Stepdad', kinship_source: 'user_confirmed' },
       archetype: 'family',
     });
@@ -129,6 +176,33 @@ describe('applyKinshipLabelToCharacter', () => {
     await applyKinshipLabelToCharacter('user-1', 'char-1', 'father');
 
     expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite a user-confirmed relationship_to_user', async () => {
+    await mockCharacterRow({
+      name: 'Cousin James',
+      metadata: {
+        relationship_to_user: 'friend',
+        relationship_to_user_source: 'user_confirmed',
+      },
+      archetype: null,
+    });
+    const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
+
+    await applyKinshipLabelToCharacter('user-1', 'char-1', 'cousin', {
+      characterName: 'Cousin James',
+      explicitClaim: true,
+    });
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          kinship_label: 'Cousin',
+          relationship_to_user: 'friend',
+          relationship_to_user_source: 'user_confirmed',
+        }),
+      }),
+    );
   });
 
   it('is a no-op for a synthetic/placeholder character id', async () => {

@@ -1,0 +1,699 @@
+/**
+ * Character Story — unified Events + Memories chronology for the character modal.
+ * Replaces the former split Timeline / History tabs.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { shortDisplayName } from '../../lib/displayName';
+import {
+  BookOpen,
+  CalendarRange,
+  Check,
+  Clock,
+  Copy,
+  ExternalLink,
+  Eye,
+  List,
+  Loader2,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Waves,
+  X,
+} from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { fetchJson } from '../../lib/api';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
+import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { EventDetailModal } from '../events/EventDetailModal';
+import type { Event } from '../events/EventProfileCard';
+import { getMockCharacterTimeline } from '../../mocks/characterIntelligence';
+import { buildCharacterTimelineClipboardText } from '../../lib/characterTimelineClipboard';
+import { clipboardFilterLines, copyTextToClipboard } from '../../lib/listClipboard';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
+import type { Character } from './CharacterProfileCard';
+import type { MemoryCard } from '../../types/memory';
+
+export type CharTimelineEvent = {
+  id: string;
+  eventId?: string;
+  eventTitle: string;
+  eventDate: string;
+  eventSummary?: string;
+  eventType?: string;
+  userWasPresent?: boolean;
+  characterRole?: string;
+  connectionCharacter?: string;
+  emotionalImpact?: string;
+};
+
+export type StoryScope = 'all' | 'events' | 'memories';
+type ViewMode = 'list' | 'swimlanes';
+
+export type RelationshipStage = { stage: string; start_date?: string | null };
+
+type StoryItem =
+  | { kind: 'event'; date: string; event: CharTimelineEvent & { lane: 'with' | 'without' } }
+  | { kind: 'memory'; date: string; memory: MemoryCard; highlight?: string };
+
+interface Props {
+  characterId: string;
+  characterName: string;
+  mockMode?: boolean;
+  /** When false, skip fetching until the tab is opened. */
+  active?: boolean;
+  /** When true, copy is for the app user's own life timeline. */
+  isSelfProfile?: boolean;
+  memories?: MemoryCard[];
+  memoriesLoading?: boolean;
+  stageHistory?: RelationshipStage[];
+  onSelectMemory?: (memory: MemoryCard) => void;
+  onOpenPerceptions?: () => void;
+}
+
+function fmtEventDate(iso: string): string {
+  try {
+    return format(parseISO(iso), 'MMM d, yyyy');
+  } catch {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
+  }
+}
+
+function toSwim(event: CharTimelineEvent, laneKey: string): SwimlaneEvent {
+  return {
+    id: event.id,
+    title: event.eventTitle,
+    date: event.eventDate,
+    laneKey,
+    type: event.eventType,
+    summary: event.eventSummary,
+    meta: [event.characterRole, event.connectionCharacter ? `with ${event.connectionCharacter}` : null, event.emotionalImpact]
+      .filter(Boolean)
+      .join(' · ') || undefined,
+  };
+}
+
+function scopeChipClass(active: boolean): string {
+  return active
+    ? 'bg-white/12 text-white border-white/20'
+    : 'bg-transparent text-white/45 border-transparent hover:text-white/70 hover:bg-white/[0.04]';
+}
+
+export function CharacterStoryPanel({
+  characterId,
+  characterName,
+  mockMode = false,
+  active = true,
+  isSelfProfile = false,
+  memories = [],
+  memoriesLoading = false,
+  stageHistory = [],
+  onSelectMemory,
+  onOpenPerceptions,
+}: Props) {
+  const firstName = shortDisplayName(characterName);
+  const withLabel = isSelfProfile ? 'With others' : 'With you';
+  const withoutLabel = isSelfProfile ? 'Your story' : 'Without you';
+  const storyTitle = isSelfProfile ? 'Your Story' : `${firstName}'s Story`;
+  const storyDescription = isSelfProfile
+    ? 'Life events and journal memories in one chronology — oldest to newest.'
+    : `Events and journal memories about ${firstName} in one place — oldest to newest.`;
+  const emptyTitle = isSelfProfile ? 'No story yet' : `No story for ${firstName} yet`;
+  const emptyHint = isSelfProfile
+    ? 'As you share your life in chat and journal, events and memories will appear here.'
+    : `As you mention ${firstName} in chat and journal entries, events and memories will appear here.`;
+
+  const [sharedExperiences, setSharedExperiences] = useState<CharTimelineEvent[]>([]);
+  const [loreEvents, setLoreEvents] = useState<CharTimelineEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [scope, setScope] = useState<StoryScope>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [loadingEvent, setLoadingEvent] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
+  const lifeLogHref = `/events?q=${encodeURIComponent(characterName)}`;
+  const omniHref = `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`;
+
+  const openEventDetail = useCallback(async (eventId?: string) => {
+    if (!eventId || mockMode) return;
+    setLoadingEvent(true);
+    try {
+      const result = await fetchJson<{ success: boolean; event: Event }>(
+        `/api/conversation/events/${eventId}`,
+      );
+      if (result.success && result.event) setSelectedEvent(result.event);
+    } catch {
+      // keep panel usable if detail fetch fails
+    } finally {
+      setLoadingEvent(false);
+    }
+  }, [mockMode]);
+
+  const loadTimelines = useCallback(async () => {
+    if (!characterId) return;
+    setLoading(true);
+    try {
+      if (mockMode) {
+        const mockCharacter = { id: characterId, name: characterName } as Character;
+        const mock = getMockCharacterTimeline(mockCharacter);
+        setSharedExperiences(mock.sharedExperiences);
+        setLoreEvents(mock.lore);
+        return;
+      }
+      const r = await fetchJson<{
+        success: boolean;
+        timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] };
+      }>(`/api/conversation/characters/${characterId}/timelines`);
+      if (r.success) {
+        setSharedExperiences(r.timelines.sharedExperiences || []);
+        setLoreEvents(r.timelines.lore || []);
+      }
+    } catch {
+      // keep prior data on refresh failure
+    } finally {
+      setLoading(false);
+      setLoaded(true);
+    }
+  }, [characterId, characterName, mockMode]);
+
+  useEffect(() => {
+    setLoaded(false);
+    setSharedExperiences([]);
+    setLoreEvents([]);
+  }, [characterId]);
+
+  useEffect(() => {
+    if (!active || loaded) return;
+    void loadTimelines();
+  }, [active, loaded, loadTimelines]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => {
+      setLoaded(false);
+    });
+  }, [characterId]);
+
+  const sortedShared = useMemo(
+    () => sortTimelineEventsChronologically(sharedExperiences, 'asc'),
+    [sharedExperiences],
+  );
+  const sortedLore = useMemo(
+    () => sortTimelineEventsChronologically(loreEvents, 'asc'),
+    [loreEvents],
+  );
+
+  const chronologicalEvents = useMemo(() => {
+    const withLane = sortedShared.map((e) => ({ ...e, lane: 'with' as const }));
+    const withoutLane = sortedLore.map((e) => ({ ...e, lane: 'without' as const }));
+    return sortTimelineEventsChronologically([...withLane, ...withoutLane], 'asc');
+  }, [sortedShared, sortedLore]);
+
+  const sortedMemories = useMemo(
+    () =>
+      [...memories].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      ),
+    [memories],
+  );
+
+  const firstMemory = sortedMemories[0] ?? null;
+  const mostSignificant = useMemo(() => {
+    if (sortedMemories.length === 0) return null;
+    return [...sortedMemories].sort(
+      (a, b) => (b.content?.length ?? 0) - (a.content?.length ?? 0),
+    )[0];
+  }, [sortedMemories]);
+
+  const storyItems = useMemo((): StoryItem[] => {
+    const items: StoryItem[] = [];
+    if (scope !== 'memories') {
+      for (const event of chronologicalEvents) {
+        items.push({ kind: 'event', date: event.eventDate, event });
+      }
+    }
+    if (scope !== 'events') {
+      for (const memory of sortedMemories) {
+        let highlight: string | undefined;
+        if (firstMemory && memory.id === firstMemory.id) highlight = 'First memory';
+        else if (
+          mostSignificant &&
+          firstMemory &&
+          mostSignificant.id !== firstMemory.id &&
+          memory.id === mostSignificant.id
+        ) {
+          highlight = 'Most significant';
+        }
+        items.push({ kind: 'memory', date: memory.date, memory, highlight });
+      }
+    }
+    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [scope, chronologicalEvents, sortedMemories, firstMemory, mostSignificant]);
+
+  const filteredItems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return storyItems;
+    return storyItems.filter((item) => {
+      if (item.kind === 'event') {
+        const e = item.event;
+        return [e.eventTitle, e.eventSummary, e.eventType, e.characterRole, e.connectionCharacter, e.emotionalImpact]
+          .filter(Boolean)
+          .some((field) => field!.toLowerCase().includes(term));
+      }
+      const m = item.memory;
+      return [m.title, m.content, m.mood, m.chapterTitle, ...(m.tags ?? [])]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term));
+    });
+  }, [storyItems, searchTerm]);
+
+  const filteredEventsForSwim = useMemo(
+    () =>
+      filteredItems
+        .filter((item): item is Extract<StoryItem, { kind: 'event' }> => item.kind === 'event')
+        .map((item) => item.event),
+    [filteredItems],
+  );
+
+  const swimEvents = useMemo(
+    () => filteredEventsForSwim.map((event) => toSwim(event, event.lane)),
+    [filteredEventsForSwim],
+  );
+
+  const clipboardText = useMemo(
+    () =>
+      buildCharacterTimelineClipboardText(characterName, chronologicalEvents, {
+        filters: clipboardFilterLines([
+          searchTerm.trim() && `search="${searchTerm.trim()}"`,
+          scope !== 'all' && `scope=${scope}`,
+          memories.length > 0 && `memories=${memories.length}`,
+        ]),
+      }),
+    [characterName, chronologicalEvents, searchTerm, scope, memories.length],
+  );
+
+  const lorebookSignals = useMemo(() => {
+    const days = new Set(
+      chronologicalEvents
+        .map((e) => (e.eventDate || '').slice(0, 10))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)),
+    );
+    for (const m of sortedMemories) {
+      const day = (m.date || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
+    }
+    const wordCount =
+      chronologicalEvents.reduce((sum, e) => {
+        const text = `${e.eventTitle ?? ''} ${e.eventSummary ?? ''}`;
+        return sum + text.trim().split(/\s+/).filter(Boolean).length;
+      }, 0) +
+      sortedMemories.reduce((sum, m) => {
+        const text = `${m.title ?? ''} ${m.content ?? ''}`;
+        return sum + text.trim().split(/\s+/).filter(Boolean).length;
+      }, 0);
+    return {
+      eventCount: chronologicalEvents.length + sortedMemories.length,
+      uniqueDays: days.size,
+      wordCount,
+    };
+  }, [chronologicalEvents, sortedMemories]);
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(clipboardText);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRescan = () => {
+    if (mockMode) return;
+    setRebuilding(true);
+    fetchJson(`/api/conversation/characters/${characterId}/rebuild-timelines`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+      .then(() => loadTimelines())
+      .finally(() => setRebuilding(false));
+  };
+
+  const isBusy = loading || memoriesLoading;
+  const hasAny =
+    chronologicalEvents.length > 0 || sortedMemories.length > 0 || isBusy;
+  const showSwimlanes = viewMode === 'swimlanes' && scope !== 'memories';
+
+  return (
+    <div className="min-w-0 max-w-full space-y-4" data-testid="character-story-panel">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary shrink-0" />
+            {storyTitle}
+          </h3>
+          <p className="text-xs text-white/45 mt-1">{storyDescription}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+          {scope !== 'memories' && (
+            <div className="flex rounded-lg border border-white/10 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition ${
+                  viewMode === 'list' ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white/70'
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('swimlanes')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border-l border-white/10 transition ${
+                  viewMode === 'swimlanes' ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white/70'
+                }`}
+              >
+                <Waves className="h-3.5 w-3.5" />
+                Swimlanes
+              </button>
+            </div>
+          )}
+          {chronologicalEvents.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleCopyAll}
+              title="Copy timeline events as plain text"
+              aria-label="Copy all timeline events"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {copied ? 'Copied' : 'Copy events'}
+            </Button>
+          )}
+          {!mockMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              disabled={rebuilding}
+              onClick={handleRescan}
+            >
+              {rebuilding ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Rescan
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {stageHistory.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">
+            Relationship arc
+          </p>
+          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+            {stageHistory.map((s, i) => (
+              <div key={`${s.stage}-${i}`} className="flex items-center gap-1 flex-shrink-0">
+                <div
+                  className={`px-2 py-1 rounded text-[10px] font-medium ${
+                    i === stageHistory.length - 1
+                      ? 'bg-primary/20 text-primary border border-primary/30'
+                      : 'bg-white/5 text-white/35'
+                  }`}
+                >
+                  <span className="capitalize">{s.stage}</span>
+                  {s.start_date && (
+                    <span className="ml-1 opacity-50">{new Date(s.start_date).getFullYear()}</span>
+                  )}
+                </div>
+                {i < stageHistory.length - 1 && <span className="text-white/20">→</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div
+        className="flex flex-wrap gap-1.5"
+        role="tablist"
+        aria-label="Story scope"
+        data-testid="character-story-scope"
+      >
+        {(
+          [
+            { key: 'all', label: 'All', count: chronologicalEvents.length + sortedMemories.length },
+            { key: 'events', label: 'Events', count: chronologicalEvents.length },
+            { key: 'memories', label: 'Memories', count: sortedMemories.length },
+          ] as const
+        ).map((chip) => (
+          <button
+            key={chip.key}
+            type="button"
+            role="tab"
+            aria-selected={scope === chip.key}
+            onClick={() => setScope(chip.key)}
+            className={`rounded-full border px-3 py-1 text-xs transition ${scopeChipClass(scope === chip.key)}`}
+          >
+            {chip.label}
+            <span className="ml-1.5 text-white/35 tabular-nums">{chip.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {hasAny && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder={`Search ${firstName}'s story…`}
+            className="w-full rounded-lg border border-white/10 bg-black/25 pl-8 pr-8 py-1.5 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-primary/40"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {showSwimlanes ? (
+        <EventTimelineSwimlanes
+          loading={loading}
+          lanes={[
+            { key: 'with', label: withLabel, accent: 'emerald' },
+            { key: 'without', label: withoutLabel, accent: 'sky' },
+          ]}
+          events={swimEvents}
+          emptyTitle={searchTerm && chronologicalEvents.length > 0 ? 'No matches' : emptyTitle}
+          emptyHint={
+            searchTerm && chronologicalEvents.length > 0
+              ? `No events match "${searchTerm}".`
+              : emptyHint
+          }
+        />
+      ) : isBusy && !loaded && chronologicalEvents.length === 0 && sortedMemories.length === 0 ? (
+        <div className="h-48 flex items-center justify-center text-white/50 text-sm gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading story…
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="h-48 flex flex-col items-center justify-center gap-2 px-6 text-center">
+          {searchTerm ? (
+            <>
+              <Search className="h-6 w-6 text-white/20" />
+              <p className="text-white/50 text-sm">No story items match &quot;{searchTerm}&quot;</p>
+            </>
+          ) : (
+            <>
+              <Clock className="h-8 w-8 text-white/20" />
+              <p className="text-white/60 font-medium">{emptyTitle}</p>
+              <p className="text-white/30 text-sm max-w-sm">{emptyHint}</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <ol className="relative border-l border-white/10 ml-3 space-y-0">
+          {filteredItems.map((item) => {
+            if (item.kind === 'event') {
+              const event = item.event;
+              const isWith = event.lane === 'with';
+              return (
+                <li key={`event-${event.id}`} className="relative pl-6 pb-6 last:pb-0">
+                  <span
+                    className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 ${
+                      isWith ? 'bg-emerald-400' : 'bg-sky-400'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    data-testid={`character-timeline-event-${event.id}`}
+                    disabled={!event.eventId || loadingEvent}
+                    onClick={() => void openEventDetail(event.eventId)}
+                    className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.eventDate)}</time>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${
+                          isWith
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                        }`}
+                      >
+                        {isWith ? withLabel : withoutLabel}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] text-white/45">
+                        Event
+                      </Badge>
+                      {event.eventType && (
+                        <Badge variant="outline" className="text-[10px] text-white/50">
+                          {event.eventType}
+                        </Badge>
+                      )}
+                      {event.eventId && (
+                        <span className="text-[10px] text-white/35 ml-auto">Open in Life Log</span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>
+                    {event.eventSummary && (
+                      <p className="text-xs text-white/60 mt-1 leading-relaxed">{event.eventSummary}</p>
+                    )}
+                  </button>
+                </li>
+              );
+            }
+
+            const memory = item.memory;
+            return (
+              <li key={`memory-${memory.id}`} className="relative pl-6 pb-6 last:pb-0">
+                <span className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 bg-amber-400" />
+                <button
+                  type="button"
+                  data-testid={`character-story-memory-${memory.id}`}
+                  onClick={() => onSelectMemory?.(memory)}
+                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    item.highlight
+                      ? 'border-primary/30 bg-primary/5 hover:bg-primary/8'
+                      : 'border-white/10 bg-black/25 hover:bg-black/35'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <time className="text-xs font-mono text-primary/80">{fmtEventDate(memory.date)}</time>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"
+                    >
+                      Memory
+                    </Badge>
+                    {item.highlight && (
+                      <span className="text-[9px] font-semibold text-primary/70 uppercase tracking-widest">
+                        {item.highlight}
+                      </span>
+                    )}
+                    {memory.mood && (
+                      <span className="text-[10px] text-white/35 ml-auto capitalize">{memory.mood}</span>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-amber-300/70 shrink-0" />
+                    {memory.title}
+                  </h4>
+                  {memory.content && (
+                    <p className="text-xs text-white/60 mt-1 leading-relaxed line-clamp-2">
+                      {memory.content.length > 140
+                        ? `${memory.content.slice(0, 140)}…`
+                        : memory.content}
+                    </p>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/40 pt-1 border-t border-white/5">
+        <span>
+          <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span>{' '}
+          {isSelfProfile ? 'with others' : 'with you'}
+        </span>
+        <span>
+          <span className="text-sky-300 font-medium">{loreEvents.length}</span>{' '}
+          {isSelfProfile ? 'your story' : 'without you'}
+        </span>
+        <span>
+          <span className="text-amber-300 font-medium">{sortedMemories.length}</span> memories
+        </span>
+        <span className="flex items-center gap-3 ml-auto flex-wrap justify-end">
+          {onOpenPerceptions && (
+            <button
+              type="button"
+              onClick={onOpenPerceptions}
+              className="inline-flex items-center gap-1 text-white/45 hover:text-white/70"
+            >
+              <Eye className="h-3 w-3" />
+              Perceptions
+            </button>
+          )}
+          <Link
+            to={lifeLogHref}
+            data-testid="character-timeline-open-life-log"
+            className="inline-flex items-center gap-1 text-emerald-300/80 hover:text-emerald-200"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Life Log
+          </Link>
+          <Link
+            to={omniHref}
+            data-testid="character-timeline-open-omni"
+            className="inline-flex items-center gap-1 text-sky-300/80 hover:text-sky-200"
+          >
+            <CalendarRange className="h-3 w-3" />
+            Omni Timeline
+          </Link>
+          <EntityLorebookCompileControl
+            subjectLabel={characterName}
+            signals={lorebookSignals}
+            focus={{ characterId, themes: characterName }}
+            autoFetchSignals={false}
+            testId="character-timeline-create-lorebook"
+          />
+        </span>
+      </div>
+
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
+    </div>
+  );
+}
+
+/** @deprecated Prefer CharacterStoryPanel — kept for existing imports/tests. */
+export const CharacterTimelinePanel = CharacterStoryPanel;

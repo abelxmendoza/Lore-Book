@@ -56,6 +56,11 @@ export interface ChatFocus {
   baseline?: ChatFocusBaseline;
   /** Set when navigating modal → chat; drives arrival animations. */
   arrivedAt?: number;
+  /**
+   * When true (default for modal → chat handoffs), open a fresh empty draft
+   * instead of dumping the focus chip into the last sticky mega-thread.
+   */
+  startNewThread?: boolean;
   /** Increments on each focused message; drives stat bump animations. */
   statBumpKey?: number;
 }

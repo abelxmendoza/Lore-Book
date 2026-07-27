@@ -5,7 +5,11 @@
  * which evidence to accept) stay in lockstep off one definition.
  */
 
-export type ClosedScopeReason = 'cast_roster_query' | 'entity_query' | 'character_book_write_request';
+export type ClosedScopeReason =
+  | 'cast_roster_query'
+  | 'entity_query'
+  | 'character_book_write_request'
+  | 'organization_group_write_request';
 
 /**
  * Deliberately narrow: a window/thread-scoped noun ("in this story/thread/
@@ -24,6 +28,8 @@ const CAST_ROSTER_RECOGNIZE_RE =
 export function isCastRosterQuery(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
+  // Providing a membership list is a group write, never a cast query.
+  if (isOrganizationGroupWriteRequest(text)) return false;
   return (
     CAST_ROSTER_RE.test(text) ||
     CAST_ROSTER_NEW_VS_RETURNING_RE.test(text) ||
@@ -43,7 +49,48 @@ export function isCharacterBookWriteRequest(message: string): boolean {
   return CHARACTER_BOOK_WRITE_RE.test(text) || CHARACTER_BOOK_WRITE_SHORT_RE.test(text);
 }
 
+const GROUP_CREATE_RE =
+  /\b(?:make|create|start|set\s*up|spin\s*up)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?(group|crew|squad|collective|clique|org(?:anization)?)\b/i;
+const GROUP_FOR_RE =
+  /\b(group|crew|squad|collective)\s+for\s+(?:that|this|them|her|him|those|these)\b/i;
+const GROUP_ADD_MEMBERS_RE =
+  /\badd\s+.{0,80}\bto\s+(?:the|that|this|my)\s+(?:group|crew|squad|org(?:anization)?)\b/i;
+const GROUP_ROSTER_CUE_RE =
+  /\b(?:so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\b/i;
+
+/** Rough count of name-like tokens in a list ("A, B, and C"). */
+export function countListedNameLikeTokens(message: string): number {
+  const cleaned = message
+    .replace(/\b(so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\b/gi, ' ')
+    .replace(/\b(make|create|start|set\s*up|a|an|the|new|group|crew|squad|for|that|this|them)\b/gi, ' ');
+  return cleaned
+    .split(/\s*,\s*|\s+and\s+/i)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2 && /[A-Za-z]/.test(p) && !/^(also|too|etc|now|well)$/i.test(p))
+    .length;
+}
+
+/**
+ * Explicit "make/create a group" OR supplying a membership roster list for a
+ * group that was just requested ("So far we have A, B, and C").
+ */
+export function isOrganizationGroupWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (GROUP_CREATE_RE.test(text) || GROUP_FOR_RE.test(text) || GROUP_ADD_MEMBERS_RE.test(text)) {
+    return true;
+  }
+  // Roster provision: list cue + at least two name-like tokens.
+  if (GROUP_ROSTER_CUE_RE.test(text) && countListedNameLikeTokens(text) >= 2) {
+    return true;
+  }
+  return false;
+}
+
 export function isClosedScopeQuery(message: string): { closedScope: boolean; reason?: ClosedScopeReason } {
+  if (isOrganizationGroupWriteRequest(message)) {
+    return { closedScope: true, reason: 'organization_group_write_request' };
+  }
   if (isCastRosterQuery(message)) return { closedScope: true, reason: 'cast_roster_query' };
   if (isCharacterBookWriteRequest(message)) return { closedScope: true, reason: 'character_book_write_request' };
   return { closedScope: false };

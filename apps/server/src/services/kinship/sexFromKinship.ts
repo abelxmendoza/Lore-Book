@@ -86,14 +86,35 @@ export function sexFromKinship(role: KinshipRole | null | undefined, phrase?: st
 
 const LOCKED_SEX_SOURCES = new Set(['user_confirmed', 'explicit']);
 
-export function canSoftWriteSex(metadata: Record<string, unknown> | null | undefined): boolean {
+/**
+ * Precedence tiers for soft-written sex, strongest first: a kinship title
+ * ("uncle", "tía") is far more reliable than a guess from a first name, since
+ * some names are unisex — a name-based guess must never outrank or overwrite
+ * a kinship-based one.
+ */
+export type SexSource = 'user_confirmed' | 'explicit' | 'kinship_inferred' | 'name_inferred';
+
+const SOURCE_RANK: Record<string, number> = {
+  user_confirmed: 3,
+  explicit: 3,
+  kinship_inferred: 2,
+  name_inferred: 1,
+};
+
+export function canSoftWriteSex(
+  metadata: Record<string, unknown> | null | undefined,
+  incomingSource: SexSource = 'kinship_inferred',
+): boolean {
   const meta = metadata ?? {};
   const source = String(meta.sex_source ?? '');
   if (LOCKED_SEX_SOURCES.has(source)) return false;
   const current = String(meta.sex ?? 'unknown').toLowerCase();
   if (current === 'male' || current === 'female' || current === 'nonbinary') {
-    // Allow upgrade only from weaker inference → keep existing inferred value.
-    return source !== 'kinship_inferred';
+    const existingRank = SOURCE_RANK[source] ?? 0;
+    const incomingRank = SOURCE_RANK[incomingSource] ?? 0;
+    // A weaker or equal-tier source may never overwrite what's already there —
+    // only a strictly stronger inference is allowed to upgrade it.
+    return incomingRank > existingRank;
   }
   return true;
 }
@@ -102,7 +123,7 @@ export function kinshipSexMetadataPatch(
   metadata: Record<string, unknown> | null | undefined,
   sex: InferredSex,
 ): Record<string, unknown> | null {
-  if (!canSoftWriteSex(metadata)) return null;
+  if (!canSoftWriteSex(metadata, 'kinship_inferred')) return null;
   const meta = metadata ?? {};
   if (String(meta.sex ?? '').toLowerCase() === sex && meta.sex_source === 'kinship_inferred') {
     return null;
@@ -111,5 +132,23 @@ export function kinshipSexMetadataPatch(
     ...meta,
     sex,
     sex_source: 'kinship_inferred',
+  };
+}
+
+/** Same soft-write contract as kinshipSexMetadataPatch, but for a name-based guess
+ *  — the weakest tier, only ever fills a slot nothing stronger has claimed. */
+export function nameSexMetadataPatch(
+  metadata: Record<string, unknown> | null | undefined,
+  sex: InferredSex,
+): Record<string, unknown> | null {
+  if (!canSoftWriteSex(metadata, 'name_inferred')) return null;
+  const meta = metadata ?? {};
+  if (String(meta.sex ?? '').toLowerCase() === sex && meta.sex_source === 'name_inferred') {
+    return null;
+  }
+  return {
+    ...meta,
+    sex,
+    sex_source: 'name_inferred',
   };
 }

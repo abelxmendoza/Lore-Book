@@ -259,6 +259,31 @@ describe('useChatThreads', () => {
     expect(result.current.threads).toHaveLength(1);
   });
 
+  it('does not reuse a draft that only has messageCount (unhydrated list row)', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const stored = [
+      {
+        id: 'contentful-draft',
+        title: 'Draft',
+        messages: [],
+        messageCount: 42,
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+
+    let newId: string;
+    act(() => {
+      newId = result.current.createThread();
+    });
+
+    expect(newId!).not.toBe('contentful-draft');
+    expect(result.current.threads.some((t) => t.id === newId!)).toBe(true);
+  });
+
   it('creates a thread via backend when authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockBackendThreadLoad([]);

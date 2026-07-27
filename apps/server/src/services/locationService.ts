@@ -8,11 +8,15 @@ import type {
   MemoryEntry,
   PeoplePlaceEntity
 } from '../types';
-import { normalizeNameKey, normalizeDuplicateKey } from '../utils/nameNormalization';
+import {
+  normalizeDuplicateKey,
+  normalizeNameKey,
+} from '../utils/nameNormalization';
 
 import { chapterService } from './chapterService';
 import { entityDeletionRecoveryService } from './entityDeletionRecoveryService';
 import { locationAnalyticsService } from './locationAnalyticsService';
+import { isPlaceNameShadowOf } from './locations/placeNameMatch';
 import {
   classifyPlacePresence,
   classifyTagBucket,
@@ -88,6 +92,31 @@ class LocationService {
     // across sources (people_places "Moms House" ↔ canonical "Mom's House")
     // into one entry instead of showing both. Canonical id still wins.
     return normalizeDuplicateKey(name);
+  }
+
+  /**
+   * Fold short entity/metadata cards into a registry host when the short name is
+   * an alias or venue elaboration ("First Street Pool" → "… & Billiards").
+   */
+  private foldShadowPlaceCards(accumulator: Map<string, LocationAccumulator>) {
+    const entries = [...accumulator.entries()];
+    const hosts = entries.filter(([, entry]) => entry.sources.has('registry'));
+    if (hosts.length === 0) return;
+
+    for (const [shadowKey, shadow] of entries) {
+      if (shadow.sources.has('registry')) continue;
+      const hostHit = hosts.find(([, host]) =>
+        isPlaceNameShadowOf(shadow.name, {
+          name: host.name,
+          metadata: host.record?.metadata ?? null,
+        }),
+      );
+      if (!hostHit) continue;
+      const [, host] = hostHit;
+      for (const entryId of shadow.entryIds) host.entryIds.add(entryId);
+      for (const source of shadow.sources) host.sources.add(source);
+      accumulator.delete(shadowKey);
+    }
   }
 
   private slugify(name: string) {
@@ -357,6 +386,10 @@ class LocationService {
         location
       );
     });
+
+    // people_places "First Street Pool" must not sit beside registry
+    // "First Street Pool & Billiards" after a merge left the entity row behind.
+    this.foldShadowPlaceCards(accumulator);
 
     const locations: LocationProfile[] = await Promise.all(
       Array.from(accumulator.values()).map(async (location) => {

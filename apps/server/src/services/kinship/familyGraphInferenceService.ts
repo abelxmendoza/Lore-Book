@@ -60,10 +60,12 @@ export class FamilyGraphInferenceService {
     const protagonist = charRows.find((c) => (c.metadata as Record<string, unknown>)?.is_self === true)
       ?? charRows.find((c) => normalizeNameKey(c.name).includes('self'));
 
-    const kinMentions = [
-      ...extractKinshipMentions(text),
-      ...extractRelationalKinshipClaims(text),
-    ];
+    const titleMentions = extractKinshipMentions(text);
+    const relationalClaims = extractRelationalKinshipClaims(text);
+    const kinMentions = [...titleMentions, ...relationalClaims];
+    const explicitClaimPhrases = new Set(
+      relationalClaims.map((c) => c.sourcePhrase.trim().toLowerCase()),
+    );
     const kinCharacters: CharacterRow[] = [];
     const parentIds = new Set<string>();
 
@@ -89,7 +91,14 @@ export class FamilyGraphInferenceService {
           kin.confidence
         );
         if (created) edges++;
-        void applyKinshipLabelToCharacter(userId, row.id, kinshipStr).catch(() => {});
+        // "my cousin James" is an explicit claim; bare "Cousin James" / "Uncle Jeremy"
+        // still go through stage/scene gating before Relationship to you is written.
+        const isExplicit = explicitClaimPhrases.has(kin.sourcePhrase.trim().toLowerCase());
+        void applyKinshipLabelToCharacter(userId, row.id, kinshipStr, {
+          characterName: row.name,
+          context: text,
+          explicitClaim: isExplicit,
+        }).catch(() => {});
         // Re-check surnames even when the self↔kin edge already exists — cousins
         // who share a last name (and tree placement) still need linking.
         void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
@@ -117,7 +126,11 @@ export class FamilyGraphInferenceService {
         parsed.confidence
       );
       if (created) edges++;
-      void applyKinshipLabelToCharacter(userId, row.id, parsedKinshipStr).catch(() => {});
+      void applyKinshipLabelToCharacter(userId, row.id, parsedKinshipStr, {
+        characterName: row.name,
+        context: text,
+        explicitClaim: false,
+      }).catch(() => {});
       void familySurnameSuggestionService.checkForSurnameMatches(userId, row.id).catch(() => {});
     }
 

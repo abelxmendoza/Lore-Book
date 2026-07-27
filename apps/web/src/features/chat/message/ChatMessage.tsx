@@ -12,6 +12,7 @@ import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBa
 import { PersonaChip } from './PersonaChip';
 import { CreationOutcomePanel } from '../components/CreationOutcomePanel';
 import { StaleProjectionPanel } from '../components/StaleProjectionPanel';
+import { highlightTextTerms } from '../../../lib/highlightTextTerms';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -239,6 +240,8 @@ type ChatMessageProps = {
   onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   onPrefillComposer?: (prompt: string) => void;
   threadEntityMentions?: EntityMentionRef[];
+  /** Highlight these name/alias terms in message body (from "From your chats" jump). */
+  highlightTerms?: string[];
   onRetryCloudSync?: (messageId: string) => void;
   onRetryAssistantResponse?: (messageId: string) => void;
   onCopyOriginalMessage?: (messageId: string) => void;
@@ -255,6 +258,7 @@ export const ChatMessage = ({
   onSuggestedAction,
   onPrefillComposer,
   threadEntityMentions = [],
+  highlightTerms,
   onRetryCloudSync,
   onRetryAssistantResponse,
   onCopyOriginalMessage,
@@ -591,6 +595,7 @@ export const ChatMessage = ({
                       isStreaming={message.isStreaming}
                       className={message.isStreaming ? 'chat-message-streaming' : ''}
                       entityMentions={inlineEntityMentions}
+                      highlightTerms={highlightTerms}
                     />
                   </>
                 )}
@@ -648,7 +653,11 @@ export const ChatMessage = ({
                   if (displayText && !isPlaceholder) {
                     return (
                       <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
-                        <TextWithEntityPills text={displayText} entities={inlineEntityMentions} />
+                        {highlightTerms?.length
+                          ? highlightTextTerms(displayText, highlightTerms)
+                          : (
+                            <TextWithEntityPills text={displayText} entities={inlineEntityMentions} />
+                          )}
                       </p>
                     );
                   }

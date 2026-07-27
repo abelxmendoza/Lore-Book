@@ -2183,6 +2183,58 @@ async function loadNarrativeAnchorCandidates(
   return rows ?? [];
 }
 
+async function loadCharacterQueryCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  characterId: string | null,
+  intent: WorkingMemoryIntent,
+): Promise<Candidate[]> {
+  if (!characterId) return [];
+  if (!['PERSON_QUERY', 'RELATIONSHIP_QUERY'].includes(intent)) return [];
+
+  const rows = await scope.traced(
+    'character_query',
+    'character query working-memory assembly',
+    `character_query:${characterId}:${intent}`,
+    async () => {
+      try {
+        const { assembleCharacterWorkingMemory } = await import(
+          '../characters/characterWorkingMemoryAssembler'
+        );
+        const wmIntent =
+          intent === 'RELATIONSHIP_QUERY' ? 'relationship' : 'who_is';
+        const block = await assembleCharacterWorkingMemory(userId, characterId, wmIntent);
+        if (!block?.text) return { data: [] as Candidate[] };
+        return {
+          data: [
+            {
+              id: `character-query-${characterId}`,
+              type: 'episode' as const,
+              title: `Character dossier: ${block.characterName}`,
+              content: block.text.slice(0, 6000),
+              source: 'character_query',
+              date: block.generatedAt,
+              confidence: 0.92,
+              relevance: 0.95,
+              importance: 0.9,
+              significance: 0.9,
+              relationshipDistance: 0.95,
+              metadata: {
+                characterId,
+                intent: block.intent,
+                sectionKeys: block.sectionKeys,
+              },
+            },
+          ] as Candidate[],
+        };
+      } catch {
+        return { data: [] as Candidate[] };
+      }
+    },
+  );
+  return rows ?? [];
+}
+
 async function loadSemanticClaimCandidates(
   scope: WmaRequestScope,
   userId: string,
@@ -2275,7 +2327,7 @@ export async function assembleWorkingMemory(
   const personEntityId =
     primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates, characterQueryCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -2306,11 +2358,15 @@ export async function assembleWorkingMemory(
       !temporalQuery
         ? loadSemanticClaimCandidates(scope, input.userId, input.question, intent)
         : Promise.resolve([] as Candidate[]),
+      !temporalQuery
+        ? loadCharacterQueryCandidates(scope, input.userId, personEntityId, intent)
+        : Promise.resolve([] as Candidate[]),
     ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
 
   const rankingStarted = Date.now();
   const merged = [
+    ...characterQueryCandidates,
     ...episodeCandidates,
     ...personCandidates,
     ...relationshipCandidates,

@@ -2,7 +2,7 @@
  * Soft-fill sex for family characters from kinship titles / edge kinship.
  */
 import { supabaseAdmin } from '../supabaseClient';
-import { applyKinshipSexInference } from './applyKinshipSexInference';
+import { applyKinshipSexInference, applyNameSexInference } from './applyKinshipSexInference';
 import { parseKinshipFromName } from './kinshipGlossary';
 
 export async function reconcileKinshipSexForUser(userId: string): Promise<number> {
@@ -30,7 +30,15 @@ export async function reconcileKinshipSexForUser(userId: string): Promise<number
       phrase: parsed?.sourcePhrase ?? (row.name as string),
       kinship: kinship ?? (parsed ? undefined : null),
     });
-    if (changed) updated++;
+    if (changed) {
+      updated++;
+    } else {
+      // No kinship title told us — fall back to a best-effort guess from the
+      // first name. Weakest tier: no-ops if sex is already set from anything
+      // stronger (kinship_inferred/user_confirmed/explicit).
+      const nameChanged = await applyNameSexInference(userId, row.id as string, row.name as string);
+      if (nameChanged) updated++;
+    }
   }
 
   // Edge kinship (mother/father) describes the OTHER person relative to self —

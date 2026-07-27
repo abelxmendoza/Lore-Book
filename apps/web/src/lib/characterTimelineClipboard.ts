@@ -1,4 +1,4 @@
-import type { CharTimelineEvent } from '../components/characters/CharacterTimelinePanel';
+import type { CharTimelineEvent } from '../components/characters/CharacterStoryPanel';
 
 import { buildListClipboardText } from './listClipboard';
 

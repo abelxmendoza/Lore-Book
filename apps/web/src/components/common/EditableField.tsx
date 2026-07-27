@@ -121,7 +121,7 @@ export function EditableField({
       await onSave(next);
       setEditing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save');
+      setError(err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err && typeof (err as { message: unknown }).message === 'string' ? (err as { message: string }).message : 'Could not save');
     } finally {
       setSaving(false);
     }

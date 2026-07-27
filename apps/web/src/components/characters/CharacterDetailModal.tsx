@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
+import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -51,12 +53,13 @@ import {
 } from '../../mocks/characterIntelligence';
 import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
-import { CharacterTimelinePanel } from './CharacterTimelinePanel';
+import { CharacterStoryPanel } from './CharacterStoryPanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 import { CharacterEvidenceLocker } from './CharacterEvidenceLocker';
@@ -77,7 +80,9 @@ import {
 } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
-import { useCharacterProfileBundle } from '../../hooks/useCharacterProfileBundle';
+import { useCharacterQuery } from '../../hooks/useCharacterQuery';
+import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
+import type { CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
 
 type SocialMedia = {
@@ -180,19 +185,18 @@ type CharacterDetailModalProps = {
   /** Protagonist / self profile — amber styling, no delete, synthetic-id safe. */
   isMainCharacter?: boolean;
   /** Open directly on a tab (e.g. from Dating & Romance → Character Book link). */
-  initialTab?: TabKey | 'network';
+  initialTab?: TabKey | 'network' | 'history';
   /** Deep-link into a specific Info-tab field (e.g. Role from an Unknown chip). */
   initialFocusField?: 'role' | null;
   onInitialFocusFieldHandled?: () => void;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
 
-/** Legacy `network` deep-links land on Connections (periphery lives there now). */
-function resolveInitialTab(tab: TabKey | 'network' | undefined): TabKey {
+/** Legacy `network` deep-links land on Connections; legacy `history` → Story. */
+function resolveInitialTab(tab: TabKey | 'network' | 'history' | undefined): TabKey {
   if (tab === 'network') return 'relationships';
-  // Chat is a redirect to main chat, not an in-modal panel — never a landing tab.
-  if (tab === 'chat') return 'info';
+  if (tab === 'history') return 'timeline';
   return tab ?? 'info';
 }
 
@@ -201,8 +205,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'knowledge',     label: 'What I Know',       shortLabel: 'Know',       icon: Brain },
   { key: 'chat',          label: 'Intelligence Chat', shortLabel: 'Chat',       icon: MessageSquare },
   { key: 'relationships', label: 'Connections',       shortLabel: 'Links',      icon: Network },
-  { key: 'timeline',      label: 'Timeline',          shortLabel: 'Time',       icon: Clock },
-  { key: 'history',       label: 'History',           shortLabel: 'History',    icon: Calendar },
+  { key: 'timeline',      label: 'Story',             shortLabel: 'Story',      icon: BookOpen },
   { key: 'insights',      label: 'Insights',          shortLabel: 'Insights',   icon: BarChart3 },
   { key: 'perceptions',   label: 'Perceptions',       shortLabel: 'Views',      icon: Eye },
   { key: 'photos',        label: 'Photo Gallery',     shortLabel: 'Photos',     icon: ImageIcon },
@@ -335,22 +338,43 @@ export const CharacterDetailModal = ({
   initialFocusField = null,
   onInitialFocusFieldHandled,
 }: CharacterDetailModalProps) => {
+  const navigate = useNavigate();
   const { useMockData: isMockDataEnabled } = useMockData();
   const [updateCharacter] = useUpdateCharacterMutation();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
-  const profileBundleEnabled =
+  const characterQueryEnabled =
     !isMockDataEnabled &&
     !isSyntheticSelfId(character.id) &&
     !character.id.startsWith('dummy-') &&
     !isMainCharacter;
   const {
-    bundle: profileBundle,
-    loading: profileBundleLoading,
-    error: profileBundleError,
-  } = useCharacterProfileBundle(
-    character.id,
-    profileBundleEnabled,
-  );
+    query: characterQuery,
+    loading: characterQueryLoading,
+    error: characterQueryError,
+    loadSections,
+  } = useCharacterQuery(character.id, {
+    enabled: characterQueryEnabled,
+    sections: 'core',
+  });
+  const profileBundle = useMemo(() => {
+    if (!characterQuery?.sections?.identity) return null;
+    const identity = characterQuery.sections.identity as Record<string, unknown>;
+    return {
+      characterId: characterQuery.characterId,
+      detail: identity,
+      knowledgeBase: characterQuery.sections.knowledge as CharacterKnowledgeBaseData | undefined,
+      loreProfile: characterQuery.sections.lore as CharacterLoreProfile | undefined,
+      chatMentions: (characterQuery.sections.chatMentions as CharacterChatMention[]) ?? [],
+      generatedAt: characterQuery.generatedAt,
+      organizations: characterQuery.sections.organizations,
+      attributes: characterQuery.sections.attributes,
+      memories: characterQuery.sections.memories,
+      provenance: characterQuery.sections.provenance,
+    };
+  }, [characterQuery]);
+  const profileBundleLoading = characterQueryLoading;
+  const profileBundleError = characterQueryError;
+  const profileBundleEnabled = characterQueryEnabled;
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
   const [profileWittyTagline, setProfileWittyTagline] = useState<string | null>(
     getCharacterWittyTagline(character)
@@ -1260,10 +1284,10 @@ export const CharacterDetailModal = ({
     if (romantic) {
       openChatWithFocus({
         entityId: editedCharacter.id,
-        entityName: editedCharacter.name,
+        entityName: getCharacterDisplayTitle(editedCharacter),
         entityType: 'character',
         relationshipId: romantic.id,
-        relationshipName: editedCharacter.name,
+        relationshipName: getCharacterDisplayTitle(editedCharacter),
         sourceSurface: 'love',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
         knowledgeScope: 'romantic relationship from character profile',
@@ -1277,28 +1301,42 @@ export const CharacterDetailModal = ({
     } else {
       openChatWithFocus({
         entityId: editedCharacter.id,
-        entityName: editedCharacter.name,
+        entityName: getCharacterDisplayTitle(editedCharacter),
         entityType: 'character',
         sourceSurface: 'characters',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
         knowledgeScope: FOCUSED_ENTITY_CHAT_PRESETS.characters.knowledgeScope,
-        initialPrompt: trimmed || FOCUSED_ENTITY_CHAT_PRESETS.characters.existingPrompt(editedCharacter.name),
+        initialPrompt: trimmed || FOCUSED_ENTITY_CHAT_PRESETS.characters.existingPrompt(getCharacterDisplayTitle(editedCharacter)),
         arrivedAt: Date.now(),
       });
     }
     onClose();
   };
+
+  /** "From your chats" mention click: jump to the exact thread/message and highlight the name. */
+  const handleOpenThread = (sessionId: string, messageId: string) => {
+    const aliases = Array.isArray(editedCharacter.alias)
+      ? editedCharacter.alias.filter((a): a is string => typeof a === 'string')
+      : [];
+    // Navigate first so modal teardown can't race away the router update.
+    openChatThreadAtMessage(navigate, {
+      sessionId,
+      messageId,
+      highlightTerms: [
+        getCharacterDisplayTitle(editedCharacter),
+        editedCharacter.name,
+        ...aliases,
+      ],
+    });
+    onClose();
+  };
+
   /**
-   * Intelligence Chat is a redirect, not an in-modal panel: it hands off to
-   * main chat with this character's focus chip + context (loadEntityArc /
-   * workingMemoryAssembler pick it up from there) instead of running a second,
-   * disconnected chat surface inside the modal.
+   * Intelligence Chat stays in-modal as a launchpad. Leaving for main chat
+   * only happens when the user picks a starter or "Open main chat" — so they
+   * can still switch tabs without being kicked out of the character modal.
    */
   const setActiveTab = (tab: TabKey) => {
-    if (tab === 'chat') {
-      askInChat('');
-      return;
-    }
     setActiveTabState(tab);
   };
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
@@ -1576,11 +1614,81 @@ export const CharacterDetailModal = ({
       Array.isArray(detail.context_hooks) ? detail.context_hooks : getCharacterContextHooks(detail),
     );
     setProfileRealName(detail.real_name ?? getCharacterRealName(detail));
-    if (detail.shared_memories && detail.shared_memories.length > 0) {
+
+    // Prefer batch-hydrated memories from Character Query when present.
+    const hydrated = profileBundle.memories as
+      | Array<{
+          id: string;
+          entry_id: string;
+          date: string;
+          summary?: string;
+          title?: string | null;
+          content?: string | null;
+          tags?: string[];
+          source?: string | null;
+        }>
+      | undefined;
+    if (hydrated && hydrated.length > 0) {
+      setSharedMemoryCards(
+        hydrated.map((memory) => ({
+          id: memory.id,
+          entry_id: memory.entry_id,
+          date: memory.date,
+          summary: memory.summary ?? memory.title ?? memory.content?.slice(0, 140) ?? null,
+          content: memory.content ?? memory.summary ?? '',
+          source: (memory.source as 'chat' | 'journal' | undefined) ?? 'journal',
+          tags: memory.tags ?? [],
+          character_name: detail.name,
+        })) as any,
+      );
+    } else if (detail.shared_memories && detail.shared_memories.length > 0) {
       void loadSharedMemories(detail.shared_memories);
     } else {
       setSharedMemoryCards([]);
     }
+
+    if (profileBundle.attributes?.current) {
+      setCharacterAttributes(
+        (profileBundle.attributes.current as CharacterAttribute[]).map((a) => ({
+          attributeType: String((a as any).attributeType ?? (a as any).attribute_type ?? ''),
+          attributeValue: String((a as any).attributeValue ?? (a as any).attribute_value ?? ''),
+          confidence: Number((a as any).confidence ?? 0),
+          evidence: (a as any).evidence,
+        })),
+      );
+      setLoadingAttributes(false);
+    }
+    if (profileBundle.attributes?.history) {
+      setAllAttributes(profileBundle.attributes.history as any[]);
+    }
+    if (profileBundle.loreProfile) {
+      setLoreProfile(profileBundle.loreProfile);
+      setLoreProfileLoading(false);
+    }
+    if (Array.isArray(profileBundle.organizations)) {
+      const list = profileBundle.organizations as Organization[];
+      const activeRels = new Set(['founder', 'leader', 'member', 'collaborator', 'adjacent', 'alumnus']);
+      setCharacterOrganizations(
+        list.map((org) => {
+          const member = org.members?.find(
+            (m) =>
+              (detail.id && m.character_id === detail.id) ||
+              m.character_name?.toLowerCase() === String(detail.name ?? '').toLowerCase(),
+          );
+          return {
+            ...org,
+            user_is_member: activeRels.has(org.user_relationship),
+            character_role: member?.role,
+            character_member_notes: member?.notes,
+          };
+        }),
+      );
+      setOrgsLoaded(true);
+    }
+    if (profileBundle.provenance) {
+      setProvenance(profileBundle.provenance as any);
+    }
+
     detailsReadyRef.current = true;
     setLoadingDetails(false);
   }, [profileBundle]);
@@ -1768,8 +1876,9 @@ export const CharacterDetailModal = ({
     profileBundleError,
   ]);
 
-  // Load character attributes
+  // Load character attributes (skip when Character Query core already provided them)
   useEffect(() => {
+    if (profileBundle?.attributes?.current) return;
     const loadAttributes = async () => {
       setLoadingAttributes(true);
       try {
@@ -1806,9 +1915,10 @@ export const CharacterDetailModal = ({
       }
     };
     void loadAttributes();
-  }, [character.id, character.name, isMainCharacter, isMockDataEnabled]);
+  }, [character.id, character.name, isMainCharacter, isMockDataEnabled, profileBundle?.attributes?.current]);
 
   useEffect(() => {
+    if (profileBundle?.loreProfile) return;
     if (isMockDataEnabled || !character.id || character.id.startsWith('dummy-') || character.id.startsWith('temp-')) {
       setLoreProfile(null);
       return;
@@ -1842,7 +1952,7 @@ export const CharacterDetailModal = ({
     return () => {
       cancelled = true;
     };
-  }, [character.id, isMockDataEnabled, orgsReloadToken]);
+  }, [character.id, isMockDataEnabled, orgsReloadToken, profileBundle?.loreProfile]);
 
   // Keep Info-tab group chips aligned with Connections memberships (same durable links).
   useEffect(() => {
@@ -1916,9 +2026,9 @@ export const CharacterDetailModal = ({
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
 
-  // ── Load intelligence (dynamics + influence) for the Info tab ───────────
+  // ── Load intelligence (dynamics + influence) for Info / Story tabs ───────────
   useEffect(() => {
-    if (activeTab !== 'info' || dynamicsLoaded) return;
+    if ((activeTab !== 'info' && activeTab !== 'timeline') || dynamicsLoaded) return;
     const name = encodeURIComponent(character.name);
 
     if (isMockDataEnabled) {
@@ -1973,19 +2083,27 @@ export const CharacterDetailModal = ({
     });
   }, [character.id]);
 
-  // ── Load provenance ─────────────────────────────────────────────────────────
+  // ── Load provenance (skip when Character Query already provided it) ─────────
   useEffect(() => {
     if (provenanceLoaded || isMockDataEnabled) return;
+    if (profileBundle?.provenance) {
+      setProvenanceLoaded(true);
+      return;
+    }
     if (!character.id || character.id.startsWith('dummy-') || character.id.startsWith('char-')) return;
     fetchJson<any>(`/api/characters/${character.id}/provenance`)
       .then(r => setProvenance(r))
       .catch(() => {})
       .finally(() => setProvenanceLoaded(true));
-  }, [character.id, provenanceLoaded, isMockDataEnabled]);
+  }, [character.id, provenanceLoaded, isMockDataEnabled, profileBundle?.provenance]);
 
   // ── Load ALL attributes (including historical) ───────────────────────────────
   useEffect(() => {
     if (allAttributesLoaded) return;
+    if (profileBundle?.attributes?.history) {
+      setAllAttributesLoaded(true);
+      return;
+    }
     if (isMockDataEnabled) {
       setAllAttributes(getMockAllAttributes(character));
       setAllAttributesLoaded(true);
@@ -1996,7 +2114,23 @@ export const CharacterDetailModal = ({
       .then(r => { if (r.attributes) setAllAttributes(r.attributes); })
       .catch(() => {})
       .finally(() => setAllAttributesLoaded(true));
-  }, [character.id, character.name, allAttributesLoaded, isMockDataEnabled, characterAttributes]);
+  }, [character.id, character.name, allAttributesLoaded, isMockDataEnabled, characterAttributes, profileBundle?.attributes?.history]);
+
+  // Lazy-load heavy Character Query sections when their tabs open.
+  useEffect(() => {
+    if (!characterQueryEnabled || !character.id) return;
+    if (activeTab === 'relationships' || activeTab === 'social') {
+      void loadSections('family');
+    } else if (activeTab === 'timeline') {
+      void loadSections('timelines');
+    } else if (activeTab === 'photos' || activeTab === 'messages') {
+      void loadSections('media');
+    } else if (activeTab === 'evidence') {
+      void loadSections('evidence');
+    } else if (activeTab === 'insights') {
+      void loadSections('dynamics');
+    }
+  }, [activeTab, character.id, characterQueryEnabled, loadSections]);
 
   // Load knowledge claims + character facts when Knowledge tab opens
   useEffect(() => {
@@ -2088,9 +2222,10 @@ export const CharacterDetailModal = ({
     pendingOptimisticOrgsRef.current = [];
   }, [character.id]);
 
-  // Fetch real organizations for this character (re-runs on membership story updates).
+  // Fetch real organizations for this character (skip when Character Query already provided them).
   useEffect(() => {
     if (isMockDataEnabled) return;
+    if (profileBundle?.organizations) return;
     let cancelled = false;
     const load = async () => {
       invalidateOrganizationMembershipCaches({
@@ -2141,7 +2276,7 @@ export const CharacterDetailModal = ({
     return () => {
       cancelled = true;
     };
-  }, [character.id, character.name, isMockDataEnabled, orgsReloadToken]);
+  }, [character.id, character.name, isMockDataEnabled, orgsReloadToken, profileBundle?.organizations]);
 
   // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
   const [connectionAddOpen, setConnectionAddOpen] = useState(false);
@@ -2515,8 +2650,14 @@ export const CharacterDetailModal = ({
     getCharacterWittyTagline(editedCharacter) ||
     (isMainCharacter ? null : null);
   const isRomanticRelationshipType = (type = '') => /\b(romantic|dating|date|boyfriend|girlfriend|partner|spouse|wife|husband|fianc|lover|crush|situationship|ex)\b/i.test(type);
-  const romanticConnections = (editedCharacter.relationships ?? [])
-    .filter(rel => rel.character_name && rel.character_name !== 'You' && isRomanticRelationshipType(rel.relationship_type));
+  const romanticConnections = dedupeRelationshipsByPerson(
+    (editedCharacter.relationships ?? []).filter(
+      (rel) =>
+        rel.character_name &&
+        rel.character_name !== 'You' &&
+        isRomanticRelationshipType(rel.relationship_type),
+    ),
+  );
   const relationshipStatus = firstAttributeValue(['relationship_status']) ??
     (romanticConnections.length > 0 ? romanticConnections[0].relationship_type.replace(/_/g, ' ') : undefined);
   const workAttributes = attributesByType(['employment_status', 'occupation', 'workplace', 'company', 'industry', 'job', 'side_hustle', 'brand', 'business', 'skill', 'certification', 'education']);
@@ -2583,10 +2724,18 @@ export const CharacterDetailModal = ({
     }
   };
 
-  const strongestConnections = [...(editedCharacter.relationships ?? [])]
-    .filter(rel => rel.character_name && rel.character_name !== 'You')
+  const strongestConnections = dedupeRelationshipsByPerson(
+    (editedCharacter.relationships ?? []).filter(
+      (rel) => rel.character_name && rel.character_name !== 'You',
+    ),
+  )
     .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
     .slice(0, 5);
+  const uniqueConnections = dedupeRelationshipsByPerson(
+    (editedCharacter.relationships ?? []).filter(
+      (rel) => rel.character_name && rel.character_name !== 'You',
+    ),
+  );
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   const resolvedRomanticRelationship = useMemo(() => {
@@ -3022,7 +3171,13 @@ export const CharacterDetailModal = ({
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
-                    data-testid={tab.key === 'relationships' ? 'character-tab-connections' : undefined}
+                    data-testid={
+                      tab.key === 'relationships'
+                        ? 'character-tab-connections'
+                        : tab.key === 'timeline'
+                          ? 'character-tab-story'
+                          : undefined
+                    }
                   >
                     <Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="max-w-[3.5rem] text-center truncate">{tab.shortLabel}</span>
@@ -3055,7 +3210,13 @@ export const CharacterDetailModal = ({
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
-                    data-testid={tab.key === 'relationships' ? 'character-tab-connections' : undefined}
+                    data-testid={
+                      tab.key === 'relationships'
+                        ? 'character-tab-connections'
+                        : tab.key === 'timeline'
+                          ? 'character-tab-story'
+                          : undefined
+                    }
                   >
                     <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                     <span className="truncate">{tab.label}</span>
@@ -3182,6 +3343,7 @@ export const CharacterDetailModal = ({
                 onDeleteWorldPerson={deleteWorldPerson}
                 focusField={initialFocusField}
                 onFocusFieldHandled={onInitialFocusFieldHandled}
+                isSelfCharacter={isMainCharacter}
               />
             )}
 
@@ -3498,11 +3660,9 @@ export const CharacterDetailModal = ({
                       <p className="text-xs text-red-400 mb-2">{connectionError}</p>
                     )}
                     <div className="space-y-2">
-                      {(editedCharacter.relationships ?? [])
-                        .filter(rel => rel.character_name && rel.character_name !== 'You')
-                        .map((rel) => (
+                      {uniqueConnections.map((rel) => (
                           <Card 
-                            key={rel.id} 
+                            key={rel.character_id ?? rel.id} 
                             className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
                             onClick={() => void openCharacterByRelationship(rel)}
                           >
@@ -3543,7 +3703,7 @@ export const CharacterDetailModal = ({
                             </CardContent>
                           </Card>
                         ))}
-                      {(editedCharacter.relationships ?? []).filter(rel => rel.character_name && rel.character_name !== 'You').length === 0 && (
+                      {uniqueConnections.length === 0 && (
                         <div className="text-center py-8 text-white/40">
                           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>No connections tracked yet</p>
@@ -3729,7 +3889,6 @@ export const CharacterDetailModal = ({
                               role: editedCharacter.role,
                               archetype: editedCharacter.archetype,
                             }}
-                            defaultMemberRole={orgMemberRole}
                             onOpenedChat={() => {
                               setOrgAddOpen(false);
                               onClose();
@@ -3820,170 +3979,18 @@ export const CharacterDetailModal = ({
               />
             )}
 
-            {!loadingDetails && activeTab === 'history' && (
-              <div className="space-y-5">
-                {loadingMemories && (
-                  <div className="flex items-center gap-2 py-6 text-white/40 text-sm justify-center">
-                    <Clock className="h-4 w-4 animate-spin" /><span>Loading memories...</span>
-                  </div>
-                )}
-
-                {!loadingMemories && sharedMemoryCards.length === 0 && (
-                  <div className="text-center py-12 text-white/40">
-                    <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium mb-1">No shared memories yet</p>
-                    <p className="text-xs">Memories appear here as you mention {shortDisplayName(editedCharacter.name)} in your journal entries</p>
-                  </div>
-                )}
-
-                {!loadingMemories && sharedMemoryCards.length > 0 && (() => {
-                  const memories = [...sharedMemoryCards].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                  const firstName = shortDisplayName(editedCharacter.name);
-
-                  // ── 6. Relationship arc header (uses dynamics if loaded) ────
-                  const stageHistory: Array<{ stage: string; start_date: string }> = dynamics?.lifecycle?.stage_history ?? [];
-
-                  // ── 4. First memory + most significant ─────────────────────
-                  const firstMemory = memories[0];
-                  const mostSignificant = [...memories].sort((a, b) =>
-                    (b.content?.length ?? 0) - (a.content?.length ?? 0)
-                  )[0];
-                  const hasBothHighlights = firstMemory && mostSignificant && firstMemory.id !== mostSignificant.id;
-
-                  // ── 3. Group by era (chapter title or year) ────────────────
-                  const grouped: Record<string, MemoryCard[]> = {};
-                  memories.forEach(m => {
-                    const era = m.chapterTitle || String(new Date(m.date).getFullYear());
-                    if (!grouped[era]) grouped[era] = [];
-                    grouped[era].push(m);
-                  });
-                  const eras = Object.entries(grouped).sort((a, b) => {
-                    const dateA = new Date(a[1][0].date).getTime();
-                    const dateB = new Date(b[1][0].date).getTime();
-                    return dateA - dateB;
-                  });
-
-                  // ── MemoryRow component ────────────────────────────────────
-                  const MemoryRow = ({ memory, highlight }: { memory: MemoryCard; highlight?: string }) => (
-                    <div
-                      key={memory.id}
-                      className={`group rounded-xl border transition-colors cursor-pointer ${
-                        highlight
-                          ? 'border-primary/30 bg-primary/5 hover:bg-primary/8'
-                          : 'border-white/8 bg-white/3 hover:bg-white/6'
-                      }`}
-                      onClick={() => setSelectedMemory(memory)}
-                    >
-                      <div className="p-3 flex items-start gap-3">
-                        <div className="flex-shrink-0 w-10 text-center pt-0.5">
-                          <p className="text-[9px] text-white/30 leading-tight">
-                            {new Date(memory.date).toLocaleDateString('en-US', { month: 'short' })}
-                          </p>
-                          <p className="text-xs font-semibold text-white/50">
-                            {new Date(memory.date).getFullYear().toString().slice(2)}
-                          </p>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          {highlight && (
-                            <span className="text-[9px] font-semibold text-primary/70 uppercase tracking-widest block mb-0.5">{highlight}</span>
-                          )}
-                          <p className="text-sm font-medium text-white/85 leading-snug">{memory.title}</p>
-                          {memory.content && (
-                            <p className="text-xs text-white/50 mt-1 leading-snug line-clamp-2">
-                              {memory.content.length > 120 ? memory.content.substring(0, 120) + '…' : memory.content}
-                            </p>
-                          )}
-                          {memory.mood && (
-                            <span className="text-[9px] text-white/30 mt-1 block">{memory.mood}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-
-                  return (
-                    <>
-                      {/* ── 6. Relationship Arc Header ─────────────────────── */}
-                      {stageHistory.length > 0 && (
-                        <div className="mb-1">
-                          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">Relationship Arc</p>
-                          <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                            {stageHistory.map((s, i) => (
-                              <div key={i} className="flex items-center gap-1 flex-shrink-0">
-                                <div className={`px-2 py-1 rounded text-[10px] font-medium ${
-                                  i === stageHistory.length - 1
-                                    ? 'bg-primary/20 text-primary border border-primary/30'
-                                    : 'bg-white/5 text-white/35'
-                                }`}>
-                                  <span className="capitalize">{s.stage}</span>
-                                  {s.start_date && (
-                                    <span className="ml-1 opacity-50">{new Date(s.start_date).getFullYear()}</span>
-                                  )}
-                                </div>
-                                {i < stageHistory.length - 1 && <span className="text-white/20">→</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ── 4. Pinned highlights ───────────────────────────── */}
-                      {(firstMemory || mostSignificant) && (
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Highlights</p>
-                          <MemoryRow memory={firstMemory} highlight="First memory" />
-                          {hasBothHighlights && <MemoryRow memory={mostSignificant} highlight="Most significant" />}
-                        </div>
-                      )}
-
-                      {/* ── 3. Memories grouped by era ────────────────────── */}
-                      <div className="space-y-5">
-                        <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Full Story</p>
-                        {eras.map(([era, eraMemories]) => (
-                          <div key={era}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="h-px flex-1 bg-white/8" />
-                              <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest px-1">{era}</span>
-                              <div className="h-px flex-1 bg-white/8" />
-                            </div>
-                            <div className="space-y-2">
-                              {eraMemories.map(m => <MemoryRow key={m.id} memory={m} />)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* ── 5. Perception events integrated ──────────────── */}
-                      <div className="pt-3 border-t border-white/8">
-                        <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">
-                          Beliefs About {firstName}
-                        </p>
-                        <p className="text-xs text-white/35 mb-3">
-                          How your understanding of {firstName} has evolved over time.
-                          Open the Perceptions tab for the full picture.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('perceptions')}
-                          className="text-xs text-primary/60 hover:text-primary transition-colors flex items-center gap-1"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View perceptions about {firstName}
-                        </button>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Timeline Tab */}
+            {/* Story Tab — events + journal memories (was Timeline / History) */}
             {!loadingDetails && activeTab === 'timeline' && (
-              <CharacterTimelinePanel
+              <CharacterStoryPanel
                 characterId={character.id}
                 characterName={editedCharacter.name}
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'timeline'}
+                memories={sharedMemoryCards}
+                memoriesLoading={loadingMemories}
+                stageHistory={dynamics?.lifecycle?.stage_history ?? []}
+                onSelectMemory={(memory) => setSelectedMemory(memory)}
+                onOpenPerceptions={() => setActiveTab('perceptions')}
               />
             )}
 
@@ -4340,8 +4347,53 @@ export const CharacterDetailModal = ({
               </div>
             )}
 
+            {/* ── Intelligence Chat — in-modal launchpad (leave only on CTA) ── */}
+            {!loadingDetails && activeTab === 'chat' && (
+              <div
+                className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-8 text-center space-y-4"
+                data-testid="character-intelligence-chat-panel"
+              >
+                <MessageSquare className="h-10 w-10 mx-auto text-violet-300/70" />
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-semibold text-white">
+                    Chat about {shortDisplayName(editedCharacter.name)}
+                  </h3>
+                  <p className="text-sm text-white/50 max-w-md mx-auto">
+                    Stay in this profile to keep browsing tabs. When you&apos;re ready, open main chat
+                    with their focus chip — full thread, memory, and composer live there.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 sm:gap-2 max-w-lg mx-auto text-left">
+                  {[
+                    `What do you know about ${editedCharacter.name}?`,
+                    `How has my relationship with ${editedCharacter.name} changed?`,
+                    `I need to talk about what happened with ${editedCharacter.name}.`,
+                    `What should I know before I see ${editedCharacter.name} next?`,
+                  ].map((starter) => (
+                    <button
+                      type="button"
+                      key={starter}
+                      onClick={() => askInChat(starter)}
+                      className="text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg border border-violet-500/20 bg-black/40 hover:bg-violet-950/25 hover:border-violet-500/40 transition-colors text-xs sm:text-sm text-white/70 hover:text-white/90 break-words"
+                    >
+                      &ldquo;{starter}&rdquo;
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => askInChat('')}
+                  className="inline-flex items-center justify-center gap-2 mx-auto px-4 py-2.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/35 text-violet-100 hover:text-violet-50 text-xs sm:text-sm font-medium transition-colors"
+                  data-testid="character-open-main-chat"
+                >
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  Open main chat
+                </button>
+              </div>
+            )}
+
             {/* Metadata Tab */}
-            {/* ── Intelligence Tab ── */}
+            {/* Legacy Relationship Intelligence body kept out of Chat — lives under Insights when loaded. */}
             {false && !loadingDetails && activeTab === 'chat' && (
               <div className="space-y-6">
                 <div>
@@ -4602,8 +4654,10 @@ export const CharacterDetailModal = ({
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'knowledge'}
                 initialData={profileBundle?.knowledgeBase}
+                skipFetch={Boolean(profileBundle?.knowledgeBase)}
                 chatMentions={profileBundle?.chatMentions}
                 onAskInChat={askInChat}
+                onOpenThread={handleOpenThread}
               />
             )}
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMergedPlaceIdentity } from '../../src/services/locationMergeService';
+import {
+  buildMergedPlaceIdentity,
+  locationRowMatchesResolvedName,
+} from '../../src/services/locationMergeService';
 import { reviewPlaceDuplicateCompatibility } from '../../src/services/ontology/placeIntelligence';
 import { resolveExistingPlace } from '../../src/services/lexical/places';
 
@@ -90,5 +93,73 @@ describe('locationMergeService alias preservation', () => {
       id: 'loc-abuela',
       displayName: "Abuela's House",
     });
+  });
+});
+
+describe('locationRowMatchesResolvedName', () => {
+  it('matches live display names and aliases, not a stale normalized_name alone', () => {
+    expect(
+      locationRowMatchesResolvedName(
+        {
+          name: 'First Street Pool & Billiards',
+          normalized_name: 'first street pool',
+          metadata: {},
+        },
+        'First Street Pool',
+      ),
+    ).toBe(false);
+
+    expect(
+      locationRowMatchesResolvedName(
+        {
+          name: 'First Street Pool & Billiards',
+          normalized_name: 'first street pool & billiards',
+          metadata: { aliases: ['First Street Pool'] },
+        },
+        'First Street Pool',
+      ),
+    ).toBe(true);
+
+    expect(
+      locationRowMatchesResolvedName(
+        {
+          name: 'First Street Pool',
+          normalized_name: 'first street pool',
+          metadata: {},
+        },
+        'First Street Pool',
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('isPlaceNameShadowOf', () => {
+  it('folds short venue cards into & / and / club elaborations and aliases', async () => {
+    const { isPlaceNameShadowOf } = await import('../../src/services/locations/placeNameMatch');
+    expect(
+      isPlaceNameShadowOf('First Street Pool', {
+        name: 'First Street Pool & Billiards',
+        metadata: {},
+      }),
+    ).toBe(true);
+    expect(
+      isPlaceNameShadowOf('Catch One', {
+        name: 'Catch One Club',
+        metadata: {},
+      }),
+    ).toBe(true);
+    expect(
+      isPlaceNameShadowOf('First Street Pool', {
+        name: 'First Street Pool & Billiards',
+        metadata: { aliases: ['First Street Pool'] },
+      }),
+    ).toBe(true);
+    // Do not fold a city into a residence that merely contains the city name.
+    expect(
+      isPlaceNameShadowOf('Anaheim', {
+        name: 'Anaheim Family Home',
+        metadata: {},
+      }),
+    ).toBe(false);
   });
 });

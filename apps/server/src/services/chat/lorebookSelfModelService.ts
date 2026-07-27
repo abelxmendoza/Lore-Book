@@ -135,7 +135,7 @@ const META_QUERY_RULES: Array<{
   {
     concepts: ['creator', 'inception', 'product_identity'],
     pattern:
-      /\b(who (created|built|made|founded) (you|lore ?book)|who('s| is) (your|the) (creator|founder|maker)|who (is|was) abel( mendoza)?)\b/i,
+      /\b(who (created|built|made|founded) (you|lore ?book)|who('s| is) (your|the) (creator|founder|maker)|who (is|was) abel( mendoza)?|did abel( mendoza)? (create|build|make|found)|is abel( mendoza)? (the )?(creator|founder|maker)|abel mendoza (created|built|founded|made) (you|lore ?book))\b/i,
     strength: 'strong',
   },
   {
@@ -303,8 +303,8 @@ export function formatSelfModelBlock(facts: SelfModelFact[]): string | null {
 function formatMetaProductAnswer(facts: SelfModelFact[], message: string): string {
   const lines = facts.map((f) => `• ${truncateDescription(f.description)}`);
   let opener = 'Here is how LoreBook works:';
-  if (/\bwho (created|built|made|founded)\b|\b(creator|founder)\b/i.test(message)) {
-    opener = 'LoreBook was created by Abel Mendoza.';
+  if (/\bwho (created|built|made|founded)\b|\b(creator|founder)\b|\babel( mendoza)?\b.*\b(creat|found|build|made)\b|\b(creat|found|build|made)\b.*\babel( mendoza)?\b/i.test(message)) {
+    opener = 'LoreBook was created by Abel Mendoza, founder of LoreBook.';
   } else if (/\bwhat can (you|lore ?book) do\b|\bcapabilities\b|\bfeatures\b/i.test(message)) {
     opener = "Here's what LoreBook can do — with your story at the center:";
   } else if (/\bare you (working|ok|okay|healthy|online)\b|\bis (lore ?book|the app).*(working|ok|healthy)\b|\bsystem (status|health)\b/i.test(message)) {

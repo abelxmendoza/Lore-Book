@@ -4,6 +4,7 @@ import {
   deriveDeterministicSummaries,
   parseSummaryResponse,
   buildIncrementalInput,
+  scrubSummaryEntityClauses,
   STALENESS_THRESHOLD,
 } from './threadSummaryService';
 import {
@@ -68,6 +69,44 @@ describe('threadSummaryService — deterministic floor', () => {
     const s = deriveDeterministicSummaries(meta);
     expect(s.short).toMatch(/5 messages/);
   });
+
+  it('scrubs polluting people/places out of deterministic summaries', () => {
+    const meta = {
+      ...emptyThreadMetadata(),
+      people: ['Jamie', 'Cousin in', 'therapist'],
+      places: ["Abuela's house", 'her house', 'this weekend'],
+      message_count: 4,
+    };
+    const s = deriveDeterministicSummaries(meta);
+    expect(s.medium).toContain('Jamie');
+    expect(s.medium).not.toContain('Cousin in');
+    expect(s.medium).not.toContain('therapist');
+    expect(s.medium).toContain("Abuela's house");
+    expect(s.medium).not.toContain('her house');
+    expect(s.medium).not.toContain('this weekend');
+  });
+});
+
+describe('scrubSummaryEntityClauses', () => {
+  it('rewrites baked People/Places clauses from scrubbed lists', () => {
+    const scrubbed = scrubSummaryEntityClauses(
+      'People: Jamie, Cousin in. Places: Abuelas House, this weekend.',
+      ['Jamie'],
+      ["Abuela's house"],
+    );
+    expect(scrubbed).toBe("People: Jamie. Places: Abuela's house.");
+  });
+
+  it('drops leftover person fragments after the first People period', () => {
+    const scrubbed = scrubSummaryEntityClauses(
+      'People: Jamie, Marcus, DJ Night, Mr. Chino. Chino. Chino. Places: Northwind Depot, Northwind Club, Goth club.',
+      ['Jamie', 'Marcus', 'DJ Night', 'Mr. Chino'],
+      ['Northwind Depot', 'Northwind Club', 'Goth club'],
+    );
+    expect(scrubbed).toBe(
+      'People: Jamie, Marcus, DJ Night, Mr. Chino. Places: Northwind Depot, Northwind Club, Goth club.',
+    );
+  });
 });
 
 describe('threadSummaryService — response parsing', () => {
@@ -110,17 +149,17 @@ describe('threadSummaryService — incremental input', () => {
 
 describe('threadIntelligence — extended merge keeps summaries + first_activity', () => {
   it('sets first_activity once and advances last_activity', () => {
-    const m1 = mergeThreadMetadata(emptyThreadMetadata(), { people: ['A'], at: '2026-01-01T00:00:00Z' });
+    const m1 = mergeThreadMetadata(emptyThreadMetadata(), { people: ['Alex'], at: '2026-01-01T00:00:00Z' });
     expect(m1.first_activity).toBe('2026-01-01T00:00:00Z');
-    const m2 = mergeThreadMetadata(m1, { people: ['B'], at: '2026-01-05T00:00:00Z' });
+    const m2 = mergeThreadMetadata(m1, { people: ['Blake'], at: '2026-01-05T00:00:00Z' });
     expect(m2.first_activity).toBe('2026-01-01T00:00:00Z');
     expect(m2.last_activity).toBe('2026-01-05T00:00:00Z');
-    expect(m2.people).toEqual(['A', 'B']);
+    expect(m2.people).toEqual(['Alex', 'Blake']);
   });
 
   it('a folded turn never clobbers existing summaries', () => {
     const base = withSummary({ summary_version: 3 });
-    const next = mergeThreadMetadata(base, { people: ['C'], at: '2026-02-01T00:00:00Z' });
+    const next = mergeThreadMetadata(base, { people: ['Casey'], at: '2026-02-01T00:00:00Z' });
     expect(next.summary_short).toBe('a');
     expect(next.summary_version).toBe(3);
     expect(next.summary_message_count).toBe(10);

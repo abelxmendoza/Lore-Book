@@ -73,6 +73,7 @@ const NO_MATCH: DomainArbitrationResult = { domain: null, strength: null };
 /** Software / AI tools that extraction keeps mistaking for people. */
 const TOOL_NAME_KEYS = new Set([
   'claude code', 'chatgpt', 'chat gpt', 'copilot', 'github copilot', 'cursor',
+  'codex', 'claude', 'openai',
   'vs code', 'vscode', 'visual studio code', 'github', 'gitlab', 'jira',
   'slack', 'discord', 'notion', 'figma', 'photoshop', 'illustrator',
   'supabase', 'postgres', 'postgresql', 'mysql', 'mongodb', 'redis',

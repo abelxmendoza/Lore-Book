@@ -335,13 +335,15 @@ export const useConversationRuntime = () => {
           });
       }
     } else {
-      if (hydratedByHandlerRef.current || intendedThreadRef.current) {
-        return;
-      }
+      // Bare `/chat` means "no selected thread" (e.g. entity-focus handoff about
+      // to create a fresh draft). Never keep the previous sticky mega-thread
+      // selected just because intendedThreadRef still points at it.
+      hydratedByHandlerRef.current = null;
       intendedThreadRef.current = null;
       isHydratedRef.current = false;
       setActiveThreadId(null);
       setCurrentThreadId(null);
+      clearActiveMessages();
     }
   }, [
     authLoading,
@@ -358,6 +360,7 @@ export const useConversationRuntime = () => {
     setActiveThreadId,
     activeThreadId,
     navigate,
+    clearActiveMessages,
   ]);
 
   useEffect(() => {

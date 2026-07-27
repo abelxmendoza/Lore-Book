@@ -107,6 +107,15 @@ export function scoreKinshipInContext(rawName: string, context = ''): KinshipVer
   const isKinTitle = !!titleEntry && titleEntry.category === 'FAMILY';
 
   if (isKinTitle) {
+    // Title-leading "Uncle Jeremy" can still be a stage/persona name when the
+    // surrounding talk is nightlife/artist/scene — don't treat as real kin.
+    if (SCENE_WORDS.test(`${lower} ${ctx}`)) {
+      return {
+        isKin: false,
+        confidence: 0.75,
+        reason: 'title-looking kinship word but scene/stage context',
+      };
+    }
     // Title-leading kinship → kin. Boost with explicit family context.
     const familyBoost = FAMILY_CONTEXT.test(ctx) ? 0.05 : 0;
     return {

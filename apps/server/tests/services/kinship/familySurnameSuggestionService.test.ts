@@ -1,5 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { isFamilyRelationshipRow } from '../../../src/services/kinship/familyGraphService';
+import {
+  surnameMatchTokens,
+  surnamesOverlap,
+} from '../../../src/services/kinship/familySurnameSuggestionService';
+
+describe('surnameMatchTokens / surnamesOverlap', () => {
+  it('splits compound and hyphenated surnames and drops particles', () => {
+    expect(surnameMatchTokens('Garcia Lopez')).toEqual(
+      expect.arrayContaining(['garcia', 'lopez', 'garcia lopez']),
+    );
+    expect(surnameMatchTokens('Smith-Jones')).toEqual(
+      expect.arrayContaining(['smith', 'jones', 'smith jones']),
+    );
+    expect(surnameMatchTokens('Van Der Berg')).toEqual(
+      expect.arrayContaining(['berg', 'van der berg']),
+    );
+    expect(surnameMatchTokens('Van Der Berg')).not.toContain('van');
+    expect(surnameMatchTokens('Van Der Berg')).not.toContain('der');
+  });
+
+  it('matches when any surname token overlaps across different full last names', () => {
+    expect(surnamesOverlap('Garcia Lopez', 'Lopez')).toBe('lopez');
+    expect(surnamesOverlap('Medina', 'Rivera')).toBeNull();
+  });
+});
 
 // ─── isFamilyRelationshipRow (pure) ─────────────────────────────────────────
 
@@ -66,6 +91,7 @@ const { fromMock, tables } = vi.hoisted(() => {
     const q: Record<string, unknown> = {
       select: () => q,
       insert: (p: Row) => { mode = 'insert'; payload = p; return q; },
+      upsert: (p: Row) => { mode = 'insert'; payload = p; return q; },
       update: (p: Row) => { mode = 'update'; payload = p; return q; },
       eq: (col: string, val: unknown) => {
         rows = rows.filter((r) => r[col] === val);
@@ -160,9 +186,19 @@ describe('familySurnameSuggestionService.checkForSurnameMatches', () => {
 
     await familySurnameSuggestionService.checkForSurnameMatches(USER, 'jerry');
 
-    const types = tables.character_relationships.map((r) => r.relationship_type).sort();
-    expect(types).toContain('family');
+    const types = tables.character_relationships.map((r) => r.relationship_type);
     expect(types.filter((t) => t === 'parent_of')).toHaveLength(2);
+    // Parent sync also writes sibling/cousin links between co-placed kids.
+    expect(
+      tables.character_relationships.some(
+        (r) =>
+          (r.relationship_type === 'family' ||
+            r.relationship_type === 'cousin_of' ||
+            r.relationship_type === 'sibling_of') &&
+          ((r.source_character_id === 'jerry' && r.target_character_id === 'james') ||
+            (r.source_character_id === 'james' && r.target_character_id === 'jerry')),
+      ),
+    ).toBe(true);
     expect(tables.character_relationships.some((r) => r.relationship_type === 'possible_family')).toBe(false);
   });
 

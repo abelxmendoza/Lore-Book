@@ -169,6 +169,17 @@ describe('lexicalIntelligence scoreKinshipInContext', () => {
     expect(v.isKin).toBe(false);
   });
 
+  it('rejects title-looking stage names when scene context is present (Uncle Jeremy)', () => {
+    const v = scoreKinshipInContext('Uncle Jeremy', 'headlining the goth show at the warehouse');
+    expect(v.isKin).toBe(false);
+    expect(v.reason).toMatch(/scene\/stage/i);
+  });
+
+  it('still treats plain title-leading kin as kin without scene cues', () => {
+    expect(scoreKinshipInContext('Cousin James', 'talking about dinner').isKin).toBe(true);
+    expect(scoreKinshipInContext('Uncle Jeremy', 'came over for sunday dinner').isKin).toBe(true);
+  });
+
   it('rejects handle/stage-name shapes (punctuation/digits)', () => {
     const v = scoreKinshipInContext('Tio.420', 'on instagram');
     expect(v.isKin).toBe(false);

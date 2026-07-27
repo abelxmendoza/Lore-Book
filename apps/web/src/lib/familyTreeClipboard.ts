@@ -1,6 +1,7 @@
 import { inferEdges } from '../components/family/FamilyTreeView';
 import type { FamilyMember, FamilyTree } from '../types/socialRoles';
 import { formatClipboardFields } from './listClipboard';
+import { formatFamilyMemberDisplayName } from './familyMemberDisplay';
 
 export type FamilyTreeClipboardOptions = {
   /** e.g. "Your family tree" or "Family tree — Marcus" */
@@ -24,11 +25,7 @@ function generationLabel(gen: number): string {
 }
 
 function memberDisplayName(m: FamilyMember): string {
-  const base = m.name?.trim() || 'Unknown';
-  if (m.kinship_title?.trim() && m.kinship_title.trim() !== base) {
-    return `${base} (“${m.kinship_title.trim()}”)`;
-  }
-  return base;
+  return formatFamilyMemberDisplayName(m);
 }
 
 function nameById(members: FamilyMember[]): Map<string, string> {

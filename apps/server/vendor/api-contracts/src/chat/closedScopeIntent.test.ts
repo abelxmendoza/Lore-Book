@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isCastRosterQuery,
   isCharacterBookWriteRequest,
+  isOrganizationGroupWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
 } from './closedScopeIntent';
@@ -23,6 +24,12 @@ describe('isCastRosterQuery', () => {
   it('does not match an unrelated message', () => {
     expect(isCastRosterQuery('what did I eat for lunch yesterday?')).toBe(false);
   });
+
+  it('does not steal group roster provision lists', () => {
+    expect(
+      isCastRosterQuery('So far we have NeonPulse, VelvetFox, LumaJade, Star Bats, and Neon Pixie'),
+    ).toBe(false);
+  });
 });
 
 describe('isCharacterBookWriteRequest', () => {
@@ -36,11 +43,37 @@ describe('isCharacterBookWriteRequest', () => {
   });
 });
 
+describe('isOrganizationGroupWriteRequest', () => {
+  it('matches make/create a group', () => {
+    expect(isOrganizationGroupWriteRequest('shes a popular egirl. make a group for that')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('create a group for underground artists')).toBe(true);
+  });
+
+  it('matches a roster provision list', () => {
+    expect(
+      isOrganizationGroupWriteRequest(
+        'So far we have NeonPulse, VelvetFox, LumaJade, Star Bats, and Neon Pixie',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not match ordinary chat', () => {
+    expect(isOrganizationGroupWriteRequest('how was your day?')).toBe(false);
+  });
+});
+
 describe('isClosedScopeQuery', () => {
   it('tags cast roster queries with the right reason', () => {
     expect(isClosedScopeQuery("who's new and returning in this story?")).toEqual({
       closedScope: true,
       reason: 'cast_roster_query',
+    });
+  });
+
+  it('tags group writes ahead of cast queries', () => {
+    expect(isClosedScopeQuery('make a group for that')).toEqual({
+      closedScope: true,
+      reason: 'organization_group_write_request',
     });
   });
 

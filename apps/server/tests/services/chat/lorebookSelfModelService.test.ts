@@ -36,6 +36,17 @@ describe('lorebookSelfModelService', () => {
       expect(match?.concepts).toContain('creator');
     });
 
+    it('detects Abel Mendoza founder phrasings', () => {
+      for (const message of [
+        'Did Abel Mendoza create LoreBook?',
+        'Is Abel the founder?',
+        'Who is Abel Mendoza?',
+      ]) {
+        const match = detectMetaQuery(message);
+        expect(match?.concepts, message).toContain('creator');
+      }
+    });
+
     it('detects capabilities queries', () => {
       const match = detectMetaQuery('What can you do?');
       expect(match?.strength).toBe('strong');

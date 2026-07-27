@@ -14,7 +14,6 @@ import { characterIdentityIndexService } from '../services/characterIdentityInde
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
 import { characterMergeService } from '../services/characterMergeService';
 import { characterRegistry } from '../services/characterRegistry';
-import { identityStrengthService } from '../services/identity/identityStrengthService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -38,6 +37,7 @@ import {
   filterValidAliases,
   shouldMergeCharacterRecords,
 } from '../services/characters/aliasConstraintService';
+import { dedupeRelationshipsByPerson } from '../services/relationships/dedupeCharacterRelationships';
 import {
   characterConsolidationReviewService,
 } from '../services/characters/characterConsolidationReviewService';
@@ -1242,18 +1242,27 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
           direct_memory_count: memoryCounts.get(char.id) || 0,
           knowledge_count: knowledgeCounts.get(char.id) || 0,
           relationship_count: relationshipSets.get(char.id)?.size || 0,
-          relationships: relationships.slice(0, 50).map((rel) => {
-            const relatedCharId = rel.source_character_id === char.id ? rel.target_character_id : rel.source_character_id;
-            return {
-              id: rel.id,
-              character_id: relatedCharId,
-              character_name: characterNameMap.get(relatedCharId) || 'Unknown',
-              relationship_type: rel.relationship_type,
-              closeness_score: rel.closeness_score,
-              summary: rel.summary,
-              status: rel.status
-            };
-          }),
+          relationships: dedupeRelationshipsByPerson(
+            relationships
+              .filter((rel) => {
+                const status = String(rel.status ?? 'active').toLowerCase();
+                return status !== 'superseded' && status !== 'deleted' && status !== 'inactive';
+              })
+              .slice(0, 50)
+              .map((rel) => {
+                const relatedCharId =
+                  rel.source_character_id === char.id ? rel.target_character_id : rel.source_character_id;
+                return {
+                  id: rel.id,
+                  character_id: relatedCharId,
+                  character_name: characterNameMap.get(relatedCharId) || 'Unknown',
+                  relationship_type: rel.relationship_type,
+                  closeness_score: rel.closeness_score,
+                  summary: rel.summary,
+                  status: rel.status,
+                };
+              }),
+          ),
           shared_memories: memories.map((mem) => ({
             id: mem.id,
             entry_id: mem.journal_entry_id,
@@ -1436,6 +1445,29 @@ router.get(
   })
 );
 
+/** Sectioned Character Query for the protagonist (same contract as /:id/query). */
+router.get(
+  '/self/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const self = await selfCharacterService.ensureSelfCharacter(userId);
+    if (!self?.id) {
+      return res.status(404).json({ success: false, error: 'Self character not found' });
+    }
+    const sections = typeof req.query.sections === 'string' ? req.query.sections : 'core';
+    const { getCharacterQuery } = await import('../services/characters/characterQueryService');
+    const query = await getCharacterQuery(userId, self.id as string, {
+      sections,
+      subject: 'self',
+    });
+    if (!query) {
+      return res.status(404).json({ success: false, error: 'Self character not found' });
+    }
+    return res.json({ success: true, query });
+  })
+);
+
 router.post(
   '/restore',
   requireAuth,
@@ -1574,213 +1606,12 @@ router.use('/:id', characterTitleRoutes);
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { data: character, error } = await supabaseAdmin
-      .from('characters')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('user_id', req.user!.id)
-      .single();
-
-    if (error || !character) {
+    const { loadCharacterIdentity } = await import('../services/characters/characterIdentityLoader');
+    const identity = await loadCharacterIdentity(req.user!.id, String(req.params.id));
+    if (!identity) {
       return res.status(404).json({ error: 'Character not found' });
     }
-
-    const { data: rosterRows } = await supabaseAdmin
-      .from('characters')
-      .select('id, name')
-      .eq('user_id', req.user!.id);
-    const otherCanonicalNames = (rosterRows ?? [])
-      .filter((row) => row.id !== character.id)
-      .map((row) => row.name)
-      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
-    const sanitizedAliases = filterValidAliases(character.name, character.alias ?? [], {
-      otherCanonicalNames,
-    });
-    if (JSON.stringify(sanitizedAliases) !== JSON.stringify(character.alias ?? [])) {
-      await supabaseAdmin
-        .from('characters')
-        .update({ alias: sanitizedAliases.length > 0 ? sanitizedAliases : null, updated_at: new Date().toISOString() })
-        .eq('id', character.id)
-        .eq('user_id', req.user!.id);
-      character.alias = sanitizedAliases;
-    }
-
-    // Get relationships
-    const { data: relationships } = await supabaseAdmin
-      .from('character_relationships')
-      .select('*')
-      .or(`source_character_id.eq.${character.id},target_character_id.eq.${character.id}`);
-
-    const associatedCharacterIds = new Set<string>([
-      ...(Array.isArray(character.associated_with_character_ids) ? character.associated_with_character_ids : []),
-      ...(Array.isArray(character.mentioned_by_character_ids) ? character.mentioned_by_character_ids : []),
-    ].filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== character.id));
-
-    // Get character names for relationships and inferred story associations
-    const relationshipCharacterIds = new Set<string>();
-    relationships?.forEach((rel) => {
-      if (rel.source_character_id === character.id) {
-        relationshipCharacterIds.add(rel.target_character_id);
-      } else {
-        relationshipCharacterIds.add(rel.source_character_id);
-      }
-    });
-    associatedCharacterIds.forEach((characterId) => relationshipCharacterIds.add(characterId));
-
-    const { data: relatedCharacters } = relationshipCharacterIds.size > 0
-      ? await supabaseAdmin
-          .from('characters')
-          .select('id, name')
-          .in('id', Array.from(relationshipCharacterIds))
-      : { data: [] };
-
-    const characterNameMap = new Map<string, string>(
-      relatedCharacters?.map((char) => [char.id, char.name] as [string, string]) || []
-    );
-
-    // Get shared memories
-    const { data: memories } = await supabaseAdmin
-      .from('character_memories')
-      .select('id, journal_entry_id, created_at, summary')
-      .eq('character_id', character.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    const { count: memoryCount } = await supabaseAdmin
-      .from('character_memories')
-      .select('*', { count: 'exact', head: true })
-      .eq('character_id', character.id);
-
-    const { count: relationshipCount } = await supabaseAdmin
-      .from('character_relationships')
-      .select('*', { count: 'exact', head: true })
-      .or(`source_character_id.eq.${character.id},target_character_id.eq.${character.id}`);
-
-    const metadata = (character.metadata || {}) as Record<string, unknown>;
-    const isSelfCharacter = Boolean(
-      metadata.is_self || metadata.is_user || /^me$/i.test(character.name)
-    );
-    const pollutedHooks = !isSelfCharacter && Array.isArray(metadata.context_hooks)
-      ? metadata.context_hooks.some((hook) =>
-          typeof hook === 'string' &&
-          /interview|epirus|resume|warehouse diagnostics|caffeine and firmware/i.test(hook)
-        )
-      : false;
-
-    let wittyTagline =
-      (typeof metadata.witty_tagline === 'string' && metadata.witty_tagline) ||
-      (typeof metadata.character_blurb === 'string' ? metadata.character_blurb : null);
-
-    if (!wittyTagline || pollutedHooks) {
-      const { characterBlurbService } = await import('../services/characters/characterBlurbService');
-      const blurb = await characterBlurbService.refreshAndPersist(req.user!.id, character.id, {
-        isSelf: isSelfCharacter,
-      });
-      wittyTagline = blurb?.wittyTagline ?? wittyTagline;
-      if (blurb) {
-        metadata.witty_tagline = blurb.wittyTagline;
-        metadata.character_blurb = blurb.wittyTagline;
-        metadata.profile_summary = blurb.profileSummary;
-        metadata.context_hooks = blurb.contextHooks;
-        metadata.ontology_tags = blurb.ontologyTags;
-      }
-    }
-
-    const social_media = metadata.social_media as Record<string, string> | undefined;
-    const directRelationships = relationships?.filter((rel) => rel.relationship_type !== 'possible_family').map((rel) => {
-      const relatedCharId = rel.source_character_id === character.id ? rel.target_character_id : rel.source_character_id;
-      return {
-        id: rel.id,
-        character_id: relatedCharId,
-        character_name: characterNameMap.get(relatedCharId) || 'Unknown',
-        relationship_type: rel.relationship_type,
-        closeness_score: rel.closeness_score,
-        summary: rel.summary,
-        status: rel.status
-      };
-    }) || [];
-    const directlyRelatedIds = new Set(directRelationships.map((rel) => rel.character_id));
-    const inferredStoryRelationships = Array.from(associatedCharacterIds)
-      .filter((characterId) => !directlyRelatedIds.has(characterId))
-      .map((characterId) => ({
-        id: `story-association-${character.id}-${characterId}`,
-        character_id: characterId,
-        character_name: characterNameMap.get(characterId) || 'Unknown',
-        relationship_type: 'story_association',
-        closeness_score: 3,
-        summary: 'Connected through shared story context, mentions, or scene grouping.',
-        status: 'inferred'
-      }));
-    const allRelationships = [...directRelationships, ...inferredStoryRelationships];
-
-    // Live identity-strength refresh (throttled, best-effort, fire-and-forget):
-    // reuse the signals already gathered above so the strength-weighted merge
-    // guard operates on real scores instead of always-null. Self is treated as
-    // highly grounded. See identityStrengthService / strengthWeightedMerge.
-    void identityStrengthService.recompute(
-      req.user!.id,
-      'character',
-      character.id,
-      {
-        confidence: typeof metadata.confidence === 'number' ? (metadata.confidence as number) : undefined,
-        evidenceCount: memoryCount || 0,
-        connectedEntities: relationshipCount || 0,
-        confirmedRelationships: directRelationships.filter((rel) => rel.status && rel.status !== 'inferred').length,
-        interactionCount: memoryCount || 0,
-      },
-      {
-        identity_strength_score: character.identity_strength_score,
-        identity_strength: character.identity_strength,
-      }
-    );
-
-    res.json({
-      id: character.id,
-      name: character.name,
-      alias: character.alias || [],
-      pronouns: character.pronouns,
-      species: character.species,
-      archetype: character.archetype,
-      role: character.role,
-      status: character.status || 'active',
-      first_appearance: character.first_appearance,
-      summary: character.summary,
-      witty_tagline: wittyTagline,
-      real_name:
-        (typeof metadata.real_name === 'string' && metadata.real_name) ||
-        [character.first_name, character.last_name].filter(Boolean).join(' ').trim() ||
-        null,
-      context_hooks: Array.isArray(metadata.context_hooks) ? metadata.context_hooks : [],
-      ontology_tags: Array.isArray(metadata.ontology_tags) ? metadata.ontology_tags : [],
-      tags: character.tags || [],
-      avatar_url: displayAvatarUrl(character),
-      social_media: social_media || undefined,
-      metadata: metadata,
-      created_at: character.created_at,
-      updated_at: character.updated_at,
-      first_name: character.first_name ?? null,
-      middle_name: typeof metadata.middle_name === 'string' ? metadata.middle_name : null,
-      last_name: character.last_name ?? null,
-      is_nickname: character.is_nickname ?? null,
-      importance_level: character.importance_level ?? null,
-      importance_score: character.importance_score ?? null,
-      proximity_level: character.proximity_level ?? null,
-      has_met: character.has_met ?? null,
-      relationship_depth: character.relationship_depth ?? null,
-      associated_with_character_ids: character.associated_with_character_ids ?? [],
-      mentioned_by_character_ids: character.mentioned_by_character_ids ?? [],
-      context_of_mention: character.context_of_mention ?? null,
-      likelihood_to_meet: character.likelihood_to_meet ?? null,
-      memory_count: memoryCount || 0,
-      relationship_count: Math.max(relationshipCount || 0, allRelationships.length),
-      relationships: allRelationships,
-      shared_memories: memories?.map((mem) => ({
-        id: mem.id,
-        entry_id: mem.journal_entry_id,
-        date: mem.created_at,
-        summary: mem.summary || undefined
-      })) || []
-    });
+    res.json(identity);
   } catch (error) {
     logger.error({ err: error }, 'Failed to get character');
     res.status(500).json({ error: 'Failed to load character' });
@@ -1861,6 +1692,13 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     // If real name is being provided for a nickname character, move nickname to alias
     let nameToUpdate = updateData.name;
+    if (typeof nameToUpdate === 'string' && nameToUpdate.trim()) {
+      const { characterRegistry } = await import('../services/characterRegistry');
+      const gated = characterRegistry.gateName(nameToUpdate);
+      if (gated.ok && gated.cleanName) {
+        nameToUpdate = gated.cleanName;
+      }
+    }
     let firstNameToUpdate = updateData.firstName;
     let lastNameToUpdate = updateData.lastName;
     let aliasToUpdate = filterValidAliases(
@@ -2921,7 +2759,26 @@ router.get('/:id/evidence', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 });
 
+// GET /api/characters/:id/query — sectioned Character Query read model
+router.get('/:id/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const sections = typeof req.query.sections === 'string' ? req.query.sections : 'core';
+    const { getCharacterQuery } = await import('../services/characters/characterQueryService');
+    const query = await getCharacterQuery(userId, characterId, { sections });
+    if (!query) return res.status(404).json({ error: 'Character not found' });
+    res.json({ success: true, query });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character query');
+    res.status(500).json({ error: 'Failed to get character query' });
+  }
+});
+
 // GET /api/characters/:id/profile-bundle — modal read model (detail + knowledge + lore + chat mentions)
+// Backed by Character Query core sections; prefer /query going forward.
 router.get('/:id/profile-bundle', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
   const characterId = String(req.params.id);

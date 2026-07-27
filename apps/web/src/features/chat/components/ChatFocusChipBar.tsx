@@ -80,66 +80,68 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
 
   return (
     <div
-      className={`mx-3 sm:mx-4 lg:mx-auto lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mb-1 px-0 ${isArriving && isLove ? 'animate-romantic-enter' : isArriving ? 'animate-chat-focus-enter' : ''}`}
+      className={`mb-1 px-3 sm:px-4 lg:px-10 xl:px-12 ${isArriving && isLove ? 'animate-romantic-enter' : isArriving ? 'animate-chat-focus-enter' : ''}`}
       data-testid="chat-focus-chip-bar"
     >
-      <CompactChipStrip label="Focus">
-        <CompactEntityChip
-          className={`${focusChipClass} max-w-[160px] sm:max-w-[200px]`}
-          title={[focus.entityName, focus.sourceLabel, focus.knowledgeScope].filter(Boolean).join(' · ')}
-        >
-          <Icon className="h-2.5 w-2.5 flex-shrink-0" aria-hidden />
-          <span className="truncate">{focus.entityName}</span>
-          <span className="text-white/35">·</span>
-          <span className="truncate opacity-80">{focus.sourceLabel}</span>
-        </CompactEntityChip>
-
-        {isDemo && (
-          <CompactEntityChip className="border-amber-500/35 bg-amber-500/10 text-amber-200/90 max-w-none">
-            Demo
-          </CompactEntityChip>
-        )}
-
-        {projectedAffection != null && (
+      <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
+        <CompactChipStrip label="Focus">
           <CompactEntityChip
-            className={`max-w-none tabular-nums ${
-              isLove ? 'border-pink-500/25 bg-pink-500/5 text-pink-200/80' : 'border-white/10 bg-white/[0.04] text-white/55'
-            }`}
+            className={`${focusChipClass} max-w-[160px] sm:max-w-[200px]`}
+            title={[focus.entityName, focus.sourceLabel, focus.knowledgeScope].filter(Boolean).join(' · ')}
           >
-            ~{projectedAffection}%
-            {stats.affectionDelta > 0 && (
-              <span className="text-emerald-300/80">+{stats.affectionDelta.toFixed(0)}</span>
-            )}
+            <Icon className="h-2.5 w-2.5 flex-shrink-0" aria-hidden />
+            <span className="truncate">{focus.entityName}</span>
+            <span className="text-white/35">·</span>
+            <span className="truncate opacity-80">{focus.sourceLabel}</span>
           </CompactEntityChip>
-        )}
 
-        {stats.messagesSent > 0 && stats.connectionDelta > 0 && (
-          <CompactEntityChip
-            className={`max-w-none tabular-nums ${statBump ? 'animate-stat-bump' : ''} ${
-              isLove
-                ? 'border-pink-500/25 bg-pink-500/10 text-pink-200'
-                : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
-            }`}
+          {isDemo && (
+            <CompactEntityChip className="border-amber-500/35 bg-amber-500/10 text-amber-200/90 max-w-none">
+              Demo
+            </CompactEntityChip>
+          )}
+
+          {projectedAffection != null && (
+            <CompactEntityChip
+              className={`max-w-none tabular-nums ${
+                isLove ? 'border-pink-500/25 bg-pink-500/5 text-pink-200/80' : 'border-white/10 bg-white/[0.04] text-white/55'
+              }`}
+            >
+              ~{projectedAffection}%
+              {stats.affectionDelta > 0 && (
+                <span className="text-emerald-300/80">+{stats.affectionDelta.toFixed(0)}</span>
+              )}
+            </CompactEntityChip>
+          )}
+
+          {stats.messagesSent > 0 && stats.connectionDelta > 0 && (
+            <CompactEntityChip
+              className={`max-w-none tabular-nums ${statBump ? 'animate-stat-bump' : ''} ${
+                isLove
+                  ? 'border-pink-500/25 bg-pink-500/10 text-pink-200'
+                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+              }`}
+            >
+              <TrendingUp className="h-2.5 w-2.5" aria-hidden />
+              +{stats.connectionDelta}
+            </CompactEntityChip>
+          )}
+
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="ml-auto shrink-0 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-white/40 hover:bg-white/10 hover:text-white/70 touch-manipulation"
+            aria-label="Clear chat focus"
           >
-            <TrendingUp className="h-2.5 w-2.5" aria-hidden />
-            +{stats.connectionDelta}
-          </CompactEntityChip>
+            <X className="h-3 w-3" />
+          </button>
+        </CompactChipStrip>
+        {focus.entityType === 'character' && (
+          <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
+            Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.
+          </p>
         )}
-
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="ml-auto shrink-0 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-white/40 hover:bg-white/10 hover:text-white/70 touch-manipulation"
-          aria-label="Clear chat focus"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </CompactChipStrip>
-      {focus.entityType === 'character' && (
-        <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
-          Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.
-        </p>
-      )}
+      </div>
     </div>
   );
 }

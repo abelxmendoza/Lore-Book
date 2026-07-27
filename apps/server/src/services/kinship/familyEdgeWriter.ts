@@ -160,7 +160,38 @@ async function upsertFamilyEdgeOnce(
     logger.warn({ error, userId, sourceId, targetId, relationshipType: type }, 'Failed to upsert family edge');
     return false;
   }
+
+  // Typed kinship supersedes vague "family" / "related_to" between the same pair
+  // so Key people / People lists don't show the same person twice.
+  if (type !== 'family' && type !== 'related_to' && type !== 'related') {
+    await retireGenericFamilyEdgesBetween(userId, sourceId, targetId);
+  }
   return true;
+}
+
+/** Soft-retire generic family edges once a typed kinship edge exists. */
+async function retireGenericFamilyEdgesBetween(
+  userId: string,
+  a: string,
+  b: string,
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('character_relationships')
+    .update({
+      status: 'superseded',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .in('relationship_type', ['family', 'related_to', 'related'])
+    .neq('status', 'superseded')
+    .or(
+      `and(source_character_id.eq.${a},target_character_id.eq.${b}),and(source_character_id.eq.${b},target_character_id.eq.${a})`,
+    );
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'PGRST205' || code === '42P01') return;
+    logger.debug({ error, userId, a, b }, 'Could not retire generic family edges');
+  }
 }
 
 /**
@@ -245,13 +276,21 @@ export async function assertTypedProtagonistKinshipEdge(
 /**
  * Persist a display-ready kinship label (e.g. "Uncle", "Mom") onto a character's
  * metadata whenever chat text resolves a kinship mention for them — so cards can
- * show "Uncle" instead of the generic "Family" archetype. Never overwrites a
- * label the user has manually confirmed.
+ * show "Uncle" instead of the generic "Family" archetype. Also fills
+ * relationship_to_user for title-leading real kin ("Cousin James"), but not for
+ * trailing/stage personas ("Goth Tio") or public-figure stage names. Never
+ * overwrites a label / relationship the user has manually confirmed.
  */
 export async function applyKinshipLabelToCharacter(
   userId: string,
   characterId: string,
   kinship: string,
+  options: {
+    characterName?: string | null;
+    context?: string | null;
+    /** Chat asserted "my cousin …" / focused kinship correction. */
+    explicitClaim?: boolean;
+  } = {},
 ): Promise<void> {
   const normalized = (kinship ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
   if (!normalized || isSyntheticFamilyNodeId(characterId)) return;
@@ -259,7 +298,7 @@ export async function applyKinshipLabelToCharacter(
 
   const { data: row } = await supabaseAdmin
     .from('characters')
-    .select('metadata, archetype')
+    .select('name, metadata, archetype')
     .eq('user_id', userId)
     .eq('id', characterId)
     .maybeSingle();
@@ -267,19 +306,46 @@ export async function applyKinshipLabelToCharacter(
 
   const meta = (row.metadata as Record<string, unknown> | null) ?? {};
   if (meta.kinship_source === 'user' || meta.kinship_source === 'user_confirmed') return;
-  if (meta.kinship_label === label) return;
+
+  const { decideRelationshipToYouFromKinship } = await import('./kinshipRelationshipToYou');
+  const toYou = decideRelationshipToYouFromKinship({
+    kinship: normalized,
+    characterName: options.characterName ?? (row.name as string | undefined),
+    context: options.context,
+    metadata: meta,
+    explicitClaim: options.explicitClaim,
+  });
+
+  const nextMeta: Record<string, unknown> = {
+    ...meta,
+    kinship_role: normalized,
+    kinship_label: label,
+    relationship_type: 'family',
+    kinship_source: meta.kinship_source ?? (options.explicitClaim ? 'chat_asserted' : 'chat_inferred'),
+  };
+
+  if (toYou.apply && toYou.value) {
+    nextMeta.relationship_to_user = toYou.value;
+    nextMeta.relationship_to_user_source =
+      options.explicitClaim ? 'chat_asserted' : 'chat_inferred';
+    nextMeta.relationship_to_user_inferred_at = new Date().toISOString();
+    nextMeta.relationship_to_user_inference_reason = toYou.reason;
+  }
+
+  const kinshipUnchanged = meta.kinship_label === label;
+  const toYouUnchanged =
+    !toYou.apply ||
+    (meta.relationship_to_user === toYou.value &&
+      String(meta.relationship_to_user_source ?? '').startsWith('chat'));
+  if (kinshipUnchanged && toYouUnchanged) return;
 
   const patch: Record<string, unknown> = {
-    metadata: {
-      ...meta,
-      kinship_role: normalized,
-      kinship_label: label,
-      relationship_type: 'family',
-      kinship_source: meta.kinship_source ?? 'chat_inferred',
-    },
+    metadata: nextMeta,
     updated_at: new Date().toISOString(),
   };
-  if (!row.archetype) patch.archetype = 'family';
+  if (!row.archetype && toYou.apply) patch.archetype = 'family';
+  else if (!row.archetype && meta.kinship_label) patch.archetype = 'family';
+  else if (!row.archetype) patch.archetype = 'family';
 
   const { error } = await supabaseAdmin.from('characters').update(patch).eq('user_id', userId).eq('id', characterId);
   if (error) {

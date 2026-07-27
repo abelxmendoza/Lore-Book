@@ -2,6 +2,10 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { Heart, User, MoreVertical, AlertTriangle, Pencil, UserMinus, Trash2, Check, Building2 } from 'lucide-react';
 import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
+import {
+  formatFamilyMemberDisplayName,
+  formatFamilyMemberSubtitle,
+} from '../../lib/familyMemberDisplay';
 
 interface FamilyTreeViewProps {
   tree: FamilyTree;
@@ -291,11 +295,15 @@ const PersonNode = ({
   const style = relationStyle(member.relation);
   const borderCls = member.is_self
     ? 'border-[3px] border-primary bg-primary/15 shadow-[0_0_14px_rgba(124,58,237,0.55)]'
+    : member.is_account_self
+      ? 'border-[3px] border-amber-400/80 bg-amber-500/15 shadow-[0_0_12px_rgba(251,191,36,0.35)]'
     : member.is_placeholder
       ? 'border-[3px] border-dashed border-white/40 bg-white/[0.06]'
       : `${style.node} ${style.shadow}`;
   const sideCls = member.side ? SIDE_ACCENT[member.side] ?? '' : '';
   const closenessCls = closenessRing(member.closeness);
+  const displayName = formatFamilyMemberDisplayName(member);
+  const subtitle = formatFamilyMemberSubtitle(member);
 
   return (
     <button
@@ -304,11 +312,11 @@ const PersonNode = ({
       onClick={() => !member.is_placeholder && onClick?.(member)}
       disabled={member.is_placeholder}
       className={`flex flex-col items-center gap-1 group ${onClick && !member.is_placeholder ? 'cursor-pointer' : 'cursor-default'} ${member.is_placeholder ? 'opacity-70' : ''}`}
-      title={`${member.name}${member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase() ? ` (${member.kinship_title})` : ''} — ${member.relation_label}`}
+      title={`${displayName} — ${member.relation_label}${member.is_account_self && !member.is_self ? ' (you)' : ''}`}
     >
       <div className={`rounded-full ${borderCls} ${sideCls} ${closenessCls} overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 ${compact ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'}`}>
-        {member.is_self ? (
-          <User className={`${compact ? 'h-5 w-5' : 'h-6 w-6'} text-primary`} />
+        {member.is_self || member.is_account_self ? (
+          <User className={`${compact ? 'h-5 w-5' : 'h-6 w-6'} ${member.is_self ? 'text-primary' : 'text-amber-300'}`} />
         ) : member.is_placeholder ? (
           <User className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} text-white/35`} />
         ) : (
@@ -321,16 +329,21 @@ const PersonNode = ({
           />
         )}
       </div>
-      <div className="text-center max-w-[86px]">
+      <div className="text-center max-w-[96px]">
         <p className={`font-medium text-white/90 leading-tight line-clamp-2 ${compact ? 'text-[9px]' : 'text-[10px] sm:text-xs'}`}>
-          {member.name}
+          {displayName}
         </p>
-        <p className={`text-white/40 leading-tight line-clamp-2 ${compact ? 'text-[8px]' : 'text-[9px]'}`}>
-          {member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase()
-            ? `${member.relation_label} · ${member.kinship_title}`
-            : member.relation_label}
-        </p>
-        {!member.is_self && !member.is_placeholder && !compact && (
+        {subtitle && (
+          <p className={`text-white/40 leading-tight line-clamp-2 ${compact ? 'text-[8px]' : 'text-[9px]'}`}>
+            {subtitle}
+          </p>
+        )}
+        {member.is_account_self && !member.is_self && !compact && (
+          <span className="inline-block mt-0.5 px-1.5 py-px rounded-full text-[8px] font-semibold uppercase tracking-wide border bg-amber-500/25 border-amber-300/70 text-amber-100">
+            You
+          </span>
+        )}
+        {!member.is_self && !member.is_account_self && !member.is_placeholder && !compact && (
           <span className={`inline-block mt-0.5 px-1.5 py-px rounded-full text-[8px] font-semibold uppercase tracking-wide border ${style.badge}`}>
             {style.label}
           </span>
@@ -369,7 +382,11 @@ const NodeWithActions = ({
     !member.is_self &&
     !member.is_placeholder &&
     Boolean(onEditRelationship || onExclude || onMoveToGroup || onDelete);
-  const flagged = Boolean(member.needs_review) && !member.is_self && !member.is_placeholder;
+  const flagged =
+    Boolean(member.needs_review) &&
+    !member.is_self &&
+    !member.is_account_self &&
+    !member.is_placeholder;
 
   return (
     <div className="group/node relative flex flex-col items-center">

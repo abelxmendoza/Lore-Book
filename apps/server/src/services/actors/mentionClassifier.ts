@@ -10,6 +10,9 @@ import {
   classifyActorLabel,
   type ActorType,
 } from './actorLabelPolicy';
+import { isInvalidPersonName } from '@lorebook/api-contracts';
+import { classifyMentionKind } from '../../utils/entityMentionClassifier';
+import { arbitrateDomainStrong } from '../characters/audit/characterIdentityGate';
 
 export type MentionStatus =
   | 'RESOLVED'
@@ -41,6 +44,12 @@ function looksLikeProperName(text: string): boolean {
   return PROPER_NAME_RE.test(text.trim());
 }
 
+function kindIsPerson(kind: string | null | undefined): boolean {
+  if (!kind) return true;
+  const k = String(kind).toLowerCase();
+  return k === 'character' || k === 'person' || k === 'people';
+}
+
 /**
  * Classify a detected mention into a lifecycle status.
  * Does not create entities — callers decide persistence from status.
@@ -55,6 +64,43 @@ export function classifyMention(input: ClassifyMentionInput): ClassifiedMention 
 
   if (actor.reason === 'self' || actor.reason === 'empty') {
     return { text, status: 'IGNORE', actorType: actor.actorType, confidence: 0, reason: actor.reason };
+  }
+
+  // Never promote tools / dates / holidays / truncated kinship — even if a
+  // polluted Character Book row rematches via substring.
+  const invalid = isInvalidPersonName(text);
+  if (invalid.invalid && (kindIsPerson(input.kind) || !input.kind)) {
+    return {
+      text,
+      status: 'IGNORE',
+      actorType: 'PERSON',
+      confidence: 0,
+      reason: invalid.reason ?? 'invalid_person_name',
+    };
+  }
+  const mentionKind = classifyMentionKind(text);
+  if (
+    mentionKind.kind !== 'person' &&
+    mentionKind.kind !== 'unknown' &&
+    kindIsPerson(input.kind)
+  ) {
+    return {
+      text,
+      status: 'IGNORE',
+      actorType: 'PERSON',
+      confidence: 0,
+      reason: mentionKind.reason ?? mentionKind.kind,
+    };
+  }
+  const domain = arbitrateDomainStrong(text);
+  if (domain.domain === 'tool' || domain.domain === 'media' || domain.domain === 'process') {
+    return {
+      text,
+      status: 'IGNORE',
+      actorType: 'PERSON',
+      confidence: 0,
+      reason: domain.reason ?? domain.domain,
+    };
   }
 
   if (actor.action === 'reject') {

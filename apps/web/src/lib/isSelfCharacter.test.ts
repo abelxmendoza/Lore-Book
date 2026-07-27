@@ -18,7 +18,7 @@ describe('isSelfCharacter', () => {
   it('ignores characters explicitly marked distinct from self', () => {
     const c = {
       id: '1',
-      name: 'Hell Fairy',
+      name: 'Neon Pixie',
       metadata: { is_self: true, distinct_from_self: true },
     } as Character;
     expect(isSelfCharacter(c)).toBe(false);

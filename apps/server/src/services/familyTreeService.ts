@@ -19,6 +19,14 @@ import {
   TREE_RELATION_GENERATION,
   normalizeTreeRelation,
 } from './kinship/familyEdgeWriter';
+import {
+  composeRelation,
+  relationNeedsSex,
+  sidewaysStepCount,
+  stepFromEdge,
+  type PathStep,
+} from './kinship/relationshipPathComposer';
+import { sexFromFirstName, type InferredSex } from './kinship/sexFromName';
 
 export type FamilyRelationType =
   | 'parent' | 'child' | 'sibling' | 'twin' | 'grandparent' | 'grandchild'
@@ -30,6 +38,7 @@ export interface FamilyMemberDTO {
   id: string;
   name: string;
   first_name?: string;
+  last_name?: string;
   /** The kinship term the user actually uses for them, e.g. "Abuela" — shown
    *  alongside the real name. Preserved even after the real name is learned. */
   kinship_title?: string;
@@ -38,6 +47,8 @@ export interface FamilyMemberDTO {
   generation: number;
   closeness?: number;
   is_self?: boolean;
+  /** True when this node is the account owner's protagonist on another ego's tree. */
+  is_account_self?: boolean;
   is_placeholder?: boolean;
   inference_status?: 'asserted' | 'inferred' | 'placeholder';
   side?: 'maternal' | 'paternal' | 'both' | 'other';
@@ -226,7 +237,7 @@ function hasFamilySignal(row: CharacterKinshipRow): boolean {
   const metadata = row.metadata ?? {};
   if (isFamilyExcluded(metadata)) return false;
   const text = searchableKinshipText(row);
-  const isPublicFigure = metadata.public_figure === true || metadata.figure_type === 'creator' || metadata.figure_type === 'artist';
+  const isPublicFigure = metadata.public_figure === true;
 
   // A card the user confirmed DISTINCT from another character must not enter
   // the family tree on bare relationship_type metadata alone — that's how a
@@ -512,13 +523,15 @@ class FamilyTreeService {
 
       if (!rootChar) return null;
 
-      const names = await this.loadNames(userId, [characterId, ...connectedEdges.flatMap(e => [e.fromId, e.toId])]);
+      const memberIds = [characterId, ...connectedEdges.flatMap(e => [e.fromId, e.toId])];
+      const names = await this.loadNames(userId, memberIds);
       names.set(characterId, rootChar.name);
+      const sexHints = await this.loadSexHints(userId, memberIds);
 
       const tree = this.buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
         markSelf: opts.isUserTree ?? false,
         selfId: characterId,
-      });
+      }, sexHints);
       const enriched = this.enrichRelationsFromNames(tree);
       return this.applyOverridesAndReview(userId, enriched);
     } catch (error) {
@@ -578,12 +591,13 @@ class FamilyTreeService {
       for (const m of members) {
         if (m.character_id) names.set(m.character_id, m.character_name);
       }
+      const sexHints = await this.loadSexHints(userId, charIds);
 
       const tree = this.buildTreeFromEdges(anchor, names.get(anchor) ?? org.name, edges, names, {
         markSelf: true,
         selfId,
         restrictIds: new Set(charIds),
-      });
+      }, sexHints);
 
       // Ensure every org member appears even if no edges
       for (const m of members) {
@@ -1016,12 +1030,14 @@ class FamilyTreeService {
           .eq('id', explicitSelfId)
           .eq('user_id', userId)
           .single();
-        const names = await this.loadNames(userId, [explicitSelfId, ...edges.flatMap(e => [e.fromId, e.toId])]);
+        const selfTreeMemberIds = [explicitSelfId, ...edges.flatMap(e => [e.fromId, e.toId])];
+        const names = await this.loadNames(userId, selfTreeMemberIds);
         names.set(explicitSelfId, rootChar?.name ?? 'You');
+        const sexHints = await this.loadSexHints(userId, selfTreeMemberIds);
         const edgeTree = this.buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
           markSelf: true,
           selfId: explicitSelfId,
-        });
+        }, sexHints);
         if (edgeTree.members.length > 1) {
           // Merge name-inferred relatives so asserting one edge (e.g. setting a
           // parent) doesn't hide everyone who's only known by name inference.
@@ -1266,18 +1282,46 @@ class FamilyTreeService {
     return map;
   }
 
+  /** Known sex for tree nodes (from metadata, any source) — used to resolve
+   *  aunt/uncle and niece/nephew labels when composing a multi-hop relation.
+   *  Falls back to a name-based guess at composition time when a node has no
+   *  metadata.sex on record. */
+  private async loadSexHints(userId: string, ids: string[]): Promise<Map<string, InferredSex>> {
+    const uniq = [...new Set(ids.filter(Boolean))];
+    const map = new Map<string, InferredSex>();
+    if (uniq.length === 0) return map;
+    const { data } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .in('id', uniq);
+    for (const row of (data ?? []) as Array<{ id: string; metadata?: Record<string, unknown> | null }>) {
+      const sex = String(row.metadata?.sex ?? '').toLowerCase();
+      if (sex === 'male' || sex === 'female') map.set(row.id, sex);
+    }
+    return map;
+  }
+
   /** Load metadata/role for the real character nodes in a tree (one query). */
   private async loadMemberMeta(userId: string, ids: string[]): Promise<Map<string, NodeMetaRow>> {
     const uniq = [...new Set(ids.filter((id) => id && !isSyntheticNodeId(id)))];
     if (uniq.length === 0) return new Map();
     const { data } = await supabaseAdmin
       .from('characters')
-      .select('id, alias, role, archetype, metadata')
+      .select('id, name, first_name, last_name, alias, role, archetype, metadata')
       .eq('user_id', userId)
       .in('id', uniq);
     const map = new Map<string, NodeMetaRow>();
     for (const row of (data ?? []) as Array<{ id: string } & NodeMetaRow>) {
-      map.set(row.id, { metadata: row.metadata, role: row.role, archetype: row.archetype, alias: row.alias });
+      map.set(row.id, {
+        metadata: row.metadata,
+        role: row.role,
+        archetype: row.archetype,
+        alias: row.alias,
+        name: row.name,
+        first_name: row.first_name,
+        last_name: row.last_name,
+      });
     }
     return map;
   }
@@ -1291,6 +1335,7 @@ class FamilyTreeService {
   private async applyOverridesAndReview(userId: string, tree: FamilyTreeDTO | null): Promise<FamilyTreeDTO | null> {
     if (!tree || tree.members.length === 0) return tree;
     const meta = await this.loadMemberMeta(userId, tree.members.map((m) => m.id));
+    const accountSelfId = await this.findUserCharacterId(userId);
 
     const members = tree.members
       .filter((m) => {
@@ -1302,7 +1347,57 @@ class FamilyTreeService {
           return { ...m, has_card: false };
         }
         const row = meta.get(m.id);
-        let member: FamilyMemberDTO = { ...m, has_card: Boolean(row) };
+        let member: FamilyMemberDTO = {
+          ...m,
+          has_card: Boolean(row),
+          is_account_self: Boolean(accountSelfId && m.id === accountSelfId),
+          first_name: row?.first_name ?? m.first_name,
+          last_name: row?.last_name ?? m.last_name,
+        };
+        // Prefer the durable character card name when the tree node is still a
+        // bare kinship word ("Mom" / "Dad") so the UI can show Mom (Elena Chen).
+        if (row?.name?.trim()) {
+          const cardName = row.name.trim();
+          const nodeIsKinWord = /^(?:step[\s-]?)?(?:mom|mother|mama|mami|dad|father|papa|papi)$/i.test(
+            (m.name ?? '').trim(),
+          );
+          if (nodeIsKinWord && !/^(?:step[\s-]?)?(?:mom|mother|mama|mami|dad|father|papa|papi)$/i.test(cardName)) {
+            member = {
+              ...member,
+              name: cardName,
+              kinship_title: member.kinship_title || m.name,
+              first_name: row.first_name || cardName.split(/\s+/)[0],
+              last_name: row.last_name || cardName.split(/\s+/).slice(1).join(' ') || member.last_name,
+            };
+          }
+        }
+        // Normalize Mother/Father labels to Mom/Dad for display consistency.
+        if (member.relation === 'parent' || member.relation === 'step_parent') {
+          const title = (member.kinship_title || member.relation_label || '').toLowerCase();
+          if (/\b(mom|mother|mama|mami)\b/.test(title) || title === 'mother') {
+            member = {
+              ...member,
+              kinship_title: member.kinship_title || (member.relation === 'step_parent' ? 'Stepmom' : 'Mom'),
+              relation_label:
+                member.relation === 'step_parent'
+                  ? member.relation_label?.toLowerCase().includes('step')
+                    ? member.relation_label
+                    : 'Stepmom'
+                  : 'Mom',
+            };
+          } else if (/\b(dad|father|papa|papi)\b/.test(title) || title === 'father') {
+            member = {
+              ...member,
+              kinship_title: member.kinship_title || (member.relation === 'step_parent' ? 'Stepdad' : 'Dad'),
+              relation_label:
+                member.relation === 'step_parent'
+                  ? member.relation_label?.toLowerCase().includes('step')
+                    ? member.relation_label
+                    : 'Stepdad'
+                  : 'Dad',
+            };
+          }
+        }
 
         // User-asserted overrides win over name inference. An explicit parent
         // link surfaces as parent_id (drives the connector); an explicit
@@ -1321,7 +1416,7 @@ class FamilyTreeService {
           }
         }
 
-        const review = assessNodeReview(member, row);
+        const review = assessNodeReview(member, row, { accountSelfId });
         member = { ...member, needs_review: review?.needsReview ?? false, review_reason: review?.reason };
         return member;
       });
@@ -1351,7 +1446,8 @@ class FamilyTreeService {
     rootName: string,
     edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }>,
     names: Map<string, string>,
-    opts: { markSelf?: boolean; selfId?: string; restrictIds?: Set<string> }
+    opts: { markSelf?: boolean; selfId?: string; restrictIds?: Set<string> },
+    sexHints: Map<string, InferredSex> = new Map(),
   ): FamilyTreeDTO {
     const adj = new Map<string, Array<{ neighbor: string; type: string; evidence?: string }>>();
     const addAdj = (a: string, b: string, type: string, evidence?: string) => {
@@ -1362,15 +1458,44 @@ class FamilyTreeService {
       addAdj(e.toId, e.fromId, e.type, e.evidence);
     }
 
+    /** Resolve a node's sex from known metadata, else a best-effort name guess. */
+    const resolveSex = (id: string): InferredSex | null =>
+      sexHints.get(id) ?? sexFromFirstName(names.get(id) ?? '') ?? null;
+
+    /** Compose a relation for `neighbor`, reached from `current` via one hop.
+     *  Walks the whole step-path from root when every hop so far decomposes
+     *  into a primitive UP/DOWN/SIDE/MARRY step; falls back to the prior
+     *  single-edge label the moment a compound/explicit edge type (aunt_of,
+     *  step_parent_of, ...) appears, since those are already correct as-is. */
+    const classify = (
+      current: string,
+      neighbor: string,
+      type: string,
+      direction: 'forward' | 'backward',
+      currentPath: PathStep[] | null,
+      nextGen: number,
+    ): { relation: FamilyRelationType; path: PathStep[] | null } => {
+      const step = currentPath !== null ? stepFromEdge(type, direction) : null;
+      if (step) {
+        const path = [...currentPath!, step];
+        const sex = relationNeedsSex(path) ? resolveSex(neighbor) : null;
+        return { relation: composeRelation(path, sex), path };
+      }
+      return { relation: relationFromType(type, nextGen), path: null };
+    };
+
     const generations = new Map<string, number>();
+    const paths = new Map<string, PathStep[] | null>();
     const relationToRoot = new Map<string, { relation: FamilyRelationType; label: string; evidence?: string }>();
     generations.set(rootId, 0);
+    paths.set(rootId, []);
     relationToRoot.set(rootId, { relation: 'related', label: 'You' });
 
     const queue = [rootId];
     while (queue.length) {
       const current = queue.shift()!;
       const currentGen = generations.get(current)!;
+      const currentPath = paths.get(current) ?? null;
       for (const { neighbor, type, evidence } of adj.get(current) ?? []) {
         if (opts.restrictIds && !opts.restrictIds.has(neighbor)) continue;
         const deltas = GEN_DELTA[type.toLowerCase()] ?? { forward: 0, backward: 0 };
@@ -1378,19 +1503,38 @@ class FamilyTreeService {
         const edge = edges.find(e =>
           (e.fromId === current && e.toId === neighbor) || (e.fromId === neighbor && e.toId === current)
         );
+        const direction: 'forward' | 'backward' = edge?.fromId === current ? 'forward' : 'backward';
         if (edge?.fromId === current) delta = deltas.forward;
         else if (edge?.toId === current) delta = deltas.backward;
 
         const nextGen = currentGen + delta;
         if (!generations.has(neighbor)) {
           generations.set(neighbor, nextGen);
-          const rel = relationFromType(type, nextGen - 0);
+          const { relation, path } = classify(current, neighbor, type, direction, currentPath, nextGen);
+          paths.set(neighbor, path);
           relationToRoot.set(neighbor, {
-            relation: rel,
-            label: labelForRelation(rel, names.get(neighbor) ?? '', evidence),
+            relation,
+            label: labelForRelation(relation, names.get(neighbor) ?? '', evidence),
             evidence,
           });
           queue.push(neighbor);
+        } else if (generations.get(neighbor) === nextGen && currentPath !== null) {
+          // Same node reachable at the same depth via a different route — prefer
+          // the path with fewer sideways (sibling/spouse) hops, matching how a
+          // person would naturally describe the relationship (blood line first).
+          const existingPath = paths.get(neighbor) ?? null;
+          const { relation, path } = classify(current, neighbor, type, direction, currentPath, nextGen);
+          if (
+            path !== null &&
+            (existingPath === null || sidewaysStepCount(path) < sidewaysStepCount(existingPath))
+          ) {
+            paths.set(neighbor, path);
+            relationToRoot.set(neighbor, {
+              relation,
+              label: labelForRelation(relation, names.get(neighbor) ?? '', evidence),
+              evidence,
+            });
+          }
         }
       }
     }
@@ -1442,7 +1586,15 @@ export function isSyntheticNodeId(id: string): boolean {
   return SYNTHETIC_ID_PREFIXES.some((p) => id.startsWith(p));
 }
 
-type NodeMetaRow = { metadata?: Record<string, unknown> | null; role?: string | null; archetype?: string | null; alias?: string[] | null };
+type NodeMetaRow = {
+  metadata?: Record<string, unknown> | null;
+  role?: string | null;
+  archetype?: string | null;
+  alias?: string[] | null;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+};
 
 /** True when the user has explicitly removed this character from their family
  *  tree (kept as a character, just not kin). Tolerates both the rich
@@ -1476,25 +1628,31 @@ export function applyRelationOverride(
  *  a node that slipped in but looks like a handle/stage name, a public figure,
  *  or has no real kinship signal is a review candidate (never auto-removed). */
 export function assessNodeReview(
-  member: { name: string; relation: FamilyRelationType; is_self?: boolean; is_placeholder?: boolean },
+  member: { id?: string; name: string; relation: FamilyRelationType; is_self?: boolean; is_placeholder?: boolean },
   row?: NodeMetaRow,
+  opts?: { accountSelfId?: string | null },
 ): { needsReview: boolean; reason: string } | null {
   if (member.is_self || member.is_placeholder) return null;
+  // Account protagonist on someone else's ego tree (e.g. Abel on Jerry's tree)
+  // is family, not a stray relative — never warn.
+  if (opts?.accountSelfId && member.id && member.id === opts.accountSelfId) return null;
   const name = (member.name ?? '').trim();
   if (!name) return null;
   const metadata = row?.metadata ?? {};
 
   // The user already reviewed and kept this node — don't keep nagging.
   if (metadata.family_reviewed === true) return null;
+  // Explicit self/protagonist card metadata wins even when this tree's ego is someone else.
+  if (metadata.is_self === true || metadata.importance_level === 'protagonist') return null;
 
   // Handle/stage-name shape: a dot, @, or digit inside the name.
   if (/[.@\d]/.test(name)) {
     return { needsReview: true, reason: 'Looks like a handle or stage name, not a relative.' };
   }
 
-  // Explicit public-figure marking (creator/artist) without a family override.
-  const isPublicFigure = metadata.public_figure === true || metadata.figure_type === 'creator' || metadata.figure_type === 'artist';
-  if (isPublicFigure) {
+  // Explicit public-figure marking. Require public_figure — figure_type alone is
+  // overloaded (e.g. product "creator") and must not flag the account owner.
+  if (metadata.public_figure === true) {
     return { needsReview: true, reason: 'Marked as a public figure, not family.' };
   }
 
@@ -1813,6 +1971,60 @@ export function projectAffinityFamilyTreeOntoEgo(
 }
 
 /**
+ * Inverse of how ego relates to the account owner on the user-centered tree.
+ * Keeps "You" from collapsing to a vague Relative (and a review warning) on
+ * Jerry/James/etc. ego trees.
+ */
+export function invertEgoRelationToAccountSelf(
+  egoOnShared: Pick<FamilyMemberDTO, 'relation' | 'relation_label' | 'kinship_title' | 'side'> | undefined,
+): { relation: FamilyRelationType; label: string } {
+  if (!egoOnShared) return { relation: 'cousin', label: 'Cousin' };
+  const r = egoOnShared.relation;
+  const title = egoOnShared.kinship_title || egoOnShared.relation_label;
+  switch (r) {
+    case 'cousin':
+      return { relation: 'cousin', label: title && title !== 'You' ? title : 'Cousin' };
+    case 'sibling':
+    case 'twin':
+    case 'half_sibling':
+    case 'step_sibling':
+      return { relation: r, label: title && title !== 'You' ? title : 'Sibling' };
+    case 'child':
+    case 'step_child':
+    case 'adopted_child':
+      return {
+        relation: r === 'step_child' ? 'step_parent' : r === 'adopted_child' ? 'adopted_parent' : 'parent',
+        label: r === 'step_child' ? 'Step-parent' : r === 'adopted_child' ? 'Adoptive parent' : 'Parent',
+      };
+    case 'parent':
+    case 'step_parent':
+    case 'adopted_parent':
+      return {
+        relation: r === 'step_parent' ? 'step_child' : r === 'adopted_parent' ? 'adopted_child' : 'child',
+        label: r === 'step_parent' ? 'Step-child' : r === 'adopted_parent' ? 'Adopted child' : 'Child',
+      };
+    case 'niece':
+    case 'nephew':
+      return {
+        relation: egoOnShared.side === 'paternal' ? 'uncle' : 'aunt',
+        label: egoOnShared.side === 'paternal' ? 'Uncle' : 'Aunt',
+      };
+    case 'aunt':
+    case 'uncle':
+      return { relation: 'niece', label: 'Niece / nephew' };
+    case 'grandparent':
+      return { relation: 'grandchild', label: 'Grandchild' };
+    case 'grandchild':
+      return { relation: 'grandparent', label: 'Grandparent' };
+    case 'spouse':
+      return { relation: 'spouse', label: title && title !== 'You' ? title : 'Spouse' };
+    default:
+      // Blood kin on the same shared tree — prefer cousin over vague "related".
+      return { relation: 'cousin', label: 'Cousin' };
+  }
+}
+
+/**
  * Re-root the account shared family tree onto another member so every kin modal
  * shows the same roster with bidirectional parent/child structure and siblings
  * inferred from shared parents (+ kinship titles like brother/sister).
@@ -1826,12 +2038,16 @@ export function projectSharedFamilyTreeOntoEgo(
     return {
       ...shared,
       members: shared.members.map((m) =>
-        m.id === egoId ? { ...m, is_self: true, relation_label: m.relation_label || 'You' } : { ...m, is_self: false },
+        m.id === egoId
+          ? { ...m, is_self: true, is_account_self: true, relation_label: m.relation_label || 'You' }
+          : { ...m, is_self: false, is_account_self: m.id === shared.self_id },
       ),
     };
   }
 
   const byId = new Map(shared.members.map((m) => [m.id, m]));
+  const accountSelfId = shared.self_id;
+  const egoOnShared = byId.get(egoId);
   const parentEdges = collectAbsoluteParentChildEdges(shared);
   const parentsOf = new Map<string, Set<string>>();
   const childrenOf = new Map<string, Set<string>>();
@@ -1875,6 +2091,10 @@ export function projectSharedFamilyTreeOntoEgo(
 
   const classify = (m: FamilyMemberDTO): { relation: FamilyRelationType; label: string } => {
     if (m.id === egoId) return { relation: 'related', label: 'You' };
+    // Account owner on a relative's tree — invert how that relative relates to You.
+    if (m.id === accountSelfId) {
+      return invertEgoRelationToAccountSelf(egoOnShared);
+    }
     if (egoParents.has(m.id)) {
       const step = m.relation === 'step_parent' || kinshipParentHint(m) === 'step_parent';
       return {
@@ -1985,9 +2205,12 @@ export function projectSharedFamilyTreeOntoEgo(
       relation_label: m.id === egoId ? 'You' : label,
       generation: gen,
       is_self: m.id === egoId,
+      is_account_self: m.id === accountSelfId,
       closeness: m.id === egoId ? 100 : m.closeness,
       // Preserve absolute parent connectors for bidirectional graph UI.
       parent_id: m.parent_id,
+      needs_review: m.id === accountSelfId ? false : m.needs_review,
+      review_reason: m.id === accountSelfId ? undefined : m.review_reason,
     };
   });
 

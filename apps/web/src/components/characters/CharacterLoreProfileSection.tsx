@@ -331,11 +331,17 @@ export function CharacterLoreProfileSection({
 
   const mergedPeople = useMemo<EditablePerson[]>(() => {
     const byKey = new Map<string, EditablePerson>();
+    const specificity = (type: string) => {
+      const t = type.toLowerCase().replace(/[\s-]+/g, '_');
+      if (t === 'family' || t === 'related_to' || t === 'related' || t === 'story_association') return 1;
+      if (/^(cousin|parent|child|aunt|uncle|sibling|spouse|niece|nephew|grand)/.test(t)) return 10;
+      return 4;
+    };
 
     for (const rel of relationships) {
       if (!rel.character_id || rel.character_name === 'You') continue;
       const key = rel.character_id;
-      byKey.set(key, {
+      const next: EditablePerson = {
         key,
         characterId: rel.character_id,
         name: rel.character_name ?? 'Unknown',
@@ -346,7 +352,16 @@ export function CharacterLoreProfileSection({
         closenessScore: rel.closeness_score,
         relationshipId: rel.id,
         editable: Boolean(rel.id),
-      });
+      };
+      const prev = byKey.get(key);
+      if (!prev || specificity(next.relationshipType) > specificity(prev.relationshipType)) {
+        byKey.set(key, next);
+      } else if (
+        specificity(next.relationshipType) === specificity(prev.relationshipType) &&
+        (next.closenessScore ?? 0) > (prev.closenessScore ?? 0)
+      ) {
+        byKey.set(key, next);
+      }
     }
 
     for (const person of profile?.people ?? []) {

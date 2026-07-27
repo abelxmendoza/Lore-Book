@@ -41,6 +41,8 @@ export interface FamilyMember {
   deceased?: boolean;
   closeness?: number;       // 0-100
   is_self?: boolean;
+  /** Account owner's protagonist when viewing another relative's ego tree. */
+  is_account_self?: boolean;
   is_placeholder?: boolean;
   inference_status?: 'asserted' | 'inferred' | 'placeholder';
   notes?: string;

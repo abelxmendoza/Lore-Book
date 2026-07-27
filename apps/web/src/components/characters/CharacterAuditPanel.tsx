@@ -541,7 +541,7 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                                 leftIcon={<Lock className="h-3 w-3" />}
                                 onClick={() => void lockTitle(result)}
                               >
-                                Lock title
+                                Pin title
                               </Button>
                             </div>
                           </td>

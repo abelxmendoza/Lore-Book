@@ -2192,6 +2192,7 @@ export const dummyCharacters: Character[] = [
       relationship_types: ['family'],
       categories: ['family'],
       group_memberships: ['The Whitmore-Chen Family'],
+      epithet: 'Hallway Guardian',
       contextual_title: 'Hallway Guardian',
       closeness_score: 78
     },

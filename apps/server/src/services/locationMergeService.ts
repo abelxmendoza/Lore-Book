@@ -15,6 +15,7 @@ import {
 import { pickBestPlaceName } from '../utils/namedPlaceExtractor';
 import { resolvePlaceBoundary } from './lexical/places/placeBoundaryResolver';
 import { isLikelyPlaceName } from './lorebook/quality/placeCandidateGuard';
+import { locationRowMatchesResolvedName } from './locations/placeNameMatch';
 import { supabaseAdmin } from './supabaseClient';
 import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
 import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
@@ -189,6 +190,8 @@ export function buildMergedPlaceIdentity(
   return { canonicalName, aliases: mergeUniqueStrings(aliases), mergeHistory };
 }
 
+export { locationRowMatchesResolvedName } from './locations/placeNameMatch';
+
 class LocationMergeService {
   /**
    * Hotfix for location-authority drift: the Location Book (GET /api/locations →
@@ -197,7 +200,7 @@ class LocationMergeService {
    * "Source location not found" 500. Until listLocations is made canonical-id-first
    * (see docs/location-id-consolidation-plan.md), resolve any incoming id to the
    * canonical locations.id: (1) already a locations row → use it; (2) a people_places
-   * id → map by normalized name to the canonical locations row; (3) people_places with
+   * id → map by live name/alias to the canonical locations row; (3) people_places with
    * no canonical row yet → promote it to a canonical locations row. Returns the
    * canonical locations.id or null when the id resolves to nothing the user owns.
    */
@@ -216,7 +219,7 @@ class LocationMergeService {
       .maybeSingle();
     if (existing) return (existing as { id: string }).id;
 
-    // (2) people_places id → map to canonical by normalized name.
+    // (2) people_places id → map to canonical by live name / alias.
     const { data: pp } = await supabaseAdmin
       .from('people_places')
       .select('id, name, type')
@@ -227,35 +230,86 @@ class LocationMergeService {
     const ppRow = pp as { id: string; name: string; type?: string | null };
     const normalized = normalizeNameKey(ppRow.name);
 
-    const { data: byName } = await supabaseAdmin
+    const { data: byNameRows } = await supabaseAdmin
       .from('locations')
-      .select('id')
+      .select('id, name, normalized_name, metadata')
       .eq('user_id', userId)
       .eq('normalized_name', normalized)
-      .maybeSingle();
-    if (byName) return (byName as { id: string }).id;
+      .limit(10);
+    const liveMatch = ((byNameRows ?? []) as Array<{
+      id: string;
+      name: string;
+      normalized_name?: string | null;
+      metadata?: Record<string, unknown> | null;
+    }>).find((row) => locationRowMatchesResolvedName(row, ppRow.name));
+    if (liveMatch) return liveMatch.id;
+
+    // Reject stale normalized_name hits (e.g. long venue kept short key). Do not
+    // treat them as the same place — promote / merge instead of self-merging.
 
     // (3) No canonical row yet. Read-only callers (e.g. GET facts) stop here with
     // the people_places id; write callers promote it into `locations`.
     if (!promote) return ppRow.id;
 
     // Promote the people_places entry into `locations`, preserving provenance.
+    const insertPayload = {
+      user_id: userId,
+      name: ppRow.name,
+      normalized_name: normalized,
+      type: ppRow.type ?? 'place',
+      metadata: {
+        promoted_from_people_place: ppRow.id,
+        promoted_at: new Date().toISOString(),
+        source: 'people_places_promotion',
+      },
+    };
     const { data: created, error: createErr } = await supabaseAdmin
       .from('locations')
-      .insert({
-        user_id: userId,
-        name: ppRow.name,
-        normalized_name: normalized,
-        type: ppRow.type ?? 'place',
-        metadata: { promoted_from_people_place: ppRow.id, promoted_at: new Date().toISOString(), source: 'people_places_promotion' },
-      })
+      .insert(insertPayload)
       .select('id')
       .single();
-    if (createErr || !created) {
-      logger.warn({ userId, id, err: createErr }, 'resolveCanonicalLocationId: could not promote people_place to canonical location');
-      return null;
+    if (!createErr && created) return (created as { id: string }).id;
+
+    // Unique (user_id, normalized_name) can fail when a longer venue still carries
+    // a stale short key. Repair the stale key, then retry promote so merge can
+    // proceed as two distinct locations instead of self-merging.
+    const { data: conflictRows } = await supabaseAdmin
+      .from('locations')
+      .select('id, name, normalized_name, metadata')
+      .eq('user_id', userId)
+      .eq('normalized_name', normalized)
+      .limit(10);
+    const conflicts = (conflictRows ?? []) as Array<{
+      id: string;
+      name: string;
+      normalized_name?: string | null;
+      metadata?: Record<string, unknown> | null;
+    }>;
+    const liveConflict = conflicts.find((row) => locationRowMatchesResolvedName(row, ppRow.name));
+    if (liveConflict) return liveConflict.id;
+
+    for (const stale of conflicts) {
+      const repairedKey = normalizeNameKey(stale.name);
+      if (!repairedKey || repairedKey === normalized) continue;
+      await supabaseAdmin
+        .from('locations')
+        .update({ normalized_name: repairedKey, updated_at: new Date().toISOString() })
+        .eq('id', stale.id)
+        .eq('user_id', userId);
     }
-    return (created as { id: string }).id;
+
+    const { data: retried, error: retryErr } = await supabaseAdmin
+      .from('locations')
+      .insert(insertPayload)
+      .select('id')
+      .single();
+    if (!retryErr && retried) return (retried as { id: string }).id;
+
+    logger.warn(
+      { userId, id, err: createErr ?? retryErr },
+      'resolveCanonicalLocationId: could not promote people_place to canonical location',
+    );
+    return null;
   }
 
   async merge(
@@ -269,6 +323,8 @@ class LocationMergeService {
       preserveTarget?: boolean;
     } = {}
   ): Promise<LocationMergeReport> {
+    const inputSourceId = sourceId;
+    const inputTargetId = targetId;
     // Resolve both ids to the canonical authority BEFORE any equality/lookup check,
     // so a people_places-id payload from the Location Book merges correctly.
     const [resolvedSourceId, resolvedTargetId] = await Promise.all([
@@ -277,7 +333,20 @@ class LocationMergeService {
     ]);
     if (!resolvedSourceId) throw new Error('Source location not found');
     if (!resolvedTargetId) throw new Error('Target location not found');
-    if (resolvedSourceId === resolvedTargetId) throw new Error('Cannot merge a location into itself');
+    if (resolvedSourceId === resolvedTargetId) {
+      // Same locations.id after resolve, but the Book still sent two cards
+      // (people_places + registry, or alias twins). Fold labels instead of 500.
+      if (inputSourceId === inputTargetId) {
+        throw new Error('Cannot merge a location into itself');
+      }
+      return this.consolidateAlreadyCanonical(
+        userId,
+        inputSourceId,
+        inputTargetId,
+        resolvedTargetId,
+        opts,
+      );
+    }
     sourceId = resolvedSourceId;
     targetId = resolvedTargetId;
 
@@ -376,6 +445,14 @@ class LocationMergeService {
       throw delErr;
     }
 
+    // Location Book still lists people_places ids. Absorbing the promoted
+    // locations row without deleting the entity card leaves "First Street Pool"
+    // beside "First Street Pool & Billiards".
+    await this.cleanupPeoplePlaceShadows(userId, {
+      inputIds: [inputSourceId, inputTargetId],
+      absorbedNames: [source.name],
+    });
+
     await supabaseAdmin.from('entity_merge_records').insert({
       user_id: userId,
       source_entity_id: sourceId,
@@ -425,6 +502,162 @@ class LocationMergeService {
 
     logger.info({ userId, ...report }, '[LocationMerge] merge complete');
     return report;
+  }
+
+  /**
+   * Book sent two different ids that already share one locations.id (people_places
+   * twin, alias card, etc.). Fold the non-survivor label into aliases, prefer the
+   * Keep name when preserveTarget is set, and drop the leftover people_places row.
+   */
+  private async consolidateAlreadyCanonical(
+    userId: string,
+    inputSourceId: string,
+    inputTargetId: string,
+    canonicalId: string,
+    opts: {
+      reason?: string;
+      preserveTarget?: boolean;
+    },
+  ): Promise<LocationMergeReport> {
+    const { data: survivorData, error: survivorErr } = await supabaseAdmin
+      .from('locations')
+      .select(LOC_COLUMNS)
+      .eq('id', canonicalId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (survivorErr) throw new Error(`Failed to load location: ${survivorErr.message}`);
+    const survivor = survivorData as LocationRow | null;
+    if (!survivor) throw new Error('Target location not found');
+
+    const loadLabel = async (id: string): Promise<string | null> => {
+      if (id === canonicalId) return survivor.name;
+      const { data: pp } = await supabaseAdmin
+        .from('people_places')
+        .select('name')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (pp && typeof (pp as { name?: string }).name === 'string') {
+        return (pp as { name: string }).name.trim() || null;
+      }
+      const { data: loc } = await supabaseAdmin
+        .from('locations')
+        .select('name')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      return loc && typeof (loc as { name?: string }).name === 'string'
+        ? (loc as { name: string }).name.trim() || null
+        : null;
+    };
+
+    const [sourceLabel, targetLabel] = await Promise.all([
+      loadLabel(inputSourceId),
+      loadLabel(inputTargetId),
+    ]);
+
+    const preferredName =
+      opts.preserveTarget && targetLabel
+        ? targetLabel
+        : survivor.name;
+    const identity = buildMergedPlaceIdentity(
+      {
+        id: inputSourceId,
+        name: sourceLabel ?? survivor.name,
+        metadata: {},
+      },
+      {
+        id: canonicalId,
+        name: preferredName,
+        metadata: survivor.metadata,
+      },
+      { preserveTargetName: true },
+    );
+
+    const { error: updateErr } = await supabaseAdmin
+      .from('locations')
+      .update({
+        name: identity.canonicalName,
+        normalized_name: normalizeNameKey(identity.canonicalName),
+        metadata: {
+          ...(survivor.metadata ?? {}),
+          aliases: identity.aliases,
+          merge_history: identity.mergeHistory,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', canonicalId)
+      .eq('user_id', userId);
+    if (updateErr) throw new Error(`Failed to update location: ${updateErr.message}`);
+
+    // Drop people_places cards that were only shadowing this canonical place.
+    await this.cleanupPeoplePlaceShadows(userId, {
+      inputIds: [inputSourceId, inputTargetId],
+      absorbedNames: [sourceLabel ?? survivor.name],
+    });
+
+    const report: LocationMergeReport = {
+      sourceId: inputSourceId,
+      sourceName: sourceLabel ?? survivor.name,
+      targetId: canonicalId,
+      targetName: preferredName,
+      mentionsMoved: 0,
+      factsMoved: 0,
+      linksMoved: 0,
+      collisionsDropped: 0,
+      canonicalName: identity.canonicalName,
+      aliases: identity.aliases,
+      reviewFlags: [],
+    };
+    logger.info({ userId, ...report }, '[LocationMerge] already-canonical consolidate complete');
+    return report;
+  }
+
+  /** Remove people_places place rows that would otherwise reappear as Book twins. */
+  private async cleanupPeoplePlaceShadows(
+    userId: string,
+    opts: { inputIds: string[]; absorbedNames: string[] },
+  ): Promise<void> {
+    for (const id of opts.inputIds) {
+      const { error } = await supabaseAdmin
+        .from('people_places')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+        .eq('type', 'place');
+      if (error) {
+        logger.debug({ error, id }, '[LocationMerge] people_places id cleanup skipped');
+      }
+    }
+
+    const absorbedKeys = new Set(
+      opts.absorbedNames
+        .map((name) => normalizeNameKey(name))
+        .filter(Boolean),
+    );
+    if (absorbedKeys.size === 0) return;
+
+    const { data: placeRows, error: listErr } = await supabaseAdmin
+      .from('people_places')
+      .select('id, name')
+      .eq('user_id', userId)
+      .eq('type', 'place')
+      .limit(500);
+    if (listErr) {
+      logger.debug({ err: listErr }, '[LocationMerge] people_places name scan skipped');
+      return;
+    }
+    for (const row of (placeRows ?? []) as Array<{ id: string; name: string }>) {
+      if (!absorbedKeys.has(normalizeNameKey(row.name))) continue;
+      const { error } = await supabaseAdmin
+        .from('people_places')
+        .delete()
+        .eq('id', row.id)
+        .eq('user_id', userId);
+      if (error) {
+        logger.debug({ error, id: row.id }, '[LocationMerge] people_places name cleanup skipped');
+      }
+    }
   }
 
   private async mergeMentions(userId: string, sourceId: string, targetId: string, report: LocationMergeReport) {

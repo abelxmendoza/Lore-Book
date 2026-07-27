@@ -40,6 +40,17 @@ describe('characterRegistry', () => {
     vi.clearAllMocks();
   });
 
+  it('strips trailing "the Epithet" from gated names', () => {
+    expect(characterRegistry.gateName('Aunt Maribel the Hallway Guardian')).toMatchObject({
+      ok: true,
+      cleanName: 'Aunt Maribel',
+    });
+    expect(characterRegistry.gateName('Reese the Recruiter')).toMatchObject({
+      ok: true,
+      cleanName: 'Reese',
+    });
+  });
+
   it('rejects sentence-bleed names before any character write', () => {
     expect(characterRegistry.gateName('Also You')).toMatchObject({
       ok: false,

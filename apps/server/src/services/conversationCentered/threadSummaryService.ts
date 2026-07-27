@@ -24,6 +24,7 @@
 import { config } from '../../config';
 import { logger } from '../../logger';
 import { tracedCompletion } from '../../lib/openai';
+import { unionThreadMetaLabels } from '../actors/entityLabelPollution';
 import {
   threadIntelligenceService,
   type ThreadMetadata,
@@ -54,13 +55,42 @@ export function isSummaryStale(meta: ThreadMetadata, threshold = STALENESS_THRES
 }
 
 /**
+ * Match a People:/Places: section through the next known clause header.
+ * Stop-at-first-period leaves leftovers like "Chino. Chino." when the LLM
+ * baked extra person fragments after the first period.
+ */
+const SUMMARY_CLAUSE_BOUNDARY = String.raw`(?=\s*(?:People|Places|Themes|Projects|Episodes|Open loops):|$)`;
+
+/**
+ * Rewrite baked-in People:/Places: clauses so stale polluted summary prose
+ * cannot outlive the scrubbed chip lists.
+ */
+export function scrubSummaryEntityClauses(
+  text: string | null | undefined,
+  people: string[],
+  places: string[],
+): string | null {
+  if (text == null) return null;
+  let out = String(text);
+  const peopleClause = people.length ? `People: ${people.slice(0, 4).join(', ')}.` : '';
+  const placesClause = places.length ? `Places: ${places.slice(0, 3).join(', ')}.` : '';
+  if (/People:/i.test(out)) {
+    out = out.replace(new RegExp(String.raw`People:\s*.+?${SUMMARY_CLAUSE_BOUNDARY}`, 'i'), peopleClause);
+  }
+  if (/Places:/i.test(out)) {
+    out = out.replace(new RegExp(String.raw`Places:\s*.+?${SUMMARY_CLAUSE_BOUNDARY}`, 'i'), placesClause);
+  }
+  return out.replace(/\s{2,}/g, ' ').replace(/\s+([.,])/g, '$1').trim() || null;
+}
+
+/**
  * Deterministic summaries from metadata alone — the floor used when the LLM is
  * unavailable. Never empty when the thread has any known structure. Pure.
  */
 export function deriveDeterministicSummaries(meta: ThreadMetadata): ThreadSummaries {
   const topic = meta.title?.trim();
-  const people = meta.people.slice(0, 4);
-  const places = meta.places.slice(0, 3);
+  const people = unionThreadMetaLabels(meta.people, undefined, { kind: 'people' }).slice(0, 4);
+  const places = unionThreadMetaLabels(meta.places, undefined, { kind: 'places' }).slice(0, 3);
   const projects = meta.projects.slice(0, 3);
   const themes = meta.themes.slice(0, 3);
 

@@ -825,18 +825,27 @@ router.get(
 
     const meta = await threadIntelligenceService.syncFromStoredMessages(userId, id);
     const { card } = await threadIntelligenceService.getContinuity(userId, id);
-    const recallText = meta.summary_long || meta.summary_medium || meta.summary_short || card;
+    const { unionThreadMetaLabels } = await import('../services/actors/entityLabelPollution');
+    const { scrubSummaryEntityClauses } = await import(
+      '../services/conversationCentered/threadSummaryService'
+    );
+    const people = unionThreadMetaLabels(meta.people, undefined, { kind: 'people' });
+    const places = unionThreadMetaLabels(meta.places, undefined, { kind: 'places' });
+    const short = scrubSummaryEntityClauses(meta.summary_short, people, places);
+    const medium = scrubSummaryEntityClauses(meta.summary_medium, people, places);
+    const long = scrubSummaryEntityClauses(meta.summary_long, people, places);
+    const recallText = long || medium || short || card;
 
     res.json({
       success: true,
       summary: {
-        short: meta.summary_short,
-        medium: meta.summary_medium,
-        long: meta.summary_long,
+        short,
+        medium,
+        long,
         version: meta.summary_version,
         messageCount: meta.message_count,
-        people: meta.people,
-        places: meta.places,
+        people,
+        places,
         themes: meta.themes,
       },
       continuity: card,
@@ -867,22 +876,30 @@ router.post(
       return res.status(404).json({ success: false, error: 'Thread not found' });
     }
 
-    const { threadSummaryService } = await import('../services/conversationCentered/threadSummaryService');
+    const { threadSummaryService, scrubSummaryEntityClauses } = await import(
+      '../services/conversationCentered/threadSummaryService'
+    );
     const refreshed = await threadSummaryService.refresh(userId, id);
     const meta = await threadIntelligenceService.getThreadMeta(userId, id);
     const { card } = await threadIntelligenceService.getContinuity(userId, id);
-    const recallText = refreshed.long || refreshed.medium || refreshed.short || card;
+    const { unionThreadMetaLabels } = await import('../services/actors/entityLabelPollution');
+    const people = unionThreadMetaLabels(meta.people, undefined, { kind: 'people' });
+    const places = unionThreadMetaLabels(meta.places, undefined, { kind: 'places' });
+    const short = scrubSummaryEntityClauses(refreshed.short, people, places);
+    const medium = scrubSummaryEntityClauses(refreshed.medium, people, places);
+    const long = scrubSummaryEntityClauses(refreshed.long, people, places);
+    const recallText = long || medium || short || card;
 
     res.json({
       success: true,
       summary: {
-        short: refreshed.short,
-        medium: refreshed.medium,
-        long: refreshed.long,
+        short,
+        medium,
+        long,
         version: refreshed.version,
         messageCount: meta.message_count,
-        people: meta.people,
-        places: meta.places,
+        people,
+        places,
         themes: meta.themes,
       },
       continuity: card,

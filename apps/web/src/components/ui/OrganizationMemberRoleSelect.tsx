@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  ORGANIZATION_MEMBER_ROLES,
+  ORGANIZATION_MEMBER_ROLE_GROUPS,
   CUSTOM_ORG_MEMBER_ROLE,
   isPresetOrganizationMemberRole,
   resolveOrganizationMemberRolePreset,
@@ -21,7 +21,8 @@ type Props = {
 
 /**
  * Visible role picker (not a datalist) so every role is selectable.
- * Preset roles + optional Custom… free-text field.
+ * Preset seats/titles in the group + optional Custom… free-text field.
+ * Relationship labels (coworker, friend) belong on the character profile.
  */
 export function OrganizationMemberRoleSelect({
   value,
@@ -82,10 +83,14 @@ export function OrganizationMemberRoleSelect({
         className={`w-full ${className}`}
       >
         {allowEmpty && <option value="">Choose role…</option>}
-        {ORGANIZATION_MEMBER_ROLES.map((role) => (
-          <option key={role} value={role}>
-            {formatOrganizationMemberRoleLabel(role)}
-          </option>
+        {ORGANIZATION_MEMBER_ROLE_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.roles.map((role) => (
+              <option key={role} value={role}>
+                {formatOrganizationMemberRoleLabel(role)}
+              </option>
+            ))}
+          </optgroup>
         ))}
         <option value={CUSTOM_ORG_MEMBER_ROLE}>Custom…</option>
       </select>
@@ -101,6 +106,9 @@ export function OrganizationMemberRoleSelect({
           className={className}
         />
       )}
+      <p className="text-[10px] text-white/40 leading-snug" data-testid={dataTestId ? `${dataTestId}-hint` : undefined}>
+        Their role in this group — not how you know them.
+      </p>
     </div>
   );
 }

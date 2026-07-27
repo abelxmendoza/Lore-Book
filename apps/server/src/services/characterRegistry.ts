@@ -27,6 +27,7 @@ import { logger } from '../logger';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive, splitPersonName } from '../utils/nameNormalization';
+import { stripPersonNameEpithet } from '../utils/personNameEpithet';
 import {
   normalizeDisambiguationCandidates,
   threadUserHistoryReferencesMention,
@@ -34,6 +35,9 @@ import {
 } from '../utils/disambiguationUtils';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { isCollectivePersonName } from '../utils/personNameValidation';
+import { isInvalidPersonName } from '@lorebook/api-contracts';
+import { arbitrateDomainStrong } from './characters/audit/characterIdentityGate';
+import { classifyActorLabel } from './actors/actorLabelPolicy';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import {
   characterCreationActionFromCore,
@@ -140,8 +144,9 @@ class CharacterRegistry {
     // Strip leading articles
     name = name.replace(/^(?:the|a|an)\s+/i, '').trim();
     // Strip trailing role descriptors: "Reese the Recruiter" → "Reese",
-    // "Aunt Maribel the Hallway Guardian" → "Aunt Maribel" (any case)
-    name = name.replace(/\s{1,40}the\s{1,40}[\w][\w ]{0,80}$/i, '').trim();
+    // "Aunt Maribel the Hallway Guardian" → "Aunt Maribel" (any case).
+    // Leaves "from the …" scene tails alone (see personNameEpithet).
+    name = stripPersonNameEpithet(name);
     // Strip trailing punctuation
     name = name.replace(/[.,;:!?]{1,40}$/, '').trim();
 
@@ -160,6 +165,19 @@ class CharacterRegistry {
     if (sentenceBleed.rejected) return { ok: false, reason: sentenceBleed.kind };
     if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
+
+    const actorLabel = classifyActorLabel(name);
+    if (actorLabel.action === 'reject' || actorLabel.action === 'group' || actorLabel.action === 'anonymous') {
+      return { ok: false, reason: actorLabel.reason ?? actorLabel.action };
+    }
+
+    const invalidPerson = isInvalidPersonName(name);
+    if (invalidPerson.invalid) return { ok: false, reason: invalidPerson.reason ?? 'invalid_person_name' };
+
+    const domain = arbitrateDomainStrong(name);
+    if (domain.domain === 'tool' || domain.domain === 'media' || domain.domain === 'process') {
+      return { ok: false, reason: domain.reason ?? domain.domain };
+    }
 
     const mentionKind = classifyMentionKind(name, raw);
     if (mentionKind.kind !== 'person' && mentionKind.kind !== 'unknown') {
@@ -475,18 +493,24 @@ class CharacterRegistry {
     // Name upgrade: when the user finally uses a fuller name ("Derrik" →
     // "Derrik Halvorsen"), promote the card's primary name and demote the old
     // name to an alias so earlier mentions still match.
+    // Never promote an epithet form ("Reese the Recruiter") into the primary name.
     const update: Record<string, unknown> = { metadata, updated_at: new Date().toISOString() };
-    const mentionFirst = normalizeNameKey(mention).split(' ')[0];
+    const gatedMention = this.gateName(mention);
+    const upgradeName =
+      gatedMention.ok && gatedMention.cleanName ? gatedMention.cleanName : stripPersonNameEpithet(mention);
+    const mentionFirst = normalizeNameKey(upgradeName).split(' ')[0];
     const rowFirst = normalizeNameKey(row.name).split(' ')[0];
-    const mentionIsFuller = mention.includes(' ') && !row.name.includes(' ') && mentionFirst === rowFirst;
+    const mentionIsFuller =
+      upgradeName.includes(' ') && !row.name.includes(' ') && mentionFirst === rowFirst;
     if (addAlias && mentionIsFuller) {
       aliases.delete(mention);
+      aliases.delete(upgradeName);
       aliases.add(row.name);
-      const parsedName = splitPersonName(mention);
-      update.name = mention;
+      const parsedName = splitPersonName(upgradeName);
+      update.name = upgradeName;
       update.first_name = parsedName.firstName || null;
       update.last_name = parsedName.lastName || null;
-      logger.info({ characterId, from: row.name, to: mention }, 'Character name upgraded to fuller form');
+      logger.info({ characterId, from: row.name, to: upgradeName }, 'Character name upgraded to fuller form');
     }
     update.alias = aliases.size > 0 ? filterValidAliases(row.name, [...aliases]) : null;
 

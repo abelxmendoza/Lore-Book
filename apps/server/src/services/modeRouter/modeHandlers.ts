@@ -58,6 +58,9 @@ class ModeHandlers {
       case 'CHARACTER_BOOK_WRITE':
         return await this.handleCharacterBookWrite(userId, message, options?.threadId);
 
+      case 'ORGANIZATION_GROUP_WRITE':
+        return await this.handleOrganizationGroupWrite(userId, message, options);
+
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
       
@@ -172,6 +175,67 @@ class ModeHandlers {
       logger.error({ err: error, userId, threadId }, 'Failed to handle current-story cast query');
       return {
         content: "Something went wrong pulling together who's been part of this conversation — want me to try again?",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+  }
+
+  /**
+   * Explicit "make a group" / "here's the roster" — creates/updates an
+   * organization and attaches members with a real per-person outcome.
+   */
+  private async handleOrganizationGroupWrite(
+    userId: string,
+    message: string,
+    options?: {
+      conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      threadId?: string;
+    },
+  ): Promise<ModeHandlerResponse> {
+    const threadId = options?.threadId;
+    if (!threadId) {
+      return {
+        content:
+          "I don't have an active conversation thread to attach this group to — try again from within the chat.",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+    try {
+      let threadTitle: string | null = null;
+      try {
+        const { data } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('title')
+          .eq('id', threadId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        threadTitle = typeof data?.title === 'string' ? data.title : null;
+      } catch {
+        /* title optional */
+      }
+
+      const { writeOrganizationGroupFromChat } = await import('../chat/groupWriteService');
+      const result = await writeOrganizationGroupFromChat(userId, message, threadId, {
+        conversationHistory: options?.conversationHistory,
+        threadTitle,
+      });
+      return {
+        content: result.summary,
+        response_mode: 'ORGANIZATION_GROUP_WRITE',
+        confidence: 0.9,
+        metadata: {
+          organizationId: result.organizationId,
+          organizationName: result.organizationName,
+          groupCreated: result.created,
+          groupWriteMembers: result.members,
+        },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId, threadId }, 'Failed to handle organization group write');
+      return {
+        content: 'Something went wrong creating or updating that group — want me to try again?',
         response_mode: 'SILENCE',
         confidence: 0.5,
       };

@@ -127,6 +127,28 @@ export class ConversationIngestionPipeline {
         return;
       }
 
+      // Prefer the durable row's session_id over the job payload. Recovery /
+      // requeue paths historically enqueued with sessionId: '' which would
+      // otherwise create a shadow conversation_session or attach to the wrong
+      // thread when mapping chat → conversation.
+      const rowSessionId =
+        typeof chatMessage.session_id === 'string' ? chatMessage.session_id.trim() : '';
+      const jobSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
+      const resolvedSessionId = rowSessionId || jobSessionId;
+      if (!resolvedSessionId) {
+        logger.warn(
+          { chatMessageId, userId },
+          'Chat message has no session_id; skipping ingestion to avoid orphan session mapping',
+        );
+        return;
+      }
+      if (jobSessionId && rowSessionId && jobSessionId !== rowSessionId) {
+        logger.warn(
+          { chatMessageId, userId, jobSessionId, rowSessionId },
+          'Ingestion job sessionId mismatches chat_messages.session_id; using row value',
+        );
+      }
+
       // Bind an explicit "my stage name is X" claim to the protagonist before
       // generic entity extraction sees X and risks creating a duplicate person.
       await selfCharacterService.captureExplicitStageName(
@@ -157,7 +179,7 @@ export class ConversationIngestionPipeline {
       }
 
       // Map chat session to conversation session
-      const conversationSessionId = await this.ensureConversationSession(userId, sessionId);
+      const conversationSessionId = await this.ensureConversationSession(userId, resolvedSessionId);
 
       // Map sender
       const sender: 'USER' | 'AI' = chatMessage.role === 'user' ? 'USER' : 'AI';
@@ -180,7 +202,7 @@ export class ConversationIngestionPipeline {
         .update({
           metadata: {
             chat_message_id: chatMessageId,
-            chat_session_id: sessionId,
+            chat_session_id: resolvedSessionId,
           },
         })
         .eq('id', result.messageId);
@@ -1286,11 +1308,16 @@ export class ConversationIngestionPipeline {
           }
 
           // Collect resolved names for thread metadata (people vs places).
+          // Scrub junk labels here so threadMeta never accumulates tools/dates/fragments.
+          const { isPollutingPersonLabel, isPollutingPlaceLabel } = await import('../actors/entityLabelPollution');
           for (const e of resolved) {
             const name = (e as any).primary_name as string | undefined;
             if (!name?.trim()) continue;
-            if (e.type === 'PERSON' || e.type === 'CHARACTER') _threadMetaTurn.people.push(name.trim());
-            else if (e.type === 'LOCATION') _threadMetaTurn.places.push(name.trim());
+            if (e.type === 'PERSON' || e.type === 'CHARACTER') {
+              if (!isPollutingPersonLabel(name)) _threadMetaTurn.people.push(name.trim());
+            } else if (e.type === 'LOCATION') {
+              if (!isPollutingPlaceLabel(name)) _threadMetaTurn.places.push(name.trim());
+            }
           }
 
           // Promote PERSON/CHARACTER entities to characters table so they appear

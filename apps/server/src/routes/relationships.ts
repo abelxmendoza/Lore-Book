@@ -260,17 +260,30 @@ router.post(
       return res.status(404).json({ error: 'Both people must already exist in your character book' });
     }
 
-    const { data: existing, error: existingError } = await supabaseAdmin
+    const { data: existingRows, error: existingError } = await supabaseAdmin
       .from('character_relationships')
       .select('*')
       .eq('user_id', userId)
       .or(
         `and(source_character_id.eq.${input.source_character_id},target_character_id.eq.${input.target_character_id}),and(source_character_id.eq.${input.target_character_id},target_character_id.eq.${input.source_character_id})`
       )
-      .limit(1)
-      .maybeSingle();
+      .order('updated_at', { ascending: false })
+      .limit(20);
 
     if (existingError) throw existingError;
+
+    // Prefer an exact type match, then a soft/generic row. Do not rewrite typed
+    // kinship edges (cousin_of, parent_of, …) when the client is asserting a
+    // softer "relationship to you" label like "cousin" / "friend".
+    const rows = existingRows ?? [];
+    const isTypedKinshipEdge = (type: string) => {
+      const t = String(type ?? '').toLowerCase();
+      return /_of$/.test(t) && t !== 'related_to';
+    };
+    const existing =
+      rows.find((row) => row.relationship_type === input.relationship_type) ??
+      rows.find((row) => !isTypedKinshipEdge(String(row.relationship_type))) ??
+      null;
 
     const payload = {
       relationship_type: input.relationship_type,

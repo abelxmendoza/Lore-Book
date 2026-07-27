@@ -33,7 +33,19 @@ export * from './ingestion';
 export {
   isCastRosterQuery,
   isCharacterBookWriteRequest,
+  isOrganizationGroupWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
+  countListedNameLikeTokens,
   type ClosedScopeReason,
 } from './chat/closedScopeIntent';
+
+
+export {
+  CHARACTER_QUERY_SECTIONS,
+  CHARACTER_QUERY_CORE_SECTIONS,
+  type CharacterQuerySectionName,
+  type CharacterQueryChatMention,
+  type CharacterQueryHydratedMemory,
+  type CharacterQueryResponse,
+} from './characters/characterQuery';

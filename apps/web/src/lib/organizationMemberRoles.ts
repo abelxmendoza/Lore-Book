@@ -1,36 +1,48 @@
 /**
  * Shared membership roles for Character ↔ Groups linking UI.
+ * These are seats/titles in the group — not the user's personal relationship
+ * to the person (coworker, friend, etc. belong on the character profile).
  * Free-text custom roles are still allowed via the "Custom…" option.
  */
-export const ORGANIZATION_MEMBER_ROLES = [
-  'member',
-  'leader',
-  'founder',
-  'co-founder',
-  'organizer',
-  'captain',
-  'coach',
-  'manager',
-  'employee',
-  'coworker',
-  'colleague',
-  'intern',
-  'contractor',
-  'advisor',
-  'mentor',
-  'regular',
-  'alumnus',
-  'alumni',
-  'former member',
-  'guest',
-  'volunteer',
-  'partner',
-  'owner',
-  'director',
-  'president',
-  'treasurer',
-  'secretary',
+
+export const ORGANIZATION_MEMBER_ROLE_GROUPS = [
+  {
+    label: 'Affiliation',
+    roles: [
+      'member',
+      'employee',
+      'intern',
+      'contractor',
+      'volunteer',
+      'guest',
+      'former member',
+      'alumnus',
+    ],
+  },
+  {
+    label: 'Leadership',
+    roles: [
+      'founder',
+      'co-founder',
+      'owner',
+      'leader',
+      'manager',
+      'director',
+      'organizer',
+      'captain',
+      'coach',
+      'advisor',
+      'mentor',
+      'president',
+      'treasurer',
+      'secretary',
+    ],
+  },
 ] as const;
+
+export const ORGANIZATION_MEMBER_ROLES = ORGANIZATION_MEMBER_ROLE_GROUPS.flatMap(
+  (group) => [...group.roles],
+);
 
 export type OrganizationMemberRole = (typeof ORGANIZATION_MEMBER_ROLES)[number];
 

@@ -7,6 +7,7 @@ import { Copy, Check } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { EntityMentionRef } from '../../lib/entityMentions';
 import { withInlineEntityPills } from '../entity/TextWithEntityPills';
+import { withHighlightedTerms } from '../../lib/highlightTextTerms';
 // @ts-ignore - highlight.js CSS
 import 'highlight.js/styles/github-dark.css';
 
@@ -15,13 +16,26 @@ type MarkdownRendererProps = {
   isStreaming?: boolean;
   className?: string;
   entityMentions?: EntityMentionRef[];
+  highlightTerms?: string[];
 };
 
-function entityText(children: ReactNode, entityMentions?: EntityMentionRef[]): ReactNode {
-  return withInlineEntityPills(children, entityMentions);
+function entityText(
+  children: ReactNode,
+  entityMentions?: EntityMentionRef[],
+  highlightTerms?: string[],
+): ReactNode {
+  const withEntities = withInlineEntityPills(children, entityMentions);
+  if (!highlightTerms?.length) return withEntities;
+  return withHighlightedTerms(withEntities, highlightTerms);
 }
 
-export const MarkdownRenderer = ({ content, isStreaming, className, entityMentions }: MarkdownRendererProps) => {
+export const MarkdownRenderer = ({
+  content,
+  isStreaming,
+  className,
+  entityMentions,
+  highlightTerms,
+}: MarkdownRendererProps) => {
   return (
     <div className={`markdown-content prose prose-invert prose-sm sm:prose-base max-w-none w-full min-w-0 break-words overflow-x-hidden${className ? ` ${className}` : ''}`}>
       <ReactMarkdown
@@ -45,15 +59,15 @@ export const MarkdownRenderer = ({ content, isStreaming, className, entityMentio
             );
           },
           // Headings
-          h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 text-white">{entityText(children, entityMentions)}</h1>,
-          h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-2 text-white">{entityText(children, entityMentions)}</h2>,
-          h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1 text-white">{entityText(children, entityMentions)}</h3>,
+          h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 text-white">{entityText(children, entityMentions, highlightTerms)}</h1>,
+          h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-2 text-white">{entityText(children, entityMentions, highlightTerms)}</h2>,
+          h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1 text-white">{entityText(children, entityMentions, highlightTerms)}</h3>,
           // Lists
           ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2 text-white/90">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2 text-white/90">{children}</ol>,
-          li: ({ children }) => <li className="text-sm">{entityText(children, entityMentions)}</li>,
+          li: ({ children }) => <li className="text-sm">{entityText(children, entityMentions, highlightTerms)}</li>,
           // Paragraphs
-          p: ({ children }) => <p className="mb-2 text-white/90 leading-relaxed">{entityText(children, entityMentions)}</p>,
+          p: ({ children }) => <p className="mb-2 text-white/90 leading-relaxed">{entityText(children, entityMentions, highlightTerms)}</p>,
           // Links
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80 underline">
@@ -63,7 +77,7 @@ export const MarkdownRenderer = ({ content, isStreaming, className, entityMentio
           // Blockquotes
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-primary/30 pl-4 my-2 italic text-white/70">
-              {entityText(children, entityMentions)}
+              {entityText(children, entityMentions, highlightTerms)}
             </blockquote>
           ),
           // Tables
@@ -75,8 +89,8 @@ export const MarkdownRenderer = ({ content, isStreaming, className, entityMentio
           thead: ({ children }) => <thead className="bg-black/40">{children}</thead>,
           tbody: ({ children }) => <tbody>{children}</tbody>,
           tr: ({ children }) => <tr className="border-b border-border/30">{children}</tr>,
-          th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-white/80">{entityText(children, entityMentions)}</th>,
-          td: ({ children }) => <td className="px-3 py-2 text-xs text-white/70">{entityText(children, entityMentions)}</td>,
+          th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-white/80">{entityText(children, entityMentions, highlightTerms)}</th>,
+          td: ({ children }) => <td className="px-3 py-2 text-xs text-white/70">{entityText(children, entityMentions, highlightTerms)}</td>,
           // Horizontal rule
           hr: () => <hr className="my-4 border-border/30" />,
           // Strong and emphasis

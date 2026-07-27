@@ -2,16 +2,17 @@
  * Surname-match suggestions — when two characters who are already
  * identified as family-role (a kinship title like "Cousin Jerry", an
  * existing family relationship edge, or a family_override on the tree)
- * share a last name, suggest they might be related.
+ * share a last name (or any token of a compound / multi surname), suggest
+ * they might be related.
  *
  * Suggest-only by default: this never writes a confirmed family edge on
  * its own for bare surname matches, so a common surname (Smith, Garcia)
  * can't silently link two unrelated people.
  *
  * Exception: when both already share the same user-asserted tree parent
- * (`family_override.connects_to_id`) AND the same last name, we sync the
- * missing bidirectional edges (cousin↔cousin family link + parent_of from
- * the shared aunt/uncle). That is tree placement the user already confirmed.
+ * (`family_override.connects_to_id`), we sync missing bidirectional edges
+ * even when last names differ — marriage and maternal/paternal surnames
+ * are normal. Shared surname tokens still strengthen suggestions.
  */
 import { logger } from '../../logger';
 import { normalizeNameKey } from '../../utils/nameNormalization';
@@ -42,6 +43,45 @@ export type PossibleFamilyMatch = {
   sharedLastName: string;
 };
 
+/** Particles that are not meaningful surname tokens on their own. */
+const SURNAME_PARTICLES = new Set([
+  'de', 'del', 'dela', 'la', 'las', 'los', 'y', 'da', 'das', 'do', 'dos',
+  'van', 'von', 'der', 'den', 'ter', 'ten', 'di', 'du', 'le', 'st', 'ste',
+]);
+
+/**
+ * Tokens for matching compound / hyphenated / multi surnames
+ * ("Garcia Lopez", "Van Der Berg", "Smith-Jones").
+ */
+export function surnameMatchTokens(lastName: string | null | undefined, fullName?: string): string[] {
+  const raw = (lastName?.trim() || '').length > 0
+    ? lastName!.trim()
+    : (fullName ?? '').trim().split(/\s+/).slice(1).join(' ');
+  if (!raw) return [];
+  const parts = raw
+    .split(/[\s\-_/]+/)
+    .map((p) => normalizeNameKey(p))
+    .filter((p) => p.length >= 2 && !SURNAME_PARTICLES.has(p));
+  const full = normalizeNameKey(raw.replace(/[-_/]+/g, ' '));
+  const out = new Set<string>(parts);
+  if (full && full.length >= 2) out.add(full);
+  return [...out];
+}
+
+export function surnamesOverlap(
+  aLast: string | null | undefined,
+  bLast: string | null | undefined,
+  aName?: string,
+  bName?: string,
+): string | null {
+  const aTokens = surnameMatchTokens(aLast, aName);
+  const bTokens = new Set(surnameMatchTokens(bLast, bName));
+  for (const t of aTokens) {
+    if (bTokens.has(t)) return t;
+  }
+  return null;
+}
+
 function readOverride(meta: Record<string, unknown> | null | undefined): FamilyOverride | null {
   const raw = meta?.family_override;
   if (!raw || typeof raw !== 'object') return null;
@@ -63,24 +103,22 @@ class FamilySurnameSuggestionService {
         .eq('id', characterId)
         .eq('user_id', userId)
         .maybeSingle();
-      if (!character?.last_name?.trim()) return;
+      if (!character) return;
 
       const self = character as CharacterRow;
+      if (surnameMatchTokens(self.last_name, self.name).length === 0) return;
       if (!(await this.isFamilyRoleCharacter(userId, self))) return;
-
-      const lastNameKey = normalizeNameKey(self.last_name!);
 
       const { data: others } = await supabaseAdmin
         .from('characters')
         .select('id, name, last_name, metadata')
         .eq('user_id', userId)
-        .neq('id', characterId)
-        .not('last_name', 'is', null)
-        .neq('last_name', '');
+        .neq('id', characterId);
       if (!others?.length) return;
 
       for (const other of others as CharacterRow[]) {
-        if (!other.last_name || normalizeNameKey(other.last_name) !== lastNameKey) continue;
+        const overlap = surnamesOverlap(self.last_name, other.last_name, self.name, other.name);
+        if (!overlap) continue;
         if (!(await this.isFamilyRoleCharacter(userId, other))) continue;
         await this.linkOrSuggest(userId, self, other);
       }
@@ -110,28 +148,22 @@ class FamilySurnameSuggestionService {
         if (fixed) linked++;
       }
 
-      const bySurname = new Map<string, CharacterRow[]>();
+      const byParent = new Map<string, CharacterRow[]>();
       for (const row of rows) {
-        const key = normalizeNameKey(row.last_name ?? '');
-        if (!key) continue;
         const override = readOverride(row.metadata ?? undefined);
         if (!override?.connects_to_id) continue;
         if (!(await this.isFamilyRoleCharacter(userId, row))) continue;
-        const list = bySurname.get(key) ?? [];
-        list.push(row);
-        bySurname.set(key, list);
+        const parentList = byParent.get(override.connects_to_id) ?? [];
+        parentList.push(row);
+        byParent.set(override.connects_to_id, parentList);
       }
 
-      for (const group of bySurname.values()) {
+      // Shared tree parent → cousin edges even when surnames differ.
+      for (const [parentId, group] of byParent) {
         if (group.length < 2) continue;
         for (let i = 0; i < group.length; i++) {
           for (let j = i + 1; j < group.length; j++) {
-            const a = group[i];
-            const b = group[j];
-            const parentA = readOverride(a.metadata ?? undefined)?.connects_to_id;
-            const parentB = readOverride(b.metadata ?? undefined)?.connects_to_id;
-            if (!parentA || parentA !== parentB) continue;
-            const changed = await this.syncSharedParentCousins(userId, a, b, parentA);
+            const changed = await this.syncSharedParentCousins(userId, group[i], group[j], parentId);
             if (changed) linked++;
           }
         }
@@ -240,8 +272,8 @@ class FamilySurnameSuggestionService {
   }
 
   /**
-   * User already placed both under the same aunt/uncle and they share a surname —
-   * ensure parent_of edges + a confirmed family link between them.
+   * User already placed both under the same aunt/uncle — ensure parent_of
+   * edges + a confirmed family link between them (surnames may differ).
    */
   private async syncSharedParentCousins(
     userId: string,
@@ -300,11 +332,16 @@ class FamilySurnameSuggestionService {
           relationship_category: 'family',
           status: 'active',
           inference_status: 'asserted',
-          summary: `Both share the last name "${a.last_name}" and sit under the same family-tree parent`,
+          summary: `Both sit under the same family-tree parent${
+            surnamesOverlap(a.last_name, b.last_name, a.name, b.name)
+              ? ` and share surname cues`
+              : ''
+          }`,
           metadata: {
             ...((pending.metadata as Record<string, unknown> | null) ?? {}),
             inference_source: 'surname_tree_comember',
-            shared_last_name: a.last_name,
+            shared_last_name:
+              surnamesOverlap(a.last_name, b.last_name, a.name, b.name) ?? a.last_name ?? b.last_name,
             kinship: 'cousin',
           },
         })
@@ -314,6 +351,7 @@ class FamilySurnameSuggestionService {
 
     if (rows.length > 0) return changed; // dismissed or non-family edge — don't override
 
+    const sharedToken = surnamesOverlap(a.last_name, b.last_name, a.name, b.name);
     await supabaseAdmin.from('character_relationships').insert({
       user_id: userId,
       source_character_id: a.id,
@@ -322,10 +360,12 @@ class FamilySurnameSuggestionService {
       relationship_category: 'family',
       status: 'active',
       inference_status: 'asserted',
-      summary: `Both share the last name "${a.last_name}" and sit under the same family-tree parent`,
+      summary: `Both sit under the same family-tree parent${
+        sharedToken ? ` and share surname cues ("${sharedToken}")` : ''
+      }`,
       metadata: {
         inference_source: 'surname_tree_comember',
-        shared_last_name: a.last_name,
+        shared_last_name: sharedToken ?? a.last_name ?? b.last_name,
         kinship: 'cousin',
       },
     });

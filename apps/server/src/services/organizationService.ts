@@ -1135,6 +1135,8 @@ export class OrganizationService {
   /**
    * Persist person↔group membership into entity_facts so Character Knowledge /
    * Working Memory treat it as user-asserted lore (not UI-only roster state).
+   * Employment seats (employee / intern / contractor) also write Info → Work
+   * attributes (workplace + occupation).
    */
   private async solidifyMembershipKnowledge(
     userId: string,
@@ -1146,6 +1148,12 @@ export class OrganizationService {
       const orgName = org?.name?.trim() || 'this group';
       const role = link.role?.trim();
       const { entityFactsService } = await import('./entityFactsService');
+      const { workAttributesFromEmploymentMembership } = await import(
+        './kinship/membershipWorkAttributes'
+      );
+      const { entityAttributeDetector } = await import(
+        './conversationCentered/entityAttributeDetector'
+      );
 
       const characterFact = role
         ? `Member of ${orgName} (${role})`
@@ -1172,6 +1180,37 @@ export class OrganizationService {
           0.96,
         ),
       ]);
+
+      const workAttrs = workAttributesFromEmploymentMembership({
+        role,
+        organizationName: org?.name?.trim() || '',
+      });
+      if (workAttrs.length > 0) {
+        const evidence = `Labeled ${role} of ${orgName} in Groups & Organizations`;
+        const evidenceSourceIds = [`org-membership:${organizationId}`];
+        await Promise.all(
+          workAttrs.map((attr) =>
+            entityAttributeDetector.saveAttribute(userId, {
+              entityId: link.characterId,
+              entityType: 'character',
+              attributeType: attr.attributeType,
+              attributeValue: attr.attributeValue,
+              confidence: 0.96,
+              isCurrent: true,
+              evidence,
+              evidenceSourceIds,
+            }),
+          ),
+        );
+        await entityFactsService.assertFact(
+          userId,
+          link.characterId,
+          'character',
+          `Works at ${orgName}`,
+          'career',
+          0.96,
+        );
+      }
     } catch (err) {
       logger.warn(
         { err, userId, organizationId, characterId: link.characterId },

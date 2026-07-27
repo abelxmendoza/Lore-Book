@@ -161,6 +161,15 @@ export async function findReusableEmptyDraft(userId: string): Promise<string | n
     if (!isGenericThreadTitle(row.title ?? DRAFT_THREAD_TITLE)) continue;
     const metaMsgs = metadataMessages(row);
     if (metaMsgs.length > 0) continue;
+    // Durable chat lives in chat_messages; conversation_messages alone can be
+    // empty for a thread that already has a full chat history (ingest lag /
+    // recovery). Never reuse those — that appends into an old mega-thread.
+    const { count: chatCount } = await supabaseAdmin
+      .from('chat_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('session_id', row.id);
+    if ((chatCount ?? 0) > 0) continue;
     const { count } = await supabaseAdmin
       .from('conversation_messages')
       .select('id', { count: 'exact', head: true })

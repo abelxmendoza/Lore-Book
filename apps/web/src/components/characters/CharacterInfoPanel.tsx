@@ -24,6 +24,7 @@ import { UnknownField } from '../ui/UnknownField';
 import { toFieldSource } from '../common/FieldSourceBadge';
 import { EditableField, type EditableFieldOption } from '../common/EditableField';
 import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
+import { isFetchJsonError } from '../../store/api/baseApi';
 import { fetchJson } from '../../lib/api';
 import type { Character } from './CharacterProfileCard';
 import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
@@ -33,6 +34,12 @@ import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import { suggestDisplayTitleFromNames, getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { isKinshipNameToken, splitStructuredPersonName } from '../../lib/structuredPersonName';
+import {
+  RELATIONSHIP_TO_YOU_OPTIONS,
+  relationshipToYouLabel,
+  resolveRelationshipToYou,
+} from '../../lib/relationshipToYou';
+import { selfCharacterApi } from '../../api/selfCharacter';
 
 type Relationship = {
   id?: string;
@@ -65,6 +72,18 @@ type CharacterAttribute = {
 };
 
 type LifeMapItem = { label: string; value?: string; prompt: string };
+
+function formatPersistError(err: unknown, fallback: string): string {
+  if (isFetchJsonError(err) && err.message) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const record = err as { message?: unknown; data?: { error?: unknown }; error?: unknown };
+    if (typeof record.message === 'string' && record.message.trim()) return record.message;
+    if (typeof record.data?.error === 'string' && record.data.error.trim()) return record.data.error;
+    if (typeof record.error === 'string' && record.error.trim()) return record.error;
+  }
+  return fallback;
+}
 
 const SEX_OPTIONS = [
   { value: 'unknown', label: 'Unknown' },
@@ -443,6 +462,8 @@ export type CharacterInfoPanelProps = {
   /** Deep-link target when opened from an Unknown chip (e.g. Role on a profile card). */
   focusField?: 'role' | null;
   onFocusFieldHandled?: () => void;
+  /** Hide "Relationship to you" on the self / main character modal. */
+  isSelfCharacter?: boolean;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -535,8 +556,10 @@ export function CharacterInfoPanel({
   onDeleteWorldPerson,
   focusField = null,
   onFocusFieldHandled,
+  isSelfCharacter = false,
 }: CharacterInfoPanelProps) {
   const [updateCharacter] = useUpdateCharacterMutation();
+  const [relationshipToYouBusy, setRelationshipToYouBusy] = useState(false);
   const roleFieldRef = useRef<HTMLDivElement | null>(null);
   const [roleFieldHighlight, setRoleFieldHighlight] = useState(false);
   const [roleAutoEdit, setRoleAutoEdit] = useState(false);
@@ -571,6 +594,30 @@ export function CharacterInfoPanel({
   const orientationSource = toFieldSource(meta.sexual_orientation_source, orientationValue !== 'unknown');
   const archetypeSource = toFieldSource(meta.archetype_source, Boolean(archetypeValue));
   const roleSource = toFieldSource(meta.role_source, Boolean(roleValue));
+  const relationshipToYouResolved = useMemo(
+    () =>
+      resolveRelationshipToYou({
+        metadata: (editedCharacter.metadata ?? {}) as Record<string, unknown>,
+        relationships: editedCharacter.relationships,
+        romanticType: relationship?.relationship_type,
+      }),
+    [editedCharacter.metadata, editedCharacter.relationships, relationship?.relationship_type],
+  );
+  const relationshipToYouValue = relationshipToYouResolved.value;
+  const relationshipToYouSource = toFieldSource(
+    relationshipToYouResolved.source,
+    Boolean(relationshipToYouValue),
+  );
+  const relationshipToYouOptions = useMemo<EditableFieldOption[]>(() => {
+    const base = RELATIONSHIP_TO_YOU_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
+    if (
+      relationshipToYouValue &&
+      !base.some((o) => o.value === relationshipToYouValue || o.value === relationshipToYouValue.replace(/\s+/g, '_'))
+    ) {
+      return [{ value: relationshipToYouValue, label: relationshipToYouLabel(relationshipToYouValue) }, ...base];
+    }
+    return base;
+  }, [relationshipToYouValue]);
   const inferredNameParts = useMemo(
     () => inferNameParts(editedCharacter),
     [
@@ -1146,6 +1193,121 @@ export function CharacterInfoPanel({
     onUpdate();
   };
 
+  const persistRelationshipToYou = async (nextType: string) => {
+    const cleaned = nextType.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!cleaned) throw new Error('Pick how they relate to you.');
+    if (isMockDataEnabled) {
+      setEditedCharacter((prev) => ({
+        ...prev,
+        metadata: {
+          ...((prev.metadata ?? {}) as Record<string, unknown>),
+          relationship_to_user: cleaned,
+          relationship_to_user_source: 'user_confirmed',
+          relationship_to_user_confirmed_at: new Date().toISOString(),
+        },
+        relationships: [
+          {
+            id: 'you-link',
+            character_id: 'self',
+            character_name: 'You',
+            relationship_type: cleaned,
+            status: 'confirmed',
+          },
+          ...(prev.relationships ?? []).filter((r) => !/^(you|me)$/i.test(r.character_name ?? '')),
+        ],
+      }));
+      onUpdate();
+      return;
+    }
+
+    setRelationshipToYouBusy(true);
+    try {
+      const patch = {
+        relationship_to_user: cleaned,
+        relationship_to_user_source: 'user_confirmed',
+        relationship_to_user_confirmed_at: new Date().toISOString(),
+      };
+      setEditedCharacter((prev) => ({
+        ...prev,
+        metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...patch },
+      }));
+      await updateCharacter({ id: characterId, values: { metadata: patch } }).unwrap();
+
+      // You↔character graph link is best-effort. Metadata is the source of truth
+      // for this field — don't fail the save if link sync hits duplicate edges.
+      try {
+        const selfRes = await selfCharacterApi.ensureSelf();
+        const selfId = selfRes.character?.id;
+        if (selfId && selfId !== characterId) {
+          const isYouSide = (r: Relationship) =>
+            r.character_id === selfId || /^(you|me)$/i.test(r.character_name ?? '');
+          const isTypedKinship = (type?: string) => /_of$/i.test(String(type ?? '')) && !/^related_to$/i.test(String(type ?? ''));
+
+          const existingYou = (editedCharacter.relationships ?? []).find(
+            (r) =>
+              isYouSide(r) &&
+              r.id &&
+              !String(r.id).startsWith('story-association') &&
+              !isTypedKinship(r.relationship_type),
+          );
+          const alreadyHasTypedKin = (editedCharacter.relationships ?? []).some(
+            (r) => isYouSide(r) && isTypedKinship(r.relationship_type),
+          );
+
+          if (existingYou?.id && onUpdateWorldPerson) {
+            await onUpdateWorldPerson(existingYou.id, { relationship_type: cleaned, status: 'confirmed' });
+            setEditedCharacter((prev) => ({
+              ...prev,
+              relationships: (prev.relationships ?? []).map((r) =>
+                r.id === existingYou.id ? { ...r, relationship_type: cleaned, status: 'confirmed' } : r,
+              ),
+            }));
+          } else if (!alreadyHasTypedKin) {
+            const result = await fetchJson<{ success?: boolean; relationship?: Relationship }>(
+              '/api/relationships/character-links',
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  source_character_id: selfId,
+                  target_character_id: characterId,
+                  relationship_type: cleaned,
+                  status: 'confirmed',
+                }),
+              },
+            );
+            const saved = result.relationship;
+            if (saved) {
+              setEditedCharacter((prev) => ({
+                ...prev,
+                relationships: [
+                  {
+                    id: saved.id,
+                    character_id: selfId,
+                    character_name: 'You',
+                    relationship_type: cleaned,
+                    status: 'confirmed',
+                    closeness_score: saved.closeness_score,
+                    summary: saved.summary,
+                  },
+                  ...(prev.relationships ?? []).filter((r) => !isYouSide(r)),
+                ],
+              }));
+            }
+          }
+        }
+      } catch (linkErr) {
+        console.warn('Relationship-to-you link sync skipped:', linkErr);
+      }
+
+      onUpdate();
+    } catch (err) {
+      const message = formatPersistError(err, 'Could not save relationship to you');
+      throw new Error(message);
+    } finally {
+      setRelationshipToYouBusy(false);
+    }
+  };
+
   const healthScore = dynamics?.health?.health_score;
   const healthTrend = dynamics?.health?.trends?.health_trend;
   const memoryCount = editedCharacter.memory_count ?? 0;
@@ -1237,6 +1399,58 @@ export function CharacterInfoPanel({
         </div>
       </section>
 
+      {/* ── 2a. Relationship to you ──────────────────────────────────── */}
+      {!isSelfCharacter && (
+        <section
+          className="rounded-2xl border border-rose-500/25 bg-rose-950/15 p-4"
+          data-testid="relationship-to-you-section"
+        >
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 border border-rose-500/25">
+              <Heart className="h-4 w-4 text-rose-300" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-white">Relationship to you</h3>
+              <p className="mt-1 text-xs leading-relaxed text-white/45">
+                How {shortDisplayName(editedCharacter.name)} connects to you — friend, coworker, family,
+                partner, and so on. LoreBook infers this from chat titles like &ldquo;Cousin James&rdquo;, but
+                skips stage/persona names (e.g. Goth Tio). Correct anytime below.
+              </p>
+            </div>
+          </div>
+          <EditableField
+            label="Their relationship to you"
+            value={relationshipToYouValue}
+            displayValue={relationshipToYouValue ? relationshipToYouLabel(relationshipToYouValue) : null}
+            source={relationshipToYouSource}
+            variant="select"
+            options={relationshipToYouOptions}
+            emptyHint="Click to set relationship"
+            icon={<Heart className="h-3.5 w-3.5 text-rose-300" />}
+            onSave={persistRelationshipToYou}
+            disabled={relationshipToYouBusy}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                askInChat(
+                  `How do I know ${editedCharacter.name}? What's our relationship? (friend, coworker, family, dating, etc.) `,
+                )
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-100 hover:bg-rose-500/20"
+              data-testid="relationship-to-you-ask-chat"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              Detect in chat
+            </button>
+            {!relationshipToYouValue && (
+              <span className="text-[11px] text-white/40">Or pick from the list above.</span>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ── 2b. Identity details ─────────────────────────────────────── */}
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-start gap-3">
@@ -1244,10 +1458,10 @@ export function CharacterInfoPanel({
             <User className="h-4 w-4 text-white/55" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-white">Identity details (structured names)</h3>
+            <h3 className="text-sm font-bold text-white">Names, nicknames &amp; usernames</h3>
             <p className="mt-1 text-xs leading-relaxed text-white/45">
-              First / Middle / Last + Nicknames are the canonical record for this person. These drive matching, family trees,
-              and relationship logic. The <span className="font-medium text-white/70">card title</span> (shown on lists and in CharacterTitleSection) is a separate, presentational value — typically “Nickname (First Last)” or a contextual form.
+              First / middle / last plus nicknames, usernames, and other aliases are the record LoreBook uses for matching and family trees.
+              Rename their card label with the Edit chip on their name.
             </p>
             <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
               <div className="grid gap-2 sm:grid-cols-3">
@@ -1280,7 +1494,7 @@ export function CharacterInfoPanel({
                 </label>
               </div>
               <label className="mt-3 block">
-                <span className="text-[10px] uppercase tracking-wide text-white/35">Nicknames / aliases (multiple)</span>
+                <span className="text-[10px] uppercase tracking-wide text-white/35">Nicknames, usernames &amp; aliases</span>
                 <div className="mt-1 flex flex-wrap gap-1 min-h-[32px]">
                   {aliasesList.map((alias, idx) => (
                     <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-xs text-white">
@@ -1301,7 +1515,7 @@ export function CharacterInfoPanel({
                     value={newAlias}
                     onChange={(e) => { setNewAlias(e.target.value); setIdentityError(null); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAlias(); } }}
-                    placeholder="Add nickname or alias and press Enter"
+                    placeholder="Add nickname, username, or alias and press Enter"
                     className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-sm text-white focus:border-primary/60 focus:outline-none"
                     autoComplete="off"
                   />
@@ -1599,7 +1813,7 @@ export function CharacterInfoPanel({
           <div className="grid sm:grid-cols-2 gap-2">
             {[...romanticConnections, ...strongestConnections.filter((s) => !romanticConnections.some((r) => r.character_id === s.character_id))].slice(0, 4).map((rel) => (
               <button
-                key={rel.id ?? rel.character_id ?? rel.character_name}
+                key={rel.character_id ?? rel.id ?? rel.character_name}
                 type="button"
                 onClick={() => openCharacterByRelationship(rel)}
                 className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left hover:border-primary/30 hover:bg-primary/5 transition-colors touch-manipulation"

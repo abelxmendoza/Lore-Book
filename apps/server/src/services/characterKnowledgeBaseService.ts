@@ -48,7 +48,11 @@ export type CharacterKnowledgeBase = {
   };
 };
 
-async function loadKnowledgeClaimsForCharacter(userId: string, characterName: string) {
+export async function loadKnowledgeClaimsForCharacter(
+  userId: string,
+  characterName: string,
+  aliases: string[] = [],
+) {
   const { data: claims, error: claimsErr } = await supabaseAdmin
     .from('crystallized_knowledge')
     .select('id, human_readable_claim, knowledge_type, confidence, status, last_reinforced_at, first_evidenced_at')
@@ -67,14 +71,20 @@ async function loadKnowledgeClaimsForCharacter(userId: string, characterName: st
 
   if (!links?.length) return [];
 
-  const nameLower = characterName.toLowerCase();
+  // Evidence text often refers to a character by a nickname/alias rather than
+  // their canonical name (e.g. "Tio Ralph" vs the alias "Ralph") — matching
+  // only the primary name silently dropped their crystallized knowledge.
+  const needles = [characterName, ...aliases]
+    .filter((n): n is string => Boolean(n?.trim()))
+    .map((n) => n.toLowerCase());
   const matchedIds = new Set<string>();
   const evidenceByClaimId: Record<string, typeof links> = {};
 
   for (const link of links) {
     if (!evidenceByClaimId[link.knowledge_id]) evidenceByClaimId[link.knowledge_id] = [];
     evidenceByClaimId[link.knowledge_id].push(link);
-    if (link.evidence_summary?.toLowerCase().includes(nameLower)) {
+    const summaryLower = link.evidence_summary?.toLowerCase() ?? '';
+    if (needles.some((n) => summaryLower.includes(n))) {
       matchedIds.add(link.knowledge_id);
     }
   }
@@ -114,7 +124,7 @@ export async function getCharacterKnowledgeBase(
   ] = await Promise.all([
     fetchEntityProfile(userId, character.name),
     entityFactsService.getEntityFacts(userId, characterId, 'character'),
-    loadKnowledgeClaimsForCharacter(userId, character.name),
+    loadKnowledgeClaimsForCharacter(userId, character.name, (character.alias as string[] | null) ?? []),
     import('./eventCandidates/eventCandidateService').then(({ eventCandidateService }) =>
       eventCandidateService.getCandidatesForEntity(userId, characterId)
     ),

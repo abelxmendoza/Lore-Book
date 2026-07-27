@@ -16,7 +16,7 @@ import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
-import { isCastRosterQuery, isCharacterBookWriteRequest } from '@lorebook/api-contracts';
+import { isCastRosterQuery, isCharacterBookWriteRequest, isOrganizationGroupWriteRequest } from '@lorebook/api-contracts';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
@@ -31,6 +31,7 @@ export type ChatMode =
   | 'SUBJECT_TIMELINE'       // Existing subject timeline compiler + stitched feed
   | 'CURRENT_STORY_CAST'     // Closed-scope: new/returning/unresolved people in the active thread
   | 'CHARACTER_BOOK_WRITE'   // Explicit "add these people to my character book" request
+  | 'ORGANIZATION_GROUP_WRITE' // Explicit "make a group" / "here's the roster" write
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -107,6 +108,16 @@ class ModeRouterService {
         mode: 'SUBJECT_TIMELINE',
         confidence: 0.98,
         reasoning: 'Explicit subject timeline request detected',
+      };
+    }
+
+    // Explicit "make a group" / roster-list for a new group — must outrank
+    // CURRENT_STORY_CAST so "So far we have A, B, and C" actually persists.
+    if (isOrganizationGroupWriteRequest(message)) {
+      return {
+        mode: 'ORGANIZATION_GROUP_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit organization/group create or roster write request detected',
       };
     }
 
@@ -508,14 +519,16 @@ Modes:
 7. NARRATIVE_STORY - Explicit request to BUILD/TELL a narrative: "tell me the story of my last year", "write the story of my growth", "give me a narrative about my relationship with X", "what's my story?", "narrate my journey"
 5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
 6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
-8. CURRENT_STORY_CAST - Asking who's new vs. already-known in the CURRENT conversation/thread specifically: "who's new and returning in this story?", "who have I mentioned so far in this chat?". Scoped to this thread, not the whole life story.
+8. CURRENT_STORY_CAST - Asking who's new vs. already-known in the CURRENT conversation/thread specifically: "who's new and returning in this story?", "who have I mentioned so far in this chat?". Scoped to this thread, not the whole life story. NOT for listing members of a group you are creating ("So far we have A, B, and C").
 9. CHARACTER_BOOK_WRITE - Explicit request to save/add people to the character book: "make sure they're all in my character book", "add these people to my character book".
+10. ORGANIZATION_GROUP_WRITE - Explicit request to create a group/crew/squad OR supply its roster: "make a group for that", "create a group for popular e-girls", "So far we have Stimkybun, Smeepsx, and Hell Fairy".
 
 Key rules:
 - When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
 - Greetings, thanks, and meta-questions about the app are always UNKNOWN.
 - First-person sentences like "I thought X", "I felt Y", "I noticed Z" are NOT action logs — they are UNKNOWN (normal conversation).
 - ACTION_LOG requires an explicit command word: log, save, record, capture, store, remember, add to journal.
+- Listing people after "so far we have" / "members are" is ORGANIZATION_GROUP_WRITE, never CURRENT_STORY_CAST.
 
 Respond with JSON:
 {
@@ -536,7 +549,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

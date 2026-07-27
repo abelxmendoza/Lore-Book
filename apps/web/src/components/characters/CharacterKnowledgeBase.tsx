@@ -31,6 +31,7 @@ import {
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundle';
 import { getMockKnowledgeBaseBundle } from '../../mocks/characterIntelligence';
 import type { Character } from '../../hooks/useLoreNavigatorData';
+import { highlightTextTerms } from '../../lib/highlightTextTerms';
 
 export type CharacterKnowledgeBaseData = {
   characterId: string;
@@ -90,11 +91,15 @@ type CharacterKnowledgeBaseProps = {
   mockMode?: boolean;
   active?: boolean;
   onAskInChat?: (prompt: string) => void;
-  /** Pre-loaded seed (e.g. self profile facts). Does not skip the knowledge-base fetch. */
+  /** Pre-loaded seed (e.g. self profile facts or Character Query knowledge section). */
   initialData?: Partial<CharacterKnowledgeBaseData>;
+  /** When true with complete initialData, skip the extra /knowledge-base fetch. */
+  skipFetch?: boolean;
   chatMentions?: CharacterChatMention[];
   /** When true, copy addresses the app user in second person (your profile). */
   isSelfProfile?: boolean;
+  /** Jump to the exact thread/message a mention came from (closes the modal and navigates). */
+  onOpenThread?: (sessionId: string, messageId: string) => void;
 };
 
 const catLabel: Record<string, string> = {
@@ -194,6 +199,185 @@ function resolveInitialData(
 // freshly-ingested facts still surface quickly.
 const KB_CACHE_TTL_MS = 2 * 60 * 1000;
 
+type ChatMentionThreadGroup = {
+  sessionId: string;
+  sessionTitle: string;
+  mentions: CharacterChatMention[];
+  latestAt: number;
+};
+
+function groupChatMentionsByThread(mentions: CharacterChatMention[]): ChatMentionThreadGroup[] {
+  const bySession = new Map<string, CharacterChatMention[]>();
+  for (const m of mentions) {
+    const list = bySession.get(m.sessionId) ?? [];
+    list.push(m);
+    bySession.set(m.sessionId, list);
+  }
+  return [...bySession.entries()]
+    .map(([sessionId, rows]) => {
+      const sorted = [...rows].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return {
+        sessionId,
+        sessionTitle: sorted[0]?.sessionTitle?.trim() || 'Conversation',
+        mentions: sorted,
+        latestAt: new Date(sorted[0]?.createdAt ?? 0).getTime(),
+      };
+    })
+    .sort((a, b) => b.latestAt - a.latestAt);
+}
+
+function collectMentionHighlightTerms(input: {
+  characterName: string;
+  aliases?: string[];
+  identityMentions?: Array<{ mention: string }>;
+  chatMentions?: CharacterChatMention[];
+}): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw?: string | null) => {
+    const t = raw?.trim();
+    if (!t || t.length < 2) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(t);
+  };
+
+  push(input.characterName);
+  // First token helps when messages say "Leslie" but the card is "Cousin Leslie".
+  const first = input.characterName.trim().split(/\s+/)[0];
+  if (first && first.length >= 2 && first.toLowerCase() !== input.characterName.trim().toLowerCase()) {
+    push(first);
+  }
+  for (const a of input.aliases ?? []) push(a);
+  for (const m of input.identityMentions ?? []) push(m.mention);
+  for (const m of input.chatMentions ?? []) push(m.matchedName);
+  return out.sort((a, b) => b.length - a.length);
+}
+
+function ChatMentionsByThread({
+  mentions,
+  onOpenThread,
+  highlightTerms,
+}: {
+  mentions: CharacterChatMention[];
+  onOpenThread?: (sessionId: string, messageId: string) => void;
+  highlightTerms: string[];
+}) {
+  const groups = useMemo(() => groupChatMentionsByThread(mentions), [mentions]);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const defaultOpenId = groups[0]?.sessionId;
+
+  const renderContent = (content: string) =>
+    highlightTerms.length > 0
+      ? highlightTextTerms(content, highlightTerms, {
+          className:
+            'rounded-sm bg-amber-400/30 text-amber-50 px-0.5 font-medium ring-1 ring-amber-400/45',
+          markTestId: 'chat-mention-name-highlight',
+        })
+      : content;
+
+  return (
+    <div className="space-y-3" data-testid="chat-mentions-by-thread">
+      <p className="text-[11px] text-white/40">
+        {mentions.length} mention{mentions.length === 1 ? '' : 's'} across {groups.length}{' '}
+        conversation{groups.length === 1 ? '' : 's'}
+      </p>
+      {groups.map((group) => {
+        const isOpen =
+          collapsed[group.sessionId] === true
+            ? false
+            : collapsed[group.sessionId] === false
+              ? true
+              : group.sessionId === defaultOpenId;
+        return (
+          <div
+            key={group.sessionId}
+            className="rounded-xl border border-white/8 bg-white/[0.02] overflow-hidden"
+            data-testid={`chat-mention-thread-${group.sessionId}`}
+          >
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+              onClick={() =>
+                setCollapsed((prev) => ({ ...prev, [group.sessionId]: isOpen }))
+              }
+              aria-expanded={isOpen}
+            >
+              <div className="min-w-0">
+                <p className="text-sm text-white/90 font-medium truncate">{group.sessionTitle}</p>
+                <p className="text-[11px] text-white/40">
+                  {group.mentions.length} mention{group.mentions.length === 1 ? '' : 's'}
+                  {group.latestAt
+                    ? ` · last ${new Date(group.latestAt).toLocaleDateString()}`
+                    : ''}
+                </p>
+              </div>
+              <span className="text-[11px] text-white/35 flex-shrink-0">{isOpen ? 'Hide' : 'Show'}</span>
+            </button>
+            {isOpen && (
+              <div className="space-y-2 px-2 pb-2">
+                {group.mentions.map((mention) =>
+                  onOpenThread ? (
+                    <button
+                      key={mention.messageId}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onOpenThread(mention.sessionId, mention.messageId);
+                      }}
+                      className="w-full text-left rounded-lg border border-sky-500/25 bg-sky-950/20 p-3 hover:bg-sky-950/35 hover:border-sky-400/50 transition-colors group cursor-pointer"
+                      data-testid={`chat-mention-${mention.messageId}`}
+                      aria-label={`Open conversation and jump to this mention from ${new Date(mention.createdAt).toLocaleString()}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm text-white/85 leading-snug whitespace-pre-wrap">
+                          {renderContent(mention.content)}
+                        </p>
+                        <ExternalLink
+                          className="h-3.5 w-3.5 text-sky-400/70 group-hover:text-sky-300 flex-shrink-0 mt-0.5"
+                          aria-hidden
+                        />
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                        <span className="text-white/40">
+                          {new Date(mention.createdAt).toLocaleString()}
+                        </span>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/15 px-2 py-0.5 font-medium text-sky-200 group-hover:bg-sky-500/25 group-hover:text-white"
+                        >
+                          <ExternalLink className="h-3 w-3" aria-hidden />
+                          Open this conversation
+                        </span>
+                      </div>
+                    </button>
+                  ) : (
+                    <div
+                      key={mention.messageId}
+                      className="rounded-lg border border-white/8 bg-white/[0.03] p-3"
+                      data-testid={`chat-mention-${mention.messageId}`}
+                    >
+                      <p className="text-sm text-white/85 leading-snug whitespace-pre-wrap">
+                        {renderContent(mention.content)}
+                      </p>
+                      <p className="mt-2 text-[11px] text-white/40">
+                        {new Date(mention.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function CharacterKnowledgeBase({
   characterId,
   characterName,
@@ -202,15 +386,17 @@ export function CharacterKnowledgeBase({
   active = true,
   onAskInChat,
   initialData,
+  skipFetch = false,
   chatMentions = [],
   isSelfProfile = false,
+  onOpenThread,
 }: CharacterKnowledgeBaseProps) {
   const [data, setData] = useState<CharacterKnowledgeBaseData | null>(() =>
     resolveInitialData(characterId, characterName, mockMode, initialData, character),
   );
-  // Seed can render immediately; still fetch full KB unless mockMode.
-  const [loading, setLoading] = useState(!mockMode);
-  const [loaded, setLoaded] = useState(Boolean(mockMode));
+  // Seed can render immediately; still fetch full KB unless mockMode or skipFetch.
+  const [loading, setLoading] = useState(!(mockMode || (skipFetch && Boolean(initialData))));
+  const [loaded, setLoaded] = useState(Boolean(mockMode || (skipFetch && Boolean(initialData))));
   /** Two-step remove: first click arms a fact; second click confirms. */
   const [pendingRemoveFactId, setPendingRemoveFactId] = useState<string | null>(null);
   const [removingFactId, setRemovingFactId] = useState<string | null>(null);
@@ -230,13 +416,22 @@ export function CharacterKnowledgeBase({
 
   useEffect(() => {
     if (!initialData || mockMode) return;
-    // Optimistic seed only — keep loading until knowledge-base fetch completes.
     setData((prev) => ({ ...(prev ?? ({} as CharacterKnowledgeBaseData)), ...initialData } as CharacterKnowledgeBaseData));
-  }, [initialData, mockMode]);
+    if (skipFetch) {
+      setLoading(false);
+      setLoaded(true);
+    }
+  }, [initialData, mockMode, skipFetch]);
 
   useEffect(() => {
     if (mockMode) {
       setData(buildMockData(characterId, characterName, character));
+      setLoaded(true);
+      setLoading(false);
+      return;
+    }
+
+    if (skipFetch) {
       setLoaded(true);
       setLoading(false);
       return;
@@ -263,7 +458,7 @@ export function CharacterKnowledgeBase({
         setLoading(false);
         setLoaded(true);
       });
-  }, [active, loaded, mockMode, characterId, characterName, character]);
+  }, [active, loaded, mockMode, characterId, characterName, character, skipFetch]);
 
   const beginEditFact = (fact: { id: string; fact: string }) => {
     setFactActionError(null);
@@ -372,6 +567,17 @@ export function CharacterKnowledgeBase({
 
   const firstName = shortDisplayName(characterName);
   const kb = data;
+  const chatMentionHighlightTerms = useMemo(() => {
+    const fromCharacter = Array.isArray(character?.alias)
+      ? character.alias.filter((a): a is string => typeof a === 'string')
+      : [];
+    return collectMentionHighlightTerms({
+      characterName,
+      aliases: [...fromCharacter, ...(kb?.aliases ?? [])],
+      identityMentions: kb?.identityMentions,
+      chatMentions,
+    });
+  }, [character?.alias, characterName, chatMentions, kb?.aliases, kb?.identityMentions]);
   const learningScore = kb?.intelligence.learningScore ?? 0;
   const pillOrDash = (n: number) => (loading && !loaded ? '—' : n);
   const headerTitle = isSelfProfile ? 'What Lore Knows About You' : 'Entity Knowledge Base';
@@ -908,7 +1114,7 @@ export function CharacterKnowledgeBase({
           icon={MessageSquare}
           iconClass="text-sky-400"
           title="From your chats"
-          subtitle="What you've said about them while their chip was attached or they were in focus."
+          subtitle="Every conversation where they showed up — jump to the exact line."
         />
         {chatMentions.length === 0 ? (
           <InsufficientData
@@ -934,20 +1140,11 @@ export function CharacterKnowledgeBase({
             }
           />
         ) : (
-          <div className="space-y-2">
-            {chatMentions.map((mention) => (
-              <div
-                key={mention.messageId}
-                className="rounded-lg border border-white/8 bg-white/[0.03] p-3"
-              >
-                <p className="text-sm text-white/85 leading-snug whitespace-pre-wrap">{mention.content}</p>
-                <p className="mt-2 text-[11px] text-white/40">
-                  {mention.sessionTitle ? `${mention.sessionTitle} · ` : ''}
-                  {new Date(mention.createdAt).toLocaleString()}
-                </p>
-              </div>
-            ))}
-          </div>
+          <ChatMentionsByThread
+            mentions={chatMentions}
+            onOpenThread={onOpenThread}
+            highlightTerms={chatMentionHighlightTerms}
+          />
         )}
       </section>
 

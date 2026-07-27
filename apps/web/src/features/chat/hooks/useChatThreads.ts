@@ -27,7 +27,11 @@ import {
   isGenericThreadTitle,
   deriveTitleFromMessages,
 } from '../utils/threadTitleUtils';
-import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
+import {
+  dedupeConversationThreads,
+  ensureLocalUniqueTitle,
+  isEmptyDraftThread,
+} from '../utils/threadDedupeUtils';
 import { mergeLoadedThreadsWithHydrated } from '../utils/mergeLoadedThreadsWithHydrated';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
 import { mapDbMessageRow } from '../utils/mapDbMessageRow';
@@ -319,8 +323,11 @@ export const useChatThreads = () => {
   const createThread = useCallback((): string => {
     // Reuse the most recent thread if it is still empty — prevents orphan accumulation
     // when the user navigates to /chat repeatedly before sending any message.
+    // List rows hydrate with messages: [] and only messageCount set, so emptiness
+    // must check messageCount (see isEmptyDraftThread) — otherwise we append into
+    // a real conversation that merely hasn't been hydrated yet.
     const latest = threadsRef.current[0];
-    if (latest && latest.messages.length === 0 && isGenericThreadTitle(latest.title)) {
+    if (latest && isEmptyDraftThread(latest)) {
       applyCurrentThreadId(latest.id);
       if (isAuthenticated) localStorage.setItem(lastThreadKey(userId), latest.id);
       return latest.id;

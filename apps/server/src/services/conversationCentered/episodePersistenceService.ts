@@ -7,6 +7,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { filterEpisodeParticipantNames, isPollutingPlaceLabel } from '../actors/entityLabelPollution';
 import { segmentEpisodes, type Episode, type SegMessage } from './episodeSegmentationCore';
 import { loadThreadMessages } from './threadContentService';
 
@@ -77,21 +78,22 @@ function formatBoundaryReason(reason: string): string {
 export function buildEpisodeTitle(ep: Episode, nameById: Map<string, string>): string {
   if (ep.boundaryReason === 'thread-start' && ep.index === 0) {
     const loc = ep.locations[0] ? nameById.get(ep.locations[0]) : null;
-    if (loc) return loc;
-    const person = ep.participants[0] ? nameById.get(ep.participants[0]) : null;
-    if (person) return `Start · ${person}`;
+    if (loc && !isPollutingPlaceLabel(loc)) return loc;
+    const personNames = filterEpisodeParticipantNames(
+      ep.participants.slice(0, 1).map((id) => nameById.get(id) ?? null),
+    );
+    if (personNames[0]) return `Start · ${personNames[0]}`;
     return 'Thread start';
   }
 
   const parts: string[] = [];
   if (ep.locations[0]) {
     const loc = nameById.get(ep.locations[0]);
-    if (loc) parts.push(loc);
+    if (loc && !isPollutingPlaceLabel(loc)) parts.push(loc);
   }
-  const people = ep.participants
-    .slice(0, 2)
-    .map((id) => nameById.get(id))
-    .filter((n): n is string => !!n?.trim());
+  const people = filterEpisodeParticipantNames(
+    ep.participants.slice(0, 4).map((id) => nameById.get(id) ?? null),
+  ).slice(0, 2);
   if (people.length) parts.push(people.join(' & '));
   if (parts.length) return parts.join(' · ');
 

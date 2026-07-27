@@ -63,6 +63,32 @@ const KNOWN_EVENTS = new Set([
   'gothicumbia',
   'goth club',
   'goth night',
+  'current event',
+  'the afters',
+  'afters',
+]);
+
+/** Software / AI tools mistaken for people. */
+const KNOWN_TOOLS = new Set([
+  'claude code',
+  'claude',
+  'chatgpt',
+  'chat gpt',
+  'codex',
+  'cursor',
+  'copilot',
+  'github copilot',
+  'vs code',
+  'vscode',
+]);
+
+/** Pipeline personas — not Character Book people. */
+const PERSONA_ROLES = new Set([
+  'therapist',
+  'archivist',
+  'narrator',
+  'assistant',
+  'system',
 ]);
 
 /** Game / product names that must never become person cards. */
@@ -106,8 +132,46 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
     return { kind: 'holiday', omegaType: 'EVENT', canonicalName: trimmed, reason: 'us_holiday' };
   }
 
+  // "Memorial Day weekend" / holiday + weekend
+  if (tokens.length >= 2 && tokens[tokens.length - 1] === 'weekend') {
+    const holidayKey = tokens.slice(0, -1).join(' ');
+    if (US_HOLIDAYS.has(holidayKey)) {
+      return { kind: 'holiday', omegaType: 'EVENT', canonicalName: trimmed, reason: 'holiday_weekend' };
+    }
+  }
+
+  if (KNOWN_TOOLS.has(key)) {
+    return { kind: 'concept', reason: 'software_tool' };
+  }
+
+  if (PERSONA_ROLES.has(key)) {
+    return { kind: 'common_noun', reason: 'persona_role' };
+  }
+
   if (KNOWN_EVENTS.has(key)) {
     return { kind: 'event', omegaType: 'EVENT', canonicalName: trimmed, reason: 'known_event' };
+  }
+
+  // Calendar dates ("June 3rd 2026") — never people.
+  if (
+    /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?$/i.test(
+      trimmed,
+    )
+  ) {
+    return { kind: 'concept', reason: 'calendar_date' };
+  }
+
+  // Truncated kinship mid-phrase ("Cousin in")
+  if (
+    /^(?:(?:my|our|his|her|their)\s+)?(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling)s?\s+(?:in|at|of|from|with|and|to)$/i.test(
+      key,
+    )
+  ) {
+    return { kind: 'fragment', reason: 'truncated_kinship' };
+  }
+
+  if (/^(?:also|and|plus|including)\s+\S+/i.test(trimmed)) {
+    return { kind: 'fragment', reason: 'discourse_bleed' };
   }
 
   const gameCanonical = KNOWN_GAMES_AND_PRODUCTS[key];

@@ -14,6 +14,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { countMissingAssistantTurns } from './threadDurabilityChecks';
+import { unionThreadMetaLabels } from '../actors/entityLabelPollution';
 
 export interface ThreadMetadata {
   title: string | null;
@@ -71,12 +72,13 @@ const unionCap = (existing: string[], add: string[] | undefined, cap = 50): stri
 /**
  * Incrementally fold one turn into the thread metadata. Pure, O(turn), no scans.
  * Set-union of entities/places/projects/themes; append episode; bump counters.
+ * People/places are scrubbed for junk labels and possessive-duplicate keys.
  */
 export function mergeThreadMetadata(existing: ThreadMetadata, turn: ThreadTurn): ThreadMetadata {
   const next: ThreadMetadata = {
     title: turn.title?.trim() ? turn.title.trim() : existing.title,
-    people: unionCap(existing.people, turn.people),
-    places: unionCap(existing.places, turn.places),
+    people: unionThreadMetaLabels(existing.people, turn.people, { kind: 'people' }),
+    places: unionThreadMetaLabels(existing.places, turn.places, { kind: 'places' }),
     projects: unionCap(existing.projects, turn.projects),
     themes: unionCap(existing.themes, turn.themes),
     episodes: turn.replaceEpisodes

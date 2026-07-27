@@ -112,6 +112,43 @@ describe('buildChatConversationCopyText', () => {
     expect(text).toContain('[message chips: Marcus (character)]');
   });
 
+  it('includes people, places, actors, building on, and recent mentions', () => {
+    const text = buildChatConversationCopyText(
+      [message()],
+      undefined,
+      undefined,
+      {
+        summaryLine: 'People: Marcus, Jamie. Places: Northwind Depot.',
+        people: ['Marcus', 'Jamie'],
+        places: ['Northwind Depot'],
+        themes: ['work'],
+        actors: [
+          {
+            name: 'Marcus',
+            kind: 'character',
+            role: 'main',
+            status: 'active',
+            mentions: 3,
+            entityId: 'c-marcus',
+            actorType: 'PERSON',
+          },
+        ],
+        buildingOn: [{ id: 'c-marcus', name: 'Marcus', type: 'character' }],
+        recentMentions: [{ id: 'm1', name: 'the organizers', lifecycleStatus: 'GROUP' }],
+      },
+    );
+
+    expect(text).toContain('===== THREAD SURFACE DEBUG =====');
+    expect(text).toContain('People (2): Marcus, Jamie');
+    expect(text).toContain('Places (1): Northwind Depot');
+    expect(text).toContain('Actors (1):');
+    expect(text).toContain('- Marcus (character, PERSON, main, active, 3 mentions) [c-marcus]');
+    expect(text).toContain('Building on (1):');
+    expect(text).toContain('- Marcus (character) [c-marcus]');
+    expect(text).toContain('Recent mentions (1):');
+    expect(text).toContain('- the organizers (GROUP) [m1]');
+  });
+
   it('adds records, persistence, pipeline, and agent intent to the admin receipt', () => {
     const input = message({
       mentionedEntities: [

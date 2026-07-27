@@ -290,6 +290,11 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     return ok;
   };
 
+  // Declared at route scope so the outermost catch can clear it too — a throw
+  // between header-commit and the inner try/finally (e.g. insertAssistantPlaceholder)
+  // would otherwise leak this interval for the life of the process.
+  let heartbeatTimer: NodeJS.Timeout | undefined;
+
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -528,6 +533,19 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
+    // A long tool-call chain or slow model turn can leave the connection with
+    // no bytes in flight for tens of seconds. Silent idle SSE connections get
+    // killed by some intermediary proxies/load balancers without a clean
+    // close the client can detect, leaving the reply stuck "streaming"
+    // forever on the client (see recallIntentPatterns fix — same incident
+    // class). A harmless periodic metadata frame keeps the connection alive
+    // and gives the client's idle watchdog something to reset on.
+    heartbeatTimer = setInterval(() => {
+      if (!clientGone && !res.writableEnded) {
+        sseWrite({ type: 'metadata', data: { heartbeat: true } });
+      }
+    }, 15_000);
+
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err =>
       logger.warn({ error: err }, 'Failed to increment AI request count')
@@ -755,8 +773,11 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
         }
         if (!res.writableEnded) res.end();
       }
+    } finally {
+      clearInterval(heartbeatTimer);
     }
   } catch (error) {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
     logger.error({ err: error }, 'Chat stream unhandled error');
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });

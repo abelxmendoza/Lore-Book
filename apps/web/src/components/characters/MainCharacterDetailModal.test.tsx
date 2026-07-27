@@ -32,8 +32,26 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+const mockCharacterKnowledgeBase = vi.hoisted(() => vi.fn());
 vi.mock('./CharacterKnowledgeBase', () => ({
-  CharacterKnowledgeBase: () => <div data-testid="knowledge-base">Knowledge</div>,
+  CharacterKnowledgeBase: (props: Record<string, unknown>) => {
+    mockCharacterKnowledgeBase(props);
+    return <div data-testid="knowledge-base">Knowledge</div>;
+  },
+}));
+
+const characterQueryMock = vi.hoisted(() => ({
+  state: {
+    query: null as null | { sections: Record<string, unknown> },
+    loading: false,
+    error: null as string | null,
+    reload: vi.fn(),
+    loadSections: vi.fn(),
+  },
+}));
+
+vi.mock('../../hooks/useCharacterQuery', () => ({
+  useCharacterQuery: () => characterQueryMock.state,
 }));
 
 vi.mock('./CharacterDetailModal', () => ({
@@ -60,6 +78,14 @@ describe('MainCharacterDetailModal', () => {
     vi.clearAllMocks();
     mockState.mockDataEnabled = true;
     mockNavigate.mockReset();
+    sessionStorage.clear();
+    characterQueryMock.state = {
+      query: null,
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+      loadSections: vi.fn(),
+    };
     vi.mocked(fetchJson).mockRejectedValue(new Error('Not found'));
   });
 
@@ -136,6 +162,120 @@ describe('MainCharacterDetailModal', () => {
     await user.click(screen.getByTestId('main-tab-story'));
     expect(screen.getByText(/Your identity card/i)).toBeInTheDocument();
     expect(screen.queryByText(/Open main chat about you/i)).not.toBeInTheDocument();
+  });
+
+  it('passes real chatMentions from the self character query into CharacterKnowledgeBase (self modal is not always empty)', async () => {
+    const user = userEvent.setup();
+    characterQueryMock.state = {
+      query: {
+        sections: {
+          chatMentions: [
+            {
+              messageId: 'msg-self-1',
+              sessionId: 'session-self-1',
+              content: 'Talked about my new job today',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              sessionTitle: 'Career thread',
+            },
+          ],
+        },
+      },
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+      loadSections: vi.fn(),
+    };
+
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-lore'));
+
+    expect(mockCharacterKnowledgeBase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatMentions: characterQueryMock.state.query.sections.chatMentions,
+        onOpenThread: expect.any(Function),
+      }),
+    );
+
+    const { onOpenThread } = mockCharacterKnowledgeBase.mock.calls.at(-1)![0] as {
+      onOpenThread: (sessionId: string, messageId: string) => void;
+    };
+    onOpenThread('session-self-1', 'msg-self-1');
+
+    expect(sessionStorage.getItem('lk:chat-jump-message')).toBe('msg-self-1');
+    expect(onClose).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/chat/session-self-1');
+  });
+
+  it('passes real facts and crystallized knowledge from the self character query into CharacterKnowledgeBase', async () => {
+    const user = userEvent.setup();
+    const knowledge = {
+      characterId: 'self-1',
+      name: 'Alex Rivera',
+      aliases: [],
+      summary: null,
+      identityMentions: [],
+      profile: { relationshipToUser: null, memoryCount: 0, timelineEventCount: 0, timelineEvents: [] },
+      facts: [
+        { id: 'fact-self-1', category: 'career', fact: 'Is building Lorebook', confidence: 0.95, status: 'active' },
+      ],
+      knowledgeClaims: [
+        {
+          id: 'claim-self-1',
+          human_readable_claim: 'Tends to dive fully into new projects',
+          confidence: 0.8,
+          knowledge_type: 'pattern',
+        },
+      ],
+      sceneCandidates: [],
+      relatedEntities: [],
+      conversationLinks: [],
+      intelligence: { totalEvidenceItems: 2, lastUpdated: null, learningScore: 30 },
+    };
+    characterQueryMock.state = {
+      query: { sections: { knowledge } },
+      loading: false,
+      error: null,
+      reload: vi.fn(),
+      loadSections: vi.fn(),
+    };
+
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-lore'));
+
+    expect(mockCharacterKnowledgeBase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skipFetch: true,
+        initialData: expect.objectContaining({
+          facts: knowledge.facts,
+          knowledgeClaims: knowledge.knowledgeClaims,
+        }),
+      }),
+    );
+  });
+
+  it('falls back to the profile facts/knowledgeClaims seed when the self character query has not loaded knowledge yet', async () => {
+    const user = userEvent.setup();
+    // characterQueryMock.state.query stays null (default from beforeEach) — the
+    // self query hasn't resolved a 'knowledge' section yet.
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-lore'));
+
+    const lastCallProps = mockCharacterKnowledgeBase.mock.calls.at(-1)![0] as {
+      skipFetch?: boolean;
+      initialData?: { facts?: unknown[]; knowledgeClaims?: unknown[] };
+    };
+    // Not skipping the fetch means CharacterKnowledgeBase will still go fetch
+    // real knowledge itself — the self modal is never left permanently empty.
+    expect(lastCallProps.skipFetch).toBeFalsy();
   });
 
   it('resets a stale unknown tab value to story', async () => {

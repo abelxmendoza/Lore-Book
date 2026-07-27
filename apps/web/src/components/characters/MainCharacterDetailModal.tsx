@@ -41,10 +41,13 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
 import { useMainCharacterProfile, type MainCharacterRelationship } from '../../hooks/useMainCharacterProfile';
+import { useCharacterQuery } from '../../hooks/useCharacterQuery';
+import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelfSummary } from '../../lib/characterDisplay';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
 import { format, parseISO } from 'date-fns';
 import { fetchJson } from '../../lib/api';
 import { dispatchStoryDataUpdated, onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -141,6 +144,16 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
   const [activeTab, setActiveTab] = useState<MainTab>('story');
   const [selectedConnection, setSelectedConnection] = useState<Character | null>(null);
   const profile = useMainCharacterProfile(character);
+  const { query: selfQuery, loadSections: loadSelfSections } = useCharacterQuery(profile.character?.id, {
+    enabled: Boolean(profile.character?.id) && !profile.isMockDataEnabled && !isSyntheticSelfId(profile.character.id),
+    self: true,
+    sections: 'core',
+  });
+
+  useEffect(() => {
+    if (activeTab === 'timeline') void loadSelfSections('timelines');
+    if (activeTab === 'photos') void loadSelfSections('media');
+  }, [activeTab, loadSelfSections]);
 
   // Hot reload / stale state can leave an unknown tab value with an empty panel.
   useEffect(() => {
@@ -157,6 +170,20 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
         ? `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`
         : '/timeline?view=events',
     );
+  };
+
+  /** "From your chats" mention click: jump to the exact thread/message and highlight the name. */
+  const handleOpenThread = (sessionId: string, messageId: string) => {
+    const name = profile.character?.name ?? 'You';
+    const aliases = Array.isArray(profile.character?.alias)
+      ? profile.character.alias.filter((a): a is string => typeof a === 'string')
+      : [];
+    openChatThreadAtMessage(navigate, {
+      sessionId,
+      messageId,
+      highlightTerms: [name, ...aliases],
+    });
+    onClose();
   };
 
   // Local editable state for solidifying self identity in this modal
@@ -539,7 +566,10 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     setEditAliases(editAliases.filter(a => a !== val));
   };
 
-  const knowledgeInitialData = useMemo((): Partial<CharacterKnowledgeBaseData> => ({
+  const knowledgeInitialData = useMemo((): Partial<CharacterKnowledgeBaseData> => {
+    const fromQuery = selfQuery?.sections?.knowledge as CharacterKnowledgeBaseData | undefined;
+    if (fromQuery) return fromQuery;
+    return {
       characterId: profile.character.id,
       name: displayName,
       summary: profile.profileSummary,
@@ -548,7 +578,6 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
       profile: {
         relationshipToUser: null,
         memoryCount: profile.memories.length,
-        // Thin seed — CharacterKnowledgeBase always fetches /knowledge-base for real counts.
         timelineEventCount: 0,
         timelineEvents: [],
       },
@@ -558,7 +587,8 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
         lastUpdated: profile.stats?.lastSyncedAt ?? null,
         learningScore: 0,
       },
-    }), [profile, displayName]);
+    };
+  }, [selfQuery, profile, displayName]);
 
   const tabPanelClass =
     'mt-3 sm:mt-4 min-w-0 max-w-full overflow-x-hidden focus-visible:outline-none data-[state=inactive]:hidden';
@@ -1047,7 +1077,6 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                             archetype: profile.character.archetype,
                           }}
                           isSelf
-                          defaultMemberRole={orgMemberRole}
                           onOpenedChat={() => {
                             setOrgAddOpen(false);
                             onClose();
@@ -1321,8 +1350,11 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                   mockMode={profile.isMockDataEnabled}
                   active={activeTab === 'lore'}
                   initialData={knowledgeInitialData}
+                  skipFetch={Boolean(selfQuery?.sections?.knowledge)}
+                  chatMentions={selfQuery?.sections?.chatMentions as CharacterChatMention[] | undefined}
                   isSelfProfile
                   onAskInChat={(prompt) => openSelfChat(prompt)}
+                  onOpenThread={handleOpenThread}
                 />
               </TabsContent>
 

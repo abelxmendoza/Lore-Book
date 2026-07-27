@@ -60,6 +60,29 @@ describe('familyTreeService — assessNodeReview', () => {
     expect(r?.reason).toMatch(/public figure/i);
   });
 
+  it('does not flag figure_type=creator alone (product creator overload)', () => {
+    expect(
+      assessNodeReview(member({ name: 'Marcus', relation: 'cousin' }), {
+        metadata: { figure_type: 'creator' },
+      }),
+    ).toBeNull();
+  });
+
+  it('never flags the account protagonist on another ego tree', () => {
+    expect(
+      assessNodeReview(
+        member({ id: 'you', name: 'Abel Mendoza', relation: 'related' }),
+        { metadata: { figure_type: 'creator' } },
+        { accountSelfId: 'you' },
+      ),
+    ).toBeNull();
+    expect(
+      assessNodeReview(member({ id: 'you', name: 'Abel Mendoza', relation: 'related' }), {
+        metadata: { is_self: true },
+      }),
+    ).toBeNull();
+  });
+
   it('flags a trailing (non-leading) kinship word as a nickname', () => {
     const r = assessNodeReview(member({ name: 'Goth Tio', relation: 'uncle' }));
     expect(r?.needsReview).toBe(true);
@@ -160,6 +183,12 @@ describe('familyTreeService — bidirectional + shared projection', () => {
     expect(ontoJames.members.find((m) => m.id === 'grace')?.relation).toBe('parent');
     expect(ontoJames.members.find((m) => m.id === 'jerry')?.relation).toBe('sibling');
     expect(ontoJames.members.find((m) => m.id === 'james')?.parent_id).toBe('grace');
+    // Account owner stays cousin (not vague "related") and is tagged as you.
+    const youOnJames = ontoJames.members.find((m) => m.id === 'you')!;
+    expect(youOnJames.is_self).toBe(false);
+    expect(youOnJames.is_account_self).toBe(true);
+    expect(youOnJames.relation).toBe('cousin');
+    expect(youOnJames.needs_review).toBeFalsy();
   });
 
   it('scopes step-parent ego trees to partner + shared child, not blood relatives', () => {

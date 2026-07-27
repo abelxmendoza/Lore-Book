@@ -12,6 +12,10 @@ import {
   mayAppearAsTranscriptMention,
   type MentionStatus,
 } from '../actors/mentionClassifier';
+import {
+  isPollutingPersonLabel,
+  isPollutingPlaceLabel,
+} from '../actors/entityLabelPollution';
 import { supabaseAdmin } from '../supabaseClient';
 import { detectMentionedEntities } from './entityScopedRetriever';
 
@@ -111,6 +115,8 @@ export async function resolveMessageEntitiesForDisplay(
 
   const classified: MessageEntityChip[] = [];
   for (const chip of chips.values()) {
+    if (chip.type === 'character' && isPollutingPersonLabel(chip.name)) continue;
+    if (chip.type === 'location' && isPollutingPlaceLabel(chip.name)) continue;
     const mention = classifyMention({
       text: chip.name,
       entityId: chip.id,

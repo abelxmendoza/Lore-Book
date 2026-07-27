@@ -171,6 +171,12 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       openChat(e.detail);
     };
 
+    const handleOpenChatThread = (e: CustomEvent<{ sessionId?: string; messageId?: string }>) => {
+      const sessionId = e.detail?.sessionId?.trim();
+      if (!sessionId) return;
+      navigate(`/chat/${encodeURIComponent(sessionId)}`);
+    };
+
     const handleNavigateSurface = (e: CustomEvent<{ surface?: SurfaceKey; context?: string; focus?: ChatFocus }>) => {
       const { surface, context, focus } = e.detail ?? {};
       if (surface === 'chat' || focus) {
@@ -188,10 +194,12 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     };
 
     window.addEventListener('lorebook:open-chat-focus', handleOpenChatFocus as EventListener);
+    window.addEventListener('lorebook:open-chat-thread', handleOpenChatThread as EventListener);
     window.addEventListener('navigate-surface', handleNavigateSurface as EventListener);
     window.addEventListener('lorebook:chat-prefill', handleChatPrefill as EventListener);
     return () => {
       window.removeEventListener('lorebook:open-chat-focus', handleOpenChatFocus as EventListener);
+      window.removeEventListener('lorebook:open-chat-thread', handleOpenChatThread as EventListener);
       window.removeEventListener('navigate-surface', handleNavigateSurface as EventListener);
       window.removeEventListener('lorebook:chat-prefill', handleChatPrefill as EventListener);
     };

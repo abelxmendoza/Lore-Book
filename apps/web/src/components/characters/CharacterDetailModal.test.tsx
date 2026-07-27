@@ -2,9 +2,10 @@
 // CHARACTER DETAIL MODAL TESTS
 // =====================================================
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import { CharacterDetailModal } from './CharacterDetailModal';
 import type { Character } from './CharacterProfileCard';
@@ -16,17 +17,42 @@ vi.mock('../../lib/openChatWithFocus', () => ({
   openChatWithFocus: (...args: unknown[]) => mockOpenChatWithFocus(...args),
 }));
 
-const profileBundleMock = vi.hoisted(() => ({
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => mockNavigate,
+}));
+
+const characterQueryMock = vi.hoisted(() => ({
   state: {
-    bundle: null as null | { detail: Record<string, unknown> },
+    query: null as null | { characterId: string; subject: 'other'; generatedAt: string; sections: Record<string, unknown> },
     loading: false,
     error: null as string | null,
     reload: vi.fn(),
+    loadSections: vi.fn(),
   },
 }));
 
+vi.mock('../../hooks/useCharacterQuery', () => ({
+  useCharacterQuery: () => characterQueryMock.state,
+}));
+
 vi.mock('../../hooks/useCharacterProfileBundle', () => ({
-  useCharacterProfileBundle: () => profileBundleMock.state,
+  useCharacterProfileBundle: () => ({
+    bundle: characterQueryMock.state.query?.sections?.identity
+      ? {
+          characterId: characterQueryMock.state.query.characterId,
+          detail: characterQueryMock.state.query.sections.identity,
+          knowledgeBase: characterQueryMock.state.query.sections.knowledge,
+          loreProfile: characterQueryMock.state.query.sections.lore,
+          chatMentions: characterQueryMock.state.query.sections.chatMentions ?? [],
+          generatedAt: characterQueryMock.state.query.generatedAt,
+        }
+      : null,
+    loading: characterQueryMock.state.loading,
+    error: characterQueryMock.state.error,
+    reload: characterQueryMock.state.reload,
+  }),
 }));
 
 vi.mock('../../lib/api', () => ({
@@ -103,21 +129,24 @@ describe('CharacterDetailModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    profileBundleMock.state = {
-      bundle: null,
+    sessionStorage.clear();
+    characterQueryMock.state = {
+      query: null,
       loading: false,
       error: null,
       reload: vi.fn(),
+      loadSections: vi.fn(),
     };
   });
 
   it('falls back to character detail fetch when profile bundle fails', async () => {
     const { fetchJson } = await import('../../lib/api');
-    profileBundleMock.state = {
-      bundle: null,
+    characterQueryMock.state = {
+      query: null,
       loading: false,
       error: 'Failed to load character profile',
       reload: vi.fn(),
+      loadSections: vi.fn(),
     };
     vi.mocked(fetchJson).mockResolvedValueOnce({
       ...mockCharacter,
@@ -219,7 +248,28 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByTestId('character-tab-connections').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
   });
 
-  it('Intelligence Chat tab redirects to main chat with the character focus chip, not an in-modal composer', async () => {
+  it('maps legacy history initialTab to Story and hides the old History tab', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterDetailModal
+          character={mockCharacter}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="history"
+        />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getAllByTestId('character-tab-story').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+    expect(screen.getByTestId('character-story-panel')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^history$/i })).not.toBeInTheDocument();
+  });
+
+  it('Intelligence Chat tab opens an in-modal launchpad without leaving the profile', async () => {
     const user = userEvent.setup();
     render(
       <CharacterDetailModal
@@ -231,6 +281,25 @@ describe('CharacterDetailModal', () => {
 
     await user.click(screen.getAllByRole('button', { name: /intelligence chat/i })[0]!);
 
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOpenChatWithFocus).not.toHaveBeenCalled();
+    expect(screen.getByTestId('character-intelligence-chat-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-composer')).not.toBeInTheDocument();
+  });
+
+  it('Open main chat from the Intelligence Chat launchpad hands off with the focus chip', async () => {
+    const user = userEvent.setup();
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: /intelligence chat/i })[0]!);
+    await user.click(screen.getByTestId('character-open-main-chat'));
+
     expect(mockOnClose).toHaveBeenCalled();
     expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -240,10 +309,9 @@ describe('CharacterDetailModal', () => {
         sourceSurface: 'characters',
       }),
     );
-    expect(screen.queryByTestId('chat-composer')).not.toBeInTheDocument();
   });
 
-  it('deep-linking with initialTab="chat" lands on Info instead of a blank redirect-only pane', async () => {
+  it('deep-linking with initialTab="chat" lands on the Intelligence Chat launchpad', async () => {
     render(
       <CharacterDetailModal
         character={mockCharacter}
@@ -257,6 +325,7 @@ describe('CharacterDetailModal', () => {
       expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
     });
 
+    expect(screen.getByTestId('character-intelligence-chat-panel')).toBeInTheDocument();
     expect(mockOpenChatWithFocus).not.toHaveBeenCalled();
     expect(mockOnClose).not.toHaveBeenCalled();
   });
@@ -370,7 +439,7 @@ describe('CharacterDetailModal', () => {
         <CharacterDetailModal character={fromXPost} onClose={mockOnClose} onUpdate={mockOnUpdate} />
       );
 
-      const link = screen.getByRole('link', { name: /from x post/i });
+      const link = screen.getByRole('link', { name: /from x/i });
       expect(link).toHaveAttribute('href', 'https://x.com/demo_user/status/123');
       expect(link).toHaveAttribute('target', '_blank');
     });
@@ -379,12 +448,12 @@ describe('CharacterDetailModal', () => {
       render(
         <CharacterDetailModal character={mockCharacter} onClose={mockOnClose} onUpdate={mockOnUpdate} />
       );
-      expect(screen.queryByRole('link', { name: /from x post/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /from x/i })).not.toBeInTheDocument();
     });
   });
 
   describe('distant but high impact', () => {
-    it('shows "Rare in story, high impact on you" when minor and character_influence_on_user >= 70', () => {
+    it('shows "High impact" when minor and character_influence_on_user >= 70', () => {
       const highImpactMinor: Character = {
         ...mockCharacter,
         name: 'Distant Crush',
@@ -420,7 +489,7 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
+      expect(screen.getByText(/High impact/i)).toBeInTheDocument();
     });
 
     it('shows high-impact badge in header when background + influence >= 70', async () => {
@@ -462,14 +531,14 @@ describe('CharacterDetailModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
+        expect(screen.getByText(/High impact/i)).toBeInTheDocument();
       }, { timeout: 3000 });
 
       expect(await screen.findByText(/At a glance/i)).toBeInTheDocument();
       expect(await screen.findByText(/Your ranking/i)).toBeInTheDocument();
     });
 
-    it('does not show rare-in-story badge when major even with high influence', () => {
+    it('does not show high-impact badge when major even with high influence', () => {
       const majorHighInfluence: Character = {
         ...mockCharacter,
         name: 'Major Player',
@@ -505,7 +574,7 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      expect(screen.queryByText(/Rare in story, high impact on you/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/High impact/i)).not.toBeInTheDocument();
     });
   });
 
@@ -641,8 +710,11 @@ describe('CharacterDetailModal', () => {
       await waitFor(() => expect(screen.getByRole('option', { name: 'Ska Collective' })).toBeInTheDocument());
       await userEvent.selectOptions(select, 'org-1');
       const roleSelect = screen.getByTestId('add-membership-role');
-      expect(screen.getByRole('option', { name: 'Leader' })).toBeInTheDocument();
-      expect(screen.getByRole('option', { name: 'Founder' })).toBeInTheDocument();
+      // Scoped to this select: the "create a new group in chat" panel below renders its
+      // own independent role select with the same option labels, so an unscoped
+      // screen.getByRole('option', ...) is ambiguous between the two.
+      expect(within(roleSelect).getByRole('option', { name: 'Leader' })).toBeInTheDocument();
+      expect(within(roleSelect).getByRole('option', { name: 'Founder' })).toBeInTheDocument();
       await userEvent.selectOptions(roleSelect, 'leader');
       await userEvent.click(screen.getByTestId('add-membership-submit'));
 
@@ -657,6 +729,114 @@ describe('CharacterDetailModal', () => {
       );
       expect(await screen.findByText('Ska Collective')).toBeInTheDocument();
       expect(screen.getByTestId('character-groups-section')).toBeInTheDocument();
+    });
+
+    it('jumps to the exact thread and message when a "From your chats" mention is clicked', async () => {
+      const user = userEvent.setup();
+      characterQueryMock.state = {
+        query: {
+          characterId: mockCharacter.id,
+          subject: 'other',
+          generatedAt: new Date().toISOString(),
+          sections: {
+            identity: { ...mockCharacter },
+            chatMentions: [
+              {
+                messageId: 'msg-42',
+                sessionId: 'session-42',
+                content: 'Ran into John Doe at the show',
+                createdAt: '2026-07-01T12:00:00.000Z',
+                sessionTitle: 'Show night',
+              },
+            ],
+          },
+        },
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        loadSections: vi.fn(),
+      };
+
+      render(
+        <MemoryRouter>
+          <CharacterDetailModal
+            character={mockCharacter}
+            onClose={mockOnClose}
+            onUpdate={mockOnUpdate}
+            initialTab="knowledge"
+          />
+        </MemoryRouter>,
+      );
+
+      await user.click(await screen.findByTestId('chat-mention-msg-42'));
+
+      expect(sessionStorage.getItem('lk:chat-jump-message')).toBe('msg-42');
+      expect(sessionStorage.getItem('lk:chat-jump-session')).toBe('session-42');
+      expect(sessionStorage.getItem('lk:chat-jump-highlight')).toContain('John Doe');
+      expect(mockOnClose).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/chat/session-42');
+    });
+
+    it('shows real facts and crystallized knowledge on the Entity Knowledge Base tab', async () => {
+      characterQueryMock.state = {
+        query: {
+          characterId: mockCharacter.id,
+          subject: 'other',
+          generatedAt: new Date().toISOString(),
+          sections: {
+            identity: { ...mockCharacter },
+            knowledge: {
+              characterId: mockCharacter.id,
+              name: mockCharacter.name,
+              aliases: [],
+              summary: null,
+              identityMentions: [],
+              profile: { relationshipToUser: null, memoryCount: 0, timelineEventCount: 0, timelineEvents: [] },
+              facts: [
+                {
+                  id: 'fact-1',
+                  category: 'career',
+                  fact: 'Works at Vanguard Robotics',
+                  confidence: 0.9,
+                  status: 'active',
+                },
+              ],
+              knowledgeClaims: [
+                {
+                  id: 'claim-1',
+                  human_readable_claim: 'Consistently shows up for John Doe during hard times',
+                  confidence: 0.82,
+                  knowledge_type: 'pattern',
+                },
+              ],
+              sceneCandidates: [],
+              relatedEntities: [],
+              conversationLinks: [],
+              intelligence: { totalEvidenceItems: 2, lastUpdated: null, learningScore: 40 },
+            },
+          },
+        },
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        loadSections: vi.fn(),
+      };
+
+      render(
+        <MemoryRouter>
+          <CharacterDetailModal
+            character={mockCharacter}
+            onClose={mockOnClose}
+            onUpdate={mockOnUpdate}
+            initialTab="knowledge"
+          />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('Works at Vanguard Robotics')).toBeInTheDocument();
+      expect(screen.getByText('Consistently shows up for John Doe during hard times')).toBeInTheDocument();
+      expect(screen.queryByText('No facts about John yet')).not.toBeInTheDocument();
+      expect(screen.queryByText('No crystallized knowledge yet')).not.toBeInTheDocument();
     });
 
     it('loads Groups & Organizations with both character_id and character_name', async () => {

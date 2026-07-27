@@ -7,15 +7,22 @@ const COMMAND_OR_META =
   /^(?:please\s+)?(?:show|tell|list|check|remember|recap|summari[sz]e|update|delete|forget|can you|could you|what do you|who (?:am|is|else)|did i|testing|test the)\b/i;
 const GREETING = /^(?:hi|hey|hello|yo|ok(?:ay)?)[!,.\s]*$/i;
 const TEMPORAL_ONLY =
-  /^(?:tonight|today|tomorrow|yesterday|now|later|soon|this (?:morning|afternoon|evening|weekend|week|month|year)|last (?:night|week|month|year)|next (?:week|month|year))$/i;
+  /^(?:tonight|today|tomorrow|yesterday|now|later|soon|this (?:morning|afternoon|evening|weekend|week|month|year)|last (?:night|week|weekend|month|year)|next (?:week|month|year)|current event|memorial day(?: weekend)?|labor day(?: weekend)?|independence day)$/i;
 const OCCUPATION_WORD =
-  /^(?:engineer|developer|technician|manager|contractor|designer|nurse|teacher|doctor|lawyer|artist|musician|student|founder|ceo|quality assurance technician|qa technician|background check)$/i;
+  /^(?:engineer|developer|technician|manager|contractor|designer|nurse|teacher|doctor|lawyer|artist|musician|student|founder|ceo|quality assurance technician|qa technician|background check|therapist|archivist)$/i;
 const SOFTWARE_OR_MEDIA =
-  /^(?:chatgpt|openai|react|typescript|python|ios|android|instagram|tiktok|youtube|spotify|discord|slack|notion|figma|claude(?:\s+code)?|one piece|lorebook|lore book)$/i;
+  /^(?:chatgpt|openai|react|typescript|python|ios|android|instagram|tiktok|youtube|spotify|discord|slack|notion|figma|claude(?:\s+code)?|codex|cursor|copilot|github\s*copilot|vs\s*code|vscode|one piece|lorebook|lore book|magic(?:\s+the)?\s+gathering|mtg)$/i;
 const PLACE_WORD =
-  /^(?:home|work|office|school|gym|church|park|beach|downtown|here|there)$/i;
+  /^(?:home|work|office|school|gym|church|park|beach|downtown|here|there|(?:my|his|her|their|our)\s+(?:house|home|place|room))$/i;
 const PROCESS_OR_AUDIT =
-  /^(?:background check|reclassification|cleanup|debug|chat bubbles?|styling|ui|user interface)$/i;
+  /^(?:background check|reclassification|cleanup|debug|chat bubbles?|styling|ui|user interface|current event)$/i;
+// Truncated kinship mid-phrase extraction ("Cousin in", "uncle at").
+const TRUNCATED_KINSHIP =
+  /^(?:(?:my|our|his|her|their)\s+)?(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling|mom|dad|mother|father)s?\s+(?:in|at|of|from|with|and|to)$/i;
+const DATE_ONLY =
+  /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?$/i;
+const DISCOURSE_PREFIX =
+  /^(?:also|and|plus|including)\s+\S+/i;
 // Generic relationship descriptors typed as a person name are pollution, not people.
 const RELATIONSHIP_PHRASE = /^(?:ex[- ]?lover|my ex|ex[- ]?girlfriend|ex[- ]?boyfriend)$/i;
 const GENERIC_REL =
@@ -47,6 +54,9 @@ const PERSON_FORBIDDEN_IF_MATCHES = [
   PLACE_WORD,
   PROCESS_OR_AUDIT,
   RELATIONSHIP_PHRASE,
+  TRUNCATED_KINSHIP,
+  DATE_ONLY,
+  DISCOURSE_PREFIX,
 ];
 
 /** Suggest a better entity type when PERSON would be wrong. */

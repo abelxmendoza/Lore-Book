@@ -6,7 +6,7 @@
  * removes them from the chat's context ("that's a different Juan").
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Users, User, UserRound, Pin, X, RotateCcw, Search, Download } from 'lucide-react';
+import { Users, User, UserRound, Pin, X, RotateCcw, Search, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   fetchThreadRoster,
   updateThreadRosterEntry,
@@ -17,6 +17,8 @@ import {
 import { exportCastAsMarkdown } from '../../../utils/exportCastPage';
 import { downloadFile } from '../../../utils/exportConversation';
 import { useAuth } from '../../../lib/supabase';
+import { isCastDisplayWorthy, dedupeCastDisplayEntries } from '../utils/threadSurfaceScrub';
+import { resolveMentionLifecycleStatus } from '../utils/mentionLifecycle';
 
 const ROLE_DOT: Record<RosterEntry['role'], string> = {
   main: 'bg-primary',
@@ -83,6 +85,10 @@ export function ThreadRosterBar({
   const [threadNumber, setThreadNumber] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [showExcluded, setShowExcluded] = useState(false);
+  // Starts collapsed: ThreadSummaryBar's People/Places chips already give an
+  // at-a-glance cast view directly above this bar — Actors' fuller pin/exclude/
+  // export controls are opt-in rather than duplicating that content by default.
+  const [collapsed, setCollapsed] = useState(true);
 
   const load = useCallback(async () => {
     if (!threadId || !user?.id || messageCount === 0) {
@@ -121,11 +127,29 @@ export function ThreadRosterBar({
     [threadId, load]
   );
 
-  const active = entries.filter((e) => e.status === 'active' && !isSelfRosterEntry(e));
-  const excluded = entries.filter((e) => e.status === 'excluded' && !isSelfRosterEntry(e));
+  const active = dedupeCastDisplayEntries(
+    entries.filter(
+      (e) =>
+        e.status === 'active' &&
+        !isSelfRosterEntry(e) &&
+        isCastDisplayWorthy(e.name, e.kind),
+    ),
+  );
+  const excluded = dedupeCastDisplayEntries(
+    entries.filter(
+      (e) =>
+        e.status === 'excluded' &&
+        !isSelfRosterEntry(e) &&
+        isCastDisplayWorthy(e.name, e.kind),
+    ),
+  );
+  const cleanRecentMentions = recentMentions.filter((m) => {
+    const status = resolveMentionLifecycleStatus(m.name, m.lifecycleStatus as never);
+    return status === 'GROUP' || status === 'UNRESOLVED';
+  });
   if (
     !threadId ||
-    (active.length === 0 && excluded.length === 0 && recentMentions.length === 0)
+    (active.length === 0 && excluded.length === 0 && cleanRecentMentions.length === 0)
   ) {
     return null;
   }
@@ -136,10 +160,19 @@ export function ThreadRosterBar({
   return (
     <div className="px-3 sm:px-4 py-1.5 border-b border-white/5" data-testid="thread-roster-bar">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-white/30 mr-1">
+        <button
+          type="button"
+          data-testid="thread-roster-collapse-toggle"
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-white/30 hover:text-white/55 mr-1 touch-manipulation"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand actors' : 'Collapse actors'}
+        >
           <Users className="h-3 w-3" /> Actors
-        </span>
-        {visible.map((entry) => {
+          <span className="text-white/20 normal-case tracking-normal">· {active.length}</span>
+          {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+        </button>
+        {!collapsed && visible.map((entry) => {
           const actorType = inferActorType(entry);
           return (
           <span
@@ -192,7 +225,7 @@ export function ThreadRosterBar({
           </span>
           );
         })}
-        {hiddenCount > 0 && (
+        {!collapsed && hiddenCount > 0 && (
           <button
             type="button"
             onClick={() => setExpanded(true)}
@@ -201,34 +234,36 @@ export function ThreadRosterBar({
             +{hiddenCount} more
           </button>
         )}
-        <span className="ml-auto flex items-center gap-1">
-          {excluded.length > 0 && (
+        {!collapsed && (
+          <span className="ml-auto flex items-center gap-1">
+            {excluded.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowExcluded((v) => !v)}
+                className="text-[11px] text-white/25 hover:text-white/50 px-1"
+                title="Excluded from this story"
+              >
+                {excluded.length} excluded
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setShowExcluded((v) => !v)}
-              className="text-[11px] text-white/25 hover:text-white/50 px-1"
-              title="Excluded from this story"
+              onClick={() =>
+                downloadFile(
+                  exportCastAsMarkdown(threadTitle || 'Conversation', threadNumber, entries),
+                  `cast-${threadNumber != null ? `thread-${threadNumber}` : 'conversation'}.md`,
+                  'text/markdown'
+                )
+              }
+              className="p-0.5 text-white/25 hover:text-white/60"
+              title="Export actors page (markdown)"
             >
-              {excluded.length} excluded
+              <Download className="h-3 w-3" />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() =>
-              downloadFile(
-                exportCastAsMarkdown(threadTitle || 'Conversation', threadNumber, entries),
-                `cast-${threadNumber != null ? `thread-${threadNumber}` : 'conversation'}.md`,
-                'text/markdown'
-              )
-            }
-            className="p-0.5 text-white/25 hover:text-white/60"
-            title="Export actors page (markdown)"
-          >
-            <Download className="h-3 w-3" />
-          </button>
-        </span>
+          </span>
+        )}
       </div>
-      {showExcluded && excluded.length > 0 && (
+      {!collapsed && showExcluded && excluded.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
           {excluded.map((entry) => (
             <span
@@ -248,7 +283,7 @@ export function ThreadRosterBar({
           ))}
         </div>
       )}
-      {recentMentions.length > 0 && (
+      {!collapsed && cleanRecentMentions.length > 0 && (
         <div
           className="flex items-center gap-1.5 flex-wrap mt-1.5 pt-1 border-t border-white/5"
           data-testid="thread-recent-mentions"
@@ -256,7 +291,7 @@ export function ThreadRosterBar({
           <span className="text-[10px] uppercase tracking-wide text-white/25 mr-1">
             Recent mentions
           </span>
-          {recentMentions.map((m) => (
+          {cleanRecentMentions.map((m) => (
             <span
               key={m.id || m.name}
               className="rounded-full border border-dashed border-white/15 bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/45"

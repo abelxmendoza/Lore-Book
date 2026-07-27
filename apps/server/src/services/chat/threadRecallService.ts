@@ -21,9 +21,13 @@ function extractPeople(text: string): string[] {
   return [...new Set(names)].slice(0, 12);
 }
 
-function extractPlaces(text: string): string[] {
+export function extractPlaces(text: string): string[] {
   const places = new Set<string>();
-  for (const m of text.matchAll(/\b(?:at|in|from|near)\s+(?:the\s+)?([A-Z][\w\s.'-]{2,40})/g)) {
+  // Stop at punctuation or a connector word instead of a raw {2,40} char cap —
+  // an unbounded cap truncates mid-word/mid-sentence ("...Lorebook on June 3").
+  for (const m of text.matchAll(
+    /\b(?:at|in|from|near)\s+(?:the\s+)?([A-Z][\w\s.'-]{2,40}?)(?:\s+(?:in|after|before|on|and|while|today|yesterday)\b|[,.?!]|$)/g,
+  )) {
     const p = m[1]?.trim();
     if (p && p.length > 2) places.add(p);
   }

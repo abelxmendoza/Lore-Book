@@ -3,6 +3,11 @@ import { ChevronDown, ChevronUp, RefreshCw, Sparkles } from 'lucide-react';
 import { useThreadSummary } from '../hooks/useThreadSummary';
 import type { ThreadSummaryPayload } from '../../../api/threadSummary';
 import { SystemNotice } from './SystemNotice';
+import {
+  scrubPeopleLabels,
+  scrubPlacesLabels,
+  scrubSummaryDisplayLine,
+} from '../utils/threadSurfaceScrub';
 
 type ThreadSummaryBarProps = {
   threadId: string | null;
@@ -20,9 +25,11 @@ function normalizeSummary(value?: string | null) {
 
 export function getDisplaySummary(summary?: ThreadSummaryPayload | null, loading = false) {
   if (!summary) return loading ? 'Summarizing this thread...' : null;
-  const short = normalizeSummary(summary.short);
-  const medium = normalizeSummary(summary.medium);
-  const long = normalizeSummary(summary.long);
+  const people = scrubPeopleLabels(summary.people ?? []);
+  const places = scrubPlacesLabels(summary.places ?? []);
+  const short = scrubSummaryDisplayLine(normalizeSummary(summary.short), people, places);
+  const medium = scrubSummaryDisplayLine(normalizeSummary(summary.medium), people, places);
+  const long = scrubSummaryDisplayLine(normalizeSummary(summary.long), people, places);
 
   if (medium && short) {
     const normalizedShort = short.toLowerCase();
@@ -94,10 +101,10 @@ export function ThreadSummaryBar({
   }
 
   const recallText = data?.recallText?.trim();
-  const hasContext =
-    (data?.summary.people?.length ?? 0) > 0 ||
-    (data?.summary.places?.length ?? 0) > 0 ||
-    (data?.summary.themes?.length ?? 0) > 0;
+  const people = scrubPeopleLabels(data?.summary.people ?? []);
+  const places = scrubPlacesLabels(data?.summary.places ?? []);
+  const themes = (data?.summary.themes ?? []).map((t) => t.trim()).filter(Boolean);
+  const hasContext = people.length > 0 || places.length > 0 || themes.length > 0;
   const canExpand = Boolean(hasContext);
 
   return (
@@ -154,9 +161,9 @@ export function ThreadSummaryBar({
       </div>
       {expanded && hasContext && (
         <div className="mt-2 grid gap-2 pl-6 sm:grid-cols-3">
-          <SummaryChipGroup label="People" items={data?.summary.people ?? []} />
-          <SummaryChipGroup label="Places" items={data?.summary.places ?? []} />
-          <SummaryChipGroup label="Themes" items={data?.summary.themes ?? []} />
+          <SummaryChipGroup label="People" items={people} />
+          <SummaryChipGroup label="Places" items={places} />
+          <SummaryChipGroup label="Themes" items={themes} />
         </div>
       )}
     </div>

@@ -67,7 +67,7 @@ describe('buildFamilyTreeClipboardText', () => {
 
     expect(text).toContain('Family tree — You (4 members)');
     expect(text).toContain('Filters: scope=mine');
-    expect(text).toContain('Jamie (“Mom”)');
+    expect(text).toContain('Mom (Jamie)');
     expect(text).toContain('Relation: parent');
     expect(text).toContain('Relation label: Mom');
     expect(text).toContain('Side: maternal');

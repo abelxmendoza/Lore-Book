@@ -55,6 +55,45 @@ export type MemoryFeedbackEvent = {
   contradictionsDetected: Array<{ description: string }>;
 };
 
+/**
+ * Some proxies/load balancers silently kill an idle SSE connection without a
+ * clean close the browser's fetch/reader can detect — the request just hangs
+ * forever with no error, no data. Without a watchdog, that leaves `isStreaming`
+ * stuck true, which also permanently blocks thread hydration (see
+ * useConversationRuntime's `streaming_active` skip) — the reply exists and is
+ * saved server-side, but the UI never recovers without a full page reload.
+ * Race a promise against a timeout, aborting and rejecting with a clear,
+ * retryable message if nothing arrives in time.
+ */
+export function withIdleTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  abortController: AbortController,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      abortController.abort();
+      reject(new Error(timeoutMessage));
+    }, ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/** Generous — covers slow RAG/evidence-retrieval setup before the first SSE byte. */
+const TIME_TO_FIRST_BYTE_MS = 90_000;
+/** Once streaming, the server sends a heartbeat every 15s — 45s of total silence is dead. */
+const STREAM_IDLE_MS = 45_000;
+
 export const useChatStream = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -147,7 +186,7 @@ export const useChatStream = () => {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       }) as Record<string, string>;
 
-      const response = await fetch(url, {
+      const fetchPromise = fetch(url, {
         method: 'POST',
         headers,
         credentials: 'omit',
@@ -214,6 +253,15 @@ export const useChatStream = () => {
         
         throw new Error(errorMessage);
       });
+      // If the watchdog below wins the race, this rejection is otherwise unhandled.
+      fetchPromise.catch(() => {});
+
+      const response = await withIdleTimeout(
+        fetchPromise,
+        TIME_TO_FIRST_BYTE_MS,
+        abortController,
+        'The assistant is taking longer than expected to respond. Retry this reply.',
+      );
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -325,7 +373,17 @@ export const useChatStream = () => {
       let streamCompleted = false;
 
       while (true) {
-        const { done, value } = await reader.read();
+        const readPromise = reader.read();
+        // If the watchdog below wins the race, this rejection is otherwise unhandled.
+        readPromise.catch(() => {});
+        const { done, value } = await withIdleTimeout(
+          readPromise,
+          STREAM_IDLE_MS,
+          abortController,
+          receivedContent
+            ? 'The assistant stopped responding partway through. Retry this reply.'
+            : 'The assistant stream went quiet before responding. Retry this reply.',
+        );
 
         if (done) break;
         if (abortController.signal.aborted) break;

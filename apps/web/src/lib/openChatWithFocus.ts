@@ -8,6 +8,7 @@ export type OpenChatWithFocusInput = Omit<ChatFocus, 'sessionStats'> & {
 /**
  * Navigate to main chat with entity + source context (modal → chat bridge).
  * Handled globally in App.tsx via the `lorebook:open-chat-focus` event.
+ * Defaults to a fresh draft so focus chips never append into a sticky mega-thread.
  */
 export function openChatWithFocus(input: OpenChatWithFocusInput): void {
   const stats = {
@@ -16,7 +17,12 @@ export function openChatWithFocus(input: OpenChatWithFocusInput): void {
   };
   window.dispatchEvent(
     new CustomEvent('lorebook:open-chat-focus', {
-      detail: { ...input, sessionStats: stats } satisfies ChatFocus,
+      detail: {
+        ...input,
+        sessionStats: stats,
+        startNewThread: input.startNewThread !== false,
+        arrivedAt: input.arrivedAt ?? Date.now(),
+      } satisfies ChatFocus,
     })
   );
 }

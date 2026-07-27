@@ -18,7 +18,7 @@ describe('shortDisplayName', () => {
   });
 
   it('keeps stage and persona names whole', () => {
-    expect(shortDisplayName('Hell Fairy')).toBe('Hell Fairy');
+    expect(shortDisplayName('Neon Pixie')).toBe('Neon Pixie');
     expect(shortDisplayName('Moth Queen')).toBe('Moth Queen');
     expect(shortDisplayName('Neon Newts')).toBe('Neon Newts');
     expect(shortDisplayName('DJ Vex')).toBe('DJ Vex');
@@ -42,14 +42,14 @@ describe('isBareTitleName', () => {
 
   it('passes names with real name tokens', () => {
     expect(isBareTitleName('Tio Ralph')).toBe(false);
-    expect(isBareTitleName('Hell Fairy')).toBe(false);
+    expect(isBareTitleName('Neon Pixie')).toBe(false);
     expect(isBareTitleName('Leslie')).toBe(false);
   });
 });
 
 describe('shortPossessive', () => {
   it('builds possessives on the safe short form', () => {
-    expect(shortPossessive('Hell Fairy')).toBe("Hell Fairy's");
+    expect(shortPossessive('Neon Pixie')).toBe("Neon Pixie's");
     expect(shortPossessive('Tio Ralph')).toBe("Tio Ralph's");
     expect(shortPossessive('John Smith')).toBe("John's");
     expect(shortPossessive('Neon Newts')).toBe("Neon Newts'");

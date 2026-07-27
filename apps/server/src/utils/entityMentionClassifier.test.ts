@@ -5,9 +5,13 @@ import {
 } from './entityMentionClassifier';
 
 describe('entityMentionClassifier', () => {
-  it('rejects US holidays', () => {
-    expect(classifyMentionKind('Memorial Day').kind).toBe('holiday');
-    expect(classifyMentionKind('Labor Day').kind).toBe('holiday');
+  it('rejects software tools and calendar dates', () => {
+    expect(classifyMentionKind('Claude Code').kind).not.toBe('person');
+    expect(classifyMentionKind('Codex').kind).not.toBe('person');
+    expect(classifyMentionKind('Cursor').kind).not.toBe('person');
+    expect(classifyMentionKind('June 3rd 2026').kind).not.toBe('person');
+    expect(classifyMentionKind('therapist').kind).not.toBe('person');
+    expect(classifyMentionKind('Cousin in').kind).toBe('fragment');
   });
 
   it('rejects known events', () => {

@@ -21,10 +21,26 @@ import {
   classifyActorLabel,
   type ActorType,
 } from '../actors/actorLabelPolicy';
+import { isPollutingPersonLabel } from '../actors/entityLabelPollution';
 import {
   classifyMention,
   mayAppearOnCast,
 } from '../actors/mentionClassifier';
+import {
+  isBrokenPossessiveName,
+  stripPossessiveSuffix,
+} from '../characters/audit/brokenPossessiveNameGuard';
+import {
+  containmentIsPossessive,
+  normalizeDuplicateKey,
+  normalizeNameKey,
+  namesOverlapByContainment,
+} from '../../utils/nameNormalization';
+import {
+  composeDisplayNameWithEpithet,
+  resolveStoredEpithet,
+  stripPersonNameEpithet,
+} from '../../utils/personNameEpithet';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ThreadMessageRow } from './threadContentService';
 
@@ -67,6 +83,108 @@ export function rosterRole(mentions: number, maxMentions: number): RosterRole {
   if (mentions >= 3 && mentions * 2 >= maxMentions) return 'main';
   if (mentions >= 2) return 'supporting';
   return 'mentioned';
+}
+
+/** Prefer clean person spelling over appositive / possessive typo tails. */
+function preferRosterDisplayName(a: string, b: string): string {
+  const epithetPenalty = (s: string) =>
+    (/,|\bfrom the\b|\bmy\b|\bthe\b/i.test(s) ? 2 : 0);
+  const aScore =
+    (a.includes("'") || a.includes('’') ? 1 : 0) +
+    (/[À-ÿ]/.test(a) ? 1 : 0) -
+    epithetPenalty(a) -
+    a.length / 100;
+  const bScore =
+    (b.includes("'") || b.includes('’') ? 1 : 0) +
+    (/[À-ÿ]/.test(b) ? 1 : 0) -
+    epithetPenalty(b) -
+    b.length / 100;
+  return aScore >= bScore ? a : b;
+}
+
+function mergeRosterEntry(into: RosterEntry, from: RosterEntry): RosterEntry {
+  return {
+    ...into,
+    entityId: into.entityId ?? from.entityId,
+    name: preferRosterDisplayName(into.name, from.name),
+    mentions: into.mentions + from.mentions,
+    firstSeenRef: into.firstSeenRef ?? from.firstSeenRef,
+    lastSeenRef: from.lastSeenRef ?? into.lastSeenRef,
+    pinned: into.pinned || from.pinned,
+    // Keep the richer typing when one side is still unknown.
+    kind: into.kind === 'unknown' ? from.kind : into.kind,
+    actorType: into.actorType === 'PERSON' && from.actorType !== 'PERSON' ? from.actorType : into.actorType,
+  };
+}
+
+/**
+ * Collapse twin Character Book rows and appositive duplicates for Cast display
+ * ("Goth Tio"×2, "Hell Fairy" vs "Hell Fairy from the Underground Scene").
+ * Keeps entity-id keys for overrides when possible; sums mention counts.
+ */
+export function collapseRosterDuplicates(entries: RosterEntry[]): RosterEntry[] {
+  if (entries.length <= 1) return entries;
+
+  const byExact = new Map<string, RosterEntry>();
+  for (const entry of entries) {
+    const key = normalizeDuplicateKey(entry.name);
+    if (!key) continue;
+    const prev = byExact.get(key);
+    byExact.set(key, prev ? mergeRosterEntry(prev, entry) : { ...entry });
+  }
+
+  let collapsed = [...byExact.values()];
+  // Second pass: whole-token containment (non-possessive) merges descriptor tails.
+  const keep = new Array(collapsed.length).fill(true);
+  for (let i = 0; i < collapsed.length; i++) {
+    if (!keep[i]) continue;
+    for (let j = i + 1; j < collapsed.length; j++) {
+      if (!keep[j]) continue;
+      const a = collapsed[i];
+      const b = collapsed[j];
+      const aNorm = normalizeNameKey(a.name);
+      const bNorm = normalizeNameKey(b.name);
+      if (!namesOverlapByContainment(aNorm, bNorm)) continue;
+      const short = aNorm.length <= bNorm.length ? aNorm : bNorm;
+      const long = aNorm.length <= bNorm.length ? bNorm : aNorm;
+      if (containmentIsPossessive(short, long)) continue;
+      collapsed[i] = mergeRosterEntry(a, b);
+      keep[j] = false;
+    }
+  }
+  return collapsed.filter((_, idx) => keep[idx]);
+}
+
+/** Normalize possessive typos; keep base identity — epithets attach later from Character Book. */
+export function normalizeRosterPersonName(name: string): string {
+  let trimmed = name.trim();
+  if (isBrokenPossessiveName(trimmed)) {
+    trimmed = stripPossessiveSuffix(trimmed) || trimmed;
+  }
+  return stripPersonNameEpithet(trimmed);
+}
+
+/**
+ * Overlay intentional story epithets onto linked cast members so Actors shows
+ * "Aunt Maribel the Hallway Guardian" when the Character Book has one.
+ */
+export function applyCharacterEpithetsToRoster(
+  entries: RosterEntry[],
+  charactersById: Map<string, { name: string; metadata?: Record<string, unknown> | null }>,
+): RosterEntry[] {
+  if (charactersById.size === 0) return entries;
+  return entries.map((entry) => {
+    if (!entry.entityId) return entry;
+    const row = charactersById.get(entry.entityId);
+    if (!row) return entry;
+    const epithet = resolveStoredEpithet(row.metadata ?? null);
+    if (!epithet) return entry;
+    const base = stripPersonNameEpithet(row.name || entry.name);
+    return {
+      ...entry,
+      name: composeDisplayNameWithEpithet(base, epithet),
+    };
+  });
 }
 
 type MentionShape = { id?: unknown; name?: unknown; type?: unknown };
@@ -113,11 +231,28 @@ export function resolveRosterActor(
     };
   }
 
+  // Places / skills / events belong in Places / Themes — not the Actors cast.
+  // Keeping them here mixed venues and calendar junk into the people strip.
   if (kind === 'location' || kind === 'skill' || kind === 'event') {
-    return { keep: true, actorType: 'PERSON', kind };
+    return {
+      keep: false,
+      actorType: (mention.actorType ?? 'PERSON') as RosterActorType,
+      kind,
+    };
   }
+  // Stores / venues typed as orgs still belong in Places / Themes, not Actors.
   if (kind === 'organization') {
-    return { keep: true, actorType: 'ORGANIZATION', kind };
+    return {
+      keep: false,
+      actorType: 'ORGANIZATION',
+      kind,
+    };
+  }
+
+  // Drop polluting person labels even when an older Character Book rematch
+  // stamped a durable id (tools, truncated kinship, dates, bare roles).
+  if (isPollutingPersonLabel(name)) {
+    return { keep: false, actorType: 'PERSON', kind };
   }
 
   const actor = classifyActorLabel(name);
@@ -165,8 +300,9 @@ export function deriveRosterEntries(
     const ref = messageRef(threadNumber, row);
     for (const m of mentions) {
       if (!m || typeof m !== 'object') continue;
-      const name = typeof m.name === 'string' ? m.name.trim() : '';
-      if (!name) continue;
+      const rawName = typeof m.name === 'string' ? m.name.trim() : '';
+      if (!rawName) continue;
+      const name = normalizeRosterPersonName(rawName);
       const entityId = typeof m.id === 'string' && m.id.trim() ? m.id : null;
       const resolved = resolveRosterActor(name, mentionKind(m.type), entityId);
       if (!resolved.keep) continue;
@@ -175,7 +311,7 @@ export function deriveRosterEntries(
       if (existing) {
         existing.mentions += 1;
         existing.lastSeenRef = ref ?? existing.lastSeenRef;
-        existing.name = name;
+        existing.name = preferRosterDisplayName(existing.name, name);
         existing.actorType = resolved.actorType;
         existing.kind = resolved.kind;
       } else {
@@ -201,8 +337,9 @@ export function deriveRosterEntries(
   for (const link of links) {
     const key = link.entity_id;
     if (byKey.has(key)) continue;
-    const name = link.metadata?.entity_name?.trim();
-    if (!name) continue;
+    const rawName = link.metadata?.entity_name?.trim();
+    if (!rawName) continue;
+    const name = normalizeRosterPersonName(rawName);
     const resolved = resolveRosterActor(name, mentionKind(link.entity_type), link.entity_id);
     if (!resolved.keep) continue;
     byKey.set(key, {
@@ -223,13 +360,14 @@ export function deriveRosterEntries(
   // Legacy threadMeta.people are name-only strings; keep them visible so old
   // threads have a cast too, but never invent an entity id for them.
   for (const person of legacyPeople) {
-    const name = person?.trim();
-    if (!name) continue;
+    const rawName = person?.trim();
+    if (!rawName) continue;
+    const name = normalizeRosterPersonName(rawName);
     const resolved = resolveRosterActor(name, 'character', null);
     if (!resolved.keep) continue;
     const key = rosterKey({ entityId: null, name });
     const linkedAlready = [...byKey.values()].some(
-      (e) => e.name.trim().toLowerCase() === name.toLowerCase(),
+      (e) => normalizeDuplicateKey(e.name) === normalizeDuplicateKey(name),
     );
     if (linkedAlready || byKey.has(key)) continue;
     byKey.set(key, {
@@ -247,7 +385,7 @@ export function deriveRosterEntries(
     });
   }
 
-  const entries = [...byKey.values()];
+  const entries = collapseRosterDuplicates([...byKey.values()]);
   const maxMentions = entries.reduce((max, e) => Math.max(max, e.mentions), 0);
   for (const entry of entries) entry.role = rosterRole(entry.mentions, maxMentions);
   return entries.sort(
@@ -335,7 +473,27 @@ class ThreadRosterService {
       (linkRows ?? []) as RosterLinkRow[],
       legacyPeople,
     );
-    const entries = applyRosterOverrides(derived, overrides);
+
+    const linkedIds = [
+      ...new Set(derived.map((e) => e.entityId).filter((id): id is string => !!id)),
+    ];
+    const charactersById = new Map<string, { name: string; metadata?: Record<string, unknown> | null }>();
+    if (linkedIds.length > 0) {
+      const { data: characterRows } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, metadata')
+        .eq('user_id', userId)
+        .in('id', linkedIds);
+      for (const c of characterRows ?? []) {
+        charactersById.set(c.id, {
+          name: c.name,
+          metadata: c.metadata as Record<string, unknown> | null,
+        });
+      }
+    }
+
+    const withEpithets = applyCharacterEpithetsToRoster(derived, charactersById);
+    const entries = applyRosterOverrides(withEpithets, overrides);
 
     // Cache a bounded snapshot so the chat hot path reads the cast without a
     // message scan. Best-effort: a failed cache write never fails the read.

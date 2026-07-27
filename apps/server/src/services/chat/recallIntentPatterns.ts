@@ -11,19 +11,29 @@ export const CHARACTER_LIST_RE =
 export const FAMILY_RECALL_RE =
   /\b(tell me about my family|my family members?|members of my family|who are my (relatives|family members?)|recall.*(family members?|my family)|things you('ve| have) learned about me and my family|what you know about me and my family|recall.*my family)\b/i;
 
-export const FAMILY_KIN_TERM_RE =
-  /\b(tell me about my (grandmother|grandfather|grandma|grandpa|mother|father|brother|sister|cousin|relatives)|my (grandmother|grandfather|grandma|grandpa|relatives))\b/i;
+const KIN_TERM_ALT =
+  '(?:grandmother|grandfather|grandma|grandpa|mother|mom|father|dad|brother|sister|sibling|cousin|aunt|uncle|abuela|abuelo|t[ií]a|t[ií]o|relatives)';
+
+export const FAMILY_KIN_TERM_RE = new RegExp(
+  `\\b((?:tell me about|what (?:do you |you )?know about|what.s up with) my ${KIN_TERM_ALT}|my (?:grandmother|grandfather|grandma|grandpa|relatives))\\b`,
+  'i',
+);
 
 const ENTITY_PREFIX_RE =
-  /\b(tell me about|what do you know about|what happened with|remember about|recall|who (?:is|was))\s+(?!my family|myself|me\b|the characters|the people)\b/i;
+  /\b(tell me about|what (?:do you |you )?know about|what happened with|remember about|recall|who (?:is|was))\s+(?!my family|myself|me\b|the characters|the people)\b/i;
 
 export { ENTITY_PREFIX_RE };
+
+// "what do you know about my cousin Jerry" names Jerry through a kinship
+// qualifier rather than immediately after the prefix — strip it so the
+// capitalized-name scan below lands on "Jerry", not "my".
+const KIN_QUALIFIER_RE = new RegExp(`^my\\s+${KIN_TERM_ALT}s?\\s+`, 'i');
 
 /** True when message asks about a specific named person (capitalized proper noun). */
 export function matchesEntityQuery(message: string): boolean {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return false;
-  const rest = message.slice(m.index + m[0].length).trim();
+  const rest = message.slice(m.index + m[0].length).trim().replace(KIN_QUALIFIER_RE, '');
   const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,8})/);
   const name = nameMatch?.[1]?.replace(/[?!.,]{1,8}$/, '').trim() ?? rest.split(/[\s,?!.]+/)[0] ?? '';
   if (!name || /^(that|the|this|a|an|it|everything|anything)$/i.test(name)) return false;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
+import { formatFamilyMemberDisplayName } from '../../lib/familyMemberDisplay';
 
 type Props = {
   tree: FamilyTree;
@@ -92,10 +93,7 @@ function TreeBranch({
           onClick={() => !isGroup && !node.member.is_self && onMemberClick?.(node.member)}
           className={`flex items-center gap-2 text-left ${isGroup ? 'text-white/45 text-xs uppercase tracking-wide' : 'text-white/90 hover:text-purple-200'} ${node.member.is_self ? 'font-semibold text-purple-200' : ''}`}
         >
-          <span>{node.member.kinship_title ?? node.member.name}</span>
-          {node.member.kinship_title && node.member.name.toLowerCase() !== node.member.kinship_title.toLowerCase() && (
-            <span className="text-white/40 text-xs">({node.member.name})</span>
-          )}
+          <span>{formatFamilyMemberDisplayName(node.member)}</span>
           {!isGroup && !node.member.is_self && <ConfidenceBadge member={node.member} />}
         </button>
       </div>

@@ -83,6 +83,27 @@ export const BARE_GENERIC_EXACT = new Set([
   'e-girls',
   'egirl',
   'e-girl',
+  // Bare kinship / household roles without a given name
+  'mom',
+  'dad',
+  'mother',
+  'father',
+  'uncle',
+  'aunt',
+  'nephew',
+  'niece',
+  'sibling',
+  'brother',
+  'sister',
+  'grandma',
+  'grandpa',
+  'grandmother',
+  'grandfather',
+  // Pipeline personas mistaken for people
+  'therapist',
+  'archivist',
+  'assistant',
+  'system',
 ]);
 
 /** Self / narrator labels that must never appear on the Actors bar. */
@@ -113,6 +134,21 @@ const PEOPLE_IN_SCENE_RE =
 /** Truncated span extraction: "people in" / "people in the" without the rest of the phrase. */
 const TRUNCATED_COLLECTIVE_RE =
   /^(?:(?:the|some|other|those|these)\s+)?(?:people|folks|girls|guys|fans|egirls|e-girls)\s+in(?:\s+the)?$/i;
+
+/**
+ * Truncated kinship / role spans from mid-phrase extraction:
+ * "Cousin in" (from "… & Cousin in"), "uncle at", "tia of", etc.
+ */
+const TRUNCATED_KINSHIP_RE =
+  /^(?:(?:my|our|his|her|their)\s+)?(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling|mom|dad|mother|father|grandma|grandpa|grandmother|grandfather|abuela|abuelo)s?\s+(?:in|at|of|from|with|and|to)$/i;
+
+/** Discourse bleed: "Sibling those", "Also Oscuridads", "her house". */
+const DISCOURSE_BLEED_RE =
+  /^(?:also|and|plus|including)\s+\S+/i;
+const DEMONSTRATIVE_KINSHIP_RE =
+  /^(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling)s?\s+(?:those|these|that|this|them|they|the)$/i;
+const POSSESSIVE_PLACE_FRAGMENT_RE =
+  /^(?:my|his|her|their|our)\s+(?:house|home|place|room|apartment|pad)$/i;
 
 /** Named social-category collectives — belong in Groups, not Character/Family. */
 const POPULAR_CATEGORY_RE =
@@ -146,6 +182,10 @@ export function isVagueOrIndefiniteActorPhrase(name: string | null | undefined):
   if (VAGUE_COLLECTIVE_RE.test(key)) return true;
   if (PEOPLE_IN_SCENE_RE.test(key)) return true;
   if (TRUNCATED_COLLECTIVE_RE.test(key)) return true;
+  if (TRUNCATED_KINSHIP_RE.test(key)) return true;
+  if (DISCOURSE_BLEED_RE.test(key)) return true;
+  if (DEMONSTRATIVE_KINSHIP_RE.test(key)) return true;
+  if (POSSESSIVE_PLACE_FRAGMENT_RE.test(key)) return true;
   if (POPULAR_CATEGORY_RE.test(key)) return true;
   // "one girl", "this guy", "that woman" with nothing after
   if (/^(?:a|an|one|some|that|this)\s+(?:girl|guy|man|woman|person|dude|lady)\b$/i.test(key)) {
@@ -187,9 +227,16 @@ export function classifyActorLabel(name: string | null | undefined): ActorLabelC
     return { actorType: 'PERSON', action: 'reject', reason: 'self' };
   }
 
-  // Truncated span extraction ("people in") — never a person or contextual group.
-  if (TRUNCATED_COLLECTIVE_RE.test(normalizePersonNameKey(trimmed))) {
+  // Truncated span extraction ("people in" / "Cousin in") — never a person.
+  const keyForReject = normalizePersonNameKey(trimmed);
+  if (TRUNCATED_COLLECTIVE_RE.test(keyForReject) || TRUNCATED_KINSHIP_RE.test(keyForReject)) {
     return { actorType: 'GROUP', action: 'reject', reason: 'vague_scene' };
+  }
+  if (DISCOURSE_BLEED_RE.test(trimmed) || DEMONSTRATIVE_KINSHIP_RE.test(keyForReject)) {
+    return { actorType: 'PERSON', action: 'reject', reason: 'discourse_bleed' };
+  }
+  if (POSSESSIVE_PLACE_FRAGMENT_RE.test(keyForReject)) {
+    return { actorType: 'PERSON', action: 'reject', reason: 'place_fragment' };
   }
 
   if (ANONYMOUS_PREFIX_RE.test(trimmed)) {

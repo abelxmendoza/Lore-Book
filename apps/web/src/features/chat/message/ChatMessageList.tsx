@@ -23,6 +23,8 @@ type ChatMessageListProps = {
   messages: Message[];
   streamingMessageId?: string | null;
   searchMessageId?: string | null;
+  /** Name/alias terms to highlight inside the jumped message. */
+  highlightTerms?: string[];
   messageRefs: Map<string, HTMLDivElement>;
   showCognitiveTrace?: boolean;
   onCopy?: (messageId: string) => void;
@@ -46,6 +48,7 @@ export const ChatMessageList = ({
   messages,
   streamingMessageId,
   searchMessageId,
+  highlightTerms,
   messageRefs,
   showCognitiveTrace = false,
   onCopy,
@@ -87,8 +90,10 @@ export const ChatMessageList = ({
 
   // Scroll to bottom on thread/message switches and while the user is already
   // near the bottom. Avoid yanking position on every streaming chunk.
+  // Skip when jumping to a specific mention — otherwise long threads snap to the end.
   useEffect(() => {
     if (!containerRef.current || messages.length === 0) return;
+    if (searchMessageId) return;
     const container = containerRef.current;
     const lastMessageId = messages[messages.length - 1]?.id ?? null;
     const lastMessageChanged = previousLastMessageIdRef.current !== lastMessageId;
@@ -102,14 +107,14 @@ export const ChatMessageList = ({
     }
 
     previousLastMessageIdRef.current = lastMessageId;
-  }, [messages, streamingMessageId]);
+  }, [messages, streamingMessageId, searchMessageId]);
 
-  // Scroll to search result
+  // Scroll to search / "From your chats" jump target
   useEffect(() => {
     if (searchMessageId) {
       scrollToMessage(searchMessageId, containerRef, messageRefs);
     }
-  }, [searchMessageId, messageRefs]);
+  }, [searchMessageId, messages.length, messageRefs]);
 
   return (
     <div 
@@ -146,6 +151,11 @@ export const ChatMessageList = ({
                 <ChatMessage
                   message={message}
                   threadEntityMentions={threadMentionContext.get(message.id) ?? []}
+                  highlightTerms={
+                    message.id === searchMessageId && highlightTerms?.length
+                      ? highlightTerms
+                      : undefined
+                  }
                   animateEnter={enteringIds.has(message.id)}
                   showCognitiveTrace={showCognitiveTrace}
                   onCopy={onCopy ? () => onCopy(message.id) : undefined}

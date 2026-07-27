@@ -14,4 +14,30 @@ describe('mentionLifecycle — discourse markers', () => {
     expect(inferMentionLifecycleStatus('Marcus')).toBe('RESOLVED');
     expect(isTranscriptMentionWorthy('Marcus')).toBe(true);
   });
+
+  it('ignores truncated kinship, tools, dates, and personas', () => {
+    for (const name of [
+      'Cousin in',
+      'Sibling those',
+      'Claude Code',
+      'Codex',
+      'Cursor',
+      'therapist',
+      'June 3rd 2026',
+      'Memorial Day weekend',
+      'her house',
+      'Uncle',
+      'current event',
+      'Ex Lover',
+      "Tío Ralph's",
+    ]) {
+      expect(inferMentionLifecycleStatus(name), name).toBe('IGNORE');
+      expect(isTranscriptMentionWorthy(name), name).toBe(false);
+    }
+  });
+
+  it('treats indefinite new-person refs as generic, not cast-worthy', () => {
+    expect(inferMentionLifecycleStatus('new guy')).toBe('GENERIC');
+    expect(isTranscriptMentionWorthy('new guy')).toBe(false);
+  });
 });
