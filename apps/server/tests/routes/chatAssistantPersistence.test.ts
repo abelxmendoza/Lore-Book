@@ -174,14 +174,17 @@ describe('POST /api/chat/stream — assistant durability', () => {
     expect(res.text).not.toContain('"type":"done"');
   });
 
-  it('returns 500 JSON when chatStream setup fails before headers', async () => {
+  it('returns an SSE error frame when chatStream setup fails after headers commit', async () => {
     vi.mocked(omegaChatService.chatStream).mockRejectedValue(new Error('OpenAI down'));
 
     const res = await request(app)
       .post('/api/chat/stream')
       .send({ message: 'fail setup', threadId: SESSION_ID });
 
-    expect(res.status).toBe(500);
-    expect(res.headers['content-type']).toMatch(/json/);
+    // Headers are committed before chatStream() so proxies keep the connection
+    // alive during RAG/routing — setup failures arrive as SSE error frames, not JSON.
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+    expect(res.text).toContain('"type":"error"');
   });
 });
