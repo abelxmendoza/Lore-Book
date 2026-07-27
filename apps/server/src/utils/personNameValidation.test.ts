@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isAppSurfacePersonName,
   isCollectivePersonName,
   isDisplayablePersonName,
   isIndividualPersonName,
@@ -44,5 +45,12 @@ describe('personNameValidation', () => {
     expect(isIndividualPersonName('Jordan Lee')).toBe(true);
     expect(isIndividualPersonName('Reese')).toBe(true);
     expect(isIndividualPersonName('The Rock')).toBe(true);
+  });
+
+  it('rejects LoreBook app surfaces as people', () => {
+    expect(isAppSurfacePersonName('Organizations Book')).toBe(true);
+    expect(isAppSurfacePersonName('Groups & Organizations Book')).toBe(true);
+    expect(isIndividualPersonName('Organizations Book')).toBe(false);
+    expect(isIndividualPersonName('Character Book')).toBe(false);
   });
 });

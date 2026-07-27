@@ -10,6 +10,10 @@ import { supabaseAdmin } from '../supabaseClient';
 import { characterRegistry } from '../characterRegistry';
 import { organizationService } from '../organizationService';
 import { stripPersonNameEpithet } from '../../utils/personNameEpithet';
+import {
+  isAppSurfacePersonName,
+  isCollectivePersonName,
+} from '../../utils/personNameValidation';
 
 export type GroupWriteMemberOutcome = {
   name: string;
@@ -74,8 +78,16 @@ export function extractListedMemberNames(message: string): string[] {
   const cue = text.match(
     /\b(?:so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\s*/i,
   );
+  const addToGroup = text.match(
+    /\badd\s+(.+?)\s+(?:to|into)\s+(?:the|that|this|my)\s+(?:group|crew|squad|org(?:anization)?)\b/i,
+  );
+  const hasBareCommaList = text.includes(',');
+  if (!cue && !addToGroup && !hasBareCommaList) return [];
+
   if (cue && cue.index != null) {
     rest = text.slice(cue.index + cue[0].length);
+  } else if (addToGroup?.[1]) {
+    rest = addToGroup[1];
   }
   rest = rest
     .replace(/\b(?:to|into)\s+(?:the|that|this|my)\s+(?:group|crew|squad).*$/i, '')
@@ -93,12 +105,40 @@ export function extractListedMemberNames(message: string): string[] {
     if (part.length < 2) continue;
     if (/^(also|too|etc|now|well|so|far|we|have|the|a|an|group|crew)$/i.test(part)) continue;
     if (!/[A-Za-z]/.test(part)) continue;
+    if (isAppSurfacePersonName(part) || isCollectivePersonName(part)) continue;
     const key = part.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(part);
   }
   return out;
+}
+
+/**
+ * A follow-up such as "can you make the group now?" or "make cards for the
+ * individual characters" refers back to the roster the user already supplied.
+ * Only recover an explicitly list-shaped earlier user message.
+ */
+export function recoverListedMemberNamesFromHistory(
+  message: string,
+  history: Array<{ role: string; content: string }>,
+): string[] {
+  const refersToPriorRoster =
+    /\b(?:can|could|would)\s+you\s+(?:make|create)\s+(?:the|that|this)\s+(?:group|crew|squad)\b/i.test(
+      message,
+    ) ||
+    /\b(?:individual|listed|those|these)\s+(?:characters?|people|members?)\b/i.test(message) ||
+    /\bcharacters?\s+(?:should|need to)\s+have\s+(?:character\s+)?(?:cards?|modals?)\b/i.test(
+      message,
+    );
+  if (!refersToPriorRoster) return [];
+
+  for (const item of [...history].reverse()) {
+    if (item.role !== 'user') continue;
+    const names = extractListedMemberNames(item.content);
+    if (names.length >= 2) return names;
+  }
+  return [];
 }
 
 export function inferGroupNameFromContext(
@@ -238,8 +278,14 @@ export async function writeOrganizationGroupFromChat(
   },
 ): Promise<GroupWriteResult> {
   const history = options?.conversationHistory ?? [];
-  const listed = extractListedMemberNames(message);
+  const currentListed = extractListedMemberNames(message);
   const pending = await readPendingGroup(userId, threadId);
+  const listed =
+    currentListed.length > 0
+      ? currentListed
+      : pending
+        ? recoverListedMemberNamesFromHistory(message, history)
+        : [];
 
   const wantsCreate =
     /\b(?:make|create|start|set\s*up)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?(group|crew|squad)/i.test(

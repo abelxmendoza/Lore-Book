@@ -164,6 +164,18 @@ describe('characterRegistry', () => {
     expect(friend).toMatchObject({ action: 'reject', reason: 'bare_title_without_context' });
   });
 
+  it('rejects LoreBook app-surface labels before character creation', async () => {
+    const decision = await characterRegistry.classifyForCreation(
+      'user-1',
+      'Organizations Book',
+    );
+
+    expect(decision).toMatchObject({
+      action: 'reject',
+      reason: 'app_surface_not_person',
+    });
+  });
+
   it('allows contextual role references with disambiguating context', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'locations' || table === 'organizations' || table === 'omega_entities') return chain([]);

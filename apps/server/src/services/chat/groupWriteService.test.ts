@@ -3,6 +3,7 @@ import {
   extractListedMemberNames,
   inferGroupNameFromContext,
   isReplyToGroupNamingPrompt,
+  recoverListedMemberNamesFromHistory,
 } from './groupWriteService';
 
 describe('groupWriteService helpers', () => {
@@ -12,6 +13,51 @@ describe('groupWriteService helpers', () => {
         'So far we have NeonPulse, VelvetFox, LumaJade, Star Bats, and Neon Pixie',
       ),
     ).toEqual(['NeonPulse', 'VelvetFox', 'LumaJade', 'Star Bats', 'Neon Pixie']);
+  });
+
+  it('does not turn Groups and Organizations Book UI language into members', () => {
+    expect(
+      extractListedMemberNames(
+        'It should be in the Groups and Organizations book. The individual characters need cards.',
+      ),
+    ).toEqual([]);
+    expect(
+      extractListedMemberNames(
+        'It should be in Groups, and Organizations Book. Make cards for the people.',
+      ),
+    ).toEqual([]);
+    expect(extractListedMemberNames('can you make the group now')).toEqual([]);
+  });
+
+  it('extracts explicit add-to-group instructions without a comma', () => {
+    expect(extractListedMemberNames('Add Marcus and Jamie to the group')).toEqual([
+      'Marcus',
+      'Jamie',
+    ]);
+  });
+
+  it('recovers the latest explicit roster for a follow-up write request', () => {
+    const history = [
+      { role: 'user', content: 'make a group for that' },
+      { role: 'assistant', content: 'Who belongs in it?' },
+      { role: 'user', content: 'So far we have Marcus, Jamie, and Nova Reed' },
+      { role: 'assistant', content: 'What should it be called?' },
+    ];
+
+    expect(
+      recoverListedMemberNamesFromHistory(
+        'The individual characters should have Character Book cards too.',
+        history,
+      ),
+    ).toEqual(['Marcus', 'Jamie', 'Nova Reed']);
+  });
+
+  it('does not reuse an old roster for an unrelated new-group request', () => {
+    expect(
+      recoverListedMemberNamesFromHistory('make a new group for designers', [
+        { role: 'user', content: 'Members are Marcus, Jamie, and Nova Reed' },
+      ]),
+    ).toEqual([]);
   });
 
   it('infers Popular E-Girls from prior egirl context when user says "for that"', () => {

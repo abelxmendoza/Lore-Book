@@ -34,9 +34,12 @@ import {
   type DisambiguationCandidate,
 } from '../utils/disambiguationUtils';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
-import { isCollectivePersonName } from '../utils/personNameValidation';
+import { isAppSurfacePersonName, isCollectivePersonName } from '../utils/personNameValidation';
 import { isInvalidPersonName } from '@lorebook/api-contracts';
-import { arbitrateDomainStrong } from './characters/audit/characterIdentityGate';
+import {
+  arbitrateDomainStrong,
+  evaluateSentenceBleed,
+} from './characters/audit/characterIdentityGate';
 import { classifyActorLabel } from './actors/actorLabelPolicy';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import {
@@ -60,7 +63,6 @@ import { filterSelfCandidatesForIncoming } from './identity/selfIdentityGuard';
 
 import { characterAuthorityService } from './characterAuthorityService';
 import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
-import { evaluateSentenceBleed } from './characters/audit/characterIdentityGate';
 import { isUserRejectedEntityCard } from './entityRejectionRegistry';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -163,6 +165,7 @@ class CharacterRegistry {
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
     const sentenceBleed = evaluateSentenceBleed(name);
     if (sentenceBleed.rejected) return { ok: false, reason: sentenceBleed.kind };
+    if (isAppSurfacePersonName(name)) return { ok: false, reason: 'app_surface_not_person' };
     if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
 

@@ -22,6 +22,30 @@ const PLACEHOLDER_NAME_KEYS = new Set([
   'undefined',
 ]);
 
+/**
+ * LoreBook navigation/surface labels are product vocabulary, never people.
+ * Keep this exact-label based so real names containing an adjacent word such
+ * as "Book" or "Character" remain valid.
+ */
+const APP_SURFACE_NAME_KEYS = new Set([
+  'lorebook',
+  'character book',
+  'characters book',
+  'people book',
+  'organization book',
+  'organizations book',
+  'group book',
+  'groups book',
+  'groups and organizations book',
+  'groups & organizations book',
+  'location book',
+  'locations book',
+  'place book',
+  'places book',
+  'places and locations book',
+  'places & locations book',
+]);
+
 /** Plural roles, teams, and group labels — not individual people. */
 const COLLECTIVE_TAIL_WORDS = new Set([
   'engineers', 'engineer', 'developers', 'developer', 'designers', 'designer',
@@ -60,6 +84,11 @@ export function isPlaceholderPersonName(name: string | null | undefined): boolea
   // "Alex Unknown" and similar — title ends with unresolved token
   if (/\bunknown\b/.test(key)) return true;
   return false;
+}
+
+export function isAppSurfacePersonName(name: string | null | undefined): boolean {
+  if (name == null || !String(name).trim()) return false;
+  return APP_SURFACE_NAME_KEYS.has(normalizePersonNameKey(String(name)));
 }
 
 /** Groups, teams, departments, and org+role labels like "Amazon Engineers". */
@@ -110,6 +139,7 @@ export function isTitleOnlyPersonName(name: string | null | undefined): boolean 
 
 export function isIndividualPersonName(name: string | null | undefined): boolean {
   if (!isDisplayablePersonName(name)) return false;
+  if (isAppSurfacePersonName(name)) return false;
   if (isCollectivePersonName(name)) return false;
   if (isRoleDescriptorPersonName(name)) return false;
   if (isTitleOnlyPersonName(name)) return false;
