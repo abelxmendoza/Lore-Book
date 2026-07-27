@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { organizationQueryRequestSchema } from '@lorebook/api-contracts';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
@@ -14,6 +15,7 @@ import { organizationNetworkService } from '../services/organizationNetworkServi
 import { organizationDomainAuditService } from '../services/organizationDomainAuditService';
 import { organizationNormalizationService } from '../services/organizationNormalizationService';
 import { locationMergeService } from '../services/locationMergeService';
+import { queryOrganizationsForUser } from '../services/organizations/organizationQueryService';
 
 const router = Router();
 
@@ -57,6 +59,30 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ error, userId }, 'Failed to list organizations');
     res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+  }
+});
+
+// POST /api/organizations/query
+// Canonical relational query compiler used by the Book and chat. Register
+// before /:id so "query" can never be interpreted as an organization id.
+router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const parsed = organizationQueryRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid organization query',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  try {
+    const result = await queryOrganizationsForUser(userId, parsed.data);
+    res.json({ success: true, result });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to query organizations');
+    res.status(500).json({ success: false, error: 'Failed to query organizations' });
   }
 });
 

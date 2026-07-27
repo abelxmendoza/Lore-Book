@@ -24,13 +24,21 @@ export type RecordDismissalInput = {
   threadId?: string | null;
   sourceMessageId?: string | null;
   sourceSuggestionId?: string | null;
+  reason?: DismissSuggestionReason;
 };
+
+export type DismissSuggestionReason =
+  | 'not_entity'
+  | 'wrong_book'
+  | 'duplicate'
+  | 'noise';
 
 export type RecordDismissalResult = {
   dismissCount: number;
   isPermanent: boolean;
   threadId: string | null;
   normalizedName: string;
+  reason?: DismissSuggestionReason;
 };
 
 export type SuppressionCheck = {
@@ -110,7 +118,10 @@ class SuggestionDismissalService {
       null;
 
     const existing = await this.loadStatRow(userId, domain, normalizedName);
-    const nextCount = Math.min(MAX_SUGGESTION_DISMISSALS, (existing?.dismiss_count ?? 0) + 1);
+    const forcePermanent = input.reason === 'not_entity' || input.reason === 'noise';
+    const nextCount = forcePermanent
+      ? MAX_SUGGESTION_DISMISSALS
+      : Math.min(MAX_SUGGESTION_DISMISSALS, (existing?.dismiss_count ?? 0) + 1);
     const isPermanent = nextCount >= MAX_SUGGESTION_DISMISSALS;
 
     const { error: statsError } = await supabaseAdmin.from('suggestion_dismissal_stats').upsert(
@@ -148,7 +159,7 @@ class SuggestionDismissalService {
 
     this.invalidate(userId);
 
-    return { dismissCount: nextCount, isPermanent, threadId, normalizedName };
+    return { dismissCount: nextCount, isPermanent, threadId, normalizedName, reason: input.reason };
   }
 
   async shouldSuppress(

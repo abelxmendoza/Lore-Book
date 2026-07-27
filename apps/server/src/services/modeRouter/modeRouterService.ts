@@ -16,7 +16,19 @@ import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
-import { isCastRosterQuery, isCharacterBookWriteRequest, isOrganizationGroupWriteRequest } from '@lorebook/api-contracts';
+import {
+  isCastRosterQuery,
+  isCharacterBookWriteRequest,
+  isOrganizationGroupFollowUpRequest,
+  isOrganizationGroupWriteRequest,
+  isEntityReclassifyWriteRequest,
+  isLocationWriteRequest,
+  isProjectWriteRequest,
+  isSkillWriteRequest,
+  isQuestWriteRequest,
+  isFamilyWriteRequest,
+  isRomanceWriteRequest,
+} from '@lorebook/api-contracts';
 import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
 import {
   shouldSuppressTherapist,
@@ -33,6 +45,21 @@ export type ChatMode =
   | 'CURRENT_STORY_CAST'     // Closed-scope: new/returning/unresolved people in the active thread
   | 'CHARACTER_BOOK_WRITE'   // Explicit "add these people to my character book" request
   | 'ORGANIZATION_GROUP_WRITE' // Explicit "make a group" / "here's the roster" write
+  | 'ENTITY_RECLASSIFY_WRITE' // Wrong-book correction: "X is a group, not a place"
+  | 'LOCATION_WRITE'         // Explicit Places create/update/delete
+  | 'PROJECT_WRITE'          // Explicit Projects create/update/delete
+  | 'SKILL_WRITE'            // Explicit Skills create/update/delete
+  | 'QUEST_WRITE'            // Explicit Quest Log create/update/delete/status
+  | 'FAMILY_WRITE'           // Explicit Family Tree kinship writes
+  | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
+  | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
+  | 'ORGANIZATION_QUERY'     // Relational read over the Groups & Organizations Book
+  | 'FAMILY_QUERY'           // Relational read over Family + Family Tree
+  | 'LOCATION_QUERY'         // Relational read over Places and Locations
+  | 'ROMANCE_QUERY'          // Grounded read over Dating and Romance
+  | 'PROJECT_QUERY'          // Grounded read over the Projects Book
+  | 'SKILL_QUERY'            // Grounded read over the Skills Book
+  | 'QUEST_QUERY'            // Grounded read over the Quest Log
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -115,6 +142,15 @@ class ModeRouterService {
       };
     }
 
+    // Wrong-book corrections must outrank group create / place query.
+    if (isEntityReclassifyWriteRequest(message)) {
+      return {
+        mode: 'ENTITY_RECLASSIFY_WRITE',
+        confidence: 0.97,
+        reasoning: 'Explicit entity reclassify / wrong-book correction detected',
+      };
+    }
+
     // Explicit "make a group" / roster-list for a new group — must outrank
     // CURRENT_STORY_CAST so "So far we have A, B, and C" actually persists.
     if (isOrganizationGroupWriteRequest(message)) {
@@ -125,6 +161,14 @@ class ModeRouterService {
       };
     }
 
+    if (isOrganizationGroupFollowUpRequest(message, conversationHistory)) {
+      return {
+        mode: 'ORGANIZATION_GROUP_WRITE',
+        confidence: 0.94,
+        reasoning: 'Follow-up to a recent organization/group roster write',
+      };
+    }
+
     // Bare reply to "what do you want to name it?" (e.g. "popular e-girls") —
     // no group/crew keyword, so isOrganizationGroupWriteRequest alone misses it.
     if (isReplyToGroupNamingPrompt(message, conversationHistory)) {
@@ -132,6 +176,54 @@ class ModeRouterService {
         mode: 'ORGANIZATION_GROUP_WRITE',
         confidence: 0.9,
         reasoning: 'Bare reply to a pending group-naming prompt',
+      };
+    }
+
+    if (isLocationWriteRequest(message)) {
+      return {
+        mode: 'LOCATION_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Places book write request detected',
+      };
+    }
+
+    if (isProjectWriteRequest(message)) {
+      return {
+        mode: 'PROJECT_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Projects book write request detected',
+      };
+    }
+
+    if (isSkillWriteRequest(message)) {
+      return {
+        mode: 'SKILL_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Skills book write request detected',
+      };
+    }
+
+    if (isQuestWriteRequest(message)) {
+      return {
+        mode: 'QUEST_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Quest Log write request detected',
+      };
+    }
+
+    if (isFamilyWriteRequest(message)) {
+      return {
+        mode: 'FAMILY_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Family Tree write request detected',
+      };
+    }
+
+    if (isRomanceWriteRequest(message)) {
+      return {
+        mode: 'ROMANCE_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Dating & Romance write request detected',
       };
     }
 
@@ -154,6 +246,72 @@ class ModeRouterService {
         mode: 'CHARACTER_BOOK_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit Character Book write request detected',
+      };
+    }
+
+    if (isSuggestionDismissWriteRequest(message)) {
+      return {
+        mode: 'SUGGESTION_DISMISS_WRITE',
+        confidence: 0.93,
+        reasoning: 'Explicit suggestion dismissal/correction request detected',
+      };
+    }
+
+    if (isOrganizationQueryRequest(message)) {
+      return {
+        mode: 'ORGANIZATION_QUERY',
+        confidence: 0.94,
+        reasoning: 'Relational Groups & Organizations Book query detected',
+      };
+    }
+
+    if (isFamilyQueryRequest(message)) {
+      return {
+        mode: 'FAMILY_QUERY',
+        confidence: 0.95,
+        reasoning: 'Relational Family and Family Tree query detected',
+      };
+    }
+
+    if (isLocationQueryRequest(message)) {
+      return {
+        mode: 'LOCATION_QUERY',
+        confidence: 0.95,
+        reasoning: 'Relational Places and Locations query detected',
+      };
+    }
+
+    // Explicit Quest Log nouns win over cross-domain status words such as
+    // "blocked", which can also describe a romantic connection.
+    if (isQuestQueryRequest(message)) {
+      return {
+        mode: 'QUEST_QUERY',
+        confidence: 0.96,
+        reasoning: 'Grounded Quest Log query detected',
+      };
+    }
+
+    if (isRomanceQueryRequest(message)) {
+      return {
+        mode: 'ROMANCE_QUERY',
+        confidence: 0.95,
+        reasoning: 'Grounded Dating and Romance query detected',
+      };
+    }
+
+    if (isProjectQueryRequest(message)) {
+      return {
+        mode: 'PROJECT_QUERY',
+        confidence: 0.95,
+        reasoning: 'Grounded Projects Book query detected',
+      };
+    }
+
+    if (isSkillQueryRequest(message)) {
+      return {
+        mode: 'SKILL_QUERY',
+        confidence: 0.95,
+        reasoning: 'Grounded Skills Book query detected',
       };
     }
 
@@ -534,8 +692,22 @@ Modes:
 5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
 6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
 8. CURRENT_STORY_CAST - Asking who's new vs. already-known in the CURRENT conversation/thread specifically: "who's new and returning in this story?", "who have I mentioned so far in this chat?". Scoped to this thread, not the whole life story. NOT for listing members of a group you are creating ("So far we have A, B, and C").
-9. CHARACTER_BOOK_WRITE - Explicit request to save/add people to the character book: "make sure they're all in my character book", "add these people to my character book".
-10. ORGANIZATION_GROUP_WRITE - Explicit request to create a group/crew/squad OR supply its roster: "make a group for that", "create a group for popular e-girls", "So far we have Stimkybun, Smeepsx, and Hell Fairy".
+9. CHARACTER_BOOK_WRITE - Explicit request to save/add/rename/delete people in the character book: "make sure they're all in my character book", "add Marcus to my character book", "delete the person Marcus".
+10. ORGANIZATION_GROUP_WRITE - Explicit request to create/delete a group/crew/squad OR supply its roster: "make a group for that", "create a group for underground artists", "delete the group Northwind Collective", "So far we have Stimkybun, Smeepsx, and Hell Fairy".
+10b. ENTITY_RECLASSIFY_WRITE - Wrong-book correction: "Popular E-Girls is a group, not a place", "move X to my Groups book", "X should be a project".
+10c. LOCATION_WRITE - Explicit Places create/rename/delete: "add Northwind Depot as a place", "delete the place X".
+10d. PROJECT_WRITE - Explicit Projects create/rename/delete: "add MemoVault as a project".
+10e. SKILL_WRITE - Explicit Skills create/rename/delete: "add Welding as a skill".
+10f. QUEST_WRITE - Explicit Quest Log create/rename/delete/status: "add Ship MemoVault as a quest", "mark the quest X as done".
+10g. FAMILY_WRITE - Explicit Family Tree kinship write: "mark Marcus as my cousin".
+10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
+11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
+12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".
+13. LOCATION_QUERY - Read-only query over Places and Locations: "which places did I visit with Marcus?", "show places linked to Vanguard Robotics", "which locations need coordinates?".
+14. ROMANCE_QUERY - Grounded query over Dating and Romance: "who am I currently dating?", "show my past relationships", "which romantic records need review?", "rank my evidence-backed connections by compatibility".
+15. PROJECT_QUERY - Grounded query over the Projects Book: "show my active software projects", "which projects did I finish in 2025?", "rank my projects by grounded importance".
+16. SKILL_QUERY - Grounded query over the Skills Book: "show my improving technical skills", "which skills do I use for Vanguard Robotics?", "rank my evidence-backed skills by proficiency".
+17. QUEST_QUERY - Grounded query over the Quest Log: "what quests am I currently working on?", "show blocked quests", "which quests are due soon?", "rank my quests by priority".
 
 Key rules:
 - When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
@@ -543,6 +715,12 @@ Key rules:
 - First-person sentences like "I thought X", "I felt Y", "I noticed Z" are NOT action logs — they are UNKNOWN (normal conversation).
 - ACTION_LOG requires an explicit command word: log, save, record, capture, store, remember, add to journal.
 - Listing people after "so far we have" / "members are" is ORGANIZATION_GROUP_WRITE, never CURRENT_STORY_CAST.
+- "X is a group, not a place" / "move X to Groups" is ENTITY_RECLASSIFY_WRITE, not ORGANIZATION_GROUP_WRITE or LOCATION_QUERY.
+- Questions that explicitly ask for a set of places or locations are LOCATION_QUERY; "what happened at X?" remains narrative recall.
+- Explicit lists, filters, or rankings over dating and romantic connections are ROMANCE_QUERY. Advice, feelings, and "what happened with X?" remain ordinary romantic conversation or narrative recall.
+- Explicit lists, filters, timelines, or rankings over projects are PROJECT_QUERY. "What happened while building X?" remains narrative recall.
+- Explicit lists, filters, growth checks, project associations, or rankings over skills are SKILL_QUERY. Advice about learning a new skill remains ordinary conversation.
+- Explicit lists, filters, progress checks, schedules, or rankings over quests are QUEST_QUERY. Asking for help completing a quest remains ordinary conversation.
 
 Respond with JSON:
 {
@@ -563,7 +741,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
@@ -629,6 +807,93 @@ Respond with JSON:
 
     return llm;
   }
+}
+
+export function isOrganizationQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  const hasGroupSubject =
+    /\b(?:groups?|organizations?|bands?|crews?|clubs?|communities|companies|teams?)\b/i.test(text);
+  if (!hasGroupSubject) return false;
+  return (
+    /\b(?:which|what|who|show|find|list|how many)\b/i.test(text)
+    && /\b(?:am i in|i belong|part of|connected to|associated with|with|include|includes|including|mine|close to|their world|mentioned|unlinked|unresolved|active|inactive|at|located|based)\b/i.test(text)
+  );
+}
+
+export function isFamilyQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !/\b(?:family|family tree|relatives?|related|moms?|mothers?|dads?|fathers?|parents?|siblings?|sisters?|brothers?|grandparents?|grandmas?|grandpas?|aunts?|uncles?|cousins?|households?)\b/i.test(text)) {
+    return false;
+  }
+  return /\b(?:who|which|what|show|find|list|how many|how is)\b/i.test(text)
+    && /\b(?:my|related|side|branch|tree|family|household|lives|inferred|confirmed|review|card|closest|growing|inactive)\b/i.test(text);
+}
+
+export function isLocationQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !/\b(?:places?|locations?|venues?|cities|neighborhoods?|restaurants?|bars?|clubs?|parks?)\b/i.test(text)) {
+    return false;
+  }
+  return (
+    /\b(?:which|what|where|show|find|list|how many)\b/i.test(text) &&
+    /\b(?:i|my|visited|went|been|with|linked|associated|connected|organization|group|in|near|inside|within|coordinates|map|mentioned|unvisited|recent|review|most|frequent)\b/i.test(text)
+  );
+}
+
+export function isRomanceQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (
+    !text ||
+    !/\b(?:dating|romance|romantic|relationships?|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked)\b/i.test(text)
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:which|who|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
+    /\b(?:my|i|current|active|past|former|dated|dating|romantic|relationship|crush|situationship|no contact|ghosted|blocked|risk|flag|review|linked|compatibility|health|affection|intensity|attachment|evidence)\b/i.test(text)
+  );
+}
+
+export function isProjectQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !/\b(?:projects?|builds?|initiatives?|workstreams?)\b/i.test(text)) {
+    return false;
+  }
+  return (
+    /\b(?:which|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
+    /\b(?:my|active|current|paused|complete|completed|finished|abandoned|software|business|creative|fitness|education|career|hobby|tagged|started|ended|recent|important|importance|priority|review|missing)\b/i.test(text)
+  );
+}
+
+export function isSkillQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !/\b(?:skills?|capabilities|proficiencies)\b/i.test(text)) {
+    return false;
+  }
+  return (
+    /\b(?:which|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
+    /\b(?:my|active|inactive|technical|creative|physical|professional|practical|social|intellectual|emotional|artistic|paid|hobby|improving|stagnant|declining|practiced|level|proficiency|confidence|evidence|use|used|needed|required|project|job|review)\b/i.test(text)
+  );
+}
+
+export function isQuestQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !/\b(?:quests?|quest log|missions?)\b/i.test(text)) return false;
+  return (
+    /\b(?:which|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
+    /\b(?:my|active|current|working on|in progress|paused|completed|finished|abandoned|blocked|stuck|due|deadline|priority|important|progress|main|side|daily|recent|review)\b/i.test(text)
+  );
+}
+
+export function isSuggestionDismissWriteRequest(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const hasSuggestionWord = /\b(suggestion|suggested|detected|book)\b/.test(text);
+  const hasDismissVerb = /\b(dismiss|remove|delete|hide|suppress|reject|clear|drop)\b/.test(text);
+  const hasCorrectionPhrase =
+    /\b(not a|not an|wrong book|wrong type|bad extraction|noise|garbage|duplicate|already tracked|already have)\b/.test(text);
+  const hasBookDomain = /\b(place|location|character|person|project|skill|quest|goal)\b/.test(text);
+  return (hasDismissVerb && hasBookDomain) || (hasSuggestionWord && hasCorrectionPhrase && hasBookDomain);
 }
 
 export function isExplicitSubjectTimelineRequest(message: string): boolean {

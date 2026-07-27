@@ -12,6 +12,7 @@ import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { monetizationLabel, usageLabel } from '../../lib/skillProfile';
 import { getAvailableMockSkillSuggestions } from '../../mocks/skillSuggestions';
@@ -219,7 +220,10 @@ export const DetectedSkillSuggestions = ({
     }
   };
 
-  const handleDismiss = async (s: SkillSuggestion) => {
+  const handleDismiss = async (
+    s: SkillSuggestion,
+    reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
+  ) => {
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
@@ -233,6 +237,7 @@ export const DetectedSkillSuggestions = ({
         name: s.skill_name,
         suggestionId: s.id,
         sourceMessageId: s.source_message_id,
+        reason,
       });
     } catch {
       /* non-blocking */
@@ -343,14 +348,10 @@ export const DetectedSkillSuggestions = ({
                       isExiting ? 'animate-romantic-exit pointer-events-none' : ''
                     } ${isAdding ? 'ring-2 ring-primary/40 ring-offset-1 ring-offset-black/80' : ''}`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => void handleDismiss(s)}
-                      className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 h-5 w-5 sm:h-6 sm:w-6 flex items-center justify-center rounded text-white/30 hover:text-white/70 hover:bg-white/10"
-                      title="Dismiss"
-                    >
-                      <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    </button>
+                    <SuggestionDismissButton
+                      onDismiss={(reason) => handleDismiss(s, reason)}
+                      className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2"
+                    />
 
                     <div className="flex flex-wrap items-center gap-1 mb-1 sm:mb-1.5 pr-5 sm:pr-7">
                       <span className={`text-[8px] sm:text-[10px] font-mono px-1 sm:px-1.5 py-0.5 rounded border truncate max-w-full ${catColor(s.skill_category)}`}>
@@ -401,7 +402,7 @@ export const DetectedSkillSuggestions = ({
                       description={s.description}
                       evidence={quote}
                       disabled={adding === k}
-                      onReclassified={() => void handleDismiss(s)}
+                      onReclassified={() => void handleDismiss(s, 'wrong_book')}
                       className="hidden sm:block mb-2"
                     />
 

@@ -12,7 +12,9 @@ import {
   useGetQuestAnalyticsQuery,
   useGetQuestHistoryQuery,
   useGetQuestSuggestionsQuery,
+  useQueryQuestsMutation,
   useCreateQuestMutation,
+  useMaterializeQuestSuggestionMutation,
   useUpdateQuestMutation,
   useDeleteQuestMutation,
   useStartQuestMutation,
@@ -422,6 +424,51 @@ export function useCreateQuest() {
 
   return { mutateAsync, isPending: createState.isLoading, error };
 }
+
+/**
+ * Materialize a reviewed detected suggestion and confirm its source row.
+ */
+export function useMaterializeQuestSuggestion() {
+  const { useMock } = useQuestMockRuntime();
+  const [materialize, state] = useMaterializeQuestSuggestionMutation();
+  const mutateAsync = useCallback(async (suggestion: QuestSuggestion) => {
+    if (useMock) {
+      const now = new Date().toISOString();
+      const quest: Quest = {
+        id: `quest-mock-${Date.now()}`,
+        title: suggestion.title,
+        description: suggestion.description,
+        quest_type: normalizeQuestType(suggestion.quest_type),
+        priority: clampQuestScore(suggestion.priority),
+        importance: clampQuestScore(suggestion.importance),
+        impact: clampQuestScore(suggestion.impact),
+        status: 'active',
+        progress_percentage: 0,
+        source: 'suggested',
+        category: suggestion.category,
+        created_at: now,
+        updated_at: now,
+        last_activity_at: now,
+      };
+      mockDataService.mutate.questSuggestions.remove({ id: suggestion.id, title: suggestion.title });
+      return mockDataService.mutate.quests.create(quest);
+    }
+    const result = await materialize({
+      title: suggestion.title,
+      description: suggestion.description,
+      quest_type: suggestion.quest_type,
+      priority: suggestion.priority,
+      importance: suggestion.importance,
+      impact: suggestion.impact,
+      category: suggestion.category,
+      suggestion_id: suggestion.id,
+    }).unwrap();
+    return result.quest;
+  }, [materialize, useMock]);
+  return { mutateAsync, isPending: state.isLoading, error: mutationErrorMessage(state.error) };
+}
+
+export { useQueryQuestsMutation };
 
 /**
  * Hook to update a quest

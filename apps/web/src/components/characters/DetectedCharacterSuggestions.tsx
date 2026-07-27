@@ -12,6 +12,7 @@ import { apiCache } from '../../lib/cache';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
@@ -328,7 +329,10 @@ export const DetectedCharacterSuggestions = ({
     }
   };
 
-  const handleDismiss = async (s: CharacterSuggestion) => {
+  const handleDismiss = async (
+    s: CharacterSuggestion,
+    reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
+  ) => {
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     if (showDemo) return;
@@ -337,6 +341,7 @@ export const DetectedCharacterSuggestions = ({
         bookDomain: 'characters',
         name: s.name,
         suggestionId: s.id,
+        reason,
       });
     } catch {
       /* non-blocking */
@@ -572,7 +577,7 @@ export const DetectedCharacterSuggestions = ({
                         alternatives={s.alternative_categories}
                         context={s.context}
                         disabled={isAdding || isExiting}
-                        onReclassified={() => void handleDismiss(s)}
+                        onReclassified={() => void handleDismiss(s, 'wrong_book')}
                       />
                       <div className="mt-auto flex items-center gap-1">
                         <button
@@ -594,14 +599,7 @@ export const DetectedCharacterSuggestions = ({
                             </>
                           )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDismiss(s)}
-                          className="rounded p-1 text-white/30 hover:bg-white/10 hover:text-white/70"
-                          aria-label="Dismiss"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                        <SuggestionDismissButton onDismiss={(reason) => handleDismiss(s, reason)} />
                       </div>
                     </>
                   ) : (
@@ -628,7 +626,7 @@ export const DetectedCharacterSuggestions = ({
                       alternatives={s.alternative_categories}
                       context={s.context}
                       disabled={isAdding || isExiting}
-                      onReclassified={() => void handleDismiss(s)}
+                      onReclassified={() => void handleDismiss(s, 'wrong_book')}
                       className="mt-1"
                     />
                   </div>
@@ -652,14 +650,7 @@ export const DetectedCharacterSuggestions = ({
                         </>
                       )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDismiss(s)}
-                      className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10"
-                      aria-label="Dismiss"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <SuggestionDismissButton onDismiss={(reason) => handleDismiss(s, reason)} />
                   </div>
                     </>
                   )}

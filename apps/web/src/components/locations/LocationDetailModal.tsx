@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2, Building2, Plus, Search, Loader2, Pencil } from 'lucide-react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, TrendingUp, TrendingDown, Minus, MessageSquare, Trash2, Building2, Plus, Search, Loader2, Pencil, ChevronDown, User, Award, Briefcase } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -14,6 +14,7 @@ import {
 } from '../../lib/hydrateBookEntity';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
+import { Tooltip } from '../ui/tooltip';
 import type { LocationProfile } from './LocationProfileCard';
 // Re-export so consumers (e.g. CharacterDetailModal) can import the type from here.
 export type { LocationProfile } from './LocationProfileCard';
@@ -121,6 +122,112 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'delete',    label: 'Delete',      shortLabel: 'Delete',   icon: Trash2 },
 ];
 
+/**
+ * Entity types a misfiled place can be moved to. Target books apply their own
+ * admission rules server-side (see reclassifyLocationService).
+ */
+const RECLASSIFY_OPTIONS: Array<{ value: string; label: string; hint: string; icon: typeof FileText }> = [
+  { value: 'organization', label: 'Group / Organization', hint: 'Bands, teams, companies, communities', icon: Building2 },
+  { value: 'character',    label: 'Person / Character',   hint: 'A person who belongs in Characters',  icon: User },
+  { value: 'project',      label: 'Project',              hint: 'Checked against Projects rules first', icon: Briefcase },
+  { value: 'skill',        label: 'Skill',                hint: 'An ability or craft',                  icon: Award },
+  { value: 'event',        label: 'Event',                hint: 'A happening — moves to the Events book', icon: Calendar },
+];
+
+const EntityTypeSwitcher = ({
+  busy,
+  success,
+  error,
+  target,
+  onSelect,
+  onOpenMenu,
+}: {
+  busy: boolean;
+  success: boolean;
+  error: string | null;
+  target: string;
+  onSelect: (value: string) => void;
+  onOpenMenu: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  const successLabel = RECLASSIFY_OPTIONS.find((o) => o.value === target)?.label ?? target;
+
+  return (
+    <div className="relative shrink-0" ref={menuRef}>
+      <Tooltip content="Wrong book? Click to move this place to Group, Person, Project, Skill, or Event. Existing matches are merged.">
+        <button
+          type="button"
+          onClick={() => { setOpen((v) => !v); onOpenMenu(); }}
+          disabled={busy || success}
+          aria-haspopup="menu"
+          aria-expanded={open ? 'true' : 'false'}
+          aria-label="Reclassify entity type (if in wrong book)"
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-60 shadow-sm ${
+            success
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+              : 'bg-white/10 text-white/80 border-white/20 hover:bg-white/15 hover:text-white hover:border-white/30'
+          }`}
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}
+          {success ? `Moved to ${successLabel} ✓` : 'Place'}
+          {!success && <ChevronDown className="h-3 w-3 opacity-70" />}
+        </button>
+      </Tooltip>
+      {open && !success && (
+        <div
+          role="menu"
+          aria-label="Change entity type"
+          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-white/15 bg-zinc-900/95 backdrop-blur-sm shadow-xl p-1"
+        >
+          <p className="px-2 pt-1.5 pb-2 text-[9px] text-white/50">
+            Move to the correct book. If it already exists there, we merge.
+          </p>
+          {RECLASSIFY_OPTIONS.map((option) => {
+            const OptionIcon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onSelect(option.value); }}
+                disabled={busy}
+                className="w-full flex items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                <OptionIcon className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-white/50" />
+                <span className="min-w-0">
+                  <span className="block text-xs text-white/85 font-medium">{option.label}</span>
+                  <span className="block text-[10px] text-white/40 leading-tight">{option.hint}</span>
+                </span>
+                {busy && target === option.value && (
+                  <Loader2 className="h-3 w-3 ml-auto mt-1 animate-spin text-white/60" />
+                )}
+              </button>
+            );
+          })}
+          {error && (
+            <p className="px-2 py-1.5 text-[10px] text-red-400 border-t border-white/10 mt-1">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const LocationDetailModal = ({
   location: locationProp,
   allLocations = [],
@@ -139,6 +246,49 @@ export const LocationDetailModal = ({
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteReason, setDeleteReason] = useState('wrong_place_or_not_relevant');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [reclassifyTarget, setReclassifyTarget] = useState('');
+  const [reclassifyBusy, setReclassifyBusy] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState<string | null>(null);
+  const [reclassifySuccess, setReclassifySuccess] = useState(false);
+
+  const handleReclassify = async (target: string) => {
+    if (!target || reclassifyBusy || reclassifySuccess || !location.id) return;
+    setReclassifyTarget(target);
+    setReclassifyBusy(true);
+    setReclassifyError(null);
+    try {
+      if (isMockDataEnabled) {
+        setReclassifySuccess(true);
+        onLocationDeleted?.(location.id);
+        setTimeout(() => onClose(), 600);
+        return;
+      }
+      const result = await fetchJson<{
+        success: boolean;
+        reclassified_to: string;
+        target?: { mergedIntoExisting?: boolean; targetName?: string };
+        error?: string;
+      }>(`/api/locations/${location.id}/reclassify`, {
+        method: 'POST',
+        body: JSON.stringify({ targetDomain: target }),
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to reclassify place');
+      }
+      setReclassifySuccess(true);
+      apiCache.deletePattern(/\/api\/(locations|organizations|characters|projects|skills|knowledge|conversation|counts|books)/);
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', {
+        detail: { ids: [location.id], deleted: true, reclassified_to: target },
+      }));
+      onLocationDeleted?.(location.id);
+      setTimeout(() => onClose(), 600);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to reclassify place';
+      setReclassifyError(message);
+    } finally {
+      setReclassifyBusy(false);
+    }
+  };
 
   const handleDeleteLocation = async () => {
     if (deleting || !location.id) return;
@@ -173,6 +323,10 @@ export const LocationDetailModal = ({
     setDeleteConfirmText('');
     setDeleteReason('wrong_place_or_not_relevant');
     setDeleteError(null);
+    setReclassifyTarget('');
+    setReclassifyBusy(false);
+    setReclassifyError(null);
+    setReclassifySuccess(false);
   }, [locationProp.id]);
 
   useEffect(() => {
@@ -864,6 +1018,16 @@ export const LocationDetailModal = ({
                   className="block truncate text-base font-bold text-white"
                   inputClassName="min-w-0 w-full rounded-md border border-white/20 bg-black/60 px-2 py-1 text-base font-bold text-white outline-none focus:border-teal-400"
                 />
+                <div className="mt-1.5">
+                  <EntityTypeSwitcher
+                    busy={reclassifyBusy}
+                    success={reclassifySuccess}
+                    error={reclassifyError}
+                    target={reclassifyTarget}
+                    onSelect={(value) => void handleReclassify(value)}
+                    onOpenMenu={() => setReclassifyError(null)}
+                  />
+                </div>
                 <p className="text-[11px] text-white/45 truncate mt-0.5">
                   {[placeType ? formatPlaceType(placeType) : location.type?.replace(/_/g, ' '), `${location.visitCount} visits`]
                     .filter(Boolean)
@@ -894,6 +1058,14 @@ export const LocationDetailModal = ({
               inputClassName="min-w-0 rounded-md border border-white/20 bg-black/60 px-2 py-1 text-lg font-bold text-white outline-none focus:border-teal-400"
             />
             <div className="flex flex-wrap items-center gap-3 mt-1">
+              <EntityTypeSwitcher
+                busy={reclassifyBusy}
+                success={reclassifySuccess}
+                error={reclassifyError}
+                target={reclassifyTarget}
+                onSelect={(value) => void handleReclassify(value)}
+                onOpenMenu={() => setReclassifyError(null)}
+              />
               {placeType && (
                 <span className="text-xs text-teal-300/80">{formatPlaceType(placeType)}</span>
               )}
@@ -1882,6 +2054,49 @@ export const LocationDetailModal = ({
           {/* ── DELETE ── */}
           {activeTab === 'delete' && (
             <div className="space-y-4">
+              <div className="rounded-2xl border border-teal-500/25 bg-teal-950/20 p-4 sm:p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-teal-500/30 bg-teal-500/10">
+                    <Building2 className="h-4 w-4 text-teal-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-white">Wrong book?</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-white/60">
+                      Move this card to Group, Person, Project, Skill, or Event instead of deleting it. If a match already exists in that book, we merge aliases and description into it.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {RECLASSIFY_OPTIONS.map((option) => {
+                    const OptionIcon = option.icon;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={reclassifyBusy || reclassifySuccess || isEphemeralEntityId(location.id)}
+                        onClick={() => void handleReclassify(option.value)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/[0.08] disabled:opacity-50"
+                      >
+                        {reclassifyBusy && reclassifyTarget === option.value ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <OptionIcon className="h-3.5 w-3.5 text-white/50" />
+                        )}
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {reclassifySuccess && (
+                  <p className="text-xs text-emerald-300">
+                    Moved to {RECLASSIFY_OPTIONS.find((o) => o.value === reclassifyTarget)?.label ?? reclassifyTarget}.
+                  </p>
+                )}
+                {reclassifyError && (
+                  <p className="text-xs text-red-300">{reclassifyError}</p>
+                )}
+              </div>
+
               <div className="rounded-2xl border border-red-500/25 bg-red-950/20 p-4 sm:p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10">

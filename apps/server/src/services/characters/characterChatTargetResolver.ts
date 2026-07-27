@@ -13,7 +13,19 @@ export function resolveFocusedCharacter(
   composerEntities?: ComposerEntityRef[],
 ): CharacterChatFocus | null {
   if (entityContext?.type === 'CHARACTER' && entityContext.id) {
-    return { characterId: entityContext.id, source: 'entity_context' };
+    const matchingComposer = (composerEntities ?? []).find(
+      (entity) => entity.type === 'character' && entity.id === entityContext.id,
+    );
+    const matchingFocus =
+      chatFocus?.entityType === 'character' && chatFocus.entityId === entityContext.id
+        ? chatFocus
+        : undefined;
+    const characterName = matchingComposer?.name ?? matchingFocus?.entityName;
+    return {
+      characterId: entityContext.id,
+      ...(characterName ? { characterName } : {}),
+      source: 'entity_context',
+    };
   }
   if (chatFocus?.entityType === 'character' && chatFocus.entityId) {
     return {

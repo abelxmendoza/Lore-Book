@@ -310,7 +310,7 @@ class ProjectSuggestionService {
   async rejectSuggestion(
     userId: string,
     suggestionId: string,
-    opts?: { threadId?: string | null }
+    opts?: { threadId?: string | null; reason?: import('../suggestionDismissalService').DismissSuggestionReason }
   ) {
     const { data: row } = await supabaseAdmin
       .from('project_suggestions')
@@ -326,6 +326,7 @@ class ProjectSuggestionService {
       sourceMessageId: row.source_message_id,
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {
@@ -344,7 +345,12 @@ class ProjectSuggestionService {
   async rejectByName(
     userId: string,
     name: string,
-    opts?: { threadId?: string | null; sourceMessageId?: string | null; suggestionId?: string }
+    opts?: {
+      threadId?: string | null;
+      sourceMessageId?: string | null;
+      suggestionId?: string;
+      reason?: import('../suggestionDismissalService').DismissSuggestionReason;
+    }
   ) {
     const key = normalizeProjectName(name);
     const updateTime = new Date().toISOString();
@@ -361,6 +367,7 @@ class ProjectSuggestionService {
       sourceMessageId: opts?.sourceMessageId ?? existing?.source_message_id,
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {

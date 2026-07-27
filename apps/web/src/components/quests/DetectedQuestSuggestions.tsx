@@ -4,18 +4,18 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
+import { Sparkles, Plus, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useToast } from '../ui/toast';
-import { useCreateQuest, useQuestSuggestions } from '../../hooks/useQuests';
+import { useMaterializeQuestSuggestion, useQuestSuggestions } from '../../hooks/useQuests';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { mockDataService } from '../../services/mockDataService';
 import { RescanChatsButton } from '../suggestions/RescanChatsButton';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
@@ -83,7 +83,7 @@ export function DetectedQuestSuggestions({
     notify: { success, error },
     showToast: false,
   });
-  const createQuest = useCreateQuest();
+  const materializeSuggestion = useMaterializeQuestSuggestion();
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
@@ -134,21 +134,7 @@ export function DetectedQuestSuggestions({
     }
     setAdding(key);
     try {
-      await createQuest.mutateAsync({
-        title: suggestion.title,
-        description: suggestion.description,
-        quest_type: suggestion.quest_type,
-        priority: suggestion.priority ?? 5,
-        importance: suggestion.importance ?? 5,
-        impact: suggestion.impact ?? 5,
-        source: 'suggested',
-      });
-      if (showDemo) {
-        mockDataService.mutate.questSuggestions.remove({
-          id: suggestion.id,
-          title: suggestion.title,
-        });
-      }
+      await materializeSuggestion.mutateAsync(suggestion);
       setDismissed((prev) => new Set([...prev, key]));
       success(`"${suggestion.title}" is now in your quest log.`);
       onQuestAdded?.();
@@ -167,7 +153,10 @@ export function DetectedQuestSuggestions({
     copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDismiss = async (suggestion: QuestSuggestion) => {
+  const handleDismiss = async (
+    suggestion: QuestSuggestion,
+    reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
+  ) => {
     const key = suggestionKey(suggestion);
     setDismissed((prev) => new Set([...prev, key]));
     if (showDemo) return;
@@ -177,6 +166,7 @@ export function DetectedQuestSuggestions({
         name: suggestion.title,
         suggestionId: suggestion.id,
         sourceMessageId: suggestion.source_message_id,
+        reason,
       });
     } catch {
       /* non-blocking */
@@ -351,7 +341,7 @@ export function DetectedQuestSuggestions({
                           description={suggestion.description}
                           evidence={suggestion.reasoning}
                           disabled={isAdding}
-                          onReclassified={() => void handleDismiss(suggestion)}
+                          onReclassified={() => void handleDismiss(suggestion, 'wrong_book')}
                           className="mt-1"
                         />
                       </div>
@@ -369,16 +359,10 @@ export function DetectedQuestSuggestions({
                             {isAdding ? '…' : <Plus className="h-3 w-3" />}
                           </Button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => void handleDismiss(suggestion)}
-                          className="rounded px-1.5 py-1 text-[9px] text-white/45 hover:text-white/75 hover:bg-white/5"
-                          aria-label="Not a goal"
-                          title="Not a goal — LoreBook will remember this correction"
-                        >
-                          <span className="hidden sm:inline">Not a goal</span>
-                          <X className="h-3 w-3 sm:hidden" />
-                        </button>
+                        <SuggestionDismissButton
+                          onDismiss={(reason) => handleDismiss(suggestion, reason)}
+                          buttonLabel="Not a goal"
+                        />
                       </div>
                     </article>
                   );

@@ -31,6 +31,17 @@ export function evaluateQuestLogPromotionStatus(
     return totalMentions >= 1 ? 'suggested_quest_log_item' : 'candidate';
   }
 
+  // A direct, high-confidence statement of active/planned work is sufficient
+  // evidence for the review queue. Repetition is still required for weaker
+  // mentions and ambient habits.
+  if (
+    ['quest', 'goal', 'task'].includes(candidate.itemType) &&
+    ['active', 'planned'].includes(candidate.context.statusHint ?? '') &&
+    candidate.confidence >= 0.87
+  ) {
+    return 'suggested_quest_log_item';
+  }
+
   if (totalMentions >= 3 && candidate.confidence >= 0.85) return 'suggested_quest_log_item';
   if (totalMentions >= 2 && (hasProject || candidate.context.lifeArea)) return 'suggested_quest_log_item';
   if (totalMentions >= 2 || candidate.confidence >= 0.88) return 'candidate';

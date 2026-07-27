@@ -198,7 +198,16 @@ class EntityLearningService {
         phrase: input.name,
         normalizedPhrase: normalizedName,
         strength,
-        reason: input.result?.isPermanent ? 'permanent_suggestion_suppression' : 'user_dismissed_suggestion',
+        reason:
+          input.result?.reason === 'wrong_book'
+            ? 'user_marked_wrong_book'
+            : input.result?.reason === 'duplicate'
+              ? 'user_marked_duplicate'
+              : input.result?.reason === 'noise'
+                ? 'user_marked_noise'
+                : input.result?.isPermanent
+                  ? 'permanent_suggestion_suppression'
+                  : 'user_dismissed_suggestion',
       },
     ];
 
@@ -218,6 +227,7 @@ class EntityLearningService {
       metadata: {
         learning_event: true,
         operation_type: 'dismiss',
+        dismiss_reason: input.result?.reason ?? null,
         sourceSuggestionId: input.sourceSuggestionId ?? null,
         sourceMessageId: input.sourceMessageId ?? null,
         lessons,

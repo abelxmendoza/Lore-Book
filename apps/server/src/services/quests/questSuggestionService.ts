@@ -296,7 +296,7 @@ class QuestSuggestionService {
   async rejectSuggestion(
     userId: string,
     suggestionId: string,
-    opts?: { threadId?: string | null }
+    opts?: { threadId?: string | null; reason?: import('../suggestionDismissalService').DismissSuggestionReason }
   ) {
     const { data: row } = await supabaseAdmin
       .from('quest_suggestions')
@@ -312,6 +312,7 @@ class QuestSuggestionService {
       sourceMessageId: row.source_message_id,
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {
@@ -330,7 +331,12 @@ class QuestSuggestionService {
   async rejectByTitle(
     userId: string,
     title: string,
-    opts?: { threadId?: string | null; sourceMessageId?: string | null; suggestionId?: string }
+    opts?: {
+      threadId?: string | null;
+      sourceMessageId?: string | null;
+      suggestionId?: string;
+      reason?: import('../suggestionDismissalService').DismissSuggestionReason;
+    }
   ) {
     const { data: existing } = await supabaseAdmin
       .from('quest_suggestions')
@@ -344,6 +350,7 @@ class QuestSuggestionService {
       sourceMessageId: opts?.sourceMessageId ?? existing?.source_message_id,
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {

@@ -214,6 +214,7 @@ class LocationSuggestionService {
     options?: { skipAi?: boolean; rescan?: boolean }
   ): Promise<LocationSuggestion[]> {
     const qualityCtx = await buildEntityQualityContext(userId);
+    const learning = await entityLearningService.getUserLearningContext(userId);
     const suggestions: LocationSuggestion[] = [];
     const seen = new Set<string>();
 
@@ -242,6 +243,7 @@ class LocationSuggestionService {
       const safeName = gated.name;
       const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || seen.has(key)) return;
+      if (learning.suppressedByDomain.has(`locations:${key}`)) return;
       const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
       if (match.status === 'existing') return;
       seen.add(key);

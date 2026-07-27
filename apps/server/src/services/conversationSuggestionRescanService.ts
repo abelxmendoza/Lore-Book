@@ -66,17 +66,17 @@ export type SuggestionRescanSummary = {
   truthState?: TruthStateRunSummary;
 };
 
-async function loadRecentCorpus(userId: string): Promise<Array<{ content: string; date: string }>> {
+async function loadRecentCorpus(userId: string): Promise<Array<{ id: string; content: string; date: string }>> {
   const [entriesRes, messagesRes] = await Promise.all([
     supabaseAdmin
       .from('journal_entries')
-      .select('content, date')
+      .select('id, content, date')
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(40),
     supabaseAdmin
       .from('chat_messages')
-      .select('content, created_at')
+      .select('id, content, created_at')
       .eq('user_id', userId)
       .eq('role', 'user')
       .order('created_at', { ascending: false })
@@ -84,11 +84,13 @@ async function loadRecentCorpus(userId: string): Promise<Array<{ content: string
   ]);
 
   return [
-    ...((messagesRes.data as Array<{ content: string; created_at: string }> | null) ?? []).map((m) => ({
+    ...((messagesRes.data as Array<{ id: string; content: string; created_at: string }> | null) ?? []).map((m) => ({
+      id: m.id,
       content: m.content,
       date: m.created_at,
     })),
-    ...((entriesRes.data as Array<{ content: string; date: string }> | null) ?? []).map((e) => ({
+    ...((entriesRes.data as Array<{ id: string; content: string; date: string }> | null) ?? []).map((e) => ({
+      id: e.id,
       content: e.content,
       date: e.date,
     })),
@@ -271,8 +273,8 @@ class ConversationSuggestionRescanService {
         './questLog/inference/questLogInferenceIntegrationService'
       );
       const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `quest-rescan-${i}`,
+      const episodeRows = episodes.map((e) => ({
+        id: e.id,
         text: e.content,
       }));
       questLogInference = await rescanQuestLogInference(userId, episodeRows);

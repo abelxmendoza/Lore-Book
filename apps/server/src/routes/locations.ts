@@ -15,6 +15,8 @@ import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { normalizeNameKey, normalizeDuplicateKey, namesOverlapByContainment } from '../utils/nameNormalization';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { locationQueryRequestSchema } from '@lorebook/api-contracts';
+import { queryLocationsForUser } from '../services/locations/locationQueryService';
 
 const router = Router();
 
@@ -199,6 +201,24 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const locations = await locationService.listLocations(userId);
   res.json({ locations });
 });
+
+router.post(
+  '/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = locationQueryRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid location query',
+        details: parsed.error.flatten(),
+      });
+      return;
+    }
+    const result = await queryLocationsForUser(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  }),
+);
 
 router.get(
   '/audit',
@@ -499,6 +519,94 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ error, locationId }, 'Failed to delete location');
     res.status(500).json({ success: false, error: 'Failed to delete location' });
+  }
+});
+
+/**
+ * Reclassify / switch entity type for a place that ended up in the wrong book.
+ * E.g. a group that was created as a location. Creates-or-merges into the
+ * target book, then soft-hides the place card.
+ */
+router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const locationId = String(req.params.id);
+    const { targetDomain } = req.body || {};
+    const {
+      isLocationReclassifyTarget,
+      validateLocationReclassification,
+      reclassifyLocationService,
+    } = await import('../services/locations/reclassifyLocationService');
+
+    if (!isLocationReclassifyTarget(targetDomain)) {
+      return res.status(400).json({
+        error: 'targetDomain required (organization, character, project, skill, event)',
+      });
+    }
+
+    const canonicalId =
+      (await locationMergeService.resolveCanonicalLocationId(userId, locationId)) ?? locationId;
+    const { data: existing, error: checkErr } = await supabaseAdmin
+      .from('locations')
+      .select('id, name, metadata')
+      .eq('id', canonicalId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkErr || !existing) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    const meta = (existing.metadata as Record<string, unknown> | null) ?? null;
+    const descriptionFromMeta = [
+      typeof meta?.description === 'string' ? meta.description : null,
+      typeof meta?.summary === 'string' ? meta.summary : null,
+      typeof meta?.context === 'string' ? meta.context : null,
+    ].find((v) => v && v.trim().length > 0) ?? null;
+
+    const context = [descriptionFromMeta, meta?.context].filter(Boolean).join(' ');
+    const validation = validateLocationReclassification(existing.name, context, targetDomain);
+    if (!validation.allowed) {
+      return res.status(422).json({
+        error: validation.reason ?? `"${existing.name}" does not pass the ${targetDomain} book's rules.`,
+        rulesFired: validation.rulesFired ?? [],
+      });
+    }
+
+    const locationRecord = {
+      id: existing.id as string,
+      name: existing.name as string,
+      description: descriptionFromMeta,
+      metadata: meta,
+    };
+
+    const outcome = await reclassifyLocationService.performReclassification(
+      userId,
+      locationRecord,
+      targetDomain,
+    );
+    await reclassifyLocationService.archiveSourceLocation(userId, locationRecord, outcome);
+
+    void entityLearningService.recordDeletionLearning({
+      userId,
+      domain: 'locations',
+      entityId: locationRecord.id,
+      name: locationRecord.name,
+      aliases: Array.isArray(locationRecord.metadata?.aliases)
+        ? (locationRecord.metadata!.aliases as string[])
+        : [],
+      reason: `reclassified_to_${targetDomain}`,
+    });
+
+    res.json({
+      success: true,
+      reclassified_to: targetDomain,
+      target: outcome,
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reclassify location');
+    const message = error instanceof Error ? error.message : 'Failed to reclassify location';
+    res.status(500).json({ error: message });
   }
 });
 

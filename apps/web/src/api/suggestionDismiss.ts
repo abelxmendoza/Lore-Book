@@ -7,7 +7,14 @@ export type DismissSuggestionInput = {
   suggestionId?: string;
   sourceMessageId?: string | null;
   threadId?: string | null;
+  reason?: DismissSuggestionReason;
 };
+
+export type DismissSuggestionReason =
+  | 'not_entity'
+  | 'wrong_book'
+  | 'duplicate'
+  | 'noise';
 
 export type DismissSuggestionResult = {
   success: boolean;
@@ -16,6 +23,7 @@ export type DismissSuggestionResult = {
   remaining_until_permanent: number;
   thread_id?: string | null;
   normalized_name?: string;
+  reason?: DismissSuggestionReason;
 };
 
 export const suggestionDismissApi = {
@@ -28,6 +36,7 @@ export const suggestionDismissApi = {
         suggestion_id: input.suggestionId,
         source_message_id: input.sourceMessageId ?? undefined,
         thread_id: input.threadId ?? undefined,
+        reason: input.reason ?? undefined,
       }),
     });
   },

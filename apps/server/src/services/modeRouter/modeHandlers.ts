@@ -31,6 +31,8 @@ class ModeHandlers {
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
       continuityContext?: string;
       threadId?: string;
+      focusCharacterId?: string;
+      focusCharacterName?: string;
     }
   ): Promise<ModeHandlerResponse> {
     switch (mode) {
@@ -60,6 +62,51 @@ class ModeHandlers {
 
       case 'ORGANIZATION_GROUP_WRITE':
         return await this.handleOrganizationGroupWrite(userId, message, options);
+
+      case 'ENTITY_RECLASSIFY_WRITE':
+        return await this.handleEntityReclassifyWrite(userId, message);
+
+      case 'LOCATION_WRITE':
+        return await this.handleLocationWrite(userId, message);
+
+      case 'PROJECT_WRITE':
+        return await this.handleProjectWrite(userId, message);
+
+      case 'SKILL_WRITE':
+        return await this.handleSkillWrite(userId, message);
+
+      case 'QUEST_WRITE':
+        return await this.handleQuestWrite(userId, message);
+
+      case 'FAMILY_WRITE':
+        return await this.handleFamilyWrite(userId, message);
+
+      case 'ROMANCE_WRITE':
+        return await this.handleRomanceWrite(userId, message);
+
+      case 'SUGGESTION_DISMISS_WRITE':
+        return await this.handleSuggestionDismissWrite(userId, message, options?.threadId);
+
+      case 'ORGANIZATION_QUERY':
+        return await this.handleOrganizationQuery(userId, message);
+
+      case 'FAMILY_QUERY':
+        return await this.handleFamilyQuery(userId, message);
+
+      case 'LOCATION_QUERY':
+        return await this.handleLocationQuery(userId, message);
+
+      case 'ROMANCE_QUERY':
+        return await this.handleRomanceQuery(userId, message);
+
+      case 'PROJECT_QUERY':
+        return await this.handleProjectQuery(userId, message);
+
+      case 'SKILL_QUERY':
+        return await this.handleSkillQuery(userId, message);
+
+      case 'QUEST_QUERY':
+        return await this.handleQuestQuery(userId, message);
 
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
@@ -191,6 +238,8 @@ class ModeHandlers {
     options?: {
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
       threadId?: string;
+      focusCharacterId?: string;
+      focusCharacterName?: string;
     },
   ): Promise<ModeHandlerResponse> {
     const threadId = options?.threadId;
@@ -217,9 +266,27 @@ class ModeHandlers {
       }
 
       const { writeOrganizationGroupFromChat } = await import('../chat/groupWriteService');
+      let focusCharacterName = options?.focusCharacterName?.trim() || null;
+      if (!focusCharacterName && options?.focusCharacterId) {
+        const { data, error } = await supabaseAdmin
+          .from('characters')
+          .select('name')
+          .eq('id', options.focusCharacterId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) {
+          logger.warn(
+            { err: error, userId, characterId: options.focusCharacterId },
+            'Could not resolve focused character for organization group write',
+          );
+        } else {
+          focusCharacterName = typeof data?.name === 'string' ? data.name : null;
+        }
+      }
       const result = await writeOrganizationGroupFromChat(userId, message, threadId, {
         conversationHistory: options?.conversationHistory,
         threadTitle,
+        focusCharacterName,
       });
       return {
         content: result.summary,
@@ -230,6 +297,7 @@ class ModeHandlers {
           organizationName: result.organizationName,
           groupCreated: result.created,
           groupRenamed: result.renamed,
+          groupDeleted: result.deleted === true,
           groupWriteMembers: result.members,
         },
       };
@@ -239,6 +307,274 @@ class ModeHandlers {
         content: 'Something went wrong creating or updating that group — want me to try again?',
         response_mode: 'SILENCE',
         confidence: 0.5,
+      };
+    }
+  }
+
+  /**
+   * Read-only relational query over the Groups & Organizations Book. The Book
+   * UI and chat both call the same compiler, so counts and explanations agree.
+   */
+  private async handleOrganizationQuery(
+    userId: string,
+    message: string,
+  ): Promise<ModeHandlerResponse> {
+    try {
+      const [{ organizationQueryRequestSchema }, { queryOrganizationsForUser }] =
+        await Promise.all([
+          import('@lorebook/api-contracts'),
+          import('../organizations/organizationQueryService'),
+        ]);
+      const request = organizationQueryRequestSchema.parse({ query: message, limit: 12 });
+      const result = await queryOrganizationsForUser(userId, request);
+
+      if (result.total === 0) {
+        return {
+          content: `I couldn't find a group or organization matching that in your Book. I checked names, aliases, rosters, locations, activity, and your relationship to each group.`,
+          response_mode: 'ORGANIZATION_QUERY',
+          confidence: 0.9,
+          metadata: { organizationQuery: result },
+        };
+      }
+
+      const lines = result.results.map((item) => {
+        const details = [
+          item.groupType.replaceAll('_', ' '),
+          `${item.memberCount} member${item.memberCount === 1 ? '' : 's'}`,
+          item.matchedReasons[0],
+        ].filter(Boolean);
+        return `- **${item.name}** — ${details.join(' · ')}`;
+      });
+      const shown = result.results.length;
+      const heading = result.total === 1
+        ? 'I found 1 matching group:'
+        : `I found ${result.total} matching groups${shown < result.total ? ` (showing ${shown})` : ''}:`;
+
+      return {
+        content: `${heading}\n\n${lines.join('\n')}`,
+        response_mode: 'ORGANIZATION_QUERY',
+        confidence: 0.94,
+        metadata: { organizationQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle organization query');
+      return {
+        content: 'Something went wrong querying your Groups & Organizations Book — want me to try again?',
+        response_mode: 'ORGANIZATION_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleFamilyQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ familyQueryRequestSchema }, { queryFamilyForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../kinship/familyQueryService'),
+      ]);
+      const request = familyQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryFamilyForUser(userId, request);
+      const householdLines = result.households.map((household) =>
+        `- **${household.name}** — ${household.residentCount} resident${household.residentCount === 1 ? '' : 's'}${household.headOfHousehold ? ` · head: ${household.headOfHousehold}` : ''}`);
+      const memberLines = result.results.map((member) => {
+        const details = [
+          member.relationLabel,
+          member.side ? `${member.side} side` : null,
+          member.matchedReasons[0],
+        ].filter(Boolean);
+        return `- **${member.name}** — ${details.join(' · ')}`;
+      });
+      const lines = [...householdLines, ...memberLines];
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching relative${result.total === 1 ? '' : 's'}${result.households.length ? ` and ${result.households.length} household${result.households.length === 1 ? '' : 's'}` : ''}:\n\n${lines.join('\n')}`
+          : `I couldn't find a family-tree member or household matching that. I checked kinship, branches, generations, households, evidence, trends, and review status.`,
+        response_mode: 'FAMILY_QUERY',
+        confidence: 0.94,
+        metadata: { familyQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle family query');
+      return {
+        content: 'Something went wrong querying your Family Book — want me to try again?',
+        response_mode: 'FAMILY_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleLocationQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ locationQueryRequestSchema }, { queryLocationsForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../locations/locationQueryService'),
+      ]);
+      const request = locationQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryLocationsForUser(userId, request);
+      const lines = result.results.map((location) => {
+        const details = [
+          location.type || location.kind.replaceAll('_', ' '),
+          `${location.visitCount} visit${location.visitCount === 1 ? '' : 's'}`,
+          `${location.mentionCount} mention${location.mentionCount === 1 ? '' : 's'}`,
+          location.matchedReasons[0],
+        ].filter(Boolean);
+        return `- **${location.name}** — ${details.join(' · ')}`;
+      });
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching place${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          : `I couldn't find a place matching that. I checked names, aliases, geography, visits, mentions, linked people and organizations, hierarchy, map data, and review status.`,
+        response_mode: 'LOCATION_QUERY',
+        confidence: 0.94,
+        metadata: { locationQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle location query');
+      return {
+        content: 'Something went wrong querying your Places Book — want me to try again?',
+        response_mode: 'LOCATION_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleRomanceQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ romanceQueryRequestSchema }, { queryRomanceForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../romance/romanceQueryService'),
+      ]);
+      const request = romanceQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryRomanceForUser(userId, request);
+      const lines = result.results.map((relationship) => {
+        const details = [
+          relationship.relationshipType.replaceAll('_', ' '),
+          relationship.status.replaceAll('_', ' '),
+          relationship.matchedReasons[0],
+          relationship.scoresEvidenceBacked ? null : 'scores still need evidence',
+        ].filter(Boolean);
+        return `- **${relationship.personName}** — ${details.join(' · ')}`;
+      });
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching romantic connection${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          : `I couldn't find a grounded Dating & Romance record matching that. I checked confirmed eligibility, relationship type, status, history, risk flags, evidence strength, and Character Book linkage.`,
+        response_mode: 'ROMANCE_QUERY',
+        confidence: 0.94,
+        metadata: { romanceQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle Dating and Romance query');
+      return {
+        content: 'Something went wrong querying Dating & Romance — want me to try again?',
+        response_mode: 'ROMANCE_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleProjectQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ projectQueryRequestSchema }, { queryProjectsForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../projects/projectQueryService'),
+      ]);
+      const request = projectQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryProjectsForUser(userId, request);
+      const lines = result.results.map((project) => {
+        const details = [
+          project.type.replaceAll('_', ' '),
+          project.status.replaceAll('_', ' '),
+          project.matchedReasons[0],
+          project.needsReview ? 'needs review' : null,
+        ].filter(Boolean);
+        return `- **${project.name}** — ${details.join(' · ')}`;
+      });
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching project${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          : `I couldn't find a grounded project matching that. I checked names, types, status, tags, dates, importance, linked records, and review status.`,
+        response_mode: 'PROJECT_QUERY',
+        confidence: 0.94,
+        metadata: { projectQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle Projects Book query');
+      return {
+        content: 'Something went wrong querying your Projects Book — want me to try again?',
+        response_mode: 'PROJECT_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleSkillQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ skillQueryRequestSchema }, { querySkillsForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../skills/skillQueryService'),
+      ]);
+      const request = skillQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await querySkillsForUser(userId, request);
+      const lines = result.results.map((skill) => {
+        const details = [
+          skill.category.replaceAll('_', ' '),
+          `level ${skill.currentLevel}`,
+          skill.matchedReasons[0],
+          skill.needsReview ? 'needs review' : null,
+        ].filter(Boolean);
+        return `- **${skill.name}** — ${details.join(' · ')}`;
+      });
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching skill${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          : `I couldn't find a grounded skill matching that. I checked category, activity, practice, growth, work use, related projects, confidence, and evidence.`,
+        response_mode: 'SKILL_QUERY',
+        confidence: 0.94,
+        metadata: { skillQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle Skills Book query');
+      return {
+        content: 'Something went wrong querying your Skills Book — want me to try again?',
+        response_mode: 'SKILL_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleQuestQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ questQueryRequestSchema }, { queryQuestsForUser }] = await Promise.all([
+        import('@lorebook/api-contracts'),
+        import('../quests/questQueryService'),
+      ]);
+      const request = questQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryQuestsForUser(userId, request);
+      const lines = result.results.map((quest) => {
+        const details = [
+          quest.type,
+          quest.status,
+          `${quest.progress}%`,
+          quest.matchedReasons[0],
+          quest.needsReview ? 'needs review' : null,
+        ].filter(Boolean);
+        return `- **${quest.title}** — ${details.join(' · ')}`;
+      });
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching quest${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          : `I couldn't find a grounded Quest Log item matching that. I checked status, type, priority, progress, deadlines, blockers, tags, and review state.`,
+        response_mode: 'QUEST_QUERY',
+        confidence: 0.95,
+        metadata: { questQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle Quest Log query');
+      return {
+        content: 'Something went wrong querying your Quest Log — want me to try again?',
+        response_mode: 'QUEST_QUERY_FAILED',
+        confidence: 0.4,
       };
     }
   }
@@ -260,13 +596,13 @@ class ModeHandlers {
       };
     }
     try {
-      const { writeCastToCharacterBook } = await import('../chat/characterBookWriteService');
-      const { results, summary } = await writeCastToCharacterBook(userId, message, threadId);
+      const { writeCharacterBookFromChat } = await import('../chat/characterBookWriteService');
+      const { results, summary, metadata } = await writeCharacterBookFromChat(userId, message, threadId);
       return {
         content: summary,
         response_mode: 'CHARACTER_BOOK_WRITE',
         confidence: 0.9,
-        metadata: { characterBookWriteResults: results },
+        metadata: { characterBookWriteResults: results, ...(metadata ?? {}) },
       };
     } catch (error) {
       logger.error({ err: error, userId, threadId }, 'Failed to handle character book write request');
@@ -274,6 +610,235 @@ class ModeHandlers {
         content: "Something went wrong saving that to your character book — want me to try again?",
         response_mode: 'SILENCE',
         confidence: 0.5,
+      };
+    }
+  }
+
+  private async handleEntityReclassifyWrite(
+    userId: string,
+    message: string,
+  ): Promise<ModeHandlerResponse> {
+    try {
+      const { writeEntityReclassifyFromChat } = await import('../chat/entityReclassifyWriteService');
+      const result = await writeEntityReclassifyFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'ENTITY_RECLASSIFY_WRITE',
+        confidence: 0.92,
+        metadata: {
+          reclassifiedFrom: result.sourceDomain,
+          reclassifiedSourceId: result.sourceId,
+          reclassifiedSourceName: result.sourceName,
+          reclassifiedTo: result.target,
+          reclassifiedTargetId: result.targetId,
+          reclassifiedTargetName: result.targetName,
+          reclassifiedMerged: result.mergedIntoExisting,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not reclassify that entity.';
+      logger.warn({ err: error, userId }, 'entity reclassify write failed');
+      return { content: msg, response_mode: 'ENTITY_RECLASSIFY_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleLocationWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeLocationFromChat } = await import('../chat/locationWriteService');
+      const result = await writeLocationFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'LOCATION_WRITE',
+        confidence: 0.92,
+        metadata: {
+          locationWriteOperation: result.operation,
+          locationId: result.locationId,
+          locationName: result.locationName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update Places.';
+      return { content: msg, response_mode: 'LOCATION_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleProjectWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeProjectFromChat } = await import('../chat/projectWriteService');
+      const result = await writeProjectFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'PROJECT_WRITE',
+        confidence: 0.92,
+        metadata: {
+          projectWriteOperation: result.operation,
+          projectId: result.projectId,
+          projectName: result.projectName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update Projects.';
+      return { content: msg, response_mode: 'PROJECT_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleSkillWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeSkillFromChat } = await import('../chat/skillWriteService');
+      const result = await writeSkillFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'SKILL_WRITE',
+        confidence: 0.92,
+        metadata: {
+          skillWriteOperation: result.operation,
+          skillId: result.skillId,
+          skillName: result.skillName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update Skills.';
+      return { content: msg, response_mode: 'SKILL_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleQuestWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeQuestFromChat } = await import('../chat/questWriteService');
+      const result = await writeQuestFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'QUEST_WRITE',
+        confidence: 0.92,
+        metadata: {
+          questWriteOperation: result.operation,
+          questId: result.questId,
+          questTitle: result.questTitle,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update the Quest Log.';
+      return { content: msg, response_mode: 'QUEST_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleFamilyWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeFamilyFromChat } = await import('../chat/familyWriteService');
+      const result = await writeFamilyFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'FAMILY_WRITE',
+        confidence: 0.92,
+        metadata: {
+          familyWriteOperation: result.operation,
+          characterId: result.characterId,
+          characterName: result.characterName,
+          relation: result.relation,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update Family.';
+      return { content: msg, response_mode: 'FAMILY_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleRomanceWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeRomanceFromChat } = await import('../chat/romanceWriteService');
+      const result = await writeRomanceFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'ROMANCE_WRITE',
+        confidence: 0.92,
+        metadata: {
+          romanceWriteOperation: result.operation,
+          relationshipId: result.relationshipId,
+          partnerName: result.partnerName,
+          romanceStatus: result.status,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update Dating & Romance.';
+      return { content: msg, response_mode: 'ROMANCE_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleSuggestionDismissWrite(
+    userId: string,
+    message: string,
+    threadId?: string,
+  ): Promise<ModeHandlerResponse> {
+    const parsed = parseSuggestionDismissRequest(message);
+    if (!parsed.domain || !parsed.name) {
+      return {
+        content:
+          'Tell me both the book and the suggestion name, like "dismiss the place suggestion South Coast Plaza" or "that project suggestion MemoVault is just noise."',
+        response_mode: 'SUGGESTION_DISMISS_WRITE',
+        confidence: 0.55,
+      };
+    }
+
+    try {
+      let result: import('../suggestionDismissalService').RecordDismissalResult | null = null;
+      if (parsed.domain === 'projects') {
+        const { projectSuggestionService } = await import('../projects/projectSuggestionService');
+        result = await projectSuggestionService.rejectByName(userId, parsed.name, { threadId, reason: parsed.reason });
+      } else if (parsed.domain === 'skills') {
+        const { skillSuggestionService } = await import('../skills/skillSuggestionService');
+        result = await skillSuggestionService.rejectByName(userId, parsed.name, { threadId, reason: parsed.reason });
+      } else if (parsed.domain === 'quests') {
+        const { questSuggestionService } = await import('../quests/questSuggestionService');
+        result = await questSuggestionService.rejectByTitle(userId, parsed.name, { threadId, reason: parsed.reason });
+      } else {
+        const { suggestionDismissalService } = await import('../suggestionDismissalService');
+        result = await suggestionDismissalService.recordDismissal(userId, parsed.domain, {
+          name: parsed.name,
+          threadId,
+          reason: parsed.reason,
+        });
+      }
+
+      const { entityLearningService } = await import('../entityLearningService');
+      void entityLearningService.recordSuggestionDismissalLearning({
+        userId,
+        domain: parsed.domain,
+        name: parsed.name,
+        result,
+      });
+
+      const domainLabel = parsed.domain === 'locations'
+        ? 'Places'
+        : parsed.domain === 'characters'
+          ? 'Character'
+          : parsed.domain === 'quests'
+            ? 'Quest'
+            : parsed.domain === 'skills'
+              ? 'Skills'
+              : 'Projects';
+      const permanence = result?.isPermanent
+        ? ` I’ll stop surfacing “${parsed.name}” in ${domainLabel}.`
+        : ` I’ve hidden it for now${result?.dismissCount ? ` (${result.dismissCount}/${5} dismissals)` : ''}.`;
+
+      return {
+        content: `Dismissed “${parsed.name}” from ${domainLabel} suggestions.${permanence}`,
+        response_mode: 'SUGGESTION_DISMISS_WRITE',
+        confidence: 0.9,
+        metadata: {
+          suggestionDismissal: {
+            domain: parsed.domain,
+            name: parsed.name,
+            reason: parsed.reason ?? null,
+            result,
+          },
+        },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId, message }, 'Failed to dismiss suggestion from chat');
+      return {
+        content: `Something went wrong dismissing “${parsed.name}” — want me to try again?`,
+        response_mode: 'SUGGESTION_DISMISS_WRITE',
+        confidence: 0.4,
       };
     }
   }
@@ -787,6 +1352,47 @@ class ModeHandlers {
       return null;
     }
   }
+}
+
+function parseSuggestionDismissRequest(message: string): {
+  domain?: import('../suggestionDismissalService').SuggestionDismissalDomain;
+  name?: string;
+  reason?: import('../suggestionDismissalService').DismissSuggestionReason;
+} {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  const domain = /\b(place|location)\b/.test(lower)
+    ? 'locations'
+    : /\b(character|person|people)\b/.test(lower)
+      ? 'characters'
+      : /\b(project)\b/.test(lower)
+        ? 'projects'
+        : /\b(skill)\b/.test(lower)
+          ? 'skills'
+          : /\b(quest|goal)\b/.test(lower)
+            ? 'quests'
+            : undefined;
+
+  const quoted = text.match(/["“”']([^"“”']{2,120})["“”']/);
+  const afterSuggestion = text.match(
+    /\b(?:suggestion|detected|entry|item)\s+([A-Z][\p{L}\p{N}'’.-]*(?:\s+[A-Z0-9][\p{L}\p{N}'’.-]*){0,5})/u,
+  );
+  const afterVerb = text.match(
+    /\b(?:dismiss|remove|delete|hide|suppress|reject|drop)\b(?:\s+(?:the|this|that|wrong))?(?:\s+(?:place|location|character|person|project|skill|quest|goal))?(?:\s+suggestion)?\s+([A-Z][\p{L}\p{N}'’.-]*(?:\s+[A-Z0-9][\p{L}\p{N}'’.-]*){0,5})/u,
+  );
+  const name = quoted?.[1]?.trim() || afterVerb?.[1]?.trim() || afterSuggestion?.[1]?.trim();
+
+  const reason = /\b(wrong book|should be|not a place|not a location|not a character|not a person|not a project|not a skill|not a quest|not a goal)\b/i.test(text)
+    ? 'wrong_book'
+    : /\b(duplicate|already tracked|already have)\b/i.test(text)
+      ? 'duplicate'
+      : /\b(noise|garbage|fragment|bad extraction|not real)\b/i.test(text)
+        ? 'noise'
+        : /\b(not a|not an|wrong)\b/i.test(text)
+          ? 'not_entity'
+          : undefined;
+
+  return { domain, name, reason };
 }
 
 export const modeHandlers = new ModeHandlers();

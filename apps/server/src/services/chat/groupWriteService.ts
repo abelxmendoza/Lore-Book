@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { isOrganizationGroupFollowUpRequest } from '@lorebook/api-contracts';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { characterRegistry } from '../characterRegistry';
@@ -28,6 +29,8 @@ export type GroupWriteResult = {
   created: boolean;
   /** Renamed via an explicit reply to "what do you want to name it?" */
   renamed: boolean;
+  /** Deleted via chat "delete the group X" */
+  deleted?: boolean;
   members: GroupWriteMemberOutcome[];
   summary: string;
 };
@@ -124,9 +127,7 @@ export function recoverListedMemberNamesFromHistory(
   history: Array<{ role: string; content: string }>,
 ): string[] {
   const refersToPriorRoster =
-    /\b(?:can|could|would)\s+you\s+(?:make|create)\s+(?:the|that|this)\s+(?:group|crew|squad)\b/i.test(
-      message,
-    ) ||
+    isOrganizationGroupFollowUpRequest(message, history) ||
     /\b(?:individual|listed|those|these)\s+(?:characters?|people|members?)\b/i.test(message) ||
     /\bcharacters?\s+(?:should|need to)\s+have\s+(?:character\s+)?(?:cards?|modals?)\b/i.test(
       message,
@@ -139,6 +140,16 @@ export function recoverListedMemberNamesFromHistory(
     if (names.length >= 2) return names;
   }
   return [];
+}
+
+export function resolveGroupWriteMemberNames(
+  message: string,
+  history: Array<{ role: string; content: string }>,
+): string[] {
+  const current = extractListedMemberNames(message);
+  return current.length > 0
+    ? current
+    : recoverListedMemberNamesFromHistory(message, history);
 }
 
 export function inferGroupNameFromContext(
@@ -217,12 +228,15 @@ async function readPendingGroup(
   userId: string,
   threadId: string,
 ): Promise<{ organizationId: string; name: string } | null> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('conversation_sessions')
     .select('metadata')
     .eq('id', threadId)
     .eq('user_id', userId)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Could not read pending group state: ${error.message}`);
+  }
   const threadMeta = ((data?.metadata as Record<string, unknown> | null)?.threadMeta ??
     {}) as Record<string, unknown>;
   const pending = threadMeta[PENDING_META_KEY] as
@@ -237,21 +251,27 @@ async function writePendingGroup(
   threadId: string,
   pending: { organizationId: string; name: string },
 ): Promise<void> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('conversation_sessions')
     .select('metadata')
     .eq('id', threadId)
     .eq('user_id', userId)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Could not read conversation state before group update: ${error.message}`);
+  }
   const metadata = { ...((data?.metadata as Record<string, unknown> | null) ?? {}) };
   const threadMeta = { ...((metadata.threadMeta as Record<string, unknown> | null) ?? {}) };
   threadMeta[PENDING_META_KEY] = { ...pending, updatedAt: new Date().toISOString() };
   metadata.threadMeta = threadMeta;
-  await supabaseAdmin
+  const { error: updateError } = await supabaseAdmin
     .from('conversation_sessions')
     .update({ metadata })
     .eq('id', threadId)
     .eq('user_id', userId);
+  if (updateError) {
+    throw new Error(`Could not save pending group state: ${updateError.message}`);
+  }
 }
 
 function summarize(result: Omit<GroupWriteResult, 'summary'>): string {
@@ -278,14 +298,31 @@ export async function writeOrganizationGroupFromChat(
   },
 ): Promise<GroupWriteResult> {
   const history = options?.conversationHistory ?? [];
-  const currentListed = extractListedMemberNames(message);
+
+  const deleteMatch = message.match(
+    /\b(?:delete|remove)\s+(?:the\s+)?(?:group|crew|squad|org(?:anization)?)\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+my\s+(?:groups?|organizations?)\s+book\b/i,
+  );
+  if (deleteMatch) {
+    const rawName = (deleteMatch[1] || deleteMatch[2] || '').trim().replace(/[.!?]+$/, '');
+    const name = titleCaseWords(rawName.replace(/^(?:the|a|an|my)\s+/i, ''));
+    const existing = await organizationService.findByName(userId, name);
+    if (!existing) {
+      throw new Error(`I couldn't find a group named "${name}" to delete.`);
+    }
+    await organizationService.deleteOrganization(userId, existing.id, 'chat_organization_group_write_delete');
+    return {
+      organizationId: existing.id,
+      organizationName: existing.name,
+      created: false,
+      renamed: false,
+      deleted: true,
+      members: [],
+      summary: `Deleted **${existing.name}** from Groups.`,
+    };
+  }
+
+  const listed = resolveGroupWriteMemberNames(message, history);
   const pending = await readPendingGroup(userId, threadId);
-  const listed =
-    currentListed.length > 0
-      ? currentListed
-      : pending
-        ? recoverListedMemberNamesFromHistory(message, history)
-        : [];
 
   const wantsCreate =
     /\b(?:make|create|start|set\s*up)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?(group|crew|squad)/i.test(

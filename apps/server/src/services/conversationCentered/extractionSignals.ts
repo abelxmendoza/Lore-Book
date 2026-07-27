@@ -25,7 +25,7 @@ import {
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/[‘’ʼ]/g, "'");
 
 const QUEST_RE =
-  /\b(want to|wanna|plan to|planning to|going to|gonna|hope to|hoping to|aim to|aiming to|trying to|try to|need to|have to|gotta|goal|goals|dream of|aspire|intend to|decided to|i will|i'll|resolution|bucket list|some ?day i)\b/i;
+  /\b(want to|wanna|plan to|planning to|going to|gonna|hope to|hoping to|aim to|aiming to|trying to|try to|need to|have to|gotta|goal|goals|dream of|aspire|intend to|decided to|i will|i'll|working on|work on|working toward|continuing to|still need to|next step is|finishing|resolution|bucket list|some ?day i)\b/i;
 
 // The percentage branch is kept OUTSIDE the `\b(...)\b` group on purpose: a
 // trailing `\b` after `%` (a non-word char) never forms a word boundary, which

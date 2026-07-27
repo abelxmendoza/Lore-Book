@@ -5,6 +5,7 @@ import { questRouter } from '../../src/routes/quests';
 import { requireAuth } from '../../src/middleware/auth';
 import { questService, questStorage, questLinker, questExtractor } from '../../src/services/quests';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
+import { rescanQuestLogInference } from '../../src/services/questLog/inference/questLogInferenceIntegrationService';
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/supabaseClient', () => ({
@@ -23,6 +24,7 @@ vi.mock('../../src/services/quests', () => ({
     updateQuest: vi.fn(),
     getQuestBoard: vi.fn(),
     getQuestAnalytics: vi.fn(),
+    getQuestSuggestions: vi.fn().mockResolvedValue([]),
   },
   questStorage: {
     getQuests: vi.fn(),
@@ -43,7 +45,15 @@ vi.mock('../../src/services/quests', () => ({
     getPendingSuggestions: vi.fn().mockResolvedValue([]),
     hasAnySuggestions: vi.fn().mockResolvedValue(false),
     upsertSuggestions: vi.fn().mockResolvedValue(undefined),
+    upsertFromExtraction: vi.fn().mockResolvedValue(false),
   },
+}));
+vi.mock('../../src/services/questLog/inference/questLogInferenceIntegrationService', () => ({
+  rescanQuestLogInference: vi.fn().mockResolvedValue({
+    candidatesAccepted: 0,
+    suggestionsUpserted: 0,
+    rejected: 0,
+  }),
 }));
 
 const app = express();
@@ -99,14 +109,15 @@ describe('Quests API Routes', () => {
       expect(response.body).toHaveProperty('total_quests', 0);
     });
 
-    it('GET /api/quests/suggestions reaches questExtractor.extractQuests, not getQuest', async () => {
+    it('GET /api/quests/suggestions reaches deterministic discovery, not getQuest', async () => {
       vi.mocked(questExtractor.extractQuests).mockResolvedValue([]);
 
       const response = await request(app).get('/api/quests/suggestions').expect(200);
 
-      expect(questExtractor.extractQuests).toHaveBeenCalledWith('user-123', []);
+      expect(rescanQuestLogInference).toHaveBeenCalledWith('user-123', []);
       expect(questStorage.getQuest).not.toHaveBeenCalled();
       expect(response.body).toHaveProperty('suggestions');
+      expect(response.body).toHaveProperty('diagnostics');
     });
 
     it('GET /api/quests/completed reaches getQuests with status filter, not getQuest', async () => {

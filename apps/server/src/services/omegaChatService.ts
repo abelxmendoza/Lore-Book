@@ -3087,9 +3087,18 @@ When updating relationship analytics or emotional signals from this thread, weig
     try {
       const { modeRouterService } = await import('./modeRouter/modeRouterService');
       const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
-      if (routing.mode === 'SUBJECT_TIMELINE') {
+      if (
+        routing.mode === 'SUBJECT_TIMELINE' ||
+        routing.mode === 'ORGANIZATION_QUERY' ||
+        routing.mode === 'FAMILY_QUERY' ||
+        routing.mode === 'LOCATION_QUERY' ||
+        routing.mode === 'ROMANCE_QUERY' ||
+        routing.mode === 'PROJECT_QUERY' ||
+        routing.mode === 'SKILL_QUERY' ||
+        routing.mode === 'QUEST_QUERY'
+      ) {
         const { modeHandlers } = await import('./modeRouter/modeHandlers');
-        const handled = await modeHandlers.handleMode('SUBJECT_TIMELINE', userId, message, {
+        const handled = await modeHandlers.handleMode(routing.mode, userId, message, {
           messageId: entryId,
           conversationHistory,
           threadId: sessionId,

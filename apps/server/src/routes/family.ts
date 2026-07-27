@@ -2,6 +2,7 @@
  * Family graph, households, analytics API.
  */
 import { Router } from 'express';
+import { familyQueryRequestSchema } from '@lorebook/api-contracts';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../logger';
@@ -10,8 +11,27 @@ import { householdService } from '../services/kinship/householdService';
 import { familyTreeService } from '../services/familyTreeService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { listPeripheralsForUser } from '../services/relationshipPeripheralService';
+import { queryFamilyForUser } from '../services/kinship/familyQueryService';
 
 const router = Router();
+
+router.post(
+  '/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = familyQueryRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid family query',
+        details: parsed.error.flatten(),
+      });
+      return;
+    }
+    const result = await queryFamilyForUser(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  })
+);
 
 router.get(
   '/summary',

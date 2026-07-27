@@ -2,9 +2,11 @@ import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRi
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../../lib/api';
+import type { ProjectQueryResponse } from '../../lib/api-contracts';
 import { fetchProjectById } from '../../lib/hydrateBookEntity';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
+import { compileDemoProjectQuery } from '../../lib/projectQueryDemo';
 import { buildProjectBookClipboardText } from '../../lib/projectBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
@@ -173,6 +175,10 @@ export const ProjectBook = () => {
   const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [demoProjects, setDemoProjects] = useState<ProjectCardData[]>(() => [...DEMO_PROJECTS]);
+  const [bookQuery, setBookQuery] = useState('');
+  const [bookQueryResult, setBookQueryResult] = useState<ProjectQueryResponse | null>(null);
+  const [bookQueryLoading, setBookQueryLoading] = useState(false);
+  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(PROJECTS_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -225,12 +231,18 @@ export const ProjectBook = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return projects.filter((p) => {
+      if (
+        bookQueryResult &&
+        !bookQueryResult.results.some((result) => result.projectId === p.id)
+      ) {
+        return false;
+      }
       if (statusFilter !== 'all' && (p.status ?? 'active').toLowerCase() !== statusFilter) return false;
       if (typeFilter !== 'all' && (p.type ?? 'project').toLowerCase() !== typeFilter) return false;
       if (!q) return true;
       return p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q);
     });
-  }, [projects, search, statusFilter, typeFilter]);
+  }, [projects, search, statusFilter, typeFilter, bookQueryResult]);
 
   const clipboardText = useMemo(
     () =>
@@ -239,9 +251,10 @@ export const ProjectBook = () => {
           search.trim() && `search="${search.trim()}"`,
           statusFilter !== 'all' && `status=${statusFilter}`,
           typeFilter !== 'all' && `type=${typeFilter}`,
+          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
-    [filtered, search, statusFilter, typeFilter],
+    [filtered, search, statusFilter, typeFilter, bookQueryResult],
   );
 
   useEffect(() => {
@@ -266,7 +279,7 @@ export const ProjectBook = () => {
   }, [projects]);
 
   // Reset to the first page whenever the result set changes.
-  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter]);
+  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter, bookQueryResult]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -284,6 +297,33 @@ export const ProjectBook = () => {
   };
   const goToPrevious = () => goToPage(currentPage - 1);
   const goToNext = () => goToPage(currentPage + 1);
+
+  const runBookQuery = async () => {
+    if (!bookQuery.trim()) return;
+    setBookQueryLoading(true);
+    setBookQueryError(null);
+    try {
+      const result = isMockDataEnabled
+        ? compileDemoProjectQuery(projects, bookQuery.trim())
+        : (await fetchJson<{ success: boolean; result: ProjectQueryResponse }>(
+            '/api/projects/query',
+            {
+              method: 'POST',
+              body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
+            },
+          )).result;
+      setBookQueryResult(result);
+      setSearch('');
+      setStatusFilter('all');
+      setTypeFilter('all');
+    } catch (queryError) {
+      setBookQueryError(
+        queryError instanceof Error ? queryError.message : 'Could not query the Projects Book.',
+      );
+    } finally {
+      setBookQueryLoading(false);
+    }
+  };
 
   const createProject = async () => {
     const name = newName.trim();
@@ -526,6 +566,82 @@ export const ProjectBook = () => {
             <Plus className="h-3.5 w-3.5" /> Add
           </button>
         </div>
+      </div>
+
+      <div className="mb-5 sm:mb-6 rounded-2xl border border-primary/25 bg-primary/[0.06] p-3 sm:p-4">
+        <div className="flex items-start justify-between gap-3 mb-2.5">
+          <div>
+            <p className="text-sm font-semibold text-white">Ask Projects</p>
+            <p className="text-xs text-white/45 mt-0.5">
+              Search status, type, tags, dates, importance, and records that need review.
+            </p>
+          </div>
+          {bookQueryResult && (
+            <button
+              type="button"
+              onClick={() => {
+                setBookQuery('');
+                setBookQueryResult(null);
+              }}
+              className="text-xs text-white/45 hover:text-white/75"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={bookQuery}
+            onChange={(event) => setBookQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void runBookQuery();
+            }}
+            placeholder="Try “show my active software projects”"
+            className="flex-1 min-w-0 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-base sm:text-sm text-white outline-none placeholder:text-white/30 focus:border-primary/50"
+          />
+          <Button
+            type="button"
+            onClick={() => void runBookQuery()}
+            disabled={bookQueryLoading || !bookQuery.trim()}
+            className="min-h-[44px] sm:min-h-0"
+          >
+            {bookQueryLoading ? 'Checking…' : 'Ask'}
+          </Button>
+        </div>
+        {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
+        {bookQueryResult && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="text-xs text-white/60">
+              <span className="font-semibold text-primary">{bookQueryResult.total}</span>{' '}
+              matching {bookQueryResult.total === 1 ? 'project' : 'projects'}
+            </p>
+            {bookQueryResult.results.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {bookQueryResult.results.slice(0, 8).map((result) => (
+                  <button
+                    key={result.projectId}
+                    type="button"
+                    onClick={() => {
+                      const project = projects.find((item) => item.id === result.projectId);
+                      if (project) setActive(project);
+                    }}
+                    className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary hover:bg-primary/20"
+                  >
+                    {result.name}
+                  </button>
+                ))}
+                {bookQueryResult.total > 8 && (
+                  <span className="px-2 py-1 text-xs text-white/40">
+                    +{bookQueryResult.total - 8} more below
+                  </span>
+                )}
+              </div>
+            )}
+            {bookQueryResult.warnings.map((warning) => (
+              <p key={warning} className="mt-2 text-[11px] text-amber-300/85">{warning}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Status + type filters (derived from your projects) */}

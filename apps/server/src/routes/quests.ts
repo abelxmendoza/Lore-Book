@@ -1,14 +1,18 @@
+import { questQueryRequestSchema } from '@lorebook/api-contracts';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { questService, questStorage, questLinker, questExtractor, questSuggestionService } from '../services/quests';
 import { progressionTracker } from '../services/progression/progressionTracker';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
+import { rescanQuestLogInference } from '../services/questLog/inference/questLogInferenceIntegrationService';
+import { questService, questStorage, questLinker, questExtractor, questSuggestionService } from '../services/quests';
 import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { queryQuestsForUser } from '../services/quests/questQueryService';
+import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
 import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
+
 const router = Router();
 
 /**
@@ -129,6 +133,24 @@ router.get('/analytics', requireAuth, async (req: AuthenticatedRequest, res) => 
 });
 
 /**
+ * POST /api/quests/query
+ * Grounded natural-language read over the user's canonical Quest Log.
+ */
+router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = questQueryRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, error: 'Invalid quest query', details: parsed.error.flatten() });
+  }
+  try {
+    const result = await queryQuestsForUser(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to query quests');
+    res.status(500).json({ success: false, error: 'Failed to query quests' });
+  }
+});
+
+/**
  * GET /api/quests/suggestions
  * Pending quest suggestions from DB. Full story scan only when ?rescan=true or first visit.
  */
@@ -146,19 +168,26 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
     const questBookIndex = buildBookIndexFromLabels(
       existing.map((q) => ({ id: q.id, label: q.title }))
     );
-    const shouldScan = rescan || (!everScanned && pending.length === 0);
+    // Always run the cheap deterministic pass when the panel is empty. The
+    // LLM enrichment remains first-scan/explicit-rescan only, so polling
+    // cannot create an expensive extraction loop.
+    const shouldScan = rescan || pending.length === 0;
+    const shouldRunLlmScan = rescan || (!everScanned && pending.length === 0);
+    let deterministicScan = { candidatesAccepted: 0, suggestionsUpserted: 0, rejected: 0 };
+    let llmCandidates = 0;
+    let llmScanFailed = false;
 
     if (shouldScan) {
       const [entriesRes, messagesRes] = await Promise.all([
         supabaseAdmin
           .from('journal_entries')
-          .select('content, date')
+          .select('id, content, date')
           .eq('user_id', userId)
           .order('date', { ascending: false })
           .limit(40),
         supabaseAdmin
           .from('chat_messages')
-          .select('content, created_at')
+          .select('id, content, created_at')
           .eq('user_id', userId)
           .eq('role', 'user')
           .order('created_at', { ascending: false })
@@ -166,11 +195,13 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       ]);
 
       const combined = [
-        ...((messagesRes.data as Array<{ content: string; created_at: string }> | null) ?? []).map((m) => ({
+        ...((messagesRes.data as Array<{ id: string; content: string; created_at: string }> | null) ?? []).map((m) => ({
+          id: m.id,
           content: m.content,
           date: m.created_at,
         })),
-        ...((entriesRes.data as Array<{ content: string; date: string }> | null) ?? []).map((e) => ({
+        ...((entriesRes.data as Array<{ id: string; content: string; date: string }> | null) ?? []).map((e) => ({
+          id: e.id,
           content: e.content,
           date: e.date,
         })),
@@ -178,31 +209,44 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
         .filter((e) => e.content?.trim())
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      const extracted = await questExtractor.extractQuests(userId, combined);
-      for (const q of extracted) {
-        if (!q.title?.trim()) continue;
-        if (resolveBookNameMatch(q.title, questBookIndex.exactKeys, questBookIndex.entries).status === 'existing') {
-          continue;
-        }
-        await questSuggestionService.upsertFromExtraction(
-          userId,
-          {
-            title: q.title,
-            description: q.description,
-            quest_type: q.quest_type,
-            priority: q.priority,
-            importance: q.importance,
-            impact: q.impact,
-            category: q.category,
-            confidence: 0.72,
-            reasoning: 'Detected from your recent journals and chats',
-          },
-          {
-            source: 'llm_scan',
-            sourceText:
-              typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
+      deterministicScan = await rescanQuestLogInference(
+        userId,
+        combined.map((item) => ({ id: item.id, text: item.content })),
+      );
+
+      if (shouldRunLlmScan && combined.length > 0) {
+        try {
+          const extracted = await questExtractor.extractQuests(userId, combined);
+          llmCandidates = extracted.length;
+          for (const q of extracted) {
+            if (!q.title?.trim()) continue;
+            if (resolveBookNameMatch(q.title, questBookIndex.exactKeys, questBookIndex.entries).status === 'existing') {
+              continue;
+            }
+            await questSuggestionService.upsertFromExtraction(
+              userId,
+              {
+                title: q.title,
+                description: q.description,
+                quest_type: q.quest_type,
+                priority: q.priority,
+                importance: q.importance,
+                impact: q.impact,
+                category: q.category,
+                confidence: 0.72,
+                reasoning: 'Detected from your recent journals and chats',
+              },
+              {
+                source: 'llm_scan',
+                sourceText:
+                  typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
+              }
+            );
           }
-        );
+        } catch (error) {
+          llmScanFailed = true;
+          logger.warn({ err: error, userId }, 'Quest LLM scan failed; deterministic suggestions remain available');
+        }
       }
     }
 
@@ -210,7 +254,7 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       ? await questSuggestionService.getPendingSuggestions(userId)
       : pending;
 
-    const suggestions = freshPending
+    const storedSuggestions = freshPending
       .map((row) => {
         const match = enrichNameWithBookMatch(row.title, questBookIndex);
         return {
@@ -237,8 +281,24 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
         };
       })
       .filter((row) => row.match_status !== 'existing')
-      .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
-      .slice(0, 12);
+      .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0));
+
+    // Structured active goals are a provider-independent recovery source. They
+    // are already reviewed/canonical data, so surface them when extraction has
+    // not found the user's current work.
+    const goalSuggestions = await questService.getQuestSuggestions(userId);
+    const storedTitles = new Set(storedSuggestions.map((item) => item.title.trim().toLowerCase()));
+    const suggestions = [
+      ...storedSuggestions,
+      ...goalSuggestions
+        .filter((item) => !storedTitles.has(item.title.trim().toLowerCase()))
+        .map((item) => ({
+          ...item,
+          reasoning: item.reasoning ?? 'Derived from an active goal not yet tracked in the Quest Log',
+          cognition_status: 'STRUCTURED_GOAL',
+          match_status: 'new' as const,
+        })),
+    ].slice(0, 12);
 
     const { enrichSuggestionsWithParserAlternatives } = await import(
       '../services/lorebook/parser/loreBookSuggestionEnricher'
@@ -251,7 +311,18 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       (row) => row.description ?? row.reasoning
     );
 
-    res.json({ suggestions: enriched, count: enriched.length, scanned: shouldScan });
+    res.json({
+      suggestions: enriched,
+      count: enriched.length,
+      scanned: shouldScan,
+      diagnostics: {
+        deterministic_candidates: deterministicScan.candidatesAccepted,
+        deterministic_upserted: deterministicScan.suggestionsUpserted,
+        llm_candidates: llmCandidates,
+        llm_scan_failed: llmScanFailed,
+        structured_goal_suggestions: goalSuggestions.length,
+      },
+    });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest suggestions');
     res.status(500).json({ error: 'Failed to get quest suggestions' });

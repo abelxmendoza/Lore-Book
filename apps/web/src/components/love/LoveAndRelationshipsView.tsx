@@ -14,8 +14,11 @@ import {
 } from '../ui/GridListViewToolbar';
 import { fetchCharacterList } from '../../api/characterList';
 import { useMockData } from '../../contexts/MockDataContext';
+import { fetchJson } from '../../lib/api';
 import { buildDatingRomanceClipboardText } from '../../lib/datingRomanceClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
+import type { RomanceQueryResponse } from '../../lib/api-contracts';
+import { compileDemoRomanceQuery } from '../../lib/romanceQueryDemo';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { 
@@ -171,6 +174,10 @@ export const LoveAndRelationshipsView = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
   );
+  const [bookQuery, setBookQuery] = useState('');
+  const [bookQueryResult, setBookQueryResult] = useState<RomanceQueryResponse | null>(null);
+  const [bookQueryLoading, setBookQueryLoading] = useState(false);
+  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const romanticRelationshipsQuery = useGetRomanticRelationshipsQuery(undefined, { skip: shouldUseMockData });
   const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
   const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
@@ -452,7 +459,44 @@ export const LoveAndRelationshipsView = () => {
     }
   };
 
+  const runBookQuery = async () => {
+    if (!bookQuery.trim()) return;
+    setBookQueryLoading(true);
+    setBookQueryError(null);
+    try {
+      let result: RomanceQueryResponse;
+      if (shouldUseMockData) {
+        const allRelationships = getMockRomanticRelationships() as RomanticRelationship[];
+        setRelationships(allRelationships);
+        result = compileDemoRomanceQuery(allRelationships, bookQuery.trim());
+      } else {
+        result = (await fetchJson<{ success: boolean; result: RomanceQueryResponse }>(
+          '/api/conversation/romantic-relationships/query',
+          {
+            method: 'POST',
+            body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
+          },
+        )).result;
+      }
+      setBookQueryResult(result);
+      setSearchTerm('');
+      setActiveFilter('all');
+    } catch (error) {
+      setBookQueryError(
+        error instanceof Error ? error.message : 'Could not query Dating & Romance.',
+      );
+    } finally {
+      setBookQueryLoading(false);
+    }
+  };
+
   const filteredRelationships = relationships.filter(rel => {
+    if (
+      bookQueryResult &&
+      !bookQueryResult.results.some((result) => result.relationshipId === rel.id)
+    ) {
+      return false;
+    }
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -500,6 +544,7 @@ export const LoveAndRelationshipsView = () => {
     filters: clipboardFilterLines([
       searchTerm.trim() && `search="${searchTerm.trim()}"`,
       `tab=${activeFilter}`,
+      bookQueryResult && `book query="${bookQueryResult.query}"`,
       activeFilter === 'rankings' &&
         'note=rankings_view_order_not_exported_using_filtered_relationships',
     ]),
@@ -701,6 +746,87 @@ export const LoveAndRelationshipsView = () => {
         error={romanticInterestError}
         onContinue={openRomanticInterestChat}
       />
+
+      <section className="rounded-xl border border-pink-400/20 bg-pink-500/[0.05] p-3 sm:p-4">
+        <div className="flex items-start gap-2.5">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-pink-300" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white">Ask Dating & Romance</p>
+            <p className="mt-0.5 text-xs text-white/45">
+              Query current and past connections, crushes, situationships, history, risk flags,
+              evidence strength, or Character Book linkage.
+            </p>
+            <form
+              className="mt-3 flex flex-col gap-2 sm:flex-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runBookQuery();
+              }}
+            >
+              <Input
+                value={bookQuery}
+                onChange={(event) => setBookQuery(event.target.value)}
+                placeholder='Try “show my past relationships”'
+                className="min-w-0 flex-1 border-white/10 bg-black/30 text-white placeholder:text-white/30 focus:border-pink-400/45"
+              />
+              <Button
+                type="submit"
+                disabled={!bookQuery.trim() || bookQueryLoading}
+                className="bg-pink-500/20 text-pink-100 hover:bg-pink-500/30"
+              >
+                {bookQueryLoading ? 'Checking…' : 'Ask'}
+              </Button>
+            </form>
+            {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
+            {bookQueryResult && (
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-white/65">
+                    <span className="font-semibold text-pink-200">{bookQueryResult.total}</span>{' '}
+                    matching {bookQueryResult.total === 1 ? 'connection' : 'connections'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookQueryResult(null);
+                      setBookQueryError(null);
+                    }}
+                    className="text-[11px] text-white/40 hover:text-white/70"
+                  >
+                    Clear results
+                  </button>
+                </div>
+                {bookQueryResult.results.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {bookQueryResult.results.slice(0, 8).map((result) => (
+                      <button
+                        key={result.relationshipId}
+                        type="button"
+                        onClick={() => setSelectedRelationship(result.relationshipId)}
+                        title={result.matchedReasons.join(' · ')}
+                        className="rounded-full border border-pink-400/20 bg-pink-500/10 px-2.5 py-1 text-[11px] text-pink-100 hover:border-pink-300/40"
+                      >
+                        {result.personName}
+                      </button>
+                    ))}
+                    {bookQueryResult.total > 8 && (
+                      <span className="px-1 py-1 text-[11px] text-white/35">
+                        +{bookQueryResult.total - 8} more below
+                      </span>
+                    )}
+                  </div>
+                )}
+                {bookQueryResult.results.some((result) => !result.scoresEvidenceBacked) && (
+                  <p className="mt-2 text-[11px] text-amber-200/70">
+                    Some matches have relationship evidence but not enough evidence for reliable
+                    scoring. LoreBook leaves those scores unranked.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       <RomanticStoryShowcase demoMode={shouldUseMockData} />
 

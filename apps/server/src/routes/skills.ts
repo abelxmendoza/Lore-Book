@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { skillQueryRequestSchema } from '@lorebook/api-contracts';
 
 import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
@@ -7,6 +8,7 @@ import { skillExtractionService } from '../services/skills/skillExtractionServic
 import { skillService } from '../services/skills/skillService';
 import { skillSuggestionService } from '../services/skills/skillSuggestionService';
 import { skillRelationshipService } from '../services/skills/skillRelationshipService';
+import { querySkillsForUser } from '../services/skills/skillQueryService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
 import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
@@ -244,6 +246,27 @@ router.post('/suggestions/:id/reject', requireAuth, async (req: AuthenticatedReq
   } catch (error) {
     logger.error({ err: error }, 'Failed to reject skill suggestion');
     res.status(400).json({ error: 'Failed to reject skill suggestion' });
+  }
+});
+
+/**
+ * Grounded natural-language read over the Skills Book.
+ */
+router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = skillQueryRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid skill query',
+        details: parsed.error.flatten(),
+      });
+    }
+    const result = await querySkillsForUser(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to query skills');
+    res.status(500).json({ success: false, error: 'Failed to query skills' });
   }
 });
 

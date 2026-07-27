@@ -4,6 +4,7 @@ import {
   inferGroupNameFromContext,
   isReplyToGroupNamingPrompt,
   recoverListedMemberNamesFromHistory,
+  resolveGroupWriteMemberNames,
 } from './groupWriteService';
 
 describe('groupWriteService helpers', () => {
@@ -50,6 +51,17 @@ describe('groupWriteService helpers', () => {
         history,
       ),
     ).toEqual(['Marcus', 'Jamie', 'Nova Reed']);
+    expect(
+      recoverListedMemberNamesFromHistory('well I just gave you a roster', history),
+    ).toEqual(['Marcus', 'Jamie', 'Nova Reed']);
+    expect(
+      recoverListedMemberNamesFromHistory('hi so can you do it now', history),
+    ).toEqual(['Marcus', 'Jamie', 'Nova Reed']);
+    expect(resolveGroupWriteMemberNames('hi so can you do it now', history)).toEqual([
+      'Marcus',
+      'Jamie',
+      'Nova Reed',
+    ]);
   });
 
   it('does not reuse an old roster for an unrelated new-group request', () => {

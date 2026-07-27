@@ -9,6 +9,7 @@ import type {
 
 import { baseApi } from './baseApi';
 import { buildQuestFiltersQuery } from './questQueryUtils';
+import type { QuestQueryRequest, QuestQueryResponse } from '../../lib/api-contracts';
 
 const questBoardTags = [{ type: 'Quest' as const, id: 'BOARD' }];
 const questListTags = [
@@ -71,10 +72,29 @@ export const questsApi = baseApi.injectEndpoints({
       }),
       providesTags: [{ type: 'Quest', id: 'SUGGESTIONS' }],
     }),
+    queryQuests: build.mutation<{ success: boolean; result: QuestQueryResponse }, QuestQueryRequest>({
+      query: (body) => ({ url: '/api/quests/query', method: 'POST', body }),
+    }),
 
     createQuest: build.mutation<{ quest: Quest }, Record<string, unknown>>({
       query: (body) => ({ url: '/api/quests', method: 'POST', body }),
       transformResponse: (res: { quest: Quest }) => res,
+      invalidatesTags: questListTags,
+    }),
+    materializeQuestSuggestion: build.mutation<
+      { quest: Quest },
+      {
+        title: string;
+        description?: string;
+        quest_type?: string;
+        priority?: number;
+        importance?: number;
+        impact?: number;
+        category?: string;
+        suggestion_id?: string;
+      }
+    >({
+      query: (body) => ({ url: '/api/quests/suggestions/materialize', method: 'POST', body }),
       invalidatesTags: questListTags,
     }),
     updateQuest: build.mutation<{ quest: Quest }, { questId: string; updates: Record<string, unknown> }>({
@@ -191,7 +211,9 @@ export const {
   useGetQuestAnalyticsQuery,
   useGetQuestHistoryQuery,
   useGetQuestSuggestionsQuery,
+  useQueryQuestsMutation,
   useCreateQuestMutation,
+  useMaterializeQuestSuggestionMutation,
   useUpdateQuestMutation,
   useDeleteQuestMutation,
   useStartQuestMutation,

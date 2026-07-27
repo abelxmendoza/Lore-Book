@@ -23,6 +23,7 @@ const dismissSchema = z.object({
   suggestion_id: z.string().optional(),
   source_message_id: z.string().optional(),
   thread_id: z.string().optional(),
+  reason: z.enum(['not_entity', 'wrong_book', 'duplicate', 'noise']).optional(),
 });
 
 function dismissResponse(result: RecordDismissalResult | null, domain: SuggestionDismissalDomain, name: string) {
@@ -34,6 +35,7 @@ function dismissResponse(result: RecordDismissalResult | null, domain: Suggestio
     remaining_until_permanent: Math.max(0, MAX_SUGGESTION_DISMISSALS - dismissCount),
     thread_id: result?.threadId ?? null,
     normalized_name: result?.normalizedName || normalizeSuggestionDismissalName(domain, name),
+    reason: result?.reason,
   };
 }
 
@@ -45,33 +47,36 @@ router.post('/dismiss', requireAuth, asyncHandler(async (req: AuthenticatedReque
   }
 
   const userId = req.user!.id;
-  const { book_domain, name, suggestion_id, source_message_id, thread_id } = parsed.data;
+  const { book_domain, name, suggestion_id, source_message_id, thread_id, reason } = parsed.data;
   const domain = book_domain as SuggestionDismissalDomain;
   let result: RecordDismissalResult | null = null;
 
   if (domain === 'projects') {
     result = suggestion_id
-      ? await projectSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id })
+      ? await projectSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id, reason })
       : await projectSuggestionService.rejectByName(userId, name, {
           threadId: thread_id,
           sourceMessageId: source_message_id,
           suggestionId: suggestion_id,
+          reason,
         });
   } else if (domain === 'skills') {
     result = suggestion_id
-      ? await skillSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id })
+      ? await skillSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id, reason })
       : await skillSuggestionService.rejectByName(userId, name, {
           threadId: thread_id,
           sourceMessageId: source_message_id,
           suggestionId: suggestion_id,
+          reason,
         });
   } else if (domain === 'quests') {
     result = suggestion_id
-      ? await questSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id })
+      ? await questSuggestionService.rejectSuggestion(userId, suggestion_id, { threadId: thread_id, reason })
       : await questSuggestionService.rejectByTitle(userId, name, {
           threadId: thread_id,
           sourceMessageId: source_message_id,
           suggestionId: suggestion_id,
+          reason,
         });
   } else {
     result = await suggestionDismissalService.recordDismissal(userId, domain, {
@@ -79,6 +84,7 @@ router.post('/dismiss', requireAuth, asyncHandler(async (req: AuthenticatedReque
       threadId: thread_id,
       sourceMessageId: source_message_id,
       sourceSuggestionId: suggestion_id,
+      reason,
     });
   }
 

@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { projectQueryRequestSchema } from '@lorebook/api-contracts';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { projectService } from '../services/projectService';
 import { projectMergeService } from '../services/projectMergeService';
 import { projectExtractor } from '../services/projects/projectExtractor';
 import { projectSuggestionService } from '../services/projects/projectSuggestionService';
+import { queryProjectsForUser } from '../services/projects/projectQueryService';
 import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -75,6 +77,17 @@ router.post('/', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res
     return;
   }
   res.json({ project: data });
+}));
+
+// POST /api/projects/query — grounded natural-language read over the Projects Book.
+router.post('/query', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const parsed = projectQueryRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: 'Invalid project query', details: parsed.error.flatten() });
+    return;
+  }
+  const result = await queryProjectsForUser(req.user!.id, parsed.data);
+  res.json({ success: true, result });
 }));
 
 // PATCH /api/projects/:id — id-source-agnostic (resolves people_places ids too)

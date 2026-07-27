@@ -9,7 +9,10 @@ import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } fro
 import { useState, useEffect, useMemo, useRef } from 'react';
 
 import type { Skill, SkillCategory } from '../../types/skill';
+import { fetchJson } from '../../lib/api';
+import type { SkillQueryResponse } from '../../lib/api-contracts';
 import { readSkillProfile } from '../../lib/skillProfile';
+import { compileDemoSkillQuery } from '../../lib/skillQueryDemo';
 import { buildSkillBookClipboardText } from '../../lib/skillBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
@@ -44,6 +47,7 @@ import {
   setFilterConfidenceMin,
   setFilterConfidenceMax,
   setFilterProficiencyMin,
+  resetSkillsFilters,
   type SkillCategoryFilter,
   type SkillSortOption,
 } from '../../store/slices/skillsBookSlice';
@@ -177,6 +181,10 @@ export const SkillsBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [mockRegistryTick, setMockRegistryTick] = useState(0);
+  const [bookQuery, setBookQuery] = useState('');
+  const [bookQueryResult, setBookQueryResult] = useState<SkillQueryResponse | null>(null);
+  const [bookQueryLoading, setBookQueryLoading] = useState(false);
+  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(SKILLS_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -258,6 +266,11 @@ export const SkillsBook: React.FC = () => {
     // Default Skills Book = durable skills only (cognition ontology)
     let filtered = skills.filter((s) => isPrimarySkillBookRecord(s));
 
+    if (bookQueryResult) {
+      const matchingIds = new Set(bookQueryResult.results.map((result) => result.skillId));
+      filtered = filtered.filter((skill) => matchingIds.has(skill.id));
+    }
+
     if (activeCategory !== 'all') {
       filtered = filtered.filter(skill => skillMatchesCategory(skill, activeCategory));
     }
@@ -291,7 +304,7 @@ export const SkillsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [skills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin]);
+  }, [skills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin, bookQueryResult]);
 
   const sortedSkills = useMemo(() => {
     const sorted = [...filteredSkills];
@@ -333,9 +346,10 @@ export const SkillsBook: React.FC = () => {
           searchTerm.trim() && `search="${searchTerm.trim()}"`,
           activeCategory !== 'all' && `category=${activeCategory}`,
           `sort=${sortBy}`,
+          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
-    [sortedSkills, searchTerm, activeCategory, sortBy],
+    [sortedSkills, searchTerm, activeCategory, sortBy, bookQueryResult],
   );
 
   const paginatedSkills = useMemo(() => {
@@ -402,6 +416,31 @@ export const SkillsBook: React.FC = () => {
         s.skill_name.toLowerCase().includes(needle),
     );
     if (match) setSelectedSkill(match);
+  };
+
+  const runBookQuery = async () => {
+    if (!bookQuery.trim()) return;
+    setBookQueryLoading(true);
+    setBookQueryError(null);
+    try {
+      const result = isMockDataEnabled
+        ? compileDemoSkillQuery(skills, bookQuery.trim())
+        : (await fetchJson<{ success: boolean; result: SkillQueryResponse }>(
+            '/api/skills/query',
+            {
+              method: 'POST',
+              body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
+            },
+          )).result;
+      setBookQueryResult(result);
+      dispatch(resetSkillsFilters());
+    } catch (queryError) {
+      setBookQueryError(
+        queryError instanceof Error ? queryError.message : 'Could not query the Skills Book.',
+      );
+    } finally {
+      setBookQueryLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -484,6 +523,82 @@ export const SkillsBook: React.FC = () => {
             {loading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-teal-500/25 bg-teal-500/[0.06] p-3 sm:p-4">
+        <div className="flex items-start justify-between gap-3 mb-2.5">
+          <div>
+            <p className="text-sm font-semibold text-white">Ask Skills</p>
+            <p className="text-xs text-white/45 mt-0.5">
+              Search practice, growth, work use, related projects, proficiency, and evidence.
+            </p>
+          </div>
+          {bookQueryResult && (
+            <button
+              type="button"
+              onClick={() => {
+                setBookQuery('');
+                setBookQueryResult(null);
+              }}
+              className="text-xs text-white/45 hover:text-white/75"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            value={bookQuery}
+            onChange={(event) => setBookQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void runBookQuery();
+            }}
+            placeholder="Try “which skills do I use for Vanguard Robotics?”"
+            className="min-h-[44px] bg-black/35 border-white/10 text-white placeholder:text-white/30"
+          />
+          <Button
+            type="button"
+            onClick={() => void runBookQuery()}
+            disabled={bookQueryLoading || !bookQuery.trim()}
+            className="min-h-[44px] sm:min-h-0 bg-teal-600 hover:bg-teal-500"
+          >
+            {bookQueryLoading ? 'Checking…' : 'Ask'}
+          </Button>
+        </div>
+        {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
+        {bookQueryResult && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="text-xs text-white/60">
+              <span className="font-semibold text-teal-300">{bookQueryResult.total}</span>{' '}
+              matching {bookQueryResult.total === 1 ? 'skill' : 'skills'}
+            </p>
+            {bookQueryResult.results.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {bookQueryResult.results.slice(0, 8).map((result) => (
+                  <button
+                    key={result.skillId}
+                    type="button"
+                    onClick={() => {
+                      const skill = skills.find((item) => item.id === result.skillId);
+                      if (skill) setSelectedSkill(skill);
+                    }}
+                    className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-xs text-teal-200 hover:bg-teal-500/20"
+                  >
+                    {result.name}
+                  </button>
+                ))}
+                {bookQueryResult.total > 8 && (
+                  <span className="px-2 py-1 text-xs text-white/40">
+                    +{bookQueryResult.total - 8} more below
+                  </span>
+                )}
+              </div>
+            )}
+            {bookQueryResult.warnings.map((warning) => (
+              <p key={warning} className="mt-2 text-[11px] text-amber-300/85">{warning}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       <SearchWithAutocomplete<Skill>

@@ -6,6 +6,7 @@ import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
+import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { getMockProjectSuggestions } from '../../mocks/projectSuggestions';
@@ -190,7 +191,10 @@ export const DetectedProjectSuggestions = ({
     }
   };
 
-  const handleDismiss = async (s: ProjectSuggestion) => {
+  const handleDismiss = async (
+    s: ProjectSuggestion,
+    reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
+  ) => {
     const k = keyFor(s);
     setDismissed((prev) => new Set(prev).add(k));
     setSuggestions((prev) => prev.filter((item) => keyFor(item) !== k));
@@ -201,6 +205,7 @@ export const DetectedProjectSuggestions = ({
           name: s.name,
           suggestionId: s.id,
           sourceMessageId: s.source_message_id,
+          reason,
         });
       } catch {
         /* non-blocking */
@@ -330,14 +335,10 @@ export const DetectedProjectSuggestions = ({
                       exiting.has(k) && 'animate-romantic-exit pointer-events-none'
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => void handleDismiss(s)}
-                      className="absolute top-2 right-2 h-8 w-8 sm:h-6 sm:w-6 flex items-center justify-center rounded text-white/30 hover:text-white/70 hover:bg-white/10 touch-manipulation"
-                      title="Dismiss"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <SuggestionDismissButton
+                      onDismiss={(reason) => handleDismiss(s, reason)}
+                      className="absolute top-2 right-2"
+                    />
 
                     <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-9 sm:pr-7">
                       <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${typeColor(s.project_type)}`}>
@@ -383,7 +384,7 @@ export const DetectedProjectSuggestions = ({
                       description={s.description}
                       evidence={quote}
                       disabled={adding === k}
-                      onReclassified={() => void handleDismiss(s)}
+                      onReclassified={() => void handleDismiss(s, 'wrong_book')}
                       className="mb-2"
                     />
 

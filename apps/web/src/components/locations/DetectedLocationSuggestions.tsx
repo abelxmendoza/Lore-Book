@@ -13,6 +13,7 @@ import { mockDataService } from '../../services/mockDataService';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { buildLocationSuggestionsClipboardText } from '../../lib/locationSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
 import { cn } from '../../lib/cn';
@@ -191,7 +192,10 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
     }
   };
 
-  const handleDismiss = async (s: LocationSuggestion) => {
+  const handleDismiss = async (
+    s: LocationSuggestion,
+    reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
+  ) => {
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
@@ -204,6 +208,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
         bookDomain: 'locations',
         name: s.name,
         suggestionId: s.id,
+        reason,
       });
     } catch {
       /* non-blocking */
@@ -327,7 +332,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                       context={s.context}
                       evidence={s.description}
                       disabled={adding === k}
-                      onReclassified={() => void handleDismiss(s)}
+                      onReclassified={() => void handleDismiss(s, 'wrong_book')}
                       className="mt-1.5"
                     />
                   </div>
@@ -341,14 +346,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
                       <Plus className="h-3 w-3" />
                       {suggestionPrimaryActionLabel({ item: s, addLabel: 'Add' })}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDismiss(s)}
-                      className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10"
-                      aria-label="Dismiss"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <SuggestionDismissButton onDismiss={(reason) => handleDismiss(s, reason)} />
                   </div>
                 </div>
               );

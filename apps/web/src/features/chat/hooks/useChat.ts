@@ -833,9 +833,37 @@ export const useChat = () => {
             progressIntervalRef.current = null;
           }
           
-          if ((meta.groupCreated || meta.groupRenamed) && typeof meta.organizationName === 'string') {
-            const verb = meta.groupRenamed ? 'renamed' : 'created';
+          if ((meta.groupCreated || meta.groupRenamed || meta.groupDeleted) && typeof meta.organizationName === 'string') {
+            const verb = meta.groupDeleted ? 'deleted' : meta.groupRenamed ? 'renamed' : 'created';
             showSuccessToast(`Group "${meta.organizationName}" ${verb}.`, 5000, 'group');
+          }
+
+          if (meta.reclassifiedTo && typeof meta.reclassifiedSourceName === 'string') {
+            const book =
+              meta.reclassifiedTo === 'organization'
+                ? 'Groups'
+                : meta.reclassifiedTo === 'character'
+                  ? 'Characters'
+                  : meta.reclassifiedTo === 'location'
+                    ? 'Places'
+                    : String(meta.reclassifiedTo);
+            const merge = meta.reclassifiedMerged ? ' (merged)' : '';
+            showSuccessToast(`Moved "${meta.reclassifiedSourceName}" to ${book}${merge}.`, 5000, 'reclassify');
+            window.dispatchEvent(new CustomEvent('lk:locations-updated', {
+              detail: { ids: [meta.reclassifiedSourceId], deleted: meta.reclassifiedFrom === 'location' },
+            }));
+          }
+
+          if (meta.locationWriteOperation === 'delete' && typeof meta.locationName === 'string') {
+            showSuccessToast(`Place "${meta.locationName}" deleted.`, 4000, 'location');
+            window.dispatchEvent(new CustomEvent('lk:locations-updated', {
+              detail: { ids: [meta.locationId], deleted: true },
+            }));
+          } else if (meta.locationWriteOperation && typeof meta.locationName === 'string') {
+            showSuccessToast(`Place "${meta.locationName}" ${meta.locationWriteOperation === 'create' ? 'saved' : 'updated'}.`, 4000, 'location');
+            window.dispatchEvent(new CustomEvent('lk:locations-updated', {
+              detail: { ids: [meta.locationId] },
+            }));
           }
 
           if (meta.loreUpdates && isGuest && guestState?.guestId) {

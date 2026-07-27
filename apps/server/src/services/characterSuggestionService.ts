@@ -18,6 +18,7 @@ import {
 } from './lorebook/quality/entityQualityGateService';
 import { hasFamilySignal } from './conversationCentered/datingEligibilityService';
 import { suggestionDismissalService } from './suggestionDismissalService';
+import { entityLearningService } from './entityLearningService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type CharacterSuggestion = {
@@ -81,6 +82,7 @@ class CharacterSuggestionService {
   ): Promise<CharacterSuggestion[]> {
     const suggestions: CharacterSuggestion[] = [];
     const seen = new Set<string>();
+    const learning = await entityLearningService.getUserLearningContext(userId);
 
     let bookExact = new Set<string>();
     let bookEntries: BookNameEntryWithId[] = [];
@@ -91,6 +93,7 @@ class CharacterSuggestionService {
       const safeName = gated.name;
       const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
+      if (learning.suppressedByDomain.has(`characters:${key}`)) return;
       if (!isIndividualPersonName(safeName)) return;
       const mentionKind = classifyMentionKind(safeName).kind;
       if (mentionKind !== 'person' && mentionKind !== 'pet') return;

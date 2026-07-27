@@ -32,6 +32,8 @@ describe('extractionSignals — pre-LLM fan-out gates', () => {
     expect(hasQuestSignal('I want to run a marathon next year')).toBe(true);
     expect(hasQuestSignal('my goal is to save $10k')).toBe(true);
     expect(hasQuestSignal('I had a sandwich')).toBe(false);
+    expect(hasQuestSignal("I'm currently working on finishing the MemoVault onboarding")).toBe(true);
+    expect(hasQuestSignal('My next step is to test the Vanguard Robotics demo')).toBe(true);
   });
 
   it('does not treat Character Book person intros as quest signals', () => {

@@ -1,9 +1,13 @@
 import { normalizeNameKey } from '../../../utils/nameNormalization';
+
 import type { QuestLogCandidate } from './questLogInferenceTypes';
 import { buildQuestLogContext } from './questLogProvenanceService';
 
 const TASK_VERB_RE =
   /\b(run|add|fix|apply|verify|test|deploy|update|clean up|restart|migrate|configure|set up|implement)\s+([^.!?,]{4,90})/gi;
+
+const CURRENT_WORK_RE =
+  /\b(?:I(?:'m| am)?\s+)?(?:currently\s+)?(?:working on|continuing(?: to)?|finishing|still need to|my next step is)\s+([^.!?,]{4,90})/gi;
 
 const NAMED_TASKS: Array<{ pattern: RegExp; displayName: string }> = [
   { pattern: /\bRun MVP diagnostic\b/i, displayName: 'Run MVP diagnostic' },
@@ -40,14 +44,28 @@ export function inferTasks(text: string): QuestLogCandidate[] {
     out.push(makeTask(displayName, text, match[0]));
   }
 
+  for (const match of collectMatches(text, CURRENT_WORK_RE)) {
+    const object = match[1].trim().replace(/\s+/g, ' ');
+    const displayName = `Work on ${object}`.slice(0, 90).trim();
+    const key = normalizeNameKey(displayName);
+    if (!object || seen.has(key) || object.split(/\s+/).length < 2) continue;
+    seen.add(key);
+    out.push(makeTask(displayName, text, match[0], 'active'));
+  }
+
   return out;
 }
 
-function makeTask(displayName: string, text: string, evidence: string): QuestLogCandidate {
+function makeTask(
+  displayName: string,
+  text: string,
+  evidence: string,
+  statusHint: 'planned' | 'active' = 'planned',
+): QuestLogCandidate {
   return {
     displayName,
     itemType: 'task',
-    context: buildQuestLogContext(text, displayName, { statusHint: 'planned' }),
+    context: buildQuestLogContext(text, displayName, { statusHint }),
     evidencePhrases: [evidence],
     sourceMessageIds: [],
     confidence: 0.87,

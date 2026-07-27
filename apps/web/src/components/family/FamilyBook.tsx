@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, Sparkles } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -17,6 +17,7 @@ import { useToast } from '../ui/toast';
 import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
+import type { FamilyQueryResponse, FamilyQueryResult } from '../../lib/api-contracts';
 
 type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
 
@@ -38,6 +39,10 @@ export function FamilyBook() {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
   const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
+  const [familyQuery, setFamilyQuery] = useState('');
+  const [familyQueryResult, setFamilyQueryResult] = useState<FamilyQueryResponse | null>(null);
+  const [familyQueryLoading, setFamilyQueryLoading] = useState(false);
+  const [familyQueryError, setFamilyQueryError] = useState<string | null>(null);
   const { success, error: toastError, ToastContainer } = useToast();
 
   const load = useCallback(async () => {
@@ -52,7 +57,7 @@ export function FamilyBook() {
     setLoading(true);
     try {
       const data = await booksApi.loadFamily();
-      if (data.tree) setSummary({ success: true, ...data } as SummaryResponse);
+      if (data.tree) setSummary({ success: true, ...data } as unknown as SummaryResponse);
     } catch {
       setSummary(null);
     } finally {
@@ -65,6 +70,128 @@ export function FamilyBook() {
   }, [load]);
 
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'family'), [load]);
+
+  const activeTree = demoTree || summary?.tree || null;
+  const visibleTree = useMemo(() => {
+    if (!activeTree || !familyQueryResult) return activeTree;
+    const ids = new Set(familyQueryResult.results.map((result) => result.characterId));
+    return {
+      ...activeTree,
+      members: activeTree.members.filter((member) => member.is_self || ids.has(member.id)),
+    };
+  }, [activeTree, familyQueryResult]);
+
+  const runDemoFamilyQuery = (query: string): FamilyQueryResponse => {
+    const relationMap: Record<string, FamilyMember['relation']> = {
+      mom: 'parent', mother: 'parent', dad: 'parent', father: 'parent', parent: 'parent',
+      sister: 'sibling', brother: 'sibling', sibling: 'sibling', cousin: 'cousin',
+      aunt: 'aunt', uncle: 'uncle', grandma: 'grandparent', grandpa: 'grandparent',
+      grandparent: 'grandparent', child: 'child', daughter: 'child', son: 'child',
+    };
+    const relation = Object.entries(relationMap).find(([word]) =>
+      new RegExp(`\\b${word}s?\\b`, 'i').test(query))?.[1];
+    const side = /\bmaternal|mom'?s side\b/i.test(query)
+      ? 'maternal'
+      : /\bpaternal|dad'?s side\b/i.test(query)
+        ? 'paternal'
+        : undefined;
+    const person = query.match(/\bhow is\s+(.+?)\s+related to me\??$/i)?.[1]?.trim();
+    const wantsInferred = /\binferred|unconfirmed\b/i.test(query);
+    const wantsReview = /\breview|uncertain|questionable\b/i.test(query);
+    const household = (summary?.households ?? []).filter((item) =>
+      /\bhousehold|who lives|residents?|head of household\b/i.test(query)
+      && (!person || [...item.residents, ...item.visitors]
+        .some((member) => member.name.toLowerCase().includes(person.toLowerCase())))
+    );
+    const analyticsById = new Map((summary?.analytics ?? []).map((item) => [item.characterId, item]));
+    const results: FamilyQueryResult[] = (activeTree?.members ?? [])
+      .filter((member) => !member.is_self)
+      .filter((member) => !relation || member.relation === relation || (relation === 'sibling' && member.relation.includes('sibling')))
+      .filter((member) => !side || member.side === side)
+      .filter((member) => !person || member.name.toLowerCase().includes(person.toLowerCase()))
+      .filter((member) => !wantsInferred || member.inference_status === 'inferred')
+      .filter((member) => !wantsReview || member.needs_review)
+      .map((member) => {
+        const analytic = analyticsById.get(member.id);
+        const householdNames = (summary?.households ?? [])
+          .filter((item) => [...item.residents, ...item.visitors]
+            .some((personItem) => personItem.characterId === member.id))
+          .map((item) => item.name);
+        return {
+          characterId: member.id,
+          name: member.name,
+          relation: member.relation,
+          relationLabel: member.relation_label,
+          generation: member.generation,
+          side: member.side ?? null,
+          inferenceStatus: member.inference_status ?? null,
+          closeness: member.closeness ?? null,
+          confidence: member.inference_status === 'asserted' ? 0.95 : 0.8,
+          evidenceCount: analytic?.evidenceCount ?? 0,
+          mentionCount: analytic?.mentionCount ?? 0,
+          trend: analytic?.trend ?? null,
+          householdNames,
+          hasCard: member.has_card !== false && !member.is_placeholder,
+          needsReview: member.needs_review === true,
+          matchedReasons: [
+            relation && `Relationship: ${member.relation_label}`,
+            side && `Branch: ${side}`,
+            person && `Name matches ${person}`,
+            wantsInferred && 'Status: inferred',
+          ].filter(Boolean) as string[],
+        };
+      });
+    const countFacet = (values: string[]) => [...new Set(values)]
+      .map((value) => ({ value, count: values.filter((item) => item === value).length }));
+    return {
+      query,
+      intent: household.length ? 'household' : relation ? 'kinship' : side ? 'branch' : wantsReview ? 'quality' : 'person',
+      results,
+      households: household.map((item) => ({
+        householdId: item.id,
+        name: item.name,
+        locationName: item.locationName ?? null,
+        headOfHousehold: item.headOfHousehold ?? null,
+        residentCount: item.residentCount,
+        matchedMemberNames: [...item.residents, ...item.visitors]
+          .map((member) => member.name),
+        confidence: item.confidence,
+      })),
+      total: results.length,
+      limit: 100,
+      offset: 0,
+      facets: {
+        relations: countFacet(results.map((item) => item.relation)),
+        sides: countFacet(results.map((item) => item.side ?? '').filter(Boolean)),
+        generations: countFacet(results.map((item) => String(item.generation))),
+        inferenceStatuses: countFacet(results.map((item) => item.inferenceStatus ?? '').filter(Boolean)),
+        trends: countFacet(results.map((item) => item.trend ?? '').filter(Boolean)),
+      },
+      warnings: [],
+    };
+  };
+
+  const submitFamilyQuery = async () => {
+    const query = familyQuery.trim();
+    if (!query) return;
+    setFamilyQueryLoading(true);
+    setFamilyQueryError(null);
+    try {
+      const result = shouldUseMock
+        ? runDemoFamilyQuery(query)
+        : (await fetchJson<{ success: boolean; result: FamilyQueryResponse }>('/api/family/query', {
+            method: 'POST',
+            body: JSON.stringify({ query, limit: 100, includeFacets: true }),
+          })).result;
+      setFamilyQueryResult(result);
+      if (result.households.length && result.results.length === 0) setTab('households');
+      else setTab('tree');
+    } catch (queryError) {
+      setFamilyQueryError(queryError instanceof Error ? queryError.message : 'Could not query your family right now.');
+    } finally {
+      setFamilyQueryLoading(false);
+    }
+  };
 
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
@@ -205,7 +332,7 @@ export function FamilyBook() {
     if (shouldUseMock && demoTree) {
       const updatedMembers = demoTree.members.map(mem =>
         mem.id === member.id
-          ? { ...mem, relation: edit.relation, side: edit.side || undefined, parent_id: edit.connectsToId || undefined }
+          ? { ...mem, relation: edit.relation as FamilyMember['relation'], side: edit.side || undefined, parent_id: edit.connectsToId || undefined }
           : mem
       );
       const updatedTree = { ...demoTree, members: updatedMembers };
@@ -300,6 +427,72 @@ export function FamilyBook() {
         </p>
       </header>
 
+      <section className="rounded-2xl border border-emerald-500/25 bg-gradient-to-r from-emerald-950/35 via-black/30 to-black/30 p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <span className="rounded-lg bg-emerald-500/15 p-2">
+            <Sparkles className="h-4 w-4 text-emerald-300" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold text-white">Ask your Family &amp; Family Tree</h2>
+            <p className="text-xs text-white/45 mt-0.5">
+              Search relatives, branches, generations, households, evidence, closeness, or records needing review.
+            </p>
+          </div>
+        </div>
+        <form
+          className="flex flex-col sm:flex-row gap-2"
+          onSubmit={(event) => { event.preventDefault(); void submitFamilyQuery(); }}
+        >
+          <input
+            value={familyQuery}
+            onChange={(event) => setFamilyQuery(event.target.value)}
+            aria-label="Ask your Family and Family Tree"
+            placeholder='Try “Show my maternal cousins” or “Who lives in the Solenne House?”'
+            className="h-10 flex-1 rounded-lg border border-emerald-500/25 bg-black/45 px-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+          />
+          <button
+            type="submit"
+            disabled={!familyQuery.trim() || familyQueryLoading}
+            className="h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/35 px-4 text-sm text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-40"
+          >
+            {familyQueryLoading ? 'Checking…' : 'Ask Family'}
+          </button>
+          {familyQueryResult && (
+            <button
+              type="button"
+              onClick={() => { setFamilyQuery(''); setFamilyQueryResult(null); setFamilyQueryError(null); }}
+              className="h-10 rounded-lg border border-white/10 px-3 text-sm text-white/55 hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+        </form>
+        {familyQueryError && <p className="text-xs text-red-300" role="alert">{familyQueryError}</p>}
+        {familyQueryResult && !familyQueryError && (
+          <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2" aria-live="polite">
+            <p className="text-sm text-white/75">
+              {familyQueryResult.total} matching relative{familyQueryResult.total === 1 ? '' : 's'}
+              {familyQueryResult.households.length ? ` · ${familyQueryResult.households.length} household${familyQueryResult.households.length === 1 ? '' : 's'}` : ''}
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {familyQueryResult.results.slice(0, 8).map((result) => (
+                <button
+                  key={result.characterId}
+                  type="button"
+                  onClick={() => void openCharacter(result.characterId, result.name)}
+                  className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-left hover:border-emerald-400/30"
+                >
+                  <span className="block text-xs font-medium text-white/85">{result.name}</span>
+                  <span className="block text-[10px] text-white/40 mt-0.5">
+                    {result.relationLabel}{result.side ? ` · ${result.side}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       {!!summary?.possibleFamilyMatches?.length && (
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-white/70 flex items-center gap-2">
@@ -388,7 +581,7 @@ export function FamilyBook() {
                 </button>
                 <div className="ml-auto">
                   <FamilyTreeCopyAllButton
-                    tree={demoTree || summary?.tree}
+                    tree={visibleTree}
                     title="Your family tree"
                     filters={[`view=${viewMode}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
                     size="md"
@@ -396,15 +589,15 @@ export function FamilyBook() {
                   />
                 </div>
               </div>
-              {viewMode === 'hierarchical' && (demoTree || summary?.tree)?.members?.length ? (
+              {viewMode === 'hierarchical' && visibleTree?.members?.length ? (
                 <HierarchicalFamilyTree
-                  tree={demoTree || summary.tree}
+                  tree={visibleTree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : viewMode === 'visual' && shouldUseMock && (demoTree || summary?.tree)?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && visibleTree?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
-                    tree={demoTree || summary.tree}
+                    tree={visibleTree}
                     onMemberClick={(m) => void openCharacter(m.id, m.name)}
                     {...editHandlers}
                   />
@@ -482,7 +675,7 @@ export function FamilyBook() {
         <CharacterDetailModal
           character={selectedCharacter}
           onClose={() => setSelectedCharacter(null)}
-          onUpdate={(c) => setSelectedCharacter(c)}
+          onUpdate={() => void load()}
         />
       )}
 

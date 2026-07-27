@@ -19,6 +19,31 @@ describe('characterChatTargetResolver', () => {
     ).toEqual({ characterId: 'c9', characterName: 'Maya', source: 'composer' });
   });
 
+  it('keeps the matching composer name when it promoted the chip to entity context', () => {
+    expect(
+      resolveFocusedCharacter({ type: 'CHARACTER', id: 'c9' }, undefined, [
+        { id: 'c9', name: 'Maya', type: 'character' },
+      ]),
+    ).toEqual({
+      characterId: 'c9',
+      characterName: 'Maya',
+      source: 'entity_context',
+    });
+  });
+
+  it('keeps the matching pinned character name for pronoun-led writes', () => {
+    expect(
+      resolveFocusedCharacter(
+        { type: 'CHARACTER', id: 'c7' },
+        { entityType: 'character', entityId: 'c7', entityName: 'Jamie' },
+      ),
+    ).toEqual({
+      characterId: 'c7',
+      characterName: 'Jamie',
+      source: 'entity_context',
+    });
+  });
+
   it('promotes composer character to entity context when missing', () => {
     expect(
       resolveEntityContextFromComposer(undefined, [{ id: 'c9', name: 'Maya', type: 'character' }]),

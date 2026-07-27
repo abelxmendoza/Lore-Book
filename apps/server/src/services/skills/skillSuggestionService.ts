@@ -325,7 +325,7 @@ class SkillSuggestionService {
   async rejectSuggestion(
     userId: string,
     suggestionId: string,
-    opts?: { threadId?: string | null }
+    opts?: { threadId?: string | null; reason?: import('../suggestionDismissalService').DismissSuggestionReason }
   ) {
     const { data: row } = await supabaseAdmin
       .from('skill_suggestions')
@@ -341,6 +341,7 @@ class SkillSuggestionService {
       sourceMessageId: row.source_message_id,
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {
@@ -359,7 +360,12 @@ class SkillSuggestionService {
   async rejectByName(
     userId: string,
     skillName: string,
-    opts?: { threadId?: string | null; sourceMessageId?: string | null; suggestionId?: string }
+    opts?: {
+      threadId?: string | null;
+      sourceMessageId?: string | null;
+      suggestionId?: string;
+      reason?: import('../suggestionDismissalService').DismissSuggestionReason;
+    }
   ) {
     const key = normalizeSkillKey(skillName);
     const { data: existing } = await supabaseAdmin
@@ -374,6 +380,7 @@ class SkillSuggestionService {
       sourceMessageId: opts?.sourceMessageId ?? existing?.source_message_id,
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
+      reason: opts?.reason,
     });
 
     if (result.isPermanent) {

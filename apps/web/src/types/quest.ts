@@ -127,6 +127,7 @@ export interface QuestSuggestion {
   priority?: number;
   importance?: number;
   impact?: number;
+  category?: string;
   confidence: number;
   source_entry_id?: string;
   reasoning?: string;

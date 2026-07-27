@@ -33,6 +33,10 @@ export async function runQuestLogInferenceForMessage(
     let suggestionsUpserted = 0;
     for (const candidate of result.accepted) {
       if (!questLogInferenceService.shouldRouteToQuestLogUi(candidate)) continue;
+      if (
+        candidate.promotionStatus !== 'suggested_quest_log_item' &&
+        candidate.promotionStatus !== 'confirmed_quest_log_item'
+      ) continue;
       const upserted = await questLogSuggestionService.upsertFromInference(userId, candidate, {
         sourceMessageId,
         source: 'chat',
@@ -89,6 +93,10 @@ export async function rescanQuestLogInference(
       mentionCounts.set(key, (mentionCounts.get(key) ?? 0) + 1);
       const promoted = finalizeForRescan(candidate, mentionCounts.get(key) ?? 1);
       if (!questLogInferenceService.shouldRouteToQuestLogUi(promoted)) continue;
+      if (
+        promoted.promotionStatus !== 'suggested_quest_log_item' &&
+        promoted.promotionStatus !== 'confirmed_quest_log_item'
+      ) continue;
       const upserted = await questLogSuggestionService.upsertFromInference(userId, promoted, {
         sourceMessageId: episode.id,
         source: 'llm_scan',

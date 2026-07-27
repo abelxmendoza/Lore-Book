@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { romanceQueryRequestSchema } from '@lorebook/api-contracts';
 
 import { logger } from '../logger';
 import { loreBookParseLimit } from '../middleware/apiProtection';
@@ -44,6 +45,7 @@ import { romanticRelationshipAnalytics } from '../services/conversationCentered/
 import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { romanticConversationRescanService } from '../services/romanticConversationRescanService';
+import { queryRomanceForUser } from '../services/romance/romanceQueryService';
 import {
   confirmPeripheral,
   dismissPeripheral,
@@ -2962,6 +2964,24 @@ router.get(
       hiddenCount: (enriched as unknown[]).length - visible.length,
     });
   })
+);
+
+router.post(
+  '/romantic-relationships/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = romanceQueryRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid Dating and Romance query',
+        details: parsed.error.flatten(),
+      });
+      return;
+    }
+    const result = await queryRomanceForUser(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  }),
 );
 
 /**

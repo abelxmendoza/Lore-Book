@@ -8,11 +8,13 @@ import { Card, CardContent } from '../ui/card';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { QuestDetailPanel } from './QuestDetailPanel';
 import { DetectedQuestSuggestions } from './DetectedQuestSuggestions';
-import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest } from '../../hooks/useQuests';
+import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest, useQueryQuestsMutation } from '../../hooks/useQuests';
 import { EMPTY_QUEST_BOARD } from '../../store/hooks/useQuestData';
 import { useBookEntityIndexSearch } from '../../store/hooks/useEntityBooks';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
+import type { QuestQueryResponse } from '../../lib/api-contracts';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 // Prevent body scroll only when mobile detail overlay is open (sm:hidden fixed modal)
 const useBodyScrollLock = (isLocked: boolean) => {
@@ -107,8 +109,13 @@ function QuestCategoryNav({ selectedCategory, onSelect, counts }: QuestCategoryN
 export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [bookQuery, setBookQuery] = useState('');
+  const [bookQueryResult, setBookQueryResult] = useState<QuestQueryResponse | null>(null);
+  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const isMobile = useIsMobile();
+  const useMock = useShouldUseMockData();
+  const [queryQuests, queryState] = useQueryQuestsMutation();
 
   // Lock body scroll only when mobile detail overlay is open (desktop detail lives in right panel, no lock)
   useBodyScrollLock(selectedQuestId !== null && isMobile);
@@ -339,7 +346,12 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
     const byId = new Map<string, Quest>();
     questsToFilter.forEach(q => { if (!byId.has(q.id)) byId.set(q.id, q); });
     const unique = Array.from(byId.values());
-    const filtered = filterQuests(unique);
+    const queryIds = bookQueryResult
+      ? new Set(bookQueryResult.results.map((result) => result.questId))
+      : null;
+    const filtered = filterQuests(
+      queryIds ? unique.filter((quest) => queryIds.has(quest.id)) : unique,
+    );
     return [...filtered].sort((a, b) => {
       switch (sortKey) {
         case 'priority': return b.priority - a.priority;
@@ -357,7 +369,7 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
         default: return 0;
       }
     });
-  }, [selectedCategory, mainQuests, sideQuests, dailyQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests, sortKey]);
+  }, [selectedCategory, mainQuests, sideQuests, dailyQuests, todaysQuests, completedQuests, filterQuests, sortKey, bookQueryResult]);
 
   const uniqueQuestCount = useMemo(() => {
     const byId = new Map<string, Quest>();
@@ -371,6 +383,73 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
     () => [...mainQuests, ...sideQuests].filter((q) => q.status === 'active').length,
     [mainQuests, sideQuests]
   );
+
+  const canonicalQuests = useMemo(() => {
+    const byId = new Map<string, Quest>();
+    [...mainQuests, ...sideQuests, ...dailyQuests, ...completedQuests].forEach((quest) => byId.set(quest.id, quest));
+    return [...byId.values()];
+  }, [mainQuests, sideQuests, dailyQuests, completedQuests]);
+
+  const runBookQuery = async () => {
+    const query = bookQuery.trim();
+    if (!query) return;
+    setBookQueryError(null);
+    try {
+      if (useMock) {
+        const text = query.toLowerCase();
+        const matches = canonicalQuests.filter((quest) => {
+          if (/\b(active|current|working on|in progress)\b/.test(text) && quest.status !== 'active') return false;
+          if (/\b(completed|finished|done)\b/.test(text) && quest.status !== 'completed') return false;
+          if (/\b(paused|on hold)\b/.test(text) && quest.status !== 'paused') return false;
+          if (/\b(main quests?)\b/.test(text) && quest.quest_type !== 'main') return false;
+          if (/\b(side quests?)\b/.test(text) && quest.quest_type !== 'side') return false;
+          return true;
+        });
+        setBookQueryResult({
+          query,
+          intent: 'find',
+          results: matches.map((quest) => ({
+            questId: quest.id,
+            title: quest.title,
+            description: quest.description,
+            type: quest.quest_type,
+            status: quest.status,
+            category: quest.category,
+            tags: quest.tags ?? [],
+            priority: quest.priority,
+            importance: quest.importance,
+            impact: quest.impact,
+            progress: quest.progress_percentage,
+            dueAt: quest.estimated_completion_date,
+            lastActivityAt: quest.last_activity_at ?? quest.updated_at,
+            relatedGoalId: quest.related_goal_id,
+            relatedTaskId: quest.related_task_id,
+            scopes: [quest.status === 'archived' ? 'needs_review' : quest.status] as QuestQueryResponse['results'][number]['scopes'],
+            needsReview: !quest.description || !quest.category,
+            score: quest.priority,
+            matchedReasons: [`${quest.quest_type} · ${quest.status}`],
+          })),
+          total: matches.length,
+          limit: 30,
+          offset: 0,
+          facets: { types: [], statuses: [], categories: [], tags: [], scopes: [] },
+          warnings: [],
+        });
+        return;
+      }
+      const response = await queryQuests({
+        query,
+        limit: 30,
+        offset: 0,
+        filters: {},
+        sort: 'relevance',
+        includeFacets: true,
+      }).unwrap();
+      setBookQueryResult(response.result);
+    } catch {
+      setBookQueryError('Could not query your Quest Log. Please try again.');
+    }
+  };
 
   // Auto-select first quest if none selected or current selection is not in displayed quests
   // Only auto-select on desktop (not mobile) to avoid auto-opening modal
@@ -782,6 +861,51 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
           data-testid="quest-board-list-pane"
           className="flex min-h-0 flex-1 flex-col overflow-hidden sm:w-[min(100%,28rem)] lg:w-[min(100%,32rem)] sm:border-r border-white/10 bg-black/20"
         >
+          <div className="shrink-0 border-b border-white/10 bg-amber-500/[0.04] px-2 py-2 sm:px-3">
+            <div className="flex items-center gap-2">
+              <Input
+                value={bookQuery}
+                onChange={(event) => setBookQuery(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') void runBookQuery(); }}
+                placeholder="Ask Quests: “What am I currently working on?”"
+                aria-label="Ask your Quest Log"
+                className="h-9 min-w-0 flex-1 border-amber-500/20 bg-black/35 text-sm text-white placeholder:text-white/35"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void runBookQuery()}
+                disabled={!bookQuery.trim() || queryState.isLoading}
+                className="h-9 bg-amber-600/80 px-3 hover:bg-amber-500"
+              >
+                {queryState.isLoading ? '…' : 'Ask'}
+              </Button>
+            </div>
+            {bookQueryError && <p className="mt-1.5 text-[11px] text-red-300">{bookQueryError}</p>}
+            {bookQueryResult && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-white/50">{bookQueryResult.total} found</span>
+                {bookQueryResult.results.slice(0, 6).map((result) => (
+                  <button
+                    key={result.questId}
+                    type="button"
+                    onClick={() => setSelectedQuestId(result.questId)}
+                    className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20"
+                  >
+                    {result.title}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => { setBookQuery(''); setBookQueryResult(null); }}
+                  className="text-[10px] text-white/35 hover:text-white/70"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+
           <div data-testid="quest-board-suggestions" className="shrink-0 px-2 pt-2 sm:px-3">
             <DetectedQuestSuggestions
               existingQuestTitles={existingQuestTitles}
