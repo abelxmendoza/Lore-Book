@@ -173,6 +173,12 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     const eligibility = evaluateTimelineEligibility({
       text: item.body || item.title,
       title: item.title,
+      // Candidates reaching the canonical projector already came from a
+      // structured chronology source. Requiring their generated summaries to
+      // contain first-person grammar incorrectly drops legitimate events such
+      // as "Camping trip" or calendar titles. Speech-act exclusions still run
+      // first, so commands, recaps, debugging text, and corrections remain out.
+      type: 'personal_event',
       tags: item.tags,
       metadata: item.metadata ?? null,
     });

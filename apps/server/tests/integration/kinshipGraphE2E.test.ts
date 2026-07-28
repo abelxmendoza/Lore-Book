@@ -38,8 +38,9 @@ type Row = { id: string; name: string; metadata?: Record<string, unknown> | null
 
 function builder(table: string, result: { data?: unknown; error?: unknown }) {
   const b: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'ilike', 'limit', 'order', 'in']) b[m] = vi.fn(() => b);
+  for (const m of ['select', 'eq', 'ilike', 'limit', 'order', 'in', 'or', 'neq']) b[m] = vi.fn(() => b);
   b.update = vi.fn(() => b);
+  b.maybeSingle = vi.fn(() => Promise.resolve(result));
   b.upsert =
     table === 'character_organizations'
       ? mockCharOrgUpsert
@@ -75,8 +76,9 @@ describe('kinship graph E2E (text → family graph)', () => {
     const text = 'At Thanksgiving I sat with Abuela, Mom, Dad, Tía Grace, and cousin Marco';
     const result = await familyGraphInferenceService.processMessage('user-1', text, 'msg-e2e', []);
 
-    // 1) Every kinship edge was asserted with the correct glossary role.
-    expect(result.edges).toBe(5);
+    // 1) Five protagonist kinship edges plus the inferred Mom↔Dad spouse
+    // connection were written.
+    expect(result.edges).toBe(6);
     const rolesByCharacter = new Map(
       mockAssertKinship.mock.calls.map((c) => [c[1] as string, c[2] as string])
     );

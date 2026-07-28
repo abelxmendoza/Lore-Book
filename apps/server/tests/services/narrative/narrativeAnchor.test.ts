@@ -26,7 +26,7 @@ function pair(a: string, b: string, count = 3) {
 }
 
 describe('narrativeAnchor clustering', () => {
-  it('Bryan cluster creates School Era anchor', () => {
+  it('does not turn a third-party school cluster into the user’s School Era', () => {
     const ctx: AnchorBuildContext = {
       userId: USER,
       entities: [
@@ -64,16 +64,10 @@ describe('narrativeAnchor clustering', () => {
     };
 
     const anchors = buildAnchorsFromContext(ctx);
-    const schoolEra = anchors.find((a) => a.anchorType === 'school_era');
-
-    expect(schoolEra).toBeDefined();
-    expect(schoolEra!.entities.some((e) => e.name.includes('Bryan'))).toBe(true);
-    expect(
-      schoolEra!.title.match(/school|middle school/i) || schoolEra!.evidence.some((e) => /school|middle/i.test(e.label)),
-    ).toBeTruthy();
+    expect(anchors.some((a) => a.anchorType === 'school_era')).toBe(false);
   });
 
-  it('Vanguard cluster creates Work Era anchor', () => {
+  it('does not turn coworker and organization membership into the user’s Work Era', () => {
     const ctx: AnchorBuildContext = {
       userId: USER,
       entities: [
@@ -96,13 +90,7 @@ describe('narrativeAnchor clustering', () => {
     };
 
     const anchors = buildAnchorsFromContext(ctx);
-    const workEra = anchors.find((a) => a.anchorType === 'work_era' && a.title === 'Vanguard Robotics Chapter');
-
-    expect(workEra).toBeDefined();
-    expect(workEra!.entities.length + workEra!.groups.length).toBeGreaterThanOrEqual(2);
-    expect(workEra!.title).toBe('Vanguard Robotics Chapter');
-    expect(workEra!.groups.map((group) => group.name)).toContain('Vanguard Robotics');
-    expect(new Set(workEra!.evidence.map((item) => item.label.toLowerCase())).size).toBe(workEra!.evidence.length);
+    expect(anchors.some((a) => a.anchorType === 'work_era')).toBe(false);
   });
 
   it('does not call repeated copies of one keyword a strong match', () => {
@@ -191,7 +179,8 @@ describe('narrativeAnchor clustering', () => {
     };
 
     const anchors = buildAnchorsFromContext(ctx);
-    const family = anchors.find((a) => a.anchorType === 'pivotal_event');
+    // Pivotal events are persisted using the closest DB-supported anchor type.
+    const family = anchors.find((a) => a.anchorType === 'family_period');
 
     expect(family).toBeDefined();
     expect(family!.entities.some((e) => e.name.includes('Leslie'))).toBe(true);

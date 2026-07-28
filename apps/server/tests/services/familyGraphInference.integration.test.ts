@@ -37,9 +37,10 @@ type Row = { id: string; name: string; metadata?: Record<string, unknown> | null
 
 function builder(result: { data?: unknown; error?: unknown }) {
   const b: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'ilike', 'limit', 'order', 'in']) b[m] = vi.fn(() => b);
+  for (const m of ['select', 'eq', 'ilike', 'limit', 'order', 'in', 'or', 'neq']) b[m] = vi.fn(() => b);
   b.upsert = vi.fn(() => Promise.resolve({ error: null }));
   b.update = vi.fn(() => b);
+  b.maybeSingle = vi.fn(() => Promise.resolve(result));
   b.then = (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve);
   return b;
 }

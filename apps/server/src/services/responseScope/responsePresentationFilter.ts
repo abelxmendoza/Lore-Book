@@ -47,13 +47,15 @@ const ENTITY_SOURCE_TYPES = new Set([
   'task',
 ]);
 
-export function isPresentableEntityName(name: string): boolean {
+export function isPresentableEntityName(name: string, kind?: string): boolean {
   const clean = name.trim().replace(/\s+/g, ' ');
   if (clean.length < 2 || clean.split(' ').length > 5) return false;
   if (JUNK_ENTITY_RE.test(clean)) return false;
   if (/^(?:also|and|but|so|then)\s+/i.test(clean)) return false;
-  // Mention resolver: generics / indefinites are not presentable chips.
-  const mention = classifyMention({ text: clean });
+  // Mention resolver: generics / indefinites are not presentable chips. Pass
+  // through the known book kind so place names are not judged as invalid
+  // person labels (for example, a certified "San Diego" location).
+  const mention = classifyMention({ text: clean, kind });
   if (!mayAppearAsTranscriptMention(mention)) return false;
   return true;
 }
@@ -79,7 +81,7 @@ export function isPresentableMemoryTitle(title: string): boolean {
 export function isPresentableSourceTitle(source: PresentableSource): boolean {
   const type = (source.type ?? '').toLowerCase();
   if (type === 'knowledge') return Boolean(source.title?.trim());
-  if (ENTITY_SOURCE_TYPES.has(type)) return isPresentableEntityName(source.title);
+  if (ENTITY_SOURCE_TYPES.has(type)) return isPresentableEntityName(source.title, type);
   return isPresentableMemoryTitle(source.title);
 }
 
@@ -236,7 +238,7 @@ export function filterEntitiesForPresentation<T extends PresentableEntity>(
 ): T[] {
   const names = relevantNames(plan);
   return entities.filter((entity) => {
-    if (!isPresentableEntityName(entity.name)) return false;
+    if (!isPresentableEntityName(entity.name, entity.type)) return false;
     // Work: no location chips; characters must be roster-relevant.
     if (plan.intent === 'work') {
       if (entity.type === 'location') return false;

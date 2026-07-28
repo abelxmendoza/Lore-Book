@@ -34,10 +34,12 @@ function assembly(items: WorkingMemoryItem[]): WorkingMemoryAssembly {
     communities: [],
     relationships: [],
     preferences: [],
+    claims: [],
     timeline: [],
     confidence: 0.8,
     budget: { maxItems: 10, selected: items.length, rejected: 0 },
     rejected: [],
+    factsCoveredEntityIds: [],
   };
 }
 

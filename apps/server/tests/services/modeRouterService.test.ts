@@ -279,7 +279,6 @@ describe("ModeRouterService", () => {
     it("should detect FOUNDATION_RECALL for non-Recall foundation queries", async () => {
       const queries = [
         "What do you know about me?",
-        "Who are the characters in my story?",
         "Tell me about my family",
         "Tell me about Sam Chen",
       ];
@@ -289,6 +288,10 @@ describe("ModeRouterService", () => {
         expect(result.mode).toBe("FOUNDATION_RECALL");
         expect(result.confidence).toBeGreaterThan(0.8);
       }
+
+      await expect(
+        modeRouterService.routeMessage("user-1", "Who are the characters in my story?"),
+      ).resolves.toMatchObject({ mode: "BOOK_QUERY" });
     });
 
     it("should detect MEMORY_RECALL for factual questions", async () => {

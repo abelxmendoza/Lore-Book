@@ -55,6 +55,7 @@ describe('response presentation filtering', () => {
   it('rejects known sentence-fragment entity labels', () => {
     expect(isPresentableEntityName('Also You')).toBe(false);
     expect(isPresentableEntityName('Jowell')).toBe(true);
+    expect(isPresentableEntityName('San Diego', 'location')).toBe(true);
   });
 
   it('allows descriptive memory titles but rejects untitled journal stubs', () => {

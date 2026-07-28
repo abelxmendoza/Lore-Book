@@ -176,7 +176,11 @@ describe('MemoryReviewQueueService', () => {
       // Mock proposal creation - chain: insert().select().single()
       const mockSingle = vi.fn().mockResolvedValue({ data: mockProposal, error: null });
       const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
-      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockInsert = vi.fn().mockReturnValue({
+        select: mockSelect,
+        then: (resolve: (value: { error: null }) => unknown) =>
+          Promise.resolve({ error: null }).then(resolve),
+      });
       
       // Mock findAffectedClaims and generateReasoning
       vi.spyOn(memoryReviewQueueService as any, 'findAffectedClaims').mockResolvedValue([]);

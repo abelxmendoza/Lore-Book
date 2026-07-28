@@ -18,7 +18,7 @@ export const BOOK_QUERY_DOMAIN_HINTS: Record<BookQueryDomain, RegExp> = {
 };
 
 const EXPLICIT_QUERY_LANGUAGE =
-  /\b(?:show|find|list|which|what|who|where|when|search|query|compare|connect|related|mention|mentions|support|supports|across|how many|do i have)\b/i;
+  /(?:^(?:please\s+)?(?:show|find|list|which|what|who|where|when|search|query|compare)\b|\b(?:connect|related|mentions?|supports?|across|how many|do i have)\b)/i;
 
 const GRAPH_QUERY_LANGUAGE =
   /\b(?:who introduced|how do i know|connected to|connection between|what links|through whom|know each other|in common)\b/i;
@@ -46,10 +46,16 @@ export function detectBookQueryDomains(message: string): BookQueryDomain[] {
 export function isUniversalBookQueryRequest(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
-  if (GRAPH_QUERY_LANGUAGE.test(text)) return true;
   if (!EXPLICIT_QUERY_LANGUAGE.test(text)) return false;
   const domains = detectBookQueryDomains(text);
-  return domains.length >= 2 || domains.some((domain) => GENERIC_CHAT_QUERY_DOMAINS.has(domain));
+  if (domains.length >= 2) return true;
+  if (GRAPH_QUERY_LANGUAGE.test(text)) {
+    // A graph-shaped question within one mature Book (for example
+    // "Which organizations is Marcus connected to?") belongs to that Book's
+    // compiler. The universal adapter is for actual cross-Book paths.
+    return domains.length === 0;
+  }
+  return domains.some((domain) => GENERIC_CHAT_QUERY_DOMAINS.has(domain));
 }
 
 export function isGraphBookQueryRequest(message: string): boolean {

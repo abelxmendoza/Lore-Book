@@ -13,6 +13,12 @@ vi.mock('../../src/config', () => ({
     enableExperimental: false,
   },
 }));
+vi.mock('../../src/config/runtimePolicy', async () => {
+  const { config } = await import('../../src/config');
+  return {
+    isDevelopmentRuntime: () => ['dev', 'development'].includes(config.apiEnv),
+  };
+});
 vi.mock('../../src/logger', () => ({ logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {

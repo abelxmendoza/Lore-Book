@@ -133,6 +133,7 @@ vi.mock('../../src/services/ragPacketCacheService', () => ({
 }));
 
 vi.mock('../../src/services/modeRouter/modeRouterService', () => ({
+  isExplicitSubjectTimelineRequest: vi.fn().mockReturnValue(false),
   modeRouterService: {
     routeMessage: vi.fn().mockResolvedValue({
       mode: 'UNKNOWN',
@@ -272,6 +273,7 @@ vi.mock('../../src/services/selfCharacterService', () => ({
 }));
 
 import { omegaChatService } from '../../src/services/omegaChatService';
+import { resolveMessageEntitiesForDisplay } from '../../src/services/chat/messageEntityDisplayService';
 
 describe.sequential('omegaChatService.chatStream — entity mention integration', { timeout: 45_000 }, () => {
   beforeEach(() => {
@@ -305,6 +307,21 @@ describe.sequential('omegaChatService.chatStream — entity mention integration'
       characterAttributesMap: new Map(),
     });
     process.env.WORKING_MEMORY_PRIMARY = 'true';
+  });
+
+  it('resolves character, location, and organization books before chat presentation filtering', async () => {
+    const entities = await resolveMessageEntitiesForDisplay(
+      USER_ID,
+      'I visited Tía Maria in San Diego and stopped by Acme Corp.',
+    );
+
+    expect(entities.map(({ id, type }) => ({ id, type }))).toEqual(
+      expect.arrayContaining([
+        { id: 'c1', type: 'character' },
+        { id: 'l1', type: 'location' },
+        { id: 'o1', type: 'organization' },
+      ]),
+    );
   });
 
   it('resolves book entities from the user message through the real chatStream path', async () => {

@@ -169,6 +169,15 @@ class CharacterRegistry {
     if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
 
+    // Possessive anchors such as "V" in "V's Homegirl" are deliberately
+    // allowed only on the explicit possessor-upsert path. The general person
+    // validators reject one-letter names, so return here after the
+    // app-surface/non-person checks rather than accidentally disabling the
+    // narrowly scoped override.
+    if (options?.allowShortAnchor && /^[\p{L}]$/u.test(name)) {
+      return { ok: true, cleanName: name };
+    }
+
     const actorLabel = classifyActorLabel(name);
     if (actorLabel.action === 'reject' || actorLabel.action === 'group' || actorLabel.action === 'anonymous') {
       return { ok: false, reason: actorLabel.reason ?? actorLabel.action };
@@ -231,7 +240,12 @@ class CharacterRegistry {
     options?: ClassifyForCreationOptions
   ): Promise<CreationDecision> {
     const gate = this.gateName(rawName, { allowShortAnchor: options?.allowShortAnchor });
-    if (!gate.ok) return { action: 'reject', reason: gate.reason };
+    if (!gate.ok) {
+      return {
+        action: 'reject',
+        reason: gate.reason === 'bare_generic' ? 'bare_title_without_context' : gate.reason,
+      };
+    }
     const cleanName = gate.parts ? gate.parts[0] : gate.cleanName;
 
     const titleBuild = buildDisplayTitleFromMention('pending', { text: rawName });

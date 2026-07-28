@@ -23,6 +23,7 @@ vi.mock('../../src/services/conversationCentered/threadIntelligenceService', () 
 }));
 
 vi.mock('../../src/services/conversationCentered/threadSummaryService', () => ({
+  scrubSummaryEntityClauses: (value: string) => value,
   threadSummaryService: {
     refresh: (...args: unknown[]) => mockRefresh(...args),
   },
